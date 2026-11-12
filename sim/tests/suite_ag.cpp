@@ -20,6 +20,7 @@
 
 #include "check.h"
 #include "mach.h"
+#include "p4_debug.h"
 #include "suite.h"
 #include "units/ag.h"
 #include "units/linkword.h"
@@ -68,7 +69,7 @@ const char* size_name(unsigned s) { static const char* const n[] = {"32", "64", 
 // ================================================================ v1.0 rulings
 void rulings() {
     suite::group("v1.0 rulings");
-    Chip c(cfg());
+    Chip c(p4::dbg(cfg()));
     TileRef p = c.tile(3);
     p.set_master_config(fields::master_config(fields::RUN_STREAMS, 0, 0, 0, 0, 1)); p.pulse(fields::PULSE_START); c.run(3);
     check(ag(p).done && !ag(p).running && ag(p).requests == 0, "a stream run of count 0 ends at once, with no requests");
@@ -77,7 +78,7 @@ void rulings() {
     eq(0, int64_t(c.violations()), "count 0 is not flagged");
     const uint32_t runs[2][3] = {{fields::RUN_STREAMS, 255, 2}, {fields::RUN_GROUPS, 63, 2}};
     for (const auto& run : runs) {
-        Chip cw(cfg()); TileRef pw = cw.tile(3);
+        Chip cw(p4::dbg(cfg())); TileRef pw = cw.tile(3);
         pw.set_master_config(fields::master_config(run[0], run[1], run[2], 0, 0, 1)); pw.pulse(fields::PULSE_START);
         suite::ub([&] { cw.run(20); }, {"tile 3", "address generator", "past the table's end"}, "a %s run %u + %u: past the table's end",
                   run[0] == fields::RUN_STREAMS ? "stream" : "group", run[1], run[2]);
@@ -92,7 +93,7 @@ void rulings() {
         check(units::mc_bucket_digit(dc) == 4 && units::mc_hist_digit(dc) == 1, "digit selectors 1-4 are taken");
     }
     {
-        Chip cs(cfg()); TileRef ps = cs.tile(3);
+        Chip cs(p4::dbg(cfg())); TileRef ps = cs.tile(3);
         ps.set_stream(10, fields::stream_src(0x100), 0, fields::stream_count(200, fields::SIZE_64, 1, lw::M_SRC, 0));
         ps.set_ptr(3, 0x60000); ps.set_remaining(1, 200);
         ps.set_master_config(fields::master_config(fields::RUN_STREAMS, 10, 1, 0, 0, 1)); ps.pulse(fields::PULSE_START); cs.run(2);
@@ -124,7 +125,7 @@ void rulings() {
 // ================================================================ the proposal's worked example (section 4)
 void worked_example() {
     suite::group("worked example");
-    Net n(cfg()); TileRef p = n.c.tile(12);
+    Net n(p4::dbg(cfg())); TileRef p = n.c.tile(12);
     const uint32_t count[] = {2, 0, 3}, src[] = {0x100, 0x200, 0x400};
     for (unsigned s = 0; s < 3; s++) {
         p.set_stream(40 + s, fields::stream_src(src[s]), 0, fields::stream_count(count[s], fields::SIZE_64, 1, lw::M_SRC, 0));
@@ -158,7 +159,7 @@ void computed_fields() {
     for (uint32_t region : {uint32_t(lw::R_DMEM), uint32_t(lw::R_SRAM)})
         for (uint32_t kind : {fields::RUN_STREAMS, fields::RUN_GROUPS})
             for (uint32_t size : sizes) {
-                Net n(cfg()); TileRef p = n.c.tile(3);
+                Net n(p4::dbg(cfg())); TileRef p = n.c.tile(3);
                 const uint32_t chunks = 1u << size, N = 5, base = 0x800;
                 const uint32_t dest0 = region == lw::R_DMEM ? 0x400 : lw::sram_addr(0x40000);
                 for (uint32_t i = 0; i < N * chunks; i++) p.sram_poke(base + i, 0x5000 + i);
@@ -197,7 +198,7 @@ void computed_fields() {
                              {0x800, 0x404, 1, fields::SIZE_64, 2, lw::M_WRITE, 0}, {0x801, 0, 1, fields::SIZE_64, 1, lw::M_SRC, 1}, {0x800, 0, 1, fields::SIZE_32, 0, lw::M_COUNT, 1}};
     for (int b = 0; b < 9; b++) {
         MachConfig kc = cfg(); kc.max_violation_messages = 100;
-        Net n(kc); TileRef p = n.c.tile(3);
+        Net n(p4::dbg(kc)); TileRef p = n.c.tile(3);
         const uint32_t* x = e[b];
         p.set_stream(0, fields::stream_src(x[0]), x[1], fields::stream_count(x[2], x[3], x[4], x[5], x[6]));
         p.set_master_config(fields::master_config(fields::RUN_STREAMS, 0, 1, 0, 0, 1));
@@ -224,7 +225,7 @@ void queue_bounds() {
     for (unsigned L = 1; L <= 4; L++)
         for (int la : {1, 2, int(2 * L + 2), 9}) {
             MachConfig k = cfg(); k.with_ts_latency(L); k.ag_lookahead = la;
-            Net n(k); TileRef p = n.c.tile(0);
+            Net n(p4::dbg(k)); TileRef p = n.c.tile(0);
             uint32_t stream = 0, g = 0, total = 0;
             for (uint32_t t = 1; t <= 16; t += 3)
                 for (uint32_t R = 0; R <= 3; R++) {
@@ -245,7 +246,7 @@ void queue_bounds() {
 // ================================================================ mixed read sizes in a group (proposed item 27, accepted)
 void group_size() {
     suite::group("mixed read sizes in a group");
-    Net n(cfg()); TileRef p = n.c.tile(5);
+    Net n(p4::dbg(cfg())); TileRef p = n.c.tile(5);
     const uint32_t size[] = {fields::SIZE_128, fields::SIZE_64, fields::SIZE_32, fields::SIZE_32}, src[] = {0x200, 0x300, 0x400, 0x500};
     for (unsigned s = 0; s < 4; s++) {
         p.set_stream(60 + s, fields::stream_src(src[s]), 0, fields::stream_count(2, size[s], 1, lw::M_SRC, 0));
@@ -266,7 +267,7 @@ void group_size() {
     check(ok, "landed contiguously at PTR[me], each at its size (16 chunks)");
     eq(0x40000 + 16, p.ptr(5), "PTR[me] advanced by 4 + 2 + 1 + 1, twice");
     no_violations(n.c, "mixed sizes in a group, kept aligned: no report (item 27)");
-    Net m(cfg()); TileRef q = m.c.tile(5);
+    Net m(p4::dbg(cfg())); TileRef q = m.c.tile(5);
     const uint32_t size2[] = {fields::SIZE_64, fields::SIZE_32, fields::SIZE_128};
     for (unsigned s = 0; s < 3; s++) q.set_stream(60 + s, fields::stream_src(src[s]), 0, fields::stream_count(2, size2[s], 1, lw::M_SRC, 0));
     q.set_group(1, fields::group_lo(2), fields::group_hi(60, 3, 0));
@@ -280,6 +281,7 @@ void group_size() {
 int main(int argc, char** argv) {
     std::vector<std::string> a;
     for (int i = 1; i < argc; i++) {
+        if (p4::debug_flag(argv[i])) continue;
         if (std::strncmp(argv[i], "--only=", 7) == 0) {
             std::string s = argv[i] + 7; size_t p = 0;
             while (p <= s.size()) { size_t q = s.find(',', p); if (q == std::string::npos) q = s.size(); only.insert(s.substr(p, q - p)); p = q + 1; }

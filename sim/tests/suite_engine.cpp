@@ -27,6 +27,7 @@
 
 #include "check.h"
 #include "mach.h"
+#include "p4_debug.h"
 #include "p4_java.h"
 #include "suite.h"
 #include "units/ag.h"
@@ -85,7 +86,7 @@ uint32_t imem(TileRef p, uint32_t w) { return p.peek_local(0x01000000u + 4 * w);
 // ================================================================ the write engine
 void write_engine() {
     suite::group("write engine");
-    Net n(cfg(false));
+    Net n(p4::dbg(cfg(false)));
     TileRef r = n.c.tile(10);
     r.set_ptr(9, 0x20000); r.set_master_config(fields::master_config(0, 0, 0, 0, 1, 1)); r.set_remaining(1, 20);
     for (int j = 0; j < 20; j++) n.at(9, 2 + j, 10, lw::M_SRC, 0, 0xABCD000000000000ull | uint64_t(j % 5));
@@ -146,7 +147,7 @@ void write_engine() {
     std::string sb = "write engine pointer stage, 200 packets at one a cycle [meas: EngineTest write engine]:";
     for (unsigned L = 1; L <= 4; L++) {
         MachConfig k = cfg(false); k.with_ts_latency(L);
-        Net m(k); TileRef q = m.c.tile(10); q.set_ptr(9, 0x20000); q.set_remaining(1, 200);
+        Net m(p4::dbg(k)); TileRef q = m.c.tile(10); q.set_ptr(9, 0x20000); q.set_remaining(1, 200);
         for (int j = 0; j < 200; j++) m.at(9, 2 + j, 10, lw::M_SRC, 0, uint64_t(j));
         m.run_all(5000);
         bool good = true; for (int j = 0; j < 200; j++) if (q.sram_peek64(0x20000 + 2 * j) != uint64_t(j)) good = false;
@@ -168,7 +169,7 @@ void local_copy() {
     const uint32_t cases[3][2] = {{fields::SIZE_64, N}, {fields::SIZE_128, N / 2}, {fields::SIZE_32, N}};
     const char* name[] = {"64-bit records", "128-bit values (one packet each)", "32-bit keys (one per packet)"};
     for (int k = 0; k < 3; k++) {
-        Net n(cfg(false)); TileRef p = n.c.tile(20);
+        Net n(p4::dbg(cfg(false))); TileRef p = n.c.tile(20);
         for (uint32_t i = 0; i < 2 * N; i++) p.sram_poke(i, 0x50000000u + i);
         const uint32_t size = cases[k][0], count = cases[k][1], packets = count;
         p.set_stream(0, fields::stream_src(0), 0, fields::stream_count(count, size, 1, lw::M_SRC, 0));
@@ -183,7 +184,7 @@ void local_copy() {
         sb += suite::str("  %-34s %5u packets: %5lld cycles (%lld over the packet count)\n", name[k], packets, (long long)cyc, (long long)(cyc - packets));
     }
     for (uint32_t size : {fields::SIZE_128, fields::SIZE_64, fields::SIZE_32}) {
-        Net n(cfg(false)); TileRef p = n.c.tile(21);
+        Net n(p4::dbg(cfg(false))); TileRef p = n.c.tile(21);
         for (uint32_t i = 0; i < 1024; i++) p.sram_poke(0x10000 + i, 0x70000000u + i);
         const uint32_t pk = 1024u >> size;
         p.set_stream(5, fields::stream_src(0x10000), Net::cm(0x000), fields::stream_count(pk, size, 2, lw::M_WRITE, 0));
@@ -201,7 +202,7 @@ void local_copy() {
 // ================================================================ the fence (3.1, D43)
 void fence() {
     suite::group("fence");
-    Net n(cfg(false)); TileRef p = n.c.tile(12), q = n.c.tile(50);
+    Net n(p4::dbg(cfg(false))); TileRef p = n.c.tile(12), q = n.c.tile(50);
     const int N = 300;
     for (int i = 0; i < N; i++) p.sram_poke64(0x8000 + 2 * i, 0xF00000ull + uint64_t(i));
     p.set_stream(0, fields::stream_src(0x8000), 0, fields::stream_count(N, fields::SIZE_64, 1, lw::M_SRC, 38));
@@ -227,7 +228,7 @@ void fence() {
 // ================================================================ stream runs: timing, count 0, gap-after, relative destinations, wrap
 void stream_runs() {
     suite::group("stream runs");
-    Net n(cfg(false)); TileRef p = n.c.tile(30);
+    Net n(p4::dbg(cfg(false))); TileRef p = n.c.tile(30);
     for (int i = 0; i < 64; i++) p.sram_poke64(2 * i, uint64_t(i));
     const uint32_t counts[] = {3, 0, 2, 0, 1}, gaps[] = {2, 3, 0, 1, 0}; uint32_t src = 0;
     for (unsigned s = 0; s < 5; s++) { p.set_stream(250 + s, fields::stream_src(2 * src, gaps[s]), 0, fields::stream_count(counts[s], fields::SIZE_64, 1, lw::M_SRC, 0)); src += counts[s]; }
@@ -256,7 +257,7 @@ void one_word_exchange() {
     std::string sb = "one-word exchange, every tile sends one record to each of the other 63 in the 16-group offset order, stream runs, 0/+1 start skew [meas: EngineTest one-word exchange]:\n";
     int order[63]; { int i = 0; for (const auto& g : A2A::G4) for (int k : g) if (k != 0) order[i++] = k; }
     for (uint32_t gap : {4u, 2u, 1u, 0u}) {
-        Net n(cfg(true));
+        Net n(p4::dbg(cfg(true)));
         for (unsigned k = 0; k < 64; k++) {
             TileRef p = n.c.tile(k);
             for (unsigned s = 0; s < 63; s++) {
@@ -318,7 +319,7 @@ void radix_sort() {
     suite::group("radix sort");
     const uint32_t N = full ? 16384 : 4096;
     MachConfig k0 = cfg(true); k0.log_capacity = 5 * N + 64;   // ref's director log is a list: every packet of the 5 passes
-    Net n(k0);
+    Net n(p4::dbg(k0));
     const uint32_t A = 0x00000, B = 0x20000, C = 0x40000;
     std::vector<std::vector<uint64_t>> keys(64, std::vector<uint64_t>(N));
     p4::JRandom rnd(11);
@@ -364,7 +365,7 @@ void radix_sort() {
 // ================================================================ group runs: R = 0, late groups, start before rd_ready
 void late_groups() {
     suite::group("late groups");
-    Net n(cfg(false));
+    Net n(p4::dbg(cfg(false)));
     const std::vector<std::vector<int>> grp = {{1, 2, 3, 5}, {6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22}, {23}, {24, 25, 26, 27}};
     const uint32_t R[] = {1, 2, 0, 3}, gap[] = {4, 4, 6, 4};
     uint32_t expect[64] = {};
@@ -461,7 +462,7 @@ void all_to_all() {
         for (int gap : st.gaps) {
             // ref's `new Net(cfg(true))`, of which only the chip is used: its directors' logs are lists in ref, fixed
             // here, and the full-size data sets (65,536 records a tile and more) don't need them, so the plain chip
-            struct { Chip c; } n{Chip(cfg(true))};
+            struct { Chip c; } n{Chip(p4::dbg(cfg(true)))};
             st.d.load(n.c, gap);
             const int64_t cyc = A2A::run(n.c, 20000000);
             const int bad = st.d.verify(n.c);
@@ -484,7 +485,7 @@ void all_to_all() {
 void drift() {
     suite::group("drift");
     A2A d(7, 500);
-    Net n(cfg(false));
+    Net n(p4::dbg(cfg(false)));
     d.load(n.c, 4);
     TileRef p = n.c.tile(7);
     for (unsigned s = 0; s < 64; s++) p.set_ptr(s, uint32_t(0x10000 + 2 * d.dstoff[s][7]));
@@ -498,7 +499,7 @@ void drift() {
 // ================================================================ invariant 6
 void counter_overflow() {
     suite::group("invariant 6");
-    Net n(cfg(false)); TileRef r = n.c.tile(3);
+    Net n(p4::dbg(cfg(false))); TileRef r = n.c.tile(3);
     r.hist_poke(5, 0x1FFFF); r.set_master_config(fields::master_config(0, 0, 0, 0, 1, 1)); r.set_ptr(2, 0x20000); r.set_remaining(1, 1);
     n.at(2, 2, 3, lw::M_SRC, 0, 5);
     n.run_all(500);
@@ -511,6 +512,7 @@ void counter_overflow() {
 int main(int argc, char** argv) {
     std::vector<std::string> a;
     for (int i = 1; i < argc; i++) {
+        if (p4::debug_flag(argv[i])) continue;
         if (std::strncmp(argv[i], "--only=", 7) == 0) {
             std::string s = argv[i] + 7; size_t p = 0;
             while (p <= s.size()) { size_t q = s.find(',', p); if (q == std::string::npos) q = s.size(); only.insert(s.substr(p, q - p)); p = q + 1; }

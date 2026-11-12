@@ -384,3 +384,10 @@ W22-20. **(for W20) `TileRef::req_send` takes one push a cycle** (a `Sim::put_la
     pushed into a full request FIFO\" past its depth). RequestBusTest pushes 128 at once (back-pressure), 100 and 29
     (credits), 4 per tile (fairness); the second push of a cycle is FATAL (\"the unit put on this Hold in cycle 12
     already\"). Basics, fairness and credits wait on W22-19 too.
+- **The debug options (W22-8, on main: MachConfig::step_all, instance_major)**: `tests/p4_debug.h` (`--step-all`,
+  `--instance-major` on every suite; every machine a suite builds wrapped in `p4::dbg`; MemTest's unit-level `U` sets
+  the same sim::Options). Every suite at its steps' seeds prints exactly the same under each option as plain
+  (`tests/p4_debug_checks.sh`, clang suite build): net (both modes, 5, 11), mem (-1, 8), engine (-1, 4), ag (-1, 4),
+  rdport (-1, 4), searchbench, reqbus, agbench; the finished quick logs (net-quick, net-shuf, searchbench, engine,
+  eng-shuf) byte for byte under both. In make check: net-quick under step-all and engine under instance-major
+  (clang debug: 31 s and 10 s), beside the plain six.

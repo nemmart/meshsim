@@ -30,6 +30,7 @@
 #include <vector>
 
 #include "mach.h"
+#include "p4_debug.h"
 #include "p4_java.h"
 #include "suite.h"
 #include "units/tile_ctl.h"
@@ -87,7 +88,7 @@ unsigned digit(uint64_t key, unsigned d) { return d == 0 ? 0 : unsigned(key >> (
 // ------------------------------------------------------------------ structure
 void structure() {
     suite::group("structure");
-    Net n(Net::cfg(shuffle));
+    Net n(p4::dbg(Net::cfg(shuffle)));
     int zero = 0, one = 0;
     const std::vector<int> sk = n.c.start_skew();
     for (int i = 0; i < 64; i++) {
@@ -97,7 +98,7 @@ void structure() {
     eq(64, zero + one, "every start skew is 0 or +1");
     check(zero > 0 && one > 0, "both skews occur (seed 1): %d / %d", zero, one);
     MachConfig k = Net::cfg(shuffle); k.skew = false;
-    { Chip c0(k); int s = 0; for (int x : c0.start_skew()) s += x; eq(0, s, "skew off: all 0"); }
+    { Chip c0(p4::dbg(k)); int s = 0; for (int x : c0.start_skew()) s += x; eq(0, s, "skew off: all 0"); }
     const uint64_t h = lw::hdr(0x55, 0x2A, 6, 5, 0xFF1ABCDE, lw::SIZE_64);
     eq(0x55, lw::src(h), "src"); eq(0x2A, lw::dst(h), "dst"); eq(6, lw::mode(h), "mode"); eq(5, lw::counter(h), "counter");
     eq(int32_t(0xFF1ABCDE), int32_t(lw::addr(h)), "address (32 bits)"); eq(lw::SIZE_64, lw::size(h), "size");
@@ -133,7 +134,7 @@ void structure() {
 // ------------------------------------------------------------------ unicast, every offset
 void unicast() {
     suite::group("unicast");
-    Net n(Net::cfg(shuffle));
+    Net n(p4::dbg(Net::cfg(shuffle)));
     const units::Hops& hops = hops_of_chip(n.c);
     std::map<int, int> lat_by_hops;
     bool all_perm_peaks1 = true;
@@ -184,7 +185,7 @@ void unicast() {
 // ------------------------------------------------------------------ broadcast
 void broadcast() {
     suite::group("broadcast");
-    Net n(Net::cfg(shuffle));
+    Net n(p4::dbg(Net::cfg(shuffle)));
     int max_lat = 0;
     auto routed_sum = [&] { uint64_t r = 0; for (unsigned p = 0; p < 64; p++) r += router(n.c, p).routed; return r; };
     for (int s = 0; s <= 64; s++) {
@@ -237,7 +238,7 @@ std::vector<int> bpath(Router* const* r, int src, int dst) {
 
 void route_comparison() {
     suite::group("routes");
-    Net n(Net::cfg(shuffle));
+    Net n(p4::dbg(Net::cfg(shuffle)));
     Router* r[64]; for (int i = 0; i < 64; i++) r[i] = &router(n.c, unsigned(i));
     const units::Hops& hops = hops_of_chip(n.c);
     std::vector<int> differing;
@@ -257,7 +258,7 @@ void route_comparison() {
 // ------------------------------------------------------------------ the controllers' ports (tiles 0-2's fifth ports, 4.16)
 void cnc_port() {
     suite::group("C&C 1-3 ports");
-    Net n(Net::cfg(shuffle));
+    Net n(p4::dbg(Net::cfg(shuffle)));
     for (unsigned c = 0; c < 3; c++) for (unsigned d = 0; d < 64; d++) {
         n.clear_logs();
         n.send(c, d, lw::M_COUNT, 1, 0, lw::SIZE_32, 0x1234, 0);
@@ -298,7 +299,7 @@ void cnc_port() {
         if (quiet) unconnected++;
     }
     eq(61, unconnected, "on tiles 3-63 the fifth port never receives and routing never chooses it");
-    Net m(Net::cfg(shuffle));
+    Net m(p4::dbg(Net::cfg(shuffle)));
     m.at(5, m.c.cycle() + 2, 70, lw::M_COUNT, 1, 0, lw::SIZE_32, 0, 0);
     m.run_all(300);
     const auto& vm = m.c.violation_messages();
@@ -350,7 +351,7 @@ std::string queue_peaks(Chip& c) {
 
 void in_order_random() {
     suite::group("in-order random");
-    Net n(Net::cfg(shuffle));
+    Net n(p4::dbg(Net::cfg(shuffle)));
     const std::vector<int> sk = n.c.start_skew();
     p4::JRandom rnd(42);
     int64_t seq[64] = {}; int64_t sent = 0;
@@ -373,7 +374,7 @@ void in_order_full_rate() {
     const int offsets[] = {1, 7, 8, 9, 27, 32, 33, 36, 63};
     unsigned worst = 0;
     for (int k : offsets) {
-        Net n(Net::cfg(shuffle));
+        Net n(p4::dbg(Net::cfg(shuffle)));
         const units::Hops& hops = hops_of_chip(n.c);
         const std::vector<int> sk = n.c.start_skew();
         const int P = std::max(1, std::max(std::abs(int(hops.a[k])), std::abs(int(hops.b[k]))));
@@ -405,7 +406,7 @@ bool cm_idle(Chip& c, unsigned k) {
 void director() {
     suite::group("director");
     MachConfig k = Net::cfg(shuffle); k.check_unexpected = true; k.periph_type = 0;
-    Net n(k);
+    Net n(p4::dbg(k));
     TileRef r = n.c.tile(9);
     r.record_gather(); r.record_writer();
     units::Director& d = r.unit<units::Director>("dir");
@@ -517,10 +518,10 @@ void director() {
     }
     // K's formula (4.7, D49): meshsim errors below max(2L + 4, L + 4, cm_latency, rp_latency)
     MachConfig bad = Net::cfg(shuffle); bad.K = 5;
-    check(dies_naming([&] { Chip x(bad); }, "below"), "K = 5 at L = 1 is rejected (the formula's 6)");
-    MachConfig ok6 = Net::cfg(shuffle); ok6.K = 6; { Chip x(ok6); } check(true, "K = 6 at L = 1 is accepted");
+    check(dies_naming([&] { Chip x(p4::dbg(bad)); }, "below"), "K = 5 at L = 1 is rejected (the formula's 6)");
+    MachConfig ok6 = Net::cfg(shuffle); ok6.K = 6; { Chip x(p4::dbg(ok6)); } check(true, "K = 6 at L = 1 is accepted");
     MachConfig bad3 = Net::cfg(shuffle); bad3.ts_engine_latency = 3; bad3.K = 9;
-    const bool threw = dies_naming([&] { Chip x(bad3); }, "");
+    const bool threw = dies_naming([&] { Chip x(p4::dbg(bad3)); }, "");
     check(threw && Net::cfg(shuffle).with_ts_latency(3).K == 10 && Net::cfg(shuffle).with_ts_latency(4).K == 12, "K = 9 at L = 3 is rejected; withTsLatency(3) and (4) give K = 10 and 12");
     // port-B timing: accept at t, written at t + cm_latency, readable from t + cm_latency + 1
     r.set_remaining(3, 1);
@@ -543,7 +544,7 @@ void director() {
 // ------------------------------------------------------------------ the injection point
 void injection() {
     suite::group("injection");
-    Net n(Net::cfg(shuffle));
+    Net n(p4::dbg(Net::cfg(shuffle)));
     TileRef s = n.c.tile(3);
     units::Injection& in = s.unit<units::Injection>("inj");
     const int64_t T0 = n.c.cycle() + 2;
@@ -570,7 +571,7 @@ void injection() {
 // ------------------------------------------------------------------ the loopback: tokens and the eject priority (4.5, 4.7)
 void loopback() {
     suite::group("loopback");
-    Net n(Net::cfg(shuffle));
+    Net n(p4::dbg(Net::cfg(shuffle)));
     TileRef r = n.c.tile(9);
     n.clear_logs();                                         // ref: r.dir.log = new ArrayList<>()
     const int64_t T0 = n.c.cycle() + 2;
@@ -604,7 +605,7 @@ void loopback() {
 // ref's order on a tie).
 std::array<int, 3> fan_run(int r, const std::vector<int>& senders, int W, int64_t skew_seed, bool skew, std::string* first_ovf) {
     MachConfig k = Net::cfg(shuffle); k.skew_seed = skew_seed; k.skew = skew;
-    Net n(k);
+    Net n(p4::dbg(k));
     const std::vector<int> sk = n.c.start_skew();
     for (int s : senders) for (int j = 0; j < W; j++) n.at(unsigned(s), 2 + j + sk[s], unsigned(r), lw::M_SRC, 0, uint64_t(j) << 32);
     n.run_all(100000);
@@ -715,6 +716,7 @@ void fan_in(bool quick) {
 int main(int argc, char** argv) {
     std::vector<std::string> a;
     for (int i = 1; i < argc; i++) {
+        if (p4::debug_flag(argv[i])) continue;
         if (std::strncmp(argv[i], "--only=", 7) == 0) {
             std::string s = argv[i] + 7; size_t p = 0;
             while (p <= s.size()) { size_t q = s.find(',', p); if (q == std::string::npos) q = s.size(); only.insert(s.substr(p, q - p)); p = q + 1; }

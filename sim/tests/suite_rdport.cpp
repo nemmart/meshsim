@@ -20,6 +20,7 @@
 
 #include "check.h"
 #include "mach.h"
+#include "p4_debug.h"
 #include "p4_java.h"
 #include "suite.h"
 #include "units/ag.h"
@@ -71,7 +72,7 @@ void stream_run(TileRef p, uint32_t start, uint32_t count) { p.set_master_config
 void read_port_from_c() {
     suite::group("read port from C");
     MachConfig k = Mach::cfg(shuffle); k.check_errors = false; k.max_violation_messages = 100;
-    Mach m(k);
+    Mach m(p4::dbg(k));
     for (unsigned p = 0; p < 64; p++) for (uint32_t x = 0; x < 0x1100; x++) m.c.tile(p).sram_poke(0x1000 + x, p << 20 | x);
     const Mach::Image im = m.boot("rdport");
     const bool ok = m.run([&] { return m.all_stopped(); }, 20000);
@@ -133,7 +134,7 @@ void read_port_under_traffic() {
     for (int with_reads = 0; with_reads < 2; with_reads++) {
         A2A a(7, 2000);
         MachConfig cf = cfg(); cf.check_read_port_overlap = false;
-        Chip c(cf);
+        Chip c(p4::dbg(cf));
         a.load(c, 0);
         if (with_reads == 1) for (unsigned p = 0; p < 64; p++) {
             c.tile(p).set_remaining(2, 64);
@@ -169,7 +170,7 @@ void read_port_under_traffic() {
 // ================================================================ tolerance: read-port results against an incoming stream
 std::array<int64_t, 4> tolerance_run(uint32_t gap, int reads, int delay) {
     MachConfig cf = cfg(); cf.check_read_port_overlap = false;
-    Chip c(cf);
+    Chip c(p4::dbg(cf));
     TileRef x = c.tile(20), p = c.tile(21);
     const int pk = 256;
     for (int i = 0; i < pk; i++) p.sram_poke64(2 * uint32_t(i), uint64_t(21) << 32 | uint32_t(i));
@@ -233,7 +234,7 @@ void read_port_tolerance() {
 void overlap_check() {
     suite::group("read-port overlap check");
     {
-        Chip c(cfg());
+        Chip c(p4::dbg(cfg()));
         TileRef x = c.tile(20), p = c.tile(21);
         for (uint32_t j = 0; j < 4; j++) p.set_stream(j, fields::stream_src(2 * j), Net::cm(0x810 + 2 * j), fields::stream_count(1, fields::SIZE_64, 2, lw::M_WRITE, 63));
         x.set_remaining(2, 4 + 8);
@@ -245,7 +246,7 @@ void overlap_check() {
         check(ov > 0 && c.violations() > 0 && c.violation_report().find("read-port overlap") != std::string::npos, "4 mode-5 packets arriving with 8 results outstanding: flagged (%llu packets)", (unsigned long long)ov);
     }
     {
-        Chip c(cfg());
+        Chip c(p4::dbg(cfg()));
         TileRef x = c.tile(20), p = c.tile(21);
         for (uint32_t j = 0; j < 4; j++) p.set_stream(j, fields::stream_src(2 * j), Net::cm(0x810 + 2 * j), fields::stream_count(1, fields::SIZE_64, 2, lw::M_WRITE, 63));
         x.set_remaining(2, 8);
@@ -259,7 +260,7 @@ void overlap_check() {
         no_violations(c, "results first, then the stream");
     }
     for (int cmd = 1; cmd >= 0; cmd--) {
-        Net n(cfg());                                        // ref's Chip; Net for c.cnc.send(c.cycle, ...) (Net::send)
+        Net n(p4::dbg(cfg()));                                        // ref's Chip; Net for c.cnc.send(c.cycle, ...) (Net::send)
         Chip& c = n.c;
         TileRef x = c.tile(20);
         x.set_remaining(2, uint32_t(32 + (cmd == 0 ? 1 : 0)));
@@ -278,7 +279,7 @@ void overlap_check() {
 // ================================================================ reserved streams
 void reserved_streams() {
     suite::group("reserved streams");
-    Chip c(cfg());
+    Chip c(p4::dbg(cfg()));
     TileRef p = c.tile(3), q4 = c.tile(4);
     p.set_stream(0, fields::stream_src(0x1000), 0, fields::stream_count(1, fields::SIZE_UNDEF, 1, lw::M_SRC, 1));
     p.set_stream(1, fields::stream_src(0x1000), 0, fields::stream_count(1, fields::SIZE_128, 1, lw::M_AUG, 1));
@@ -295,7 +296,7 @@ void reserved_streams() {
     eq(0, q4.remaining(2), "the good mode-0 packet landed and counted");
     const uint32_t es[3][3] = {{6, 1, fields::RUN_STREAMS}, {7, 0, fields::RUN_STREAMS}, {7, 0, fields::RUN_GROUPS}};
     for (const auto& e : es) {
-        Chip cr(cfg()); TileRef q = cr.tile(3);
+        Chip cr(p4::dbg(cfg())); TileRef q = cr.tile(3);
         q.set_stream(0, fields::stream_src(0x1000), 0, fields::stream_count(e[1], fields::SIZE_64, 1, e[0], 1));
         if (e[2] == fields::RUN_GROUPS) { q.set_group(0, fields::group_lo(2), fields::group_hi(0, 1, 0)); q.set_master_config(fields::master_config(fields::RUN_GROUPS, 0, 1, 0, 0, 1)); }
         else stream_run(q, 0, 1);
@@ -309,7 +310,7 @@ void reserved_streams() {
 int ppv(int k) { return (k & 1) == 1 ? k : k / 2; }    // value packets per gathered value (v1.25 s8c)
 
 void gather_run(int k, int N, std::string& sb) {
-    Chip c(cfg());
+    Chip c(p4::dbg(cfg()));
     const uint32_t IDX = 0x60000, VAL = 0x20000, OUT = 0xA0000;
     std::vector<std::vector<int>> perm(64);
     for (unsigned p = 0; p < 64; p++) {
@@ -351,7 +352,7 @@ void gather_counting_and_alignment() {
     const uint32_t IDX = 0x60000, VAL = 0x20000, OUT = 0xA0000; const int N = 40;
     for (int k : {1, 2, 3, 4, 8}) for (bool old : {false, true}) {
         if (old && (k & 1) == 1) continue;
-        Chip c(cfg()); TileRef p = c.tile(7);
+        Chip c(p4::dbg(cfg())); TileRef p = c.tile(7);
         for (int i = 0; i < N; i++) p.sram_poke64(IDX + 2 * uint32_t(i), uint64_t(N - 1 - i) << 32 | uint32_t(i));
         for (int v = 0; v < N; v++) for (int i = 0; i < k; i++) p.sram_poke64(VAL + 2 * uint32_t(k * v + i), uint64_t(v) << 8 | uint32_t(i));
         p.set_stream(195, fields::stream_src(IDX), 0, fields::stream_count(N, fields::SIZE_64, 1, lw::M_GATHER, 0));
@@ -370,7 +371,7 @@ void gather_counting_and_alignment() {
     }
     const uint32_t offs[3][2] = {{2, 0}, {0, 2}, {0, 1}};
     for (const auto& off : offs) {
-        Chip c(cfg()); TileRef p = c.tile(7);
+        Chip c(p4::dbg(cfg())); TileRef p = c.tile(7);
         p.set_stream(195, fields::stream_src(IDX), 0, fields::stream_count(4, fields::SIZE_64, 1, lw::M_GATHER, 0));
         p.set_ptr(7, OUT + off[1]); p.set_record_base(VAL + off[0]);
         p.set_remaining(1, 4); p.set_master_config(fields::master_config(fields::RUN_STREAMS, 195, 1, 0, 0, 1));
@@ -392,7 +393,7 @@ void gather() {
 void gather_from_c() {
     suite::group("gather from C");
     const int N = full ? 65536 : 4096, k = 2;
-    Mach m(Mach::cfg(shuffle));
+    Mach m(p4::dbg(Mach::cfg(shuffle)));
     const uint32_t IDX = 0x60000, VAL = 0x20000, OUT = 0xA0000;
     std::vector<std::vector<int>> perm(64);
     for (unsigned p = 0; p < 64; p++) {
@@ -425,6 +426,7 @@ void gather_from_c() {
 int main(int argc, char** argv) {
     std::vector<std::string> a;
     for (int i = 1; i < argc; i++) {
+        if (p4::debug_flag(argv[i])) continue;
         if (std::strncmp(argv[i], "--only=", 7) == 0) {
             std::string s = argv[i] + 7; size_t p = 0;
             while (p <= s.size()) { size_t q = s.find(',', p); if (q == std::string::npos) q = s.size(); only.insert(s.substr(p, q - p)); p = q + 1; }

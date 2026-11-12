@@ -54,3 +54,6 @@ TEST(net_shuf2_equals_ref_log) { run_step("suite_net 11 quick", "net-shuf2.log")
 TEST(searchbench_equals_ref_log) { run_step("suite_search", "searchbench.log"); }
 TEST(engine_equals_ref_log) { run_step("suite_engine -1", "engine.log"); }
 TEST(eng_shuf_equals_ref_log) { run_step("suite_engine 4", "eng-shuf.log"); }
+// the debug options (p4_debug.h): the same log under step-all and the instance-major order (the rest: p4_debug_checks.sh)
+TEST(net_quick_step_all_equals_ref_log) { run_step("suite_net -1 quick --step-all", "net-quick.log"); }
+TEST(engine_instance_major_equals_ref_log) { run_step("suite_engine -1 --instance-major", "engine.log"); }

@@ -19,6 +19,7 @@
 
 #include "base/fatal.h"
 #include "mach.h"
+#include "p4_debug.h"
 #include "suite.h"
 #include "units/ag.h"
 #include "units/linkword.h"
@@ -37,7 +38,7 @@ struct Res { int64_t cycles = 0, late = 0, underrun = 0, table_wait = 0, start_t
 Res run(unsigned L, int la, bool stalls, bool /*one_store*/, int /*idle*/, const Setup& s) {
     MachConfig k = MachConfig::defaults(); k.check_unexpected = false; k.check_errors = false; k.with_ts_latency(L);
     if (la > 0) k.ag_lookahead = la;
-    Chip c(k); TileRef p = c.tile(0);
+    Chip c(p4::dbg(k)); TileRef p = c.tile(0);
     const auto r = s(p, SRC);
     p.set_ptr(0, stalls ? DST_SAME : DST_OTHER); p.set_remaining(1, r[3]);
     p.set_master_config(fields::master_config(r[0], r[1], r[2], 0, 0, 1));
@@ -184,7 +185,9 @@ void ready() {
 }  // namespace
 
 int main(int argc, char** argv) {
-    const std::string what = argc > 1 ? argv[1] : "all";
+    std::vector<std::string> a;
+    for (int i = 1; i < argc; i++) if (!p4::debug_flag(argv[i])) a.push_back(argv[i]);
+    const std::string what = !a.empty() ? a[0] : "all";
     std::printf("AgBench on M8 (read-ahead)\n");
     if (what == "all" || what == "lookahead") lookahead();
     if (what == "all" || what == "zero") zero();

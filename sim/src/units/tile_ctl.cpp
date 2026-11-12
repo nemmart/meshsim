@@ -33,6 +33,7 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     core.dmem = g.mem + size_t(k) * 2 * MEM_WORDS;
     core.imem = core.dmem + MEM_WORDS;
     core.bootrom = g.bootrom; core.bootrom_words = g.bootrom_words;
+    check_bootrom(g.bootrom_words, "the machine's");   // W23: ref's Controller.checkBootRom at load
     RegBlockState block;
     block.params = params_value(periph_present, k, g.cfg.mem_chunks);
     block.done_gate = g.cfg.done_gate;

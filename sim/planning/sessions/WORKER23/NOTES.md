@@ -168,3 +168,18 @@ the statistics); faults, invariants and the a2a's tables as W20's pieces land.
   machine"); the suite reads C&C 1's model directly (`ctl::model_ready_bits`, Cnc's `ready(k, t)`), no W20 need.
   Next: registers (bar its violation-count lines: the checker's kinds 20, 21 and the counter wraps), wfi, blockCopy,
   romSize, with the TileCtl/AG/WFI statistics listed above.
+- **Step 2, CtrlTest: registers, wfi, misaligned, romSize, blockCopy ported.** Every printed line so far (boot,
+  registers, WFI, block copy) equal to ref's, plain and shuffled (clang release); 5,921 checks pass. Four fail, all
+  waiting on W20:
+  - registers' violation count (384: the counter wraps, invariants 20 and 21) and the named messages: the checker's kinds
+    (W20's list above). Ref's zeroing (`m.c.violations = 0`) is test-side here: the count since a point (`Zeroed`).
+  - misaligned (two `ub` checks): **W20 request 11, new**: the harness's run stops with a FATAL naming ref's
+    UndefinedBehavior ("tile 9", "controller", "misaligned 4-byte load") when a core stops on UB (Rv32's `ub`, its
+    Stop::ub). Today the core stops quietly and the run goes on to its limit.
+- Statistics added (counters only, out of the digests, marked W23): Rv32 `go_wakes`, `event_wakes` (ref's TileControl
+  goWakes/eventWakes, counted where the core takes the wake), the WFI log (`wfi_log[16][3]`, `wfi_n`: Controller.wfiLog,
+  {entered, woke, 1 GO / 2 event} outside the boot ROM; `wfi_at`, `wfi_in_rom`); RegBlockState `spurious_edges`,
+  `last_done_at`, `last_landed_at`, `ready_pulse_at`. W20's reset must set them back as ref's resets do.
+- **The boot ROM's size check** (ref's Controller.checkBootRom): `units::check_bootrom` (rv32.h), FATAL above 64 words,
+  called where a tile's core gets its ROM (tile_ctl.cpp). romSize's three checks pass.
+- Protected tests unchanged (clang release): test_golden, test_controllers, test_chip, test_cc_units, test_mach.

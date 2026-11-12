@@ -216,3 +216,13 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   keeps v1.3's line, and the comparison masks that one figure with a comment citing D33/D44 (no fixture edit).
   Likewise CcBench reads the cycle the peripheral records for a GO store (`last_go_store`, v1.3's cycle) rather than
   the counter that D33 shifts.
+- **D45. v1.35's documentation** (owner, 2026-11-12; `V135-DOCS-PROPOSAL.md`). The docs session owns the documentation;
+  the proposal's sections 3-5 (the rules, the document set, what each existing document becomes) are P8's to work from,
+  and section 6's checks are the freeze's gate for docs. The owner's rulings: **v1.35 gets a spec folder** (`sim/spec/`;
+  widens D38 by one folder, no hardware change); **the restructured spec is part of the v1.35 freeze** (the platform in
+  `spec/machine-spec.md`, the Jolt-specific units in `spec/jolt/`, what comes out in `spec/history/`, section numbers
+  kept, checked as a line-for-line move); **the workers' material is stripped from the frozen copy** (session notes,
+  prompts, parked messages, task folders; reports and the index stay); **v1.3's figures and introduction are not
+  carried**. For the workers now: **new code comments carry no worker names or ticket codes** (rule 4; the existing ones
+  are stripped by one script at P8, proved by byte-identical preprocessed output), while references to `ref`'s classes
+  stay.

@@ -8,7 +8,8 @@ REPS=${REPS:-2}; PROCS=${PROCS:-3}   # D31: one thread and 6 threads only
 SPAN="--span 14838 1244525"
 sec "the keys (KeyGen, 64 x 65536)"
 mkdir -p "$W/cls" "$W/keys"
-javac -nowarn -d "$W/cls" "$W/kit/after/sim/ref/meshsim/test/KeyGen.java" 2>&1 | grep -v '^Note:'
+KG=$W/kit/after/sim/pipeline/keys/KeyGen.java; [ -f "$KG" ] || KG=$W/kit/after/sim/ref/meshsim/test/KeyGen.java   # W19: pipeline/ from P1 on
+javac -nowarn -d "$W/cls" "$KG" 2>&1 | grep -v '^Note:'
 ( cd "$W/keys" && java -Xmx2g -cp "$W/cls" KeyGen "$W/keys/k64" --n 65536 --only uniform > /dev/null ) || { verdict "KeyGen" FAIL; exit 1; }
 KEYS=$W/keys/k64/uniform.keys
 h=$(sha256sum < "$KEYS" | cut -c1-64); want=$(awk '$2 == "keys-65536/uniform.keys" {print $1}' "$W/kit/after/sim/tests/golden-m2/HASHES")

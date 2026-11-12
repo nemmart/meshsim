@@ -15,7 +15,7 @@ for nv in "$@"; do
   n=${nv%%=*}; r=$(cd "$TOP" && git rev-parse --short "${nv#*=}")
   mkdir -p "$KIT/k/$n"
   if (cd "$TOP" && git cat-file -e "$r:sim/data/hops.txt" 2>/dev/null); then         # W19's stand-alone tree
-    DATA="sim/data sim/fw sim/COPIES.sha256"
+    DATA="sim/data sim/fw sim/COPIES.sha256 sim/pipeline/keys"
     NEED="sim/fw/riscv-tests/bin sim/fw/boot/bootrom.hex sim/data/hops.txt sim/data/tables"
   else                                                                               # older revisions: ref/'s files
     DATA="sim/ref/meshsim/hops.txt sim/ref/meshsim/sw sim/ref/meshsim/test sim/fw"

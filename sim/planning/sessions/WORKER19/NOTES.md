@@ -169,3 +169,10 @@ W15's "the last window" was a particular case (deliveries whose inlines fell lat
   converts a small committed v1.25 delivery (`inputs/test/v125-small`, from v1.25's generator) to v1.3's manifest
   sha256 (b9e8ec4b...); from a copy holding only `pipeline/` and `build/clang-release/convert_delivery`: all passed.
   Nothing in `pipeline/` reads the repository but comments.
+- **Step 6, the proof (e8fb2ed, a copy without `ref/` and `oracle/`)**: `make -j2 check` passed the TSan runs,
+  check_copies (325), gcc debug and gcc release; it stopped with the turn in clang debug's build. Rerun in the foreground:
+  clang debug and clang release, build then every test of `$(TESTS)` (64 each) in order: all pass. In the same copy
+  `fw/build.sh --check` and `gen_regs check` pass; `pipeline/check.sh` from a copy holding only `pipeline/` and the
+  proof's `convert_delivery`: all passed. The sort benches (`bench/w10/sort64k*-body.sh`) take KeyGen from
+  `pipeline/keys` (fallback for older kits), and `mk_task.sh` carries `sim/pipeline/keys`. REPORT.md written; Quest 175
+  pending (the runner idle).

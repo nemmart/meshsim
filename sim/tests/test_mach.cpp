@@ -561,8 +561,29 @@ void drain_case() {
         sb += " " + std::to_string(q[0]) + ":" + std::to_string(q[1]) + ":" + hx(uint64_t(q[2])) + ":" + hx(uint64_t(q[5]));
     say("%s\n", sb.c_str());
 }
+void back_pressure_case() {
+    mach::MachConfig k = mach::MachConfig::machine();
+    k.periph_type = 0; k.reqbus_host = true;
+    Net n(k);
+    n.c.run(200);
+    mach::TileRef s = n.c.tile(20);
+    for (uint32_t i = 0; i < 128; i++) { s.req_set_w(0, (0u << 7) | (i << 10)); s.req_set_w(1, i); s.req_send(n.c.cycle(), 1000 + i); }
+    const units::reqbus::ReqLeaf& l = n.c.unit<units::reqbus::ReqLeaf>("t20.reqleaf");
+    std::string sb = std::string("back-pressure: canPush ") + tf(s.req_can_push(n.c.cycle() + 1)) + " stalled " + std::to_string(l.overflows);
+    mach::ReqBus& b = n.c.reqbus();
+    int got = 0;
+    int64_t last = -1, sum = 0;
+    for (int i = 0; i < 3000 && got < 128; i++) {
+        if (b.pending(0, n.c.cycle() + 1)) { sum += b.receive(0, n.c.cycle() + 1); got++; last = n.c.cycle() + 1; }
+        n.step();
+    }
+    sb += "; received " + std::to_string(got) + " last at " + std::to_string(last) + " sum " + std::to_string(sum) + " credits " + std::to_string(b.credits(0));
+    sb += " delivered " + std::to_string(b.delivered()) + " violations " + std::to_string(n.c.violations());
+    say("%s\n", sb.c_str());
+}
 void netself() {
     out.clear();
+    back_pressure_case();
     drain_case();
     test_peripheral_case();
     hooks_case();

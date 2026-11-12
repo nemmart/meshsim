@@ -1,6 +1,6 @@
 # The edits: every line the restructuring changed or added
 
-*Written by `build.py`. 67 edited lines (heading 1, path 53, path+sim 2, path+version 1, sim 9, version 1) and 166 added lines. Kinds: **sim**, a statement about the simulator made true of v1.35; **path**, a path made true of v1.35's tree; **version**, the two version headers; **heading**, 8.11's heading, which would otherwise be false. Section 13's new text is among the added lines. Line numbers: the destination's (under `sim/spec/`) and the source's.*
+*Written by `build.py`. 67 edited lines (heading 1, path 53, path+sim 2, path+version 1, sim 9, version 1) and 168 added lines. Kinds: **sim**, a statement about the simulator made true of v1.35; **path**, a path made true of v1.35's tree; **version**, the two version headers; **heading**, 8.11's heading, which would otherwise be false. Section 13's new text is among the added lines. Line numbers: the destination's (under `sim/spec/`) and the source's.*
 
 ## Edited lines
 
@@ -489,13 +489,14 @@
 | `CHANGES-v1.3-to-v1.35.md` | 50 | \\|---\\|---\\| |
 | `CHANGES-v1.3-to-v1.35.md` | 51 | \\| NetTest (fan-in, `skewtable`) \\| `tests/suite_net.cpp` \\| |
 | `CHANGES-v1.3-to-v1.35.md` | 52 | \\| MemTest \\| `tests/suite_mem.cpp` \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 53 | \\| Stage B \\| `tests/stageb.cpp` \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 54 | \\| AllToAllTest (`measure`) \\| not yet ported (2026-11-12) \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 55 | \\| ReadPortGatherTest \\| not yet ported (2026-11-12) \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 56 | \\| SearchBench \\| not yet ported (2026-11-12) \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 57 | \\| CondTest \\| not yet ported (2026-11-12) \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 58 | \\| S1Bench \\| not yet ported (2026-11-12); `measure_s1` (`tests/mach.h`) is the harness side of its measurement \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 59 | \\| SplitRun \\| not carried: its driver doesn't build in v1.3 \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 53 | \\| EngineTest \\| `tests/suite_engine.cpp` \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 54 | \\| Stage B \\| `tests/stageb.cpp` \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 55 | \\| AllToAllTest (`measure`), an older name: in v1.3 the all-to-all is EngineTest with the A2A helper \\| ported: `tests/suite_engine.cpp`, with `A2A` in `tests/mach.h` \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 56 | \\| ReadPortGatherTest \\| being ported: `tests/suite_rdport.cpp` \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 57 | \\| SearchBench \\| ported: `tests/suite_search.cpp` (56 of 56 assertions, `tests/p4suites/searchbench.log`) \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 58 | \\| CondTest \\| being ported \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 59 | \\| S1Bench \\| being ported; `measure_s1` (`tests/mach.h`) is the harness side of its measurement \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 60 | \\| SplitRun \\| not carried: its driver doesn't build in v1.3 \\| |
 | `history/README.md` | 1 | # spec/history |
 | `history/README.md` | 3 | What v1.35's restructuring took out of v1.3's spec, moved whole and unchanged: each version's `CHANGES-*` guide, the four decisions logs the spec cites (`DECISIONS-v1.2.md` to `DECISIONS-v1.3.md`), the preamble's "in brief" blocks and history companions (`machine-spec-v1.3-preamble.md`), and section 13 as it stood (`machine-spec-v1.3-section-13.md`). |
 | `history/README.md` | 5 | These are history: their paths and line numbers are v1.3's, and nothing here is kept true of v1.35. Where a log and `spec/machine-spec.md` differ, the spec is the authority. Carried text, here and in the spec, keeps its worker names and session codes: the restructuring moves text and doesn't rewrite it. |
@@ -509,3 +510,4 @@
 | `check/README.md` | 7 | - `check_move.py`: the proof (run from the repository root): every source line in exactly one destination, unchanged and in order, or an edit; every destination line a source line, an edit or added; every section number a heading; every path present. |
 | `check/README.md` | 8 | - `inventory.py`, `section13.py`: the source's units, and section 13's statuses with their evidence. |
 | `check/README.md` | 9 | - `MECHANISMS.md`: what v1.35's meshsim does for each check the spec promises; `FINDINGS.md`: what looks wrong, for the owner. |
+| `check/README.md` | 11 | **At the freeze:** rerun `MECHANISMS.md` against `main`; bring the drivers' table of `spec/CHANGES-v1.3-to-v1.35.md` up to date; the section "Where v1.35's checks differ from the rule" should then be empty, and is removed; rebuild and rerun `check_move.py`. |

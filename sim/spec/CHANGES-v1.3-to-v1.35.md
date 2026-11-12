@@ -50,10 +50,11 @@ The `[meas: …]` labels name v1.3's Java tests and drivers (Markers). What repl
 |---|---|
 | NetTest (fan-in, `skewtable`) | `tests/suite_net.cpp` |
 | MemTest | `tests/suite_mem.cpp` |
+| EngineTest | `tests/suite_engine.cpp` |
 | Stage B | `tests/stageb.cpp` |
-| AllToAllTest (`measure`) | not yet ported (2026-11-12) |
-| ReadPortGatherTest | not yet ported (2026-11-12) |
-| SearchBench | not yet ported (2026-11-12) |
-| CondTest | not yet ported (2026-11-12) |
-| S1Bench | not yet ported (2026-11-12); `measure_s1` (`tests/mach.h`) is the harness side of its measurement |
+| AllToAllTest (`measure`), an older name: in v1.3 the all-to-all is EngineTest with the A2A helper | ported: `tests/suite_engine.cpp`, with `A2A` in `tests/mach.h` |
+| ReadPortGatherTest | being ported: `tests/suite_rdport.cpp` |
+| SearchBench | ported: `tests/suite_search.cpp` (56 of 56 assertions, `tests/p4suites/searchbench.log`) |
+| CondTest | being ported |
+| S1Bench | being ported; `measure_s1` (`tests/mach.h`) is the harness side of its measurement |
 | SplitRun | not carried: its driver doesn't build in v1.3 |

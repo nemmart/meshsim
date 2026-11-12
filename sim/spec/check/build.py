@@ -219,12 +219,13 @@ A['changes'] = ['# v1.3 to v1.35', '',
     '| v1.3 (Java) | v1.35 |', '|---|---|',
     '| NetTest (fan-in, `skewtable`) | `tests/suite_net.cpp` |',
     '| MemTest | `tests/suite_mem.cpp` |',
+    '| EngineTest | `tests/suite_engine.cpp` |',
     '| Stage B | `tests/stageb.cpp` |',
-    '| AllToAllTest (`measure`) | not yet ported (2026-11-12) |',
-    '| ReadPortGatherTest | not yet ported (2026-11-12) |',
-    '| SearchBench | not yet ported (2026-11-12) |',
-    '| CondTest | not yet ported (2026-11-12) |',
-    '| S1Bench | not yet ported (2026-11-12); `measure_s1` (`tests/mach.h`) is the harness side of its measurement |',
+    '| AllToAllTest (`measure`), an older name: in v1.3 the all-to-all is EngineTest with the A2A helper | ported: `tests/suite_engine.cpp`, with `A2A` in `tests/mach.h` |',
+    '| ReadPortGatherTest | being ported: `tests/suite_rdport.cpp` |',
+    '| SearchBench | ported: `tests/suite_search.cpp` (56 of 56 assertions, `tests/p4suites/searchbench.log`) |',
+    '| CondTest | being ported |',
+    '| S1Bench | being ported; `measure_s1` (`tests/mach.h`) is the harness side of its measurement |',
     "| SplitRun | not carried: its driver doesn't build in v1.3 |"]
 A['hist_readme'] = ['# spec/history', '',
     "What v1.35's restructuring took out of v1.3's spec, moved whole and unchanged: each version's `CHANGES-*` guide, the four decisions logs the spec cites (`DECISIONS-v1.2.md` to `DECISIONS-v1.3.md`), the preamble's \"in brief\" blocks and history companions (`machine-spec-v1.3-preamble.md`), and section 13 as it stood (`machine-spec-v1.3-section-13.md`).", '',
@@ -238,7 +239,8 @@ A['check_readme'] = ['# spec/check', '',
     '- `build.py`: builds the destinations from `v1.3/` by line range, applies the edits, writes `map.tsv`, `edits.json` and `spec/history/EDITS.md`.',
     '- `check_move.py`: the proof (run from the repository root): every source line in exactly one destination, unchanged and in order, or an edit; every destination line a source line, an edit or added; every section number a heading; every path present.',
     "- `inventory.py`, `section13.py`: the source's units, and section 13's statuses with their evidence.",
-    "- `MECHANISMS.md`: what v1.35's meshsim does for each check the spec promises; `FINDINGS.md`: what looks wrong, for the owner."]
+    "- `MECHANISMS.md`: what v1.35's meshsim does for each check the spec promises; `FINDINGS.md`: what looks wrong, for the owner.", '',
+    "**At the freeze:** rerun `MECHANISMS.md` against `main`; bring the drivers' table of `spec/CHANGES-v1.3-to-v1.35.md` up to date; the section \"Where v1.35's checks differ from the rule\" should then be empty, and is removed; rebuild and rerun `check_move.py`."]
 D['CHANGES-v1.3-to-v1.35.md'] = [('a', 'changes')]
 D['history/README.md'] = [('a', 'hist_readme')]
 D['jolt/README.md'] = [('a', 'jolt_readme')]

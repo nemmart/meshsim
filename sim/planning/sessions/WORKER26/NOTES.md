@@ -77,3 +77,11 @@ Commit and push after each piece; each kind checked line for line against `ref` 
   per-tile checks (tile 7's director message before tile 10's register-block message, cycle 150 of `inv`).
 - Found for W20: ref's `Net.at` packets are fed only by `Net.step`/`runAll` (`c.run` doesn't feed them); the C++ Net
   feeds them under `c.run` too. CheckSelf's case uses `step` on both sides.
+- **The core's level 3: accepted (integrator, 2026-11-12)**, on the condition that order is shown not to matter on the
+  bigger workloads in both builds. Done, clang suite and clang release, the merged main plus the Wires:
+  - test_sort's 16K sort, every golden point (sort16k-fp regenerated from ref: sha256 b15c5681... as HASHES; KeyGen's
+    uniform keys 3db703f3...): plain, SORT_OPT=shuffle, stepall and instance, all equal;
+  - T2's boot (test_t2_harness: one domain, the 6-domain split, shuffle seed 3, instance-major, and step-all added for
+    this run only, not committed): equal to ref's boot trace in every case;
+  - M1's goldens (test_golden: direct, engine, and shuffle seeds 1-3, instance-major, step-all): equal.
+  So the table-window commit (47c... "NOT FOR MERGE") is ready to merge.

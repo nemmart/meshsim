@@ -31,6 +31,7 @@
 #include <string>
 #include <vector>
 
+#include "check.h"
 #include "config.h"
 #include "mach.h"
 #include "suite.h"
@@ -40,6 +41,7 @@
 #include "units/router.h"
 #include "units/write_engine.h"
 
+#ifdef SIM_CHECKS
 using namespace mach;
 namespace lw = units::lw;
 using units::BigSram;
@@ -535,3 +537,9 @@ int main(int argc, char** argv) {
     std::fputs(report.c_str(), stdout);
     return suite::done(std::string("MemTest") + (shuffle >= 0 ? " (shuffled, seed " + std::to_string(shuffle) + ")" : ""));
 }
+#else   // the timing builds keep none of the statistics MemTest reads
+int main() {
+    std::fprintf(stderr, "suite_mem: needs SIM_CHECKS (the suite build, MODE=suite, or a debug build)\n");
+    return 2;
+}
+#endif

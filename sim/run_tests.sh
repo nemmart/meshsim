@@ -44,6 +44,7 @@ SUITES="suite_memsys suite_rvc suite_tracer"
 EQUIVS="test_golden test_tileslotconf"
 SUITES="$SUITES suite_ccbench"                       # W23 (P5)
 SUITES="$SUITES suite_replayer stageb"               # W25 (P7b)
+SUITES="$SUITES suite_net"                           # W22 (P4)
 
 if [ "$BUILD" = 1 ]; then
   echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
@@ -94,9 +95,10 @@ echo "== the layout (v1.3: tools/check_layout.sh; v1.35: tools/check_copies.sh)"
 pending sw-build      "building the tile programs (sw/build.sh; regenerates sw/mesh.h)" "v1.35: fw/build.sh (W19)"
 pending sort-build    "building the sort program (sw/ext/sort/build.sh: one image, the split, the planner)" "v1.35: fw/build.sh (W19)"
 pending bus           "bus primitives" "W20, C2"
-pending net           "network, packets, director" "P4"
-pending net-shuf      "shuffled child order (seed 5)" "P4"
-pending net-shuf2     "shuffled child order (seed 11)" "P4"
+NETREF=tests/p4suites/net.log; [ "$MODE" = quick ] && NETREF=tests/p4suites/net-quick.log   # W22: v1.3's net step takes $Q
+step net       1 "network, packets, director" $NETREF -- $S/suite_net -1 $Q
+step net-shuf  1 "shuffled child order (seed 5)" tests/p4suites/net-shuf.log -- $S/suite_net 5 quick
+step net-shuf2 1 "shuffled child order (seed 11)" tests/p4suites/net-shuf2.log -- $S/suite_net 11 quick
 pending mem           "big SRAM, read and write queues" "P4"
 pending mem-shuf      "shuffled child order (seed 3)" "P4"
 pending mem-shuf2     "shuffled child order (seed 8)" "P4"
@@ -154,7 +156,7 @@ if [ "$MODE" != quick ]; then
   pending sweep-quick     "parameter sweep, quick (about 1 minute; 'java Sweep full' takes about 25)" "P6"
   pending ctrl-full       "the all-to-all from C on the four data sets" "P5"
   pending engine-full     "full-size all-to-alls (4 data sets) and radix sort (about 1.5 minutes)" "P4"
-  pending skewtable       "fan-in under 0/+1 skew, 40 skew patterns (several minutes)" "P4"
+  step skewtable 1 "fan-in under 0/+1 skew, 40 skew patterns (several minutes)" tests/p4suites/skewtable.log -- $S/suite_net -1 skewtable 40
 fi
 # ---- v1.3's summary ------------------------------------------------------------------------------------------------
 grep -h "PENDING" results/*.log | sort | uniq -c

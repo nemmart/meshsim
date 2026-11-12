@@ -273,6 +273,8 @@ struct Machine {
         im.syms = syms.sym;
     }
     uint32_t sym(const std::string& s) const { return im.sym(s); }
+    // tile k's unit (through a named TileRef: gcc 13's -Wdangling-reference otherwise flags the chip's own unit)
+    template <class T> T& tunit(unsigned k, const char* n) { mach::TileRef p = c.tile(k); return p.unit<T>(n); }
     // SortTest.Machine.boot (spec 6.2): program memory, data memory from _data_start, CMD_JUMP to _start, GO when all are READY
     void boot() {
         cc.load_words(lw_broadcast(), 0x01000000u, im.code).load_words(lw_broadcast(), sym("_data_start"), im.data)
@@ -295,13 +297,13 @@ struct Machine {
     // the stack watch armed with every core's x2 now (ref's monitor starts with the sort's run)
     void arm_sp() {
         for (unsigned k = 0; k < 64; k++) {
-            units::Rv32& r = c.tile(k).unit<units::TileCore>("core").rv;
+            units::Rv32& r = tunit<units::TileCore>(k, "core").rv;
             r.min_sp_watch = true; r.min_sp = r.x[2] != 0 ? int32_t(r.x[2]) : INT32_MAX;
         }
     }
     int32_t min_sp() {
         int32_t m = INT32_MAX;
-        for (unsigned k = 0; k < 64; k++) m = std::min(m, c.tile(k).unit<units::TileCore>("core").rv.min_sp);
+        for (unsigned k = 0; k < 64; k++) m = std::min(m, tunit<units::TileCore>(k, "core").rv.min_sp);
         return m;
     }
     bool finish(uint64_t max) {
@@ -562,14 +564,14 @@ bool sort_run(const std::string& label, const Keys& k, int fmt_, bool shaped, co
         uint64_t rot_late = 0, max_rot = 0, grp_late = 0, max_grp = 0, stalls = 0; int late_tiles = 0, max_drift = 0, drift_group = -1;
         uint64_t z = 0, zg = 0, gs = 0;
         for (unsigned t = 0; t < 64; t++) {
-            const units::AddrGen& a = m.c.tile(t).unit<units::AddrGen>("ag");
+            const units::AddrGen& a = m.tunit<units::AddrGen>(t, "ag");
             rot_late += a.rotations_late; max_rot = std::max(max_rot, a.max_rot_late); grp_late += a.groups_late_prefetch;
             max_grp = std::max(max_grp, a.max_group_late); stalls += a.stall_cycles; if (a.rotations_late > 0) late_tiles++;
             z += a.cum_zero_groups + a.zero_groups; zg += a.cum_zero_groups_with_gap + a.zero_groups_with_gap; gs += a.cum_group_stall + a.group_stall_cycles;
         }
         for (unsigned g = 0; g < units::AddrGen::MAXGROUPS; g++) {
             int64_t lo = INT64_MAX, hi = INT64_MIN;
-            for (unsigned t = 0; t < 64; t++) { const int64_t v = m.c.tile(t).unit<units::AddrGen>("ag").group_start[g]; if (v < 0) continue; lo = std::min(lo, v); hi = std::max(hi, v); }
+            for (unsigned t = 0; t < 64; t++) { const int64_t v = m.tunit<units::AddrGen>(t, "ag").group_start[g]; if (v < 0) continue; lo = std::min(lo, v); hi = std::max(hi, v); }
             if (hi >= lo && hi - lo > max_drift) { max_drift = int(hi - lo); drift_group = int(g); }
         }
         out(fmt("    address generator: %" PRIu64 " request stall cycles; rotations late %" PRIu64 " on %d tiles (max %" PRIu64 " cycles); group starts waiting for read-ahead %" PRIu64 " (max %" PRIu64 ", timetable); drift between tiles at a group start %d%s",

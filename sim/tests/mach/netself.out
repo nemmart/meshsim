@@ -1,3 +1,6 @@
+core: store dmem null; load dmem beef; PARAMS 78d00001 STATUS 0 ERRORS 0; WRITE_COUNTER_2 7; boot ROM [1] 7828293; halfword STATUS null; PTR null
+  stores: STATUS store to a read-only register; byte ROUTER_SET_W1 sub-word store to a register; program store to program memory; boot ROM store to the boot ROM; unmapped store to an unmapped address
+  WRITE_COUNTER_3 after the store 5; a send drained t40@28:1234:e000140d dmem[0xe0] 1234
 controllers seed -1: broadcast drained at cycle 44; 64 copies, first 2 last 34; C&C 1 received 0 [ ]
   command drained at cycle 83; t9 dmem[0x20] c0de dmem[0x23] cafe0003
   tile 9: 2 arrivals [56 cafe0003 230004c0 0] [57 c0de 200004c0 0]

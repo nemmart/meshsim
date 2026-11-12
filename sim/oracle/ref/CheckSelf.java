@@ -279,6 +279,18 @@ final class CheckSelf {
             m.c.run(200);
             System.out.print(m.c.violationReport());
         }
+        {   // the slot's DMA_HDR and DMA_ADDR changed mid-transfer (PeripheralSlot.setHdr, setAddr; 4.17.9; W26): ref's test
+            // peripheral on tile 7 (Config.testPeripheral), a 7-word transfer started, both words stored again while it runs
+            Config k = Config.machine(); k.periphType = 0;
+            k.testPeripheral = tile -> tile == 7 ? new TestPeripheral() : null;
+            Net n = new Net(k);
+            n.c.run(200);
+            int W1 = 0xFFFFF800 + 0x200, hdr = 7 | 1 << 12 | 65 << 25 | 5 << 19;
+            int[][] st = { { W1 + 32, hdr }, { W1 + 36, 0x400 }, { W1 + 16, 1 }, { W1 + 32, hdr }, { W1 + 36, 0x500 } };
+            for (int[] s : st) { n.c.tiles[7].core.store(n.c.cycle + 1, s[0], s[1], -1); n.step(); }
+            for (int i = 0; i < 40; i++) n.step();
+            System.out.print(n.c.violationReport());
+        }
         {   // the message cap (maxViolationMessages): the count goes on
             Config k = Net.cfg(-1); k.maxViolationMessages = 3;
             Net n = new Net(k);

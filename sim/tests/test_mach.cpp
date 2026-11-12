@@ -928,6 +928,17 @@ void checkself() {
         m.c.run(200);
         say("%s", m.c.violation_report().c_str());
     }
+    {   // W26: the slot's DMA_HDR and DMA_ADDR changed mid-transfer (ref's test peripheral on tile 7)
+        mach::MachConfig k = mach::MachConfig::machine();
+        k.periph_type = 0; k.test_peripheral_tile = 7;
+        Net n(k);
+        n.c.run(200);
+        const uint32_t W1 = 0xFFFFF800u + 0x200, hdr = 7u | 1u << 12 | 65u << 25 | 5u << 19;
+        const uint32_t st[5][2] = {{W1 + 32, hdr}, {W1 + 36, 0x400}, {W1 + 16, 1}, {W1 + 32, hdr}, {W1 + 36, 0x500}};
+        for (const auto& s : st) { n.c.tile(7).store(n.c.cycle() + 1, s[0], s[1]); n.step(); }
+        for (int i = 0; i < 40; i++) n.step();
+        say("%s", n.c.violation_report().c_str());
+    }
     {
         mach::MachConfig k = Net::cfg(-1);
         k.max_violation_messages = 3;

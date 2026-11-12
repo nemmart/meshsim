@@ -128,7 +128,7 @@ Commit and push after each piece; each kind checked line for line against `ref` 
 - **Kinds recorded but no case reaches yet** (kept up to date; check each when a suite does; likeliest W23's CtrlTest
   and RecipeTest, W22's RequestBusTest): a port-B write as the core reads that word; a test's load clearing invariant 8's
   bit (TileRef::load); HIST/PTR table-window busy met by an instruction; a test's HIST load (no check yet); the slot's
-  DMA_HDR/ADDR mid-transfer (a case planned) and full post; the C&C 1 and stub region writes; the Tracer's violations;
+  full post; the C&C 1 and stub region writes; the Tracer's violations;
   the full request push; the receive queue overflow; the endpoints' checks (after W20's call in Net's sends); the read
   port's size 11 and misaligned destination (UB at the director); a late rotation (invariant 3: AgTest's
   pending groups may reach it).
@@ -183,3 +183,7 @@ Commit and push after each piece; each kind checked line for line against `ref` 
   protected tests. CheckSelf: written then read, Chip.newPhase, read then written (2 lines); the a2a (0); and a read,
   GO (with a command, for READY), then a write: 0 lines, 1 without the GO trigger (so it exercises it). Line for line,
   clang and gcc suite, clang debug.
+- **The DMA case** (PeripheralSlot.setHdr/setAddr, 4.17.9; recorded in 1a): ref's test peripheral on tile 7
+  (`MachConfig::test_peripheral_tile`, W20; Config.testPeripheral in CheckSelf, TestPeripheral.java added to
+  checkself.sh's compile), a 7-word transfer started, DMA_HDR and DMA_ADDR stored again while it runs: 2 lines, line for
+  line (clang and gcc suite, clang debug). Tests only (no unit changed).

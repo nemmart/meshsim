@@ -51,6 +51,17 @@ suites set is in `MachConfig` already. ref's shuffled logs differ from the unshu
 
 (none yet)
 
+## Framework additions (approved by the owner)
+
+- **The Fifo peak (ask 7, approved 2026-11-11)**: `FifoPort::peak` (src/engine.h), updated after each delivery into a
+  Fifo or credit Fifo (ref's WordFIFO.highWater: the count after the commit at t + 1), and `Sim::fifo_peak`,
+  `Sim::fifo_restart_peak` (src/config.h, .cpp; ref's resetStats: peak = count), all **under SIM_CHECKS only** (the
+  debug and suite builds; engine.h turns SIM_CHECKS on under SIM_DEBUG as check.h does); in the timing builds the
+  member and its update don't exist and the accessors FATAL. **The timing builds are unchanged**: clang release,
+  test_chip and test_sort's outputs identical before and after; every rebuilt release object's code identical
+  (disassembly, addresses masked) except config.o, whose only differences are the two new functions, the functions'
+  shifted addresses and FATAL's line numbers. Used by NetTest's queue peaks ("write-engine input").
+
 ## Asks of W20 (through the integrator)
 
 From NetTest's gap map (2026-11-11). NetTest's other groups (structure, unicast's packets, routes, the controllers'
@@ -70,7 +81,7 @@ sends, in-order, fan-in, the queue peaks) port onto what `mach.h` has now.
    director's invariants 10, 11, 19, 21, 22 (W20's "next in step 2").
 7. **The write engine's input peak** (ref's `weIn.highWater`, the last line of NetTest's queue peaks): the framework's
    Fifo (`src/engine.h` FifoPort) keeps no peak. Adds state to a framework structure, so **the owner's call** (a
-   statistic updated at the put, as the router's own `Fifo.peak`); the line is missing until then.
+   statistic updated at the put, as the router's own `Fifo.peak`). **Approved and done** (below).
 8. **The debug options on the harness** (W20): `MachConfig` passes only the shuffle seed into `sim::Options`; step-all
    and the instance-major order (both orders) need fields there too, for the suites' debug runs.
 
@@ -104,3 +115,4 @@ sends, in-order, fan-in, the queue peaks) port onto what `mach.h` has now.
   | skewtable, 1 seed (ad hoc, ref run locally) | 15 | equal; 40 seeds (24 s a seed here): runner |
   Fan-in's "safe" covers every hardware FIFO as ref's: the router FIFOs directly, the others by their ERRORS bits
   (a non-router overflow first would be FATAL until W20's overflow scan names it; none occurs).
+- **Ask 7 done**: the queue peaks' 21 lines equal (net, net-shuf), the write-engine line included.

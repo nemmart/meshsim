@@ -16,6 +16,10 @@
 #include "base/ring.h"
 #include "base/value_pool.h"
 
+#if defined(SIM_DEBUG) && !defined(SIM_CHECKS)
+#define SIM_CHECKS 1          // as src/check.h: the checks (and W22's Fifo peaks) are on in the debug and suite builds
+#endif
+
 namespace sim {
 
 enum class Kind : uint8_t { link, fifo, credit, hold, reg, wire, regfile, count, cret };   // cret: a credit's return
@@ -100,6 +104,11 @@ struct FifoPort {
     uint16_t depth, cls;
     uint8_t bit, width, pbit;
     uint8_t ovf_step;         // W10: an overflow steps the owner in the cycle it is judged (Ports::overflow_steps)
+#ifdef SIM_CHECKS
+    uint32_t peak;            // W22 (approved 2026-11-11; SIM_CHECKS only, so the timing builds are unchanged): the most
+                              // entries held, after a delivery (ref's WordFIFO.highWater: count after the commit at t + 1);
+                              // a statistic, not state (Sim::fifo_peak, fifo_restart_peak)
+#endif
 };
 
 // One per Reg output: the registered value, its readers.
@@ -647,6 +656,9 @@ void deliver_fifo(Engine& e, const Bucket& b) {
         }
         Word* d = f.ring.push();
         for (unsigned k = 0; k < W; k++) d[k] = p[1 + k];
+#ifdef SIM_CHECKS
+        if (f.ring.count() > f.peak) f.peak = f.ring.count();           // W22: the peak (SIM_CHECKS only)
+#endif
         e.mark_bit(f.owner, f.bit);
     }
 }
@@ -673,6 +685,9 @@ void deliver_credit(Engine& e, const Bucket& b) {                       // a cre
         FifoPort& f = e.fifos[p[0]];
         Word* d = f.ring.push();                                         // full is a bug: the producer had a credit
         for (unsigned k = 0; k < W; k++) d[k] = p[1 + k];
+#ifdef SIM_CHECKS
+        if (f.ring.count() > f.peak) f.peak = f.ring.count();           // W22: the peak (SIM_CHECKS only)
+#endif
         e.mark_bit(f.owner, f.bit);
     }
 }

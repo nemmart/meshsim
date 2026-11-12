@@ -122,3 +122,4 @@ Commit and push after each step; each step checked against `ref`.
   cycles as ref's monitor and Controller.runCycle do (sort.prof counts the boot's cycles too, not the final check).
   `test_sort_suites` checks the first: all four builds pass. SORT_WATCH's clone lookup takes the first name of the
   .sym with the prefix where SortTest searches a HashMap (one candidate in every case here).
+- **Quest 181** (claimed after re-reading NUMBERS.md; pushed): the C++ kit and v1.3's side by side at 64 x 65,536 on `tests/sort/kit/jobs-sample.txt` (direct, LB, TH, BT, shuffled); compared CSVs and logs (peaks aside), sort_compare, uniform-k128 against sort64k's 1,229,687.

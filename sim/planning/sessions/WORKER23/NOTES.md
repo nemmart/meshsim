@@ -162,3 +162,9 @@ the statistics); faults, invariants and the a2a's tables as W20's pieces land.
   until W20's requests 9 and 10 replace the stand-ins: the make-check comparison is skipped in those builds and the
   runner's steps stay PENDING ("W20's requests 9 and 10"), the two step lines ready in a comment.
 - CcBench's `last_go_store` approved. Runner labels: riscv and periph are W20's, reqbus W22's.
+- **Step 2 started, CtrlTest** (`tests/ctl/suite_ctrl.cpp`, in progress): `fields` and `boot` ported; output equal to
+  the first line(s) of ref's ctrl.log and ctrl-shuf.log (1,621 checks pass, clang release). Not yet in the runner or
+  make check (its log is whole only when every group is in). `Cc::ready_bits` FATALs on main ("with the coreless
+  machine"); the suite reads C&C 1's model directly (`ctl::model_ready_bits`, Cnc's `ready(k, t)`), no W20 need.
+  Next: registers (bar its violation-count lines: the checker's kinds 20, 21 and the counter wraps), wfi, blockCopy,
+  romSize, with the TileCtl/AG/WFI statistics listed above.

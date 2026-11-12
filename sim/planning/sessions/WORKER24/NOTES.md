@@ -161,3 +161,9 @@ Commit and push after each step; each step checked against `ref`.
   W20's (PhaseLog); for W20 through the integrator.
 - **F5 ruled (D47, 2026-11-12)**: ready_latency below 3 stays refused, a deliberate difference; the kit's two `ready-1` runs end with no result, listed under "Runs with no result" as F3's. **F6** is with W20.
 - **The full pass** (2026-11-12, after merging main with W23's fix): copies check; gcc debug, clang debug, gcc release, clang release, every test run alone, all pass (test_ctl_suites included); the suite builds (gcc, clang): test_sort_suites and test_sort_kit pass.
+- **The kit's 92 runs at 2,000 against Quest 178 again** (2026-11-12, main with W20's F6 fix 673f1733 and W26's
+  invariant 8 020519bd, suite build): **84 run CSVs byte-identical, 84 logs equal** (first field aside); the 8 without
+  a result are F3's six and D47's two. **F6 fixed**: no phases CSV differs beyond column 27. **But `unreadOverwrites` is
+  still 0 in every phase** (v1.3: nonzero in 4,417 rows of these 84 files): W26 counts it
+  (`TileCore::track.overwritten_unread`, rv32.h) but PhaseLog doesn't read it yet (tests/phase_log.cpp:79,
+  `v[17] += 0`, "pending"). For W20 through the integrator; then the phases CSVs again.

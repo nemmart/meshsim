@@ -12,7 +12,7 @@ in `NOTES.md`. Written 2026-11-12; what is still open is at the end.
 | D5 | the inputs line | `sort_test` | equal but its first field (the simulator: `sort_test=<sha256>`, Q2; run_tests.sh masks it) |
 | D6 | SortSummary | `tests/sort_summary_main.cpp` → `sort_summary` | **SUMMARY.md and all.csv byte-identical** on v1.3's kit run at 64 × 2,000 (Quest 178) and on every edge case tried |
 | D7 | SortCompare (D41 Q3; PhaseNeutral, VerifySummary and the verify kits dropped) | `tests/sort_compare_main.cpp` → `sort_compare` | output byte-identical to v1.3's on every edge case tried |
-| D8 | the measurement kit on the C++ binaries | `tests/sort/kit/` (assemble.sh, run.sh, tools/runjob.sh, v1.3's jobs.txt) | at 2,000 against Quest 178: p4 and shuffle (46 runs) **every run CSV byte-identical**, every log equal; the sweep (46): **38 run CSVs byte-identical**, their logs equal, the six F3 points refused as v1.3 refuses them, two `ready-1` points refused (D47); the phases CSVs equal but `unreadOverwrites` (W26) and the read port's peak at sram read latency 3-4 (F6); **at full size (Quest 181), five runs (direct, LB, TH, BT, shuffled) side by side with v1.3's kit: CSVs, logs and TOTALs equal but the peaks**; uniform-k128 1,229,687 as sort64k |
+| D8 | the measurement kit on the C++ binaries | `tests/sort/kit/` (assemble.sh, run.sh, tools/runjob.sh, v1.3's jobs.txt) | at 2,000 against Quest 178: p4 and shuffle (46 runs) **every run CSV byte-identical**, every log equal; the sweep (46): **38 run CSVs byte-identical**, their logs equal, the six F3 points refused as v1.3 refuses them, two `ready-1` points refused (D47); the phases CSVs (84) equal but `unreadOverwrites` (F6 fixed by W20); **at full size (Quest 181), five runs (direct, LB, TH, BT, shuffled) side by side with v1.3's kit: CSVs, logs and TOTALs equal but the peaks**; uniform-k128 1,229,687 as sort64k |
 | D10 | Sweep (`quick`, `full`; `results/sweep-<mode>.csv`) | `tests/sweep_main.cpp` → `sweep` (MODE=suite) | **sweep-quick's log and CSV byte-identical**; the step live, its CSV checked with `--check` |
 | D9 | SplitRun + splitdrv | — | **inherited dead code, not ported** (W19; owner's ruling): `splitdrv.c` doesn't compile in v1.3, no v1.3 build makes its image, `run_tests.sh` never runs SplitRun |
 | H4 | the per-run CSV | `sort_test csv=` | byte-identical to v1.3's (46 runs at 2,000) |
@@ -59,9 +59,8 @@ only, so sort_test refuses a release build); `sort_test` in SUITES.
   READY lines are Links of ready_latency - 2, and the physical default is 8. v1.3 runs ready_latency 1, which the kit's
   sweep sets (`ready-1`, both sets): those two runs end with no result, listed under SUMMARY's "Runs with no result"
   as F3's six are. Sweep's own ready points (4, 8) are unaffected.
-- **F6. PhaseLog's read-port peak** counts one more than ref's when a store and an injection fall in the same cycle
-  (ref subtracts the cycle's injections as they happen; the C++ statistic subtracts those before the cycle). Only at
-  sram read latency 3 and 4 in the kit's sweep (1-28 phases of 99 in 4 runs; run CSVs and logs equal). With W20.
+- **F6. PhaseLog's read-port peak** counted one more than ref's when a store and an injection fell in the same cycle.
+  Fixed by W20 (673f1733): no phases CSV differs in it now.
 - **Q6. No v1.3 run takes the PLAN path** (full size, the runner's p4, the 2,000-key kit: direct, LB, TH, BT only).
   Reported; no case invented.
 
@@ -72,9 +71,10 @@ the Makefile's `include tests/sort.mk`, `run_tests.sh` (the sort and sweep steps
 
 ## Open
 
-- **F6** (W20): the read port's peak counted as ref counts it; then the kit's sweep phases CSVs at sram read latency 3-4.
-- **`unreadOverwrites`** in the phases CSVs: 0 until W26's invariant 8 lands; then the 92 runs' phases CSVs against
-  Quest 178 for full byte-identity (the run CSVs and logs already are).
+- **`unreadOverwrites`** in the phases CSVs: W26's invariant 8 counts it (`TileCore::track.overwritten_unread`), but
+  PhaseLog still reports 0 (tests/phase_log.cpp, "pending"; v1.3 nonzero in 4,417 rows of the kit's 84 phases CSVs).
+  With W20; then the 84 phases CSVs against Quest 178 for full byte-identity (every other column already equal, and
+  the run CSVs and logs byte-identical).
 - **`Chip::new_phase`** (W20's item 8, W26's disjoint tracking): SortTest's new phase at every core wake, for invariant 2
   during the sort.
 - `sweep full` is ported but not run (v1.3's takes about 25 minutes; nothing in run_tests.sh runs it).

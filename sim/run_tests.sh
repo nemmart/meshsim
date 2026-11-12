@@ -44,7 +44,7 @@ SUITES="suite_memsys suite_rvc suite_tracer"
 EQUIVS="test_golden test_tileslotconf"
 SUITES="$SUITES suite_ccbench"                       # W23 (P5)
 SUITES="$SUITES suite_replayer stageb"               # W25 (P7b)
-SUITES="$SUITES suite_net suite_search"              # W22 (P4)
+SUITES="$SUITES suite_net suite_search suite_agbench"   # W22 (P4)
 SUITES="$SUITES sort_test sweep"                     # W24 (P6)
 
 if [ "$BUILD" = 1 ]; then
@@ -152,7 +152,7 @@ if [ "$MODE" != quick ]; then
   step sort-bt-k128 2 "the same, 128-bit values" tests/sort/ref/sort-bt-k128.log -- sort_bt k128
   pending rdport-full     "gather 1 at full size (Java; the C parts PENDING (phase 2))" "P4: W22-18, W26's invariant 8"
   pending accounting-full "per-phase accounting, full-size all-to-all from C" "P5 (W23)"
-  pending agbench         "read-ahead measurements: ag_lookahead, zero-length groups, start to first request (a few minutes)" "P4: not yet ported"
+  step agbench 3 "read-ahead measurements: ag_lookahead, zero-length groups, start to first request (a few minutes)" tests/p4suites/agbench.log -- $S/suite_agbench
   pending s1bench         "item S1: K's margin over the write path, L = 1-4, and the table-window case (a few minutes)" "P5 (W23)"
   step ccbench 16 "C&C 1-3 as cores (WORKER14): the boot and a phase against the Java model" tests/ctlsuites/ccbench.log -- $S/suite_ccbench
   # the sweep's CSV checked too (with --check): a difference prints a FAIL line into the step's log

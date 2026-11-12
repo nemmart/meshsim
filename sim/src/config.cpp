@@ -881,6 +881,12 @@ void Sim::wake(const std::string& name) {
     impl_->e.mark(it->second);       // ready for the next cycle's run phase (nothing clears it before)
 }
 // W20 (harness-only; P2): Sim::wake_all, Sim::in_flight (config.h).
+uint64_t Sim::fifo_overflows(FifoIn p, Cycle* first) const {
+    if (impl_->threads) FATAL("Sim::fifo_overflows: one domain only (the harness's machines run one thread)");
+    const auto& f = impl_->e.fifos[p.idx];
+    if (first) *first = f.first_overflow;
+    return f.overflows;
+}
 void Sim::put_late(const std::string& unit, HoldOut p, const Word* w, unsigned n) {
     if (impl_->running) FATAL("Sim::put_late('%s') during a run: between runs only", unit.c_str());
     if (impl_->threads) FATAL("Sim::put_late('%s'): one domain only (the harness's machines run one thread)", unit.c_str());

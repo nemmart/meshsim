@@ -28,6 +28,14 @@ final class CheckSelf {
             n.runAll(1000);
             System.out.print(n.c.violationReport());
         }
+        {   // invariant 1: FIFO overflows, scanned every 16 cycles and at the end of a run, once per FIFO, at their own cycle
+            Config k = Net.cfg(-1); k.queueDepth = 2; k.weInDepth = 1; k.measureS1 = false;   // S1: its own case, later
+            Net n = new Net(k);
+            for (int s = 20; s < 40; s++) for (int i = 0; i < 4; i++)
+                n.at(s, 10 + i, 9, LinkWord.M_WRITE, 1, (LinkWord.R_SRAM << 24) | ((s * 16 + 2 * i) << 2), LinkWord.SIZE_64, s * 100 + i, 0);
+            n.runAll(2000);
+            System.out.print(n.c.violationReport());
+        }
         {   // the message cap (maxViolationMessages): the count goes on
             Config k = Net.cfg(-1); k.maxViolationMessages = 3;
             Net n = new Net(k);

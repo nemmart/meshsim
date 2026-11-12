@@ -91,7 +91,15 @@ Commit and push after each step; each step checked against `ref`.
   (installed at every run; processed after each). Recorded so far: the injection path's six checks, the director's
   bad packet, size 11, count-only on counter 0 and read-port overlap. `oracle/ref/CheckSelf.java` (`checkself.sh`,
   fixture `tests/mach/checkself.out`): equal in the debug and suite builds (gcc, clang); the release builds skip it.
-- **Next in step 2**: the remaining kinds (the director's uncounted/boot/command checks and unexpected arrivals, the
+- **Step 2, rules**: ERRORS (invariant 15: the register blocks record their ERRORS and error line at ref's end of
+  cycle; the harness applies ref's condSeen), ref's config switches (check_errors, check_unexpected, ...), the once-only
+  rules, the report through the cycle just run (`finalize_checks`: the blocks' end-of-cycle view, so a run that stops
+  on the cycle an error lands still reports it), invariant 1 (the harness reads the router's FIFOs and the framework's
+  first overflow, `Sim::fifo_overflows`, a harness-only addition; ref's FIFO names and scan order). CheckSelf: ERRORS and
+  overflow cases line for line.
+- **Found missing in C++:** S1 (invariant 24: acceptance to the area queue, PTR and HIST write-backs, measureS1, on by
+  default in ref): the overflow case turns it off until it is built.
+- **Next in step 2**: S1; the remaining kinds (the director's uncounted/boot/command checks and unexpected arrivals, the
   register block, the controller's memories, the read port, the AG, the read queue, the write engine, big SRAM's
   disjoint buffers, HIST, the rotations, the request bus, C&C, the endpoints), ERRORS (invariant 15, condSeen), the
   overflow scan (ref's FIFO names), the config switches (check_unexpected, check_errors, ...), then reset.

@@ -26,7 +26,8 @@ public:
     // The facts so far into messages (ref's report, cycle by cycle), through cycle `now` - 1: the cycle just run (`now`)
     // waits for the units whose step at now + 1 is ref's end of now, unless `final` (the harness adds those first).
     void process(int64_t now, bool scan, bool final = false);
-    void add(const sim::check::Fact& f) { pending_.push_back(f); }   // a fact the harness made (`final`'s)
+    void add(const sim::check::Fact& f) { pending_.push_back(f); }   // a fact the harness made (`final`'s, overflows)
+    std::vector<std::string> fifo_names;      // FIFO_OVERFLOW's a0 indexes ref's names (the harness fills it)
     uint64_t violations() const { return violations_; }
     const std::vector<std::string>& messages() const { return messages_; }
     void clear_messages() { messages_.clear(); }

@@ -80,6 +80,7 @@ std::string Checker::text(const Fact& f) const {
     case Kind::DIR_COUNT_CTR0: return "count-only packet on counter 0: it does nothing (3.1, invariant 21): " + describe(a[1], a[2], a[3]);
     case Kind::DIR_PAST_SRAM:
         return fmt("mode-0 write at or past the end of big SRAM (chunk 0x%" PRIx64 "): undefined (2.2; invariant 19): ", a[0]) + describe(a[1], a[2], a[3]);
+    case Kind::FIFO_OVERFLOW: return "FIFO overflow " + fifo_names.at(size_t(a[0])) + " (invariant 1)";
     case Kind::HIST_OVERFLOW: return "a counter exceeded 17 bits (invariant 6)";
     case Kind::ROTATION_LATE: return "address generator: a rotation started late (invariant 3; drift, see agReport)";
     case Kind::READ_RETURN_REFUSED: return "SIMULATOR: a read return was refused by the injection point";
@@ -172,7 +173,9 @@ void Checker::process(int64_t now, bool scan, bool final) {
         if (ta != tb) return ta < tb;
         const int ra = rank(a), rb = rank(b);
         if (ra != rb) return ra < rb;
-        return a.tile < b.tile;                              // recording order kept within (cycle, slot, tile)
+        if (a.kind == Kind::FIFO_OVERFLOW && b.kind == Kind::FIFO_OVERFLOW) return a.a[0] < b.a[0];   // ref's scan order
+        if (a.tile != b.tile) return a.tile < b.tile;          // (the tiles', then C&C's FIFOs)
+        return false;                                        // recording order kept within (cycle, slot, tile)
     });
     for (size_t i = 0; i < fs.size();) {
         const int64_t t = at(fs[i]);
@@ -192,8 +195,8 @@ void Checker::process(int64_t now, bool scan, bool final) {
             i = j;
             continue;
         }
-        size_t j = i + 1;                                    // a group: one cycle, one slot, one tile
-        while (j < fs.size() && at(fs[j]) == t && rank(fs[j]) == rank(fs[i]) && fs[j].tile == fs[i].tile) j++;
+        size_t j = i + 1;                                    // a group: one cycle, one slot, one tile (each overflow alone)
+        while (j < fs.size() && fs[i].kind != Kind::FIFO_OVERFLOW && at(fs[j]) == t && rank(fs[j]) == rank(fs[i]) && fs[j].tile == fs[i].tile) j++;
         const Fact& last = fs[j - 1];
         Unit* u = fs[i].tile >= 0 && fs[i].tile < 67 ? &u_[fs[i].tile] : nullptr;
         bool say = true;                                     // ref's once-only rules (Chip.checkInvariants)

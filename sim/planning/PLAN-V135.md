@@ -36,6 +36,7 @@ is checked against v1.3 as M1-M3's units were.
 | W23 | P5, the control suites, programs and recipes: prompt written 2026-11-11 |
 | W24 | P6, the sort and its kit: prompt written 2026-11-11 |
 | W25 | P7b, Stage B and the replay acceptance kit: prompt written 2026-11-11 |
+| W26 | P2's second half (split from W20): the checker's remaining kinds, S1, BusTest; prompt written 2026-11-12 |
 | 2 | P4 (network, memory, engine suites), P5 (control suites, programs, recipes), P6 (the sort and its kit), P7b (Stage B, the acceptance kit) | after P2 |
 | 3 | P8, docs, build, cleanup; then the freeze check | last |
 

@@ -170,3 +170,16 @@ Commit and push after each piece; each kind checked line for line against `ref` 
   run, invariant 18 for modes 1-3 into big SRAM and invariant 24's overtaking read have no implementation in ref (no
   check, counter or text in sim/ref/meshsim/src; 24 only S1's measurement): they're the spec's, not v1.3's, so there is
   no reference to check them against, and adding them is new behaviour (D38). Waiting for the ruling before either.
+- **1d, invariant 2 (the disjoint buffers)**: `BigSram::new_phase()` (W20's placeholder filled: the per-phase read and
+  written bits cleared, the phase advanced) and `mark` at every served chunk (ref's BigSRAM.mark, in serve's order):
+  a chunk both read and written in a phase records `DISJOINT` once a phase (ref reports the phase's first, once a tile
+  and phase; its text has the phase number). Two triggers: W20's `Chip::new_phase` (between cycles), and every GO: the
+  block's `go_seen` Wire (F4's) read at the sram's step at t + 1 before it serves (ref's endCycle(t) at a GO calls
+  sram.newPhase). SIM_CHECKS only (the bits, 2 x mem_chunks bits a tile, allocated at build); the checker's switch
+  `CheckSwitches::disjoint` (Config.checkDisjoint, default on; **W20: `sw.disjoint = c.check_disjoint` in mach.cpp**).
+  **Levels: the sram moves from level 0 to 2** in the check builds (it now reads the block's Wire; nothing reads the
+  sram's). Shown not to matter, clang suite and release: the 16K sort (plain, shuffle, step-all, instance), T2's boot
+  (one domain, the split, shuffle, instance, and step-all added for the run), M1's goldens (every variant), the five
+  protected tests. CheckSelf: written then read, Chip.newPhase, read then written (2 lines); the a2a (0); and a read,
+  GO (with a command, for READY), then a write: 0 lines, 1 without the GO trigger (so it exercises it). Line for line,
+  clang and gcc suite, clang debug.

@@ -15,6 +15,7 @@ std::string why_bad(uint64_t h);                              // ref's LinkWord.
 // ref's Config switches that decide whether a violation is reported (the units count either way)
 struct CheckSwitches {
     bool errors = true, unexpected = true, read_port_overlap = true, command_read = true, strict_replies = false;
+    bool disjoint = true;               // W26: Config.checkDisjoint (invariant 2; the harness sets it from MachConfig)
     unsigned K = 8;                     // the director's delay line (DIR_UNEXPECTED's text)
 };
 

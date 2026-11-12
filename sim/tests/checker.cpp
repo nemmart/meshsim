@@ -189,6 +189,9 @@ std::string Checker::text(const Fact& f) const {
         const char* m = std::strstr(b, ": ");
         return m ? m + 2 : b;
     }
+    case Kind::DISJOINT:                                   // (W26) BigSRAM.mark's text, the phase's first
+        return fmt("chunk 0x%x %s after being %s in the same phase (invariant 2, phase %u)", unsigned(a[0]), a[1] ? "written" : "read",
+                   a[2] ? "written" : "read", unsigned(a[3]));
     case Kind::HIST_OVERFLOW: return "a counter exceeded 17 bits (invariant 6)";
     case Kind::ROTATION_LATE: return "address generator: a rotation started late (invariant 3; drift, see agReport)";
     case Kind::READ_RETURN_REFUSED: return "SIMULATOR: a read return was refused by the injection point";
@@ -235,6 +238,7 @@ bool Checker::enabled(Kind k) const {
     case Kind::DIR_UNEXPECTED: return sw_.unexpected;
     case Kind::CMEM_COMMAND_UNREAD: return sw_.command_read;
     case Kind::CMEM_REPLY_OVERWRITE: return sw_.strict_replies;
+    case Kind::DISJOINT: return sw_.disjoint;
     default: return true;
     }
 }

@@ -1921,7 +1921,8 @@ void Net::send(unsigned cc, unsigned dst, unsigned mode, unsigned counter, uint3
     const sim::Word w[3] = {lw::mask_lo(lo, size), lw::hdr(lw::CC1 + cc, dst, mode, counter, addr, size), lw::mask_hi(hi, size)};
     units::CncPacket p{};                                   // ref's Endpoint.send checks it (W26's facts)
     p.dst = uint8_t(dst); p.mode = uint8_t(mode); p.counter = uint8_t(counter); p.size = uint8_t(size); p.addr = addr; p.lo = lo; p.hi = hi;
-    units::endpoint_checks(uint64_t(c.cycle()), lw::CC1 + cc, p);
+    // W26: ref counts it at the send, between cycles, and its checkInvariants reports it at the next cycle run
+    units::endpoint_checks(uint64_t(c.cycle()) + 1, lw::CC1 + cc, p);
     if (cc == 0) c.sim().put_late("cnc", c.unit<units::Cnc>("cnc").send, w, 3);
     else {
         const std::string n = "ep" + std::to_string(cc + 1);
@@ -1961,7 +1962,7 @@ void Net::step() {
         if (!v.valid && !v.put && v.n == 0) {
             namespace lw = units::lw;
             const units::CncPacket& p = h.pop();
-            units::endpoint_checks(uint64_t(c.cycle()), lw::CC1, p);   // ref's Endpoint.send checks it (W26's facts)
+            units::endpoint_checks(uint64_t(c.cycle()) + 1, lw::CC1, p);   // ref's Endpoint.send checks it, reported at the next cycle (W26)
             const sim::Word w[3] = {lw::mask_lo(p.lo, p.size), lw::hdr(lw::CC1, p.dst, p.mode, p.counter, p.addr, p.size), lw::mask_hi(p.hi, p.size)};
             m.sim->put_late("cnc", c.unit<units::Cnc>("cnc").send, w, 3);
         }

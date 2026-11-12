@@ -48,7 +48,7 @@ instance-major; both builds).
   full request push; the receive-queue overflow; the endpoints' sends (after W20's call in Net's sends); the read port's
   size 11 and misaligned destination (UB at the director); a late rotation; S1's HIST loads by instruction and its two
   same-cycle orders reached only by a we-in overflow.
-- **With W20** (the harness): `sw.disjoint = c.check_disjoint`; `measure_s1` wired to the tiles' `S1Tile::on`;
-  `Chip::s1_report`; `units::endpoint_checks` in `Net::step` and `Net::send` (then CheckSelf's endpoint sends).
+- **With W20** (the harness): all four done (`check_disjoint`, `measure_s1`, `Chip::s1_report`, and
+  `units::endpoint_checks` in Net's sends, dated at the next cycle as ref reports them; CheckSelf's endpoint case).
 - **W23's CtrlTest** registers and invariants groups will name the messages their logs still need.
 - **Side effect, kept noted**: `track.unread_commands` follows the boot-ROM rule only in the check builds.

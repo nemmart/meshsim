@@ -226,3 +226,7 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   carried**. For the workers now: **new code comments carry no worker names or ticket codes** (rule 4; the existing ones
   are stripped by one script at P8, proved by byte-identical preprocessed output), while references to `ref`'s classes
   stay.
+- **D46. A deliberate difference in the runner: Stage B's must-fail window** (integrator, 2026-11-12, W25's F9). Stage B
+  prints "old queue map (CL4: must fail) FAIL ..." on purpose (that window must fail), and the runner's summary, copied
+  from v1.3, greps every log for "FAIL". v1.3's own run_tests.sh would fail the same way today; it never showed because
+  ref's committed stageb.log predates the CL4 case. The runner's FAIL grep skips lines containing "(CL4: must fail)".

@@ -2,7 +2,7 @@
 
 Branch `sim-w23`, from main 67d42fb. Rows C8, C10, C12, C13, C14, C15, C18, G2, G3.
 
-## The plan (proposed, waiting for the go-ahead)
+## The plan (go-ahead from the owner, 2026-11-12)
 
 **Files I own.** `sim/tests/ctl/` (one program per v1.3 suite, named by its step: `suite_ctrl`, `suite_cond`,
 `suite_hooks`, `suite_cccores`, `suite_recipes`, `suite_accounting`, `suite_regdoc`, `bench_s1`, `bench_cc`; on W20's
@@ -75,3 +75,24 @@ lines).
 3. The Makefile `include` line and my steps in `run_tests.sh` (W20's, not on main yet): who adds them, when.
 4. `cc-build` and `recipes-build`: v1.3's build steps; in v1.35 both are `fw/build.sh` (W19). One `fw-build` step, or
    W20's runner keeps v1.3's two names?
+
+## The owner's answers (2026-11-12)
+
+1. The book: port `gen_book` to C++ (output byte-identical to `fw/RECIPES.md`), drop `check_book.py` and `regions.py`,
+   **on condition** that this file lists what `check_book.py` checks and shows the RecipeTest port makes each check.
+2. `header_diff.py`: a shell script over the host gcc, output byte-identical to the Python's (D40).
+3. The four W20 needs are parked for W20 (with W24's and W25's). `wait_until` as proposed (checked between cycles;
+   C&C moves on in the next cycle), one form for RecipeTest and SortTest.
+4. I add my own Makefile include and runner steps and tell the integrator. **v1.3's step names stay**: `cc-build` and
+   `recipes-build` separate, each running its part of `fw/build.sh`.
+
+## Progress
+
+- **Step 0 done**: `oracle/ref/ctlsuites.sh` (`--fixtures`/`--check`, quick, full or named steps): sim/ref copied to a
+  scratch tree, v1.35's committed images in `meshsim/sw/build/`, each step run as run_tests.sh runs it. Every step of
+  my rows, quick and full, made locally (one CPU; ctrl-full the longest, 238 s), `--check` reproduces all but ctrl-full
+  identically (ctrl-full not rerun yet). Fixtures in `tests/ctlsuites/` (16 logs, the two phases CSVs, PROVENANCE).
+  JDK 21.0.13 (apt; the container had a JRE only) and clang 18.1.3 installed.
+- **Finding**: v1.3's committed `results/*.log` are stale for my steps (ctrl 6,893 checks there, 6,954 now; cond
+  141 / 153; hooks 142 / 141; recipes 2,042 / 2,056): the fixtures are regenerated from `sim/ref`, never taken from
+  `results/` (as W20's F1).

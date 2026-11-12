@@ -41,6 +41,7 @@
 
 #include "base/fatal.h"
 #include "config.h"
+#include "check.h"
 #include "sim.h"
 
 namespace units {
@@ -149,7 +150,10 @@ struct ReqLeaf {
         // the pushes of t - 1 (RequestPort.send at the end of t - 1)
         while (c.ready(push)) {
             const sim::Word* w = c.peek(push);
-            if (n >= depth) { overflows++; }   // a push into a full FIFO: the core checks canPush first (ref: violate)
+            if (n >= depth) {                 // a push into a full FIFO: the core checks canPush first (ref: violate)
+                overflows++;
+                sim::check::record(uint64_t(t - 1), int(src), sim::check::Kind::CTL_REQ_FULL);   // W26: ref's ctl.violate at the send
+            }
             else {
                 Entry& e = fifo[(head + n) % depth];
                 e.w[0] = uint32_t(w[0]); e.w[1] = uint32_t(w[0] >> 32); e.w[2] = uint32_t(w[1]); e.w[3] = uint32_t(w[1] >> 32);

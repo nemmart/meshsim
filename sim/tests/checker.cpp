@@ -14,6 +14,7 @@
 #include "units/linkword.h"
 #include "units/regmap.h"
 #include "units/replayer.h"
+#include "units/tracer.h"
 
 namespace mach {
 
@@ -133,6 +134,7 @@ std::string Checker::text(const Fact& f) const {
     case Kind::CTL_ALIAS:
         return fmt("access at 0x%x, past the end of %s memory: the high offset bits are ignored and it aliases (2.2; invariant 19)",
                    unsigned(a[0]), lw::region(uint32_t(a[0])) == lw::R_DMEM ? "data" : "program");
+    case Kind::CTL_REQ_FULL: return "SIMULATOR: a request pushed into a full request FIFO";
     case Kind::CTL_TABLE_BUSY: {
         static const char* const kTbl[4] = {"STREAM_SRC", "STREAM_DEST", "STREAM_COUNT", "GROUP"};
         if (a[0] == 5) return fmt("table window: HIST[%u] accessed while count-on-arrival is using HIST (4.10)", unsigned(a[1]));
@@ -146,6 +148,23 @@ std::string Checker::text(const Fact& f) const {
     case Kind::CMEM_COMMAND_UNREAD: return "a command landed in command slot 0 before the core read the previous one (6.3): " + describe(a[1], a[2], a[3]);
     case Kind::WE_PAST_SRAM:
         return fmt("a big-SRAM write at chunk 0x%" PRIx64 ", at or past the end of big SRAM: undefined (4.1; invariant 19): ", a[0]) + describe(a[1], a[2], a[3]);
+    case Kind::SLOT_VIOLATION: {                           // (W26) PeripheralSlot.violate's texts
+        const unsigned n = unsigned(a[1]);
+        switch (unsigned(a[0])) {
+        case 1: return fmt("%s peripheral %u's reserved or undefined window word %u: reads 0, stores ignored (4.17.4)",
+                           a[2] ? "store to" : "load of", n >> 8, n & 0xFF);
+        case 2: return fmt("peripheral %u's DMA_HDR changed mid-transfer: undefined (4.17.9)", n);
+        case 3: return fmt("peripheral %u's DMA_ADDR changed mid-transfer: undefined (4.17.9)", n);
+        case 4: return fmt("peripheral %u: an event posted to bit %u at its full count %u (4.17.3) (invariant 16)", n, unsigned(a[2]), unsigned(a[3]));
+        default: return a[2] == 1 ? std::string("a write into C&C 1's peripheral region: its map is Ingress/Egress's, deferred")
+                                  : fmt("a write into a stub engine's region (type %u, WORKER14)", unsigned(a[2]));
+        }
+    }
+    case Kind::TRACER_VIOLATION: {                         // (W26) the Tracer's text (Tracer.violate, W14's)
+        char b[300];
+        units::tracer::Tracer::violation_text(int(a[0]), a[1], a[2], b, sizeof b);
+        return b;
+    }
     case Kind::PERIPH_VIOLATION: {                         // (W20, F2) the replayer's text, without its list's "t<me> @<t>: "
         char b[300];
         units::Replayer::violation_text(unsigned(f.tile), int64_t(f.cycle), uint16_t(a[0]), a[1], a[2], a[3], b, sizeof b);

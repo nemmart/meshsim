@@ -96,3 +96,18 @@ Commit and push after each piece; each kind checked line for line against `ref` 
   messages), line for line (clang and gcc suite, clang debug). Protected tests the same as merged main's (clang release
   and suite); the 16K sort equal (clang release). Not covered against ref yet: the command slot's fact, the same-cycle
   touch; a test's load (TileRef::load) doesn't clear yet (when a suite needs it).
+- **1a, the rest** (F7 withdrawn by W25: the peripheral ERRORS bits were reported already):
+  - `CTL_WFI_WOKEN` (TileControl.takeWake: a wake by another event than GO with done set, the done gate off), at the
+    core's two wake sites (rv32's `woken_in_done`; the Env's `done_gate`).
+  - `SLOT_VIOLATION` (PeripheralSlot.violate, through the block): SlotCore::violate records every slot flag (a reserved
+    window word stored, DMA_HDR or DMA_ADDR changed mid-transfer, a post to a full counter with its depth), the core's
+    load of a reserved window word (rv32's read path; the slot never sees it), and SlotCore::accept a write into C&C 1's
+    peripheral region or a stub engine's (ref's host.violate; F_PERIPHERAL).
+  - `TRACER_VIOLATION` (Tracer.violate through its slot): every Tracer fact, ref's (W14's) texts in
+    `Tracer::violation_text` (V_UNDEFINED now carries the ALU's text as its second argument, as the replayer's does).
+  - `CTL_REQ_FULL` (RequestPort.send into a full FIFO; a harness push only: the core checks canPush), dated at the send.
+  CheckSelf: the slot case (window 1's words 8 and 22 stored, 10 loaded: 48 lines) and the WFI case (13 lines), line for
+  line (clang and gcc suite, clang debug). Not checked against ref (no case reaches them yet): DMA_HDR/ADDR mid-transfer
+  and the full post (controllers' DMA, credits), the C&C 1 and stub region writes (cc_cores), the Tracer's, the full
+  request push. Protected tests the same (clang release, suite); the 16K sort equal; the slot, request-bus and Tracer
+  tests pass (clang suite).

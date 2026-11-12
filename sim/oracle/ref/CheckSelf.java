@@ -132,6 +132,30 @@ final class CheckSelf {
             n.runAll(1000);
             System.out.print(n.c.violationReport());
         }
+        {   // the peripheral slot's own checks through the block (PeripheralSlot.violate; W26, 1a): a store to window 1's
+            // word 8 (no DMA on a mesh tile), a load of its reserved word 10, a store to its reserved word 22
+            Config k = Mach.cfg(-1); k.checkErrors = false; k.maxViolationMessages = 200;
+            Mach m = new Mach(k);
+            int P = Registers.PMEM_BASE, LOOP = 0x0000006F, X1 = 0x80000093;
+            int[][] prog = { { LOOP }, { X1, 0x2200A023, LOOP }, { X1, 0x2280A103, LOOP }, { X1, 0x2400AC23, LOOP } };
+            for (Tile p : m.c.tiles) { int[] w = prog[p.idx % prog.length]; for (int i = 0; i < w.length; i++) p.core.pokeLocal(P + 4 * i, w[i]); }
+            m.c.run(40);
+            m.c.cc.command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, P).runWhenReady();
+            m.c.run(300);
+            System.out.print(m.c.violationReport());
+        }
+        {   // a WFI woken by an event other than GO with done set, the done gate off (TileControl.takeWake; W26, 1a):
+            // EVENTS_MASK = run done, done pulsed, a run of count 0 started, WFI
+            Config k = Mach.cfg(-1); k.checkErrors = false; k.maxViolationMessages = 200; k.doneGate = false;
+            Mach m = new Mach(k);
+            int P = Registers.PMEM_BASE;
+            int[] w = { 0x80000093, 0x40000113, 0x0220A023, 0x00100193, 0x0030A623, 0x0030A823, 0x10500073, 0x0000006F };
+            for (Tile p : m.c.tiles) if (p.idx % 5 == 2) for (int i = 0; i < w.length; i++) p.core.pokeLocal(P + 4 * i, w[i]); else p.core.pokeLocal(P, 0x0000006F);
+            m.c.run(40);
+            m.c.cc.command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, P).runWhenReady();
+            m.c.run(300);
+            System.out.print(m.c.violationReport());
+        }
         {   // the message cap (maxViolationMessages): the count goes on
             Config k = Net.cfg(-1); k.maxViolationMessages = 3;
             Net n = new Net(k);

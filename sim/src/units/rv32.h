@@ -147,6 +147,14 @@ struct Rv32 {
     uint32_t wfi_n = 0;
     uint64_t go_wakes = 0, event_wakes = 0;
     int64_t wfi_at = 0; bool wfi_in_rom = false;
+    // W26: TileControl.takeWake's check: a wake by an event other than GO while done is set, the done gate off (Config.
+    // doneGate; with the gate only GO wakes): the fact only (ref's ctl.violate)
+    template <class Env>
+    void woken_in_done(Env& e, uint64_t t) {
+        if constexpr (requires { e.done_gate(); })
+            if (ck_tile >= 0 && !e.done_gate() && (e.reg(STATUS) >> ST_DONE & 1) && !(e.reg(EVENTS) >> EV_GO & 1))
+                sim::check::record(t, ck_tile, sim::check::Kind::CTL_WFI_WOKEN);
+    }
     void took_wake(bool go, int64_t entered, uint64_t t, bool rom) {
         if (go) go_wakes++; else event_wakes++;
         if (rom) return;
@@ -180,6 +188,7 @@ struct Rv32 {
             if (!e.wake()) { cycles_wfi++; return kNever; }
             in_wfi = false;
             took_wake(e.reg(EVENTS) >> EV_GO & 1, wfi_at, t, wfi_in_rom);   // W23: statistics
+            woken_in_done(e, t);                                       // W26
             if (log) log->add(t, T_WAKE, (e.reg(EVENTS) >> EV_GO & 1) ? 1 : 2);
         }
         if (stall > 0) { stall--; cycles_stalled++; return t + 1 + stall; }   // 6.
@@ -409,7 +418,7 @@ struct Rv32 {
                 if (in_handler && !interrupt_pending(e)) parked = true;
                 wfi_at = int64_t(t);                          // W23: statistics (wfiLog)
                 if (!e.wake()) { in_wfi = true; wfi_in_rom = region(ipc) == R_BOOTROM; }
-                else took_wake(e.reg(EVENTS) >> EV_GO & 1, int64_t(t), t, region(ipc) == R_BOOTROM);   // falls through
+                else { took_wake(e.reg(EVENTS) >> EV_GO & 1, int64_t(t), t, region(ipc) == R_BOOTROM); woken_in_done(e, t); }   // falls through (W26)
             } else if (ins == 0x30200073) {                   // mret: legal, flagged (every trap is terminal)
                 violations++;
                 if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::CTL_MRET);   // W26
@@ -514,7 +523,11 @@ struct Rv32 {
             if (!window_present(n)) return false;                              // an absent peripheral: bus error
             if constexpr (requires { e.window_load(0u, 0u, v); }) {
                 /* W15: the slot's window RegFile (PeripheralSlot.read); 2: a reserved or undefined word, read 0, flagged */
-                if (e.window_load(n, (a & 0x1FF) >> 2, v) == 2) { reserved_accesses++; violations++; }
+                if (e.window_load(n, (a & 0x1FF) >> 2, v) == 2) {
+                    reserved_accesses++; violations++;
+                    // W26: ref's PeripheralSlot.reserved (load): the slot's own check through the block (code 1, F_RESERVED)
+                    if (ck_tile >= 0) sim::check::record(ck_t, ck_tile, sim::check::Kind::SLOT_VIOLATION, 1, n << 8 | ((a & 0x1FF) >> 2), 0);
+                }
                 return true;
             } else FATAL("tile core: a load from peripheral %u's window at 0x%x: this bench has no peripheral slot", n, a);
         }

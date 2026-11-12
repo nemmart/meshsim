@@ -190,3 +190,10 @@ Commit and push after each step; each step checked against `ref`.
   log-equal; test_sort_suites (every SortFp reference point) passes; the kit's 92 jobs again: 84 run CSVs, 84 phases
   CSVs and 84 logs byte-identical to Quest 178's, the 8 refused as before. gcc debug compiles it clean. When W26's body
   lands: the sort steps, the kit's 92 jobs and the four-build pass again.
+- **With W26's disjoint tracking** (main f43894ca and on): the five sort steps log-equal, 0 disjoint violations (as
+  ref); sweep-quick's log and CSV byte-identical; the kit's 92 jobs: 84 run CSVs, phases CSVs and logs byte-identical
+  to Quest 178's, the 8 refused as before.
+- **The final four-build pass** (2026-11-12, main 500b60fa merged): copies check (322 files equal to v1.3's); gcc debug,
+  clang debug, gcc release, clang release, every test run alone: **all pass** (the earlier test_ctl_suites and
+  test_p4suites failures were transient on main, fixed there); the suite builds (gcc, clang): test_sort_suites and
+  test_sort_kit pass. REPORT.md final: nothing open.

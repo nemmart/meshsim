@@ -1,7 +1,9 @@
 # WORKER24 report: P6, the sort and its kit
 
 Branch `sim-w24`. Rows D1-D10, H4, H7 of `V135-INVENTORY.md`. Details, every check's numbers and the owner's answers are
-in `NOTES.md`. Written 2026-11-12; what is still open is at the end.
+in `NOTES.md`. Final, 2026-11-12: **every row of P6 is ported and byte-identical to v1.3** where v1.3 runs it,
+with three recorded exceptions (the inputs line's simulator field, Q2; the ORACLE split, Q5; ready_latency below 3,
+D47). Nothing is open.
 
 ## What v1.35 has now
 
@@ -18,11 +20,16 @@ in `NOTES.md`. Written 2026-11-12; what is still open is at the end.
 | H4 | the per-run CSV | `sort_test csv=` | byte-identical to v1.3's (46 runs at 2,000) |
 | H7 | the profiles (sort.profile, sort.prof, sort.watch; the overlay-load column) | `SORT_PROFILE`, `SORT_PROF=lo-hi`, `SORT_WATCH=f,...` | equal on two runs (`tests/sort/ref/h7-*.log`) |
 
+**Invariant 2 during the sort**: sort_test starts a new disjoint-buffer phase on a tile whenever its core leaves WFI, as
+SortTest's monitor does (tile by tile, BigSram::new_phase with W26's disjoint tracking): 0 disjoint violations in every
+sort run, as in ref, and every log, fingerprint and kit CSV unchanged.
+
 **make check**: `test_sort_kit` (the kit tools on Quest 178's run; Java's formatting pinned against JDK 21's output) and
 `test_sort_suites` (sort-p1's log and fingerprints, the direct and TH runs at every reference point, the profiles). The
-full pass (all four builds with `-k`, each of the 70 tests run alone, sort_test under ASan and UBSan) is clean, W23's
-`test_ctl_suites.cpp` on gcc debug aside (W23's). **run_tests.sh**: sort-p1, sort, sort-shuf, sort-bt-kv32, sort-bt-k128 are steps (MODE=suite: W20's PhaseLog runs there
-only, so sort_test refuses a release build); `sort_test` in SUITES.
+full pass on main 500b60fa (all four builds with `-k`, each test run alone, sort_test under ASan and UBSan; the suite
+builds' sort tests) is clean (NOTES). **run_tests.sh**: sort-p1, sort, sort-shuf, sort-bt-kv32, sort-bt-k128 and
+sweep-quick are steps (MODE=suite: PhaseLog runs there only, so sort_test and sweep refuse a release build);
+`sort_test` and `sweep` in SUITES.
 
 ## The references (all from fresh `ref` runs, committed in `tests/sort/`)
 
@@ -73,6 +80,5 @@ the Makefile's `include tests/sort.mk`, `run_tests.sh` (the sort and sweep steps
 
 ## Open
 
-- **Invariant 2 during the sort**: sort_test starts a new disjoint-buffer phase on a tile at every core wake, as
-  SortTest does (Chip::new_phase's per-tile form); BigSram::new_phase is still W26's empty placeholder. When its body
-  (the disjoint tracking and the DISJOINT fact) lands: the sort steps, the kit's 92 jobs and the four-build pass again.
+Nothing. The freeze check (PLAN-V135 step 4) reruns the sort steps, the sweep and the kit; anything it turns up comes
+back here.

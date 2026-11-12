@@ -142,3 +142,16 @@ the `-q` estimate, the guest delivery's whereabouts.
   B, 0x29ec, the committed images'). Not used.
 - **Q for the owner:** W20's runner lists the step `replayer` (ReplayerTest: the opcode table, the ALU against vec.tsv,
   ReplayerUnitTests) as pending P7b. It is inventory row C20 (P3's, dropped with D40-D41), not one of E2-E5.
+- **The kit** (`tests/acceptance/`: run_shard.sh, calibrate.sh, build.sh, make_kit.sh, make_task.sh,
+  make_acceptance_task.sh, README.md): v1.3's scripts on the C++ binaries (`replay_shard`, `shard_summary`,
+  `synthetic_delivery`); processes in place of JVMs (v1.3's file names and SUMMARY wording kept, so its outputs compare);
+  the kit is HEAD's sim/ sources (Makefile, src, tools, tests' top-level sources and makefiles, bench's makefiles), the
+  tables, the boot ROM, hops and the replay controllers' images, 0.8 MB, built on the runner by `./build.sh` (clang;
+  35 s here) after HASHES; the task records the machine (`tools/machine.sh`, D21). Differences from v1.3's kit in the
+  README (no jar, Java or Python; D43's synthetic delivery; calibrate.sh's exit code is tail's, as in v1.3).
+- **`oracle/acceptance_crosscheck.sh`**: v1.3's kit built in scratch (ref's classes in a jar, SyntheticDelivery patched
+  as D43, v1.3's run_shard.sh and calibrate.sh unchanged) against v1.35's (made from HEAD and built), the same delivery
+  through both: results.csv (wall column masked), VERDICT.txt, SUMMARY.txt's non-timing lines, the exit code and every
+  jvm-K.log. **Stage A, all equal** (9 windows of 4,000 rows, seed 11): -j 1 with -m, -j 3, a range, -n all, a range
+  past the manifest's end, a planted-fault delivery (FAIL details), a corrupted one (CORRUPT kinds). Stage B's cases
+  (AB, ABF, -x, -q 512) and `--calibration` (the runner: 128 x 65,536 rows) come with Stage B.

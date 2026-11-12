@@ -208,6 +208,7 @@ template <class U>
 RegBlockState block_at_end(const sim::Sim& m, const U& u, uint64_t c) {
     constexpr uint32_t kMax = 64;
     RegBlockState b = u.s;
+    b.ck_tile = -1;                                                      // W20: a preview records no facts
     RegBlockState::In in;
     sim::PortEntry e[kMax];
     bool send_put = false;
@@ -469,6 +470,8 @@ struct G1Config {
     bool periph_slot = false;          // W15 (M3): the peripheral slot (the replayer as peripheral 1) and its paths
     PeriphType periph1 = PT_REPLAYER;  // W15: a mesh tile's peripheral 1 in the slot (tests: PT_TEST)
     bool cc3_tracer = false;           // W16 (M3): C&C 3's peripheral 1 the Tracer (ref's cc3Tracer), else the stub
+    int periph_only = -1;              // W20 (harness-only): >= 0: only this mesh tile has peripheral 1 (and the slot, if
+                                       //   periph_slot); the other mesh tiles none (ref's periphType 0 + testPeripheral)
     unsigned K = 8, cm_latency = 2;    // the write counters' line, director -> port B
     // G3 (W11): the memory path's keys
     unsigned ts_engine_latency = 1;    // tsEngineLatency: the engines' Links to and from the table store and HIST

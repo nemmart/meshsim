@@ -29,6 +29,7 @@
 #include <cstdint>
 
 #include "base/fatal.h"
+#include "check.h"
 #include "units/linkword.h"
 #include "units/regmap.h"
 #include "units/table_store.h"
@@ -82,6 +83,7 @@ struct Rv32 {
     uint32_t stall = 0;
     uint64_t load_wait_t = kNever; uint32_t load_wait_pc = 0;
     uint64_t pending_t = kNever; uint64_t send_w[3] = {};   // M2: a send store's packet awaiting acceptance (ref's pendingT)
+    int ck_tile = -1; uint64_t ck_t = 0;   // W20: the checker's facts (src/check.h) under this tile, -1 none; the step's cycle
     // ---- configuration, and permanent state allocated apart ----
     Rv32Timing timing;
     uint32_t periph_present = 1;           // PARAMS [2:0]: which windows are present (present: not modelled yet)
@@ -103,6 +105,7 @@ struct Rv32 {
     // core stepped every cycle and one stepped only when it asks end in the same state.
     template <class Env>
     UNITS_NOINLINE uint64_t step(Env& e, uint64_t t) {
+        ck_t = t;                                                              // W20: the cycle of this step's facts
         if (stop != Stop::running) return kNever;                     // the run ended: nothing more (mcycle frozen)
         catch_up(t);
         mcycle++;                                                       // 1.
@@ -416,7 +419,7 @@ struct Rv32 {
 
     // A load of `width` bytes (the aligned word holding ea); false: a bus error.
     template <class Env>
-    bool load(Env& e, uint32_t ea, uint32_t width, uint32_t& v) {
+    bool load(Env& e, uint32_t ea, uint32_t width, uint32_t& v) {   // (ck_t: the load's cycle for the checker's facts)
         uint32_t a = ea & ~3u;
         if (region(a) == R_DMEM) { v = dmem[mem_word(a)]; return true; }
         if (region(a) == R_PMEM) { v = imem[mem_word(a)]; return true; }
@@ -463,7 +466,10 @@ struct Rv32 {
         }
         if (r.load == A_OUT) FATAL("tile core: a load from %s (0x%x): not modelled yet", r.name, a);
         if (r.load == A_NONE) {                                                // write-only or reserved: reads 0
-            if (r.store == A_NONE) { reserved_accesses++; violations++; }
+            if (r.store == A_NONE) {
+                reserved_accesses++; violations++;
+                if (ck_tile >= 0) sim::check::record(ck_t, ck_tile, sim::check::Kind::CTL_RESERVED_ACCESS, 0, 0x800 + 4 * i);   // W20
+            }
             v = 0; return true;
         }
         switch (i) {
@@ -544,9 +550,18 @@ struct Rv32 {
             if (r.store == A_OUT) FATAL("tile core: a store to %s (0x%x): not modelled yet", r.name, a);
             if (r.store == A_NONE) {
                 if (r.load != A_NONE) return false;                            // a read-only register: bus error
-                reserved_accesses++; violations++; return true;                // reserved: ignored
+                reserved_accesses++; violations++;                             // reserved: ignored
+                if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::CTL_RESERVED_ACCESS, 1, 0x800 + 4 * i);   // W20
+                return true;
             }
-            if (v & ~defined_bits(i)) violations++;                           // reserved bits set: ignored (invariant 21)
+            if (v & ~defined_bits(i)) {                                        // reserved bits set: ignored (invariant 21)
+                violations++;
+                if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::CTL_RESERVED_BITS, i, v & ~defined_bits(i));
+            }
+            if (ck_tile >= 0 && i == DMA_RECORD_BASE_ADDRESS && (v & 1))       // W20: TileControl.write's checks (facts only)
+                sim::check::record(t, ck_tile, sim::check::Kind::CTL_RECORD_BASE_ODD, v);
+            if (ck_tile >= 0 && i == SRAM_RD_DEST_ADDR && (v >> 17 & 3) == lw::SIZE_UNDEF)
+                sim::check::record(t, ck_tile, sim::check::Kind::CTL_RD_DEST_SIZE);
             if (i == TRACE) trace_stores++;
             if (i == SRAM_RD_ADDR_QUEUE) {                                     // the read port (4.3; Controller.java:380)
                 if constexpr (requires { e.read_port(uint64_t(0), 0u); }) {

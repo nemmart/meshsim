@@ -11,6 +11,7 @@
 
 #include <cstdint>
 
+#include "check.h"
 #include "units/regmap.h"
 #include "base/fatal.h"
 #include "units/rv32.h"
@@ -45,6 +46,7 @@ struct RegBlockState {
     enum : unsigned { COND_ROUTER_OVF = 0, COND_BAD = 1, COND_DRIFT = 3, COND_WE_IN_OVF = 4, COND_TABLE_OVF = 5, COND_GATHER_OVF = 6 };
     // ---- statistics, and ref's violations (counted) ----
     uint64_t gos = 0, dones = 0, readies = 0, sends = 0, trace_stores = 0, violations = 0, sim_exit_at = 0;
+    int ck_tile = -1;                  // W20: the checker's facts (src/check.h) under this tile; -1 none (a preview's copy)
     uint32_t sim_exit_value = 0;
 
     // What reached the block during t (all of it from t's cycle; at most one bus operation, the core's).
@@ -143,8 +145,18 @@ struct RegBlockState {
         switch (r) {
         case PULSE_DONE:
             if (v & 1) {
-                if (!counters_zero()) done_early++;                       // done early (4.13): ERRORS [8]
-                if (!(mask & 1u << EV_GO)) violations++;                 // done pulsed with GO clear in the mask
+                if (!counters_zero()) {                                   // done early (4.13): ERRORS [8]
+                    done_early++;
+                    if (ck_tile >= 0) {                                   // W20: invariant 4's fact (the counts, 20 bits each)
+                        uint64_t m = 0, w[3] = {};
+                        for (unsigned c = 1; c <= 7; c++) if (remaining[c]) { m |= 1u << c; w[(c - 1) / 3] |= uint64_t(remaining[c]) << (20 * ((c - 1) % 3)); }
+                        sim::check::record(t, ck_tile, sim::check::Kind::CTL_DONE_EARLY, m, w[0], w[1], w[2]);
+                    }
+                }
+                if (!(mask & 1u << EV_GO)) {                             // done pulsed with GO clear in the mask
+                    violations++;
+                    if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::CTL_DONE_GO_MASKED);
+                }
                 done = true; dones++;
                 if (done_gate) gate = true;
                 clears = COUNTER_EVENTS;
@@ -194,7 +206,10 @@ struct RegBlockState {
                 uint32_t n = v & 0xFFFFF;
                 if (n) {
                     uint64_t sum = uint64_t(remaining[k]) + n;
-                    if (sum > 0xFFFFF) { counter_wraps++; violations++; }
+                    if (sum > 0xFFFFF) {
+                        counter_wraps++; violations++;
+                        if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::CTL_COUNTER_WRAP, k);   // W20
+                    }
                     remaining[k] = uint32_t(sum & 0xFFFFF);
                     clears = 1u << (k - 1) | 1u << EV_COUNTERS_DONE;
                     events &= ~clears; q_all = true; q_one[k] = true;

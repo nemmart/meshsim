@@ -1,3 +1,19 @@
+stageb lone true: stopped at cycle 837; tile 0 halt 5 pc 0x1000034 exit 0; PARAMS t0 78000001 t1 78100000; parkedUntouched true; violations 6
+violations: 6
+  cycle 478 tile 0: DMA_RECORD_BASE_ADDRESS 0x54321 not aligned to a record (two chunks; 8.7; invariant 20)
+  cycle 485 tile 0: ROUTER_HDR stored with reserved bits set (0x7fffe): ignored, read 0 (8.1; invariant 21)
+  cycle 537 tile 0: WRITE_COUNTER_2 stored with reserved bits set (0xfff00000): ignored, read 0 (8.1; invariant 21)
+  cycle 551 tile 0: WRITE_COUNTER_1 written past 2^20 - 1: the count wraps (4.12)
+  cycle 553 tile 0: WRITE_COUNTER_2 written past 2^20 - 1: the count wraps (4.12)
+  cycle 555 tile 0: WRITE_COUNTER_3 written past 2^20 - 1: the count wraps (4.12)
+stageb lone false: stopped at cycle 837; tile 0 halt 5 pc 0x1000034 exit 0; PARAMS t0 78000001 t1 78100000; parkedUntouched true; violations 6
+violations: 6
+  cycle 478 tile 0: DMA_RECORD_BASE_ADDRESS 0x54321 not aligned to a record (two chunks; 8.7; invariant 20)
+  cycle 485 tile 0: ROUTER_HDR stored with reserved bits set (0x7fffe): ignored, read 0 (8.1; invariant 21)
+  cycle 537 tile 0: WRITE_COUNTER_2 stored with reserved bits set (0xfff00000): ignored, read 0 (8.1; invariant 21)
+  cycle 551 tile 0: WRITE_COUNTER_1 written past 2^20 - 1: the count wraps (4.12)
+  cycle 553 tile 0: WRITE_COUNTER_2 written past 2^20 - 1: the count wraps (4.12)
+  cycle 555 tile 0: WRITE_COUNTER_3 written past 2^20 - 1: the count wraps (4.12)
 regs: stopped at cycle 869; bootStart 0 runAt 108; allExited true allInWfi false; halts []; exit(0) 0 exit(63) 0
   r[35] 0x23; tile 5 pc 0x1000034 x10 0
 wfi after run(1500): cycle 1500 runAt 77 busy true allInWfi false

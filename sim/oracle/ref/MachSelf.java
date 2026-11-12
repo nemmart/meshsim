@@ -53,6 +53,7 @@ final class MachSelf {
             for (String u : StateFp.CHIP_UNITS) { o = new StateFp.Out(); StateFp.chipUnit(o, m.c, u, m.c.cycle); all = StateFp.fmix(all ^ o.done()); nn++; }
             System.out.printf("  fp %016x%n", StateFp.fmix(all ^ nn));
         }
+        System.out.print(m.c.agReport());
         StringBuilder pl = new StringBuilder("  phaseLog");
         for (long[] e : m.c.cc.phaseLog) pl.append(' ').append(java.util.Arrays.toString(e));
         System.out.println(pl);

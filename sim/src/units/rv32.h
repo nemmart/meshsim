@@ -269,7 +269,12 @@ struct Rv32 {
     void undefined(uint64_t t, bool store, uint32_t width, uint32_t ea, uint32_t ipc) {
         ub = true;
         if (log) log->add(t, T_UB, store, ea, ipc, width);
+        if (ub_fatal_tile >= 0)                                // W20 (harness-only; W23's request 11): ref's UndefinedBehavior
+            FATAL("undefined behavior at cycle %llu, tile %d, controller: a misaligned %u-byte %s 0x%x at pc 0x%x "
+                  "(DECISIONS-v1.25 s8: meshsim stops; the hardware does nothing special)", (unsigned long long)t, ub_fatal_tile,
+                  width, store ? "store to" : "load from", ea, ipc);
     }
+    int ub_fatal_tile = -1;                // W20 (harness-only): >= 0, the run stops at undefined behaviour, naming this tile
 
     // ================================================================ fetch and execute
     template <class Env>

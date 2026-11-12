@@ -1,3 +1,6 @@
+ub: undefined behavior at cycle 48, tile 9, controller: a misaligned 4-byte load from 0x1 at pc 0x1000000 (DECISIONS-v1.25 s8: meshsim stops; the hardware does nothing special)
+figure 12, L = 1: ptr@3 1002 ptr@8 1004 ptr@13 1006; hist@18 101
+figure 12, L = 3: ptr@5 1002 ptr@12 1004 ptr@19 1006; hist@26 101
 back-pressure: canPush false stalled 0; received 128 last at 1234 sum 136128 credits 127 delivered 128 violations 0
 drain: report@223 405 13 report@247 405 43 request@231 c06 request@239 807 result@231 src 6 22 23; reportsOf(5) 2 reportsOf(9) 0; t6 dmem[0x900] 0 at 517; delivered 222:5:405:13 230:6:c06:23 238:7:807:33 246:5:405:43
 test peripheral: PARAMS t7 78700001 t8 78800000; t7 window 1: 30f 0 0 0 0 0 0 0; t8 window 1 word 0 null

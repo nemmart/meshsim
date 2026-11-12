@@ -11,6 +11,7 @@
 // (goToReady, goToFirstRequest: W20's Cc::phase_log) and the cores' come next; until then main() runs the groups
 // ported, so the output is ref's lines for those groups.
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <dirent.h>
@@ -24,6 +25,7 @@
 #include "base/fatal.h"
 #include "units/ag.h"
 #include "units/replayer.h"
+#include "../java_random.h"
 #include "../suite.h"
 #include "ctl.h"
 
@@ -37,7 +39,7 @@ int64_t shuffle = -1;
 std::vector<std::string> table;
 void out(const std::string& s) { std::printf("%s\n", s.c_str()); }
 void meas(const char* recipe, const std::string& what, int64_t cycles) { table.push_back(suite::str("  %-14s %-72s %8lld", recipe, what.c_str(), (long long)cycles)); }
-[[maybe_unused]] void meas(const char* recipe, const std::string& what, const std::string& cycles) { table.push_back(suite::str("  %-14s %-72s %8s", recipe, what.c_str(), cycles.c_str())); }
+void meas(const char* recipe, const std::string& what, const std::string& cycles) { table.push_back(suite::str("  %-14s %-72s %8s", recipe, what.c_str(), cycles.c_str())); }
 
 // ================================================================ helpers
 mach::MachConfig cfg() { return Mach::cfg(shuffle); }
@@ -66,6 +68,37 @@ int64_t last_wake(Chip& c, unsigned k) {
     const units::Rv32& r = core(c, k);
     if (r.wfi_n == 0 || r.wfi_n > units::Rv32::kWfiLog) FATAL("recipes: tile %u: %u WFIs (the log keeps %u)", k, r.wfi_n, units::Rv32::kWfiLog);
     return r.wfi_log[r.wfi_n - 1][1];
+}
+
+
+// java.util.Random's nextInt(bound), nextInt(), nextLong()
+int32_t next_int(test::JavaRandom& r, int32_t bound) {
+    if ((bound & -bound) == bound) return r.next_int_pow2(bound);
+    int32_t bits, val;
+    do { bits = r.next(31); val = bits % bound; } while (bits - val + (bound - 1) < 0);
+    return val;
+}
+int32_t next_int(test::JavaRandom& r) { return r.next(32); }
+int64_t next_long(test::JavaRandom& r) { const int64_t hi = r.next(32); return int64_t(uint64_t(hi) << 32) + int64_t(r.next(32)); }
+
+// C&C's phase log (ref's cc.phaseLog: {all READY seen, GO store} per GO; entry 0 is the boot's GO)
+// Cycles from command k's GO (0 = the first command after boot) to all 64 READY after it.
+int64_t go_to_ready(Mach& m, unsigned k) { const auto ph = m.c.cc().phase_log(); return ph.at(k + 2)[0] - ph.at(k + 1)[1]; }
+// A synchronised start (spec 6.4): from C&C's GO store (phase k) to each tile's start store and first request.
+void go_to_first_request(Mach& m, unsigned k, const char* recipe, const char* run) {
+    const int64_t go = m.c.cc().phase_log().at(k + 1)[1];                 // v1.2: entry 0 is the boot's GO
+    int64_t fmin = INT64_MAX, fmax = 0, smin = INT64_MAX, smax = 0, lead = -1; bool same_lead = true;
+    for (unsigned t = 0; t < 64; t++) {
+        const units::AddrGen& ag = m.c.unit<units::AddrGen>(unit_name(t, "ag"));
+        const int64_t f = ag.first_request_at - go, st = ag.started_at - 1 - go, l = ag.first_request_at - (ag.started_at - 1);
+        fmin = std::min(fmin, f); fmax = std::max(fmax, f); smin = std::min(smin, st); smax = std::max(smax, st);
+        if (lead < 0) lead = l; else if (lead != l) same_lead = false;
+    }
+    suite::check(same_lead, "%s: the lead-in is the same on every tile (%lld cycles from the start store)", recipe, (long long)lead);
+    suite::check(fmax - fmin <= 1, "%s: every tile's first request within the 0/+1 start skew (%lld..%lld)", recipe, (long long)fmin, (long long)fmax);
+    meas(recipe, std::string(run) + ": GO store -> start store, every tile", std::to_string(smin) + (smax > smin ? "-" + std::to_string(smax) : ""));
+    meas(recipe, std::string(run) + ": start store -> first request (the lead-in)", lead);
+    meas(recipe, std::string(run) + ": GO store -> first request, every tile", std::to_string(fmin) + (fmax > fmin ? "-" + std::to_string(fmax) : ""));
 }
 
 // ================================================================ the snippet check (Java's patterns, by hand)
@@ -175,6 +208,215 @@ void snippets() {
     }
     for (const std::string& s : order) suite::check(seen.count(s), "RECIPE region %s (%s) is quoted in RECIPES.md", s.c_str(), file[s].c_str());
     out(suite::str("snippets: %d code blocks in RECIPES.md, %zu RECIPE regions in wip/sw/recipes/", n, src.size()));
+}
+
+
+// ================================================================ 1 boot and the command loop
+void cmdloop() {
+    suite::group("cmdloop");
+    Mach m(cfg());
+    const Mach::Image im = m.boot("rcp_cmdloop");
+    std::vector<uint32_t> a31(7); int32_t s31 = 0; for (unsigned i = 0; i < a31.size(); i++) { a31[i] = 1000 + i; s31 += int32_t(a31[i]); }   // a full block: 7 arguments
+    m.c.cc().command(BROADCAST, 1 << 24 | 3, {10, 20, 30}).go();
+    for (unsigned t = 0; t < 64; t++) m.c.cc().command(t, 1 << 24 | 2, {t * 100, 5});
+    m.c.cc().go().command(BROADCAST, 1 << 24 | uint32_t(a31.size()), a31).go();
+    m.c.cc().command(BROADCAST, 2 << 24).go();
+    const bool ok = m.run([&] { return m.all_stopped(); }, 20000);
+    suite::check(ok && m.all_exited(), "every tile ran the command loop to CMD_EXIT: %s", m.halt_summary().c_str());
+    for (unsigned me = 0; me < 64; me++) {
+        suite::eq(60 + me, m.word(me, im, "res", 0), "tile %u: broadcast, even block, 3 arguments", me);
+        suite::eq(me * 100 + 5 + me, m.word(me, im, "res", 1), "tile %u: unicast, odd block, its own arguments", me);
+        suite::eq(s31 + int32_t(me), int32_t(m.word(me, im, "res", 2)), "tile %u: broadcast, even block, 7 arguments (a full block)", me);
+        suite::eq(3, m.word(me, im, "ncmd", 0), "tile %u: three sums", me);
+    }
+    no_violations(m.c, "cmdloop");
+    meas("cmdloop", "a 3-argument command: GO -> all 64 READY", go_to_ready(m, 0));
+    meas("cmdloop", "a 7-argument command: GO -> all 64 READY", go_to_ready(m, 2));
+}
+
+// ================================================================ 4 histogram digit, prefix sum, bucket passes
+void bucket() {
+    suite::group("bucket");
+    Mach m(cfg());
+    m.boot("rcp_bucket");
+    std::vector<int64_t> in[64];
+    for (unsigned k = 0; k < 64; k++) {
+        test::JavaRandom r(1000 + k);
+        const int n = 200;                                    // v1.2: the command's n on every tile
+        in[k].resize(n);
+        for (int i = 0; i < n; i++) {
+            const int32_t key = k % 8 == 0 ? int32_t(uint32_t(next_int(r, 16)) * 0x01010101u) : next_int(r);
+            in[k][size_t(i)] = rec(key, i); poke64(m.c, k, 2 * uint32_t(i), in[k][size_t(i)]);
+        }
+    }
+    m.c.cc().command(BROADCAST, 1 << 24 | 200).go();
+    finish(m, "bucket", 200000);
+    for (unsigned k = 0; k < 64; k++) {
+        std::vector<int64_t> b = in[k];
+        std::stable_sort(b.begin(), b.end(), [](int64_t x, int64_t y) { return uint32_t(x) < uint32_t(y); });   // stable: ties keep input order
+        int bad = 0;
+        for (size_t i = 0; i < b.size(); i++) if (rec(m.c, k, 0x40000 + 2 * uint32_t(i)) != b[i]) bad++;
+        suite::eq(0, bad, "tile %u: %zu records sorted by the 32-bit key, stable (values are input positions)", k, b.size());
+        int32_t h = 0; for (unsigned t = 0; t < 256; t++) h += int32_t(m.c.tile(k).hist_peek(t));
+        suite::eq(0, h, "tile %u: HIST clear at the end", k);
+    }
+    no_violations(m.c, "bucket");
+    meas("bucket", "200 records: count copy + 4 bucket passes: GO -> all READY", go_to_ready(m, 0));
+}
+
+// ================================================================ 5 augmented transfers
+int n_aug(unsigned t) { return 20 + int((t * 3) & 15); }
+void aug() {
+    suite::group("aug");
+    Mach m(cfg());
+    m.boot("rcp_aug");
+    for (unsigned k = 0; k < 64; k++) {
+        for (unsigned i = 0; i < 64 + k; i++) m.c.tile(k).sram_poke(i, 0x70000000u + k * 0x1000 + i * 3);
+        for (int i = 0; i < n_aug(k); i++) poke64(m.c, k, 0x20000 + 2 * uint32_t(i), rec(int32_t(k << 16 | unsigned(i)), int32_t(0xDEAD0000u | unsigned(i))));
+    }
+    m.c.cc().command(BROADCAST, 1 << 24 | 64).go().command(BROADCAST, 2 << 24).go().command(BROADCAST, 3 << 24).go();
+    finish(m, "aug", 30000);
+    for (unsigned me = 0; me < 64; me++) {
+        int bad = 0;
+        for (unsigned i = 0; i < 64; i++) if (rec(m.c, me, 0x40000 + 2 * i) != rec(int32_t(0x70000000u + me * 0x1000 + i * 3), int32_t(i))) bad++;
+        suite::eq(0, bad, "tile %u: local form: 64 raw keys -> (key, j), j = 0, 1, 2, ... (v1.2: 64 on every tile)", me);
+        const unsigned l = (me + 63) & 63, r = (me + 1) & 63; const int nl = n_aug(l), nr = n_aug(r); bad = 0;
+        for (int j = 0; j < nl; j++) if (rec(m.c, me, 0x80000 + 2 * uint32_t(j)) != rec(int32_t(l << 16 | unsigned(j)), j)) bad++;
+        for (int j = 0; j < nr; j++) if (rec(m.c, me, 0x80000 + 2 * uint32_t(nl + j)) != rec(int32_t(r << 16 | unsigned(j)), nl + j)) bad++;
+        suite::eq(0, bad, "tile %u: remote form: the left's %d then the right's %d records, high word = position in the buffer", me, nl, nr);
+    }
+    no_violations(m.c, "aug");
+    meas("aug", "local form, 64 keys: GO -> all READY", go_to_ready(m, 0));
+    meas("aug", "remote form, start command (two neighbours, 20-35 records each): GO -> all READY", go_to_ready(m, 2));
+}
+
+// ================================================================ 6 gather
+void gather() {
+    suite::group("gather");
+    Mach m(cfg());
+    m.boot("rcp_gather");
+    std::vector<int> perm[64];
+    for (unsigned k = 1; k <= 2; k++) {
+        for (unsigned t = 0; t < 64; t++) {
+            const int n = 50 + int(t);
+            test::JavaRandom r(77 * k + t);
+            perm[t].resize(size_t(n));
+            for (int i = 0; i < n; i++) perm[t][size_t(i)] = i;
+            for (int i = n - 1; i > 0; i--) { const int j = next_int(r, i + 1); std::swap(perm[t][size_t(i)], perm[t][size_t(j)]); }
+            for (int i = 0; i < n; i++) poke64(m.c, t, 2 * uint32_t(i), rec(i * 11, perm[t][size_t(i)]));
+            for (int j = 0; j < n; j++) for (unsigned q = 0; q < k; q++)
+                poke64(m.c, t, 0x40000 + 2 * k * uint32_t(j) + 2 * q, rec(int32_t(t << 24 | unsigned(j) << 4 | q), int32_t(0xBEEF0000u | k)));
+        }
+        m.c.cc().command(BROADCAST, 1 << 24 | k).go();
+        suite::check(m.run([&] { return idle(m); }, 40000), "k = %u: every tile gathered", k);
+        for (unsigned t = 0; t < 64; t++) {
+            int bad = 0; const int n = 50 + int(t);
+            for (int i = 0; i < n; i++) for (unsigned q = 0; q < k; q++)
+                if (rec(m.c, t, 0x80000 + 2 * k * uint32_t(i) + 2 * q) != rec(int32_t(t << 24 | unsigned(perm[t][size_t(i)]) << 4 | q), int32_t(0xBEEF0000u | k))) bad++;
+            suite::eq(0, bad, "tile %u, k = %u: %d values in index order", t, k, n);
+        }
+    }
+    finish(m, "gather", 10000);
+    no_violations(m.c, "gather");
+    meas("gather", "k = 1, 50-113 values per tile: GO -> all READY", go_to_ready(m, 0));
+    meas("gather", "k = 2, 50-113 values per tile: GO -> all READY", go_to_ready(m, 1));
+}
+
+// ================================================================ 7 one-word exchange, words to one tile
+void xchg() {
+    suite::group("xchg");
+    Mach m(cfg());
+    const Mach::Image im = m.boot("rcp_xchg");
+    m.c.cc().command(BROADCAST, 1 << 24).go().command(BROADCAST, 2 << 24).go();
+    finish(m, "xchg", 20000);
+    for (unsigned me = 0; me < 64; me++) {
+        int bad = 0;
+        for (unsigned s2 = 0; s2 < 64; s2++) if (m.word(me, im, "in", s2) != s2 * 64 + me) bad++;
+        suite::eq(0, bad, "tile %u: in[s] = tile s's word to this tile (s x 64 + me), all 64", me);
+    }
+    int bad4 = 0; for (unsigned i = 0; i < 4; i++) if (m.word(0, im, "box", i) != 64 + i) bad4++;
+    suite::eq(0, bad4, "tile 0: tile 1's four words in box, ROUTER_ADDR auto-incremented");
+    no_violations(m.c, "xchg");
+    meas("xchg", "one-word exchange, 64 words per tile: GO -> all READY", go_to_ready(m, 0));
+    meas("xchg", "four words to one tile: GO -> all READY", go_to_ready(m, 1));
+}
+
+// ================================================================ 8 vector exchange with the neighbours
+void xvec() {
+    suite::group("xvec");
+    Mach m(cfg());
+    const Mach::Image im = m.boot("rcp_xvec");
+    m.c.cc().command(BROADCAST, 1 << 24).go();
+    finish(m, "xvec", 20000);
+    const uint32_t base = im.sym("nb");
+    for (unsigned me = 0; me < 64; me++) {
+        int bad = 0;
+        const unsigned from[4] = {(me + 63) & 63, (me + 1) & 63, (me + 56) & 63, (me + 8) & 63};   // left, right, above, below
+        for (unsigned k = 0; k < 4; k++) for (unsigned i = 0; i < 6; i++) if (m.word(me, base + 4 * (6 * k + i)) != from[k] * 16 + i) bad++;
+        suite::eq(0, bad, "tile %u: nb[0..3] from left, right, above, below", me);
+    }
+    no_violations(m.c, "xvec");
+    meas("xvec", "6 words to each of 4 neighbours: GO -> all READY", go_to_ready(m, 0));
+}
+
+// ================================================================ 9 all-to-all
+int cnt_a(unsigned s2, unsigned d) { return int((s2 * 7 + d * 3) & 7); }
+void a2a() {
+    suite::group("a2a");
+    Mach m(cfg());
+    const Mach::Image im = m.boot("rcp_a2a");
+    for (unsigned t = 0; t < 64; t++) {
+        uint32_t at = 0;
+        for (unsigned d = 0; d < 64; d++) for (int j = 0; j < cnt_a(t, d); j++) { poke64(m.c, t, 2 * at, rec(int32_t(t << 24 | d << 16 | unsigned(j)), ~j)); at++; }
+    }
+    m.c.cc().command(BROADCAST, 1 << 24).go().command(BROADCAST, 2 << 24).go().command(BROADCAST, 3 << 24).go();
+    finish(m, "a2a", 50000);
+    int64_t bound = 0; int R[16] = {};
+    for (unsigned g = 0; g < 16; g++) { for (unsigned s2 = 0; s2 < 64; s2++) for (int off : mach::A2A::G4[g]) R[g] = std::max(R[g], cnt_a(s2, (s2 + unsigned(off)) & 63)); bound += 4LL * R[g]; }
+    for (unsigned me = 0; me < 64; me++) {
+        uint32_t at = 0; int bad = 0;
+        for (unsigned s2 = 0; s2 < 64; s2++) for (int j = 0; j < cnt_a(s2, me); j++) { if (rec(m.c, me, 0x40000 + 2 * at) != rec(int32_t(s2 << 24 | me << 16 | unsigned(j)), ~j)) bad++; at++; }
+        suite::eq(0, bad, "tile %u: %u records, each source's run in source order", me, at);
+        int rb = 0; for (unsigned g = 0; g < 16; g++) if (int(m.word(me, im, "R", g)) != R[g]) rb++;
+        suite::eq(0, rb, "tile %u: R[g] from the reduction = the global group maxima", me);
+    }
+    no_violations(m.c, "a2a");
+    meas("a2a", "counts exchange + group maxima: GO -> all READY", go_to_ready(m, 0));
+    meas("a2a", "reduction of R + configure: GO -> all READY", go_to_ready(m, 1));
+    meas("a2a", "start: GO -> all READY (timetable sum R_g * 4 = " + std::to_string(bound) + ")", go_to_ready(m, 2));
+    go_to_first_request(m, 2, "a2a", "start (a group run)");
+}
+
+// ================================================================ 11 the read port
+void rdport() {
+    suite::group("rdport");
+    Mach m(cfg());
+    const Mach::Image im = m.boot("rcp_rdport");
+    std::vector<int> keys[64];
+    for (unsigned t = 0; t < 64; t++) {
+        test::JavaRandom r(500 + t);
+        const int n = 300 + int(t);
+        keys[t].resize(size_t(n));
+        for (int i = 0; i < n; i++) keys[t][size_t(i)] = 100 + next_int(r, 2000);
+        std::sort(keys[t].begin(), keys[t].end());
+        for (int i = 0; i < n; i++) m.c.tile(t).sram_poke(0x60000 + uint32_t(i), uint32_t(keys[t][size_t(i)]));
+    }
+    const std::vector<uint32_t> q = {0, 50, 777, 1234, 2099, 2100, 0x7FFFFFFF};   // 7: a command's argument block (v1.0 had 8)
+    // v1.2 (recipe 11): command 1 reads key 0; command 2 searches the first n = 300 keys for the seven arguments
+    m.c.cc().command(BROADCAST, 1 << 24).go().command(BROADCAST, 2 << 24 | 300, q).go();
+    finish(m, "rdport", 30000);
+    for (unsigned t = 0; t < 64; t++) {
+        suite::eq(keys[t][0], m.word(t, im, "first", 0), "tile %u: one read", t);
+        int bad = 0;
+        for (unsigned i = 0; i < q.size(); i++) {
+            int lo = 0; while (lo < 300 && int64_t(keys[t][size_t(lo)]) < int64_t(int32_t(q[i]))) lo++;
+            if (int(m.word(t, im, "lb", i)) != lo) bad++;
+        }
+        suite::eq(0, bad, "tile %u: seven lower bounds", t);
+    }
+    no_violations(m.c, "rdport");
+    meas("rdport", "one read: GO -> all READY", go_to_ready(m, 0));
+    meas("rdport", "7 searches over 300 keys: GO -> all READY", go_to_ready(m, 1));
 }
 
 // ================================================================ 2 a stream run: local copy
@@ -288,6 +530,121 @@ void rules() {
 }
 
 
+
+// ================================================================ SelfTest: the Java side of fw/tests/selftest.h
+// Every constant read from the header itself (its ST_ #defines), the algorithm the header's (SelfTest.java).
+struct SelfTest {
+    int32_t a = 0, b = 0, c = 0, warmup = 0, k0 = 0, k1 = 0, m0 = 0, m1 = 0, r = 0, h0 = 0, h1 = 0;
+    static SelfTest load() {
+        std::string t;
+        if (!read_file("fw/tests/selftest.h", t)) FATAL("recipes: cannot read fw/tests/selftest.h");
+        std::map<std::string, int64_t> d;
+        // "#define\s+(ST_\w+)\s+(0x[0-9A-Fa-f]+|\d+)u?"
+        for (size_t i = t.find("#define"); i != std::string::npos; i = t.find("#define", i + 1)) {
+            size_t j = i + 7; if (j >= t.size() || !rspace(t[j])) continue;
+            while (j < t.size() && rspace(t[j])) j++;
+            size_t n = j; while (n < t.size() && (isalnum(uint8_t(t[n])) || t[n] == '_')) n++;
+            const std::string name = t.substr(j, n - j);
+            if (name.compare(0, 3, "ST_") != 0 || n >= t.size() || !rspace(t[n])) continue;
+            size_t v = n; while (v < t.size() && rspace(t[v])) v++;
+            size_t e = v;
+            if (t.compare(v, 2, "0x") == 0 && v + 2 < t.size() && isxdigit(uint8_t(t[v + 2]))) { e = v + 2; while (e < t.size() && isxdigit(uint8_t(t[e]))) e++; }
+            else while (e < t.size() && isdigit(uint8_t(t[e]))) e++;
+            if (e == v) continue;
+            d[name] = int64_t(std::stoull(t.substr(v, e - v), nullptr, 0));      // Long.decode
+        }
+        auto get = [&](const char* k) { auto it = d.find(k); if (it == d.end()) FATAL("selftest.h: %s missing", k); return int32_t(it->second); };
+        SelfTest s;
+        s.a = get("ST_XS_A"); s.b = get("ST_XS_B"); s.c = get("ST_XS_C"); s.warmup = get("ST_WARMUP");
+        s.k0 = get("ST_SEED_K0"); s.k1 = get("ST_SEED_K1"); s.m0 = get("ST_HASH_M0"); s.m1 = get("ST_HASH_M1"); s.r = get("ST_HASH_R");
+        s.h0 = get("ST_HASH_H0"); s.h1 = get("ST_HASH_H1");
+        return s;
+    }
+    int64_t next(int64_t x) const { uint64_t u = uint64_t(x); u ^= u << (a & 63); u ^= u >> (b & 63); u ^= u << (c & 63); return int64_t(u); }
+    int64_t seed(int64_t s) const { if (s == 0) s = 1; for (int i = 0; i < warmup; i++) s = next(s); return s; }
+    int64_t tile_seed(int me, int64_t base) const {
+        const uint32_t lo = uint32_t(int32_t(base)) ^ uint32_t(me + 1) * uint32_t(k0), hi = uint32_t(uint64_t(base) >> 32) ^ uint32_t(me + 1) * uint32_t(k1);
+        return seed(int64_t(uint64_t(lo) | uint64_t(hi) << 32));
+    }
+    std::vector<int64_t> fill(int64_t state, int n) const { std::vector<int64_t> v(static_cast<size_t>(n)); for (int i = 0; i < n; i++) { state = next(state); v[size_t(i)] = state; } return v; }
+    uint32_t mix(uint32_t h, uint32_t w, uint32_t m) const { h = (h ^ w) * m; const unsigned k = unsigned(r) & 31; return k ? (h << k | h >> (32 - k)) : h; }
+    int64_t hash(const std::vector<int64_t>& recs, int from, int n) const {
+        uint32_t x0 = uint32_t(h0), x1 = uint32_t(h1);
+        for (int i = from; i < from + n; i++) { x0 = mix(x0, uint32_t(recs[size_t(i)]), uint32_t(m0)); x1 = mix(x1, uint32_t(uint64_t(recs[size_t(i)]) >> 32), uint32_t(m1)); }
+        return int64_t(uint64_t(x0) | uint64_t(x1) << 32);
+    }
+};
+
+// ================================================================ 17-20: write a block, fill, hash
+constexpr uint32_t B_SRC = 0x00000, B_WB = 0x80000;   // rcp_selftest.c's SRC, WB (DST 0x40000: selftest, next)
+std::vector<int64_t> sram_recs(Chip& c, unsigned k, uint32_t chunk, int n) { std::vector<int64_t> v(static_cast<size_t>(n)); for (int i = 0; i < n; i++) v[size_t(i)] = rec(c, k, chunk + 2 * uint32_t(i)); return v; }
+std::string per_rec(int64_t c1, int64_t c2, int n1, int n2) { return java_fixed(double(c2 - c1) / (n2 - n1), 2); }
+std::map<std::string, std::string> per_record;              // ref's perRecord (LinkedHashMap; read by key)
+void blocks() {
+    suite::group("blocks");
+    const SelfTest ST = SelfTest::load();
+    Mach m(cfg());
+    const Mach::Image im = m.boot("rcp_selftest");
+    const int W2 = 256, F1 = 256, F2 = 1024;
+    int64_t seeds[64];
+    test::JavaRandom rnd(14);
+    for (int i = 0; i < 64; i++) seeds[i] = i == 5 ? 0 : next_long(rnd);       // tile 5: a zero seed (st_seed makes it 1)
+    mach::Cc& cc = m.c.cc();
+    const uint32_t blk = im.sym("blk");                                        // v1.2: the program's block in data memory
+    cc.wait_until([&] { return tiles_idle(m); }).call([&](int64_t) {           // after crt0 has zeroed .bss
+        for (unsigned k = 0; k < 64; k++) for (unsigned i = 0; i < unsigned(W2); i++) {
+            m.c.tile(k).poke_local(blk + 8 * i, k << 16 | i); m.c.tile(k).poke_local(blk + 8 * i + 4, 0xB10C0000u | i); } });
+    cc.command(BROADCAST, 7 << 24).go();                                       // phase 0: write the block (256 records)
+    for (int n : {F1, F2}) {                                                   // phases 2, 3: fill, C&C's seeds
+        for (unsigned i = 0; i < 64; i++) cc.command(i, 1 << 24, {uint32_t(seeds[i]), uint32_t(uint64_t(seeds[i]) >> 32), uint32_t(n)});
+        cc.go();
+    }
+    cc.command(BROADCAST, 5 << 24, {B_SRC, uint32_t(F1)}).go().command(BROADCAST, 5 << 24, {B_SRC, uint32_t(F2)}).go();   // phases 4, 5: hash
+    const int64_t BASE = 0x0123456789ABCDEFLL;
+    cc.command(BROADCAST, 2 << 24, {uint32_t(BASE), uint32_t(uint64_t(BASE) >> 32), uint32_t(F2)}).go();   // phase 6: fill, index seed + base
+    cc.command(BROADCAST, 2 << 24, {0, 0, uint32_t(F1)}).go();                // phase 7: fill, index seed alone
+    std::vector<int64_t> wrote[64], filled[64]; int64_t sig[64] = {};
+    const bool ok = m.run([&] { return cc.phases_logged() >= 6 && tiles_idle(m); }, 400000);   // the boot's GO, then five phases
+    suite::check(ok, "blocks: write, fill and hash phases ran");
+    for (unsigned me = 0; me < 64; me++) {
+        wrote[me] = sram_recs(m.c, me, B_WB, W2);
+        filled[me] = sram_recs(m.c, me, B_SRC, F2);
+        sig[me] = int64_t(uint64_t(m.word(me, im, "sig", 0)) | uint64_t(m.word(me, im, "sig", 1)) << 32);
+    }
+    finish(m, "blocks", 400000);
+    int bad_w = 0, bad_f = 0, bad_h = 0, bad_s = 0, bad_l = 0, bad_z = 0;
+    for (unsigned me = 0; me < 64; me++) {
+        for (int i = 0; i < W2; i++) if (wrote[me][size_t(i)] != rec(int32_t(me << 16 | unsigned(i)), int32_t(0xB10C0000u | unsigned(i)))) bad_w++;
+        const std::vector<int64_t> want = ST.fill(ST.seed(seeds[me]), F2);
+        if (want != filled[me]) bad_f++;
+        if (sig[me] != ST.hash(want, 0, F2)) bad_h++;
+        if (ST.hash(filled[me], 0, F2) != sig[me]) bad_s++;
+        const std::vector<int64_t> idx = ST.fill(ST.tile_seed(int(me), BASE), F2), idx0 = ST.fill(ST.tile_seed(int(me), 0), F1);   // phase 6 (phase 7 overwrote the first F1)
+        const std::vector<int64_t> now = sram_recs(m.c, me, B_SRC, F2);
+        for (int i = 0; i < F2; i++) if (now[size_t(i)] != (i < F1 ? idx0[size_t(i)] : idx[size_t(i)])) { bad_l++; break; }
+        if (me == 5 && filled[me][0] != ST.fill(ST.seed(1), 1)[0]) bad_z++;
+    }
+    suite::eq(0, bad_w, "write_block: every tile's %d records from data memory are in big SRAM", W2);
+    suite::eq(0, bad_f, "fill from C&C's seeds: every tile's %d records equal the Java generator's (selftest.h's constants)", F2);
+    suite::eq(0, bad_z, "fill: a zero seed is taken as 1 (st_seed)");
+    suite::eq(0, bad_h, "hash: every tile's hash of its block equals Java's hash of the Java-generated block");
+    suite::eq(0, bad_s, "hash: ... and Java's hash of what big SRAM holds");
+    suite::eq(0, bad_l, "fill from the tile index, with a base seed and without: every tile's records equal Java's");
+    std::set<int64_t> firsts; for (unsigned k = 0; k < 64; k++) firsts.insert(rec(m.c, k, B_SRC));
+    suite::eq(64, int64_t(firsts.size()), "index seeds: 64 different sequences");
+    no_violations(m.c, "blocks");
+    const int64_t w2 = go_to_ready(m, 0), f1 = go_to_ready(m, 1), f2 = go_to_ready(m, 2), h1 = go_to_ready(m, 3), h2 = go_to_ready(m, 4);   // v1.2: one write phase
+    meas("write_block", std::to_string(W2) + " records: GO -> all READY", w2);
+    meas("fill", std::to_string(F1) + " records, C&C's seed: GO -> all READY", f1);
+    meas("fill", std::to_string(F2) + " records: GO -> all READY", f2);
+    meas("hash", std::to_string(F1) + " records (" + std::to_string(2 * F1) + " words): GO -> all READY", h1);
+    meas("hash", std::to_string(F2) + " records: GO -> all READY", h2);
+    out("blocks [meas: RecipeTest blocks]: cycles per 64-bit record, marginal (the difference of two sizes over their difference): write_block " +
+        java_fixed(double(w2) / 256.0, 2) + " (256 records, not marginal), fill " + per_rec(f1, f2, F1, F2) + ", hash " + per_rec(h1, h2, F1, F2) + " (" +
+        java_fixed(double(h2 - h1) / (2 * (F2 - F1)), 2) + " per 32-bit word read)");
+    per_record["write_block"] = java_fixed(double(w2) / 256.0, 1); per_record["fill"] = per_rec(f1, f2, F1, F2); per_record["hash"] = per_rec(h1, h2, F1, F2);
+}
+
 // ================================================================ tables (recipe 21)
 void tables() {
     suite::group("tables");
@@ -397,11 +754,10 @@ int main(int argc, char** argv) {
     if (argc > 1) shuffle = std::strtoll(argv[1], nullptr, 10);
     if (shuffle >= 0) std::printf("shuffled child order, seed %lld\n", (long long)shuffle);
     snippets();
-    // cmdloop(): W20 (Cc::phase_log)
-    copy(); cmem();
-    // bucket(), aug(), gather(), xchg(), xvec(), a2a(), rdport(): W20 (Cc::phase_log)
-    status(); rules();
-    // sync(), blocks(), selftest(), boot(), signal(): W20 (Cc::phase_log)
+    cmdloop(); copy(); cmem(); bucket(); aug(); gather(); xchg(); xvec(); a2a(); rdport(); status(); rules();
+    // sync(): next
+    blocks();
+    // selftest(): W20 (C&C 1's model: drainReports, results); boot(), signal(): next
     tables(); replay(); cc1();
     out("recipe cycles [meas: RecipeTest; tile 0 unless stated]:");
     for (const std::string& s : table) out(s);

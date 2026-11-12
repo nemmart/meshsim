@@ -799,6 +799,26 @@ bool TileRef::ts_busy() const {
     return t.pipe.valid || t.pub || t.q_stream.n || t.q_group.n || t.q_we.n || t.q_stream.pend || t.q_group.pend || t.q_we.pend ||
            h.pipe.valid || h.q.n || h.q.pend;
 }
+namespace {
+uint32_t link_after(sim::Sim& s, const sim::LinkIn& p, uint64_t c) {   // a Link's words arriving after c (still in flight)
+    sim::PortEntry e[64];
+    const uint32_t n = s.observe(p, e, 64).n;
+    uint32_t k = 0;
+    for (uint32_t i = 0; i < n; i++) if (e[i].at > c) k++;
+    return k;
+}
+}  // namespace
+bool TileRef::phase_done() const {
+    if (unit<units::AddrGen>("ag").running) return false;
+    const units::RegBlockState b = block();
+    for (unsigned k = 1; k <= 7; k++) if (b.remaining[k]) return false;
+    sim::Sim& s = c_->sim();
+    const uint64_t next = uint64_t(c_->cycle()) + 1;      // a word arriving at the next cycle landed at ref's end of this one
+    if (link_after(s, unit<units::TileCtl>("ctl").kline, next)) return false;
+    if (!mem_idle()) return false;
+    if (link_after(s, unit<units::TileCore>("core").port_b, next)) return false;
+    return !ts_busy();
+}
 bool TileRef::quiescent() const { FATAL("mach: TileRef::quiescent: use Chip::quiescent (the chip's ports are judged together)"); }
 
 // ============================================================================================ C&C 1's model (CnC)

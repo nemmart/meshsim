@@ -209,6 +209,10 @@ public:
     bool mem_idle() const;                                  // mem_idle (4.1)
     bool ts_busy() const;                                   // ts_busy (4.15)
     bool quiescent() const;                                 // Tile.quiescent
+    // ref's EngineTest.phaseDone (W22-15; AgTest's and EngineTest's runLocal stop on it): the AG's run over, every counter
+    // 0, nothing on the delay line (dir.inFlight), mem_idle, port B idle (dir.cmIdle), the table stores quiet; as ref
+    // has them at the end of the cycle just run (the delay line's and port B's words not yet landed by then)
+    bool phase_done() const;
 
     // ---- a test's loads and stores through the core (ref's Controller.load(t, ea, width), store(t, ea, v, mask)) ----
     // load: what a load at t = cycle() + 1 returns (the memories, the boot ROM, HIST, the registers as the core sees

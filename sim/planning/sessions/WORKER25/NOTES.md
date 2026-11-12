@@ -240,3 +240,5 @@ the `-q` estimate, the guest delivery's whereabouts.
   One slip: the task ran `sh tools/machine.sh` (a bash script: "redirection unexpected"), so machine.txt is empty
   apart from the error; the run log names the host, CPUs, memory and versions. Fixed for later tasks (`bash`, in the
   maker and in the kit's make_task.sh).
+- **F6 fixed by W20** (4dd260a9: the slot frees only its own row buffer): the workaround in `stageb.cpp` removed;
+  `test_stageb` and a delivery run clean under ASan (clang debug).

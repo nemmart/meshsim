@@ -80,6 +80,7 @@ struct CmemTrack {
     uint64_t unread[MEM_WORDS / 64] = {};
     bool slot0_unread = false;
     uint64_t overwritten_unread = 0, unread_commands = 0;   // ref's cmem.overwrittenUnread, unreadCommands
+    uint64_t writes_cmd = 0; int64_t landed_at = -1;        // W23: ref's cmem.writesCmd, landedAt (statistics)
     struct Touch { uint64_t t = ~0ull; uint32_t w = 0; bool load = false; };
     Touch touch[4] = {};
     uint8_t touch_n = 0;

@@ -51,6 +51,7 @@ struct RegBlockState {
     // pulse (lastDoneAt, lastLandedAt: -1 before any; readyPulseAt: INT64_MIN before any)
     uint64_t spurious_edges = 0;
     int64_t last_done_at = -1, last_landed_at = -1, ready_pulse_at = INT64_MIN;
+    int64_t counter_write_at[8] = {-1, -1, -1, -1, -1, -1, -1, -1};   // each write counter's last store (counterWriteAt)
     int ck_tile = -1;                  // W20: the checker's facts (src/check.h) under this tile; -1 none (a preview's copy)
     int64_t (*tlog)[2] = nullptr;      // W20 (harness-only; H6): every TRACE store {t, value}, into the harness's array
     uint32_t tlog_cap = 0, tlog_n = 0; //   (null otherwise, and in a preview's copy)
@@ -216,6 +217,7 @@ struct RegBlockState {
         default:
             if (r >= WRITE_COUNTER_1 && r <= WRITE_COUNTER_7) {           // 4.12: a write adds; N > 0 arms; 0 does nothing
                 unsigned k = r - WRITE_COUNTER_1 + 1;
+                counter_write_at[k] = int64_t(t);                        // W23: statistics (counterWriteAt)
                 uint32_t n = v & 0xFFFFF;
                 if (n) {
                     uint64_t sum = uint64_t(remaining[k]) + n;

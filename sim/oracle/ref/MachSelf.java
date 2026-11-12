@@ -107,7 +107,35 @@ final class MachSelf {
         } catch (java.io.IOException e) { throw new RuntimeException(e); }
     }
 
+    /** H6: the TRACE stores of search.c (SearchBench's mark(), through TileControl.traceHook), N = 4096, one run. */
+    static void trace() {
+        int N = 4096;
+        Mach m = new Mach(Mach.cfg(-1));
+        java.util.Random r = new java.util.Random(N);
+        for (Tile p : m.c.tiles) {
+            long[] k = new long[N]; for (int i = 0; i < N; i++) k[i] = r.nextInt() & 0xFFFFFFFFL;
+            java.util.Arrays.sort(k);
+            for (int i = 0; i < N; i++) p.sram.poke(i, (int) k[i]);
+            p.sram.poke(0xF0000, N); p.sram.poke(0xF0001, 0);
+            for (int i = 0; i < 64; i++) p.sram.poke(0xF0002 + i, i == 0 ? 0 : i == 1 ? -1 : r.nextInt());
+        }
+        m.boot("search");
+        java.util.List<java.util.List<long[]>> marks = new java.util.ArrayList<>(); for (int i = 0; i < 64; i++) marks.add(new java.util.ArrayList<>());
+        for (Tile p : m.c.tiles) { final int i = p.idx; p.ctl.traceHook = (t, v) -> marks.get(i).add(new long[] { t, v }); }
+        m.c.cc.command(LinkWord.BROADCAST, 1 << 24 | 0 << 8 | 4).go();
+        m.run(() -> !m.c.cc.busy(), 5_000_000);
+        long[] d0 = new long[64]; for (Tile p : m.c.tiles) d0[p.idx] = p.ctl.dones;
+        boolean ok = m.run(() -> { for (Tile p : m.c.tiles) if (p.ctl.dones <= d0[p.idx]) return false; return true; }, 5_000_000);
+        System.out.println("trace: " + (ok ? "finished" : "NOT finished") + " at cycle " + m.c.cycle);
+        for (int t : new int[] { 0, 7, 63 }) {
+            StringBuilder sb = new StringBuilder("  tile " + t + ": " + marks.get(t).size() + " TRACE stores");
+            for (long[] e : marks.get(t)) sb.append(" ").append(e[0]).append(":").append(Long.toHexString(e[1]));
+            System.out.println(sb);
+        }
+    }
+
     public static void main(String[] a) throws Exception {
+        trace();
         phases(-1);
         phases(4);
         stageb(true);

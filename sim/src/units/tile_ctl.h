@@ -213,7 +213,7 @@ template <class U>
 RegBlockState block_at_end(const sim::Sim& m, const U& u, uint64_t c) {
     constexpr uint32_t kMax = 64;
     RegBlockState b = u.s;
-    b.ck_tile = -1;                                                      // W20: a preview records no facts
+    b.ck_tile = -1; b.tlog = nullptr;                                    // W20: a preview records no facts, logs nothing
     RegBlockState::In in;
     sim::PortEntry e[kMax];
     bool send_put = false;

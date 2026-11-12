@@ -140,6 +140,12 @@ remaining kinds, interleaved as the suites ask.
   `Chip::digest()`. MachSelf prints ref's StateFp of the chip (M2Prog's way) after each a2a, kit-configured included:
   equal. The machine with C&C 1-3 as cores: not wired yet (statefp_m3's registry; FATAL, asking). errorLatency moved to
   dropped() (the owner: no v1.3 driver sets it other than readyLatency).
+- **H6 done**: `TileRef::record_trace()` / `trace_log()` (every TRACE store's {cycle, value}: ref's TileControl.traceHook,
+  as SearchBench uses it; the register block writes it into the harness's array, harness-only, none in a preview; the
+  store of the cycle just run included, as ref has it), `MachConfig::log_trace` (ref's logTrace: every tile recorded,
+  its refusal lifted) and `Chip::log()` ("cycle T tile K: TRACE 0xV", the part of ref's Chip.log v1.35 keeps).
+  MachSelf's TRACE case (search.c, N = 4096, one run; SearchBench's data with java.util.Random: tiles 0, 7, 63's stores
+  and their cycles) equal to ref's. The scratch layout of machself.sh now has fw/images too.
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

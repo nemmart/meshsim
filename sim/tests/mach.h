@@ -125,7 +125,8 @@ struct MachConfig {
     unsigned max_violation_messages = 50;
     bool strict_replies = false, check_read_port_overlap = true, check_command_read = true, check_disjoint = true;
     bool measure_s1 = true, check_errors = true, check_unexpected = true;
-    bool log_trace = false;            // the TRACE store log (8.15, H6) [step 4]
+    bool log_trace = false;            // ref's logTrace (8.15, H6): every tile's TRACE stores recorded; Chip::log()'s lines
+    uint32_t trace_capacity = 1u << 14;   // TRACE stores kept per tile (fatal when exceeded)
     uint32_t check_capacity = 1u << 18;   // the checker's facts (src/check.h) per machine (fatal when full)
     // ---- the harness ----
     std::vector<std::string> image_dirs;   // Mach::Image's search path (empty: the default above)
@@ -211,6 +212,9 @@ public:
     // ref's writer.record()/log and gatherStub.record()/log: {t, payload [63:0], header, payload [127:64]} from now on
     void record_writer();
     std::vector<std::array<uint64_t, 4>> writer_log() const;
+    // H6: every TRACE store's {cycle, value} (ref's TileControl.traceHook; logTrace's lines), from now on
+    void record_trace();
+    std::vector<std::array<int64_t, 2>> trace_log() const;
     void record_gather();
     std::vector<std::array<uint64_t, 4>> gather_log() const;
     // ref's `ctl.conditions |= bits` from a test (W23's request 9): ERRORS from the next cycle on (its view, its error
@@ -339,6 +343,9 @@ public:
     // as ref's digest prints them and HASH the canonical state fingerprint (tests/statefp.h, equal to ref's StateFp) of
     // the whole chip at its last cycle, in place of ref's digest hash. digest() is that line's text after "chip N ".
     std::string digest() const;
+    // ref's Chip.log as far as v1.35 keeps it: with log_trace, "cycle T tile K: TRACE 0xV" for every TRACE store, in
+    // cycle order (tiles in order within a cycle)
+    std::vector<std::string> log() const;
     // ---- reset (6.1) [step 2] ----
     void reset(bool hard);                                  // takes effect at the end of the current cycle
     uint64_t resets() const;

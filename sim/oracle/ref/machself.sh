@@ -13,7 +13,7 @@ mkdir -p "$B/cls" "$B/run/sw/build"
 javac --release 17 -nowarn -d "$B/cls" "$SIM"/ref/meshsim/src/*.java "$SIM"/ref/meshsim/test/{Mach,A2A}.java "$SIM"/oracle/ref/MachSelf.java "$SIM"/oracle/ref/StateFp.java 2>&1 | grep -v '^Note:'
 [ -f "$B/cls/MachSelf.class" ] || { echo "machself: the driver did not compile"; exit 2; }
 cp "$SIM/ref/meshsim/hops.txt" "$B/run/"; cp "$SIM/ref/meshsim/sw/bootrom.hex" "$B/run/sw/"
-for d in "$SIM/tests/golden-m2/images" "$SIM/tests/m3-images"; do cp "$d"/*.bin "$d"/*.sym "$B/run/sw/build/"; done
+for d in "$SIM/fw/images" "$SIM/tests/golden-m2/images" "$SIM/tests/m3-images"; do cp "$d"/*.bin "$d"/*.sym "$B/run/sw/build/"; done
 (cd "$B/run" && java -Xss16m -cp "$B/cls" MachSelf) > "$B/out" || { echo "machself: ref's run failed"; cat "$B/out"; exit 1; }
 case "${1:-}" in
   --fixtures) mkdir -p "$(dirname "$FIX")"; cp "$B/out" "$FIX"; echo "wrote $FIX"; cat "$FIX";;

@@ -1,3 +1,7 @@
+trace: finished at cycle 4311
+  tile 0: 14 TRACE stores 1943:5ea4 2128:5ea4 2314:5ea4 2500:5ea4 2686:5ea4 2872:5ea4 3059:5ea4 3246:5ea4 3432:5ea4 3618:5ea4 3805:5ea4 3991:5ea4 4174:5ea4 4246:5ea4
+  tile 7: 14 TRACE stores 1943:5ea4 2128:5ea4 2314:5ea4 2500:5ea4 2686:5ea4 2873:5ea4 3059:5ea4 3245:5ea4 3431:5ea4 3616:5ea4 3801:5ea4 3986:5ea4 4169:5ea4 4241:5ea4
+  tile 63: 14 TRACE stores 1942:5ea4 2128:5ea4 2313:5ea4 2500:5ea4 2687:5ea4 2873:5ea4 3059:5ea4 3245:5ea4 3431:5ea4 3616:5ea4 3803:5ea4 3988:5ea4 4172:5ea4 4244:5ea4
 phases seed -1: stopped at cycle 7698
   #  phase              GO at    cycles  READY spread (slowest)  instr/tile  WFI%   AG req/tile  late  gather/tile  rd-port/tile  AG read lat (max)  inj%  ej%   peaks: link ej toCnC weIn gQ area ptr hist rdPort  C&C
   0  boot                   98       930       0 (t0 )               668    12           73     0            0             0       5.0 (   5)     8    8           1  1     0    0  0    1   0   0      0  1

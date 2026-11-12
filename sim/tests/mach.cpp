@@ -256,6 +256,7 @@ struct Chip::Impl {
     std::vector<std::vector<E4>> ring_store;            // tile k's ring r (0: ret, 1-3: clients 0-2) at 4k + r
     std::vector<std::vector<E4>> logs;
     std::vector<E4> writer_logs[64], gather_logs[64];     // TileRef::record_writer, record_gather
+    std::vector<std::array<int64_t, 2>> trace_logs[64];   // TileRef::record_trace (H6)
     // the endpoints' harness parts (cnc.h's HarnessSends): C&C 1 (the Java model), C&C 2, C&C 3
     units::HarnessSends sends[3];
     std::vector<std::array<int64_t, 2>> plog;             // C&C's phase log (Cc::phase_log)
@@ -282,7 +283,6 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     // inert here as there. Two the C++ machine doesn't model: refused unless at ref's default.
     if (c.error_latency >= 0 && unsigned(c.error_latency) != c.ready_latency)
         FATAL("mach: Config.errorLatency %d: the C++ machine carries READY and the error line on one line (= readyLatency)", c.error_latency);
-    if (c.log_trace) FATAL("mach: Config.logTrace: the TRACE store log comes with W20's H6");
     if (c.K < c.k_min())                                   // TrafficDirector's constructor (ref: IllegalArgumentException)
         FATAL("K = %u is below meshsim's max(2L + 4, L + 4, cm_latency, rp_latency) = %u at L = %u (4.7, D49; invariant 24)",
               c.K, c.k_min(), c.ts_engine_latency);
@@ -393,6 +393,7 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         }
     }
     m.has_cnc = !c.cc_cores;
+    if (c.log_trace) for (unsigned k = 0; k < 64; k++) tile(k).record_trace();   // ref's logTrace: every tile's TRACE stores
     if (digest_file() && !c.cc_cores) {                  // MESHSIM_DIGEST (B25)
         Digests& d = digests();
         m.digest_seq = d.next++;
@@ -811,6 +812,33 @@ std::vector<std::array<uint64_t, 4>> TileRef::writer_log() const {
     const units::WriteEngine& we = unit<units::WriteEngine>("we");
     const auto& v = c_->impl().writer_logs[k_];
     return std::vector<std::array<uint64_t, 4>>(v.begin(), v.begin() + we.log_n);
+}
+void TileRef::record_trace() {
+    auto& v = c_->impl().trace_logs[k_];
+    v.assign(c_->cfg().trace_capacity, {});
+    units::RegBlockState& b = unit<units::TileCtl>("ctl").s;
+    b.tlog = reinterpret_cast<int64_t(*)[2]>(v.data()); b.tlog_cap = uint32_t(v.size()); b.tlog_n = 0;
+}
+std::vector<std::array<int64_t, 2>> TileRef::trace_log() const {   // as ref has it at the end of the cycle just run
+    const units::TileCtl& b = unit<units::TileCtl>("ctl");
+    const auto& v = c_->impl().trace_logs[k_];
+    std::vector<std::array<int64_t, 2>> r(v.begin(), v.begin() + b.s.tlog_n);
+    sim::PortEntry e[8];                                    // a store of the cycle just run reaches the block at its next step
+    const uint32_t n = c_->sim().observe(b.bus, e, 8).n;
+    for (uint32_t i = 0; i < n; i++)
+        if (e[i].at == uint64_t(c_->cycle()) + 1 && uint32_t(e[i].w[0] >> 32) == units::BUS_STORE && uint32_t(e[i].w[0]) == units::TRACE)
+            r.push_back({c_->cycle(), int64_t(uint32_t(e[i].w[1]))});
+    return r;
+}
+std::vector<std::string> Chip::log() const {
+    std::vector<std::array<int64_t, 3>> all;
+    for (unsigned k = 0; k < 64; k++)
+        for (const auto& e : const_cast<Chip*>(this)->tile(k).trace_log()) all.push_back({e[0], int64_t(k), e[1]});
+    std::stable_sort(all.begin(), all.end(), [](const auto& a, const auto& b) { return a[0] != b[0] ? a[0] < b[0] : a[1] < b[1]; });
+    std::vector<std::string> r;
+    char b[96];
+    for (const auto& e : all) { std::snprintf(b, sizeof b, "cycle %lld tile %lld: TRACE 0x%x", (long long)e[0], (long long)e[1], uint32_t(e[2])); r.push_back(b); }
+    return r;
 }
 void TileRef::record_gather() {
     units::Gather& g = unit<units::Gather>("gather");

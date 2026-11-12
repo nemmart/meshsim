@@ -107,3 +107,16 @@ lines).
   `tests/test_ctl_suites.cpp`): clang release, 77 passed, the log equal to ref's but for one figure in errorPath's
   printed line: "dump done at +770026", ref +770025. errorPath is the one group using both stand-ins (the ERRORS bits
   possibly a cycle early): **not matched** until W20's 9 and 10 replace them.
+- **F2. CcCoresTest reaches D33** (C&C 1's peripheral applies stores a cycle later than ref, "a UART byte's start runs
+  one cycle later"; D33 says no reference run reached it). errorPath's printed line "dump done at +770026" (ref
+  +770025, plain and shuffled) is the end of C&C 1's UART dump; every other figure and all 77 checks are equal.
+  Evidence that it is D33 and not the stand-ins: injecting the ERRORS bits a cycle later leaves every figure unchanged
+  (trapped +10, drain +4800, dump +770026). **For the integrator:** D33 is now reached by a reference run; accept the
+  figure as D33's recorded difference (the fixture line, or a masked comparison, approved), or make the UART's start
+  exact. Until then `cccores` stays PENDING in the runner and its make-check tests are off (`kCcCoresMatched`).
+- **The runner** (`run_tests.sh`): `cc-build` and `recipes-build` are steps, each `fw/build.sh --check` on its part
+  (`PARTS=cc`, `PARTS=recipes`; W23's addition to fw/build.sh: `part NAME` around each section, `cd "$FW"` after each,
+  the full build unchanged: 64 + 93 images equal, as W19's). Without the RISC-V toolchain (the runner) the step logs
+  "skipped" (no FAIL, no PENDING). The logs have no reference (toolchain output). accounting, accounting-full, s1bench
+  and ccbench were labelled P6 in the runner's PENDING lines: relabelled P5 (W23), my rows (C10, G2, G3).
+- Not in my rows but labelled P5 in the runner: riscv (C9), periph (C16), reqbus (C17, P4's list). Left as they are.

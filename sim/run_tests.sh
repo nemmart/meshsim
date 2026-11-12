@@ -61,6 +61,12 @@ step() {
   fi
 }
 pending() { echo "== $2"; echo "PENDING ($3)" | tee "results/$1.log"; }
+# W23: one part of fw/build.sh, checked against the committed images (v1.3's build_cc.sh and build_recipes.sh steps).
+# Without the RISC-V toolchain (the runner has none) the step says so: the committed images are what the suites run.
+fw_part() {
+  if command -v riscv64-unknown-elf-gcc > /dev/null; then PARTS=$1 bash fw/build.sh --check
+  else echo "fw/build.sh ($1): skipped, no riscv64-unknown-elf-gcc (the committed images are used)"; fi
+}
 
 V13=ref/meshsim/results                    # v1.3's committed logs (some stale: the oracle regenerates those)
 
@@ -81,13 +87,13 @@ pending ctrl          "control and the controller (from C)" "P5"
 pending ctrl-shuf     "shuffled child order (seed 4)" "P5"
 pending riscv         "riscv-tests rv32ui/rv32um on the controller" "P5"
 pending rdport        "read port, GATHER (Java; the C parts PENDING (phase 2))" "P4"
-pending accounting    "per-phase accounting (from C)" "P6"
+pending accounting    "per-phase accounting (from C)" "P5 (W23)"
 pending searchbench   "search steps through the read port (microbenchmark, from C)" "P6"
 pending rdport-shuf   "shuffled child order (seed 4)" "P4"
 pending agtest        "address generator read-ahead, figure 12's PTR/HIST ports" "P4"
 pending agtest-shuf   "shuffled child order (seed 4)" "P4"
-pending cc-build      "building the controllers' firmware (sw/build_cc.sh: sw/cc/cc1.c, cc23.c; WORKER14)" "v1.35: fw/build.sh (W19)"
-pending recipes-build "building the v1.2 recipes (sw/build_recipes.sh: wip/sw/recipes/, unedited)" "v1.35: fw/build.sh (W19)"
+step cc-build      2 "building the controllers' firmware (sw/build_cc.sh: sw/cc/cc1.c, cc23.c; WORKER14)" - -- fw_part cc
+step recipes-build 1 "building the v1.2 recipes (sw/build_recipes.sh: wip/sw/recipes/, unedited)" - -- fw_part recipes
 pending recipes       "the v1.2 recipes as suites, and the book's code blocks against their sources" "P5"
 pending recipes-shuf  "shuffled child order (seed 4)" "P5"
 pending cond          "the errors end to end: ERRORS, the handler's reports, the error lines, the toast pin, the reset" "P5"
@@ -99,8 +105,8 @@ pending periph        "the peripheral framework: the standard window, events, re
 pending periph-shuf   "shuffled child order (seed 4)" "P5"
 pending reqbus        "the request port, the request bus and the receive queues in the tree" "P5"
 pending reqbus-shuf   "shuffled child order (seed 4)" "P5"
-pending cccores       "C&C 1-3 as cores (Config.ccCores, WORKER14): the boot ROM's controller branch, the link, the request tree" "P5"
-pending cccores-shuf  "shuffled child order (seed 4)" "P5"
+pending cccores       "C&C 1-3 as cores (Config.ccCores, WORKER14): the boot ROM's controller branch, the link, the request tree" "P5: W23's suite_cccores, one figure off (D33; W20's ERRORS from a test)"
+pending cccores-shuf  "shuffled child order (seed 4)" "P5: W23's suite_cccores, as cccores"
 pending replay-build  "the replay controller (sw/replay/build.sh)" "v1.35: fw/build.sh (W19)"
 pending stageb        "Stage B: replay_ctl.c on a tile against Stage A, synthetic windows" "P7b"
 pending replayer      "the replayer model (v1.25): the opcode table, the ALU against vec.tsv at 821e1bd, the unit tests" "P7b"
@@ -114,10 +120,10 @@ if [ "$MODE" != quick ]; then
   pending sort-bt-kv32    "BT, forced, trace hot 10 / 10 % at 64 x 16,384, 32-bit values (a few minutes)" "P6"
   pending sort-bt-k128    "the same, 128-bit values" "P6"
   pending rdport-full     "gather 1 at full size (Java; the C parts PENDING (phase 2))" "P4"
-  pending accounting-full "per-phase accounting, full-size all-to-all from C" "P6"
+  pending accounting-full "per-phase accounting, full-size all-to-all from C" "P5 (W23)"
   pending agbench         "read-ahead measurements: ag_lookahead, zero-length groups, start to first request (a few minutes)" "P6"
-  pending s1bench         "item S1: K's margin over the write path, L = 1-4, and the table-window case (a few minutes)" "P6"
-  pending ccbench         "C&C 1-3 as cores (WORKER14): the boot and a phase against the Java model" "P6"
+  pending s1bench         "item S1: K's margin over the write path, L = 1-4, and the table-window case (a few minutes)" "P5 (W23)"
+  pending ccbench         "C&C 1-3 as cores (WORKER14): the boot and a phase against the Java model" "P5 (W23)"
   pending sweep-quick     "parameter sweep, quick (about 1 minute; 'java Sweep full' takes about 25)" "P6"
   pending ctrl-full       "the all-to-all from C on the four data sets" "P5"
   pending engine-full     "full-size all-to-alls (4 data sets) and radix sort (about 1.5 minutes)" "P4"

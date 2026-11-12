@@ -124,13 +124,12 @@ equiv periph          "the peripheral framework: the standard window, events, re
 pending periph-shuf   "shuffled child order (seed 4)" "P5 (test_tileslotconf has no shuffled run yet)"
 pending reqbus        "the request port, the request bus and the receive queues in the tree" "P4"
 pending reqbus-shuf   "shuffled child order (seed 4)" "P4"
-# cccores: log-equal (D44's mask) in the builds without the checker; this runner's suite build has it on, and the
-# error path's injected ERRORS count as a violation until W20's requests 9 and 10 replace W23's stand-ins (ctl.h).
-# Then these two lines replace the pending ones:
+# cccores: log-equal (D44's mask) once TileRef::set_errors reaches the controllers (W20: host_on is set on tiles 0-63
+# only, so C&C 2's ERRORS bit is dropped; with it set on cc1-cc3.ctl too, 77 passed, release and suite builds). Then:
 #   MASK_EXTRA=$D44_MASK step cccores      1 "C&C 1-3 as cores ..." tests/ctlsuites/cccores.log -- $S/suite_cccores -1
 #   MASK_EXTRA=$D44_MASK step cccores-shuf 1 "shuffled child order (seed 4)" tests/ctlsuites/cccores-shuf.log -- $S/suite_cccores 4
-pending cccores       "C&C 1-3 as cores (Config.ccCores, WORKER14): the boot ROM's controller branch, the link, the request tree" "P5: W20's requests 9 and 10 (the checker's build)"
-pending cccores-shuf  "shuffled child order (seed 4)" "P5: W20's requests 9 and 10 (the checker's build)"
+pending cccores       "C&C 1-3 as cores (Config.ccCores, WORKER14): the boot ROM's controller branch, the link, the request tree" "P5: W20, set_errors on a controller"
+pending cccores-shuf  "shuffled child order (seed 4)" "P5: W20, set_errors on a controller"
 step replay-build 1 "the replay controller (sw/replay/build.sh)" tests/stageb/replay-build.log -- tests/stageb/replay_build.sh
 pending stageb        "Stage B: replay_ctl.c on a tile against Stage A, synthetic windows" "P7b: the CL4 case's meshsim line waits for W20's replayer violations"
 if [ -n "${DELIVERY:-}" ]; then   # Stage B on a tracer delivery's guest windows: DELIVERY=<replay-inputs dir> (v1.3's; no such delivery on the runner: unrun, as in v1.3)

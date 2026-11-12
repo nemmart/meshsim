@@ -5,8 +5,9 @@
 `sim/ref/`) and much faster: the controller's programs, the full-size sort (20.9×), and v1.3's segment test T2 on all 128
 segments of both workloads (6.5×). **v1.35 is being frozen** (D38-D41, `sim/planning/PLAN-V135.md`): **the simulator
 and everything that runs it off Java, every capability of v1.3's Java meshsim with an equivalent, and v1.35 a
-stand-alone directory with all the source needed to build and run everything**; the offline input tools (`gold`,
-jumpmap, KeyGen, SplitSets, ConvertDelivery, SyntheticDelivery) stay Java in v1.35's own `pipeline/` folder. W18's
+stand-alone directory with all the source needed to build and run everything**; the offline input tools `gold`,
+jumpmap, KeyGen, SplitSets and `inputs/` stay Java in v1.35's own `pipeline/` folder; ConvertDelivery and
+SyntheticDelivery are C++ (`tools/delivery/`, D42-D43). W18's
 inventory (`sim/planning/V135-INVENTORY.md`) is the porting plan: rows by capability, pieces P1-P8, waves.
 
 **You are P4** (inventory rows C3, C4, C5, C6, C7, C11, C17, G1): v1.3's network, memory and engine suites (NetTest, MemTest, EngineTest, AgTest, HooksTest, SearchBench and the rest your rows name), ported onto W20's harness (`Net`, the coreless machine, the full machine). W20's machine harness and the checker's interface are on `main`; W20 finishes the checker's remaining kinds beside you.

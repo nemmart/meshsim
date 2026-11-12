@@ -5,8 +5,9 @@
 `sim/ref/`) and much faster: the controller's programs, the full-size sort (20.9×), and v1.3's segment test T2 on all 128
 segments of both workloads (6.5×). **v1.35 is being frozen** (D38-D41, `sim/planning/PLAN-V135.md`): **the simulator
 and everything that runs it off Java, every capability of v1.3's Java meshsim with an equivalent, and v1.35 a
-stand-alone directory with all the source needed to build and run everything**; the offline input tools (`gold`,
-jumpmap, KeyGen, SplitSets, ConvertDelivery, SyntheticDelivery) stay Java in v1.35's own `pipeline/` folder. W18's
+stand-alone directory with all the source needed to build and run everything**; the offline input tools `gold`,
+jumpmap, KeyGen, SplitSets and `inputs/` stay Java in v1.35's own `pipeline/` folder; ConvertDelivery and
+SyntheticDelivery are C++ (`tools/delivery/`, D42-D43). W18's
 inventory (`sim/planning/V135-INVENTORY.md`) is the porting plan: rows by capability, pieces P1-P8, waves.
 
 **You are P6** (inventory rows D1-D10, H4, H7): v1.3's sort beyond M2's p4/uniform-k128: the other key sets and sequences (kv32 and the rest), the other paths (BT, LB, TH, PLAN), shaped runs, the 64 × 2,000 catalogue, the driver, the measurement kit with its per-run CSVs, and SortSummary (D41 Q3: SortCompare too, as a generic run-comparison tool). M2's sort driver (W12's `tests/test_sort.cpp`, `sort_input.h`) and the input key sets (KeyGen and SplitSets in `pipeline/keys/`, D40) are your starting point.

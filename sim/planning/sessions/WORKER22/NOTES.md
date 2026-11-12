@@ -168,6 +168,24 @@ W22-16. **The write engine's RMW requests from the harness** (figure 12: ref's `
 queued write can be missed (mem_idle true too early) or a served one seen. `m.at(a, j)` is the fix. MemTest's mem_idle
 group passes either way (its queues never wrap while it asks).
 
+### SearchBench and EngineTest (2026-11-12)
+
+W22-17. **SearchBench needs the TRACE store log** (ref's `p.ctl.traceHook = (t, v) -> ...`: the cycle of every TRACE
+    store per tile, search.c's `mark()`), W20's step 4 (H6, `MachConfig::log_trace`, not on main yet). Everything else
+    it uses is there (Mach::boot, Cc's command/go/busy, run, word by symbol, halt_summary, the block's `dones`, the read
+    port's FIFO overflows through `Sim::fifo_overflows`); Java's `%,d`, `%.1f`, `%.2f` (HALF_UP on the shortest
+    digits, as W21's `java_2f`) are suite-side.
+- **EngineTest**: writeengine, alltoall, drift, inv6 ported (`tests/suite_engine.cpp`); localcopy, streamruns, exchange,
+  radix, lategroups and fence stop on ref's `runLocal` (W22-15). Against engine.log: **all-to-all equal** (5 lines:
+  the table, the bound, the queue peaks, agReport's late/drift figures); the rest wait on:
+  - **the write engine's stage peak** (ref's `writer.stageHighWater`, the count after a take, WriteEngine.java:109;
+    printed by the write engine group's line): a statistic the C++ write engine doesn't keep: **the owner's call**
+    (proposed as the others: under SIM_CHECKS, where ref updates it);
+  - **finding F3: the write engine's UB stop doesn't name the PTR** (src/units/write_engine.h:123): ref says "a write
+    through PTR[src 9] = chunk 0x50009 ..." (or `PTR[digit]` for mode 2), the C++ "a write through PTR = chunk
+    0x50009". EngineTest's `ub` requires "PTR[src 9]". Diagnostic text only (the FATAL path): **the owner's call**;
+  - W26: drift's "invariant 3" (AG drift) and inv6's "invariant 6" (HIST over 17 bits) aren't recorded yet.
+
 ## Progress
 
 - 2026-11-11: plan agreed; branch made. Toolchain: clang 18.1.3, gcc 13.3.0, JDK 21.0.13 (apt). clang release on
@@ -244,3 +262,6 @@ group passes either way (its queues never wrap while it asks).
 - **make check**: `tests/test_p4suites.cpp` runs net-quick, net-shuf, net-shuf2 byte for byte (debug builds; skipped in
   release, where the Fifo peaks aren't kept); clang debug 48 s, all pass. `suite_mem` builds in the timing builds as a
   stub that says it needs SIM_CHECKS (its statistics don't exist there).
+- **make check (partial, 2026-11-12)**: copies 322 equal; gcc debug 72 of 72 run tests pass (test_ctl_suites.cpp, W23's,
+  doesn't compile in gcc debug: -Werror=maybe-uninitialized inside std::function; owner told W23); gcc release 73 of
+  73; clang debug and release not finished. EngineTest pushed as work in progress (owner: nothing only in the tree).

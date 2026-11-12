@@ -2,6 +2,7 @@
 // (the values printed by ref's own Fields.java, 2026-11-10), and the header compiling with the units it names.
 #include <cstdarg>
 #include <cstdio>
+#include <optional>
 #include <string>
 
 #include "harness.h"
@@ -228,8 +229,48 @@ void controllers(int64_t seed) {
     say("  C&C 2 -> C&C 3 from %d; C&C 2's broadcast reaches %d tiles once, controllers %zu %zu %zu\n", src, reached,
         n.received(0).size(), n.received(1).size(), n.received(2).size());
 }
+std::string hxo(const std::optional<uint32_t>& v) { return v ? hx(*v) : "null"; }
+std::string qs(const std::string& r) { return r.empty() ? "null" : r; }
+void core() {
+    Net n(Net::cfg(-1));
+    mach::TileRef p = n.c.tile(13);
+    const uint32_t REG = 0xFFFFF800u;
+    std::string sb = "core:";
+    sb += " store dmem " + qs(p.store(n.c.cycle() + 1, 0x100, 0xBEEF));
+    n.step();
+    sb += "; load dmem " + hxo(p.load(n.c.cycle() + 1, 0x100, 4));
+    sb += "; PARAMS " + hxo(p.load(n.c.cycle() + 1, REG, 4)) + " STATUS " + hxo(p.load(n.c.cycle() + 1, REG + 4, 4));
+    sb += " ERRORS " + hxo(p.load(n.c.cycle() + 1, REG + 8, 4));
+    p.set_remaining(2, 7);
+    sb += "; WRITE_COUNTER_2 " + hxo(p.load(n.c.cycle() + 1, REG + 4 * 25, 4));
+    sb += "; boot ROM [1] " + hxo(p.load(n.c.cycle() + 1, 0x02000004, 4));
+    sb += "; halfword STATUS " + hxo(p.load(n.c.cycle() + 1, REG + 4, 2));
+    sb += "; PTR " + hxo(p.load(n.c.cycle() + 1, 0xFFFF0400u, 4));
+    say("%s\n", sb.c_str());
+    sb = "  stores:";
+    sb += " STATUS " + qs(p.store(n.c.cycle() + 1, REG + 4, 1));
+    sb += "; byte ROUTER_SET_W1 " + qs(p.store(n.c.cycle() + 1, REG + 4 * 13, 1, 0xFF));
+    sb += "; program " + qs(p.store(n.c.cycle() + 1, 0x01000000, 1));
+    sb += "; boot ROM " + qs(p.store(n.c.cycle() + 1, 0x02000000, 1));
+    sb += "; unmapped " + qs(p.store(n.c.cycle() + 1, 0x0F000000, 1));
+    say("%s\n", sb.c_str());
+    p.store(n.c.cycle() + 1, REG + 4 * 26, 5);
+    n.step(); n.step(); n.step();
+    sb = "  WRITE_COUNTER_3 after the store " + hxo(p.load(n.c.cycle() + 1, REG + 4 * 26, 4));
+    p.store(n.c.cycle() + 1, REG + 4 * 10, 40u << 25); n.step();
+    p.store(n.c.cycle() + 1, REG + 4 * 11, Net::cm(0x8E0)); n.step();
+    const int64_t ts = n.c.cycle() + 1;
+    p.store(ts, REG + 4 * 15, 0x1234);
+    n.step();
+    const bool ok = n.run_all(300);
+    sb += std::string("; a send ") + (ok ? "drained" : "NOT drained");
+    for (const auto& e : n.log(40)) sb += " t40@" + std::to_string(int64_t(e[0]) - ts) + ":" + hx(e[1]) + ":" + hx(e[2]);
+    sb += " dmem[0xe0] " + w(n, 40, 0xe0);
+    say("%s\n", sb.c_str());
+}
 void netself() {
     out.clear();
+    core();
     controllers(-1); controllers(3);
     packets(-1); packets(5);
     reads();
@@ -270,6 +311,26 @@ void checkself() {
     }
     {
         mach::MachConfig k = Net::cfg(-1);
+        k.check_errors = true;
+        Net n(k);
+        n.at(3, 10, 9, lw::M_WRITE, 0, 0xFF000000u, lw::SIZE_32, 0x11, 0);
+        n.at(4, 12, 12, lw::M_WRITE, 0, 0xFE000000u, lw::SIZE_32, 0x22, 0);
+        n.at(5, 30, 9, lw::M_COUNT, 1, 0, lw::SIZE_32, 0x33, 0);
+        n.at(6, 31, 9, lw::M_WRITE, 0, 0xFF000000u, lw::SIZE_32, 0x44, 0);
+        n.run_all(1000);
+        say("%s", n.c.violation_report().c_str());
+    }
+    {
+        mach::MachConfig k = Net::cfg(-1);
+        k.queue_depth = 2; k.we_in_depth = 1; k.measure_s1 = false;
+        Net n(k);
+        for (unsigned s = 20; s < 40; s++) for (unsigned i = 0; i < 4; i++)
+            n.at(s, 10 + i, 9, lw::M_WRITE, 1, uint32_t(lw::R_SRAM) << 24 | (s * 16 + 2 * i) << 2, lw::SIZE_64, s * 100 + i, 0);
+        n.run_all(2000);
+        say("%s", n.c.violation_report().c_str());
+    }
+    {
+        mach::MachConfig k = Net::cfg(-1);
         k.max_violation_messages = 3;
         Net n(k);
         for (unsigned i = 0; i < 6; i++) n.at(10 + i, 10 + i, 20, lw::M_COUNT, 0, 0, lw::SIZE_32, i, 0);
@@ -285,4 +346,21 @@ TEST(mach_checker_as_refs) {
     const std::string want = file("tests/mach/checkself.out");
     if (out != want) std::fprintf(stderr, "---- got\n%s---- want (tests/mach/checkself.out)\n%s", out.c_str(), want.c_str());
     CHECK(out == want);
+}
+
+// Cc::wait_until in W23's form (approved, 2026-11-11; no ref twin: ref checks inside C&C's cycle): the harness checks the
+// condition between cycles once C&C is at the step, and C&C moves on in the next cycle.
+TEST(mach_wait_until_releases_the_next_cycle) {
+    Mach m(Mach::cfg(-1));
+    m.boot("wfi");
+    int64_t first_true = -1, ran = -1, checks_before = 0;
+    m.c.cc().wait_until([&] {
+        const bool b = m.all_in_wfi();
+        if (!b) checks_before++;
+        if (b && first_true < 0) first_true = m.c.cycle();
+        return b;
+    }).call([&](int64_t t) { ran = t; });
+    CHECK(m.c.run_until([&] { return ran >= 0; }, 20000));
+    CHECK(first_true > m.run_at);                             // checked only once C&C reached it (after the boot's GO)
+    CHECK_EQ(ran, first_true + 1);
 }

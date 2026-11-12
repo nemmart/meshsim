@@ -32,6 +32,27 @@ Commit and push after each step; each step checked against `ref`.
    the FAIL summary, `--check` against v1.3's logs with timing masked; **BusTest** (C2) its first suite, on the
    framework's port kinds (`throwsISE` as a death check), "BusTest: 154 passed, 0 failed".
 
+## Wave 2's requests (NEXT.md, 2026-11-11): the order taken (the integrator's)
+
+1. `sim/run_tests.sh` (C0). 2. wait_until (W23, W24) and a core's loads and stores from a test (W23). 3. the replayer on
+tile 0 only with expect = 1, parked tiles and parkedUntouched, a row hook on the replayer (W25). 4. PhaseLog and the
+Config fields (W24). 5. the request bus from a test and C&C's queued soft reset (W23). 6. S1 and the checker's
+remaining kinds, interleaved as the suites ask.
+
+- **C0 done**: `sim/run_tests.sh [all|quick] [--check] [--no-build]`: v1.3's steps, logs and summary; the suites built
+  with MODE=suite; `step LOG TAIL "what" REF -- cmd` and `pending LOG "what" "who"` for each worker's lines; --check
+  compares each log with its reference, timing masked. W21's memsys, rvc and tracer run (equal under --check).
+- **wait_until and a test's loads and stores done**: `Cc::wait_until(cond)` (W23's form: CncStep::WAIT_HOST, harness-
+  only, released between cycles; C&C moves on the next cycle; test_mach checks the form); `TileRef::load(t, ea, width)`
+  (synchronous, as ref's: the memories with port B's write of the cycle just run applied, the registers as the block
+  publishes them for t, HIST) and `TileRef::store(t, ea, v, mask)` (ref's bus-error reasons synchronously; the store
+  made by the core in its step at t through the instruction's path: TileCore's host stores, harness-only). NetSelf's
+  core case (memory, PARAMS, STATUS, ERRORS, a counter, the boot ROM, the bus errors, a counter store through the bus,
+  a send through ROUTER_*) line for line. Not yet: loads with a side effect (EVENTS, REQUEST_RECEIVE), the peripheral
+  windows (fatal, asking).
+- Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
+  after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
+
 ## The owner's answers (2026-11-10)
 
 - **Q1.** The checker is a compile-time switch: on in debug and in the suite build, off in the timing builds (D6).
@@ -91,7 +112,15 @@ Commit and push after each step; each step checked against `ref`.
   (installed at every run; processed after each). Recorded so far: the injection path's six checks, the director's
   bad packet, size 11, count-only on counter 0 and read-port overlap. `oracle/ref/CheckSelf.java` (`checkself.sh`,
   fixture `tests/mach/checkself.out`): equal in the debug and suite builds (gcc, clang); the release builds skip it.
-- **Next in step 2**: the remaining kinds (the director's uncounted/boot/command checks and unexpected arrivals, the
+- **Step 2, rules**: ERRORS (invariant 15: the register blocks record their ERRORS and error line at ref's end of
+  cycle; the harness applies ref's condSeen), ref's config switches (check_errors, check_unexpected, ...), the once-only
+  rules, the report through the cycle just run (`finalize_checks`: the blocks' end-of-cycle view, so a run that stops
+  on the cycle an error lands still reports it), invariant 1 (the harness reads the router's FIFOs and the framework's
+  first overflow, `Sim::fifo_overflows`, a harness-only addition; ref's FIFO names and scan order). CheckSelf: ERRORS and
+  overflow cases line for line.
+- **Found missing in C++:** S1 (invariant 24: acceptance to the area queue, PTR and HIST write-backs, measureS1, on by
+  default in ref): the overflow case turns it off until it is built.
+- **Next in step 2**: S1; the remaining kinds (the director's uncounted/boot/command checks and unexpected arrivals, the
   register block, the controller's memories, the read port, the AG, the read queue, the write engine, big SRAM's
   disjoint buffers, HIST, the rotations, the request bus, C&C, the endpoints), ERRORS (invariant 15, condSeen), the
   overflow scan (ref's FIFO names), the config switches (check_unexpected, check_errors, ...), then reset.

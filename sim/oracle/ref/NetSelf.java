@@ -114,7 +114,48 @@ final class NetSelf {
                 n.c.ccs[0].received.size(), n.c.ccs[1].received.size(), n.c.ccs[2].received.size());
     }
 
+    static String hx(Integer v) { return v == null ? "null" : Integer.toHexString(v); }
+    static String q(String r) { return r == null ? "null" : r; }
+    static void core() {                                           // a test's loads and stores through a tile's core
+        Net n = new Net(Net.cfg(-1));
+        Tile p = n.c.tiles[13];
+        final int REG = 0xFFFFF800;
+        StringBuilder sb = new StringBuilder("core:");
+        sb.append(" store dmem ").append(q(p.core.store(n.c.cycle + 1, 0x100, 0xBEEF, -1)));
+        n.step();
+        sb.append("; load dmem ").append(hx(p.core.load(n.c.cycle + 1, 0x100, 4)));
+        sb.append("; PARAMS ").append(hx(p.core.load(n.c.cycle + 1, REG, 4))).append(" STATUS ").append(hx(p.core.load(n.c.cycle + 1, REG + 4, 4)));
+        sb.append(" ERRORS ").append(hx(p.core.load(n.c.cycle + 1, REG + 8, 4)));
+        p.dir.remaining[2] = 7;
+        sb.append("; WRITE_COUNTER_2 ").append(hx(p.core.load(n.c.cycle + 1, REG + 4 * 25, 4)));
+        sb.append("; boot ROM [1] ").append(hx(p.core.load(n.c.cycle + 1, 0x02000004, 4)));
+        sb.append("; halfword STATUS ").append(hx(p.core.load(n.c.cycle + 1, REG + 4, 2)));
+        sb.append("; PTR ").append(hx(p.core.load(n.c.cycle + 1, 0xFFFF0400, 4)));
+        System.out.println(sb);
+        sb = new StringBuilder("  stores:");
+        sb.append(" STATUS ").append(q(p.core.store(n.c.cycle + 1, REG + 4, 1, -1)));
+        sb.append("; byte ROUTER_SET_W1 ").append(q(p.core.store(n.c.cycle + 1, REG + 4 * 13, 1, 0xFF)));
+        sb.append("; program ").append(q(p.core.store(n.c.cycle + 1, 0x01000000, 1, -1)));
+        sb.append("; boot ROM ").append(q(p.core.store(n.c.cycle + 1, 0x02000000, 1, -1)));
+        sb.append("; unmapped ").append(q(p.core.store(n.c.cycle + 1, 0x0F000000, 1, -1)));
+        System.out.println(sb);
+        p.core.store(n.c.cycle + 1, REG + 4 * 26, 5, -1);       // WRITE_COUNTER_3 through the bus
+        n.step(); n.step(); n.step();
+        sb = new StringBuilder("  WRITE_COUNTER_3 after the store ").append(hx(p.core.load(n.c.cycle + 1, REG + 4 * 26, 4)));
+        p.core.store(n.c.cycle + 1, REG + 4 * 10, 40 << 25, -1); n.step();   // ROUTER_HDR: dst 40, mode 0, counter 0
+        p.core.store(n.c.cycle + 1, REG + 4 * 11, Net.cm(0x8E0), -1); n.step();   // ROUTER_ADDR
+        long ts = n.c.cycle + 1;
+        p.core.store(ts, REG + 4 * 15, 0x1234, -1);               // ROUTER_SEND_32
+        n.step();
+        boolean ok = n.runAll(300);
+        sb.append("; a send ").append(ok ? "drained" : "NOT drained");
+        for (long[] e : n.log(40)) sb.append(String.format(" t40@%d:%s:%s", e[0] - ts, hex(e[1]), hex(e[2])));
+        sb.append(" dmem[0xe0] ").append(w(n, 40, 0xe0));
+        System.out.println(sb);
+    }
+
     public static void main(String[] a) {
+        core();
         controllers(-1);
         controllers(3);
         packets(-1);

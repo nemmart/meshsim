@@ -39,6 +39,7 @@
 #include <type_traits>
 
 #include "config.h"
+#include "check.h"
 #include "sim.h"
 #include "units/chip.h"
 #include "units/director.h"
@@ -98,6 +99,11 @@ struct TileCtl {
     };
     bool host_on = false;
     HostWrites host;
+    // W20 (P2): the checker's facts (src/check.h): the ERRORS value and the error line as ref has them at the end of a
+    // cycle (invariant 15). `ck_tile` is set by the harness (its unit number); -1 records nothing.
+    int ck_tile = -1;
+    uint32_t ck_errors = 0;
+    bool ck_line = false;
     void apply_host() {
         if (host.mask & HostWrites::DMA_CONFIG) s.dma_config = host.dma_config;
         if (host.mask & HostWrites::RECORD_BASE) s.record_base = host.record_base;
@@ -162,6 +168,13 @@ struct TileCtl {
         if (slot) s.slot_live = c.read(slot_win, Win::R_LIVE);   // W15: liveEvents(t), liveErrors(t), as ref's view at t
         s.end_cycle(c.now() - 1, in);
         if (host_on && host.mask) apply_host();                // W20 (harness-only)
+        if constexpr (sim::check::kOn) {                       // W20: the checker's facts (invariant 15)
+            if (ck_tile >= 0) {
+                const uint32_t v = s.conditions | s.live_errors();
+                if (v != ck_errors) { ck_errors = v; sim::check::record(c.now() - 1, ck_tile, sim::check::Kind::ERRORS_SET, v); }
+                if (s.error_line != ck_line) { ck_line = s.error_line; sim::check::record(c.now() - 1, ck_tile, sim::check::Kind::ERROR_LINE, ck_line); }
+            }
+        }
         if (g4) c.drive(ag_start, s.dma_starts);
         // only the registers that changed (W12, D31): the same register file, without 33 writes a step
         for (uint64_t m = s.publish(pub); m; m &= m - 1) { const unsigned r = unsigned(__builtin_ctzll(m)); c.write(regs, r, pub[r]); }
@@ -392,14 +405,37 @@ struct TileCore {
             return c.read(u.hist, i);
         }
     };
+    // W20 (harness-only; P2): ref's Controller.store(t, ...) from a test (sim/tests/mach.h, TileRef::store): a store
+    // made in the core's step at t, before its own instruction, through the same path as an instruction's.
+    struct HostStore { uint64_t t; uint32_t ea, v, mask; };
+    static constexpr unsigned kHostStores = 16;
+    HostStore host_st[kHostStores] = {};
+    uint32_t host_n = 0;
     sim::Wake step(sim::Ctx& c) {
         if (c.ready(port_b)) {
             if (rv.stop == Stop::running) apply_port_b(c.peek(port_b));
             c.take(port_b);
         }
+        if (host_n) {                                         // W20 (harness-only)
+            Env e{c, *this};
+            uint32_t k = 0;
+            for (uint32_t i = 0; i < host_n; i++) {
+                const HostStore& h = host_st[i];
+                if (h.t < c.now()) FATAL("tile core: a test's store for cycle %llu not made (the core wasn't stepped)", (unsigned long long)h.t);
+                if (h.t == c.now()) rv.store(e, h.t, h.ea, h.v, h.mask, rv.pc);
+                else host_st[k++] = h;
+            }
+            host_n = k;
+            if (host_n) {                                     // the next one's cycle
+                uint64_t at = host_st[0].t;
+                for (uint32_t i = 1; i < host_n; i++) at = host_st[i].t < at ? host_st[i].t : at;
+                if (coreless) return sim::Wake::at_cycle(at);
+            }
+        }
         if (coreless) return sim::Wake::none();              // W20 (harness-only)
         Env e{c, *this};
         uint64_t next = rv.step(e, c.now());
+        for (uint32_t i = 0; i < host_n; i++) if (host_st[i].t < next) next = host_st[i].t;   // W20 (harness-only)
         return next == Rv32::kNever ? sim::Wake::none() : sim::Wake::at_cycle(next);
     }
     uint64_t digest() const { return digest_mix(rv.digest(), rv.pending_t ^ rv.send_w[0] ^ rv.send_w[1] << 1 ^ rv.send_w[2] << 2); }

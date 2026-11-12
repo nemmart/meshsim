@@ -110,11 +110,18 @@ struct Chip::Impl {
     uint8_t skew[64] = {};
     std::unique_ptr<Cc> cc;
     std::unique_ptr<Checker> checker;                    // ref's violations (src/check.h; on with SIM_CHECKS)
+    // ref's hardware FIFOs for invariant 1 (Tile.hardwareFifos, then C&C's receive FIFOs), in ref's scan order
+    struct Hw { int tile; units::Router* router; unsigned q; const sim::FifoIn* in; bool reported; };
+    std::vector<Hw> hw;
+    void collect_overflows();
     int64_t last_run_at = -1;
     // C&C's CALL steps run between cycles (Cc::call): id -> the harness's function, run after the cycle it ran in
     struct Call { uint32_t id; std::function<void(int64_t)> fn; };
     std::vector<Call> calls;
     std::vector<uint32_t> free_ids;
+    struct Wait { uint32_t step; std::function<bool()> cond; };   // Cc::wait_until's, in order
+    std::vector<Wait> waits;
+    void check_waits();
     // Net (the coreless machine fed from the harness): each tile's feed (inject.h's HarnessFeed, harness-only) and the
     // rings' storage (grown between cycles, the feed's pointers refreshed), and the directors' logs (fixed size)
     using E4 = std::array<uint64_t, 4>;
@@ -201,7 +208,33 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     }
     m.shifted = {m.sim->type_of(units::tile_unit(0, "ctl")), m.sim->type_of(units::tile_unit(0, "core"))};
     if (!c.cc_cores) m.lines = {m.sim->type_of("row0"), m.sim->type_of("cnc")};
-    m.checker = std::make_unique<Checker>(sim::check::kOn ? c.check_capacity : 0, c.max_violation_messages);
+    CheckSwitches sw;
+    sw.errors = c.check_errors; sw.unexpected = c.check_unexpected; sw.read_port_overlap = c.check_read_port_overlap;
+    sw.command_read = c.check_command_read; sw.strict_replies = c.strict_replies; sw.K = c.K;
+    m.checker = std::make_unique<Checker>(sim::check::kOn ? c.check_capacity : 0, c.max_violation_messages, sw);
+    for (unsigned k = 0; k < m.nunits; k++) m.sim->unit<units::TileCtl>(units::unit_prefix(k) + "ctl").ck_tile = int(k);
+    if (sim::check::kOn) {                                // ref's FIFO names (Router, Tile, Endpoint)
+        static const char* const kOutName[6] = {"to-right", "to-left", "to-down", "to-up", "eject", "to-cnc"};
+        static const char* const kPortName[6] = {"from-left", "from-right", "from-up", "from-down", "loopback", "from-cnc"};
+        for (unsigned k = 0; k < 64; k++) {
+            units::Router& r = m.sim->unit<units::Router>(units::tile_unit(k, "router"));
+            const std::string t = "t" + std::to_string(k) + ".";
+            for (unsigned o = 0; o < units::Router::kOut; o++)
+                for (unsigned f = 0; f < r.nfeed[o]; f++) {
+                    m.hw.push_back({int(k), &r, r.first[o] + f, nullptr, false});
+                    m.checker->fifo_names.push_back(t + kOutName[o] + "<" + kPortName[r.feed[o][f]]);
+                }
+            m.hw.push_back({int(k), nullptr, 0, &m.sim->unit<units::WriteEngine>(units::tile_unit(k, "we")).in, false});
+            m.checker->fifo_names.push_back(t + "we-in");
+            m.hw.push_back({int(k), nullptr, 0, &m.sim->unit<units::Gather>(units::tile_unit(k, "gather")).in, false});
+            m.checker->fifo_names.push_back(t + "gather-q");
+        }
+        if (!c.cc_cores) {
+            m.hw.push_back({-1, nullptr, 0, &m.sim->unit<units::Cnc>("cnc").rx, false}); m.checker->fifo_names.push_back("cc1.rx");
+            m.hw.push_back({-1, nullptr, 0, &m.sim->unit<units::Endpoint>("ep2").rx, false}); m.checker->fifo_names.push_back("cc2.rx");
+            m.hw.push_back({-1, nullptr, 0, &m.sim->unit<units::Endpoint>("ep3").rx, false}); m.checker->fifo_names.push_back("cc3.rx");
+        }
+    }
     m.has_cnc = !c.cc_cores;
     if (!c.cc_cores) m.cc = std::make_unique<Cc>(*this);
     for (uint32_t id = units::CncProgram::kCalls; id-- > 0;) m.free_ids.push_back(id);
@@ -212,6 +245,22 @@ Chip::~Chip() { if (impl_ && impl_->checker) impl_->checker->uninstall(); }
 sim::Sim& Chip::sim() { return *impl_->sim; }
 void Chip::touched(const std::string& name) { impl_->sim->wake(name); }
 int64_t Chip::cycle() const { return int64_t(impl_->sim->now()) - 1; }
+
+// Invariant 1's facts: every hardware FIFO that has overflowed since the last look, at its first overflow's put cycle
+// (ref's overflowCycle), once per FIFO (ref's reportedOverflows), before the facts are processed.
+void Chip::Impl::collect_overflows() {
+    if (!sim::check::kOn) return;
+    for (size_t i = 0; i < hw.size(); i++) {
+        Hw& h = hw[i];
+        if (h.reported) continue;
+        uint64_t n = 0, first = 0;
+        if (h.router) { n = h.router->q[h.q].overflows; first = h.router->q[h.q].first_overflow; }
+        else { sim::Cycle f = 0; n = sim->fifo_overflows(*h.in, &f); first = f; }
+        if (!n) continue;
+        h.reported = true;
+        checker->add({first, h.tile, sim::check::Kind::FIFO_OVERFLOW, 0, {uint64_t(i), 0, 0, 0}});
+    }
+}
 
 void Chip::Impl::run_calls() {
     units::Cnc* c = cnc();
@@ -227,15 +276,32 @@ void Chip::Impl::run_calls() {
     }
 }
 
+// Cc::wait_until: the first pending wait, once C&C is at its step, released when its condition holds (between cycles)
+void Chip::Impl::check_waits() {
+    if (waits.empty()) return;
+    units::Cnc* c = cnc();
+    if (!c || c->cur != waits.front().step || !waits.front().cond()) return;
+    c->host_released++;
+    waits.erase(waits.begin());
+    sim->wake("cnc");
+}
+
 void Chip::step() {
     impl_->checker->install();
     impl_->sim->run(1);
+    impl_->collect_overflows();
     impl_->checker->process(cycle(), false);
     impl_->run_calls();
+    impl_->check_waits();
 }
 void Chip::run(uint64_t n) {
     impl_->sim->wake_all();
-    if (impl_->calls.empty()) { impl_->checker->install(); impl_->sim->run(n); impl_->checker->process(cycle(), false); }
+    if (impl_->calls.empty() && impl_->waits.empty()) {
+        impl_->checker->install();
+        impl_->sim->run(n);
+        impl_->collect_overflows();
+        impl_->checker->process(cycle(), false);
+    }
     else for (uint64_t i = 0; i < n; i++) step();
     scan_overflows();
 }
@@ -302,12 +368,30 @@ void Chip::host_command(unsigned c, uint32_t word, const std::vector<uint32_t>& 
 }
 
 // ---- the checker (checker.cpp): ref's Chip.violations, violationMessages, violationReport, scanOverflows ----
-uint64_t Chip::violations() const { return impl_->checker->violations(); }
-const std::vector<std::string>& Chip::violation_messages() const { return impl_->checker->messages(); }
-void Chip::clear_violation_messages() { impl_->checker->clear_messages(); }
-void Chip::scan_overflows() { impl_->checker->process(cycle(), true); }
+// The report through the cycle just run: the register blocks' ERRORS and error lines as ref has them at its end (their
+// own facts for it come at their next step: block_at_end now; the duplicates later are harmless, the rule is
+// idempotent), then every fact through it.
+void Chip::finalize_checks() const {
+    if (!sim::check::kOn) return;
+    Chip& me = const_cast<Chip&>(*this);
+    Checker& ck = *impl_->checker;
+    for (unsigned k = 0; k < 64; k++) {
+        const units::RegBlockState b = me.tile(k).block();
+        const uint32_t v = b.conditions | b.live_errors();
+        sim::check::Fact f{uint64_t(cycle()), int32_t(k), sim::check::Kind::ERRORS_SET, 0, {v, 0, 0, 0}};
+        ck.add(f);
+        f.kind = sim::check::Kind::ERROR_LINE; f.a[0] = b.error_line;
+        ck.add(f);
+    }
+    ck.process(cycle(), false, true);
+}
+uint64_t Chip::violations() const { finalize_checks(); return impl_->checker->violations(); }
+const std::vector<std::string>& Chip::violation_messages() const { finalize_checks(); return impl_->checker->messages(); }
+void Chip::clear_violation_messages() { finalize_checks(); impl_->checker->clear_messages(); }
+void Chip::scan_overflows() { impl_->collect_overflows(); impl_->checker->process(cycle(), true); }
 std::string Chip::violation_report() {
     scan_overflows();
+    finalize_checks();
     std::string sb = "violations: " + std::to_string(violations()) + "\n";
     for (const std::string& s : violation_messages()) sb += "  " + s + "\n";
     return sb;
@@ -336,11 +420,29 @@ uint32_t* local(Chip::Impl& m, unsigned k, uint32_t a) {
     return (region == 1 ? m.imem(k) : m.dmem(k)) + off;
 }
 }  // namespace
-uint32_t TileRef::peek_local(uint32_t a) const { return *local(c_->impl(), k_, a); }
+// A word of the controller's memory as ref has it at the end of the cycle just run: port B's write of that cycle
+// reaches the C++ core at its next step (Link(cm_latency + 1)), so it is applied here over what the memory holds.
+uint32_t TileRef::peek_local(uint32_t a) const {
+    uint32_t v = *local(c_->impl(), k_, a);
+    const units::TileCore& core = unit<units::TileCore>("core");
+    if (core.rv.stop != units::Stop::running) return v;
+    sim::PortEntry e[8];
+    const uint32_t n = c_->sim().observe(core.port_b, e, 8).n;
+    for (uint32_t i = 0; i < n; i++) {
+        if (e[i].at != uint64_t(c_->cycle()) + 1) continue;
+        const uint64_t h = e[i].w[1];
+        const uint32_t pa = units::lw::addr(h), cnt = units::lw::chunks(units::lw::size(h));
+        if ((units::lw::region(pa) == units::lw::R_DMEM) != ((a >> 24) == 0)) continue;
+        const uint32_t w0 = (units::lw::offset(pa) & (units::MEM_BYTES - 1)) >> 2, w = (a & 0xFFFFFF) >> 2;
+        for (uint32_t j = 0; j < cnt; j++)
+            if (((w0 + j) & (units::MEM_WORDS - 1)) == w) v = uint32_t((j < 2 ? e[i].w[0] : e[i].w[2]) >> (32 * (j & 1)));
+    }
+    return v;
+}
 void TileRef::poke_local(uint32_t a, uint32_t v) { *local(c_->impl(), k_, a) = v; c_->touched(un(k_, "core")); }
 uint32_t TileRef::dmem(uint32_t w) const {
     if (w >= units::MEM_WORDS) FATAL("mach: tile %u: dmem[%u] past its %u words", k_, w, units::MEM_WORDS);
-    return c_->impl().dmem(k_)[w];
+    return peek_local(4 * w);
 }
 
 uint32_t TileRef::pc() const { return c_->unit<units::TileCore>(un(k_, "core")).rv.pc; }
@@ -356,6 +458,56 @@ std::string TileRef::halt_report() const {
     char b[160];
     std::snprintf(b, sizeof b, "tile %u: %s at pc=0x%x", k_, r.halt >= 0 && r.halt <= 8 ? kName[r.halt] : "?", r.pc);
     return b;   // ref's report adds the halting instruction (and a bus error's address): not kept by the C++ core yet
+}
+
+// ---- a test's loads and stores through the core (ref's Controller.load, store) ----
+namespace {
+// The Env Rv32::load reads through, between cycles: the registers as the block publishes them for t (its end of
+// t - 1, block_at_end), HIST as stored.
+struct LoadEnv {
+    const units::RegBlockState& b;
+    const units::HistStore& h;
+    uint32_t reg(unsigned r) const { return b.reg(r); }
+    uint32_t hist(uint32_t i) const { return h.m.hist[i & 255]; }
+    void post(uint32_t, uint32_t, uint32_t) const {
+        FATAL("mach: a test's load with a side effect (EVENTS, REQUEST_RECEIVE): not modelled yet (ask W20)");
+    }
+};
+}  // namespace
+std::optional<uint32_t> TileRef::load(int64_t t, uint32_t ea, unsigned width) const {
+    if (t != c_->cycle() + 1) FATAL("mach: tile %u: a test's load at cycle %lld, not the next (%lld)", k_, (long long)t, (long long)c_->cycle() + 1);
+    const uint32_t region = units::lw::region(ea & ~3u);
+    if (region == units::lw::R_DMEM || region == units::lw::R_PMEM)   // the memories as ref has them (port B's last write)
+        return peek_local(region << 24 | (((units::lw::offset(ea & ~3u)) & (units::MEM_BYTES - 1))));
+    units::TileCore& core = unit<units::TileCore>("core");
+    const units::RegBlockState b = block();
+    LoadEnv e{b, unit<units::HistStore>("hist")};
+    uint32_t v = 0;
+    if (!core.rv.load(e, ea, width, v)) return std::nullopt;
+    return v;
+}
+std::string TileRef::store(int64_t t, uint32_t ea, uint32_t v, uint32_t mask) {
+    namespace lw = units::lw;
+    if (t <= c_->cycle()) FATAL("mach: tile %u: a test's store at cycle %lld, already run", k_, (long long)t);
+    units::TileCore& core = unit<units::TileCore>("core");
+    const units::Rv32& r = core.rv;
+    const uint32_t a = ea & ~3u;                            // ref's reasons, in ref's order (Controller.store)
+    const unsigned region = lw::region(a);
+    if (region == lw::R_PMEM) return "store to program memory";
+    if (region == lw::R_BOOTROM) return "store to the boot ROM";
+    if (units::in_tables(a) && mask != 0xFFFFFFFFu) return "sub-word store to the table window";
+    if (units::in_regs(a)) {
+        if (mask != 0xFFFFFFFFu) return "sub-word store to a register";
+        if (const unsigned n = units::window_of(a)) { if (!r.window_present(n)) return "store to an absent peripheral's window"; }
+        else {
+            const units::RegInfo& ri = units::reg_info((a - units::REG_BASE) >> 2);
+            if (ri.store == units::A_NONE && ri.load != units::A_NONE) return "store to a read-only register";
+        }
+    } else if (region != lw::R_DMEM && !units::in_tables(a)) return "store to an unmapped address";
+    if (core.host_n == units::TileCore::kHostStores) FATAL("mach: tile %u: more than %u test stores pending", k_, units::TileCore::kHostStores);
+    core.host_st[core.host_n++] = {uint64_t(t), ea, v, mask};
+    c_->touched(un(k_, "core"));
+    return "";
 }
 
 // ---- the table stores (back doors: ref's TableStore.poke / peek in its index spaces, HIST's) ----
@@ -506,6 +658,14 @@ Cc& Cc::call(std::function<void(int64_t)> fn) {
     m.prog.call(id);
     m.calls.push_back({id, std::move(fn)});
     publish(*c_);
+    return *this;
+}
+Cc& Cc::wait_until(std::function<bool()> cond) {
+    Chip::Impl& m = c_->impl();
+    m.waits.push_back({uint32_t(m.prog.steps.size()), std::move(cond)});
+    m.prog.wait_host();
+    publish(*c_);
+    c_->impl().check_waits();                              // C&C may be there already (between cycles: ref checks at once)
     return *this;
 }
 Cc& Cc::at_all_ready(std::function<void(int64_t)> fn) {

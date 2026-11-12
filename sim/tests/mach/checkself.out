@@ -419,6 +419,25 @@ violations: 4
   cycle 65: C&C's receive FIFO was full: a packet for C&C was lost (6.6)
   cycle 66: C&C's receive FIFO was full: a packet for C&C was lost (6.6)
 violations: 0
+violations: 7
+  cycle 23 tile 9: SRAM_RD_ADDR_QUEUE store with no free entry: read of 0x6e dropped, ERRORS [7] (4.3; invariant 8)
+  cycle 24 tile 9: SRAM_RD_ADDR_QUEUE store with no free entry: read of 0x70 dropped, ERRORS [7] (4.3; invariant 8)
+  cycle 25 tile 9: SRAM_RD_ADDR_QUEUE store with no free entry: read of 0x72 dropped, ERRORS [7] (4.3; invariant 8)
+  cycle 26 tile 9: SRAM_RD_ADDR_QUEUE store with no free entry: read of 0x74 dropped, ERRORS [7] (4.3; invariant 8)
+  cycle 27 tile 9: SRAM_RD_ADDR_QUEUE store with no free entry: read of 0x76 dropped, ERRORS [7] (4.3; invariant 8)
+  cycle 30 tile 9: SRAM_RD_ADDR_QUEUE store with no free entry: read of 0x7c dropped, ERRORS [7] (4.3; invariant 8)
+  cycle 31 tile 9: SRAM_RD_ADDR_QUEUE store with no free entry: read of 0x7e dropped, ERRORS [7] (4.3; invariant 8)
+violations: 8
+  cycle 4 tile 9: stream with read size 11, undefined (3.1, 4.2)
+  cycle 5 tile 9: mode-3 stream with read size 128: its packets are bad packets (3.1, 4.2)
+  cycle 6 tile 9: mode-0 stream whose destination address 0x104 is not aligned to its read size: its packets are bad packets (3.1, 4.2; invariant 20)
+  cycle 7 tile 9: stream whose source chunk 0x101 is not aligned to its read size: its reads are not performed (4.1, 4.2; invariant 20)
+  cycle 8 tile 9: stream with d = 70 (4.2: 67-125 name no endpoint, 127 is invalid; invariant 17)
+  cycle 9 tile 9: stream with d = 126 (the broadcast) on mesh tile 9 (4.2, D41 F14: only the controllers broadcast from streams; invariant 17)
+  cycle 10 tile 9: mode-4 stream with d = 5 (4.2: a gather stream goes to the tile itself, d = 0; invariant 10)
+  cycle 11 tile 9: count-only stream on counter 0: it does nothing (3.1; invariant 21)
+violations: 1
+  cycle 28 tile 9: a counter exceeded 17 bits (invariant 6)
 violations: 12
   cycle 10 tile 10: count-only packet on counter 0 sent: it does nothing (3.1, invariant 21): src=0 dst=20 mode=5(count-only) ctr=0 addr=0x00000000 size=32 payload=0x00000000
   cycle 11 tile 11: count-only packet on counter 0 sent: it does nothing (3.1, invariant 21): src=0 dst=20 mode=5(count-only) ctr=0 addr=0x00000000 size=32 payload=0x00000001

@@ -404,10 +404,19 @@ struct TileCore {
         bool read_port(uint64_t, uint32_t chunk) {
             const uint32_t setup = c.read(u.regs, SRAM_RD_DEST_ADDR);
             const unsigned size = setup >> 17 & 3, ctr = setup >> 19 & 7;
-            if (size == lw::SIZE_UNDEF) u.rp_violations++;
-            if (int32_t(rp_free()) <= 0) { u.rp_dropped++; u.rp_violations++; return false; }
+            namespace ck = sim::check;                   // W26: ReadPort.store's checks as chip facts (at the store's t)
+            const int tile = u.rv.ck_tile;
+            if (size == lw::SIZE_UNDEF) { u.rp_violations++; if (tile >= 0) ck::record(c.now(), tile, ck::Kind::RP_SIZE_UNDEF); }
+            if (int32_t(rp_free()) <= 0) {
+                u.rp_dropped++; u.rp_violations++;
+                if (tile >= 0) ck::record(c.now(), tile, ck::Kind::RP_QUEUE_FULL, chunk);   // invariant 8 (ERRORS [7])
+                return false;
+            }
             const uint32_t a = uint32_t(lw::R_DMEM) << 24 | (setup & 0x1FFFF);
-            if (!lw::aligned(a, size)) u.rp_violations++;            // its result is a bad packet (invariant 20)
+            if (!lw::aligned(a, size)) {                 // its result is a bad packet (invariant 20)
+                u.rp_violations++;
+                if (tile >= 0) ck::record(c.now(), tile, ck::Kind::RP_DEST_ALIGN, a);
+            }
             c.put(u.rd_port, mem::req_a(chunk, size, lw::M_WRITE, ctr, u.rp_tile), mem::req_b(a));
             u.rp_stored++;
             c.inc(u.rp_stores);

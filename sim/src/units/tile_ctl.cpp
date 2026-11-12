@@ -54,6 +54,7 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     auto& ga = cfg.add<Gather>(t + "gather", g.gather_depth, k, true);
     auto& ts = cfg.add<TableStore>(t + "ts", true, sim::check::kOn);   // W26: the busy Wires under SIM_CHECKS (the checker)
     auto& hs = cfg.add<HistStore>(t + "hist", sim::check::kOn);
+    hs.ck_tile = int(k);                                  // W26: invariant 6's fact
     SramConfig sc;
     sc.mem_chunks = g.cfg.mem_chunks; sc.area_queue_depth = g.cfg.area_queue_depth;
     sc.write_combining = g.cfg.write_combining; sc.fifo_count_before_pop = g.cfg.fifo_count_before_pop;

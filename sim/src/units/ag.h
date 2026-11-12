@@ -305,7 +305,10 @@ struct AddrGen {
                 if (g_r == 0) { zero_groups++; if (g_gap > 0) zero_groups_with_gap++; next_group(rcount); return; }
             }
             const int64_t late_by = t - rot_sched;
-            if (late_by > 0) { rotations_late++; max_rot_late = std::max(max_rot_late, uint64_t(late_by)); }
+            if (late_by > 0) {
+                rotations_late++; max_rot_late = std::max(max_rot_late, uint64_t(late_by));
+                sim::check::record(uint64_t(t), int(me), sim::check::Kind::ROTATION_LATE, runs);   // W26: invariant 3 (reported once a run)
+            }
             in_rot = true; v = 0; rotations++;
         }
         if (sq_buf == 0) {                                               // underrun: the visit waits, the timetable moves
@@ -337,14 +340,16 @@ struct AddrGen {
         const uint32_t m = s_mode(e1), z = s_size(e1), d = s_d(e1), ctr = s_counter(e1);
         if (m == lw::M_GATHER && !gather_checked) { gather_checked = true; gather_alignment(c, t); }
         if (m >= lw::M_RSVD6) FATAL("address generator (tile %u), cycle %lld: a stream in the reserved mode %u (3.1: modes 6-7; DECISIONS-v1.25 s8e): UB", me, (long long)t, m);
-        if (z == lw::SIZE_UNDEF) size_violations++;
-        if (m == lw::M_AUG && z == lw::SIZE_128) aug128_violations++;
-        if (m == lw::M_WRITE && !aligned_bytes(s_dest(e0), z)) align_violations++;
-        if (!aligned_chunks(s_src(e0), z)) align_violations++;
-        if (d > 66 && d != 126) dest_violations++;                      // CC3 = 66, BROADCAST = 126
-        else if (d == 126 && me < 64) dest_violations++;
-        if (m == lw::M_GATHER && d != 0) dest_violations++;
-        if (m == lw::M_COUNT && ctr == 0) mode_violations++;
+        namespace ck = sim::check;                                       // W26: each check's fact (checkEntry's texts)
+        const uint64_t T = uint64_t(t);
+        if (z == lw::SIZE_UNDEF) { size_violations++; ck::record(T, int(me), ck::Kind::AG_SIZE_UNDEF); }
+        if (m == lw::M_AUG && z == lw::SIZE_128) { aug128_violations++; ck::record(T, int(me), ck::Kind::AG_AUG128); }
+        if (m == lw::M_WRITE && !aligned_bytes(s_dest(e0), z)) { align_violations++; ck::record(T, int(me), ck::Kind::AG_DEST_ALIGN, s_dest(e0), z); }
+        if (!aligned_chunks(s_src(e0), z)) { align_violations++; ck::record(T, int(me), ck::Kind::AG_SRC_ALIGN, s_src(e0), z); }
+        if (d > 66 && d != 126) { dest_violations++; ck::record(T, int(me), ck::Kind::AG_DEST_ENDPOINT, d); }   // CC3 = 66, BROADCAST = 126
+        else if (d == 126 && me < 64) { dest_violations++; ck::record(T, int(me), ck::Kind::AG_BROADCAST_ON_TILE, me); }
+        if (m == lw::M_GATHER && d != 0) { dest_violations++; ck::record(T, int(me), ck::Kind::AG_GATHER_DEST, d); }
+        if (m == lw::M_COUNT && ctr == 0) { mode_violations++; ck::record(T, int(me), ck::Kind::AG_COUNT_CTR0); }
     }
     static bool aligned_bytes(uint32_t addr, uint32_t size) { return size == lw::SIZE_UNDEF || (addr & ((4u << size) - 1)) == 0; }
     static bool aligned_chunks(uint32_t chunk, uint32_t size) { return size == lw::SIZE_UNDEF || (chunk & ((1u << size) - 1)) == 0; }

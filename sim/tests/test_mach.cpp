@@ -707,6 +707,43 @@ void checkself() {
         m.c.run_until([&] { return m.c.all_stopped(); }, 20000);
         say("%s", m.c.violation_report().c_str());
     }
+    {   // W26: the read port: stores into a full queue (invariant 8)
+        mach::MachConfig k = Net::cfg(-1);
+        k.read_port_depth = 2;
+        Net n(k);
+        while (n.c.cycle() < 19) n.step();
+        for (int64_t t = 20; t < 32; t++) {
+            if (t == 20) n.c.tile(9).store(t, 0xFFFFF880u, (1u << 17) | (2u << 19) | 0x100);
+            else n.c.tile(9).store(t, 0xFFFFF87Cu, uint32_t(0x40 + 2 * t));
+            n.step();
+        }
+        n.run_all(1000);
+        say("%s", n.c.violation_report().c_str());
+    }
+    {   // W26: the AG's stream-entry checks (checkEntry): eight streams of count 0 on tile 9
+        Net n(Net::cfg(-1));
+        n.c.tile(9).set_stream(0, stream_src(0x100), 0x0, stream_count(0, 3, 1, 0, 9));
+        n.c.tile(9).set_stream(1, stream_src(0x100), 0x0, stream_count(0, 2, 1, 3, 9));
+        n.c.tile(9).set_stream(2, stream_src(0x100), 0x104, stream_count(0, 1, 1, 0, 9));
+        n.c.tile(9).set_stream(3, stream_src(0x101), 0x0, stream_count(0, 1, 1, 0, 9));
+        n.c.tile(9).set_stream(4, stream_src(0x100), 0x0, stream_count(0, 0, 1, 0, 70));
+        n.c.tile(9).set_stream(5, stream_src(0x100), 0x0, stream_count(0, 0, 1, 0, 126));
+        n.c.tile(9).set_stream(6, stream_src(0x100), 0x0, stream_count(0, 0, 1, 4, 5));
+        n.c.tile(9).set_stream(7, stream_src(0x100), 0x0, stream_count(0, 0, 0, 5, 9));
+        n.c.tile(9).set_master_config(master_config(RUN_STREAMS, 0, 8, 0, 0, 1));
+        n.c.tile(9).pulse(PULSE_START);
+        n.c.run(200);
+        say("%s", n.c.violation_report().c_str());
+    }
+    {   // W26: invariant 6: HIST counts past 17 bits, reported once a tile
+        Net n(Net::cfg(-1));
+        n.c.tile(9).set_master_config(master_config(0, 0, 0, 0, 1, 1));
+        for (unsigned i = 0; i < 256; i++) n.c.tile(9).hist_poke(i, 0x1FFFF);
+        n.c.tile(9).set_remaining(1, 8);
+        for (unsigned i = 0; i < 4; i++) n.at(12 + i, 10 + 3 * i, 9, lw::M_SRC, 1, 0, lw::SIZE_64, 0x0101ull * (i + 1), 0);
+        n.run_all(1000);
+        say("%s", n.c.violation_report().c_str());
+    }
     {
         mach::MachConfig k = Net::cfg(-1);
         k.max_violation_messages = 3;

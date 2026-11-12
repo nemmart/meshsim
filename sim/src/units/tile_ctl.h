@@ -473,7 +473,7 @@ struct TileCore {
     // W20 (harness-only; P2): ref's Controller.store(t, ...) from a test (sim/tests/mach.h, TileRef::store): a store
     // made in the core's step at t, before its own instruction, through the same path as an instruction's.
     struct HostStore { uint64_t t; uint32_t ea, v, mask; };
-    static constexpr unsigned kHostStores = 16;
+    static constexpr unsigned kHostStores = 128;   // (W23's RegDocTest: every reserved word and read-only register in one cycle)
     HostStore host_st[kHostStores] = {};
     uint32_t host_n = 0;
     // W20 (harness-only): ref's Tile.sendHold.put(t, ...) from a test for a later cycle: put on the send Hold in the
@@ -645,6 +645,8 @@ struct G1Config {
     bool cc3_tracer = false;           // W16 (M3): C&C 3's peripheral 1 the Tracer (ref's cc3Tracer), else the stub
     unsigned replayer_log_entries = 256;   // the replayer's log queues (ref's -Dreplayer.logq; the kit's -q 512; W25)
     bool stray_check = false;          // W20 (harness-only): the director reads the counters (`regs`) for ref's stray check
+    int test_periph_tile = -1;         // W20 (harness-only): >= 0: this mesh tile's peripheral 1 is the test peripheral
+                                       //   (ref's Config.testPeripheral giving a TestPeripheral), with its slot
     int periph_only = -1;              // W20 (harness-only): >= 0: only this mesh tile has peripheral 1 (and the slot, if
                                        //   periph_slot); the other mesh tiles none (ref's periphType 0 + testPeripheral)
     unsigned K = 8, cm_latency = 2;    // the write counters' line, director -> port B

@@ -49,7 +49,7 @@
 | 21 | no reserved encodings | F / C+R | modes 6–7 `director.h:136`, `ag.h:325`; `DMA_CONFIG` digit `regblock.h:180` (F); `DIR_COUNT_CTR0`, `CTL_RESERVED_ACCESS` |
 | 22 | uncounted traffic is mode 0 only | R | `DIR_UNCOUNTED_*`, `director.h:141–143`, facts only |
 | 23 | no silent traps | S | `rv32.h:207, 242, 261, 269, 378, 379` |
-| 24 | K covers the write path | F for K below its formula (`tests/mach.cpp:165`); the overtaking read: **not found** in `src/` (`measure_s1` is a harness option) |
+| 24 | K covers the write path | F for K below its formula (`tests/mach.cpp:165`); the overtaking read: S1's measurement (`measure_s1`, the harness), which covers it (owner, 2026-11-12) |
 | 25 | boot keeps its order | C+R / R | `DIR_OVERLAY_AFTER_COMMAND`, `DIR_COMMAND_KIND` |
 | 26 | no ignored start | F | `ag.h:145` |
 
@@ -90,5 +90,7 @@
 
 ## What follows for the edits
 
-Line 28 states the owner's three mechanisms as the rule. The cases that differ (`FINDINGS.md` 9–13) are listed in
-`spec/CHANGES-v1.3-to-v1.35.md`, as they stand; the list is to be brought to the freeze.
+Line 28 states the owner's three mechanisms as the rule. The checks neither v1.3's simulator nor v1.35's has (D48) are
+item 159 and `spec/CHANGES-v1.3-to-v1.35.md`'s "Checks the spec promises that neither simulator has"; section 9's
+opening names them. The other rows marked not found or C (invariants 2, 3, 6 and 22, `DMA_HDR` mid-transfer, the
+Tracer's oversized transfer) are to be ported by the freeze, when this table is rerun against `main`.

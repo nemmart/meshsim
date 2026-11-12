@@ -524,8 +524,47 @@ void hooks_case() {
         say("%s\n", sb.c_str());
     }
 }
+void test_peripheral_case() {
+    mach::MachConfig k = mach::MachConfig::machine();
+    k.periph_type = 0; k.test_peripheral_tile = 7;
+    Net n(k);
+    n.c.run(200);
+    const uint32_t REG = 0xFFFFF800u;
+    std::string sb = "test peripheral: PARAMS t7 " + hxo(n.c.tile(7).load(n.c.cycle() + 1, REG, 4)) + " t8 " + hxo(n.c.tile(8).load(n.c.cycle() + 1, REG, 4)) +
+                     "; t7 window 1:";
+    for (uint32_t w = 0; w < 8; w++) sb += " " + hxo(n.c.tile(7).load(n.c.cycle() + 1, REG + 0x200 + 4 * w, 4));
+    sb += "; t8 window 1 word 0 " + hxo(n.c.tile(8).load(n.c.cycle() + 1, REG + 0x200, 4));
+    say("%s\n", sb.c_str());
+}
+void drain_case() {
+    mach::MachConfig k = mach::MachConfig::machine();
+    k.periph_type = 0; k.reqbus_host = true;
+    Net n(k);
+    n.c.run(200);
+    const uint32_t REG = 0xFFFFF800u;
+    n.c.tile(6).store(n.c.cycle() + 1, 0x900, 0x5555); n.step();
+    n.c.cc().drain_reports(true);
+    const uint32_t rq[4][5] = {{5, 1u << 10, 0x11, 0x12, 0x13}, {6, 3u << 10, 0x900, 0x22, 0x23}, {7, 2u << 10, 0x31, 0x32, 0x33}, {5, 1u << 10, 0x41, 0x42, 0x43}};
+    for (const auto& r : rq) {
+        mach::TileRef p = n.c.tile(r[0]);
+        for (unsigned i = 0; i < 4; i++) { p.store(n.c.cycle() + 1, REG + 4 * (18 + i), r[1 + i]); n.step(); }
+    }
+    for (int i = 0; i < 300; i++) n.step();
+    std::string sb = "drain:";
+    for (const auto& e : n.c.cc().reports()) sb += " report@" + std::to_string(e[0]) + " " + hx(uint64_t(e[1])) + " " + hx(uint64_t(e[4]));
+    for (const auto& e : n.c.cc().requests()) sb += " request@" + std::to_string(e[0]) + " " + hx(uint64_t(e[1]));
+    for (const auto& e : n.c.cc().results()) sb += " result@" + std::to_string(e[0]) + " src " + std::to_string(e[1]) + " " + hx(uint64_t(e[2])) + " " + hx(uint64_t(e[3]));
+    sb += "; reportsOf(5) " + std::to_string(n.c.cc().reports_of(5).size()) + " reportsOf(9) " + std::to_string(n.c.cc().reports_of(9).size());
+    sb += "; t6 dmem[0x900] " + hxo(n.c.tile(6).load(n.c.cycle() + 1, 0x900, 4)) + " at " + std::to_string(n.c.cycle());
+    sb += "; delivered";
+    for (const auto& q : n.c.reqbus().delivered_log())
+        sb += " " + std::to_string(q[0]) + ":" + std::to_string(q[1]) + ":" + hx(uint64_t(q[2])) + ":" + hx(uint64_t(q[5]));
+    say("%s\n", sb.c_str());
+}
 void netself() {
     out.clear();
+    drain_case();
+    test_peripheral_case();
     hooks_case();
     reqbus_case();
     on_machine(0);

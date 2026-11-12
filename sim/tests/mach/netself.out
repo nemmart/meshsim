@@ -1,3 +1,5 @@
+drain: report@223 405 13 report@247 405 43 request@231 c06 request@239 807 result@231 src 6 22 23; reportsOf(5) 2 reportsOf(9) 0; t6 dmem[0x900] 0 at 517; delivered 222:5:405:13 230:6:c06:23 238:7:807:33 246:5:405:43
+test peripheral: PARAMS t7 78700001 t8 78800000; t7 window 1: 30f 0 0 0 0 0 0 0; t8 window 1 word 0 null
 hooks: peek 80 peek 80 EVENTS 80 then peek 0; GET0 0 RECV 0 ERRORS@208 0 ERRORS@209 4000 ERRORS@210 4000 ERRORS@211 4000 peek@212 0 peek@213 0 peek@214 0 peek@215 0 peek@216 0 peek@217 100 peek@218 100
   window 1: 4 0 0 0 0 0 0 0
   req: canPush true setW 0 pending at 217 head 1100c 99

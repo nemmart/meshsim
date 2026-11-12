@@ -1,6 +1,6 @@
 # The edits: every line the restructuring changed or added
 
-*Written by `build.py`. 69 edited lines (heading 1, path 53, path+sim 2, path+version 1, ruling 2, sim 9, version 1) and 167 added lines. Kinds: **sim**, a statement about the simulator made true of v1.35; **path**, a path made true of v1.35's tree; **version**, the two version headers; **heading**, 8.11's heading, which would otherwise be false. **ruling**, a wording the owner ruled (owner, 2026-11-12): 8.6's `PULSE_DMA` row and 4.19.11's run pulse, undefined behaviour rather than "ignored (meshsim flags it)". Section 13's new text is among the added lines. Line numbers: the destination's (under `sim/spec/`) and the source's.*
+*Written by `build.py`. 70 edited lines (heading 1, path 53, path+sim 2, path+version 1, ruling 3, sim 9, version 1) and 169 added lines. Kinds: **sim**, a statement about the simulator made true of v1.35; **path**, a path made true of v1.35's tree; **version**, the two version headers; **heading**, 8.11's heading, which would otherwise be false. **ruling**, a wording the owner ruled (owner, 2026-11-12): 8.6's `PULSE_DMA` row and 4.19.11's run pulse, undefined behaviour rather than "ignored (meshsim flags it)"; 4.5's reason the all-to-alls are unaffected by loopback token waits. Section 13's new text is among the added lines. Line numbers: the destination's (under `sim/spec/`) and the source's.*
 
 ## Edited lines
 
@@ -53,6 +53,11 @@
 
 - old: - **`PTR[me]`:** the output start, **128-bit aligned too, whatever *k* is** (DECISIONS-v1.25 section 8c). **Gather buffers are 128-bit aligned**, source and destination; misalignment is UB (4.1). The software convention is that allocations are 128-bit aligned in general (`sw/CONVENTIONS.md`).
 - new: - **`PTR[me]`:** the output start, **128-bit aligned too, whatever *k* is** (DECISIONS-v1.25 section 8c). **Gather buffers are 128-bit aligned**, source and destination; misalignment is UB (4.1). The software convention is that allocations are 128-bit aligned in general (`fw/CONVENTIONS.md`).
+
+### `machine-spec.md` 613 ← `v1.3/spec/machine-spec.md` 655 (ruling)
+
+- old: - **So the loopback FIFO cannot overflow,** whatever arrives from the links: at most 64 packets are ever on their way into it or in it, and it is at least 64 deep (4.7). When the eject output is busy with incoming traffic, the tile's own loopback reads wait for tokens instead. In a group run that wait is a refusal like any other (drift, 4.2), so the all-to-alls, which send little to the tile itself, are unaffected in a correct program. **This exists only because the mesh has no flow control** (3.2); with flow control it would be revisited.
+- new: - **So the loopback FIFO cannot overflow,** whatever arrives from the links: at most 64 packets are ever on their way into it or in it, and it is at least 64 deep (4.7). When the eject output is busy with incoming traffic, the tile's own loopback reads wait for tokens instead. In a group run that wait is a refusal like any other (drift, 4.2), so the all-to-alls are unaffected in a correct program: a tile's stream to itself has its own slot in the schedule (`spec/schedule.md`), which leaves its eject room for it (measured: no token waits, item 62). **This exists only because the mesh has no flow control** (3.2); with flow control it would be revisited.
 
 ### `machine-spec.md` 711 ← `v1.3/spec/machine-spec.md` 753 (sim)
 
@@ -127,7 +132,7 @@
 ### `machine-spec.md` 1809 ← `v1.3/spec/machine-spec.md` 2942 (sim)
 
 - old: **Every invariant is a meshsim check** (owner, 2026-10-28): meshsim stops with an error naming the access, unless the invariant says it reports. **The hardware checks none of them as such;** where it has an error bit for the same mistake, the invariant says so (**hardware:** `ERRORS` [*n*]), and every other rule here is software's alone (the preamble's split, 4.13). Numbers survive from v1.1 where the subject does; new invariants start at 19.
-- new: **Every invariant is a meshsim check** (owner, 2026-10-28): v1.35's meshsim checks each in one of three ways (the preamble): undefined behaviour is fatal in every build, the silent traps (23) stop the core, and the rest are counted in every build and reported by name in the debug and suite builds. **The hardware checks none of them as such;** where it has an error bit for the same mistake, the invariant says so (**hardware:** `ERRORS` [*n*]), and every other rule here is software's alone (the preamble's split, 4.13). Numbers survive from v1.1 where the subject does; new invariants start at 19.
+- new: **Every invariant is a meshsim check** (owner, 2026-10-28): v1.35's meshsim checks each in one of three ways (the preamble): undefined behaviour is fatal in every build, the silent traps (23) stop the core, and the rest are counted in every build and reported by name in the debug and suite builds. **The exceptions** are checks neither v1.3's simulator nor v1.35's has, to be added in v1.4 (item 159; `spec/CHANGES-v1.3-to-v1.35.md`): invariant 17's limits on outstanding requests, its tag windows and its rule for reads during a group run, and invariant 18 for modes 1–3 into big SRAM, which are not checked; and a packet of size 11 and two stream cases (4.2), which are counted, not stopped. **The hardware checks none of them as such;** where it has an error bit for the same mistake, the invariant says so (**hardware:** `ERRORS` [*n*]), and every other rule here is software's alone (the preamble's split, 4.13). Numbers survive from v1.1 where the subject does; new invariants start at 19.
 
 ### `machine-spec.md` 1817 ← `v1.3/spec/machine-spec.md` 2950 (path)
 
@@ -144,22 +149,22 @@
 - old: 14. **Read-port results and incoming traffic do not overlap** (4.3): no packet from outside the tile, other than C&C 1's command writes, arrives while the tile has read-port results outstanding (issued and not yet accepted by the traffic director). Checked as actual overlap in time [built: meshsim's `Config.checkReadPortOverlap`, on by default].
 - new: 14. **Read-port results and incoming traffic do not overlap** (4.3): no packet from outside the tile, other than C&C 1's command writes, arrives while the tile has read-port results outstanding (issued and not yet accepted by the traffic director). Checked as actual overlap in time [built: meshsim's `check_read_port_overlap` (`tests/mach.h`), on by default].
 
-### `machine-spec.md` 2024 ← `v1.3/spec/machine-spec.md` 3464 (path)
+### `machine-spec.md` 2023 ← `v1.3/spec/machine-spec.md` 3464 (path)
 
 - old: Not part of the hardware specification; it is here because it explains the GATHER engine and augmenting. The program is in `sort/program/` (the split in `sort/split/`, skew handling in `sort/skew/`), and its measured times are in `results/`. For a 32-bit key and a value of *k* records (*k* = 2 for 128-bit values), the sort has six steps:
 - new: Not part of the hardware specification; it is here because it explains the GATHER engine and augmenting. The program is in `fw/sort/program/` (the split in `fw/sort/split/`, skew handling in `fw/sort/skew/`), and its measured times are in `v1.3/results/`. For a 32-bit key and a value of *k* records (*k* = 2 for 128-bit values), the sort has six steps:
 
-### `machine-spec.md` 2028 ← `v1.3/spec/machine-spec.md` 3468 (path)
+### `machine-spec.md` 2027 ← `v1.3/spec/machine-spec.md` 3468 (path)
 
 - old: 3. **Split:** a bisection on key values. Owners exchange probe keys (replies) and counts ((lb, ub) pairs written into the receiver's data memory) from the send port, and every tile counts by binary searches of its own run through the controller read port (4.3). Exact on all 25 data sets: ≈ 203K cycles on uniform, 246K mean over the 24 non-trivial sets, 367K worst, with a seed bracket and an early exit to idle barriers [meas: RV32 ISS]. Interface and memory: `sort/split/BINDING.md`.
 - new: 3. **Split:** a bisection on key values. Owners exchange probe keys (replies) and counts ((lb, ub) pairs written into the receiver's data memory) from the send port, and every tile counts by binary searches of its own run through the controller read port (4.3). Exact on all 25 data sets: ≈ 203K cycles on uniform, 246K mean over the 24 non-trivial sets, 367K worst, with a seed bracket and an early exit to idle barriers [meas: RV32 ISS]. Interface and memory: `fw/sort/split/BINDING.md`.
 
-### `machine-spec.md` 2039 ← `v1.3/spec/machine-spec.md` 3479 (path)
+### `machine-spec.md` 2038 ← `v1.3/spec/machine-spec.md` 3479 (path)
 
 - old: **Skew handling** (`sort/skew/`). A three-stage switch picks the transfer path for step 4: direct, loopback-as-local-copy (LB), the one-layer two-hop (TH), or the balanced two-hop (BT), with every tile making the same choice from the group maxima. K + V including planning: 215K uniform, 199K sorted and all-equal, 420K reverse, 772–786K Zipf and trace, 741K at 99 % one value [model; planner cycles measured on an RV32 ISS]. The planner is an overlay (≈ 8.5 KB). C&C 1 issues a fixed maximum number of layer phases, and tiles finish empty layers at once (≈ 30 cycles each). The switch is format-aware: for 32-bit values it costs the keys all-to-all only (trace sets take BT at 332–343K against 0.59–1.00M direct; sorted and all-equal LB at 66.7K; reverse TH at 149.0K) [model]. TH and BT run every stream at the full window and so use a group gap of 4 (4.2).
 - new: **Skew handling** (`fw/sort/skew/`). A three-stage switch picks the transfer path for step 4: direct, loopback-as-local-copy (LB), the one-layer two-hop (TH), or the balanced two-hop (BT), with every tile making the same choice from the group maxima. K + V including planning: 215K uniform, 199K sorted and all-equal, 420K reverse, 772–786K Zipf and trace, 741K at 99 % one value [model; planner cycles measured on an RV32 ISS]. The planner is an overlay (≈ 8.5 KB). C&C 1 issues a fixed maximum number of layer phases, and tiles finish empty layers at once (≈ 30 cycles each). The switch is format-aware: for 32-bit values it costs the keys all-to-all only (trace sets take BT at 332–343K against 0.59–1.00M direct; sorted and all-equal LB at 66.7K; reverse TH at 149.0K) [model]. TH and BT run every stream at the full window and so use a group gap of 4 (4.2).
 
-### `machine-spec.md` 2048 ← `v1.3/spec/machine-spec.md` 3488 (path)
+### `machine-spec.md` 2047 ← `v1.3/spec/machine-spec.md` 3488 (path)
 
 - old: The plan estimated ≈ 1.37M cycles for the whole sort at *k* = 2 on uniform data [model]. **Measured at v1.25: 1,229,008 cycles** for the full-size sort `p4/uniform-k128` (64 tiles × 65,536 records), against v1.2's 1,360,082: **131,074 fewer, all from the even-*k* gathers** (4.4) [meas: meshsim, WORKER11, Quest 089; v1.2: Quest 077 and 086]. Older times are in `results/` (v1.1: `RESULTS-full-size.md`). Since v1.1 the values all-to-all of the 128-bit-value format sends one packet per value instead of two.
 - new: The plan estimated ≈ 1.37M cycles for the whole sort at *k* = 2 on uniform data [model]. **Measured at v1.25: 1,229,008 cycles** for the full-size sort `p4/uniform-k128` (64 tiles × 65,536 records), against v1.2's 1,360,082: **131,074 fewer, all from the even-*k* gathers** (4.4) [meas: meshsim, WORKER11, Quest 089; v1.2: Quest 077 and 086]. Older times are in `v1.3/results/` (v1.1: `v1.3/RESULTS-full-size.md`). Since v1.1 the values all-to-all of the 128-bit-value format sends one packet per value instead of two.
@@ -382,44 +387,43 @@
 | `machine-spec.md` | 1974 | \\| 13 \\| The sort's output format (keys carry the receive-buffer ordinal) \\| 14 \\| open \\| |
 | `machine-spec.md` | 1975 | \\| 24 \\| Re-measurement: labels in this document and in `schedule.md` still say "to be re-measured" \\| all \\| open \\| |
 | `machine-spec.md` | 1976 | \\| 61 \\| The request tree's physical design: node placement, `reqbus_latency` \\| 3.3, 12 \\| open \\| |
-| `machine-spec.md` | 1977 | \\| 62 \\| Simulating the new paths: eject priority, loopback token waits, drift \\| 4.5, 4.7, 6.7 \\| open \\| |
-| `machine-spec.md` | 1978 | \\| 70 \\| The eject loopback priority (decided), to be confirmed in simulation \\| 4.7 \\| open \\| |
-| `machine-spec.md` | 1979 | \\| 107 \\| 4.25 MB of big SRAM per tile, a tentative working figure \\| 4.1 \\| open \\| |
-| `machine-spec.md` | 1980 | \\| 116 \\| Read-port reads overlapping incoming traffic: revisit the rule and invariant 14 \\| 4.3, 9 \\| open \\| |
-| `machine-spec.md` | 1981 | \\| 117 \\| Storing the reserved link bits (power) \\| 3.1 \\| open \\| |
-| `machine-spec.md` | 1982 | \\| 121 \\| The core's CSRs beyond the trap CSRs, `mcycle` and `mtime`, and their reset values \\| 4.11, 6.1 \\| open \\| |
-| `machine-spec.md` | 1983 | \\| 124 \\| The soft reset's keep list \\| 6.1 \\| open \\| |
-| `machine-spec.md` | 1984 | \\| 126 \\| Whether hardware records a request dropped at the root \\| 3.3, 6.7 \\| open \\| |
-| `machine-spec.md` | 1985 | \\| 128 \\| K's margin, validated across workloads \\| 4.1, 4.8, 4.10 \\| open \\| |
-| `machine-spec.md` | 1986 | \\| 129 \\| Whether `STREAM_SRC` stays a chunk address \\| 4.2 \\| open \\| |
-| `machine-spec.md` | 1987 | \\| 82 \\| Partly settled; left: the request receivers' attachment, the engines' type numbers; 65 as C&C 2 still proposed \\| 2, 2.1 \\| decided, part open \\| |
-| `machine-spec.md` | 1988 | \\| 15 \\| A status bit with READY, for per-owner completion \\| 8.14 \\| proposed \\| |
-| `machine-spec.md` | 1989 | \\| 27 \\| Drop the one-read-size-per-group rule \\| 4.2 \\| proposed \\| |
-| `machine-spec.md` | 1990 | \\| 28 \\| 128-bit staging from C&C \\| 6.2 \\| proposed \\| |
-| `machine-spec.md` | 1991 | \\| 63 \\| Each node wormhole-routes whole requests, round-robin \\| 3.3 \\| proposed \\| |
-| `machine-spec.md` | 1992 | \\| 64 \\| The request port's FIFO and its stall rule \\| 4.18 \\| proposed \\| |
-| `machine-spec.md` | 1993 | \\| 67 \\| A read's data: 128-bit packets in ascending address order \\| 6.7 \\| proposed \\| |
-| `machine-spec.md` | 1994 | \\| 120 \\| The table window's address \\| 4.10, 8.9 \\| proposed \\| |
-| `machine-spec.md` | 1995 | \\| 48 \\| Decided: a peripheral's fixed landing latency; still proposed: its value, `rp_latency` = 2 \\| 4.17.5, 10 \\| decided, part proposed \\| |
-| `machine-spec.md` | 1996 | \\| 84 \\| Decided: the request; still proposed: beat order, the row node writing the requestor, 16 requests per target queue \\| 3.3, 4.18 \\| decided, part proposed \\| |
-| `machine-spec.md` | 1997 | \\| 133 \\| Still proposed: the handler parks in a plain loop \\| 4.13 \\| decided, part proposed \\| |
-| `machine-spec.md` | 1998 | \\| 83 \\| The target numbering; target 3 deferred with the file system (119) \\| 3.3 \\| proposed, part deferred \\| |
-| `machine-spec.md` | 1999 | \\| 60 \\| The memory system's side, with the file system (119) \\| 6.7, 7 \\| deferred \\| |
-| `machine-spec.md` | 2000 | \\| 119 \\| The file system and the RW engine, with their design (the Tracer's side is specified) \\| 3.3, 6.1, 6.7, 7 \\| deferred \\| |
-| `machine-spec.md` | 2001 | \\| 122 \\| The handler's report header, with C&C 1's request format \\| 4.13 \\| deferred \\| |
-| `machine-spec.md` | 2002 | \\| 130 \\| A 1×4 test chip; mesh size as a parameter \\| 2, 4.2, 4.6 \\| deferred \\| |
-| `machine-spec.md` | 2003 | \\| 142 \\| The region-decode check, to the RTL \\| 3.1, 4.13 \\| deferred \\| |
-| `machine-spec.md` | 2004 | \\| 118 \\| Decided: sending peripherals' src and port; deferred: the rest of the controllers' routing, the DMA port's flow control \\| 4.16, 4.17.9 \\| decided, part deferred \\| |
-| `machine-spec.md` | 2005 | \\| 17 \\| A direct path from the GATHER engine to the write side \\| 4.4 \\| later \\| |
-| `machine-spec.md` | 2006 | \\| 18 \\| Fusing the local gather with the values all-to-all \\| 4.2, 4.4 \\| later \\| |
-| `machine-spec.md` | 2007 | \\| 19 \\| An arrival-order form of augmenting for mode 4 \\| 4.9 \\| later \\| |
-| `machine-spec.md` | 2008 | \\| 20 \\| A search engine for the split \\| 4.3 \\| later \\| |
-| `machine-spec.md` | 2009 | \\| 21 \\| A port-B reader for bulk transfers from controller memory \\| 4.5 \\| later \\| |
-| `machine-spec.md` | 2010 | \\| 22 \\| Whole-row fetches for 64-bit streams \\| 4.2 \\| later \\| |
-| `machine-spec.md` | 2011 | \\| 125 \\| Signed counters \\| 4.12, 6.2 \\| later \\| |
-| `machine-spec.md` | 2013 | **The index:** where each item lives; *closed* means settled, its record in the history file. |
-| `machine-spec.md` | 2015 | 1 here; 2 here; 3 here; 4 here; 5 here; 6 here; 7 here; 8 here; 9 closed; 10 here; 11 closed; 12 closed; 13 here; 14 closed; 15 here; 16 closed; 17 here; 18 here; 19 here; 20 here; 21 here; 22 here; 23 closed; 24 here; 25 closed; 26 closed; 27 here; 28 here; 29 closed; 30 closed; 31 closed; 32 closed; 33 closed; 34 closed; 35 `spec/jolt/replayer.md`; 36 `spec/jolt/replayer.md`; 37 closed; 38 `spec/jolt/replayer.md`; 39 `spec/jolt/replayer.md`; 40 closed; 41 closed; 42 `spec/jolt/replayer.md`; 43 closed; 44 closed; 45 closed; 46 closed; 47 closed; 48 here; 49 closed; 50 closed; 51 closed; 52 closed; 53 closed; 54 closed; 55 closed; 56 `spec/jolt/replayer.md`; 57 `spec/jolt/replayer.md`; 58 closed; 59 `spec/jolt/replayer.md`; 60 here; 61 here; 62 here; 63 here; 64 here; 65 closed; 66 closed; 67 here; 68 closed; 69 closed; 70 here; 71 closed; 72 closed; 73 closed; 74 closed; 75 closed; 76 closed; 77 closed; 78 closed; 79 closed; 80 closed; 81 closed; 82 here; 83 here; 84 here; 85 closed; 86 closed; 87 closed; 88 closed; 89 closed; 90 closed; 91 closed; 92 closed; 93 closed; 94 closed; 95 closed; 96 closed; 97 closed; 98 closed; 99 closed; 100 closed; 101 closed; 102 closed; 103 closed (owner, 2026-11-12); 104 closed; 105 closed; 106 closed; 107 here; 108 closed; 109 closed; 110 closed; 111 closed; 112 closed; 113 `spec/jolt/replayer.md`; 114 closed; 115 `spec/jolt/replayer.md`; 116 here; 117 here; 118 here; 119 here; 120 here; 121 here; 122 here; 123 `spec/jolt/replayer.md`; 124 here; 125 here; 126 here; 127 closed; 128 here; 129 here; 130 here; 131 closed; 132 closed; 133 here; 134 closed; 135 closed; 136 closed; 137 `spec/jolt/replayer.md`; 138 closed; 139 `spec/jolt/replayer.md`; 140 `spec/jolt/replayer.md`; 141 closed; 142 here; 143 closed; 144 closed; 145 closed; 146 closed; 147 `spec/jolt/tracer.md`; 148 `spec/jolt/tracer.md`; 149 closed; 150 closed; 151 closed; 152 closed; 153 `spec/jolt/tracer.md`; 154 closed; 155 closed; 156 closed; 157 closed; 158 `spec/jolt/replayer.md`. |
-| `machine-spec.md` | 2017 | **Closed since v1.3:** 103, the split run log: a pass that runs without the store log never feeds the write log, so only store rows draw from it; the sizing was settled by item 143's measurement (owner, 2026-11-12). |
+| `machine-spec.md` | 1977 | \\| 107 \\| 4.25 MB of big SRAM per tile, a tentative working figure \\| 4.1 \\| open \\| |
+| `machine-spec.md` | 1978 | \\| 116 \\| Read-port reads overlapping incoming traffic: revisit the rule and invariant 14 \\| 4.3, 9 \\| open \\| |
+| `machine-spec.md` | 1979 | \\| 117 \\| Storing the reserved link bits (power) \\| 3.1 \\| open \\| |
+| `machine-spec.md` | 1980 | \\| 121 \\| The core's CSRs beyond the trap CSRs, `mcycle` and `mtime`, and their reset values \\| 4.11, 6.1 \\| open \\| |
+| `machine-spec.md` | 1981 | \\| 124 \\| The soft reset's keep list \\| 6.1 \\| open \\| |
+| `machine-spec.md` | 1982 | \\| 126 \\| Whether hardware records a request dropped at the root \\| 3.3, 6.7 \\| open \\| |
+| `machine-spec.md` | 1983 | \\| 128 \\| K's margin, validated across workloads \\| 4.1, 4.8, 4.10 \\| open \\| |
+| `machine-spec.md` | 1984 | \\| 129 \\| Whether `STREAM_SRC` stays a chunk address \\| 4.2 \\| open \\| |
+| `machine-spec.md` | 1985 | \\| 82 \\| Partly settled; left: the request receivers' attachment, the engines' type numbers; 65 as C&C 2 still proposed \\| 2, 2.1 \\| decided, part open \\| |
+| `machine-spec.md` | 1986 | \\| 15 \\| A status bit with READY, for per-owner completion \\| 8.14 \\| proposed \\| |
+| `machine-spec.md` | 1987 | \\| 27 \\| Drop the one-read-size-per-group rule \\| 4.2 \\| proposed \\| |
+| `machine-spec.md` | 1988 | \\| 28 \\| 128-bit staging from C&C \\| 6.2 \\| proposed \\| |
+| `machine-spec.md` | 1989 | \\| 63 \\| Each node wormhole-routes whole requests, round-robin \\| 3.3 \\| proposed \\| |
+| `machine-spec.md` | 1990 | \\| 64 \\| The request port's FIFO and its stall rule \\| 4.18 \\| proposed \\| |
+| `machine-spec.md` | 1991 | \\| 67 \\| A read's data: 128-bit packets in ascending address order \\| 6.7 \\| proposed \\| |
+| `machine-spec.md` | 1992 | \\| 120 \\| The table window's address \\| 4.10, 8.9 \\| proposed \\| |
+| `machine-spec.md` | 1993 | \\| 48 \\| Decided: a peripheral's fixed landing latency; still proposed: its value, `rp_latency` = 2 \\| 4.17.5, 10 \\| decided, part proposed \\| |
+| `machine-spec.md` | 1994 | \\| 84 \\| Decided: the request; still proposed: beat order, the row node writing the requestor, 16 requests per target queue \\| 3.3, 4.18 \\| decided, part proposed \\| |
+| `machine-spec.md` | 1995 | \\| 133 \\| Still proposed: the handler parks in a plain loop \\| 4.13 \\| decided, part proposed \\| |
+| `machine-spec.md` | 1996 | \\| 83 \\| The target numbering; target 3 deferred with the file system (119) \\| 3.3 \\| proposed, part deferred \\| |
+| `machine-spec.md` | 1997 | \\| 60 \\| The memory system's side, with the file system (119) \\| 6.7, 7 \\| deferred \\| |
+| `machine-spec.md` | 1998 | \\| 119 \\| The file system and the RW engine, with their design (the Tracer's side is specified) \\| 3.3, 6.1, 6.7, 7 \\| deferred \\| |
+| `machine-spec.md` | 1999 | \\| 122 \\| The handler's report header, with C&C 1's request format \\| 4.13 \\| deferred \\| |
+| `machine-spec.md` | 2000 | \\| 130 \\| A 1×4 test chip; mesh size as a parameter \\| 2, 4.2, 4.6 \\| deferred \\| |
+| `machine-spec.md` | 2001 | \\| 142 \\| The region-decode check, to the RTL \\| 3.1, 4.13 \\| deferred \\| |
+| `machine-spec.md` | 2002 | \\| 159 \\| The simulator checks to add in v1.4: invariant 17's request limits, tag windows and group-run rule; invariant 18 for big SRAM; size 11 and the two stream cases, stopped rather than counted \\| 9, 3.1, 4.2 \\| deferred (owner, 2026-11-12) \\| |
+| `machine-spec.md` | 2003 | \\| 118 \\| Decided: sending peripherals' src and port; deferred: the rest of the controllers' routing, the DMA port's flow control \\| 4.16, 4.17.9 \\| decided, part deferred \\| |
+| `machine-spec.md` | 2004 | \\| 17 \\| A direct path from the GATHER engine to the write side \\| 4.4 \\| later \\| |
+| `machine-spec.md` | 2005 | \\| 18 \\| Fusing the local gather with the values all-to-all \\| 4.2, 4.4 \\| later \\| |
+| `machine-spec.md` | 2006 | \\| 19 \\| An arrival-order form of augmenting for mode 4 \\| 4.9 \\| later \\| |
+| `machine-spec.md` | 2007 | \\| 20 \\| A search engine for the split \\| 4.3 \\| later \\| |
+| `machine-spec.md` | 2008 | \\| 21 \\| A port-B reader for bulk transfers from controller memory \\| 4.5 \\| later \\| |
+| `machine-spec.md` | 2009 | \\| 22 \\| Whole-row fetches for 64-bit streams \\| 4.2 \\| later \\| |
+| `machine-spec.md` | 2010 | \\| 125 \\| Signed counters \\| 4.12, 6.2 \\| later \\| |
+| `machine-spec.md` | 2012 | **The index:** where each item lives; *closed* means settled, its record in the history file. |
+| `machine-spec.md` | 2014 | 1 here; 2 here; 3 here; 4 here; 5 here; 6 here; 7 here; 8 here; 9 closed; 10 here; 11 closed; 12 closed; 13 here; 14 closed; 15 here; 16 closed; 17 here; 18 here; 19 here; 20 here; 21 here; 22 here; 23 closed; 24 here; 25 closed; 26 closed; 27 here; 28 here; 29 closed; 30 closed; 31 closed; 32 closed; 33 closed; 34 closed; 35 `spec/jolt/replayer.md`; 36 `spec/jolt/replayer.md`; 37 closed; 38 `spec/jolt/replayer.md`; 39 `spec/jolt/replayer.md`; 40 closed; 41 closed; 42 `spec/jolt/replayer.md`; 43 closed; 44 closed; 45 closed; 46 closed; 47 closed; 48 here; 49 closed; 50 closed; 51 closed; 52 closed; 53 closed; 54 closed; 55 closed; 56 `spec/jolt/replayer.md`; 57 `spec/jolt/replayer.md`; 58 closed; 59 `spec/jolt/replayer.md`; 60 here; 61 here; 62 closed (owner, 2026-11-12); 63 here; 64 here; 65 closed; 66 closed; 67 here; 68 closed; 69 closed; 70 closed (owner, 2026-11-12); 71 closed; 72 closed; 73 closed; 74 closed; 75 closed; 76 closed; 77 closed; 78 closed; 79 closed; 80 closed; 81 closed; 82 here; 83 here; 84 here; 85 closed; 86 closed; 87 closed; 88 closed; 89 closed; 90 closed; 91 closed; 92 closed; 93 closed; 94 closed; 95 closed; 96 closed; 97 closed; 98 closed; 99 closed; 100 closed; 101 closed; 102 closed; 103 closed (owner, 2026-11-12); 104 closed; 105 closed; 106 closed; 107 here; 108 closed; 109 closed; 110 closed; 111 closed; 112 closed; 113 `spec/jolt/replayer.md`; 114 closed; 115 `spec/jolt/replayer.md`; 116 here; 117 here; 118 here; 119 here; 120 here; 121 here; 122 here; 123 `spec/jolt/replayer.md`; 124 here; 125 here; 126 here; 127 closed; 128 here; 129 here; 130 here; 131 closed; 132 closed; 133 here; 134 closed; 135 closed; 136 closed; 137 `spec/jolt/replayer.md`; 138 closed; 139 `spec/jolt/replayer.md`; 140 `spec/jolt/replayer.md`; 141 closed; 142 here; 143 closed; 144 closed; 145 closed; 146 closed; 147 `spec/jolt/tracer.md`; 148 `spec/jolt/tracer.md`; 149 closed; 150 closed; 151 closed; 152 closed; 153 `spec/jolt/tracer.md`; 154 closed; 155 closed; 156 closed; 157 closed; 158 `spec/jolt/replayer.md`; 159 here. |
+| `machine-spec.md` | 2016 | **Closed since v1.3:** 62, simulating the new paths: confirmed and measured with `tests/p4_drift.cpp` on the full-size all-to-alls (uniform, zipfraw, trace and one99, each at group gaps 0, 4 and 8) and the radix sort: 0 cycles of loopback reads waiting for a token, as the schedule predicts, since a tile's stream to itself has its own slot in the all-to-all and its eject has room for it; loopback reads can wait only against traffic outside a schedule, file delivery, which comes with the file system (item 119) (owner, 2026-11-12); 70, the eject loopback priority: confirmed on the same runs: with the eject output serving its loopback last, no drift, 0 tiles with `ERRORS` [3] and 0 drift events; the deliberate-drift control (tile 7, 158 events) shows the detector works (owner, 2026-11-12); 103, the split run log: a pass that runs without the store log never feeds the write log, so only store rows draw from it; the sizing was settled by item 143's measurement (owner, 2026-11-12). |
 | `jolt/replayer.md` | 1 | # The replayer: machine specification, v1.35 |
 | `jolt/replayer.md` | 3 | *Part of the machine specification (`spec/machine-spec.md`), moved here whole in v1.35 with its section numbers: 4.19, the replayer's part of 8.11, its invariant (section 9, 16) and its parameters (section 10). The opcode appendix is `spec/jolt/replayer-opcodes.md`.* |
 | `jolt/replayer.md` | 678 | From 8.11, the peripheral windows: |
@@ -487,25 +491,28 @@
 | `CHANGES-v1.3-to-v1.35.md` | 32 | - **A second READY pulse while the first is still visible** (D29). v1.35 keeps the spec's sticky bit and counts the case (`ready_repulses`); v1.3's read 0 at C&C 1 until the new pulse landed. Likewise an overflow that feeds `ERRORS` reaches the register block as an event, counted at t + 1. No reference program reaches either. |
 | `CHANGES-v1.3-to-v1.35.md` | 33 | - **C&C 1's peripheral applies a store one cycle later** (D33, D44): at t + 1, as every peripheral slot does, where v1.3's applied it within the store's cycle. C&C 1's own work (the watchdog's first count, a UART byte's start) runs a cycle later; one suite's printed figure differs by one cycle and is masked in its comparison. |
 | `CHANGES-v1.3-to-v1.35.md` | 34 | - **The request bus's credit latency is a setting** (D34): 0 is exact as v1.3's (every sender in the bus's domain); 3, the default, is the spec's, each port's leaf in its tile. They differ only when a node's 8-beat buffer fills, which is counted; the reference runs never reach it. |
-| `CHANGES-v1.3-to-v1.35.md` | 36 | ## Where v1.35's checks differ from the rule |
-| `CHANGES-v1.3-to-v1.35.md` | 38 | The machine specification's preamble gives the rule: undefined behaviour is fatal, the silent traps stop the core, and every other invariant is counted and, in the debug and suite builds, reported. As of 2026-11-12 these cases differ: |
-| `CHANGES-v1.3-to-v1.35.md` | 40 | - **Counted, not fatal:** a packet of size 11 (3.1, undefined); a stream with a misaligned source or destination, or with *d* = 126 from a mesh tile (4.2), which are also not reported. |
-| `CHANGES-v1.3-to-v1.35.md` | 41 | - **Counted but not reported:** a late rotation (invariant 3) and a `HIST` count past 17 bits (invariant 6). **Reported but not counted** in the release build: uncounted traffic other than mode 0 (invariant 22). |
-| `CHANGES-v1.3-to-v1.35.md` | 42 | - **Not checked:** a buffer both read and written in one run (invariant 2); `DMA_HDR` or `DMA_ADDR` changed mid-transfer (4.17.9); the 1, 3 and 1 requests outstanding, the tag windows and reads during a group run (invariant 17); one source per destination for modes 1–3 into big SRAM (invariant 18); the overtaking read (invariant 24), which only the harness's S1 measurement covers; a Tracer transfer asking for more than its credits cover (4.21). |
-| `CHANGES-v1.3-to-v1.35.md` | 44 | ## The drivers the spec's measurements name |
-| `CHANGES-v1.3-to-v1.35.md` | 46 | The `[meas: …]` labels name v1.3's Java tests and drivers (Markers). What replaces each in v1.35: |
-| `CHANGES-v1.3-to-v1.35.md` | 48 | \\| v1.3 (Java) \\| v1.35 \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 49 | \\|---\\|---\\| |
-| `CHANGES-v1.3-to-v1.35.md` | 50 | \\| NetTest (fan-in, `skewtable`) \\| `tests/suite_net.cpp` \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 51 | \\| MemTest \\| `tests/suite_mem.cpp` \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 52 | \\| EngineTest \\| `tests/suite_engine.cpp` \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 53 | \\| Stage B \\| `tests/stageb.cpp` \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 54 | \\| AllToAllTest (`measure`), an older name: in v1.3 the all-to-all is EngineTest with the A2A helper \\| ported: `tests/suite_engine.cpp`, with `A2A` in `tests/mach.h` \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 55 | \\| ReadPortGatherTest \\| being ported: `tests/suite_rdport.cpp` \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 56 | \\| SearchBench \\| ported: `tests/suite_search.cpp` (56 of 56 assertions, `tests/p4suites/searchbench.log`) \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 57 | \\| CondTest \\| being ported \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 58 | \\| S1Bench \\| being ported; `measure_s1` (`tests/mach.h`) is the harness side of its measurement \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 59 | \\| SplitRun \\| not carried: its driver doesn't build in v1.3 \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 36 | ## Checks the spec promises that neither simulator has |
+| `CHANGES-v1.3-to-v1.35.md` | 38 | Gaps between the spec and the simulator inherited from v1.3: v1.3's simulator doesn't have these checks either, and v1.35 ports v1.3's checks without adding to them (D48). Each is to be added in v1.4 (item 159, owner, 2026-11-12): |
+| `CHANGES-v1.3-to-v1.35.md` | 40 | - **Invariant 17's request limits:** at most 1, 3 and 1 requests outstanding to C&C 1, 2 and 3; not checked. |
+| `CHANGES-v1.3-to-v1.35.md` | 41 | - **Invariant 17's tag windows** and **its rule for reads during a group run:** not checked. |
+| `CHANGES-v1.3-to-v1.35.md` | 42 | - **Invariant 18 for big SRAM:** one source per order-placed destination, for modes 1–3 into big SRAM; not checked (the replayer's queue ports are). |
+| `CHANGES-v1.3-to-v1.35.md` | 43 | - **A packet of size 11** (3.1, undefined): counted, flagged and dropped, not stopped. |
+| `CHANGES-v1.3-to-v1.35.md` | 44 | - **Two stream cases** (4.2): a stream with a misaligned source or destination, and one with *d* = 126 from a mesh tile; counted, not stopped. |
+| `CHANGES-v1.3-to-v1.35.md` | 46 | Invariant 24 is not a gap: K's check at startup and S1's measurement cover it. |
+| `CHANGES-v1.3-to-v1.35.md` | 48 | ## The drivers the spec's measurements name |
+| `CHANGES-v1.3-to-v1.35.md` | 50 | The `[meas: …]` labels name v1.3's Java tests and drivers (Markers). What replaces each in v1.35: |
+| `CHANGES-v1.3-to-v1.35.md` | 52 | \\| v1.3 (Java) \\| v1.35 \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 53 | \\|---\\|---\\| |
+| `CHANGES-v1.3-to-v1.35.md` | 54 | \\| NetTest (fan-in, `skewtable`) \\| `tests/suite_net.cpp` \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 55 | \\| MemTest \\| `tests/suite_mem.cpp` \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 56 | \\| EngineTest \\| `tests/suite_engine.cpp` \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 57 | \\| Stage B \\| `tests/stageb.cpp` \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 58 | \\| AllToAllTest (`measure`), an older name: in v1.3 the all-to-all is EngineTest with the A2A helper \\| ported: `tests/suite_engine.cpp`, with `A2A` in `tests/mach.h` \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 59 | \\| ReadPortGatherTest \\| being ported: `tests/suite_rdport.cpp` \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 60 | \\| SearchBench \\| ported: `tests/suite_search.cpp` (56 of 56 assertions, `tests/p4suites/searchbench.log`) \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 61 | \\| CondTest \\| being ported \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 62 | \\| S1Bench \\| being ported; `measure_s1` (`tests/mach.h`) is the harness side of its measurement \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 63 | \\| SplitRun \\| not carried: its driver doesn't build in v1.3 \\| |
 | `history/README.md` | 1 | # spec/history |
 | `history/README.md` | 3 | What v1.35's restructuring took out of v1.3's spec, moved whole and unchanged: each version's `CHANGES-*` guide, the four decisions logs the spec cites (`DECISIONS-v1.2.md` to `DECISIONS-v1.3.md`), the preamble's "in brief" blocks and history companions (`machine-spec-v1.3-preamble.md`), and section 13 as it stood (`machine-spec-v1.3-section-13.md`). |
 | `history/README.md` | 5 | These are history: their paths and line numbers are v1.3's, and nothing here is kept true of v1.35. Where a log and `spec/machine-spec.md` differ, the spec is the authority. Carried text, here and in the spec, keeps its worker names and session codes: the restructuring moves text and doesn't rewrite it. |
@@ -519,4 +526,4 @@
 | `check/README.md` | 7 | - `check_move.py`: the proof (run from the repository root): every source line in exactly one destination, unchanged and in order, or an edit; every destination line a source line, an edit or added; every section number a heading; every path present. |
 | `check/README.md` | 8 | - `inventory.py`, `section13.py`: the source's units, and section 13's statuses with their evidence. |
 | `check/README.md` | 9 | - `MECHANISMS.md`: what v1.35's meshsim does for each check the spec promises; `FINDINGS.md`: what looks wrong, for the owner. |
-| `check/README.md` | 11 | **At the freeze:** rerun `MECHANISMS.md` against `main`; bring the drivers' table of `spec/CHANGES-v1.3-to-v1.35.md` up to date; the section "Where v1.35's checks differ from the rule" should then be empty, and is removed; rebuild and rerun `check_move.py`. |
+| `check/README.md` | 11 | **At the freeze:** rerun `MECHANISMS.md` against `main`; bring the drivers' table of `spec/CHANGES-v1.3-to-v1.35.md` up to date; the section "Checks the spec promises that neither simulator has" stays, matching item 159; every other check `MECHANISMS.md` finds missing or unreported (invariants 2, 3, 6 and 22, `DMA_HDR` mid-transfer, the Tracer's oversized transfer) should by then be ported, and any that isn't goes to the owner; rebuild and rerun `check_move.py`. |

@@ -28,3 +28,16 @@ A program that sequences the two clients by a done event is never flagged; one t
 run start; compiled in only under `SIM_CHECKS` (the suite and debug builds); release unaffected. **To confirm when
 building:** every order-placed packet from these clients to one destination goes as one kind (unicast); the spec's
 in-order rule holds only within one kind.
+
+## The inherited gaps' checks (owner's rulings, 2026-11-12; D48)
+
+v1.3 and v1.35 don't check these spec promises; all are simulator checks for v1.4.
+- **Request limits (invariant 17):** report when a target's credit counter on the request bus reaches zero (the root
+  skips an input). The reason for the limits: a request that can't be delivered must never plug the channel, since error
+  reports to C&C 1 have to get through. The per-tile count of 1, 3 and 1 follows with the file system's request formats.
+- **Tag windows, and no file traffic during a group run (invariant 17):** with the file-system and elastic-regime design.
+  The order for that work: flow control and the mask flag first, then several requests in flight.
+- **Size 11, a misaligned stream source or destination, and a stream with d = 126 from a mesh tile:** made fatal, like
+  every other undefined case (v1.3 and v1.35 flag and drop, or count).
+- **Invariant 24's overtaking read:** no new check; the startup check on K and S1's measurement cover it. (S1 is rerun on
+  v1.35 once its driver lands: W26's S1, W23's S1Bench.)

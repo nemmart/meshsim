@@ -6,7 +6,7 @@ Independent of build.py: it reads only the source files (v1.3/), the destination
   2. each destination, its blank lines and its added lines set aside, is exactly its ranges' non-blank source lines in
      order, byte for byte, except edited lines, whose source line must equal the edit's old text and whose
      destination line its new text;
-  3. every section number of v1.3's machine-spec.md and appendix is a heading in a destination; every item 1-158 is
+  3. every section number of v1.3's machine-spec.md and appendix is a heading in a destination; every item 1-159 is
      in section 13's index;
   4. every repository path cited in a non-history destination exists in v1.35's tree (sim/) or, starting with
      v1.3/, in the repository; a bare file name of ours names a file in sim/.
@@ -96,7 +96,7 @@ for s, isapp in (('v1.3/spec/machine-spec.md', False), ('v1.3/spec/replayer-opco
             fails.append(f'3: section {m.group(1)} of {s} is no heading')
 ms = '\n'.join(lines(os.path.join(OUT, 'machine-spec.md')))
 idx = ms.split('**The index:**')[1].split('\n\n')[1] if '**The index:**' in ms else ''
-for n in range(1, 159):
+for n in range(1, 160):
     if not re.search(rf'(^|; ){n} (closed|here|`)', idx):
         fails.append(f'3: item {n} not in the index')
 

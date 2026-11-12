@@ -63,6 +63,18 @@ current answer, not a proof: anyone may reopen one with a reason [owner].*
 - **Credits only where a path can't form a cycle** (the request bus, a peripheral's queues); the mesh, a torus, is
   scheduled [owner, from 3.3 and 4.19.8].
 - **A new bulk pattern on the mesh comes with a schedule and a fan-in bound,** checked in simulation [owner].
+- **The shapes of traffic the mesh carries today, and what keeps each safe** [owner]:
+
+| shape | examples | kept safe by |
+|---|---|---|
+| one source to every tile | overlays, the replayers' expansions, commands | a broadcast can't overflow a queue; a full-rate one has the mesh to itself, single command packets may go at any time |
+| one source to one or a few tiles | a traced window's delivery, file reads | the source paces it |
+| many tiles to one sink that always drains | file writes | the elastic regime (proposed) |
+| a few words from many tiles to one | each round's reduction | the program's pacing, inside 3.2's fan-in limits |
+| many tiles to many | the sort's all-to-all | strict rotation: the 16-group schedule |
+
+  Bulk traffic from many tiles to many outside the sort is the one shape nothing covers; a kernel that needs it
+  brings its own schedule (the rule above).
 
 ## 6. Time and cost
 

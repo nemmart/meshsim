@@ -118,6 +118,8 @@ struct MachConfig {
     int periph_type = 4;               // every mesh tile's peripheral 1: 4 the replayer, 0 none
     int test_periph_tile = -1;         // ref's testPeripheral (StageB, W25): the replayer on this mesh tile only, the
                                        //   others none (with periph_type 0)
+    int test_peripheral_tile = -1;     // ref's testPeripheral giving a TestPeripheral (W26): that mesh tile's peripheral 1
+                                       //   is the test peripheral, the other tiles' as periph_type says
     std::vector<int> parked;           // ref's Chip.parked (StageB's -Dstageb.lone): tiles nothing must reach. Here they are
                                        //   simulated all the same (asleep, they cost little); Chip::parked_untouched is ref's check
     // ---- the simulator and its checks (spec 9) [step 2] ----
@@ -197,6 +199,9 @@ public:
     uint64_t underflows() const { return underflows_; }              // ref's underflows (the test's receives)
     uint64_t dropped() const;                                        // ref's dropped.size()
     uint64_t delivered() const;                                      // ref's delivered.size()
+    // ref's delivered list (W22-19): every request delivered to a receive queue, {deliveredAt, srcTile, w0, w1, w2, w3},
+    // in delivery order (all targets)
+    std::vector<std::array<int64_t, 6>> delivered_log() const;
 private:
     Chip* c_;
     uint64_t underflows_ = 0, popped_[3] = {};
@@ -315,6 +320,15 @@ public:
     // C&C has reached it, and C&C moves on in the next cycle. Runs go cycle by cycle while one is pending.
     Cc& wait_until(std::function<bool()> cond);
     void set_expect(uint64_t tiles);                        // ref's cc1p.expect (READY_EXPECT_0-1): the tiles GO waits for
+    // ref's drainReports (C&C 1's request service, modelled; needs MachConfig::reqbus_host): from now on, one request a
+    // cycle from target 0's queue: REQ_OP_REPORT into reports(), anything else into requests(), REQ_OP_RESULT also into
+    // results() ({t, requestor, w2, w3}) and answered by C&C 1 with a 32-bit mode-0 write to the address in W1 on the
+    // request's reply counter, before its own steps. Runs go cycle by cycle while on.
+    void drain_reports(bool on);
+    std::vector<std::array<int64_t, 5>> reports() const;            // {t, w0, w1, w2, w3}, in arrival order
+    std::vector<std::array<int64_t, 5>> reports_of(unsigned id) const;   // ref's reportsOf(id): a unit's reports
+    std::vector<std::array<int64_t, 5>> requests() const;
+    std::vector<std::array<int64_t, 4>> results() const;            // {t, requestor, w2, w3}
     bool busy() const;                                      // CnC.busy(): steps left in its queue
     int64_t last_go_at() const, last_all_ready_at() const, last_run_at() const;
     // CnC.phaseLog: {all READY seen, GO store} per GO
@@ -377,7 +391,10 @@ public:
     void set_max_violation_messages(unsigned n);
     void clear_violations();
     std::string violation_report();                         // ref's violationReport() (scans the overflows first)
-    void scan_overflows();                                  // ref's scanOverflows
+    void scan_overflows();
+    // ref's Chip.newPhase (the agreed form): between cycles, a new disjoint-buffer phase on every tile (BigSram::new_phase,
+    // W26's), each woken. (Every GO starts one too, inside the tile: W26's.)
+    void new_phase();                                  // ref's scanOverflows
     void finalize_checks() const;                           // the checker's report through the cycle just run
     // ---- the fingerprint (B25; D41 Q5: in place of ref's -Dmeshsim.digest=FILE) ----
     // With MESHSIM_DIGEST=FILE in the environment, every Chip appends, when destroyed (and those still alive at exit),

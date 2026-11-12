@@ -23,9 +23,10 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     if (k >= g.units) FATAL("add_g1: unit %u, but the context's memories hold %u units", k, g.units);
     const std::string t = unit_prefix(k);
     // W20 (harness-only): ref's testPeripheral on one tile (G1Config::periph_only): the others have no peripheral
-    const bool has_periph = k >= 64 || g.cfg.periph_only < 0 || int(k) == g.cfg.periph_only;
-    const uint32_t periph_present = has_periph ? g.cfg.periph_present : 0;
-    const bool periph_slot = has_periph && g.cfg.periph_slot;
+    const bool test_k = int(k) == g.cfg.test_periph_tile;   // W20 (harness-only): the test peripheral on this tile
+    const bool has_periph = k >= 64 || test_k || g.cfg.periph_only < 0 || int(k) == g.cfg.periph_only;
+    const uint32_t periph_present = test_k ? 1u : has_periph ? g.cfg.periph_present : 0;
+    const bool periph_slot = test_k || (has_periph && g.cfg.periph_slot);
 
     Rv32 core;
     core.timing = g.cfg.timing;
@@ -124,7 +125,7 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
         PeriphSlotConfig pc;
         pc.tile = k;
         pc.replayer_log_entries = g.cfg.replayer_log_entries;
-        if (k < 64) pc.type[1] = g.cfg.periph1;          // W15: a mesh tile's peripheral 1, the replayer by default
+        if (k < 64) pc.type[1] = test_k ? PT_TEST : g.cfg.periph1;   // W15: the replayer by default (W20: or the test's)
         else {
             pc.controller = true;
             pc.type[1] = k == lw::CC1 ? PT_CNC1 : k == lw::CC3 && g.cfg.cc3_tracer ? PT_TRACER : PT_CC_STUB;

@@ -33,13 +33,17 @@ v1.35's meshsim matches v1.3's results exactly, and its cycle counts exactly exc
 - **C&C 1's peripheral applies a store one cycle later** (D33, D44): at t + 1, as every peripheral slot does, where v1.3's applied it within the store's cycle. C&C 1's own work (the watchdog's first count, a UART byte's start) runs a cycle later; one suite's printed figure differs by one cycle and is masked in its comparison.
 - **The request bus's credit latency is a setting** (D34): 0 is exact as v1.3's (every sender in the bus's domain); 3, the default, is the spec's, each port's leaf in its tile. They differ only when a node's 8-beat buffer fills, which is counted; the reference runs never reach it.
 
-## Where v1.35's checks differ from the rule
+## Checks the spec promises that neither simulator has
 
-The machine specification's preamble gives the rule: undefined behaviour is fatal, the silent traps stop the core, and every other invariant is counted and, in the debug and suite builds, reported. As of 2026-11-12 these cases differ:
+Gaps between the spec and the simulator inherited from v1.3: v1.3's simulator doesn't have these checks either, and v1.35 ports v1.3's checks without adding to them (D48). Each is to be added in v1.4 (item 159, owner, 2026-11-12):
 
-- **Counted, not fatal:** a packet of size 11 (3.1, undefined); a stream with a misaligned source or destination, or with *d* = 126 from a mesh tile (4.2), which are also not reported.
-- **Counted but not reported:** a late rotation (invariant 3) and a `HIST` count past 17 bits (invariant 6). **Reported but not counted** in the release build: uncounted traffic other than mode 0 (invariant 22).
-- **Not checked:** a buffer both read and written in one run (invariant 2); `DMA_HDR` or `DMA_ADDR` changed mid-transfer (4.17.9); the 1, 3 and 1 requests outstanding, the tag windows and reads during a group run (invariant 17); one source per destination for modes 1–3 into big SRAM (invariant 18); the overtaking read (invariant 24), which only the harness's S1 measurement covers; a Tracer transfer asking for more than its credits cover (4.21).
+- **Invariant 17's request limits:** at most 1, 3 and 1 requests outstanding to C&C 1, 2 and 3; not checked.
+- **Invariant 17's tag windows** and **its rule for reads during a group run:** not checked.
+- **Invariant 18 for big SRAM:** one source per order-placed destination, for modes 1–3 into big SRAM; not checked (the replayer's queue ports are).
+- **A packet of size 11** (3.1, undefined): counted, flagged and dropped, not stopped.
+- **Two stream cases** (4.2): a stream with a misaligned source or destination, and one with *d* = 126 from a mesh tile; counted, not stopped.
+
+Invariant 24 is not a gap: K's check at startup and S1's measurement cover it.
 
 ## The drivers the spec's measurements name
 

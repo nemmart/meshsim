@@ -229,3 +229,14 @@ the `-q` estimate, the guest delivery's whereabouts.
   `--no-small`, `KIT135` (a prebuilt kit: no git in a task) and `KEEP` (the cases' outputs into the results). The
   bundle (6.5 MB) checked locally: unpacked, HASHES, the crosscheck run from it on a stand-in delivery (equal), and
   convert_delivery built from the kit's sources.
+- **Quest 180: ALL PASS** (runner `godspeed`, 16 CPUs, 62 GB; JDK 21.0.13; clang 18.1.3; 06:35-06:37 UTC). v1.35's
+  kit equal to v1.3's on every case: **the calibration** (both calibrate.sh, 128 windows of 65,536 rows, seed 11: the
+  j1, j4, j8 (ABF) and j16 runs), **W9's selected windows** of evm-zone-29 (12) and cyclone-29 (13), AB with F on
+  every window, and **evm-zone-29 windows 0-127** (8,388,608 rows; AB, F every 32nd): results.csv (wall masked),
+  VERDICT, SUMMARY's non-timing lines (the stall lines included), exit codes and every per-process log. The
+  converted selected manifests' sha256 equal Quest 164's (evm-zone-29 0a8c8f74...). All 25 + 128 real windows PASS
+  in both kits. SUMMARY's rates, for the record only (not a timing claim): evm-zone-29 0-127 at 16 processes, Stage B
+  0.14 s per window (v1.3: 1.37), Stage A 0.02 (0.16).
+  One slip: the task ran `sh tools/machine.sh` (a bash script: "redirection unexpected"), so machine.txt is empty
+  apart from the error; the run log names the host, CPUs, memory and versions. Fixed for later tasks (`bash`, in the
+  maker and in the kit's make_task.sh).

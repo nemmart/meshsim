@@ -57,9 +57,31 @@ the `-q` estimate, the guest delivery's whereabouts.
 
 ## Findings
 
+- **F1. `ref`'s committed `results/stageb.log` is stale** (2026-11-07): 18 windows, no CL4 case, and other cycle counts
+  (program 0: 235 cycles, Stage A 5.720 cycles/row; today's v1.3: 236 and 3.400). The fixture is regenerated
+  (`oracle/ref/stageb.sh`, 19 windows, deterministic: `--check` equal).
+- **F2. The replayer's error texts aren't ref's.** StageB's detail lines (the CL4 case in `stageb.log`; any FAIL line in
+  the kit's `results.csv`) print ref's Replayer lists verbatim: `head(r.violations)` (the first three, then "... (N in
+  all)") and, in Stage A, `errorReport()` with every entry. The C++ replayer keeps the last 64 facts in a ring and
+  formats them with its own texts ("@t queue 2 pushed past the credits taken for it: 1 entries", where ref writes "t0
+  @t: queue 2 pushed past the credits taken for it: 1 entries, 0 credits (4.19.8; invariant 16)"; invalid expansions
+  as numbers). Exactness needs ref's ~36 message texts in `fact_text` and ref's lists (the first entries per list, a
+  capacity set at configuration, with the counts): about 200-250 lines in W15's replayer (unowned). Brought to the
+  owner (beyond `-q`'s scope). The `meshsim: violations ...` part of the same lines is the checker's: the replayer's
+  violations as chip violations (W20).
+
 ## Environment
 
 - The container had no clang or javac: installed `clang lld openjdk-21-jdk-headless` (clang 18.1.3, gcc 13.3.0,
   JDK 21.0.12). One CPU.
 
 ## Progress
+
+- `oracle/ref/stageb.sh` and the fixture `tests/stageb/stageb.log` (F1).
+- **`-q 512` (estimate: small, done).** The replayer's log-queue depth is a constructor argument (`Replayer(me,
+  log_entries = 256)`, ref's `-Dreplayer.logq`), `PeriphSlotConfig::replayer_log_entries` passes it to a tile's
+  replayer, `ReplayerStream::MAX_CAP` 256 → 512 (every stream's ring is a fixed array of MAX_CAP; 12 KB more per
+  replayer). **A change in W15's replayer and slot (now unowned)**: `replayer.h`, `replayer.cpp`, `periph_slot.h`,
+  `periph_slot.cpp`. ReplayerUnitTests' 8 KB half of queueSizes now ported (2 checks: 1,458 of ref's 1,473; 15 left).
+  test_replayer, the slot tests (clang debug, gcc release), test_t2_harness, test_g1_replay, test_chain,
+  test_tracer_slot (clang release): pass.

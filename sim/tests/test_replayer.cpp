@@ -1187,13 +1187,21 @@ void record_words() {
     T::eq(5, int64_t(rec[2 * 67]), "word 67: the bitmap");
 }
 
-// V3-12: every queue 4 KB. (ref's -Dreplayer.logq=512 control, v1.25's 8 KB logs for a stall comparison, isn't
-// modelled: LOG_QUEUE_ENTRIES is fixed at 256; that half of ref's group is not ported.)
+// V3-12: every queue 4 KB; ref's -Dreplayer.logq=512 (the constructor's log_entries here, W25) gives v1.25's 8 KB logs
+// for a control run.
 void queue_sizes() {
     T::group("v1.26: the queues are 4 KB");
     auto rp = fresh();
     T::check(rp->code.cap == 256 && rp->rlog.cap == 256 && rp->wlog.cap == 256 && Replayer::EXP_CAP == 256, "256 x 128-bit entries each");
     T::check(rp->rlog.half == 128 && rp->wlog.half == 128, "a credit is 128 entries");
+    auto r8 = std::make_unique<Replayer>(0, 512);
+    T::check(r8->rlog.cap == 512 && r8->wlog.half == 256 && r8->code.cap == 256, "the 8 KB control: logs 512 entries, the code queue unchanged");
+    auto w = program_window(true, true, true, true);
+    w->rows = 25;
+    auto d = std::make_unique<ReplayDriver>(*w, uint64_t(1) << 17, r8.get());
+    d->load();
+    d->pass(200000);
+    T::check(r8->clean() && d->rows() == 25, "a pass on the 8 KB control replayer: clean");
 }
 
 // Run a group; the TEST fails if any of its checks did.

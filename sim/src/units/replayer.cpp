@@ -15,13 +15,14 @@ uint64_t mix(uint64_t z) {
 }
 }  // namespace
 
-Replayer::Replayer(unsigned m) : me(m) {
+Replayer::Replayer(unsigned m, unsigned log_entries) : me(m) {
+    if (log_entries < 2 || log_entries > ReplayerStream::MAX_CAP) FATAL("replayer %u: log queues of %u entries (2-%u)", m, log_entries, ReplayerStream::MAX_CAP);
     const uint8_t depth[] = {1, 0, 2, 2, 2, 2, 1};
     const bool flags[] = {false, false, true, true, true, true, false};
     ev.init(7, depth, flags);
     code.init(0, 256, 32, false);
-    rlog.init(1, LOG_QUEUE_ENTRIES, 64, false);
-    wlog.init(2, LOG_QUEUE_ENTRIES, 64, true);
+    rlog.init(1, log_entries, 64, false);
+    wlog.init(2, log_entries, 64, true);
     code.credit = EV_CODE; rlog.credit = EV_RLOG; wlog.credit = EV_WLOG;
 }
 

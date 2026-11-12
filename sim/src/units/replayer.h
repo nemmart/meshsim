@@ -40,7 +40,7 @@ class Replayer;
 // A code or log queue and its decompressor (4.19.15): Replayer.Stream.
 struct ReplayerStream {
     enum : int { AVAIL = 0, WAIT = 1, END = 2, OVER = 3 };
-    static constexpr unsigned MAX_CAP = 256;
+    static constexpr unsigned MAX_CAP = 512;   // W25: the log queues' depth is a configuration value (256, or 512 for ref's -Dreplayer.logq=512)
     unsigned id = 0;               // 0 code, 1 read log, 2 write log (names, errors)
     unsigned cap = 0, half = 0, value_bits = 0;
     bool is_write = false;
@@ -169,7 +169,8 @@ public:
     static constexpr unsigned REC_WORDS = 68, PART0_WORDS = 66, REC_FILES = 66, REC_BITMAP = 67;
     static constexpr uint32_t RC_ROWS = 0xFFFFFF, RC_STORE_LOG = 1u << 24, RC_RD_PREV = 1u << 25, RC_TRACER_COMP = 7u << 26, RC_DEFINED = 0x1FFFFFFF;
     static constexpr unsigned W_RUN_CONFIG = 32, W_ROWS_RUN = 33, W_EXP_OFFSET = 34, W_EXP_OPCODE = 35;
-    static constexpr unsigned LOG_QUEUE_ENTRIES = 256;   // v1.26 (V3-12); ref's -Dreplayer.logq=512 is not modelled
+    static constexpr unsigned LOG_QUEUE_ENTRIES = 256;   // v1.26 (V3-12): the default; the constructor's log_entries is ref's
+                                                         // -Dreplayer.logq (512: v1.25's 8 KB logs, the kit's -q 512 control; W25)
     static constexpr unsigned EXP_CAP = 256, EXP_HALF = 128;
     // events (4.19.9)
     static constexpr unsigned EV_RUN_DONE = 0, EV_CODE = 2, EV_RLOG = 3, EV_WLOG = 4, EV_EXP = 5, EV_NEWEXP = 6;
@@ -201,7 +202,7 @@ public:
                       UF_TRANSFER = 6 };
     static constexpr unsigned FACT_RING = 64;
 
-    explicit Replayer(unsigned me = 0);
+    explicit Replayer(unsigned me = 0, unsigned log_entries = LOG_QUEUE_ENTRIES);
     Replayer(const Replayer&) = delete;
     Replayer& operator=(const Replayer&) = delete;
 

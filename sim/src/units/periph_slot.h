@@ -89,6 +89,7 @@ struct PeriphSlotConfig {
     PeriphType type[4] = {};             // [1]-[3]; PT_ABSENT: absent
     bool controller = false;             // C&C 1-3: the DMA port is declared (a mesh tile's peripherals have none)
     uint64_t replayer_row_buffer = 0;    // rows of the replayer's optional record buffer (tests; 0: the hash only)
+    unsigned replayer_log_entries = 256; // the replayer's read-log and write-log queues (ref's -Dreplayer.logq; W25)
 };
 
 // A packet a DMA sends (ref's dmaOut entry): the header as LinkWord.hdr builds it.

@@ -202,6 +202,18 @@ void controllers(int64_t seed) {
     say("  to the controllers %s at cycle %lld\n", ok ? "drained" : "NOT drained", (long long)n.c.cycle());
     for (unsigned c = 0; c < 3; c++) say("  C&C %u received %s\n", c + 1, recv(n, c).c_str());
     n.clear_logs();
+    const int64_t t0 = n.c.cycle();
+    n.send(1, 37, lw::M_WRITE, 2, 0x100, lw::SIZE_32, 0x55, 0);
+    n.send(0, 5, lw::M_WRITE, 2, 0x104, lw::SIZE_32, 0x56, 0);
+    n.step();
+    n.send(1, 37, lw::M_WRITE, 2, 0x108, lw::SIZE_32, 0x57, 0);
+    n.send(2, 64, lw::M_WRITE, 2, 0x10C, lw::SIZE_64, 0x58, 0);
+    ok = n.run_all(300);
+    std::string sb = std::string("  direct sends ") + (ok ? "drained" : "NOT drained") + " at cycle " + std::to_string(n.c.cycle() - t0) + " after:";
+    for (unsigned d : {37u, 5u}) for (const auto& e : n.log(d)) sb += " t" + std::to_string(d) + "@" + std::to_string(int64_t(e[0]) - t0) + ":" + hx(e[1]);
+    for (const auto& e : n.received(0)) sb += " cc1@" + std::to_string(int64_t(e[0]) - t0) + ":" + hx(e[1]) + ":" + hx(e[2]);
+    say("%s\n", sb.c_str());
+    n.clear_logs();
     n.send(1, 66, lw::M_WRITE, 2, 0x200, lw::SIZE_64, 0x77, 0);
     n.run_all(300);
     const int src = n.received(2).size() == 1 ? int(lw::src(n.received(2)[0][2])) : -1;

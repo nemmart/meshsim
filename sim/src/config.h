@@ -376,6 +376,11 @@ public:
     // harness may have changed any unit between cycles). Safe by the step-all rule (a step nobody asked for, with nothing
     // delivered, changes nothing). Between runs only.
     void wake_all();
+    // W20 (harness-only; P2): a put on `unit`'s Hold `p` as of the cycle just run (now() - 1), as ref's harness puts
+    // between cycles (Endpoint.send(c.cycle, ...)): delivered at the next cycle exactly as the unit's own put of that
+    // cycle would have been (refused if the Hold is occupied then, as that put would be). Between runs only; the unit
+    // must not have put on `p` in the cycle just run (fatal: two puts). One domain only (fatal on a split machine).
+    void put_late(const std::string& unit, HoldOut p, const Word* w, unsigned n);
     // W20 (harness-only; P2): data in motion anywhere, between runs: an input holding data (a Link word visible, a Fifo
     // not empty, a Hold occupied) or a put still on its way (a Link, Fifo, credit Fifo or Hold entry in a delivery
     // bucket). Regs, Wires, RegFiles, Counts and credit returns are state, not motion. For ref's Chip.quiescent.

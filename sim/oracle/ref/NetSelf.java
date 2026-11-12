@@ -90,6 +90,18 @@ final class NetSelf {
         ok = n.runAll(500);
         System.out.printf("  to the controllers %s at cycle %d%n", ok ? "drained" : "NOT drained", n.c.cycle);
         for (int c = 0; c < 3; c++) System.out.println("  C&C " + (c + 1) + " received " + recv(n, c));
+        n.clearLogs();                                             // direct sends between cycles (ref's ccs[c].send(c.cycle, ...)): their cycles
+        long t0 = n.c.cycle;
+        n.c.ccs[1].send(t0, 37, LinkWord.M_WRITE, 2, 0x100, LinkWord.SIZE_32, 0x55, 0);
+        n.c.ccs[0].send(t0, 5, LinkWord.M_WRITE, 2, 0x104, LinkWord.SIZE_32, 0x56, 0);
+        n.step();
+        n.c.ccs[1].send(n.c.cycle, 37, LinkWord.M_WRITE, 2, 0x108, LinkWord.SIZE_32, 0x57, 0);   // the next cycle, back to back
+        n.c.ccs[2].send(n.c.cycle, 64, LinkWord.M_WRITE, 2, 0x10C, LinkWord.SIZE_64, 0x58, 0);   // C&C 3 -> C&C 1
+        ok = n.runAll(300);
+        StringBuilder sb = new StringBuilder("  direct sends " + (ok ? "drained" : "NOT drained") + " at cycle " + (n.c.cycle - t0) + " after:");
+        for (int d : new int[] { 37, 5 }) for (long[] e : n.log(d)) sb.append(String.format(" t%d@%d:%s", d, e[0] - t0, hex(e[1])));
+        for (long[] e : n.c.ccs[0].received) sb.append(String.format(" cc1@%d:%s:%s", e[0] - t0, hex(e[1]), hex(e[2])));
+        System.out.println(sb);
         n.clearLogs();                                             // C&C 2 -> C&C 3, C&C 2's broadcast (sizes and sources only)
         n.c.ccs[1].send(n.c.cycle, 66, LinkWord.M_WRITE, 2, 0x200, LinkWord.SIZE_64, 0x77, 0);
         n.runAll(300);

@@ -352,8 +352,8 @@ public:
     // Net.cncSends: {T, dst, mode, addr, lo[, size, hi[, counter]]}, in order (C&C 1 puts it at T - 1, visible at T)
     struct CncSend { int64_t T; unsigned dst, mode; uint32_t addr; uint64_t lo; unsigned size = 1; uint64_t hi = 0; unsigned counter = 1; };
     void cnc_send(const CncSend& s);
-    // ref's ccs[cc].send(c.cycle, ...) between cycles: C&C cc + 1's endpoint sends now. Here the put is made at the next
-    // cycle's step, one cycle after ref's (its delivery one cycle later); counts and order are the same.
+    // ref's ccs[cc].send(c.cycle, ...) between cycles: C&C cc + 1's endpoint puts a packet as of the cycle just run
+    // (Sim::put_late), seen by the mesh in the next cycle, as ref's; refused (and lost, as ref's) if its Hold is full.
     void send(unsigned cc, unsigned dst, unsigned mode, unsigned counter, uint32_t addr, unsigned size, uint64_t lo, uint64_t hi);
     // ref's ccs[cc].received: {t, payload [63:0], header, payload [127:64]} of every packet C&C cc + 1 received
     std::vector<std::array<uint64_t, 4>> received(unsigned cc) const;

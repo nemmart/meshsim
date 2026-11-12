@@ -76,7 +76,12 @@ Commit and push after each step; each step checked against `ref`.
   Two findings on the way: the register block's state between cycles is ref's end of the cycle before (its endCycle of
   t runs at t + 1), so harness reads go through `block_at_end` and harness writes wait for that endCycle (TileCtl's
   HostWrites); and the router's FIFOs are its own state, not ports, so `quiescent` reads them.
-- **Not yet:** Net::cnc_send (ref's cncSends), Cc::received and ready_bits, TileRef::quiescent (use Chip::quiescent).
+- **Step 1, the controllers' paths**: Net::cnc_send (ref's cncSends, put by C&C 1's model at T - 1), Net::send (ref's
+  `ccs[c].send(c.cycle, ...)`, exact through `Sim::put_late`), Net::received (ref's `Endpoint.received`), clear_logs and
+  pending over the endpoints. NetSelf's controllers case (C&C 1's broadcast, a command and back-to-back sends, tiles to
+  C&C 1-3, direct sends' cycles, C&C 2 to C&C 3, C&C 2's broadcast; seeds -1 and 3) line for line, gcc and clang, debug
+  and release; the protected tests the same as main's; all 63 clang-release tests pass.
+- **Not yet:** Cc::received and ready_bits (C&C 1 on the machine as specified), TileRef::quiescent (use Chip::quiescent).
 
 ## What the body needs outside `sim/tests/` (additions only; the owner hears if any changes an existing operation)
 
@@ -92,8 +97,12 @@ Commit and push after each step; each step checked against `ref`.
   - `TileCtl`: the harness's register writes (DMA_CONFIG, the record base, TILE_PULSE's start, the write counters)
     applied in its step right after its endCycle, so the engines see them in the next cycle as ref's direct pokes do;
   - `TableStore`, `HistStore`: a harness poke of PTR or HIST republished on `ptr_view` / `out` at the next step.
-- **Framework (done):** `Sim::in_flight(shifted)`: unit types whose Link words due at now() are ref's previous cycle
-  (the register block; the core's port B) aren't counted; with no types every word counts (the default).
+- **Framework (done):** `Sim::put_late(unit, hold, words)`: a Hold put as of the cycle just run, into the next cycle's
+  delivery bucket (ref's harness puts between cycles); one domain only. `Sim::in_flight(shifted, ignored)`: Link words
+  into `ignored` types (C&C's row collectors and C&C: ref's READY and error lines, wires there) never count; unit types whose Link words due at now() are ref's previous cycle
+  `shifted` as before (the register block; the core's port B); with both lists empty every word counts (the default).
+- **Units (done), the endpoints:** `HarnessSends` in `Cnc` and `Endpoint` (cnc.h): the harness's scheduled sends and the
+  receive trace, null on every other machine.
 - **C&C's queue between cycles:** CncProgram's vectors reserved at build, steps appended between cycles behind a
   release point (cnc.h's mechanism), `call` and `at_all_ready` run from `Cnc::call_at` after the cycle they ran in.
 - **Open for P5:** CnC's `waitUntil(predicate)` (a lambda evaluated inside C&C's step in ref) is not declared yet:

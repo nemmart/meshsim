@@ -7,6 +7,7 @@ controllers seed -1: broadcast drained at cycle 44; 64 copies, first 2 last 34; 
   C&C 1 received 4 [ 88:0:40062000 92:3f:4006203f 96:2:40062002 112:25:40062025 ]
   C&C 2 received 4 [ 93:0:40062080 94:2:40062082 97:3f:400620bf 117:25:400620a5 ]
   C&C 3 received 4 [ 90:2:40062102 98:0:40062100 102:3f:4006213f 118:25:40062125 ]
+  direct sends drained at cycle 40 after: t37@31:55 t37@32:57 t5@19:56 cc1@12:58:43142042
   C&C 2 -> C&C 3 from 65; C&C 2's broadcast reaches 64 tiles once, controllers 0 0 0
 controllers seed 3: broadcast drained at cycle 44; 64 copies, first 2 last 34; C&C 1 received 0 [ ]
   command drained at cycle 83; t9 dmem[0x20] c0de dmem[0x23] cafe0003
@@ -17,6 +18,7 @@ controllers seed 3: broadcast drained at cycle 44; 64 copies, first 2 last 34; C
   C&C 1 received 4 [ 88:0:40062000 92:3f:4006203f 96:2:40062002 112:25:40062025 ]
   C&C 2 received 4 [ 93:0:40062080 94:2:40062082 97:3f:400620bf 117:25:400620a5 ]
   C&C 3 received 4 [ 90:2:40062102 98:0:40062100 102:3f:4006213f 118:25:40062125 ]
+  direct sends drained at cycle 40 after: t37@31:55 t37@32:57 t5@19:56 cc1@12:58:43142042
   C&C 2 -> C&C 3 from 65; C&C 2's broadcast reaches 64 tiles once, controllers 0 0 0
 packets seed -1: quiescent at cycle 87; late 0; router peak 2; t17 drained 3; t9 dmem[0xe] 14 dmem[0x80] 33334444; t63 dmem[0x10e] 25; t40 dmem[0x80..0x83] 33334444 11112222 77778888 55556666
   tile 9: 12 arrivals [31 100000014 e120487 0] [32 14 120480 0] [35 800000014 701204b8 0] [36 900000014 7e1204bf 0] [37 700000014 621204b1 0] [39 200000014 1c12048e 0]

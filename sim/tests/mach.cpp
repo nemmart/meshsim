@@ -828,10 +828,17 @@ void Net::cnc_send(const CncSend& s) {
     const units::CncPacket p{uint8_t(s.dst), uint8_t(s.mode), uint8_t(s.counter), uint8_t(s.size), s.addr, s.lo, s.hi};
     c.impl().push_send(0, {s.T, p});
 }
+// ref's Endpoint.send(c.cycle, ...): src the endpoint's address, the payload masked to its size, put on the endpoint's
+// send Hold as of the cycle just run (Sim::put_late); like ref's, a refused one isn't presented again.
 void Net::send(unsigned cc, unsigned dst, unsigned mode, unsigned counter, uint32_t addr, unsigned size, uint64_t lo, uint64_t hi) {
     if (cc > 2) FATAL("Net::send: C&C %u (0-2)", cc + 1);
-    const units::CncPacket p{uint8_t(dst), uint8_t(mode), uint8_t(counter), uint8_t(size), addr, lo, hi};
-    c.impl().push_send(cc, {c.cycle() + 1, p});
+    namespace lw = units::lw;
+    const sim::Word w[3] = {lw::mask_lo(lo, size), lw::hdr(lw::CC1 + cc, dst, mode, counter, addr, size), lw::mask_hi(hi, size)};
+    if (cc == 0) c.sim().put_late("cnc", c.unit<units::Cnc>("cnc").send, w, 3);
+    else {
+        const std::string n = "ep" + std::to_string(cc + 1);
+        c.sim().put_late(n, c.unit<units::Endpoint>(n).send, w, 3);
+    }
 }
 std::vector<std::array<uint64_t, 4>> Net::received(unsigned cc) const {
     const Chip::Impl& m = c.impl_const();

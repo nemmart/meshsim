@@ -667,6 +667,15 @@ void checkself() {
         n.run_all(2000);
         say("%s", n.c.violation_report().c_str());
     }
+    {   // W26 (W22's F4): the command slot after the boot (the boot ROM takes the boot command at GO)
+        mach::MachConfig k = Mach::cfg(-1);
+        k.max_violation_messages = 200;
+        Mach m(k);
+        m.boot("search");
+        m.c.cc().command(lw::BROADCAST, 2u << 24).go();
+        m.c.run_until([&] { return m.c.all_stopped(); }, 20000);
+        say("%s", m.c.violation_report().c_str());
+    }
     {
         mach::MachConfig k = Net::cfg(-1);
         k.max_violation_messages = 3;

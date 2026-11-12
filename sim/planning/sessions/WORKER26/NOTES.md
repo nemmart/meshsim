@@ -130,3 +130,16 @@ Commit and push after each piece; each kind checked line for line against `ref` 
   load clearing invariant 8's bit (TileRef::load); HIST/PTR table-window busy met by an instruction; a test's HIST load
   (no check yet); the slot's DMA_HDR/ADDR mid-transfer and full post; the C&C 1 and stub region writes; the Tracer's
   violations; the full request push; the receive queue overflow; the endpoints' checks (after W20's call above).
+- **W22's F4 fixed (SearchBench's 3 extra command-slot violations)**: ref's TileControl.endCycle(t) at a GO clears
+  `cmem.slot0Unread` when the core's pc is in the boot ROM (the ROM takes the boot command at GO; its own load of slot 0
+  is incidental), so the first command queued behind the boot may land before the program reads slot 0. Here: a fourth
+  SIM_CHECKS-only Wire, `t<k>.ctl.go_seen` (t + 1 driven at the block's step when it takes the GO of endCycle(t)),
+  read by the core after port B's write of t (ref's order: cmem at t, then endCycle(t)); the core's pc at that step is
+  ref's at the end of t. No level changes (the block is below the core already). CheckSelf: `search` booted with a
+  command queued right behind (ref: 0 violations; without the rule the C++ gave F4's three lines), line for line (clang
+  and gcc suite, clang debug); SearchBench 56 passed, 0 failed (clang suite); protected tests the same (clang release,
+  suite). `track.unread_commands` follows the rule only in the check builds (the Wire's); `overwritten_unread` is
+  unaffected.
+- **For 1d**: the same endCycle also calls `tile.sram.newPhase()` at every GO: the disjoint-buffer phases advance at each
+  GO, besides the harness's `Chip.newPhase`. So BigSram::new_phase needs the GO too (a Link from the block, or the GO
+  Wire above); to agree with W20 and the integrator before 1d.

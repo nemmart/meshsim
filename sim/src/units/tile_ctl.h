@@ -115,8 +115,16 @@ struct TileCtl {
         host = HostWrites{};
     }
 
-    TileCtl(sim::Ports& p, const RegBlockState& initial, bool router_ovf_event = false, bool g4_ = false, bool slot_ = false)
-        : s(initial), ovf_event(router_ovf_event), g4(g4_), slot(slot_) {
+    // W26 (the checker, SIM_CHECKS only): a GO taken at endCycle(t), as t + 1, for the core's command-slot check (ref's
+    // endCycle clears cmem.slot0Unread at a GO while the core is in the boot ROM: TileCore::step)
+    sim::WireOut go_out;
+    bool go_wire = false;
+    TileCtl(sim::Ports& p, const RegBlockState& initial, bool router_ovf_event = false, bool g4_ = false, bool slot_ = false,
+            bool go_wire_ = false)
+        : s(initial), ovf_event(router_ovf_event), g4(g4_), slot(slot_), go_wire(go_wire_) {
+#ifdef SIM_CHECKS
+        if (go_wire) p.out(go_out, "go_seen");
+#endif
         if (slot) p.in(slot_win, "slot_win");
         if (ovf_event) p.in(ovf, "ovf", 0);
         p.in(we_ovf, "we_ovf", 0); p.in(ts_ovf, "ts_ovf", 0); p.in(hist_ovf, "hist_ovf", 0);
@@ -170,6 +178,9 @@ struct TileCtl {
         }
         if (slot) s.slot_live = c.read(slot_win, Win::R_LIVE);   // W15: liveEvents(t), liveErrors(t), as ref's view at t
         s.end_cycle(c.now() - 1, in);
+#ifdef SIM_CHECKS
+        if (go_wire && in.go) c.drive(go_out, c.now());       // W26: the GO of endCycle(now - 1)
+#endif
         if (host_on && host.mask) apply_host();                // W20 (harness-only)
         if constexpr (sim::check::kOn) {                       // W20: the checker's facts (invariant 15)
             if (ck_tile >= 0) {
@@ -309,7 +320,8 @@ struct TileCore {
     // t as ref's core sees them (table_store.h, ag.h: busy_hist, busy_ptr, running), same-cycle Wires
     // An instruction at t is judged on the state at t; a test's store (TileRef::store, made here at t) on ref's flags as
     // the cycle before left them (ref's harness store runs between cycles: the stores' and the AG's flags of t - 1).
-    sim::WireIn busy_hist, busy_ptr, ag_running;
+    sim::WireIn busy_hist, busy_ptr, ag_running, go_seen;   // (go_seen: TileCtl's GO, the command-slot check below)
+    sim::Word go_last = 0;
     bool table_busy = false, host_now = false;
     void table_check([[maybe_unused]] sim::Ctx& c, [[maybe_unused]] uint32_t table, [[maybe_unused]] uint32_t i) const {
 #ifdef SIM_CHECKS
@@ -331,7 +343,7 @@ struct TileCore {
              bool receiver_ = false, bool done_gate_ = true, bool table_busy_ = false)
         : slot(slot_), receiver(receiver_), done_gate(done_gate_), rv(initial), rp_tile(uint8_t(tile)), rp_depth(read_port_depth), table_busy(table_busy_) {
 #ifdef SIM_CHECKS
-        if (table_busy) { p.in(busy_hist, "busy_hist"); p.in(busy_ptr, "busy_ptr"); p.in(ag_running, "ag_running"); }
+        if (table_busy) { p.in(busy_hist, "busy_hist"); p.in(busy_ptr, "busy_ptr"); p.in(ag_running, "ag_running"); p.in(go_seen, "go_seen"); }
 #endif
         if (slot) { p.in(win, "win"); p.out(periph, "periph", 1); }
         // W14: the request port's send side (every core) and a controller's receive side
@@ -459,6 +471,14 @@ struct TileCore {
             if (rv.stop == Stop::running) apply_port_b(c.peek(port_b));
             c.take(port_b);
         }
+#ifdef SIM_CHECKS
+        // W26: TileControl.endCycle(t) at a GO: the boot ROM takes the boot command there (its own load of slot 0 is
+        // incidental), so slot 0 counts as read when the core is in the boot ROM; after cmem's write of t, as ref's order
+        if (table_busy) {
+            const sim::Word g = c.read(go_seen);
+            if (g != go_last) { go_last = g; if (region(rv.pc) == R_BOOTROM) track.slot0_unread = false; }
+        }
+#endif
         if (host_send && host_send_t == c.now()) {            // W20 (harness-only)
             c.put(send, host_send_w[0], host_send_w[1], host_send_w[2]);
             host_send = false;

@@ -130,6 +130,16 @@ struct InjReadSide {
     uint64_t issued[3] = {}, stall_cycles = 0, window_full_cycles = 0, packets = 0, out_of_range = 0, violations = 0;
     uint64_t rp_injected_n = 0;        // read-port returns injected (ReadPort.injected; the "rdport" fingerprint)
     uint64_t rp_ties = 0;              // a read-port entry ready in the same cycle as one already waiting (by token order)
+    // W22 (finding F1, owner 2026-11-12: v1.3 parity, every build): ref counts window_full_cycles in every cycle the issue
+    // finds no token free while a client has a request; this unit sleeps then (nothing wakes it until a token frees or
+    // something arrives), so the cycles asleep are added when it next steps, as Injection's token_wait_cycles: `wf_from`
+    // is the first cycle of such a sleep (0: none). A statistic only: no wake, no timing.
+    uint64_t wf_from = 0;
+    bool window_waiting(sim::Ctx& c, const Tokens& tok) const {   // as of the start of the next cycle, nothing arriving
+        if (tok.reads + tok.loop_held < cap) return false;
+        if (feed && feed->clients) return feed->cl[0].vis || feed->cl[1].vis || feed->cl[2].vis;
+        return (cfg.gather && c.ready(client_hold[GATHER])) || (cfg.ag && c.ready(client_hold[AG])) || c.ready(rp_q);
+    }
 #ifdef SIM_CHECKS
     // W22 (P4; approved 2026-11-12; SIM_CHECKS only, the timing builds unchanged): ref's per-client latMax (issue to
     // injection, updated at the injection) and firstIssueT / lastIssueT (at the issue), for MemTest. Statistics.
@@ -264,13 +274,16 @@ inline sim::Wake Injection::step(sim::Ctx& c) {
     // A send waiting for a token is woken by the router's loop_left (a token freed), the read side by its own wakes (G3).
     // The wait may outlast a cycle with no free on its way (the loopback FIFO drains when the eject selector reaches
     // it): the tile builder gives this unit its own missed-wake threshold.
-    return rs.cfg.present ? rs.wake(c, tok) : sim::Wake::none();
+    if (!rs.cfg.present) return sim::Wake::none();
+    if (rs.window_waiting(c, tok)) rs.wf_from = c.now() + 1;     // W22 (F1): counted from t + 1 if the unit sleeps
+    return rs.wake(c, tok);
 }
 
 // ---- the read side's step (W11) -------------------------------------------------------------------------------------
 inline void InjReadSide::step(sim::Ctx& c, Tokens& tok) {
     if (!cfg.present) return;
     const uint64_t t = c.now();
+    if (wf_from) { window_full_cycles += t - wf_from; wf_from = 0; }   // W22 (F1): the window-full cycles asleep
     // the read-return hold: the put of t - 1 is visible now (the previous one was injected when it was)
     if (cur_v) FATAL("read queue: tile %u, cycle %llu: a read return not injected the cycle it was visible", me, (unsigned long long)t);
     if (nxt_v && nxt_at < t) { cur_v = true; cur_w[0] = nxt_w[0]; cur_w[1] = nxt_w[1]; cur_w[2] = nxt_w[2]; nxt_v = false; }

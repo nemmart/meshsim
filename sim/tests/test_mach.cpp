@@ -58,8 +58,9 @@ void report(const std::string& name, Mach& m, bool ok) {
 }
 const std::vector<std::string> kKit = {"cfg.linkLatency=4", "cfg.cmLatency=4", "cfg.goLatency=4", "cfg.runLatency=8", "cfg.areaQueueDepth=4",
                                        "cfg.sramReadLatency=3", "cfg.tsEngineLatency=2", "cfg.skewSeed=5", "cfg.checkDisjoint=false", "cfg.skew=true"};
-void a2a(int64_t seed, bool kit = false) {
+void a2a(int64_t seed, bool kit = false, bool s1 = true) {
     mach::MachConfig cfg = Mach::cfg(seed);
+    cfg.measure_s1 = s1;
     std::string err;
     if (kit && !cfg.set_args(kKit, err)) FATAL("%s", err.c_str());
     Mach m(cfg);
@@ -75,12 +76,13 @@ void a2a(int64_t seed, bool kit = false) {
     m.boot("a2a");
     m.c.cc().command(units::lw::BROADCAST, 1u << 24).go().command(units::lw::BROADCAST, 2u << 24).go().command(units::lw::BROADCAST, 3u << 24).go();
     const bool ok = m.run([&] { return m.all_stopped(); }, 2000000);
-    report("a2a seed " + std::to_string(seed) + (kit ? " kit" : ""), m, ok);
+    report("a2a seed " + std::to_string(seed) + (kit ? " kit" : "") + (s1 ? "" : " no S1"), m, ok);
     {
         const std::string d = m.c.digest();                 // B25: its fp field, ref's StateFp of the chip
         say("  fp %s\n", d.substr(d.find(" fp ") + 4).c_str());
     }
     say("%s", m.c.ag_report().c_str());
+    if (sim::check::kOn) say("  %s\n", m.c.s1_report().c_str());   // (S1: the debug and suite builds)
     std::string pl = "  phaseLog";
     for (const auto& e : m.c.cc().phase_log()) pl += " [" + std::to_string(e[0]) + ", " + std::to_string(e[1]) + "]";
     say("%s\n", pl.c_str());
@@ -222,6 +224,7 @@ void machself() {
     a2a(-1);
     a2a(4);
     a2a(-1, true);
+    a2a(4, false, false);
     {
         Mach m(Mach::cores_cfg(-1));
         m.boot_cores("wfi");
@@ -654,8 +657,59 @@ void ub_case() {
     }, {"tile 9", "controller", "misaligned 4-byte load"}, "a misaligned load");
     say("ub: %s\n", msg.empty() ? "ran on" : msg.c_str());
 }
+template <class Takes>
+int64_t rmw_case(mach::Chip& c, mach::TileRef& p, bool hist, uint32_t op, uint32_t idx, uint32_t add, Takes takes) {
+    const uint64_t before = takes();
+    if (hist) p.we_hist_req(c.cycle() + 1, op, idx, add); else p.we_ts_req(c.cycle() + 1, op, idx, add);
+    for (int i = 0; i < 50; i++) { c.step(); if (takes() > before) return c.cycle(); }
+    FATAL("RMW never taken");
+}
+void fig12b_case(unsigned L) {
+    const uint32_t PTRB = units::PTR_BASE, HISTB = units::TABLE_BASE;   // (HIST is the window's first table)
+    mach::MachConfig k = Net::cfg(-1);
+    k.ts_engine_latency = L; k.K = std::max(k.K, k.k_min());
+    std::string sb = "figure 12 values, L = " + std::to_string(L) + ":";
+    {
+        mach::Chip c(k);
+        mach::TileRef p = c.tile(7);
+        const units::TableStore& ts = p.unit<units::TableStore>("ts");
+        p.set_ptr(9, 0x1000); p.set_ptr(5, 0x2000);
+        int64_t tr = rmw_case(c, p, false, units::mem::OP_ADD_RET, units::mem::IDX_PTR + 9, 2, [&] { return ts.rmws; });
+        p.store(tr + 1, PTRB + 4 * 5, 0x7777); c.step(); c.step();
+        sb += " lost " + hx(p.ptr(5)) + "/" + std::to_string(ts.pipe.ctrl_writes_lost);
+        c.run(4);
+        tr = rmw_case(c, p, false, units::mem::OP_ADD_RET, units::mem::IDX_PTR + 9, 2, [&] { return ts.rmws; });
+        p.store(tr, PTRB + 4 * 5, 0x3000);
+        c.step(); c.step();
+        sb += " read-cycle " + hx(p.ptr(5));
+        p.store(c.cycle() + 1, PTRB + 4 * 5, 0x3004); c.step();
+        sb += " peek " + hx(p.ptr(5)) + " ptr9 " + hx(p.ptr(9));
+        tr = rmw_case(c, p, false, units::mem::OP_ADD_RET, units::mem::IDX_PTR + 9, 2, [&] { return ts.rmws; });
+        p.store(tr, PTRB + 4 * 9, 0x5000); c.step(); c.step();
+        sb += " same-entry " + hx(p.ptr(9));
+    }
+    {
+        mach::Chip c(k);
+        mach::TileRef p = c.tile(20);
+        const units::HistStore& hs = p.unit<units::HistStore>("hist");
+        p.hist_poke(3, 100); p.hist_poke(4, 7);
+        int64_t tr = rmw_case(c, p, true, 0, 3, 1, [&] { return hs.rmws; });
+        p.store(tr + 1, HISTB + 4 * 4, 55); c.step(); c.step();
+        sb += "; hist " + std::to_string(p.hist_peek(3)) + " " + std::to_string(p.hist_peek(4)) + "/" + std::to_string(hs.pipe.ctrl_writes_lost);
+        tr = rmw_case(c, p, true, 0, 3, 1, [&] { return hs.rmws; });
+        { const auto v = p.load(tr + 1, HISTB + 4 * 4, 4); sb += " wb-load " + (v ? std::to_string(*v) : std::string("null")); }
+        c.run(3);
+        { const auto v = p.load(c.cycle() + 1, HISTB + 4 * 4, 4); sb += " later " + (v ? std::to_string(*v) : std::string("null")); }
+        c.step();
+        p.store(c.cycle() + 1, HISTB + 4 * 4, 55); c.step();
+        sb += " peek " + std::to_string(p.hist_peek(4));
+    }
+    say("%s\n", sb.c_str());
+}
 void netself() {
     out.clear();
+    fig12b_case(1);
+    fig12b_case(3);
     ub_case();
     figure12_case(1);
     figure12_case(3);
@@ -699,7 +753,7 @@ std::string without_violations(const std::string& x) {
         if (l.rfind("phases seed ", 0) == 0 || l.rfind("rdpeak: ", 0) == 0) skip = true;   // PhaseLog's: debug and suite only
         if (l.rfind("stageb ", 0) == 0 || (skip && l.rfind("phases seed ", 0) != 0 && l.rfind("a2a ", 0) == 0)) skip = false;
         if (skip) continue;
-        if (l.rfind("violations: ", 0) == 0 || l.rfind("  cycle ", 0) == 0) continue;
+        if (l.rfind("violations: ", 0) == 0 || l.rfind("  cycle ", 0) == 0 || l.rfind("  S1: ", 0) == 0) continue;
         const size_t v = l.find("; violations ");
         if (v != std::string::npos) l = l.substr(0, v);
         r += l + "\n";

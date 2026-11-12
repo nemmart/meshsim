@@ -30,8 +30,10 @@ final class MachSelf {
     static final String[] KIT = { "cfg.linkLatency=4", "cfg.cmLatency=4", "cfg.goLatency=4", "cfg.runLatency=8", "cfg.areaQueueDepth=4",
             "cfg.sramReadLatency=3", "cfg.tsEngineLatency=2", "cfg.skewSeed=5", "cfg.checkDisjoint=false", "cfg.skew=true" };
     static void a2a(long seed) { a2a(seed, false); }
-    static void a2a(long seed, boolean kit) {
+    static void a2a(long seed, boolean kit) { a2a(seed, kit, true); }
+    static void a2a(long seed, boolean kit, boolean s1) {
         Config cfg = Mach.cfg(seed);
+        cfg.measureS1 = s1;
         if (kit) for (String a : KIT) { int eq = a.indexOf('='); try { setField(cfg, a.substring(4, eq), a.substring(eq + 1)); } catch (Exception e) { throw new RuntimeException(e); } }
         Mach m = new Mach(cfg);
         A2A data = new A2A(7, 2000);
@@ -46,7 +48,7 @@ final class MachSelf {
         m.boot("a2a");
         m.c.cc.command(LinkWord.BROADCAST, 1 << 24).go().command(LinkWord.BROADCAST, 2 << 24).go().command(LinkWord.BROADCAST, 3 << 24).go();
         boolean ok = m.run(m::allStopped, 2_000_000);
-        report("a2a seed " + seed + (kit ? " kit" : ""), m, ok);
+        report("a2a seed " + seed + (kit ? " kit" : "") + (s1 ? "" : " no S1"), m, ok);
         {   // the canonical state fingerprint of the chip at its last cycle (StateFp, as M2Prog prints it): B25's
             StateFp.Out o; long all = 0x6A09E667F3BCC908L; int nn = 0;
             for (Tile p : m.c.tiles) for (String u : StateFp.TILE_UNITS) { o = new StateFp.Out(); StateFp.unit(o, m.c, p, u, m.c.cycle); all = StateFp.fmix(all ^ o.done()); nn++; }
@@ -54,6 +56,7 @@ final class MachSelf {
             System.out.printf("  fp %016x%n", StateFp.fmix(all ^ nn));
         }
         System.out.print(m.c.agReport());
+        System.out.println("  " + m.c.s1.report(m.c.cfg.K));
         StringBuilder pl = new StringBuilder("  phaseLog");
         for (long[] e : m.c.cc.phaseLog) pl.append(' ').append(java.util.Arrays.toString(e));
         System.out.println(pl);
@@ -213,6 +216,7 @@ final class MachSelf {
         a2a(-1);
         a2a(4);
         a2a(-1, true);
+        a2a(4, false, false);
         {   // C&C 1-3 as cores: the boot through the host port, until C&C 1 reports the tiles running
             Mach m = new Mach(Mach.coresCfg(-1));
             m.bootCores("wfi");

@@ -58,16 +58,25 @@ wfi: stopped at cycle 1616; bootStart 0 runAt 77; allExited true allInWfi false;
 a2a seed -1: stopped at cycle 7698; bootStart 0 runAt 98; allExited true allInWfi false; halts []; exit(0) 0 exit(63) 0
   fp 032cb3291ab35a73
     address generator: 0 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
+  S1: accept -> complete, the largest: big SRAM 6 (256000 writes; in its area's queue by 5), PTR 4 (128000 updates), HIST 0 (0 updates); K = 8: margin 2 before the controller's reaction (+4)
   phaseLog [97, 98] [1028, 1029] [4506, 4507] [7660, 7661]
   misplaced 0; lastGoAt 7661 lastAllReadyAt 7660; busy false; sram t9 0x40000 240000000000005d t50 0x40100 c8400000000001b3
 a2a seed 4: stopped at cycle 7698; bootStart 0 runAt 98; allExited true allInWfi false; halts []; exit(0) 0 exit(63) 0
   fp 032cb3291ab35a73
     address generator: 0 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
+  S1: accept -> complete, the largest: big SRAM 6 (256000 writes; in its area's queue by 5), PTR 4 (128000 updates), HIST 0 (0 updates); K = 8: margin 2 before the controller's reaction (+4)
   phaseLog [97, 98] [1028, 1029] [4506, 4507] [7660, 7661]
   misplaced 0; lastGoAt 7661 lastAllReadyAt 7660; busy false; sram t9 0x40000 240000000000005d t50 0x40100 c8400000000001b3
 a2a seed -1 kit: stopped at cycle 7704; bootStart 0 runAt 108; allExited true allInWfi false; halts []; exit(0) 0 exit(63) 0
   fp f62b3ed6d2a77d7f
     address generator: 0 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
+  S1: accept -> complete, the largest: big SRAM 8 (256000 writes; in its area's queue by 7), PTR 5 (128000 updates), HIST 0 (0 updates); K = 8: margin 0 before the controller's reaction (+4)
   phaseLog [107, 108] [1037, 1038] [4511, 4512] [7670, 7671]
   misplaced 0; lastGoAt 7671 lastAllReadyAt 7670; busy false; sram t9 0x40000 240000000000005d t50 0x40100 c8400000000001b3
+a2a seed 4 no S1: stopped at cycle 7698; bootStart 0 runAt 98; allExited true allInWfi false; halts []; exit(0) 0 exit(63) 0
+  fp 032cb3291ab35a73
+    address generator: 0 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
+  S1: accept -> complete, the largest: big SRAM 0 (0 writes; in its area's queue by 0), PTR 0 (0 updates), HIST 0 (0 updates); K = 8: margin 8 before the controller's reaction (+4)
+  phaseLog [97, 98] [1028, 1029] [4506, 4507] [7660, 7661]
+  misplaced 0; lastGoAt 7661 lastAllReadyAt 7660; busy false; sram t9 0x40000 240000000000005d t50 0x40100 c8400000000001b3
 cores: booted true at cycle 883; bootStart 0; mbox 0 852 867 2; tile 0 pc 0x2000064, cc1 pc 0x1000b38

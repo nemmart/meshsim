@@ -46,6 +46,11 @@ struct RegBlockState {
     enum : unsigned { COND_ROUTER_OVF = 0, COND_BAD = 1, COND_DRIFT = 3, COND_WE_IN_OVF = 4, COND_TABLE_OVF = 5, COND_GATHER_OVF = 6 };
     // ---- statistics, and ref's violations (counted) ----
     uint64_t gos = 0, dones = 0, readies = 0, sends = 0, trace_stores = 0, violations = 0, sim_exit_at = 0;
+    // W23 (P5): TileControl's statistics the control suites read (not in the digest): counters-done edges with no
+    // qualifying arrival (spuriousEdges), and the cycles of the last done, the last landed command and the last READY
+    // pulse (lastDoneAt, lastLandedAt: -1 before any; readyPulseAt: INT64_MIN before any)
+    uint64_t spurious_edges = 0;
+    int64_t last_done_at = -1, last_landed_at = -1, ready_pulse_at = INT64_MIN;
     int ck_tile = -1;                  // W20: the checker's facts (src/check.h) under this tile; -1 none (a preview's copy)
     uint32_t sim_exit_value = 0;
 
@@ -83,7 +88,7 @@ struct RegBlockState {
         uint32_t clears = 0;
         dma_pulse = false;
         if (in.op == BUS_STORE) clears = apply(t, in.arg, in.v, in.ag_running);                                     // 2.
-        if (in.landed) { landed = true; events |= 1u << EV_COMMAND; }                                // 3.
+        if (in.landed) { landed = true; last_landed_at = int64_t(t); events |= 1u << EV_COMMAND; }   // 3.
         if (in.op == BUS_ERROR) conditions |= 1u << in.arg;                                          // 4. new errors
         if (in.bad) { bad_total++; conditions |= 1u << COND_BAD; }
         if (in.router_ovf_ev) conditions |= 1u << COND_ROUTER_OVF;
@@ -98,7 +103,7 @@ struct RegBlockState {
         }
         bool rd = done && landed;                                                                    //    READY's edge
         ready_pulse = rd && !ready_level;
-        if (ready_pulse) readies++;
+        if (ready_pulse) { readies++; ready_pulse_at = int64_t(t); }
         ready_level = rd;
         if (in.op == BUS_CONSUME) events &= ~(in.v & ~EVENTS_LIVE);                                  // 5. the consume
         const bool rdd = rd_done(in);                                                               //    [10]: rd_done's edge
@@ -135,7 +140,7 @@ struct RegBlockState {
         if (cond && !cond_all_prev && q_all) {
             q_all = false;
             if (!gated && !(clears >> EV_COUNTERS_DONE & 1)) events |= 1u << EV_COUNTERS_DONE;
-        }
+        } else if (cond && !cond_all_prev) spurious_edges++;                                   // W23: statistics
         cond_all_prev = cond;
     }
 
@@ -157,7 +162,7 @@ struct RegBlockState {
                     violations++;
                     if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::CTL_DONE_GO_MASKED);
                 }
-                done = true; dones++;
+                done = true; dones++; last_done_at = int64_t(t);
                 if (done_gate) gate = true;
                 clears = COUNTER_EVENTS;
                 events &= ~clears; q_all = false;

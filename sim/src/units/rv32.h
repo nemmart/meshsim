@@ -26,6 +26,7 @@
 // What isn't modelled yet stops with FATAL("... not modelled yet"), naming the register or window.
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 #include "base/fatal.h"
@@ -53,6 +54,13 @@ inline uint64_t digest_mix(uint64_t h, uint64_t v) {
     z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ull;
     z = (z ^ (z >> 27)) * 0x94d049bb133111ebull;
     return z ^ (z >> 31);
+}
+
+// W23 (P5): Controller.checkBootRom (v1.25, DECISIONS-v1.25 s8d): the boot ROM is 256 bytes, 64 words; a larger image
+// is refused (FATAL, at configuration: ref's IllegalStateException), naming where it came from.
+inline void check_bootrom(size_t words, const char* from) {
+    if (words > BOOTROM_MAX_WORDS)
+        FATAL("the boot ROM image %s is %zu bytes; the ROM is %u (spec 6.2, DECISIONS-v1.25 s8d)", from, 4 * words, 4u * BOOTROM_MAX_WORDS);
 }
 
 struct Rv32Timing {
@@ -103,6 +111,20 @@ struct Rv32 {
     // the reset (firstImageAt: the image running; -1 before). A reset (W20) sets them back to -1, as ref's reset.
     int64_t trap_at = -1, first_image_at = -1;
     int32_t trap_cause = -1;
+    // W23 (P5): the WFI wakes (TileControl.takeWake's goWakes, eventWakes; ref counts them in the block, here where the
+    // core takes the wake) and the program's WFIs (Controller.wfiLog: {entered, woke, cause 1 GO / 2 event} per WFI
+    // outside the boot ROM; the first kWfiLog kept, wfi_n counts all, D24: a fixed array). Statistics only.
+    static constexpr unsigned kWfiLog = 16;
+    int64_t wfi_log[kWfiLog][3] = {};
+    uint32_t wfi_n = 0;
+    uint64_t go_wakes = 0, event_wakes = 0;
+    int64_t wfi_at = 0; bool wfi_in_rom = false;
+    void took_wake(bool go, int64_t entered, uint64_t t, bool rom) {
+        if (go) go_wakes++; else event_wakes++;
+        if (rom) return;
+        if (wfi_n < kWfiLog) { wfi_log[wfi_n][0] = entered; wfi_log[wfi_n][1] = int64_t(t); wfi_log[wfi_n][2] = go ? 1 : 2; }
+        wfi_n++;
+    }
 
     // ================================================================ the cycle
     // Controller.runCycle(t), after catching up the cycles slept since `last`. Returns the next cycle the core needs
@@ -129,6 +151,7 @@ struct Rv32 {
         if (in_wfi) {                                                   // 5.
             if (!e.wake()) { cycles_wfi++; return kNever; }
             in_wfi = false;
+            took_wake(e.reg(EVENTS) >> EV_GO & 1, wfi_at, t, wfi_in_rom);   // W23: statistics
             if (log) log->add(t, T_WAKE, (e.reg(EVENTS) >> EV_GO & 1) ? 1 : 2);
         }
         if (stall > 0) { stall--; cycles_stalled++; return t + 1 + stall; }   // 6.
@@ -351,7 +374,9 @@ struct Rv32 {
             if (ins == 0x00100073) { stop_loudly(t, HALT_EBREAK, ipc); return; }
             if (ins == WFI) {
                 if (in_handler && !interrupt_pending(e)) parked = true;
-                if (!e.wake()) in_wfi = true;                 // the wake term holds: falls through
+                wfi_at = int64_t(t);                          // W23: statistics (wfiLog)
+                if (!e.wake()) { in_wfi = true; wfi_in_rom = region(ipc) == R_BOOTROM; }
+                else took_wake(e.reg(EVENTS) >> EV_GO & 1, int64_t(t), t, region(ipc) == R_BOOTROM);   // falls through
             } else if (ins == 0x30200073) {                   // mret: legal, flagged (every trap is terminal)
                 violations++;
                 next = mepc;

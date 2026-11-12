@@ -460,3 +460,17 @@ TEST(mach_wait_until_releases_the_next_cycle) {
     CHECK(first_true > m.run_at);                             // checked only once C&C reached it (after the boot's GO)
     CHECK_EQ(ran, first_true + 1);
 }
+
+// W25's F6: a row hook attached, the machine destroyed: the slot frees only the buffer it allocated (ASan in debug).
+TEST(mach_row_hook_destroyed_cleanly) {
+    mach::MachConfig k = mach::MachConfig::machine();
+    k.periph_type = 0; k.test_periph_tile = 0;
+    {
+        mach::Chip c(k);
+        uint64_t rows = 0;
+        c.on_row(0, [&](const uint64_t*, int64_t) { rows++; });
+        c.run(10);
+        CHECK_EQ(rows, 0u);
+    }
+    CHECK(true);
+}

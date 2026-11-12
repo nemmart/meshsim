@@ -70,6 +70,18 @@ suites set is in `MachConfig` already. ref's shuffled logs differ from the unshu
   jump targets masked) differs only in 6 objects and only in `mov $imm,%esi`: FATAL's `__LINE__` argument to
   `fatal_at` (e.g. 0x117 -> 0x11d, the 6 lines inserted above it in inject.h).
 
+## Changes to units I don't own (approved by the owner)
+
+- **F1, the read queue's `window_full_cycles` (owner 2026-11-12: fix, in every build; v1.3 parity)**:
+  src/units/inject.h (W11's read side, W20's harness path alike). `InjReadSide::wf_from` and `window_waiting`: at the
+  end of Injection's step, if no token will be free at t + 1 and a client has a request (a client hold or the read-port
+  FIFO ready; on the harness's machine a visible ring entry), the wait is counted from t + 1; the read side's next step
+  adds the cycles asleep (`window_full_cycles += t - wf_from`) before counting its own cycle as before. Injection's
+  `token_wait_cycles` / `wait_from` pattern; no wake added, no timing changed. **Checked**: MemTest's token window
+  line now ref's (80 cycles; seeds -1, 8); test_chip, test_sort and test_memconf (which compares
+  `window_full_cycles` with ref's MemConf fixtures) print the same before and after (clang release); test_mem,
+  test_memconf, MemTest's groups in clang debug; NetTest's ported groups unchanged.
+
 ## Asks of W20 (through the integrator; named W22-n, so they don't collide with other workers' numbers)
 
 From NetTest's gap map (2026-11-11). NetTest's other groups (structure, unicast's packets, routes, the controllers'
@@ -131,6 +143,31 @@ W22-14. (owner: `new_phase` to W20, big SRAM's recording to W26) **Chip::new_pha
 - W22-4 (the write engine's arrival log): on main (`record_writer`, `writer_log`).
 - Chip.memReport: suite-side formatting from the counters above (no ask).
 
+### AgTest's needs (2026-11-12)
+
+AgTest prints no lines (its log is the summary: 240 assertions). On today's main it uses W20's new `TileRef::store`,
+`load`, `send_put`, the AG's statistics (`stream_reads`, `group_reads`, `requests`, the queue peaks), TableStore's and
+the HIST store's `rmws` and `pipe.ctrl_writes_lost`. What's missing:
+
+W22-15. **ref's `EngineTest.phaseDone` / `runLocal`** (AgTest's four engine groups and every EngineTest group stop on
+    it): `!ag.running && ctl.countersZero() && dir.inFlight() == 0 && memIdle(t) && dir.cmIdle(t) && !tsBusy(t)`. The
+    C++ director forwards each counted packet's counter over its `kline` Link(K + 1) and mode-0 writes over `port_b`, so
+    `inFlight` (accepted, not yet decremented) and `cmIdle` (nothing on port B's link) are words in flight on those
+    ports: a harness accessor (e.g. `TileRef::phase_done()`, or `dir_in_flight()` and `cm_idle()`).
+W22-16. **The write engine's RMW requests from the harness** (figure 12: ref's `p.weTsReq.put(t, op, idx, add)` and
+    `p.weHistReq.put(t, 0, idx, add)`, an RMW on the TableStore's or HIST's request line as the write engine would put
+    it, so the test can aim a controller store or load at its write-back cycle).
+- W22-14 (`new_phase`): rulings. W26: the AG's stream-entry checks ("stream", read size 11, d = 70, d = 126, mode-4,
+  mode-3 at 128, counter 0) and the injection's "dst 70".
+- ref's `ag.runningForStatus()` / `doneForStatus()` (rulings): the AG's `status` Reg as the block reads it at t + 1;
+  read through `TileRef::block()` or an accessor (to settle when that group is written).
+
+**Finding F2 (for W20): `TileRef::mem_idle` indexes the area queues modulo `MAX_DEPTH`** (tests/mach.cpp:739,
+`m.q[a][(m.head[a] + j) % units::BigSram::MAX_DEPTH]`), while BigSram wraps them modulo `cfg.area_queue_depth`
+(big_sram.h `at`, `enqueue`, `serve`). With the default depth 8, once head + j reaches 8 it reads a stale slot, so a
+queued write can be missed (mem_idle true too early) or a served one seen. `m.at(a, j)` is the fix. MemTest's mem_idle
+group passes either way (its queues never wrap while it asks).
+
 ## Progress
 
 - 2026-11-11: plan agreed; branch made. Toolchain: clang 18.1.3, gcc 13.3.0, JDK 21.0.13 (apt). clang release on
@@ -184,7 +221,7 @@ W22-14. (owner: `new_phase` to W20, big SRAM's recording to W26) **Chip::new_pha
   | priority, return order | 1 each | equal (packets: 0, pass; its 3 UB stops name tile, client, chunk) |
   | mem_idle | 0 | pass |
   | oversubscription + memReport | 10 | equal |
-  | token window | 1 | **differs**: "issue waits (9 cycles)", ref 80 (finding F1) |
+  | token window | 1 | equal after F1's fix (was 9 cycles, ref 80) |
   | disjoint | 1 | waits on W22-14 |
 - **Finding F1: the read queue's `window_full_cycles` undercounts** (src/units/inject.h, W11's unit and W20's harness
   path alike). ref counts every cycle the issue phase finds no token free while a client has a request; the C++ unit is
@@ -193,3 +230,17 @@ W22-14. (owner: `new_phase` to W20, big SRAM's recording to W26) **Chip::new_pha
   is printed by MemTest. Fix proposed (the owner's call: it changes a unit): account the wait lazily, as Injection's
   `token_wait_cycles` / `wait_from` already does: the cycle the wait began, the span added when the unit next steps.
   Under SIM_CHECKS only, or in every build (the existing counter is wrong in every build).
+- **F1 fixed** (above): MemTest equal on every printed line but the disjoint group's (W22-14).
+- **AgTest**: gap map (W22-15, W22-16 above); finding F2 (mem_idle's queue index) for W20.
+- **NetTest complete** (W20's reset_stats, Cc::received, send_put/send_empty/send_refusals, record_writer/gather, the
+  K check; the checker's kinds already recorded): broadcast, C&C 1-3 ports, director, injection, loopback added. **The
+  whole suite byte for byte equal to all four logs**: net (all), net-quick, net-shuf (5), net-shuf2 (11), clang suite
+  build; skewtable by Quest 179. **One interim**: the director group's `cm_idle` (ref's `dir.cmIdle(t)`, W22-15) reads
+  "never idle" until W20's accessor lands, so its one check ("cm_idle low while the write is in the port-B pipe")
+  passes without testing anything; replaced when W22-15 is on main.
+- **run_tests.sh** (shared; owner told): `suite_net` in SUITES; steps net (ref net-quick.log in quick mode, net.log in
+  all), net-shuf, net-shuf2, skewtable (all only). `./run_tests.sh quick --check --no-build`: the three net steps pass
+  with no LOG DIFFERS.
+- **make check**: `tests/test_p4suites.cpp` runs net-quick, net-shuf, net-shuf2 byte for byte (debug builds; skipped in
+  release, where the Fifo peaks aren't kept); clang debug 48 s, all pass. `suite_mem` builds in the timing builds as a
+  stub that says it needs SIM_CHECKS (its statistics don't exist there).

@@ -48,12 +48,14 @@ mechanisms table to confirm.
 
 ## Where it stands (end of 2026-11-12)
 
+(For the next integrator: `INTEGRATOR-HANDOVER-V135.md` has the full state and the messages not yet sent.)
+
 **Done:** P1 (the stand-alone tree), P6 (the sort and its kit), P7a and P7b (the Tracer's suites, Stage B and the
 acceptance kit); W20's harness queue (empty, REPORT written); W26's checker queue except CheckSelf's endpoint case and
 whatever CtrlTest's invariants group needs; the restructured spec (`sim/spec/`, merged). `main`: 75 test binaries, and
 `./run_tests.sh quick --check` passing with no log differences.
-**In flight:** W22: AgTest (234 of 240 until W20's W22-21, now on main), then the freeze check's runner task (a
-rehearsal on today's main). W23: cccores off PENDING, S1Bench, CondTest, RecipeTest's boot, CtrlTest's faults,
+**In flight:** W22: AgTest (234 of 240; W20's W22-21 is on main), and the freeze check's runner task (`tests/freeze/`,
+merged; its rehearsal, Quest 186, passed every item but the sort's 6-domain run, a partition fix). W23: cccores off PENDING, S1Bench, CondTest, RecipeTest's boot, CtrlTest's faults,
 invariants and all-to-all, then ctrl-full and accounting-full on the runner. W26: CheckSelf's endpoint case.
 **Next:** P8: v1.35's documents (a docs-writing session on `v1.35-docs`, under the docs session; RUNNING.md last), W24's
 tooling (the docs check, the freeze's copy script, the comment-strip script run once at the end, the helper switch);

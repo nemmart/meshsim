@@ -347,3 +347,9 @@ W22-18. **The read port's host queue (for W20)**: ref's `readPort.hostQueue(addr
   tables with and without stalls, the zero-length groups, start to the first request), 14 s on the clang suite build
   (1,500 machines). In run_tests.sh's full block (step agbench, `suite_agbench` in SUITES); not in make check (a
   full-only step in v1.3).
+- **Quest 184 result**: build PASS; rdport-full's ported groups all equal (from C 1 line, the gather table's 7 with the
+  65,536-value row, gather from C 1), the FAILs W26's (invariant 8; F4, fixed since). engine-full aborted: the Net's
+  directors' logs (fixed size, 16,384) overflowed on the full-size all-to-alls (ref's logs are lists). Fixed: the
+  all-to-all group runs on the plain chip (ref only uses the Net's chip there); engine and eng-shuf still equal.
+  engine-full then checked locally (clang suite build): every printed line equal to engine-full.log in three blocks
+  (lines 1-18; the all-to-all at full size, 15 lines, 85 s; drift and fence), the 2 FAILs W26's invariants 3 and 6.

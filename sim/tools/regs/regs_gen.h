@@ -463,9 +463,9 @@ inline std::string field_row(const char* word, const Field& f) {
 }
 }  // namespace rd
 
-inline std::string registers_md() {
-    using namespace rd;
-    static const Row rows[] = {
+namespace rd {
+// RegDoc.ROWS: the register table's rows (moved to namespace scope by W23 for RegDocTest; the output is unchanged)
+inline constexpr Row ROWS[] = {
         {"PARAMS", "the unit's constant", "the constant", "peripherals present [2:0], endpoint id [26:20], big-SRAM size [31:27]"},
         {"STATUS", "0 (the idle machine)", "the live bits", "diagnostic: rd_running, rd_done, GATHER busy, send_busy, done, command landed, request_busy"},
         {"ERRORS", "0", "the errors", "sticky until the reset; [13:11] live (the peripherals')"},
@@ -504,7 +504,12 @@ inline std::string registers_md() {
         {"SRAM_RD_DEST_ADDR", "undefined (meshsim 0)", "the next result's destination, as advanced, with the size and counter", "the read port's setup"},
         {"SIM_EXIT", "-", "0", "simulator only: a store ends a meshsim test with the value"},
         {"TRACE", "-", "0", "simulator only: a store is logged with the cycle and the unit"},
-    };
+};
+}  // namespace rd
+
+inline std::string registers_md() {
+    using namespace rd;
+    const auto& rows = ROWS;
     std::string b;
     b += R"TB(# Unit registers: the programmer's reference (v1.2)
 

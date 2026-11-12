@@ -305,7 +305,10 @@ struct AddrGen {
                 if (g_r == 0) { zero_groups++; if (g_gap > 0) zero_groups_with_gap++; next_group(rcount); return; }
             }
             const int64_t late_by = t - rot_sched;
-            if (late_by > 0) { rotations_late++; max_rot_late = std::max(max_rot_late, uint64_t(late_by)); }
+            if (late_by > 0) {
+                rotations_late++; max_rot_late = std::max(max_rot_late, uint64_t(late_by));
+                sim::check::record(uint64_t(t), int(me), sim::check::Kind::ROTATION_LATE, runs);   // W26: invariant 3 (reported once a run)
+            }
             in_rot = true; v = 0; rotations++;
         }
         if (sq_buf == 0) {                                               // underrun: the visit waits, the timetable moves

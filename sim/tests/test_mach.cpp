@@ -704,6 +704,15 @@ void checkself() {
         n.c.run(200);
         say("%s", n.c.violation_report().c_str());
     }
+    {   // W26: invariant 6: HIST counts past 17 bits, reported once a tile
+        Net n(Net::cfg(-1));
+        n.c.tile(9).set_master_config(master_config(0, 0, 0, 0, 1, 1));
+        for (unsigned i = 0; i < 256; i++) n.c.tile(9).hist_poke(i, 0x1FFFF);
+        n.c.tile(9).set_remaining(1, 8);
+        for (unsigned i = 0; i < 4; i++) n.at(12 + i, 10 + 3 * i, 9, lw::M_SRC, 1, 0, lw::SIZE_64, 0x0101ull * (i + 1), 0);
+        n.run_all(1000);
+        say("%s", n.c.violation_report().c_str());
+    }
     {
         mach::MachConfig k = Net::cfg(-1);
         k.max_violation_messages = 3;

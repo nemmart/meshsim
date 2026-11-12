@@ -326,7 +326,7 @@ void Checker::process(int64_t now, bool scan, bool final) {
         bool say = true;                                     // ref's once-only rules (Chip.checkInvariants)
         switch (sim::check::slot_of(last.kind)) {
         case Slot::HIST17: if (u) { say = !u->hist; u->hist = true; } break;
-        case Slot::ROTATION: if (u) { say = !u->rotation; u->rotation = true; } break;
+        case Slot::ROTATION: if (u) { say = u->rotation_run != int64_t(last.a[0]); u->rotation_run = int64_t(last.a[0]); } break;   // W26: once a run
         case Slot::REFUSAL: if (u) { say = !u->refusal; u->refusal = true; } break;
         case Slot::DISJOINT: if (u) { say = u->disjoint_phase != int64_t(last.a[3]); u->disjoint_phase = int64_t(last.a[3]); } break;
         default: break;

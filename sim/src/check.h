@@ -96,7 +96,8 @@ enum class Kind : uint16_t {
                                 //   a3 the phase (the harness reports once per tile and phase, as ref)
     // ---- the HIST store, the AG's rotations ----
     HIST_OVERFLOW,              // (no arguments; once per tile)
-    ROTATION_LATE,              // (no arguments; the first per tile)
+    ROTATION_LATE,              // a0 the AG's run number (ref reports the first late rotation of each run: its counter
+                                //   restarts at a run's load, Chip.checkInvariants' s[7])
     // ---- the register block (TileControl.violate) ----
     CTL_WFI_WOKEN,              // (no arguments)
     CTL_RESERVED_BITS,          // a0 the register's index (checker.cpp's names), a1 the reserved bits set

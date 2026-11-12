@@ -214,6 +214,15 @@ final class CheckSelf {
             n.c.run(200);
             System.out.print(n.c.violationReport());
         }
+        {   // invariant 6 (W26): HIST counts past 17 bits (every HIST word at 0x1FFFF, count-on-arrival): reported once a tile
+            Net n = new Net(Net.cfg(-1));
+            n.c.tiles[9].setMasterConfig(Fields.masterConfig(0, 0, 0, 0, 1, 1));
+            for (int i = 0; i < 256; i++) n.c.tiles[9].hist.poke(i, 0x1FFFF);
+            n.c.tiles[9].dir.remaining[1] = 8;
+            for (int i = 0; i < 4; i++) n.at(12 + i, 10 + 3 * i, 9, LinkWord.M_SRC, 1, 0, LinkWord.SIZE_64, 0x0101L * (i + 1), 0);
+            n.runAll(1000);
+            System.out.print(n.c.violationReport());
+        }
         {   // the message cap (maxViolationMessages): the count goes on
             Config k = Net.cfg(-1); k.maxViolationMessages = 3;
             Net n = new Net(k);

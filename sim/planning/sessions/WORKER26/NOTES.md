@@ -130,7 +130,8 @@ Commit and push after each piece; each kind checked line for line against `ref` 
   bit (TileRef::load); HIST/PTR table-window busy met by an instruction; a test's HIST load (no check yet); the slot's
   DMA_HDR/ADDR mid-transfer (a case planned) and full post; the C&C 1 and stub region writes; the Tracer's violations;
   the full request push; the receive queue overflow; the endpoints' checks (after W20's call in Net's sends); the read
-  port's size 11 (the fatal cases) and misaligned destination (UB at the director).
+  port's size 11 and misaligned destination (UB at the director); a late rotation (invariant 3: AgTest's
+  pending groups may reach it).
 - **W22's F4 fixed (SearchBench's 3 extra command-slot violations)**: ref's TileControl.endCycle(t) at a GO clears
   `cmem.slot0Unread` when the core's pc is in the boot ROM (the ROM takes the boot command at GO; its own load of slot 0
   is incidental), so the first command queued behind the boot may land before the program reads slot 0. Here: a fourth
@@ -158,3 +159,14 @@ Commit and push after each piece; each kind checked line for line against `ref` 
   eight streams of count 0 on tile 9 (each checked, nothing issued). ref's startsWhileRunning and tableWraps are UB in
   v1.3 (stops), never counted: no kinds. AgTest 206 passed, 0 failed (clang suite; its other groups wait on W22-15/16).
   Both cases line for line (clang and gcc suite, clang debug); protected tests the same (clang release, suite).
+- **Invariants 3 and 6** (FINDINGS 11): `ROTATION_LATE` at the AG's late rotation, reported once a run (ref's counter
+  restarts at each run's load, so `s[7]` returns to 0: the checker keys on the run number), and `HIST_OVERFLOW` at the
+  HIST store's overflowing RMW (once a tile; `HistStore::ck_tile`, set in add_g1). CheckSelf: HIST at 0x1FFFF counted
+  past 17 bits (1 line), line for line (clang and gcc suite, clang debug); protected tests the same.
+- **Brought to the integrator (2026-11-12), with the evidence from ref**: (a) size 11 and the two stream cases are not
+  fatal in ref: TrafficDirector.java:92 flags and drops size 11 ("meshsim's choice, flagged, dropped, no error"),
+  InjectionPath.java:51 and AddressGenerator.java:94-101 only count; v1.35 does the same (now with facts), so making
+  them stop would differ from ref. (b) Invariant 17's outstanding-request limits, tag windows and reads during a group
+  run, invariant 18 for modes 1-3 into big SRAM and invariant 24's overtaking read have no implementation in ref (no
+  check, counter or text in sim/ref/meshsim/src; 24 only S1's measurement): they're the spec's, not v1.3's, so there is
+  no reference to check them against, and adding them is new behaviour (D38). Waiting for the ruling before either.

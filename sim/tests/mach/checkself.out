@@ -436,6 +436,8 @@ violations: 8
   cycle 9 tile 9: stream with d = 126 (the broadcast) on mesh tile 9 (4.2, D41 F14: only the controllers broadcast from streams; invariant 17)
   cycle 10 tile 9: mode-4 stream with d = 5 (4.2: a gather stream goes to the tile itself, d = 0; invariant 10)
   cycle 11 tile 9: count-only stream on counter 0: it does nothing (3.1; invariant 21)
+violations: 1
+  cycle 28 tile 9: a counter exceeded 17 bits (invariant 6)
 violations: 12
   cycle 10 tile 10: count-only packet on counter 0 sent: it does nothing (3.1, invariant 21): src=0 dst=20 mode=5(count-only) ctr=0 addr=0x00000000 size=32 payload=0x00000000
   cycle 11 tile 11: count-only packet on counter 0 sent: it does nothing (3.1, invariant 21): src=0 dst=20 mode=5(count-only) ctr=0 addr=0x00000000 size=32 payload=0x00000001

@@ -258,6 +258,7 @@ struct HistStore {
     Rmw pipe;
     uint64_t rmws = 0;
     bool hist_overflow = false;        // a count past 17 bits (invariant 6)
+    int ck_tile = -1;                  // W26: the checker's tile (add_g1); -1 records nothing
     // W20 (harness-only; P2): a harness poke of HIST reaches `out` (the core's loads) at the store's next step.
     bool host_poke = false;
     uint64_t host_hist[4] = {};
@@ -312,7 +313,10 @@ struct HistStore {
             const uint32_t idx = uint32_t(r[1]) & 0xFF, add = uint32_t(r[2]);
             q.pop(t); rmws++;
             const uint32_t nv = m.hist[idx] + add;
-            if (nv & ~0x1FFFFu) hist_overflow = true;
+            if (nv & ~0x1FFFFu) {
+                hist_overflow = true;
+                if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::HIST_OVERFLOW);   // W26: invariant 6 (once a tile)
+            }
             pipe.schedule(t, idx, nv & 0x1FFFF);
         }
         return pipe.valid || q.n || q.pend ? c.next() : sim::Wake::none();

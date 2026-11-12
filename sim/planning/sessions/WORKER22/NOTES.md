@@ -353,3 +353,10 @@ W22-18. **The read port's host queue (for W20)**: ref's `readPort.hostQueue(addr
   all-to-all group runs on the plain chip (ref only uses the Net's chip there); engine and eng-shuf still equal.
   engine-full then checked locally (clang suite build): every printed line equal to engine-full.log in three blocks
   (lines 1-18; the all-to-all at full size, 15 lines, 85 s; drift and fence), the 2 FAILs W26's invariants 3 and 6.
+- **Spec items 62 and 70 (Quest 185, for the docs session)**: `tests/p4_drift.cpp` over engine-full's data sets, on the
+  runner (Intel Core i5-14400F, 6 P + 4 E cores, 64 GB, Linux 6.8.0, clang 18.1.3; machine.sh's record in Quest's
+  results/185-w22-drift/machine.txt). **No drift on any run** (ERRORS [3] on 0 tiles, 0 AG drift events), the control
+  (EngineTest's drift case) detected (tile 7, first at cycle 106, 158 events). **Send-port token waits 0** on every
+  run, and the read side's window-full cycles 0: these runs send nothing through the send port (every packet is an AG
+  read return), and no read ever waited for a token. Run cycles equal engine-full.log's (71,238 ... 82,025). Attempt 1
+  printed the whole table (exit 0) but its last check matched the table's padding wrongly; fixed for the retry.

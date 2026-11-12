@@ -44,6 +44,7 @@ SUITES="suite_memsys suite_rvc suite_tracer"
 EQUIVS="test_golden test_tileslotconf"
 SUITES="$SUITES suite_ccbench"                       # W23 (P5)
 SUITES="$SUITES suite_replayer"                      # W25 (P7b)
+SUITES="$SUITES sort_test"                           # W24 (P6)
 
 if [ "$BUILD" = 1 ]; then
   echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
@@ -137,12 +138,12 @@ step replayer 1 "the replayer model (v1.25): the opcode table, the ALU against v
 step memsys 1 "the Tracer's memory system (v1.3, B1): FileStore's trees and statuses, the shared cache's timing" tests/tracersuites/memsys.log -- $S/suite_memsys
 step rvc    1 "the Tracer's RVC decompressor against gold's, every 16-bit encoding (v1.3, B1)" tests/tracersuites/rvc.log -- $S/suite_rvc
 step tracer 1 "the Tracer (v1.3, B1): execution, memory, the map, errors, cuts, controller-fed expansions, the output path" tests/tracersuites/tracer.log -- $S/suite_tracer
-pending sort-p1       "the sort's local sorts (L1, L2)" "P6"
-pending sort          "the sort, every built-in set at 64 x <= 2,000 (several minutes)" "P6"
-pending sort-shuf     "shuffled child order (seed 4)" "P6"
+step sort-p1 1 "the sort's local sorts (L1, L2)" tests/sort/ref/sort-p1.log -- $S/sort_test -1 p1
+pending sort          "the sort, every built-in set at 64 x <= 2,000 (several minutes)" "P6: equal but the peak lines, which wait for W20's PhaseLog"
+pending sort-shuf     "shuffled child order (seed 4)" "P6: equal but the peak lines, which wait for W20's PhaseLog"
 if [ "$MODE" != quick ]; then
-  pending sort-bt-kv32    "BT, forced, trace hot 10 / 10 % at 64 x 16,384, 32-bit values (a few minutes)" "P6"
-  pending sort-bt-k128    "the same, 128-bit values" "P6"
+  pending sort-bt-kv32    "BT, forced, trace hot 10 / 10 % at 64 x 16,384, 32-bit values (a few minutes)" "P6: equal but the peak lines (W20's PhaseLog)"
+  pending sort-bt-k128    "the same, 128-bit values" "P6: equal but the peak lines (W20's PhaseLog)"
   pending rdport-full     "gather 1 at full size (Java; the C parts PENDING (phase 2))" "P4"
   pending accounting-full "per-phase accounting, full-size all-to-all from C" "P5 (W23)"
   pending agbench         "read-ahead measurements: ag_lookahead, zero-length groups, start to first request (a few minutes)" "P6"

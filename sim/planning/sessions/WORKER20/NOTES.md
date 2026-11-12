@@ -32,6 +32,17 @@ Commit and push after each step; each step checked against `ref`.
    the FAIL summary, `--check` against v1.3's logs with timing masked; **BusTest** (C2) its first suite, on the
    framework's port kinds (`throwsISE` as a death check), "BusTest: 154 passed, 0 failed".
 
+## Wave 2's requests (NEXT.md, 2026-11-11): the order taken (the integrator's)
+
+1. `sim/run_tests.sh` (C0). 2. wait_until (W23, W24) and a core's loads and stores from a test (W23). 3. the replayer on
+tile 0 only with expect = 1, parked tiles and parkedUntouched, a row hook on the replayer (W25). 4. PhaseLog and the
+Config fields (W24). 5. the request bus from a test and C&C's queued soft reset (W23). 6. S1 and the checker's
+remaining kinds, interleaved as the suites ask.
+
+- **C0 done**: `sim/run_tests.sh [all|quick] [--check] [--no-build]`: v1.3's steps, logs and summary; the suites built
+  with MODE=suite; `step LOG TAIL "what" REF -- cmd` and `pending LOG "what" "who"` for each worker's lines; --check
+  compares each log with its reference, timing masked. W21's memsys, rvc and tracer run (equal under --check).
+
 ## The owner's answers (2026-11-10)
 
 - **Q1.** The checker is a compile-time switch: on in debug and in the suite build, off in the timing builds (D6).

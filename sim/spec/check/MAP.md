@@ -560,3 +560,125 @@ That is 66 items: 47 in the platform, 16 the replayer's, 3 the Tracer's. The oth
 > | 147 | To measure: the local caches' sizes, by gold replaying both workloads | 4.21.5 | decided, part open |
 > | 153 | The Tracer's timing: measured in meshsim; the RTL's values to replace it | 4.21.9 | unclear |
 > | 148 | The fill bus's statuses, to revisit with the memory system's design | 4.21.5, 4.21.8 | decided, part deferred |
+
+## 7. The edits (first draft of `EDITS.md`)
+
+`EDITS.md` will give each edit as file, line, the whole old line and the whole new line; here the changed words only.
+Three kinds, as the prompt allows, plus the two version headers the prompt asks for. Section 13's rewrite and the
+added lines (stubs, pointers, the new companion bullets, the jolt files' headers, the READMEs,
+`CHANGES-v1.3-to-v1.35.md`) are listed as added, not here.
+
+### 7.1 Statements about the simulator, made true of v1.35 (12 lines)
+
+Each fact is from the repository: the checker from `src/check.h` and `tests/mach.h` (the switch, the owner's ruling
+of 2026-11-10), K's check from `tests/mach.cpp`, the controllers from `tests/mach.h` and `src/units/cnc.h`, the drivers
+from `planning/V135-INVENTORY.md`.
+
+| line | old | new |
+|---|---|---|
+| 15 | "…the programmer's register reference, generated from the register tables of section 8. Both must match section 8; **they are still at v1.1** until regenerated." | "…the programmer's register reference, generated from the register table. Both must match section 8." (paths in 7.2) |
+| 17 | "- `meshsim/`: the cycle-level simulator, which models every unit described here and is where the measured numbers come from. **meshsim is still at v1.1**; its port to this document follows." | "- `src/`: meshsim, the cycle-level simulator, which models every unit described here. v1.35's is in C++, checked against v1.3's, in Java, where the measured numbers come from (below)." |
+| 20 | "**Every measurement in this document was taken on meshsim v1.1 or earlier**; one that v1.2's changes may invalidate carries **v1.1 measurement; to be re-measured in v1.2** (or v1.0) in its label, and is kept as the best number known until the simulator is updated." | "**Every number marked [meas: meshsim] was measured on meshsim's Java implementation, v1.0 to v1.3**, and a test or driver a label names is a Java one (`planning/V135-INVENTORY.md` gives what replaces each in v1.35); one labelled *v1.0 measurement; to be re-measured in v1.2* (or *in v1.1*) has not been re-measured since, and is kept as the best number known (item 24)." The rest of the line unchanged |
+| 24 | "meshsim stops with an error naming the access, and the RTL may…" | "meshsim reports it, naming the access (below), and the RTL may…" |
+| 28 | (ends "…for Tony to confirm.)") | appends: "**Where this document says meshsim stops, errors or flags,** v1.35's meshsim records a violation naming the access and reports it, in its debug and suite builds, and the run goes on; a test fails on a violation it doesn't expect, and the release build compiles the checks out (`src/check.h`). A wrong configuration, such as K below its formula, is fatal at startup." |
+| 753 | "…and S1Bench measures the margin." | "…and its S1 measurement checks the margin (`measure_s1`, `tests/mach.h`)." |
+| 2439 | "**In meshsim v1.2, C&C 1 stays a behavioural Java model** (as `CnC.java` in v1.1), driving its peripheral's registers from the harness; likewise C&C 2 and C&C 3 until their firmware exists." | "**In meshsim, C&C 1 is a behavioural model by default** (`src/units/cnc.h`), driving its peripheral's registers from the harness, and so are C&C 2 and C&C 3; with `cc_cores` (`tests/mach.h`) all three are cores, booted through the host port." |
+| 2542 | "- **In meshsim v1.2,** C&C 1 is a behavioural model driving these registers from the harness, and so are C&C 2 and C&C 3 until their firmware exists (6.2)." | "- **In meshsim,** C&C 1 is by default a behavioural model driving these registers from the harness, and so are C&C 2 and C&C 3; as an option all three are cores (6.2)." |
+| 2942 | "meshsim stops with an error naming the access, unless the invariant says it reports." | "in its debug and suite builds meshsim reports every violation, naming the access, and the run goes on (the preamble); the release build compiles the checks out." |
+| 2951 | "meshsim's `Config.strictReplies`" | "meshsim's `strict_replies` (`tests/mach.h`)" |
+| 2957 | "[built: meshsim's `Config.checkReadPortOverlap`, on by default]" | "[built: meshsim's `check_read_port_overlap` (`tests/mach.h`), on by default]" |
+
+Left alone, as the prompt says: the "(meshsim)" markers for undefined behaviour, the per-rule "(meshsim stops / errors /
+flags …)" phrases (line 28's sentence defines them), every `[meas: …]` tag (line 20 explains them), and "gold is the
+Java emulator" (D40).
+
+### 7.2 Paths made true of v1.35's tree (73 citations on 52 lines)
+
+Relative to v1.35's root; what v1.35 doesn't carry is cited as `v1.3/…`. Every new path exists today (checked in the
+repository). `sw/mesh.h` is `fw/include/mesh.h`, not `fw/mesh.h`. Bare `mesh.h` (2520, 2667) and `REGISTERS.md` (1814)
+name files in the tree and stay. In the appendix, line 3 also changes "`machine-spec.md` 4.19" to
+"`spec/jolt/replayer.md` 4.19", since 4.19 moves.
+
+| lines | old | new |
+|---|---|---|
+| machine-spec.md:12, machine-spec.md:1291, machine-spec.md:1556 | `tables/` | `data/tables/` |
+| machine-spec.md:1219, machine-spec.md:2860, machine-spec.md:2950 | `CHANGES-v1.2.md` | `spec/history/CHANGES-v1.2.md` |
+| machine-spec.md:1287 | `CHANGES-v1.1.md` | `v1.3/CHANGES-v1.1.md` |
+| machine-spec.md:1291, machine-spec.md:2175, replayer-opcodes.md:12 | `wip/gold/` | `pipeline/gold/` |
+| machine-spec.md:1291 | `wip/planning/upstream/UPSTREAM-DIFFS.md` | `v1.3/planning/upstream/UPSTREAM-DIFFS.md` |
+| machine-spec.md:1291, machine-spec.md:1516, machine-spec.md:1591, machine-spec.md:1605, machine-spec.md:1629, machine-spec.md:1938, machine-spec.md:2171, machine-spec.md:2961 | `spec/replayer-opcodes.md` | `spec/jolt/replayer-opcodes.md` |
+| machine-spec.md:13 | `diagrams/` | `v1.3/diagrams/` |
+| machine-spec.md:13 | `diagrams/README.md` | `v1.3/diagrams/README.md` |
+| machine-spec.md:1315, machine-spec.md:1345, machine-spec.md:1656, machine-spec.md:1786 | `WORKER11/REPORT.md` | *question 2* |
+| machine-spec.md:1345, machine-spec.md:1669 | `WORKER20/REPORT.md` | *question 2* |
+| machine-spec.md:1417, machine-spec.md:1605, machine-spec.md:1614, replayer-opcodes.md:99 | `tables/opcode_table.txt` | `data/tables/opcode_table.txt` |
+| machine-spec.md:1510 | `planning/upstream/UPSTREAM-DIFFS.md` | `v1.3/planning/upstream/UPSTREAM-DIFFS.md` |
+| machine-spec.md:1514, machine-spec.md:2027 | `tables/replayer/` | `data/tables/replayer/` |
+| machine-spec.md:1558, machine-spec.md:1562, machine-spec.md:1782 | `tables/replayer/listing.txt` | `data/tables/replayer/listing.txt` |
+| machine-spec.md:16, machine-spec.md:610, machine-spec.md:939 | `sw/CONVENTIONS.md` | `fw/CONVENTIONS.md` |
+| machine-spec.md:16 | `sw/RECIPES.md` | `fw/RECIPES.md` |
+| machine-spec.md:1779 | `tables/README.md` | `data/tables/README.md` |
+| machine-spec.md:18, machine-spec.md:3464, machine-spec.md:3488 | `results/` | `v1.3/results/` |
+| machine-spec.md:1980 | `planning/DECISIONS-v1.3.md` | `spec/history/DECISIONS-v1.3.md` |
+| machine-spec.md:1980 | `planning/sessions/WORKER22-SPEC-QUESTIONS.md` | `v1.3/planning/sessions/WORKER22-SPEC-QUESTIONS.md` |
+| machine-spec.md:2137, machine-spec.md:2341 | `sw/tracer/tracer_ctl.c` | `fw/tracer/tracer_ctl.c` |
+| machine-spec.md:2247 | `wip/gold/src/gold/Isa.java:60–68` | `pipeline/gold/src/gold/Isa.java:60–68` |
+| machine-spec.md:2264 | `wip/gold/src/gold/SegmentWriter.java` | `pipeline/gold/src/gold/SegmentWriter.java` |
+| machine-spec.md:2341 | `sw/cc/cc1.c` | `fw/cc/cc1.c` |
+| machine-spec.md:2341 | `sw/replay/replay_ctl.c` | `fw/replay/replay_ctl.c` |
+| machine-spec.md:2690 | `sw/REGISTERS.md` | `fw/REGISTERS.md` |
+| machine-spec.md:3464 | `sort/program/` | `fw/sort/program/` |
+| machine-spec.md:3464 | `sort/split/` | `fw/sort/split/` |
+| machine-spec.md:3464, machine-spec.md:3479 | `sort/skew/` | `fw/sort/skew/` |
+| machine-spec.md:3468 | `sort/split/BINDING.md` | `fw/sort/split/BINDING.md` |
+| machine-spec.md:3488 | `RESULTS-full-size.md` | `v1.3/RESULTS-full-size.md` |
+| machine-spec.md:879, machine-spec.md:992, machine-spec.md:2471, machine-spec.md:2476, machine-spec.md:2478, machine-spec.md:2690 | `sw/mesh.h` | `fw/include/mesh.h` |
+| replayer-opcodes.md:13, replayer-opcodes.md:1303, replayer-opcodes.md:1303 | `tools/replayer-opcodes/` | `v1.3/tools/replayer-opcodes/` |
+| replayer-opcodes.md:3, replayer-opcodes.md:13, replayer-opcodes.md:1303 | `tools/replayer-opcodes/out-821e1bd/` | `v1.3/tools/replayer-opcodes/out-821e1bd/` |
+| replayer-opcodes.md:5 | `CHANGES-v1.25.md` | `spec/history/CHANGES-v1.25.md` |
+
+### 7.3 The version headers (2 lines)
+
+| file, line | old | new |
+|---|---|---|
+| `machine-spec.md` 1 | "…64-tile mesh processor, v1.3" | "…64-tile mesh processor, v1.35" |
+| `replayer-opcodes.md` 3 | "*Part of the machine specification, v1.25, …" | "*Part of the machine specification, v1.35, …" (the appendix differs from v1.25's only at line 12, a v1.3 change) |
+
+### 7.4 Counts so far
+
+Edited lines: 12 simulator, 52 path (some lines in both), 2 version; section 13 rewritten (added). Final counts come
+with stage 2.
+
+## 8. Questions for the owner
+
+1. **Three items the record doesn't settle.** *103* (the split run log): its text still proposes that SD rows take
+   the write log and leaves open measuring the read/write split; v1.26 then made both log queues 4 KB (line 3126) and
+   item 143 measured them. **Recommended:** proposed (the SD rule); the measurement part closed by v1.26. *137*
+   (citations at `821e1bd`): v1.3's entry (line 3108) says the `821e1bd` citations stand, but says nothing of the ones
+   taken at `4f36b3d`, which the appendix's line 3 still flags. **Recommended:** open. *153* (the Tracer's timing):
+   measured in meshsim; the RTL's values are to replace it. **Recommended:** open, until the RTL's values come back.
+2. **Citations whose real path names a worker.** `WORKER11/REPORT.md` (lines 1315, 1345, 1656, 1786),
+   `WORKER20/REPORT.md` (1345, 1669) and `planning/sessions/WORKER22-SPEC-QUESTIONS.md` (1980) are cited in moving
+   text. The first two don't exist at those paths; the reports are `v1.3/planning/sessions/WORKER11-REPORT.md` and
+   `…/WORKER20-REPORT.md`. Fixing the paths means writing the file names. **Recommended:** fix them to the real files
+   (a file name is how the reader finds it; it isn't an attribution I add), each in `EDITS.md`.
+3. **The companion list.** I read the ruling as: lines 6–11 move to history with the in-brief blocks; 12–18 stay,
+   edited; and the new bullets are added after line 5: `spec/OVERVIEW.md`, `spec/GUIDELINES.md`, `spec/jolt/`,
+   `spec/history/` (the `CHANGES-*` files and the decisions logs), `spec/CHANGES-v1.3-to-v1.35.md`. **Recommended:**
+   as read.
+4. **The two extracted history files' names:** `history/machine-spec-v1.3-preamble.md` (the in-brief blocks and the
+   history companions) and `history/machine-spec-v1.3-section-13.md`. **Recommended:** as named.
+
+### The placements I am least sure of
+
+1. The companion list (question 3).
+2. 8.11's heading keeping "…and the replayer's" after the replayer's window leaves it.
+3. The stub style: the moved heading repeated in the platform (added), the original moving with its text.
+4. Section 12's line 3089 (the replayer beside the traffic director) staying, by the default.
+5. Line 3458 (the logic budget unreviewed), a note at section 13's end: carried into the new section 13's intro as
+   new text, its original going to history.
+6. Item 48 (`rp_latency`'s value) in the platform, not the replayer: it binds every peripheral (4.17.5).
+7. Item 123 (the replayer's event and error bits) with the replayer, although 8.11's heading stays in the platform.
+8. Item 113's open part (the pending tags) with the replayer, though 4.21 cites it too.
+9. The appendix's line 3 version (7.3): v1.35 rather than "v1.25" kept as its derivation date.
+10. Line 38 ("How v1.3's text is meant") staying under its v1.3 title in a v1.35 document.

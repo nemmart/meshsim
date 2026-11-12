@@ -12,8 +12,8 @@ in `NOTES.md`. Written 2026-11-12; what is still open is at the end.
 | D5 | the inputs line | `sort_test` | equal but its first field (the simulator: `sort_test=<sha256>`, Q2; run_tests.sh masks it) |
 | D6 | SortSummary | `tests/sort_summary_main.cpp` → `sort_summary` | **SUMMARY.md and all.csv byte-identical** on v1.3's kit run at 64 × 2,000 (Quest 178) and on every edge case tried |
 | D7 | SortCompare (D41 Q3; PhaseNeutral, VerifySummary and the verify kits dropped) | `tests/sort_compare_main.cpp` → `sort_compare` | output byte-identical to v1.3's on every edge case tried |
-| D8 | the measurement kit on the C++ binaries | `tests/sort/kit/` (assemble.sh, run.sh, tools/runjob.sh, v1.3's jobs.txt) | at 2,000 against Quest 178: p4 and shuffle (46 runs) **every run CSV byte-identical**, every log equal; the sweep (46): **38 run CSVs byte-identical**, their logs equal, the six F3 points refused as v1.3 refuses them, two `ready-1` points refused (D47); the phases CSVs (84) equal but `unreadOverwrites` (F6 fixed by W20); **at full size (Quest 181), five runs (direct, LB, TH, BT, shuffled) side by side with v1.3's kit: CSVs, logs and TOTALs equal but the peaks**; uniform-k128 1,229,687 as sort64k |
-| D10 | Sweep (`quick`, `full`; `results/sweep-<mode>.csv`) | `tests/sweep_main.cpp` → `sweep` (MODE=suite) | **sweep-quick's log and CSV byte-identical**; the step live, its CSV checked with `--check` |
+| D8 | the measurement kit on the C++ binaries | `tests/sort/kit/` (assemble.sh, run.sh, tools/runjob.sh, v1.3's jobs.txt) | at 2,000 against Quest 178: p4 and shuffle (46 runs) **every run CSV byte-identical**, every log equal; the sweep (46): **38 run CSVs byte-identical**, their logs equal, the six F3 points refused as v1.3 refuses them, two `ready-1` points refused (D47); **all 84 phases CSVs byte-identical**; **at full size (Quest 181), five runs (direct, LB, TH, BT, shuffled) side by side with v1.3's kit: CSVs, logs and TOTALs equal but the peaks**; uniform-k128 1,229,687 as sort64k |
+| D10 | Sweep (`quick`, `full`; `results/sweep-<mode>.csv`) | `tests/sweep_main.cpp` → `sweep` (MODE=suite) | **sweep-quick's and sweep full's logs and CSVs byte-identical** (full: Quest 183's v1.3 fixtures); the sweep-quick step live, its CSV checked with `--check` |
 | D9 | SplitRun + splitdrv | — | **inherited dead code, not ported** (W19; owner's ruling): `splitdrv.c` doesn't compile in v1.3, no v1.3 build makes its image, `run_tests.sh` never runs SplitRun |
 | H4 | the per-run CSV | `sort_test csv=` | byte-identical to v1.3's (46 runs at 2,000) |
 | H7 | the profiles (sort.profile, sort.prof, sort.watch; the overlay-load column) | `SORT_PROFILE`, `SORT_PROF=lo-hi`, `SORT_WATCH=f,...` | equal on two runs (`tests/sort/ref/h7-*.log`) |
@@ -61,8 +61,8 @@ only, so sort_test refuses a release build); `sort_test` in SUITES.
   as F3's six are. Sweep's own ready points (4, 8) are unaffected.
 - **F6. PhaseLog's read-port peak** counted one more than ref's when a store and an injection fell in the same cycle.
   Fixed by W20 (673f1733): no phases CSV differs in it now.
-- **F7. Invariant 8's command-read check reports a violation v1.3 doesn't** in the sweep's workloads (after Mach's
-  boot): a regression on main (W26, 020519bd); see "Open".
+- **F7. Invariant 8's command-read check reported a violation v1.3 doesn't** in the sweep's workloads (after Mach's
+  boot): W22's F4, fixed on main by W26 (6532b75c: the boot ROM takes the boot command at GO).
 - **Q6. No v1.3 run takes the PLAN path** (full size, the runner's p4, the 2,000-key kit: direct, LB, TH, BT only).
   Reported; no case invented.
 
@@ -73,14 +73,5 @@ the Makefile's `include tests/sort.mk`, `run_tests.sh` (the sort and sweep steps
 
 ## Open
 
-- **`unreadOverwrites`** in the phases CSVs: W26's invariant 8 counts it (`TileCore::track.overwritten_unread`), but
-  PhaseLog still reports 0 (tests/phase_log.cpp, "pending"; v1.3 nonzero in 4,417 rows of the kit's 84 phases CSVs).
-  With W20; then the 84 phases CSVs against Quest 178 for full byte-identity (every other column already equal, and
-  the run CSVs and logs byte-identical).
 - **`Chip::new_phase`** (W20's item 8, W26's disjoint tracking): SortTest's new phase at every core wake, for invariant 2
   during the sort.
-- **F7 (W26)**: since invariant 8's command-read check (020519bd), the sweep's workloads report a violation v1.3
-  doesn't (a command landing in slot 0 "before the core read the previous one", tile 0, the first command after
-  Mach's boot), so `sweep-quick` differs from v1.3's log (it was byte-identical before), and `sweep full` (Quest 183)
-  equals v1.3's in every cycle, delta and peak but reports the violations. When W26's fix lands: sweep-quick and
-  `sweep full` again (the fixtures `tests/sort/ref/sweep-full.{log,csv}` are in place).

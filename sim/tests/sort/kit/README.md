@@ -16,8 +16,7 @@ Differences from v1.3's kit, all tooling: the simulator is `sort_test` (the inpu
 kit's own two fixes to v1.3's (NOTES F2: v1.3's image files, the boot ROM beside the simulator); `make_jobs.py` isn't
 carried (Python avoided, D40; `jobs.txt` is its output). Six sweep points are refused as v1.3 refuses them (F3); two more (`ready-1`) are refused here only (D47).
 
-**Status**: built in the suite build (PhaseLog runs there). At 2,000 against v1.3's (`n2000.tgz`, Quest 178): every
-p4 and shuffle CSV byte-identical and every log equal; in the sweep, 38 CSVs byte-identical, F3's six points refused
-as v1.3 refuses them and the two `ready-1` points refused (D47: ready_latency below 3); the phases CSVs equal but
-`unreadOverwrites` (invariant 8's statistic, pending) and the read port's peak at sram read latency 3-4 (F6, pending).
+**Status**: built in the suite build (PhaseLog runs there). At 2,000 against v1.3's (`n2000.tgz`, Quest 178), all 92
+jobs: every run CSV, phases CSV and log of the 84 that finish byte-identical (the logs but the simulator's field); F3's
+six points refused as v1.3 refuses them, and the two `ready-1` points refused here only (D47: ready_latency below 3).
 At full size, a sample equal (Quest 181).

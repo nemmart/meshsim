@@ -126,6 +126,7 @@ void radix(uint32_t N) {                                  // EngineTest.radixSor
             p.set_remaining(1, N);
             p.set_master_config(fields::master_config(fields::RUN_STREAMS, 0, 1, d, d < 4 ? d + 1 : 0, 1));
         }
+        c.new_phase();                                    // ref's newPhase (EngineTest.radixSort)
         cyc = run_all_tiles(c); total += cyc;
         f = figures(c);
         row(name, "pass " + std::to_string(d), f, f.drift_events - prev.drift_events, f.token_wait - prev.token_wait, f.window_full - prev.window_full, cyc);

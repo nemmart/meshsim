@@ -78,9 +78,6 @@ int64_t run_local(Net& n, std::initializer_list<unsigned> tiles) {
 void stream_run(TileRef p, uint32_t start, uint32_t count, uint32_t bucket_digit, uint32_t hist_digit) {
     p.set_master_config(fields::master_config(fields::RUN_STREAMS, start, count, bucket_digit, hist_digit, 1));
 }
-// ref's Chip.newPhase (big SRAM's disjoint-buffer phases): W22-14, W20's Chip::new_phase, not on main yet. Until it is,
-// nothing here records the disjoint-buffer check either (W26), so the call changes nothing meanwhile.
-void new_phase(Chip&) {}
 uint32_t imem(TileRef p, uint32_t w) { return p.peek_local(0x01000000u + 4 * w); }
 
 // ================================================================ the write engine
@@ -341,7 +338,7 @@ void radix_sort() {
             p.set_stream(0, fields::stream_src(src), 0, fields::stream_count(N, fields::SIZE_64, 1, lw::M_BUCKET, 0));
             p.set_remaining(1, N); stream_run(p, 0, 1, d, d < 4 ? d + 1 : 0);
         }
-        new_phase(n.c);
+        n.c.new_phase();      // ref's newPhase
         pass[d] = run_all_tiles(n);
         std::swap(src, dst);
     }
@@ -401,7 +398,7 @@ void late_groups() {
                    (long long)late1, unsigned(t5.lookahead), t5.stream_q_peak, t5.group_q_peak, (unsigned long long)t5.underrun_cycles));
     for (unsigned k = 0; k < 64; k++) n.c.tile(k).set_remaining(1, expect[k]);
     for (unsigned k = 0; k < 64; k++) for (unsigned s = 0; s < 64; s++) n.c.tile(k).set_ptr(s, 0x60000 + 0x100 * s);
-    new_phase(n.c);
+    n.c.new_phase();      // ref's newPhase
     for (unsigned k = 0; k < 64; k++) n.c.tile(k).pulse(fields::PULSE_START);
     n.c.run_until([&] { for (unsigned k = 0; k < 64; k++) if (!n.c.tile(k).phase_done()) return false; return true; }, 10000);
     const units::AddrGen& a0 = ag(n.c.tile(0));

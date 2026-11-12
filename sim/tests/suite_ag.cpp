@@ -51,9 +51,6 @@ int64_t run_local(Net& n, unsigned tile) {               // EngineTest.runLocal
     check(ok, "local run finished");
     return n.c.cycle() - t0;
 }
-// ref's Chip.newPhase: W20's Chip::new_phase (W22-14) isn't on main yet; nothing records the disjoint-buffer check yet
-// (W26), so this changes nothing meanwhile.
-void new_phase(Chip&) {}
 bool any_message(Chip& c, const std::string& a, const std::string& b = "") {
     for (const auto& v : c.violation_messages()) if (v.find(a) != std::string::npos && (b.empty() || v.find(b) != std::string::npos)) return true;
     return false;
@@ -101,11 +98,11 @@ void rulings() {
         suite::ub([&] { cs.run(2); }, {"tile 3", "address generator", "a start while a run is running"}, "a start in the lead-in");
     }
     p.set_stream(10, fields::stream_src(0x100), 0, fields::stream_count(200, fields::SIZE_64, 1, lw::M_SRC, 0));
-    p.set_ptr(3, 0x60000); p.set_remaining(1, 200); new_phase(c);
+    p.set_ptr(3, 0x60000); p.set_remaining(1, 200); c.new_phase();       // ref's newPhase
     p.set_master_config(fields::master_config(fields::RUN_STREAMS, 10, 1, 0, 0, 1)); p.pulse(fields::PULSE_START); c.run(2);
     c.run_until([&] { return ag(p).done && p.remaining(1) == 0 && p.mem_idle(); }, 5000);
     p.set_stream(11, fields::stream_src(0x100), 0, fields::stream_count(50, fields::SIZE_64, 1, lw::M_SRC, 0));
-    p.set_ptr(3, 0x60000); p.set_remaining(1, 50); new_phase(c);
+    p.set_ptr(3, 0x60000); p.set_remaining(1, 50); c.new_phase();       // ref's newPhase
     p.set_master_config(fields::master_config(fields::RUN_STREAMS, 11, 1, 0, 0, 1));
     const int64_t ts = c.cycle() + 1;
     p.store(ts, 0xFFFFF800u + 4 * 4, 1);                    // PULSE_DMA (Registers.PULSE_DMA)

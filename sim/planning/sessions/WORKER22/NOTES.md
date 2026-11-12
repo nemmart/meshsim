@@ -391,3 +391,8 @@ W22-20. **(for W20) `TileRef::req_send` takes one push a cycle** (a `Sim::put_la
   rdport (-1, 4), searchbench, reqbus, agbench; the finished quick logs (net-quick, net-shuf, searchbench, engine,
   eng-shuf) byte for byte under both. In make check: net-quick under step-all and engine under instance-major
   (clang debug: 31 s and 10 s), beside the plain six.
+- **Fixed (main's break, owner 2026-11-12)**: with W26's disjoint check live (f43894ca), EngineTest's radix sort reported
+  64 \"read after being written in the same phase\" violations (eng-shuf differed): my suites still called a local
+  no-op `new_phase`. Now W20's `Chip::new_phase()` wherever ref calls newPhase (EngineTest's radix sort and late
+  groups, AgTest's rulings; p4_drift's radix sort too). engine, eng-shuf, engine-full byte for byte again; AgTest 206 of
+  206; `run_tests.sh quick --check`: no LOG DIFFERS.

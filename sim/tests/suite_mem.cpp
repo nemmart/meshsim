@@ -34,6 +34,7 @@
 #include "check.h"
 #include "config.h"
 #include "mach.h"
+#include "p4_debug.h"
 #include "suite.h"
 #include "units/big_sram.h"
 #include "units/inject.h"
@@ -114,6 +115,8 @@ struct U {
     explicit U(const MachConfig& k) {
         sim::Options opt;
         if (k.shuffle_seed >= 0) opt.shuffle_seed = uint64_t(k.shuffle_seed) + 1;
+        opt.step_all = p4::g_step_all;                       // the debug options (p4_debug.h), as MachConfig's
+        if (p4::g_instance_major) opt.order = sim::Options::Order::instance_major;
         sim::Config cfg(opt);
         units::SramConfig sc;
         sc.mem_chunks = k.mem_chunks; sc.area_queue_depth = k.area_queue_depth; sc.write_combining = k.write_combining;
@@ -283,7 +286,7 @@ void throughput() {
     const char* name[] = {"64-bit reads, one area", "64-bit reads, round-robin over 8 areas", "128-bit reads, one area (1 packet each)", "32-bit reads, one area",
                           "64-bit reads (area 1) + 2,000 incoming writes (area 2), together", "reads every 2nd cycle (area 1) + writes every 2nd cycle (area 1, another buffer)"};
     for (int k = 0; k < 6; k++) {
-        Net n(cfg()); TileRef src = n.c.tile(10), dst = n.c.tile(11);
+        Net n(p4::dbg(cfg())); TileRef src = n.c.tile(10), dst = n.c.tile(11);
         fill(src, 0, 0x100000);
         dst.set_ptr(10, 0x40000); src.set_ptr(9, k == 5 ? 0x30000 : 0x50000);
         const unsigned w = k == 2 ? lw::SIZE_128 : k == 3 ? lw::SIZE_32 : lw::SIZE_64;
@@ -317,7 +320,7 @@ void throughput() {
 
 void priority() {
     suite::group("priority");
-    Net n(cfg()); TileRef p = n.c.tile(20);
+    Net n(p4::dbg(cfg())); TileRef p = n.c.tile(20);
     fill(p, 0x100, 64);
     n.c.tile(21).record_writer();
     n.c.tile(20).set_remaining(2, 5);
@@ -337,7 +340,7 @@ void priority() {
     const auto& q = srq(p);
     check(q.first_issue_t[READPORT] > q.last_issue_t[AG] && q.first_issue_t[AG] > q.last_issue_t[GATHER],
           "issue order gather, AG, read port (first read-port issue %lld after the last AG issue %lld)", (long long)q.first_issue_t[READPORT], (long long)q.last_issue_t[AG]);
-    Net m(cfg()); fill(m.c.tile(22), 0x200, 512);
+    Net m(p4::dbg(cfg())); fill(m.c.tile(22), 0x200, 512);
     for (int j = 0; j < 50; j++) m.rd(22, GATHER, 2 + j, 0x200 + 2 * j, lw::SIZE_64, lw::M_SRC, 1, 23, 0);
     m.rd(22, AG, 2, 0x300, lw::SIZE_64, lw::M_SRC, 1, 23, 0);
     m.run_all(500);
@@ -348,7 +351,7 @@ void priority() {
 
 void packets() {
     suite::group("packets");
-    Net n(cfg()); TileRef p = n.c.tile(30);
+    Net n(p4::dbg(cfg())); TileRef p = n.c.tile(30);
     fill(p, 0x1000, 64);
     n.rd(30, AG, 2, 0x1000, lw::SIZE_128, lw::M_SRC, 1, 31, 0);
     n.rd(30, AG, 2, 0x1007, lw::SIZE_32, lw::M_SRC, 1, 31, 0);
@@ -370,7 +373,7 @@ void packets() {
     const uint32_t chunk[] = {0x2002, 0x2006, 0x2007};
     const unsigned size[] = {lw::SIZE_128, lw::SIZE_128, lw::SIZE_64};
     for (int c = 0; c < 3; c++) {
-        Net m(cfg()); fill(m.c.tile(40), 0x2000, 16);
+        Net m(p4::dbg(cfg())); fill(m.c.tile(40), 0x2000, 16);
         m.rd(40, client[c], 2, chunk[c], size[c], lw::M_SRC, 1, 41, 0);
         const std::string ch = suite::str("chunk 0x%x", chunk[c]);
         suite::ub([&] { m.run_all(500); }, {"tile 40", CLIENT[client[c]], ch.c_str()}, "%s: a misaligned read stops meshsim", CLIENT[client[c]]);
@@ -381,7 +384,7 @@ void return_order() {
     suite::group("return order");
     auto addr = [](int j) { return uint32_t(j % 2 == 0 ? 0xA0000 + 2 * j : 0xC0000 + 2 * j); };
     {
-        Net n(cfg()); fill(n.c.tile(44), 0, 0x100000);
+        Net n(p4::dbg(cfg())); fill(n.c.tile(44), 0, 0x100000);
         for (int j = 0; j < 40; j++) n.rd(44, AG, 2 + j, addr(j), lw::SIZE_64, lw::M_SRC, 1, 45, 0);
         n.run_all(2000);
         const auto l = n.log(45);
@@ -389,7 +392,7 @@ void return_order() {
         for (int j = 0; ok && j < 40; j++) if (int64_t(l[j][1]) != pat64(44, addr(j))) ok = false;
         check(ok, "returns leave in request order across areas");
     }
-    Net m(cfg()); TileRef q = m.c.tile(44); fill(q, 0, 0x100000); q.set_ptr(43, 0xB0000);
+    Net m(p4::dbg(cfg())); TileRef q = m.c.tile(44); fill(q, 0, 0x100000); q.set_ptr(43, 0xB0000);
     for (int j = 0; j < 64; j++) m.at(43, 3 + (j / 8) * 32LL + j % 8, 44, lw::M_SRC, 0, uint64_t(j));
     for (int j = 0; j < 200; j++) m.rd(44, AG, 2 + j, addr(j), lw::SIZE_64, lw::M_SRC, 1, 45, 0);
     m.run_all(5000);
@@ -402,7 +405,7 @@ void return_order() {
     eq(0, int64_t(m.c.violations()), "no violations %s", vreport(m.c).c_str());
     out(suite::str("return order: 200 reads alternating a busy area (also taking bursts of 8 writes) and a free one leave in request order; read latency max %lld (unloaded %u), write stalls %llu [meas: MemTest return order]",
                    (long long)lm, 2 + m.c.cfg().sram_read_latency, (unsigned long long)writer(q).stall_cycles));
-    Net g(cfg()); TileRef u = g.c.tile(44); fill(u, 0, 0x100000); u.set_ptr(43, 0xB0000);
+    Net g(p4::dbg(cfg())); TileRef u = g.c.tile(44); fill(u, 0, 0x100000); u.set_ptr(43, 0xB0000);
     for (int j = 0; j < 8; j++) g.at(43, 3 + j, 44, lw::M_SRC, 0, uint64_t(j));
     for (int j = 0; j < 6; j++) g.rd(44, AG, 8 + j, 0xA0000 + 2 * j, lw::SIZE_64, lw::M_SRC, 1, 45, 0);
     for (int j = 0; j < 3; j++) g.rd(44, GATHER, 9 + j, 0xC0000 + 2 * j, lw::SIZE_64, lw::M_SRC, 1, 45, 0);
@@ -420,7 +423,7 @@ void return_order() {
 void token_window() {
     suite::group("token window");
     MachConfig c = cfg(); c.read_tokens = 64; c.sram_read_latency = 80;
-    Net n(c); TileRef p = n.c.tile(12); fill(p, 0, 0x40000);
+    Net n(p4::dbg(c)); TileRef p = n.c.tile(12); fill(p, 0, 0x40000);
     for (int j = 0; j < 300; j++) n.rd(12, AG, 2 + j, 4 * j, lw::SIZE_128, lw::M_SRC, 1, 13, 0);
     unsigned max_in = 0;
     for (int i = 0; i < 3000 && (n.pending() || !n.c.quiescent()); i++) {
@@ -441,7 +444,7 @@ void token_window() {
 
 void mem_idle() {
     suite::group("mem_idle");
-    Net n(cfg()); TileRef p = n.c.tile(60); p.set_ptr(59, 0x20000);
+    Net n(p4::dbg(cfg())); TileRef p = n.c.tile(60); p.set_ptr(59, 0x20000);
     check(p.mem_idle(), "idle at start");
     for (int j = 0; j < 20; j++) n.at(59, 2 + j, 60, lw::M_SRC, 0, uint64_t(0x1000 + j));
     bool saw_busy = false;
@@ -488,7 +491,7 @@ void oversubscription() {
     sb += suite::str("  %-4s %-4s %-7s %-14s %-14s %-14s %-12s %s\n", "Pr", "Pw", "demand", "read lat max", "read waits", "write stalls", "we-in peak", "outcome");
     const int cases[][2] = {{2, 2}, {1, 4}, {2, 1}, {1, 2}, {1, 1}};
     for (const auto& cs : cases) {
-        Net n(cfg()); TileRef p = n.c.tile(36); fill(p, 0x60000, 0x1000); p.set_ptr(35, 0x70000);
+        Net n(p4::dbg(cfg())); TileRef p = n.c.tile(36); fill(p, 0x60000, 0x1000); p.set_ptr(35, 0x70000);
         for (int j = 0; j < 400; j++) n.rd(36, AG, 2 + int64_t(j) * cs[0], 0x60000 + 2 * j, lw::SIZE_64, lw::M_SRC, 1, 37, 0);
         for (int j = 0; j < 400; j++) n.at(35, 2 + int64_t(j) * cs[1], 36, lw::M_SRC, 0, uint64_t(j));
         n.run_all(20000);
@@ -514,6 +517,7 @@ void oversubscription() {
 int main(int argc, char** argv) {
     std::vector<std::string> a;
     for (int i = 1; i < argc; i++) {
+        if (p4::debug_flag(argv[i])) continue;
         if (std::strncmp(argv[i], "--only=", 7) == 0) {
             std::string s = argv[i] + 7; size_t p = 0;
             while (p <= s.size()) { size_t q = s.find(',', p); if (q == std::string::npos) q = s.size(); only.insert(s.substr(p, q - p)); p = q + 1; }

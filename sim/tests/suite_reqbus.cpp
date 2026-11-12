@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "mach.h"
+#include "p4_debug.h"
 #include "suite.h"
 #include "units/linkword.h"
 #include "units/regmap.h"
@@ -64,7 +65,7 @@ size_t qsize(Net& n, unsigned target) { return n.c.reqbus().queue_size(target); 
 
 void back_pressure() {
     suite::group("back-pressure to the request FIFO");
-    Net n(machine_cfg()); settle(n);
+    Net n(p4::dbg(machine_cfg())); settle(n);
     TileRef s = n.c.tile(30);
     for (uint32_t j = 0; j < 128; j++) push(n, n.c.tile(31), 0, j);
     run(n, 1300);
@@ -86,7 +87,7 @@ void back_pressure() {
 
 void receive_side() {
     suite::group("a tile's receive side");
-    Net n(machine_cfg()); settle(n);
+    Net n(p4::dbg(machine_cfg())); settle(n);
     TileRef r = n.c.tile(40);
     const uint32_t pend = 1u << units::EV_REQUEST_PENDING;
     for (uint32_t j = 0; j < 3; j++) push(n, n.c.tile(j), 0, j);
@@ -104,7 +105,7 @@ void receive_side() {
 
 void drops() {
     suite::group("drops at the root");
-    Net n(machine_cfg()); settle(n);
+    Net n(p4::dbg(machine_cfg())); settle(n);
     push(n, n.c.tile(4), 5, 1);
     push(n, n.c.tile(5), 3, 2);
     run(n, 120);
@@ -118,7 +119,7 @@ void drops() {
 void from_c() {
     suite::group("from C");
     MachConfig k = Mach::cfg(shuffle); k.reqbus_host = true;
-    Mach m(k);
+    Mach m(p4::dbg(k));
     const Mach::Image im = m.boot("req");
     ReqBus& b = m.c.reqbus();
     std::vector<std::array<uint32_t, 3>> got;
@@ -149,6 +150,7 @@ void from_c() {
 int main(int argc, char** argv) {
     std::vector<std::string> a;
     for (int i = 1; i < argc; i++) {
+        if (p4::debug_flag(argv[i])) continue;
         if (std::strncmp(argv[i], "--only=", 7) == 0) {
             std::string s = argv[i] + 7; size_t p = 0;
             while (p <= s.size()) { size_t q = s.find(',', p); if (q == std::string::npos) q = s.size(); only.insert(s.substr(p, q - p)); p = q + 1; }

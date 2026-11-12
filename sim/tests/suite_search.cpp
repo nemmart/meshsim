@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "mach.h"
+#include "p4_debug.h"
 #include "p4_java.h"
 #include "suite.h"
 #include "units/linkword.h"
@@ -53,10 +54,12 @@ int lower_bound_u(const std::vector<uint32_t>& k, uint32_t target) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    const int64_t shuffle = argc > 1 ? std::atoll(argv[1]) : -1;
+    std::vector<std::string> a;
+    for (int i = 1; i < argc; i++) if (!p4::debug_flag(argv[i])) a.push_back(argv[i]);
+    const int64_t shuffle = !a.empty() ? std::atoll(a[0].c_str()) : -1;
     std::string sb = "search steps through the controller read port (spec 4.3's loop with early exit, sw/tests/search.c, -O2), every tile at once [meas: SearchBench]\n";
     for (int N : {65536, 4096}) {
-        Mach m(Mach::cfg(shuffle));
+        Mach m(p4::dbg(Mach::cfg(shuffle)));
         p4::JRandom r(N);
         std::vector<std::vector<uint32_t>> keys(64, std::vector<uint32_t>(size_t(N)));
         std::vector<std::array<int32_t, 64>> targets(64);

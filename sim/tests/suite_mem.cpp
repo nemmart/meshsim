@@ -12,7 +12,7 @@
 // The statistics MemTest reads that the timing builds don't keep (big SRAM per area, the read queue per client, the
 // Fifo peaks) exist under SIM_CHECKS: run the suite and debug builds.
 //
-// STATUS. Every group; disjoint's count of every offending access (ref's sram.disjointViolations) asked of the owner.
+// STATUS. Every group.
 //
 // Test-side code (the configuration regime, D6); the unit level's driver keeps its returns in a fixed array (nothing
 // allocates in the cycle loop).
@@ -464,7 +464,7 @@ void disjoint() {
     const auto& vm = n.c.violation_messages();
     const std::string m0 = vm.empty() ? std::string("null") : vm[0];
     check(m0.find("invariant 2") != std::string::npos, "it is invariant 2: %s", m0.c_str());
-    const int64_t dv = -1;   // ref's sram.disjointViolations (every offending access): not kept by the C++ big SRAM (asked of the owner)
+    const int64_t dv = int64_t(sram(p).disjoint_violations);   // ref's sram.disjointViolations (W26; check builds)
     check(dv > 1, "every offending chunk access is counted (%lld)", (long long)dv);
     std::string shown = m0;
     if (shown.rfind("cycle ", 0) == 0) { const size_t sp = shown.find(' ', 6); if (sp != std::string::npos) shown = shown.substr(sp + 1); }   // replaceAll("^cycle \\d+ ", "")

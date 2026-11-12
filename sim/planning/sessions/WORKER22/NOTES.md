@@ -411,3 +411,7 @@ W22-20. **(for W20) `TileRef::req_send` takes one push a cycle** (a `Sim::put_la
   between: ref sees two phases, the C++ one, and reports \"chunk 0x40000 read after being written in the same phase\"
   (cycle 91, tile 12). Reproduce: `build/clang-suite/suite_rdport -1 --only=disjoint`. Everything else in rdport and
   rdport-shuf equal.
+- **MemTest and ReadPortGatherTest complete** (W26's F6 and `disjoint_violations`, ee9e0eda): mem, mem-shuf, mem-shuf2
+  (171 of 171), rdport, rdport-shuf (587 of 587), rdport-full (594 of 594, 18 s) byte for byte; the same under
+  step-all and instance-major. Live in run_tests.sh (rdport-full in the all block); the five quick ones in make check
+  (test_p4suites: 15 tests, 169 s in clang debug). agtest's PENDING reason now W22-16 alone.

@@ -1029,8 +1029,20 @@ uint32_t TileRef::req_w(unsigned i) const { return unit<units::TileCore>("core")
 void TileRef::req_send(int64_t t, uint32_t w3) {           // RequestPort.send(t, w3) at the cycle just run
     if (t != c_->cycle()) FATAL("mach: tile %u: req_send at cycle %lld: the cycle just run only (%lld)", k_, (long long)t, (long long)c_->cycle());
     units::TileCore& core = unit<units::TileCore>("core");
-    const sim::Word w[2] = {sim::Word(core.req_set_w[0]) | sim::Word(core.req_set_w[1]) << 32, sim::Word(core.req_set_w[2]) | sim::Word(w3) << 32};
-    c_->sim().put_late(un(k_, "core"), core.req_push, w, 2);
+    // ref's RequestPort.send appends to the FIFO at once, any number between cycles (W22-20): straight into the leaf's
+    // FIFO, as a push of t is there at the start of t + 1; a push into a full FIFO is flagged (W26's fact) and dropped
+    const std::string leaf = "t" + std::to_string(k_) + ".reqleaf";
+    units::reqbus::ReqLeaf& l = c_->unit<units::reqbus::ReqLeaf>(leaf);
+    if (l.n >= l.depth) {
+        l.overflows++;
+        sim::check::record(uint64_t(t), int(k_), sim::check::Kind::CTL_REQ_FULL);
+    } else {
+        units::reqbus::ReqLeaf::Entry& e = l.fifo[(l.head + l.n) % l.depth];
+        e.w[0] = core.req_set_w[0]; e.w[1] = core.req_set_w[1]; e.w[2] = core.req_set_w[2]; e.w[3] = w3;
+        e.store_t = t;
+        l.n++; l.sends++;
+    }
+    c_->touched(leaf);
     core.req_set_w[0] = core.req_set_w[1] = core.req_set_w[2] = 0;
     units::RegBlockState& s = unit<units::TileCtl>("ctl").s;
     s.req_n++; s.sends++; s.set_w[0] = s.set_w[1] = s.set_w[2] = 0;   // the block's FIFO count, as a REQUEST_SEND at t
@@ -1040,7 +1052,7 @@ bool TileRef::req_can_push(int64_t t) const {               // fifo.size() < dep
     if (t != c_->cycle() + 1) FATAL("mach: tile %u: req_can_push(%lld): the next cycle only", k_, (long long)t);
     const units::reqbus::ReqLeaf& l = c_->unit<units::reqbus::ReqLeaf>("t" + std::to_string(k_) + ".reqleaf");
     sim::PortEntry e[4];
-    const uint32_t n = c_->sim().observe(l.push, e, 4).n;    // a push of the cycle just run is in the FIFO for ref
+    const uint32_t n = c_->sim().observe(l.push, e, 4).n;    // a core's push of the cycle just run is in the FIFO for ref
     uint32_t pending = 0;
     for (uint32_t i = 0; i < n; i++) if (e[i].at <= uint64_t(t)) pending++;
     return l.n + pending < l.depth;

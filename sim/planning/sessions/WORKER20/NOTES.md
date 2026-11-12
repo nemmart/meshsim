@@ -192,6 +192,11 @@ remaining kinds, interleaved as the suites ask.
   (a report, a result answered, another request, a second report; reportsOf; the delivery records) equal to ref.
 - **C&C's queued soft reset: not done** — ref's `cc.reset(false)` is `Chip.reset`: every bus flushed, every tile's
   reset (6.1), the request bus's, C&C 1's peripheral's and the model's (B20, CtrlTest's list). Sized ~1.5-2 sessions.
+- **W22-20**: `TileRef::req_send` appends straight to the leaf's FIFO, any number between cycles, as ref's RequestPort.send
+  (a push into a full FIFO counted and W26's CTL_REQ_FULL recorded at t). NetSelf's back-pressure case (128 pushed at
+  once, drained one a cycle) equal to ref. Note: ref doesn't report a push into a full FIFO while its tile sleeps (idle
+  skip: the block's counter is looked at only when the tile steps); ours records it at t. RequestBusTest never pushes
+  into a full FIFO, so it doesn't show; a test that does would differ there (and only there).
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

@@ -358,7 +358,28 @@ final class NetSelf {
         System.out.println(sb);
     }
 
+    /** W22-20: 128 requests pushed at once into one tile's 128-deep FIFO, then drained with the receivers'
+     *  side popping one a cycle when pending. */
+    static void backPressure() {
+        Config k = Config.machine(); k.periphType = 0;
+        Net n = new Net(k);
+        n.c.run(200);
+        Tile s = n.c.tiles[20];
+        for (int i = 0; i < 128; i++) { s.req.setW(0, (0 << 7) | (i << 10)); s.req.setW(1, i); s.req.send(n.c.cycle, 1000 + i); }
+        StringBuilder sb = new StringBuilder("back-pressure: canPush ").append(s.req.canPush(n.c.cycle + 1)).append(" stalled ").append(s.req.stalledPushes);
+        RequestBus b = n.c.reqBus;
+        int got = 0; long last = -1, sum = 0;
+        for (int i = 0; i < 3000 && got < 128; i++) {
+            if (b.pending(0, n.c.cycle + 1)) { sum += b.receive(0, n.c.cycle + 1); got++; last = n.c.cycle + 1; }
+            n.step();
+        }
+        sb.append("; received ").append(got).append(" last at ").append(last).append(" sum ").append(sum).append(" credits ").append(b.credits[0]);
+        sb.append(" delivered ").append(b.delivered.size()).append(" violations ").append(n.c.violations);
+        System.out.println(sb);
+    }
+
     public static void main(String[] a) {
+        backPressure();
         drain();
         testPeripheral();
         hooks();

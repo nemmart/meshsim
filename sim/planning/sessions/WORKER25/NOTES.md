@@ -132,3 +132,13 @@ the `-q` estimate, the guest delivery's whereabouts.
   CORRUPT, tables and malformed lines; a blank line; a range; "all" from a manifest; -x adding F; an empty file; a
   passing shard): `test_shard_summary` (make check) equal on gcc and clang, debug and release; a planted difference in
   a fixture fails it.
+- **The step replay-build** (`run_tests.sh`; `tests/stageb/replay_build.sh`): with the RISC-V toolchain, the three
+  replay-controller images rebuilt from `fw/replay` with v1.3's commands and compared with the committed ones;
+  without it, the committed images against their MANIFESTs; either way v1.3's line from the committed image. Its
+  reference `tests/stageb/replay-build.log` is v1.3's own `sw/replay/build.sh` output (oracle/ref/stageb.sh, now
+  also writing it; the toolchain installed here: gcc-riscv64-unknown-elf 13.2.0-11ubuntu1+12, fw/build.sh's).
+  Both paths and a planted image difference (exit 1) tried; `./run_tests.sh quick --check`: no log differs.
+- **F3. `ref`'s committed `results/replay-build.log` is stale too** (code 3256 B, end 0x11dc; v1.3's build today: 3728
+  B, 0x29ec, the committed images'). Not used.
+- **Q for the owner:** W20's runner lists the step `replayer` (ReplayerTest: the opcode table, the ALU against vec.tsv,
+  ReplayerUnitTests) as pending P7b. It is inventory row C20 (P3's, dropped with D40-D41), not one of E2-E5.

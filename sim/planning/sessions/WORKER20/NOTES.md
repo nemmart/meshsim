@@ -89,6 +89,12 @@ remaining kinds, interleaved as the suites ask.
   the replayer's own (`Replayer::violation_text`, factored out of W25's `list_add`, the list's "t<me> @<t>: " left off).
   One case line in checker.cpp (W26 owns the kinds' texts from 2026-11-12: told). Not yet checked against ref: no
   replay window here; W25's StageB lines (`meshsim: violations ...`) are the check. The runner's quick --check equal.
+- **W23's requests 9 and 10**: `TileRef::set_errors(bits)` (ref's `ctl.conditions |= bits` between cycles: in the
+  register block's state from the next cycle on, its view, its error line and the checker at that cycle's end; ORed in
+  after the step's facts and line, before the view: `TileCtl::host_cond`, harness-only); `Chip::set_check_errors`,
+  `set_strict_replies`, `set_max_violation_messages` (from the next cycle on, the report through the cycle just run made
+  first) and `clear_violations` (ref's `violations = 0` and the messages cleared). CheckSelf's case line for line.
+  W23's stand-ins in tests/ctl/ctl.h can go.
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

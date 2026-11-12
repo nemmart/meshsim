@@ -99,6 +99,9 @@ struct TileCtl {
     };
     bool host_on = false;
     HostWrites host;
+    // ref's `ctl.conditions |= bits` from a test (W23's request 9): state from the next cycle on, so ORed in after this
+    // step's facts and line (ref's end of the cycle just run doesn't have them) and before the view for the next cycle
+    uint32_t host_cond = 0;
     // W20 (P2): the checker's facts (src/check.h): the ERRORS value and the error line as ref has them at the end of a
     // cycle (invariant 15). `ck_tile` is set by the harness (its unit number); -1 records nothing.
     int ck_tile = -1;
@@ -175,6 +178,8 @@ struct TileCtl {
                 if (s.error_line != ck_line) { ck_line = s.error_line; sim::check::record(c.now() - 1, ck_tile, sim::check::Kind::ERROR_LINE, ck_line); }
             }
         }
+        const bool cond_set = host_on && host_cond;            // W20 (harness-only): request 9 (above)
+        if (cond_set) { s.conditions |= host_cond; host_cond = 0; }
         if (g4) c.drive(ag_start, s.dma_starts);
         // only the registers that changed (W12, D31): the same register file, without 33 writes a step
         for (uint64_t m = s.publish(pub); m; m &= m - 1) { const unsigned r = unsigned(__builtin_ctzll(m)); c.write(regs, r, pub[r]); }
@@ -193,7 +198,7 @@ struct TileCtl {
         // changes if the send waits): look again next cycle, when the Reg says whether the hold is still occupied.
         // Otherwise a core polling STATUS after a send that left at once reads busy until something else steps the block
         // (C&C 1's first send in test_cc_units; M2's programs always had a landing or a K line to step it).
-        return send_put ? c.next() : sim::Wake::none();
+        return send_put || cond_set ? c.next() : sim::Wake::none();   // (cond_set: the line and facts at the next end)
     }
     uint64_t digest() const { return digest_mix(s.digest(), error_out); }
     static bool reg_bit(const sim::Ctx& c, sim::RegIn r) { return c.valid(r) && c.read(r)[0] != 0; }

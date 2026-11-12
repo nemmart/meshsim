@@ -130,6 +130,12 @@ struct InjReadSide {
     uint64_t issued[3] = {}, stall_cycles = 0, window_full_cycles = 0, packets = 0, out_of_range = 0, violations = 0;
     uint64_t rp_injected_n = 0;        // read-port returns injected (ReadPort.injected; the "rdport" fingerprint)
     uint64_t rp_ties = 0;              // a read-port entry ready in the same cycle as one already waiting (by token order)
+#ifdef SIM_CHECKS
+    // W22 (P4; approved 2026-11-12; SIM_CHECKS only, the timing builds unchanged): ref's per-client latMax (issue to
+    // injection, updated at the injection) and firstIssueT / lastIssueT (at the issue), for MemTest. Statistics.
+    uint64_t lat_max[3] = {};
+    int64_t first_issue_t[3] = {-1, -1, -1}, last_issue_t[3] = {-1, -1, -1};
+#endif
 
     void declare(sim::Ports& p) {
         if (!cfg.present) return;
@@ -320,6 +326,10 @@ inline void InjReadSide::issue(sim::Ctx& c, Tokens& tok, unsigned client, uint64
     held_slot[t_] = 1;
     if (client != READPORT) { ord[client][(ord_head[client] + ord_n[client]) % MAX] = uint8_t(t_); ord_n[client]++; }
     issued[client]++; in_flight[client]++;
+#ifdef SIM_CHECKS
+    if (first_issue_t[client] < 0) first_issue_t[client] = int64_t(t);   // W22: SRAMReadQueue.firstIssueT, lastIssueT
+    last_issue_t[client] = int64_t(t);
+#endif
     const unsigned width = unsigned(a >> 21 & 3);
     unsigned n = chunks_of(width);
     const uint32_t addr = uint32_t(a & 0x1FFFFF);
@@ -354,6 +364,9 @@ inline void InjReadSide::injected(sim::Ctx& c, uint64_t h, Tokens& tok) {
     if (!held_slot[t_]) FATAL("read queue: tile %u: injected token %u, not held", me, t_);
     held_slot[t_] = 0;
     tok.reads--; in_flight[cl[t_]]--;
+#ifdef SIM_CHECKS
+    if (c.now() - issueT[t_] > lat_max[cl[t_]]) lat_max[cl[t_]] = c.now() - issueT[t_];   // W22: SRAMReadQueue.latMax
+#endif
     if (tokens_on && loops(lw::dst(h))) tok.loop_held++;   // the token moves to the loopback packet: still held
     free_q[(free_head + free_n) % MAX] = uint8_t(t_); free_n++;
     if (h & lw::TAG_READPORT) { c.inc(rp_injected); rp_injected_n++; }

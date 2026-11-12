@@ -120,6 +120,12 @@ violations: 72
   cycle 116 tile 29: tile 29: a trap inside the handler, cause 2 inside the handler: a trap that sets no ERRORS bit; meshsim stops (4.13)
   cycle 116 tile 37: tile 37: a trap inside the handler, cause 2 inside the handler: a trap that sets no ERRORS bit; meshsim stops (4.13)
   cycle 116 tile 45: tile 45: a trap inside the handler, cause 2 inside the handler: a trap that sets no ERRORS bit; meshsim stops (4.13)
+after tile 5's bits: 1 at cycle 30
+violations: 2
+  cycle 21 tile 5: ERRORS [1000000000] set: bus error (invariant 15)
+  cycle 41 tile 7: ERRORS [10] set: bad packet (invariant 15)
+violations: 2
+  cycle 42 tile 8: ERRORS [100] set: unexpected arrival (invariant 15)
 violations: 12
   cycle 10 tile 10: count-only packet on counter 0 sent: it does nothing (3.1, invariant 21): src=0 dst=20 mode=5(count-only) ctr=0 addr=0x00000000 size=32 payload=0x00000000
   cycle 11 tile 11: count-only packet on counter 0 sent: it does nothing (3.1, invariant 21): src=0 dst=20 mode=5(count-only) ctr=0 addr=0x00000000 size=32 payload=0x00000001

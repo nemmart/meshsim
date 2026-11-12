@@ -406,6 +406,27 @@ void checkself() {
     }
     {
         mach::MachConfig k = Net::cfg(-1);
+        k.check_errors = true;
+        Net n(k);
+        n.c.run(20);
+        n.c.tile(5).set_errors(1u << 9);
+        n.c.run(10);
+        say("after tile 5's bits: %llu at cycle %lld\n", (unsigned long long)n.c.violations(), (long long)n.c.cycle());
+        n.c.set_check_errors(false);
+        n.c.tile(6).set_errors(1u << 10);
+        n.c.run(10);
+        n.c.set_check_errors(true);
+        n.c.tile(7).set_errors(1u << 1);
+        n.c.run(1);
+        say("%s", n.c.violation_report().c_str());
+        n.c.clear_violations(); n.c.set_max_violation_messages(1);
+        n.c.tile(8).set_errors(1u << 2);
+        n.c.tile(9).set_errors(1u << 3);
+        n.c.step();
+        say("%s", n.c.violation_report().c_str());
+    }
+    {
+        mach::MachConfig k = Net::cfg(-1);
         k.max_violation_messages = 3;
         Net n(k);
         for (unsigned i = 0; i < 6; i++) n.at(10 + i, 10 + i, 20, lw::M_COUNT, 0, 0, lw::SIZE_32, i, 0);

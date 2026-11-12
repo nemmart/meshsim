@@ -79,6 +79,26 @@ final class CheckSelf {
             m.c.run(400);
             System.out.print(m.c.violationReport());
         }
+        {   // ERRORS from the test (ref's ctl.conditions |= bits) and the switches changed mid-run (W23's requests 9, 10)
+            Config k = Net.cfg(-1); k.checkErrors = true;
+            Net n = new Net(k);
+            n.c.run(20);
+            n.c.tiles[5].ctl.conditions |= 1 << 9;                  // bus error
+            n.c.run(10);
+            System.out.println("after tile 5's bits: " + n.c.violations + " at cycle " + n.c.cycle);
+            n.c.cfg.checkErrors = false;
+            n.c.tiles[6].ctl.conditions |= 1 << 10;                 // illegal instruction, unreported
+            n.c.run(10);
+            n.c.cfg.checkErrors = true;
+            n.c.tiles[7].ctl.conditions |= 1 << 1;                  // reported
+            n.c.run(1);
+            System.out.print(n.c.violationReport());
+            n.c.violations = 0; n.c.violationMessages.clear(); n.c.cfg.maxViolationMessages = 1;
+            n.c.tiles[8].ctl.conditions |= 1 << 2;
+            n.c.tiles[9].ctl.conditions |= 1 << 3;
+            n.c.step();
+            System.out.print(n.c.violationReport());
+        }
         {   // the message cap (maxViolationMessages): the count goes on
             Config k = Net.cfg(-1); k.maxViolationMessages = 3;
             Net n = new Net(k);

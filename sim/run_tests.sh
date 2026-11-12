@@ -43,7 +43,7 @@ SUITES="suite_memsys suite_rvc suite_tracer"
 # The make-check tests standing for a v1.3 suite (equiv steps)
 EQUIVS="test_golden test_tileslotconf"
 SUITES="$SUITES suite_ccbench"                       # W23 (P5)
-SUITES="$SUITES suite_replayer"                      # W25 (P7b)
+SUITES="$SUITES suite_replayer stageb"               # W25 (P7b)
 
 if [ "$BUILD" = 1 ]; then
   echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
@@ -107,7 +107,7 @@ pending ctrl-shuf     "shuffled child order (seed 4)" "P5"
 equiv riscv           "riscv-tests rv32ui/rv32um on the controller" "test_golden (every program's retire trace equal to ref's)" -- $S/test_golden
 pending rdport        "read port, GATHER (Java; the C parts PENDING (phase 2))" "P4"
 pending accounting    "per-phase accounting (from C)" "P5 (W23)"
-pending searchbench   "search steps through the read port (microbenchmark, from C)" "P6"
+pending searchbench   "search steps through the read port (microbenchmark, from C)" "P4"
 pending rdport-shuf   "shuffled child order (seed 4)" "P4"
 pending agtest        "address generator read-ahead, figure 12's PTR/HIST ports" "P4"
 pending agtest-shuf   "shuffled child order (seed 4)" "P4"
@@ -122,8 +122,8 @@ pending hooks         "the register map, the send port, the pulses (from Java)" 
 pending hooks-shuf    "shuffled child order (seed 4)" "P5"
 equiv periph          "the peripheral framework: the standard window, events, region writes, the DMA" "test_tileslotconf (W15's TileSlotConf: PeripheralSlotTest's groups on a real tile, against ref)" -- $S/test_tileslotconf
 pending periph-shuf   "shuffled child order (seed 4)" "P5 (test_tileslotconf has no shuffled run yet)"
-pending reqbus        "the request port, the request bus and the receive queues in the tree" "P5"
-pending reqbus-shuf   "shuffled child order (seed 4)" "P5"
+pending reqbus        "the request port, the request bus and the receive queues in the tree" "P4"
+pending reqbus-shuf   "shuffled child order (seed 4)" "P4"
 # cccores: log-equal (D44's mask) in the builds without the checker; this runner's suite build has it on, and the
 # error path's injected ERRORS count as a violation until W20's requests 9 and 10 replace W23's stand-ins (ctl.h).
 # Then these two lines replace the pending ones:
@@ -132,7 +132,10 @@ pending reqbus-shuf   "shuffled child order (seed 4)" "P5"
 pending cccores       "C&C 1-3 as cores (Config.ccCores, WORKER14): the boot ROM's controller branch, the link, the request tree" "P5: W20's requests 9 and 10 (the checker's build)"
 pending cccores-shuf  "shuffled child order (seed 4)" "P5: W20's requests 9 and 10 (the checker's build)"
 step replay-build 1 "the replay controller (sw/replay/build.sh)" tests/stageb/replay-build.log -- tests/stageb/replay_build.sh
-pending stageb        "Stage B: replay_ctl.c on a tile against Stage A, synthetic windows" "P7b"
+pending stageb        "Stage B: replay_ctl.c on a tile against Stage A, synthetic windows" "P7b: the CL4 case's meshsim line waits for W20's replayer violations"
+if [ -n "${DELIVERY:-}" ]; then   # Stage B on a tracer delivery's guest windows: DELIVERY=<replay-inputs dir> (v1.3's; no such delivery on the runner: unrun, as in v1.3)
+  for g in lrd_x0 scd_x0 nop_hint jalr_self jalr_zero; do step stageb-$g 1 "Stage B on the tile: $g" - -- $S/stageb "$DELIVERY" state $g; done
+fi
 step replayer 1 "the replayer model (v1.25): the opcode table, the ALU against vec.tsv at 821e1bd, the unit tests" tests/replayer/replayer.log -- $S/suite_replayer
 step memsys 1 "the Tracer's memory system (v1.3, B1): FileStore's trees and statuses, the shared cache's timing" tests/tracersuites/memsys.log -- $S/suite_memsys
 step rvc    1 "the Tracer's RVC decompressor against gold's, every 16-bit encoding (v1.3, B1)" tests/tracersuites/rvc.log -- $S/suite_rvc
@@ -145,7 +148,7 @@ if [ "$MODE" != quick ]; then
   pending sort-bt-k128    "the same, 128-bit values" "P6"
   pending rdport-full     "gather 1 at full size (Java; the C parts PENDING (phase 2))" "P4"
   pending accounting-full "per-phase accounting, full-size all-to-all from C" "P5 (W23)"
-  pending agbench         "read-ahead measurements: ag_lookahead, zero-length groups, start to first request (a few minutes)" "P6"
+  pending agbench         "read-ahead measurements: ag_lookahead, zero-length groups, start to first request (a few minutes)" "P4"
   pending s1bench         "item S1: K's margin over the write path, L = 1-4, and the table-window case (a few minutes)" "P5 (W23)"
   step ccbench 16 "C&C 1-3 as cores (WORKER14): the boot and a phase against the Java model" tests/ctlsuites/ccbench.log -- $S/suite_ccbench
   pending sweep-quick     "parameter sweep, quick (about 1 minute; 'java Sweep full' takes about 25)" "P6"

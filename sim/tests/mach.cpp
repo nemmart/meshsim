@@ -438,7 +438,7 @@ void Chip::finalize_checks() const {
     Chip& me = const_cast<Chip&>(*this);
     Checker& ck = *impl_->checker;
     for (unsigned k = 0; k < 64; k++) {
-        const units::RegBlockState b = me.tile(k).block();
+        const units::RegBlockState b = me.tile(k).block(false);   // ref's end of the cycle (not the test's bits since)
         const uint32_t v = b.conditions | b.live_errors();
         sim::check::Fact f{uint64_t(cycle()), int32_t(k), sim::check::Kind::ERRORS_SET, 0, {v, 0, 0, 0}};
         ck.add(f);
@@ -450,6 +450,10 @@ void Chip::finalize_checks() const {
 uint64_t Chip::violations() const { finalize_checks(); return impl_->checker->violations(); }
 const std::vector<std::string>& Chip::violation_messages() const { finalize_checks(); return impl_->checker->messages(); }
 void Chip::clear_violation_messages() { finalize_checks(); impl_->checker->clear_messages(); }
+void Chip::set_check_errors(bool on) { finalize_checks(); impl_->checker->switches().errors = on; cfg_.check_errors = on; }
+void Chip::set_strict_replies(bool on) { finalize_checks(); impl_->checker->switches().strict_replies = on; cfg_.strict_replies = on; }
+void Chip::set_max_violation_messages(unsigned n) { finalize_checks(); impl_->checker->set_max_messages(n); cfg_.max_violation_messages = n; }
+void Chip::clear_violations() { finalize_checks(); impl_->checker->clear_count(); impl_->checker->clear_messages(); }
 void Chip::scan_overflows() { impl_->collect_overflows(); impl_->checker->process(cycle(), true); }
 std::string Chip::violation_report() {
     scan_overflows();
@@ -687,6 +691,11 @@ void TileRef::set_master_config(uint32_t v) {
     b.host.dma_config = v; b.host.mask |= units::TileCtl::HostWrites::DMA_CONFIG;
     c_->touched(un(k_, "ctl"));
 }
+void TileRef::set_errors(uint32_t bits) {
+    units::TileCtl& b = unit<units::TileCtl>("ctl");
+    b.host_cond |= bits;
+    c_->touched(un(k_, "ctl"));
+}
 void TileRef::set_record_base(uint32_t chunk) {
     units::TileCtl& b = unit<units::TileCtl>("ctl");
     b.host.record_base = chunk & 0x1FFFFF; b.host.mask |= units::TileCtl::HostWrites::RECORD_BASE;
@@ -707,9 +716,10 @@ void TileRef::pulse(uint32_t bits) {                       // TILE_PULSE's start
 }
 // The register block as ref has it at the end of the cycle just run (its endCycle of that cycle runs at the next step:
 // tile_ctl.h's block_at_end), with the harness's writes still pending over it.
-units::RegBlockState TileRef::block() const {
+units::RegBlockState TileRef::block(bool with_cond) const {
     const units::TileCtl& b = unit<units::TileCtl>("ctl");
     units::RegBlockState r = units::block_at_end(c_->sim(), b, uint64_t(c_->cycle()));
+    if (with_cond) r.conditions |= b.host_cond;            // set from the test (request 9): ref's ctl has them now
     if (b.host.mask & units::TileCtl::HostWrites::DMA_CONFIG) r.dma_config = b.host.dma_config;
     if (b.host.mask & units::TileCtl::HostWrites::RECORD_BASE) r.record_base = b.host.record_base;
     if (b.host.mask & units::TileCtl::HostWrites::STARTS) r.dma_starts += b.host.starts;

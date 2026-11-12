@@ -48,8 +48,8 @@
 // no cost in the loop beyond the increment) by whoever ports the suite, or asked of W20.
 //
 // IMAGES. Mach::Image is ref's Mach.Image (DIR/NAME.code.bin, .data.bin, .sym). The directories searched, in order: the
-// MachConfig's `image_dirs`, else $SIM_IMAGES (':'-separated), else v1.35's built images (P1's tree, once it lands),
-// then tests/golden-m2/images and tests/m3-images.
+// MachConfig's `image_dirs`, else $SIM_IMAGES (':'-separated), else
+// fw/images (W19), then tests/golden-m2/images, tests/golden/images and tests/m3-images.
 //
 // SHUFFLING (B24, C25). ref's `shuffleSeed` >= 0 shuffles every child order every cycle; here it sets the framework's
 // debug shuffle (sim.h DEBUG CHECKS) with that seed. The seeds don't map to ref's orders (W3's generator), but a suite's
@@ -73,6 +73,7 @@
 #include "config.h"
 #include "sim.h"
 #include "units/chip.h"
+#include "units/regblock.h"
 
 namespace mach {
 
@@ -114,7 +115,7 @@ struct MachConfig {
     bool log_trace = false;            // the TRACE store log (8.15, H6) [step 4]
     // ---- the harness ----
     std::vector<std::string> image_dirs;   // Mach::Image's search path (empty: the default above)
-    uint32_t log_capacity = 1u << 16;      // Net: director-log entries per tile (fatal when exceeded, never grows)
+    uint32_t log_capacity = 1u << 14;      // Net: director-log entries per tile (fatal when exceeded, never grows)
     uint32_t host_capacity = 4096;         // each controller's host-port queue (packets)
     unsigned threads = 1, parts = 1;       // the framework's split (row bands); a suite's default is one thread
 
@@ -194,6 +195,8 @@ public:
     int64_t exit_value() const;                             // TileControl.simExitValue (SIM_EXIT, 8.15)
     std::string halt_report() const;                        // Controller.haltReport()
 
+    units::RegBlockState block() const;                     // the register block as ref has it now (mach.cpp)
+
 private:
     Chip* c_;
     unsigned k_;
@@ -272,6 +275,7 @@ public:
 
     struct Impl;                                            // mach.cpp: the machine, its memories, the harness units
     Impl& impl() { return *impl_; }
+    const Impl& impl_const() const { return *impl_; }
 private:
     MachConfig cfg_;
     std::unique_ptr<Impl> impl_;
@@ -336,7 +340,7 @@ public:
     explicit Net(const MachConfig& cfg);
     static MachConfig cfg(int64_t shuffle);                 // Net.cfg: defaults(), check_unexpected and check_errors off
     Chip c;
-    int64_t late = 0;                                       // packets taken later than scheduled (must stay 0)
+    int64_t late() const;                                   // packets taken later than scheduled (must stay 0)
 
     // Net.at: tile's packet for injection at cycle T (nondecreasing T per tile): 64 bits on counter 1, or in full
     void at(unsigned tile, int64_t T, unsigned dst, unsigned mode, uint32_t addr, uint64_t payload);
@@ -345,9 +349,14 @@ public:
     // Net.rd: a read-queue request from client cl (0-2) of tile, presented from cycle T (FIFO order per client)
     void rd(unsigned tile, unsigned cl, int64_t T, uint32_t src_chunk, unsigned width, unsigned mode, unsigned counter,
             unsigned dst, uint32_t dst_addr);
-    // Net.cncSends: {T, dst, mode, addr, lo[, size, hi[, counter]]}, in order
-    struct CncSend { int64_t T; unsigned dst, mode; uint32_t addr; uint64_t lo; unsigned size; uint64_t hi; unsigned counter; };
+    // Net.cncSends: {T, dst, mode, addr, lo[, size, hi[, counter]]}, in order (C&C 1 puts it at T - 1, visible at T)
+    struct CncSend { int64_t T; unsigned dst, mode; uint32_t addr; uint64_t lo; unsigned size = 1; uint64_t hi = 0; unsigned counter = 1; };
     void cnc_send(const CncSend& s);
+    // ref's ccs[cc].send(c.cycle, ...) between cycles: C&C cc + 1's endpoint puts a packet as of the cycle just run
+    // (Sim::put_late), seen by the mesh in the next cycle, as ref's; refused (and lost, as ref's) if its Hold is full.
+    void send(unsigned cc, unsigned dst, unsigned mode, unsigned counter, uint32_t addr, unsigned size, uint64_t lo, uint64_t hi);
+    // ref's ccs[cc].received: {t, payload [63:0], header, payload [127:64]} of every packet C&C cc + 1 received
+    std::vector<std::array<uint64_t, 4>> received(unsigned cc) const;
     static uint32_t cm(uint32_t packed_word);               // Net.cm: a v1.1 packed controller-memory word's address
     static uint64_t tagged(uint64_t seq, int64_t T) { return seq << 32 | (uint64_t(T) & 0xFFFFFFFFull); }
 
@@ -356,7 +365,7 @@ public:
     bool run_all(uint64_t max);                             // until every queue is empty and the machine quiescent
     // the director's log: {t, payload [63:0], header, payload [127:64]} of every accepted packet
     std::vector<std::array<uint64_t, 4>> log(unsigned tile) const;
-    void clear_logs();
+    void clear_logs();                                      // the directors' logs and the endpoints' received
     unsigned max_router_peak() const;
 };
 

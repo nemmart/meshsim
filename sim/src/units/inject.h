@@ -70,6 +70,28 @@ struct ReadSideConfig {
     uint32_t mem_chunks = 1u << 20;
 };
 
+// W20 (harness-only; P2): ref's Net harness feeding a tile (sim/tests/mach.h, Net::at and Net::rd). Null on every machine
+// but the harness's coreless Net machine, so nothing here runs otherwise. The rings are the harness's (allocated at
+// configuration, fixed size: a push past them is fatal in the harness, between cycles). Entries are {T, w0, w1, w2}.
+//   ret     packets for the read-return holding register (Net.at): at the read side's step at u, the head with T <= u
+//           becomes the register's word visible at u, as ref's feed() put it at u - 1 (`late` counts T < u); a srq
+//           release of u - 1 at the same time would be ref's double put: fatal
+//   cl[k]   read-queue client k's requests (Net.rd, ref's testReadClients): at most one moved a cycle into the client's
+//           FIFO (the ring's first `vis` entries), at the step of u when T <= u and fewer than 60 are in it (ref's
+//           `f.size(t) >= 60`); the FIFO replaces the three clients' inputs in the issue
+struct HarnessFeed {
+    struct Ring {
+        uint64_t (*e)[4] = nullptr;
+        uint32_t cap = 0, head = 0, n = 0, vis = 0;
+        const uint64_t* at(uint32_t i) const { return e[(head + i) % cap]; }
+        void pop() { head = (head + 1) % cap; n--; }
+    };
+    Ring ret, cl[3];
+    bool clients = false;          // ref's testReadClients: the FIFOs above are the read queue's three clients
+    uint64_t late = 0;
+    bool pending() const { return ret.n || cl[0].n || cl[1].n || cl[2].n; }
+};
+
 struct InjReadSide {
     static constexpr unsigned MAX = 64, AREAS = 16;
     enum : unsigned { GATHER = 0, AG = 1, READPORT = 2 };
@@ -101,6 +123,7 @@ struct InjReadSide {
     bool cur_v = false, nxt_v = false;
     uint64_t cur_w[3] = {}, nxt_w[3] = {}, nxt_at = 0;
     uint8_t busy_out = 0;              // the last gather_srq_busy put
+    HarnessFeed* feed = nullptr;       // W20 (harness-only): ref's Net harness's feed; null otherwise
 
     // ---- statistics, ref's checks ----
     uint64_t issued[3] = {}, stall_cycles = 0, window_full_cycles = 0, packets = 0, out_of_range = 0, violations = 0;
@@ -127,6 +150,8 @@ struct InjReadSide {
     static unsigned chunks_of(unsigned size) { return size == lw::SIZE_UNDEF ? 0 : 1u << size; }
 
     void step(sim::Ctx& c, Tokens& tok);
+    void harness_feed(uint64_t t);                         // W20 (harness-only): the feed (above)
+    void harness_issue(sim::Ctx& c, Tokens& tok);          // W20 (harness-only): the issue from the harness's clients
     bool has_return(sim::Ctx&) const { return cur_v; }
     const uint64_t* peek_return(sim::Ctx&) const { return cur_w; }
     void injected(sim::Ctx& c, uint64_t h, Tokens& tok);
@@ -213,7 +238,11 @@ inline sim::Wake Injection::step(sim::Ctx& c) {
         if (go) {
             // a cycle the send isn't judged (a read return goes first) or goes ends its wait
             if (wait_from) { token_wait_cycles += c.now() - wait_from; wait_from = 0; }
-            if (r) { rs.injected(c, h, tok); from_read++; }
+            if (r) {
+                if (rs.feed && !(h & lw::TAG_FROM_SRQ)) rs.cur_v = false;   // W20 (harness-only): a fed packet, no token
+                else rs.injected(c, h, tok);
+                from_read++;
+            }
             else { c.take(send); from_send++; }
             check(h);
             c.put(to_router, d, h, cw);
@@ -238,6 +267,7 @@ inline void InjReadSide::step(sim::Ctx& c, Tokens& tok) {
     // the read-return hold: the put of t - 1 is visible now (the previous one was injected when it was)
     if (cur_v) FATAL("read queue: tile %u, cycle %llu: a read return not injected the cycle it was visible", me, (unsigned long long)t);
     if (nxt_v && nxt_at < t) { cur_v = true; cur_w[0] = nxt_w[0]; cur_w[1] = nxt_w[1]; cur_w[2] = nxt_w[2]; nxt_v = false; }
+    if (feed) harness_feed(t);                                // W20 (harness-only): ref's Net.feed() before cycle t
     // 1. returns from the areas
     for (unsigned a = 0; a < AREAS; a++) {
         if (!c.ready(ret[a])) continue;
@@ -262,6 +292,7 @@ inline void InjReadSide::step(sim::Ctx& c, Tokens& tok) {
     }
     if (pick >= 0) emit(t, uint32_t(pick));
     // 3. issue
+    if (feed && feed->clients) { harness_issue(c, tok); publish_busy(c); return; }   // W20 (harness-only)
     if (c.refused(sram_rd)) { c.put(sram_rd, last_rd); stall_cycles++; }
     else if (!tok.free()) {
         if ((cfg.gather && c.ready(client_hold[GATHER])) || (cfg.ag && c.ready(client_hold[AG])) || c.ready(rp_q)) window_full_cycles++;
@@ -339,14 +370,56 @@ inline void InjReadSide::publish_busy(sim::Ctx& c) {
 inline sim::Wake InjReadSide::wake(sim::Ctx& c, const Tokens& tok) const {
     const uint64_t t = c.now();
     if (nxt_v) return c.next();
+    uint64_t hat = ~0ull;                                      // W20 (harness-only): the harness's next feed or issue
+    if (feed && feed->pending()) {
+        if (feed->ret.n) hat = feed->ret.at(0)[0];
+        for (unsigned k = 0; k < 3; k++) {
+            const HarnessFeed::Ring& r = feed->cl[k];
+            const uint64_t a = r.vis ? (tok.reads + tok.loop_held < cap ? t + 1 : ~0ull) : r.n ? r.at(0)[0] : ~0ull;
+            hat = a < hat ? a : hat;
+        }
+        if (hat <= t + 1) return c.next();
+    }
     const bool client = (cfg.gather && c.ready(client_hold[GATHER])) || (cfg.ag && c.ready(client_hold[AG])) || c.ready(rp_q);
     if (client && tok.reads + tok.loop_held < cap) return c.next();
-    uint64_t at = ~0ull;
+    uint64_t at = hat;
     for (unsigned k = 0; k < 2; k++)
         if (ord_n[k]) { const uint32_t h = ord[k][ord_head[k]]; if (parts[h] == 0) at = readyT[h] < at ? readyT[h] : at; }
     if (rp_n) at = rp[0].t < at ? rp[0].t : at;
     if (at == ~0ull) return sim::Wake::none();
     return at <= t + 1 ? c.next() : sim::Wake::at_cycle(at);
+}
+
+
+// ---- W20 (harness-only; P2): ref's Net harness's feed, on the coreless Net machine only (feed != null) --------------
+inline void InjReadSide::harness_feed(uint64_t t) {
+    HarnessFeed& f = *feed;
+    if (f.ret.n && f.ret.at(0)[0] <= t) {
+        const uint64_t* e = f.ret.at(0);
+        if (cur_v) FATAL("Net harness: tile %u, cycle %llu: a packet fed into the read-return register the cycle the read "
+                         "queue released into it (ref: a double put)", me, (unsigned long long)t);
+        cur_v = true; cur_w[0] = e[1]; cur_w[1] = e[2]; cur_w[2] = e[3];
+        if (e[0] < t) f.late++;
+        f.ret.pop();
+    }
+    if (f.clients)
+        for (unsigned k = 0; k < 3; k++) {
+            HarnessFeed::Ring& r = f.cl[k];
+            if (r.vis < r.n && r.vis < 60 && r.at(r.vis)[0] <= t) r.vis++;
+        }
+}
+inline void InjReadSide::harness_issue(sim::Ctx& c, Tokens& tok) {   // SRAMReadQueue's issue over the harness's clients
+    HarnessFeed& f = *feed;
+    if (c.refused(sram_rd)) { c.put(sram_rd, last_rd); stall_cycles++; return; }
+    if (!tok.free()) { if (f.cl[0].vis || f.cl[1].vis || f.cl[2].vis) window_full_cycles++; return; }
+    for (unsigned k = 0; k < 3; k++) {
+        HarnessFeed::Ring& r = f.cl[k];
+        if (!r.vis) continue;
+        const uint64_t a = r.at(0)[1], b = r.at(0)[2];
+        r.pop(); r.vis--;
+        issue(c, tok, k, a, b);
+        return;
+    }
 }
 
 }  // namespace units

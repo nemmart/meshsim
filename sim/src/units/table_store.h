@@ -128,6 +128,14 @@ struct TableStore {
     ReqFifo q_stream, q_group, q_we;
     Rmw pipe;
     uint64_t table_reads = 0, rmws = 0;
+    // W20 (harness-only; P2): a harness poke of PTR (ref's TableStore.poke, between cycles) reaches `ptr_view` at the
+    // store's next step, as committed before it. `host_poke` is set by the harness only; `host_ptr` marks the indices.
+    bool host_poke = false;
+    uint64_t host_ptr[4] = {};
+    void poke_host(uint32_t table, uint32_t i, uint32_t v) {   // between cycles; the harness wakes the store
+        m.write(table, i, v);
+        if (table == TBL_PTR) host_ptr[(i & 255) >> 6] |= 1ull << (i & 63);
+    }
 
     uint64_t digest() const {
         return sim::hash_fields(m.s_src.sum, m.s_dest.sum, m.s_count.sum, m.s_group.sum, m.s_ptr.sum) ^
@@ -149,6 +157,14 @@ struct TableStore {
     sim::Wake step(sim::Ctx& c) {
         const uint64_t t = c.now();
         if (pub) { c.write(ptr_view, pub_idx, pub_val); pub = false; }   // the write-back of t - 1 (with_ag)
+        if (host_poke) {                                       // W20 (harness-only): the harness's pokes
+            for (unsigned w = 0; w < 4; w++)
+                for (uint64_t b = host_ptr[w]; b; b &= b - 1) {
+                    const unsigned i = 64 * w + unsigned(__builtin_ctzll(b));
+                    if (with_ag) c.write(ptr_view, i, m.ptr[i]);
+                }
+            host_ptr[0] = host_ptr[1] = host_ptr[2] = host_ptr[3] = 0;
+        }
         if (c.ready(window)) {                                 // the controller's store of t - 1 (lost on a write-back)
             const sim::Word* w = c.peek(window);
             const uint32_t table = uint32_t(w[0] >> 32);
@@ -223,11 +239,20 @@ struct HistStore {
     Rmw pipe;
     uint64_t rmws = 0;
     bool hist_overflow = false;        // a count past 17 bits (invariant 6)
+    // W20 (harness-only; P2): a harness poke of HIST reaches `out` (the core's loads) at the store's next step.
+    bool host_poke = false;
+    uint64_t host_hist[4] = {};
+    void poke_host(uint32_t i, uint32_t v) { m.write(i, v); host_hist[(i & 255) >> 6] |= 1ull << (i & 63); }
     uint64_t digest() const { return m.s_hist.sum ^ q.digest() * 3 ^ pipe.digest() * 5 ^ uint64_t(hist_overflow); }
 
     explicit HistStore(sim::Ports& p) { p.in(window, "window", 2); p.in(req, "req", 3); p.out(out, "hist", HIST_REGS); p.out(ovf_ev, "ovf_ev", 0); }
     sim::Wake step(sim::Ctx& c) {
         const uint64_t t = c.now();
+        if (host_poke) {                                       // W20 (harness-only): the harness's pokes
+            for (unsigned w = 0; w < 4; w++)
+                for (uint64_t b = host_hist[w]; b; b &= b - 1) { const unsigned i = 64 * w + unsigned(__builtin_ctzll(b)); c.write(out, i, m.hist[i]); }
+            host_hist[0] = host_hist[1] = host_hist[2] = host_hist[3] = 0;
+        }
         if (c.ready(window)) {                                 // the controller's store of t - 1 (lost on a write-back)
             const sim::Word* w = c.peek(window);
             const uint32_t i = uint32_t(w[0]), v = uint32_t(w[1]);

@@ -10,7 +10,13 @@
 #include <optional>
 
 #include "base/fatal.h"
+#include "units/ag.h"
 #include "units/big_sram.h"
+#include "units/director.h"
+#include "units/gather.h"
+#include "units/inject.h"
+#include "units/router.h"
+#include "units/write_engine.h"
 #include "units/cnc.h"
 #include "units/host_port.h"
 #include "units/linkword.h"
@@ -107,6 +113,22 @@ struct Chip::Impl {
     struct Call { uint32_t id; std::function<void(int64_t)> fn; };
     std::vector<Call> calls;
     std::vector<uint32_t> free_ids;
+    // Net (the coreless machine fed from the harness): each tile's feed (inject.h's HarnessFeed, harness-only) and the
+    // rings' storage (grown between cycles, the feed's pointers refreshed), and the directors' logs (fixed size)
+    using E4 = std::array<uint64_t, 4>;
+    std::vector<units::HarnessFeed> feeds;
+    std::vector<std::vector<E4>> ring_store;            // tile k's ring r (0: ret, 1-3: clients 0-2) at 4k + r
+    std::vector<std::vector<E4>> logs;
+    // the endpoints' harness parts (cnc.h's HarnessSends): C&C 1 (the Java model), C&C 2, C&C 3
+    units::HarnessSends sends[3];
+    std::vector<units::HarnessSends::E> send_store[3];
+    std::vector<E4> recv[3];
+    void push_send(unsigned cc, const units::HarnessSends::E& e);
+    bool net = false;
+    std::vector<uint16_t> shifted;                      // the register block's and the core's types (Sim::in_flight)
+    std::vector<uint16_t> lines;                        // C&C's row collectors and C&C: ref's READY and error lines
+    void enable_net(const MachConfig& c);
+    void push(unsigned tile, unsigned ring, const E4& e);
 
     bool has_cnc = false;
     units::Cnc* cnc() { return has_cnc ? &sim->unit<units::Cnc>("cnc") : nullptr; }
@@ -117,7 +139,6 @@ struct Chip::Impl {
 
 Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     Impl& m = *impl_;
-    if (c.coreless) FATAL("mach: the coreless machine (MachConfig::defaults, Net) comes with W20's next commit");
     if (!c.start_skew.empty()) FATAL("mach: a per-tile start_skew comes with W20's step 3");
     if (c.cc3_tracer && !c.cc_cores) FATAL("mach: cc3_tracer needs cc_cores (ref's Config)");
     m.hops = units::load_hops(data_path({"data/hops.txt"}).c_str());
@@ -156,6 +177,7 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     sim::Options opt;
     if (c.shuffle_seed >= 0) opt.shuffle_seed = uint64_t(c.shuffle_seed) + 1;   // 0 is "none" in the framework
     opt.threads = c.threads;
+    opt.observe_arrivals = true;                          // the register block as ref has it at the end of a cycle
     sim::Config sc(opt);
     uint8_t dom[64];
     units::row_bands(c.parts, dom);
@@ -166,6 +188,17 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     if (!c.cc_cores) spec.program = &m.prog;
     units::build_chip(sc, spec);
     m.sim.emplace(sc.build());
+    // The harness's machine (W20, harness-only flags in the units): the coreless core (ref's Config.coreless), ref's Drain
+    // in the GATHER engine's place (realResponder off), and the table stores' republish of a harness poke.
+    for (unsigned k = 0; k < 64; k++) {
+        if (c.coreless) m.sim->unit<units::TileCore>(units::tile_unit(k, "core")).coreless = true;
+        if (!c.real_responder) m.sim->unit<units::Gather>(units::tile_unit(k, "gather")).drain = true;
+        m.sim->unit<units::TableStore>(units::tile_unit(k, "ts")).host_poke = true;
+        m.sim->unit<units::HistStore>(units::tile_unit(k, "hist")).host_poke = true;
+        m.sim->unit<units::TileCtl>(units::tile_unit(k, "ctl")).host_on = true;
+    }
+    m.shifted = {m.sim->type_of(units::tile_unit(0, "ctl")), m.sim->type_of(units::tile_unit(0, "core"))};
+    if (!c.cc_cores) m.lines = {m.sim->type_of("row0"), m.sim->type_of("cnc")};
     m.has_cnc = !c.cc_cores;
     if (!c.cc_cores) m.cc = std::make_unique<Cc>(*this);
     for (uint32_t id = units::CncProgram::kCalls; id-- > 0;) m.free_ids.push_back(id);
@@ -210,7 +243,26 @@ bool Chip::run_until(const std::function<bool()>& cond, uint64_t max) {
     return ok;
 }
 bool Chip::drain(uint64_t max) { return run_until([this] { return quiescent(); }, max); }
-bool Chip::quiescent() const { FATAL("mach: Chip::quiescent comes with the coreless machine (W20's next commit)"); }
+// ref's Chip.quiescent: nothing in motion anywhere (the framework's ports: links, FIFOs, holds, the K line, the
+// endpoints), and every tile's units idle as ref's Tile.quiescent judges them (the router's FIFOs, the AG, the table
+// stores, the read queue, big SRAM's area queues, the write engine's stage, the gather engine, the read port).
+bool Chip::quiescent() const {
+    sim::Sim& s = *impl_->sim;
+    if (s.in_flight(impl_->shifted, impl_->lines)) return false;
+    for (unsigned k = 0; k < 64; k++) {
+        TileRef p = const_cast<Chip*>(this)->tile(k);
+        for (const auto& f : p.unit<units::Router>("router").q) if (f.count) return false;   // the router's own FIFOs
+        if (p.unit<units::AddrGen>("ag").running || p.ts_busy()) return false;
+        const units::Injection& in = p.unit<units::Injection>("inj");
+        if (in.tok.reads || in.rs.nxt_v || in.rs.cur_v) return false;
+        if (p.unit<units::BigSram>("sram").busy) return false;
+        if (p.unit<units::WriteEngine>("we").count) return false;
+        if (p.unit<units::Gather>("gather").left) return false;
+        // the read port (ref's readPort.idle): its results stored and not yet injected (none under the test clients)
+        if ((!in.rs.feed || !in.rs.feed->clients) && p.unit<units::TileCore>("core").rp_stored != in.rs.rp_injected_n) return false;
+    }
+    return true;
+}
 std::vector<int> Chip::start_skew() const { return std::vector<int>(impl_->skew, impl_->skew + 64); }
 
 Cc& Chip::cc() {
@@ -285,7 +337,7 @@ uint32_t TileRef::pc() const { return c_->unit<units::TileCore>(un(k_, "core")).
 uint32_t TileRef::x(unsigned r) const { return c_->unit<units::TileCore>(un(k_, "core")).rv.x[r & 31]; }
 bool TileRef::in_wfi() const { return c_->unit<units::TileCore>(un(k_, "core")).rv.in_wfi; }
 int TileRef::halt() const { return c_->unit<units::TileCore>(un(k_, "core")).rv.halt; }
-int64_t TileRef::exit_value() const { return int32_t(c_->unit<units::TileCtl>(un(k_, "ctl")).s.sim_exit_value); }
+int64_t TileRef::exit_value() const { return int32_t(block().sim_exit_value); }
 std::string TileRef::halt_report() const {
     static const char* const kName[] = {"running", "illegal instruction", "ecall", "ebreak", "bus error", "SIM_EXIT",
                                         "fetch outside program memory and the boot ROM", "misaligned jump target",
@@ -296,11 +348,112 @@ std::string TileRef::halt_report() const {
     return b;   // ref's report adds the halting instruction (and a bus error's address): not kept by the C++ core yet
 }
 
-// The coreless operations: the next commit (the units' harness-only parts).
-void TileRef::ts_poke(uint32_t, uint32_t) { FATAL("mach: ts_poke comes with the coreless machine"); }
-uint32_t TileRef::ts_peek(uint32_t) const { FATAL("mach: ts_peek comes with the coreless machine"); }
-void TileRef::hist_poke(uint32_t, uint32_t) { FATAL("mach: hist_poke comes with the coreless machine"); }
-uint32_t TileRef::hist_peek(uint32_t) const { FATAL("mach: hist_peek comes with the coreless machine"); }
+// ---- the table stores (back doors: ref's TableStore.poke / peek in its index spaces, HIST's) ----
+namespace {
+constexpr uint32_t PTR_IDX = 0x100, GROUP_IDX = 0x400, SSRC_IDX = 0x1000, SDEST_IDX = 0x1100, SCOUNT_IDX = 0x1200;
+void table_of(uint32_t idx, uint32_t& table, uint32_t& i) {
+    if (idx >= SCOUNT_IDX) { table = units::TBL_STREAM_COUNT; i = idx - SCOUNT_IDX; }
+    else if (idx >= SDEST_IDX) { table = units::TBL_STREAM_DEST; i = idx - SDEST_IDX; }
+    else if (idx >= SSRC_IDX) { table = units::TBL_STREAM_SRC; i = idx - SSRC_IDX; }
+    else if (idx >= GROUP_IDX) { table = units::TBL_GROUP; i = idx - GROUP_IDX; }
+    else if (idx >= PTR_IDX) { table = units::TBL_PTR; i = idx - PTR_IDX; }
+    else FATAL("mach: table index 0x%x (ref's index spaces: PTR 0x100, GROUP 0x400, STREAM 0x1000-0x12FF)", idx);
+}
+uint32_t table_read(const units::TableMems& m, uint32_t table, uint32_t i) {
+    switch (table) {
+    case units::TBL_STREAM_SRC: return m.stream_src[i & 255];
+    case units::TBL_STREAM_DEST: return m.stream_dest[i & 255];
+    case units::TBL_STREAM_COUNT: return m.stream_count[i & 255];
+    case units::TBL_GROUP: return m.group[i & 127];
+    default: return m.ptr[i & 255];
+    }
+}
+}  // namespace
+void TileRef::ts_poke(uint32_t idx, uint32_t v) {
+    uint32_t table, i;
+    table_of(idx, table, i);
+    unit<units::TableStore>("ts").poke_host(table, i, v);
+    c_->touched(un(k_, "ts"));
+}
+uint32_t TileRef::ts_peek(uint32_t idx) const {
+    uint32_t table, i;
+    table_of(idx, table, i);
+    return table_read(unit<units::TableStore>("ts").m, table, i);
+}
+void TileRef::hist_poke(uint32_t i, uint32_t v) { unit<units::HistStore>("hist").poke_host(i, v); c_->touched(un(k_, "hist")); }
+uint32_t TileRef::hist_peek(uint32_t i) const { return unit<units::HistStore>("hist").m.hist[i & 255]; }
+
+// ---- Tile's own operations (ref's Tile.set*): the register block's state, published at its next step ----
+void TileRef::set_master_config(uint32_t v) {
+    const uint32_t bd = v >> 18 & 7, hd = v >> 21 & 7;
+    if (bd > 4 || hd > 4)                                   // v1.25 (s8e): ref's UndefinedBehavior, its message
+        FATAL("undefined behavior at cycle %lld, tile %u, DMA_CONFIG: a reserved digit selector (bucket %u, hist %u; 5-7 are "
+              "reserved: spec 4.15) (DECISIONS-v1.25 s8: meshsim stops; the hardware does nothing special)",
+              (long long)c_->cycle(), k_, bd, hd);
+    units::TileCtl& b = unit<units::TileCtl>("ctl");
+    b.host.dma_config = v; b.host.mask |= units::TileCtl::HostWrites::DMA_CONFIG;
+    c_->touched(un(k_, "ctl"));
+}
+void TileRef::set_record_base(uint32_t chunk) {
+    units::TileCtl& b = unit<units::TileCtl>("ctl");
+    b.host.record_base = chunk & 0x1FFFFF; b.host.mask |= units::TileCtl::HostWrites::RECORD_BASE;
+    c_->touched(un(k_, "ctl"));
+}
+void TileRef::set_ptr(unsigned i, uint32_t chunk) { ts_poke(PTR_IDX + i, chunk & 0x1FFFFF); }
+uint32_t TileRef::ptr(unsigned i) const { return ts_peek(PTR_IDX + i); }
+void TileRef::set_stream(unsigned i, uint32_t src, uint32_t dest, uint32_t count) {
+    ts_poke(SSRC_IDX + i, src); ts_poke(SDEST_IDX + i, dest); ts_poke(SCOUNT_IDX + i, count);
+}
+void TileRef::set_group(unsigned g, uint32_t lo, uint32_t hi) { ts_poke(GROUP_IDX + 2 * g, lo); ts_poke(GROUP_IDX + 2 * g + 1, hi); }
+void TileRef::pulse(uint32_t bits) {                       // TILE_PULSE's start: the AG's start Wire at the next cycle
+    if (bits & fields::PULSE_START) {
+        units::TileCtl& b = unit<units::TileCtl>("ctl");
+        b.host.starts++; b.host.mask |= units::TileCtl::HostWrites::STARTS;
+        c_->touched(un(k_, "ctl"));
+    }
+}
+// The register block as ref has it at the end of the cycle just run (its endCycle of that cycle runs at the next step:
+// tile_ctl.h's block_at_end), with the harness's writes still pending over it.
+units::RegBlockState TileRef::block() const {
+    const units::TileCtl& b = unit<units::TileCtl>("ctl");
+    units::RegBlockState r = units::block_at_end(c_->sim(), b, uint64_t(c_->cycle()));
+    if (b.host.mask & units::TileCtl::HostWrites::DMA_CONFIG) r.dma_config = b.host.dma_config;
+    if (b.host.mask & units::TileCtl::HostWrites::RECORD_BASE) r.record_base = b.host.record_base;
+    if (b.host.mask & units::TileCtl::HostWrites::STARTS) r.dma_starts += b.host.starts;
+    for (unsigned k = 0; k < 8; k++) if (b.host.mask & units::TileCtl::HostWrites::REMAINING << k) r.remaining[k] = b.host.remaining[k];
+    return r;
+}
+uint32_t TileRef::remaining(unsigned ctr) const { return block().remaining[ctr & 7]; }
+void TileRef::set_remaining(unsigned ctr, uint32_t v) {
+    units::TileCtl& b = unit<units::TileCtl>("ctl");
+    b.host.remaining[ctr & 7] = v & 0xFFFFF; b.host.mask |= units::TileCtl::HostWrites::REMAINING << (ctr & 7);
+    c_->touched(un(k_, "ctl"));
+}
+
+namespace {
+bool port_empty(sim::Sim& s, const sim::FifoIn& p) { sim::PortEntry e[64]; const sim::PortView v = s.observe(p, e, 64); return v.n == 0 && !v.put; }
+bool port_empty(sim::Sim& s, const sim::HoldIn& p) { sim::PortEntry e[1]; const sim::PortView v = s.observe(p, e, 1); return v.n == 0 && !v.put; }
+}  // namespace
+// mem_idle (4.1; ref's Tile.memIdle): the write engine's input FIFO and its stage empty, nothing on its way into big
+// SRAM, no write queued at any area (reads queued don't hold it low)
+bool TileRef::mem_idle() const {
+    sim::Sim& s = c_->sim();
+    const units::WriteEngine& we = unit<units::WriteEngine>("we");
+    if (we.count || !port_empty(s, we.in)) return false;
+    const units::BigSram& m = unit<units::BigSram>("sram");
+    if (!port_empty(s, m.wr)) return false;
+    for (unsigned a = 0; a < units::BigSram::AREAS; a++)
+        for (unsigned j = 0; j < m.count[a]; j++) if (m.q[a][(m.head[a] + j) % units::BigSram::MAX_DEPTH].write) return false;
+    return true;
+}
+// ts_busy (4.15): either store's pipeline or request FIFOs busy; requests and returns on their way are in the ports
+bool TileRef::ts_busy() const {
+    const units::TableStore& t = unit<units::TableStore>("ts");
+    const units::HistStore& h = unit<units::HistStore>("hist");
+    return t.pipe.valid || t.pub || t.q_stream.n || t.q_group.n || t.q_we.n || t.q_stream.pend || t.q_group.pend || t.q_we.pend ||
+           h.pipe.valid || h.q.n || h.q.pend;
+}
+bool TileRef::quiescent() const { FATAL("mach: TileRef::quiescent: use Chip::quiescent (the chip's ports are judged together)"); }
 
 // ============================================================================================ C&C 1's model (CnC)
 namespace {
@@ -403,7 +556,7 @@ Mach::Image Mach::Image::load(const std::string& name, const MachConfig& cfg) {
                 at = c + 1;
             }
         }
-        for (const char* d : {"fw/build", "tests/golden-m2/images", "tests/golden/images", "tests/m3-images"}) dirs.push_back(d);
+        for (const char* d : {"fw/images", "tests/golden-m2/images", "tests/golden/images", "tests/m3-images"}) dirs.push_back(d);
     }
     for (const std::string& d : dirs) if (exists(d + "/" + name + ".code.bin")) return load_dir(d, name);
     FATAL("mach: image %s not found (the search path: MachConfig::image_dirs, $SIM_IMAGES, then the defaults)", name.c_str());
@@ -559,7 +712,170 @@ int A2A::verify(Chip& c) const {
     }
     return bad;
 }
-void A2A::load(Chip&, int) const { FATAL("A2A::load comes with the coreless machine"); }
-int64_t A2A::run(Chip&, int64_t) { FATAL("A2A::run comes with the coreless machine"); }
+void A2A::load(Chip& c, int gap) const {                  // A2A.load
+    for (unsigned s = 0; s < 64; s++) {
+        TileRef p = c.tile(s);
+        for (size_t k = 0; k < rec[s].size(); k++) p.sram_poke64(SRC + 2 * uint32_t(k), uint64_t(rec[s][k]));
+        for (unsigned g = 0; g < 16; g++) {
+            for (unsigned i = 0; i < 4; i++) {
+                const unsigned off = unsigned(G4[g][i]), d = (s + off) & 63;
+                p.set_stream(4 * g + i, fields::stream_src(SRC + 2 * uint32_t(first(s, d))), 0,
+                             fields::stream_count(uint32_t(cnt[s][d]), fields::SIZE_64, 1, units::lw::M_SRC, off));
+            }
+            p.set_group(g, fields::group_lo(uint32_t(R[g])), fields::group_hi(4 * g, 4, uint32_t(gap)));
+        }
+        for (unsigned src = 0; src < 64; src++) p.set_ptr(src, INBOX + 2 * uint32_t(dstoff[src][s]));
+        p.set_remaining(1, uint32_t(expected(s)));
+        p.set_master_config(fields::master_config(fields::RUN_GROUPS, 0, 16, 0, 0, 1));
+    }
+}
+int64_t A2A::run(Chip& c, int64_t max) {                   // A2A.run
+    const int64_t t0 = c.cycle();
+    const std::vector<int> skew = c.start_skew();
+    bool started[64] = {};
+    int64_t end = -1;
+    for (int64_t i = 0; i < max; i++) {
+        for (unsigned k = 0; k < 64; k++) if (!started[k] && c.cycle() >= t0 + skew[k]) { c.tile(k).pulse(fields::PULSE_START); started[k] = true; }
+        c.step();
+        bool all = true;
+        for (unsigned k = 0; k < 64 && all; k++) {
+            TileRef p = c.tile(k);
+            all = p.unit<units::AddrGen>("ag").done && p.remaining(1) == 0 && p.mem_idle();
+        }
+        if (all) { end = c.cycle(); break; }
+    }
+    c.scan_overflows();
+    return end < 0 ? -1 : end - t0;
+}
+
+// ================================================================================ the coreless machine fed (Net)
+void Chip::Impl::enable_net(const MachConfig& c) {
+    net = true;
+    feeds.assign(64, units::HarnessFeed{});
+    ring_store.assign(64 * 4, {});
+    logs.assign(64, std::vector<E4>(c.log_capacity));
+    for (unsigned k = 0; k < 64; k++) {
+        units::Injection& in = sim->unit<units::Injection>(units::tile_unit(k, "inj"));
+        if (!in.rs.cfg.present) FATAL("Net: tile %u has no read side", k);
+        feeds[k].clients = c.test_read_clients;
+        in.rs.feed = &feeds[k];
+        units::Director& d = sim->unit<units::Director>(units::tile_unit(k, "dir"));
+        d.log = reinterpret_cast<uint64_t(*)[4]>(logs[k].data());
+        d.log_cap = c.log_capacity; d.log_n = 0;
+    }
+    if (c.cc_cores) FATAL("Net: the coreless machine has C&C 1's Java model (no cc_cores)");
+    for (unsigned k = 0; k < 3; k++) {
+        recv[k].assign(c.log_capacity, {});
+        sends[k].log = reinterpret_cast<uint64_t(*)[4]>(recv[k].data());
+        sends[k].log_cap = c.log_capacity;
+        if (k == 0) sim->unit<units::Cnc>("cnc").hs = &sends[0];
+        else sim->unit<units::Endpoint>("ep" + std::to_string(k + 1)).hs = &sends[k];
+    }
+}
+void Chip::Impl::push_send(unsigned cc, const units::HarnessSends::E& e) {   // between cycles: grow if full
+    units::HarnessSends& h = sends[cc];
+    std::vector<units::HarnessSends::E>& v = send_store[cc];
+    if (h.n == h.cap) {
+        std::vector<units::HarnessSends::E> w(std::max<size_t>(64, 2 * size_t(h.cap)));
+        for (uint32_t i = 0; i < h.n; i++) w[i] = h.e[(h.head + i) % h.cap];
+        v.swap(w);
+        h.e = v.data(); h.cap = uint32_t(v.size()); h.head = 0;
+    }
+    h.e[(h.head + h.n) % h.cap] = e;
+    h.n++;
+    sim->wake(cc == 0 ? std::string("cnc") : "ep" + std::to_string(cc + 1));
+}
+void Chip::Impl::push(unsigned tile, unsigned ring, const E4& e) {   // between cycles: grow if full, refresh the pointer
+    units::HarnessFeed::Ring& r = ring == 0 ? feeds[tile].ret : feeds[tile].cl[ring - 1];
+    std::vector<E4>& v = ring_store[4 * tile + ring];
+    if (r.n == r.cap) {
+        std::vector<E4> w(std::max<size_t>(64, 2 * size_t(r.cap)));
+        for (uint32_t i = 0; i < r.n; i++) { const uint64_t* x = r.at(i); w[i] = {x[0], x[1], x[2], x[3]}; }
+        v.swap(w);
+        r.e = reinterpret_cast<uint64_t(*)[4]>(v.data());
+        r.cap = uint32_t(v.size()); r.head = 0;
+    }
+    uint64_t* x = r.e[(r.head + r.n) % r.cap];
+    x[0] = e[0]; x[1] = e[1]; x[2] = e[2]; x[3] = e[3];
+    r.n++;
+    sim->wake(units::tile_unit(tile, "inj"));
+}
+
+MachConfig Net::cfg(int64_t shuffle) {
+    MachConfig k = MachConfig::defaults();
+    k.shuffle_seed = shuffle; k.check_unexpected = false; k.check_errors = false;
+    return k;
+}
+Net::Net(const MachConfig& cfg) : c(cfg) {
+    if (!cfg.coreless) FATAL("Net: the coreless test machine only (MachConfig::defaults or Net::cfg)");
+    c.impl().enable_net(cfg);
+}
+void Net::at(unsigned tile, int64_t T, unsigned dst, unsigned mode, uint32_t addr, uint64_t payload) {
+    at(tile, T, dst, mode, 1, addr, units::lw::SIZE_64, payload, 0);
+}
+void Net::at(unsigned tile, int64_t T, unsigned dst, unsigned mode, unsigned counter, uint32_t addr, unsigned size, uint64_t lo, uint64_t hi) {
+    units::HarnessFeed::Ring& r = c.impl().feeds[tile].ret;
+    if (r.n && int64_t(r.at(r.n - 1)[0]) > T) FATAL("Net.at: tile %u: T %lld before the last scheduled (nondecreasing per tile)", tile, (long long)T);
+    c.impl().push(tile, 0, {uint64_t(T), lo, units::lw::hdr(0, dst, mode, counter, addr, size), hi});
+}
+void Net::rd(unsigned tile, unsigned cl, int64_t T, uint32_t src_chunk, unsigned width, unsigned mode, unsigned counter,
+             unsigned dst, uint32_t dst_addr) {
+    if (!c.cfg().test_read_clients) FATAL("Net.rd needs MachConfig::test_read_clients (ref's testReadClients)");
+    if (cl > 2) FATAL("Net.rd: client %u (0-2)", cl);
+    c.impl().push(tile, 1 + cl, {uint64_t(T), units::mem::req_a(src_chunk, width, mode, counter, dst), units::mem::req_b(dst_addr), 0});
+}
+void Net::cnc_send(const CncSend& s) {
+    const units::CncPacket p{uint8_t(s.dst), uint8_t(s.mode), uint8_t(s.counter), uint8_t(s.size), s.addr, s.lo, s.hi};
+    c.impl().push_send(0, {s.T, p});
+}
+// ref's Endpoint.send(c.cycle, ...): src the endpoint's address, the payload masked to its size, put on the endpoint's
+// send Hold as of the cycle just run (Sim::put_late); like ref's, a refused one isn't presented again.
+void Net::send(unsigned cc, unsigned dst, unsigned mode, unsigned counter, uint32_t addr, unsigned size, uint64_t lo, uint64_t hi) {
+    if (cc > 2) FATAL("Net::send: C&C %u (0-2)", cc + 1);
+    namespace lw = units::lw;
+    const sim::Word w[3] = {lw::mask_lo(lo, size), lw::hdr(lw::CC1 + cc, dst, mode, counter, addr, size), lw::mask_hi(hi, size)};
+    if (cc == 0) c.sim().put_late("cnc", c.unit<units::Cnc>("cnc").send, w, 3);
+    else {
+        const std::string n = "ep" + std::to_string(cc + 1);
+        c.sim().put_late(n, c.unit<units::Endpoint>(n).send, w, 3);
+    }
+}
+std::vector<std::array<uint64_t, 4>> Net::received(unsigned cc) const {
+    const Chip::Impl& m = c.impl_const();
+    return std::vector<std::array<uint64_t, 4>>(m.recv[cc].begin(), m.recv[cc].begin() + m.sends[cc].log_n);
+}
+uint32_t Net::cm(uint32_t w) { return w < 0x800 ? uint32_t(units::lw::R_PMEM) << 24 | w << 2 : (w - 0x800) << 2; }
+int64_t Net::late() const { int64_t n = 0; for (const auto& f : const_cast<Chip&>(c).impl().feeds) n += int64_t(f.late); return n; }
+bool Net::pending() const {
+    const Chip::Impl& m = c.impl_const();
+    for (const auto& f : m.feeds) if (f.pending()) return true;
+    for (const auto& h : m.sends) if (h.n) return true;
+    return false;
+}
+void Net::step() { c.step(); }
+bool Net::run_all(uint64_t max) {
+    for (uint64_t i = 0; i < max; i++) {
+        if (!pending() && c.quiescent()) { c.scan_overflows(); return true; }
+        step();
+    }
+    c.scan_overflows();
+    return false;
+}
+std::vector<std::array<uint64_t, 4>> Net::log(unsigned tile) const {
+    const units::Director& d = const_cast<Chip&>(c).unit<units::Director>(units::tile_unit(tile, "dir"));
+    return std::vector<std::array<uint64_t, 4>>(c.impl_const().logs[tile].begin(), c.impl_const().logs[tile].begin() + d.log_n);
+}
+void Net::clear_logs() {
+    for (unsigned k = 0; k < 64; k++) c.unit<units::Director>(units::tile_unit(k, "dir")).log_n = 0;
+    for (auto& h : c.impl().sends) h.log_n = 0;
+}
+unsigned Net::max_router_peak() const {
+    unsigned m = 0;
+    for (unsigned k = 0; k < 64; k++) {
+        const units::Router& r = const_cast<Chip&>(c).unit<units::Router>(units::tile_unit(k, "router"));
+        for (const auto& f : r.q) m = std::max(m, unsigned(f.peak));
+    }
+    return m;
+}
 
 }  // namespace mach

@@ -7,8 +7,7 @@
 //   suite_rdport [seed] [full] [--only=GROUP,...]
 //     groups: fromc traffic tolerance overlap disjoint reserved gather counting gatherc
 //
-// STATUS. Ported: fromc, reserved, gather (but its 128-bit packet count: the write engine's writtenBySize, a statistic
-// for the owner), counting, gatherc. Waiting: traffic, tolerance, overlap (the read port's host queue from the harness,
+// STATUS. Ported: fromc, reserved, gather, counting, gatherc. Waiting: traffic, tolerance, overlap (the read port's host queue from the harness,
 // ref's readPort.hostQueue / idle / allAccepted: W22-18), disjoint (W22-14: Chip::new_phase, big SRAM's disjoint facts).
 //
 // Test-side code (the configuration regime, D6).
@@ -172,7 +171,7 @@ void gather_run(int k, int N, std::string& sb) {
     sb += suite::str("  k = %d  N = %6d  %9lld cycles  %s per value (packets per value + 1 = %d)  GATHER queue peak %2u of 16  address generator stalled %llu cycles, area queue peak %u%s\n",
                      k, N, (long long)cyc, p4::jfixed(double(cyc) / N, 3, 6).c_str(), ppv(k) + 1, gq, (unsigned long long)ag_stall, area, gq >= 16 ? "  OVERFLOW" : "");
     int64_t reads = 0, packets128 = 0;
-    for (unsigned p = 0; p < 64; p++) { reads += int64_t(c.tile(p).unit<units::Gather>("gather").reads); packets128 += -1; }   // ref's writer.writtenBySize[2]: not kept by the C++ write engine (asked of the owner)
+    for (unsigned p = 0; p < 64; p++) { reads += int64_t(c.tile(p).unit<units::Gather>("gather").reads); packets128 += int64_t(c.tile(p).unit<units::WriteEngine>("we").written_by_size[2]); }   // ref's writer.writtenBySize (SIM_CHECKS)
     eq(int64_t(64) * N * ppv(k), reads, "k = %d: %d read(s) and packet(s) per value", k, ppv(k));
     eq((k & 1) == 0 ? int64_t(64) * N * ppv(k) : 0, packets128, "k = %d: %s value packets", k, (k & 1) == 0 ? "128-bit" : "64-bit");
 }

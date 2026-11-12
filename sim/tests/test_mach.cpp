@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 
+#include "base/fatal.h"
 #include "harness.h"
 #include "mach.h"
 #include "units/ag.h"
@@ -52,8 +53,13 @@ void report(const std::string& name, Mach& m, bool ok) {
         name.c_str(), ok ? "stopped" : "NOT stopped", (long long)m.c.cycle(), (long long)m.boot_start, (long long)m.run_at,
         tf(m.all_exited()), tf(m.all_in_wfi()), m.halt_summary().c_str(), (long long)m.exit_value(0), (long long)m.exit_value(63));
 }
-void a2a(int64_t seed) {
-    Mach m(Mach::cfg(seed));
+const std::vector<std::string> kKit = {"cfg.linkLatency=4", "cfg.cmLatency=4", "cfg.goLatency=4", "cfg.runLatency=8", "cfg.areaQueueDepth=4",
+                                       "cfg.sramReadLatency=3", "cfg.tsEngineLatency=2", "cfg.skewSeed=5", "cfg.checkDisjoint=false", "cfg.skew=true"};
+void a2a(int64_t seed, bool kit = false) {
+    mach::MachConfig cfg = Mach::cfg(seed);
+    std::string err;
+    if (kit && !cfg.set_args(kKit, err)) FATAL("%s", err.c_str());
+    Mach m(cfg);
     mach::A2A data(7, 2000);
     for (unsigned s = 0; s < 64; s++) {
         mach::TileRef p = m.c.tile(s);
@@ -66,7 +72,7 @@ void a2a(int64_t seed) {
     m.boot("a2a");
     m.c.cc().command(units::lw::BROADCAST, 1u << 24).go().command(units::lw::BROADCAST, 2u << 24).go().command(units::lw::BROADCAST, 3u << 24).go();
     const bool ok = m.run([&] { return m.all_stopped(); }, 2000000);
-    report("a2a seed " + std::to_string(seed), m, ok);
+    report("a2a seed " + std::to_string(seed) + (kit ? " kit" : ""), m, ok);
     std::string pl = "  phaseLog";
     for (const auto& e : m.c.cc().phase_log()) pl += " [" + std::to_string(e[0]) + ", " + std::to_string(e[1]) + "]";
     say("%s\n", pl.c_str());
@@ -138,6 +144,7 @@ void machself() {
     }
     a2a(-1);
     a2a(4);
+    a2a(-1, true);
     {
         Mach m(Mach::cores_cfg(-1));
         m.boot_cores("wfi");
@@ -551,4 +558,22 @@ TEST(mach_mem_idle_sees_a_wrapped_queue) {
     m.q[5][0].write = false; m.q[5][8].write = true;         // a stale write past the depth
     CHECK(p.mem_idle());
     m.count[5] = 0;
+}
+
+// MachConfig's front end (ref's cfg.<field>=value): ref's names and types, the dropped fields, the errors.
+TEST(mach_config_front_end) {
+    mach::MachConfig k = mach::MachConfig::machine();
+    std::string err;
+    CHECK(k.set_args({"--x", "cfg.goLatency=10", "cfg.skewSeed=-3", "cfg.writeCombining=true", "cfg.replayerLogEntries=512"}, err));
+    CHECK_EQ(k.go_latency, 10u);
+    CHECK_EQ(k.skew_seed, -3);
+    CHECK(k.write_combining);
+    CHECK_EQ(k.replayer_log_entries, 512u);
+    CHECK(k.set("checkDisjoint", "TRUE", err) && k.check_disjoint);   // Boolean.parseBoolean: case-insensitive
+    CHECK(k.set("checkDisjoint", "yes", err) && !k.check_disjoint);
+    CHECK(!k.set("noSuchField", "1", err) && err == "no Config field noSuchField");
+    CHECK(!k.set("idleSkip", "false", err) && err.find("dropped") != std::string::npos);
+    CHECK(!k.set("K", "eight", err) && err.find("not a number") != std::string::npos);
+    CHECK(!k.set_args({"cfg.K"}, err));
+    CHECK(!mach::MachConfig::dropped().empty());
 }

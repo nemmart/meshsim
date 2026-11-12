@@ -486,6 +486,7 @@ struct G1Config {
     bool periph_slot = false;          // W15 (M3): the peripheral slot (the replayer as peripheral 1) and its paths
     PeriphType periph1 = PT_REPLAYER;  // W15: a mesh tile's peripheral 1 in the slot (tests: PT_TEST)
     bool cc3_tracer = false;           // W16 (M3): C&C 3's peripheral 1 the Tracer (ref's cc3Tracer), else the stub
+    unsigned replayer_log_entries = 256;   // the replayer's log queues (ref's -Dreplayer.logq; the kit's -q 512; W25)
     bool stray_check = false;          // W20 (harness-only): the director reads the counters (`regs`) for ref's stray check
     int periph_only = -1;              // W20 (harness-only): >= 0: only this mesh tile has peripheral 1 (and the slot, if
                                        //   periph_slot); the other mesh tiles none (ref's periphType 0 + testPeripheral)

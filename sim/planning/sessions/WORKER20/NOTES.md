@@ -126,6 +126,14 @@ remaining kinds, interleaved as the suites ask.
   ref's feed() exactly: between cycles, at the cycle just run, the head when T <= t + 1 and C&C's send register is empty
   (Sim::put_late; the Cnc unit's own path for them is unused). NetSelf's feed case (Chip.run(40) between Net.steps, then
   runAll: nothing fed under the run, the late packets after) equal to ref; the controllers' cases unchanged.
+- **Config (H1, D41 Q4) done, B25 next**: `MachConfig::set(field, value)` / `set_args` (ref's names and types, Java's
+  parsing: SortTest's `cfg.<field>=value` for every v1.35 driver, kit and sweep), `dropped()` (idleSkip, startSkew,
+  receiveQueueDepth, periphTypes, testPeripheral, hops, each with its reason). New fields wired: loopbackLast/Tokens/
+  Depth, errorLatency, cncGoSettle, the request bus's depths and hop latency, `replayer_log_entries` (W25's, the kit's
+  -q 512: `replayerLogEntries`, through G1Config). Inert in ref (no unit reads them): runLatency, stageDelay,
+  counterStoreClearsLatch (rpLatency only in kMin): inert here too. Refused at build unless ref's default:
+  errorLatency != readyLatency, logTrace (until H6). Checked: MachSelf's a2a with a kit job's ten cfg fields equal to
+  ref's (SortTest's own setField on the Java side); test_mach's front-end test. The StateFp option (B25) comes next.
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

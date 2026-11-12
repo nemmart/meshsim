@@ -709,6 +709,7 @@ Settled items are listed in `spec/machine-spec.md` section 13's index; their rec
 
 | item | what is to be settled | section | status |
 |---|---|---|---|
+| 137 | Re-cite the `4f36b3d` file:line references at the pinned commit, with item 158 in v1.4, when the appendix is regenerated | 4.19 | open (owner, 2026-11-12) |
 | 59 | Decided: the output row's layout; open: the consumer side, its width and rate, the placement against the materializer | 4.19.12 | decided, part open |
 | 113 | Decided: the ground truth (a16z, `7189216`); open: each case tagged "pending the upstream check", until gold settles it | 4.19, 4.19.12 | decided, part open |
 | 140 | Open, with Tony: the PEXT method, and so a non-contiguous mask's cycles | 4.19.7 | decided, part open |
@@ -721,7 +722,5 @@ Settled items are listed in `spec/machine-spec.md` section 13's index; their rec
 | 36 | Decided: what the replayer executes; still proposed: it doesn't check that temporaries stay in 40–47 | 4.19.4, 4.19.7 | decided, part proposed |
 | 115 | Decided: C&C 3 broadcasts the used set; still proposed: the size-first command | 4.19.2, 4.19.13 | decided, part proposed |
 | 123 | Decided: the status words; still proposed: the event and error bits | 8.11, 4.19.9, 4.19.11 | decided, part proposed |
-| 103 | Still proposed in its text: SD rows take the write log; open: measure the read/write split | 4.19.2, 4.19.8 | unclear |
-| 137 | Re-cite the `4f36b3d` file:line references at `821e1bd` | 4.19 | unclear |
-| 158 | Rebuild the universal tables to a16z's rule for LR/SC with rd = x0 and the NOP rows' virtual flag | 4.19.4 | decided, not yet done |
+| 158 | Rebuild the universal tables to a16z's rule for LR/SC with rd = x0 and the NOP rows' virtual flag; scheduled for v1.4, v1.35 keeping v1.3's tables unchanged | 4.19.4 | decided, not yet done (owner, 2026-11-12) |
 | 139 | Possible later addition: a SYSTEM-group decode putting the CSR templates in the ROM | 4.19.6, 4.19.9 | decided, part later |

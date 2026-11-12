@@ -9,7 +9,7 @@ I = {
 5:('open','P','4.10','`PTR`/`HIST` macros: a write must land intact while port A reads the same address','L3222; no later entry'),
 6:('open','P','4.4','the GATHER request queue\'s in-flight bound under heavier read-queue load','L3223; no later entry'),
 7:('open','P','4.2','gapless one-word exchanges: simulate them, then tighten the gap if queues stay low','L3224; no later entry'),
-8:('open','P','10','the physical `ready_latency` (8 for now)','L3225; section 10 L3015 "the physical value is *(Open)*"'),
+8:('open','P','10','the physical latencies of the three control lines, `ready_latency`, `go_latency` and `error_latency`, settled together','L3225; section 10 L3015, L3016, L3018 *(Open)*; widened from `ready_latency` to all three (owner, 2026-11-12)'),
 10:('open','P','2','above the chip: cards, FPGAs, links and each chip\'s DRAM are not specified','L3227; no later entry'),
 13:('open','P','14','the sort\'s output format (keys carry the receive-buffer ordinal)','L3230; no later entry'),
 15:('proposed','P','8.14','a status bit with READY, for per-owner completion','L3235 (under "Proposed", L3232); v1.2 table L3163 "open; unchanged"'),
@@ -41,7 +41,6 @@ I = {
 82:('decided, part open','P','2, 2.1','partly settled; left: the request receivers\' attachment, the engines\' type numbers; 65 as C&C 2 still proposed','L3332; v1.2 table L3190 "partly settled… left: …"; the ports went to 118'),
 83:('proposed, part deferred','P','3.3','the target numbering; target 3 deferred with the file system (119)','L3333 *(Proposed)*; v1.2 table L3191'),
 84:('decided, part proposed','P','3.3, 4.18','decided: the request; still proposed: beat order, the row node writing the requestor, 16 requests per target queue','L3334 "*(Proposed:)*"; no later entry'),
-103:('unclear','R','4.19.2, 4.19.8','still proposed in its text: SD rows take the write log; open: measure the read/write split','L3361; v1.2 table L3209; v1.26 table L3126 makes both log queues 4 KB'),
 107:('open','P','4.1','4.25 MB of big SRAM per tile, a tentative working figure','L3365 *(Open)*; v1.2 table L3210 changes only its representation'),
 113:('decided, part open','R','4.19, 4.19.12','decided: the ground truth (a16z, `7189216`); open: each case tagged "pending the upstream check", until gold settles it','L3384, L3395 "*(Open: the plan…)*"; v1.3 table L3104 "the tags stay until gold settles each case"'),
 115:('decided, part proposed','R','4.19.2, 4.19.13','decided: C&C 3 broadcasts the used set; still proposed: the size-first command','v1.3 table L3105 "*(Proposed, as before:)*"'),
@@ -60,16 +59,20 @@ I = {
 129:('open','P','4.2','whether `STREAM_SRC` stays a chunk address','L3418 *(Open…)*'),
 130:('deferred','P','2, 4.2, 4.6','a 1×4 test chip; mesh size as a parameter','L3419 *(Deferred…)*'),
 133:('decided, part proposed','P','4.13','still proposed: the handler parks in a plain loop','L3422 "Still proposed"'),
-137:('unclear','R','4.19','re-cite the `4f36b3d` file:line references at `821e1bd`','L3430 *(Open)*; v1.3 table L3108 says the `821e1bd` citations stand, not the others'),
+137:('open','R','4.19','re-cite the `4f36b3d` file:line references at the pinned commit, with item 158 in v1.4, when the appendix is regenerated','L3430 *(Open)*; v1.3 table L3108; (owner, 2026-11-12)'),
 139:('decided, part later','R','4.19.6, 4.19.9','possible later addition: a SYSTEM-group decode putting the CSR templates in the ROM','L3432 "*(Possible later addition:)*"'),
 140:('decided, part open','R','4.19.7','open, with Tony: the PEXT method, and so a non-contiguous mask\'s cycles','L3433 "*(Open, with Tony:)*"'),
 142:('deferred','P','3.1, 4.13','the region-decode check, to the RTL','L3435 *(Deferred to Tony\'s RTL…)*'),
 147:('decided, part open','T','4.21.5','to measure: the local caches\' sizes, by gold replaying both workloads','L3444 "*(To measure…)*"'),
 148:('decided, part deferred','T','4.21.5, 4.21.8','the fill bus\'s statuses, to revisit with the memory system\'s design','L3445 "to revisit with the memory system\'s design"'),
-153:('unclear','T','4.21.9','the Tracer\'s timing: measured in meshsim; the RTL\'s values to replace it','L3450; no status word'),
+153:('open','T','4.21.9','the Tracer\'s timing: measured in meshsim; the RTL\'s values are to replace it','L3450; (owner, 2026-11-12)'),
 158:('decided, not yet done','R','4.19.4','rebuild the universal tables to a16z\'s rule for D13 and D14','L3456 "rebuilt right after v1.3\'s freeze"; not done: `replayer/rom.bin` identical in v1.3, `sim/data/`, `wip/` (owner, 2026-11-12)'),
 }
 INF = {23:'L3249: what remains is items 33–59, each tracked on its own', 32:'v1.2 table L3168 "kept…(4.17.8)"',
        33:'v1.3 table L3102: the Tracer writes the run log (4.21.4, 4.21.6)', 41:'v1.26 table L3129 (DECISIONS-v1.26 item 12)',
        58:'v1.25 table L3147: the harness is v1.25\'s acceptance', 114:'v1.25 table L3151: 75 at `821e1bd`'}
-I[158]=I[158][:3]+("rebuild the universal tables to a16z's rule for LR/SC with rd = x0 and the NOP rows' virtual flag",)+I[158][4:]
+I[158]=('decided, not yet done','R','4.19.4',"rebuild the universal tables to a16z's rule for LR/SC with rd = x0 and the NOP rows' virtual flag; scheduled for v1.4, v1.35 keeping v1.3's tables unchanged",'L3456; not done: `replayer/rom.bin` identical in v1.3, `sim/data/`, `wip/` (owner, 2026-11-12); scheduled for v1.4 (owner, 2026-11-12)')
+
+# the owner's rulings of 2026-11-12 (shown with each item's status)
+OWNER = {8, 137, 153, 158}
+CLOSED_OWNER = {103: "the split run log: a pass that runs without the store log never feeds the write log, so only store rows draw from it; the sizing was settled by item 143's measurement"}

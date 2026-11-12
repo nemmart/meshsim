@@ -115,20 +115,23 @@ def sec13_table(unit):
              'deferred', 'decided, part deferred', 'decided, not yet done', 'later', 'decided, part later']
     rows = sorted(((n, v) for n, v in S13.I.items() if v[1] == unit), key=lambda x: (order.index(x[1][0]), x[0]))
     out = ['| item | what is to be settled | section | status |', '|---|---|---|---|']
-    out += [f'| {n} | {v[3][0].upper() + v[3][1:]} | {v[2]} | {v[0]} |' for n, v in rows]
+    out += [f'| {n} | {v[3][0].upper() + v[3][1:]} | {v[2]} | {v[0]}{" (owner, 2026-11-12)" if n in S13.OWNER else ""} |' for n, v in rows]
     return out
 
 
 def where(n):
+    if n in S13.CLOSED_OWNER:
+        return 'closed (owner, 2026-11-12)'
     if n not in S13.I:
         return 'closed'
     return {'P': 'here', 'R': '`spec/jolt/replayer.md`', 'T': '`spec/jolt/tracer.md`'}[S13.I[n][1]]
 
 
 NEW13 = ['## 13. Open items', '',
-         "What is open, proposed or deferred in v1.35's design, each with the section it affects; possible later additions are marked *later*, and *unclear* marks an item the record doesn't settle, awaiting the owner. The replayer's and the Tracer's items are in `spec/jolt/replayer.md` and `spec/jolt/tracer.md`. Numbers are never reused. Every item's history (its text as first written and each version's change of status) is `spec/history/machine-spec-v1.3-section-13.md`; the decisions are in `spec/history/`. The logic budget (section 11) is unreviewed; v1.2 rescaled it for the 256-bit link word and the 32 KB controller memories (item 127).",
+         "What is open, proposed or deferred in v1.35's design, each with the section it affects; possible later additions are marked *later*. The replayer's and the Tracer's items are in `spec/jolt/replayer.md` and `spec/jolt/tracer.md`. Numbers are never reused. Every item's history (its text as first written and each version's change of status) is `spec/history/machine-spec-v1.3-section-13.md`; the decisions are in `spec/history/`. The logic budget (section 11) is unreviewed; v1.2 rescaled it for the 256-bit link word and the 32 KB controller memories (item 127).",
          ''] + sec13_table('P') + ['', "**The index:** where each item lives; *closed* means settled, its record in the history file.", '',
-         '; '.join(f'{n} {where(n)}' for n in range(1, 159)) + '.', '']
+         '; '.join(f'{n} {where(n)}' for n in range(1, 159)) + '.', '',
+         '**Closed since v1.3:** ' + '; '.join(f'{n}, {t} (owner, 2026-11-12)' for n, t in sorted(S13.CLOSED_OWNER.items())) + '.', '']
 OPEN = lambda u: ['', "## Open items (section 13's numbering)", '', "Settled items are listed in `spec/machine-spec.md` section 13's index; their record is `spec/history/machine-spec-v1.3-section-13.md`.", ''] + sec13_table(u)
 
 

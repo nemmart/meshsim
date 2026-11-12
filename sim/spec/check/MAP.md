@@ -697,3 +697,7 @@ The owner approved stage 1 with corrections; the move follows them. `map.tsv` is
   **Question 1** (items 103, 137, 153) is with the owner: they stand as *unclear*.
 - **The appendix** says v1.35 and keeps its derivation statement.
 - `spec/history/README.md` says carried text keeps its worker names and session codes.
+- **The owner's rulings on section 13** (2026-11-12): 103 closed; 137 open, with 158 in v1.4; 153 open; 158 decided,
+  not yet done, scheduled for v1.4, v1.35 keeping v1.3's tables; 8 widened to all three control lines' physical
+  latencies (finding 4). No item is *unclear*. `section13.py` holds the current statuses; section 6 above is the
+  stage-1 record.

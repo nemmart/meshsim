@@ -437,6 +437,6 @@ Settled items are listed in `spec/machine-spec.md` section 13's index; their rec
 
 | item | what is to be settled | section | status |
 |---|---|---|---|
+| 153 | The Tracer's timing: measured in meshsim; the RTL's values are to replace it | 4.21.9 | open (owner, 2026-11-12) |
 | 147 | To measure: the local caches' sizes, by gold replaying both workloads | 4.21.5 | decided, part open |
-| 153 | The Tracer's timing: measured in meshsim; the RTL's values to replace it | 4.21.9 | unclear |
 | 148 | The fill bus's statuses, to revisit with the memory system's design | 4.21.5, 4.21.8 | decided, part deferred |

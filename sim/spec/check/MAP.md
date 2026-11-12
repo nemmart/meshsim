@@ -31,7 +31,7 @@ documents by name).
 | `v1.3/planning/DECISIONS-v1.26.md` | 172 | `spec/history/DECISIONS-v1.26.md`, whole, unchanged |
 | `v1.3/planning/DECISIONS-v1.3.md` | 1,433 | `spec/history/DECISIONS-v1.3.md`, whole, unchanged |
 
-Fifteen files, 9,073 lines. The history files are exempt from the path check (they stay as written); every other
+Fifteen files, 10,073 lines. The history files are exempt from the path check (they stay as written); every other
 destination is checked.
 
 **New files** (all their lines "added" in `EDITS.md`): `spec/CHANGES-v1.3-to-v1.35.md`; `spec/history/README.md`,
@@ -248,3 +248,131 @@ line: *"Moved in v1.35 to `spec/jolt/replayer.md`, with 4.19.1–4.19.15."*; lik
 8.16 to `spec/jolt/tracer.md`. The heading itself moves with its text; the stub repeats it (added), so the number is a
 heading in both places. Every subsection of 4.19 and 4.21 is a heading in its jolt file, so code's "spec 4.19.7"
 resolves there.
+
+## 5. Tables and lists: the invariants, the parameters, and the Jolt-specific rows elsewhere
+
+**Section 9, every invariant** (2940–2979). The section's text stays; 2942 is edited (section 7). Invariant 16 is
+split by whole lines: 2959 and 2960 stay, 2961 and 2962 move, and an added line takes their place, in the list's
+form: *"    - the replayer's and the Tracer's: in `spec/jolt/replayer.md` and `spec/jolt/tracer.md` (invariant 16)."*
+Each jolt file gets an added line before its bullet: *"From section 9, invariant 16:"*.
+
+| line | invariant | goes to | why |
+|---|---|---|---|
+| 2944 | 1. **No FIFO overflow:** router FIFOs, including tiles 0–2's fifth-port FIFOs (4.7, 4.16;  | stays |  |
+| 2945 | 2. **At most one access per big-SRAM area per cycle,** and no buffer is both read and writ | stays |  |
+| 2946 | 3. **The timetable holds:** every rotation starts on its scheduled cycle and never earlier | stays |  |
+| 2947 | 4. **Every expected arrival lands first** (an uncounted command write is ignored, since co | stays |  |
+| 2948 | 5. **No bad packets:** no packet is addressed to a region it can't reach (0x02, 0x07–0xFE, | stays |  |
+| 2949 | 6. **No HIST count exceeds 17 bits.** | stays |  |
+| 2950 | 7. *(Withdrawn in v1.2: there is no RUN/HALT line. See CHANGES-v1.2.md.)* | stays |  |
+| 2951 | 8. **Overwritten-unread results are counted, not failed:** reply-block words and read-port | stays |  |
+| 2952 | 9. **No unexpected arrival:** no counted packet's decrement finds its counter at 0, so cou | stays |  |
+| 2953 | 10. **Gathers are local:** a mode-4 packet is only ever sent to the tile itself. | stays |  |
+| 2954 | 11. **Controller-memory writes keep to their places** (owner, 2026-10-28): writes into the | stays |  |
+| 2955 | 12. *(Withdrawn, 2026-10-26: replies land in the reply block, so a reply can no longer add | stays |  |
+| 2956 | 13. *(Withdrawn, 2026-10-26: replies could no longer address a word outside data memory; 1 | stays |  |
+| 2957 | 14. **Read-port results and incoming traffic do not overlap** (4.3): no packet from outsid | stays |  |
+| 2958 | 15. **No errors:** every unit's ERRORS and every peripheral's stay 0 (4.13, 4.17.6). A pro | stays |  |
+| 2959 | 16. **The peripherals' and the replayer's invariants** (4.17, 4.19): | stays | the item heading; its first bullet (2960, every peripheral's) is the platform's |
+| 2960 |     - every peripheral's: no PULSE_RUN while a run is in progress; no PULSE_DMA while its  | stays |  |
+| 2961 |     - the replayer's: no bad write (UB, meshsim only, 4.19.10); no RUN_CONFIG write while  | `jolt/replayer.md` | the replayer's bullet; a stub line takes its place |
+| 2962 |     - **the Tracer's** (4.21; v1.3): no write to an unused or unmapped offset of its regio | `jolt/tracer.md` | the Tracer's bullet; covered by the same stub line |
+| 2963 | 17. **The request contract is kept** (3.3, 6.7): | stays |  |
+| 2964 |     - a request names its data's and its reply's counters and its reply's address, and its | stays |  |
+| 2965 |     - a tile has at most 1, 3 and 1 requests outstanding to C&C 1, 2 and 3; error reports  | stays |  |
+| 2966 |     - tag windows are written only as the file system directs, one writer in flight or pac | stays |  |
+| 2967 |     - no read is outstanding and no tag-window write is in flight while a group run is run | stays |  |
+| 2968 |     - no stream has *d* = 67–125 or 127, no stream on a mesh tile has *d* = 126 (meshsim e | stays |  |
+| 2969 |     - every request names a target with a receiver, and every request reaching a receiver  | stays |  |
+| 2970 |     - no load of REQUEST_RECEIVE finds the receive queue empty (4.18). **Hardware:** ERROR | stays |  |
+| 2971 | 18. **One source per order-placed destination** (4.1, 4.5, 4.9, 4.17.5): a unit never has  | stays |  |
+| 2972 | 19. **Everything stays in bounds** (2.2, 4.1): no packet and no load, store or fetch of a  | stays |  |
+| 2973 | 20. **Pointers and runs stay aligned** (4.1, 4.2, 4.4, 4.9, 4.17.9): STREAM_SRC and STREAM | stays |  |
+| 2974 | 21. **No reserved encodings:** no packet in mode 6–7 (UB), and no count-only packet with c | stays |  |
+| 2975 | 22. **Uncounted traffic is mode 0 only:** modes 1–3 are always counted; a running program  | stays |  |
+| 2976 | 23. **No silent traps** (4.13): no ecall, ebreak, fetch outside program memory and the boo | stays |  |
+| 2977 | 24. **K covers the write path** (4.8, 4.10): K is set at or above the implementation's slo | stays |  |
+| 2978 | 25. **Boot keeps its order** (6.2): a unit's overlays and first command are all broadcast  | stays |  |
+| 2979 | 26. **No ignored start:** no PULSE_DMA while the address generator is running (4.2). | stays |  |
+
+**Section 10, every row** (2983–3035). Two rows move; an added row takes their place:
+*"| replayer (4.19), Tracer (4.21) | in `spec/jolt/replayer.md` and `spec/jolt/tracer.md` |"*. Each jolt file gets the
+table's header and its row (the header lines added).
+
+| line | parameter | goes to | why |
+|---|---|---|---|
+| 2987 | / parameter / default / | stays |  |
+| 2989 | / link word / **256 bits**: payload [127:0], address [159:128], size [161:160], counter [1 | stays |  |
+| 2990 | / link_latency / 3 on every link direction; a hop is link_latency + 1 = 4 cycles (3.2) / | stays |  |
+| 2991 | / start skew between tiles / 0 or +1 cycle (3.2) / | stays |  |
+| 2992 | / STREAM, GROUP / STREAM: 256 entries in three 256 × 32-bit arrays (STREAM_SRC, STREAM_DES | stays |  |
+| 2993 | / GATHER request queue / 16 (4.4) / | stays |  |
+| 2994 | / GATHER value size *k* / 1–8 records; *k* odd: 64-bit copies, *k* even: 128-bit copies (4 | stays |  |
+| 2995 | / digit-all-to-all group gap / 0; 4 for the two-hop layers (4.2) / | stays |  |
+| 2996 | / mem_chunks / 1,048,576 (4 MB: 8 areas × 128 bits × 32K); any multiple of 65,536 chunks ( | stays |  |
+| 2997 | / area request-queue depth / 8 in meshsim; *(Open)* for the hardware (4.1) / | stays |  |
+| 2998 | / area tie order / writes first (4.1) / | stays |  |
+| 2999 | / big-SRAM array read latency / 2 in meshsim; *(Open)* for the hardware (4.1) / | stays |  |
+| 3000 | / big-SRAM read latency / queueing plus the array's read latency (4.1) / | stays |  |
+| 3001 | / tokens and return queues / 64 tokens, a shared pool; in-order return queues of per-read  | stays |  |
+| 3002 | / queue_depth (router FIFOs) / 16; the loopback FIFO at least the token count, 64 (require | stays |  |
+| 3003 | / intra_tile_latency / 1 per stage / | stays |  |
+| 3004 | / ts_engine_latency / 1 (1–4 measured) / | stays |  |
+| 3005 | / ag_lookahead / 2·ts_engine_latency + 2 entries in each of the address generator's two re | stays |  |
+| 3006 | / address-generator lead-in / first request 4·ts_engine_latency + 3 (group run) or 2·ts_en | stays |  |
+| 3007 | / pointer stage depth / 2·ts_engine_latency + 2 (4 at the default) (4.9) / | stays |  |
+| 3008 | / write-engine input FIFO / 4 (4.9) / | stays |  |
+| 3009 | / PTR, HIST request FIFOs / 16 each (4.10) / | stays |  |
+| 3010 | / controller read port / request queue of at least 64 entries of 43 bits (address, destina | stays |  |
+| 3011 | / controller memories / **32 KB data + 32 KB program**; port B one 128-bit write per cycle | stays |  |
+| 3012 | / cm_latency (director to port B) / 2 [built] / | stays |  |
+| 3013 | / stage_delay / **64 cycles** (owner, 2026-11-06; was 32 *(Proposed)*): the minimum time f | stays |  |
+| 3014 | / reg_load_latency / **2** for the register block and the peripheral windows, **1** for th | stays |  |
+| 3015 | / ready_latency / **8 cycles** (owner, 2026-11-06, P1; was 1 in simulation and 8 for estim | stays |  |
+| 3016 | / go_latency / **8 cycles** (owner, 2026-11-06, P1; was 1 in simulation): the GO net cross | stays |  |
+| 3017 | / **K** / **8** (meshsim's default); a parameter, **implementation-defined**: at least the | stays |  |
+| 3018 | / error_latency / the fixed latency of a unit's error line into C&C 1's peripheral: **8 cy | stays |  |
+| 3019 | / write counters / seven, WRITE_COUNTER_1–7, 20 bits each; counter field 3 bits, 0 uncount | stays |  |
+| 3020 | / boot ROM / in every controller, region 0x02, reset vector 0x02000000; **256 bytes** (64  | stays |  |
+| 3021 | / keep-alive watchdog / WATCHDOG in C&C 1's peripheral, off at reset (6.1) / | stays |  |
+| 3022 | / flush wait before a soft reset / about 0.1 ms (about 100,000 cycles at 1 GHz), the outsi | stays |  |
+| 3023 | / load-use penalty (data memory, program memory, boot ROM) / 0 each (the design target; se | stays |  |
+| 3024 | / taken-branch penalty, multiply latency / 1, 3 / | stays |  |
+| 3025 | / request bus / a 16-bit, 8-ary tree: 8 row nodes and a root (with an input per sending co | stays |  |
+| 3026 | / request FIFO / 2 KB per unit, 128 × 128 bits (4.18) / | stays |  |
+| 3027 | / events / 16 of 32 bits used: [6:0] write counter 1–7 done, [7] counters done, [8] GO, [9 | stays |  |
+| 3028 | / UART / C&C 1's peripheral only; 8N1; 16-byte TX and RX FIFOs *(Proposed)*; divisor in re | stays |  |
+| 3029 | / command and reply blocks / command block 16 words at the top of data memory, 0x00007FC0  | stays |  |
+| 3030 | / addresses / 32 bits: region [31:24], byte offset [23:0]; big-SRAM engine pointers 21-bit | stays |  |
+| 3031 | / requests / 128 bits; the hardware's fields requestor [6:0] and target [9:7], 8 targets;  | stays |  |
+| 3032 | / eject priority / the loopback FIFO is served only in a cycle when every other eject FIFO | stays |  |
+| 3033 | / peripherals (4.17) / up to three per unit, regions 0x04–0x06, 0x200-byte windows at 0xFF | stays |  |
+| 3034 | / replayer (4.19), peripheral type 4 / peripheral 1 on tiles 0–63; tables built at jolt-cp | `jolt/replayer.md` | the replayer's parameters |
+| 3035 | / Tracer (4.21), peripheral type 3 / C&C 3's peripheral 1; the replayer's tables and 68-wo | `jolt/tracer.md` | the Tracer's parameters |
+
+**Jolt-specific rows and bullets outside sections 9 and 10** (sections 5, 8.1, 8.11, 11, 12 and the companion list;
+`inventory.py rows` marks a line Jolt-specific when it names the replayer, the Tracer, 4.19, 4.21, 8.16, Jolt, the
+run log or an expansion). 8.1 has none: its table names the windows by number only. **8.11 is split by whole lines:**
+2821–2841 (the heading, the standard words, peripheral 2 and 3's windows) stay; 2842–2856 (the replayer's window and
+its note) move; an added stub line after 2840: *"The replayer's window (peripheral 1 on tiles 0–63): moved in v1.35 to
+`spec/jolt/replayer.md`."* The heading keeps its words ("…and the replayer's"): rewording it is not an allowed edit.
+Sections 5 and 11 keep their rows (the owner, 2026-11-12): a timing summary and a budget are read whole, and 11's
+total includes the replayer. 12's line stays: it places the replayer by the island, a floor-plan fact.
+
+| section | line | row | goes to | why |
+|---|---|---|---|---|
+| preamble | 12 | - tables/: the replayer's expansion tables (4.19.5, 4.19.6), universal, built from jolt-cp | stays, path edited | the default |
+| preamble | 13 | - diagrams/: the figure set, numbered part.figure (1.0–9.3; part 9 is the Tracer, v1.3); d | stays, path edited | the default |
+| 5 | 2379 | / replayer / the record's words 0–65 are reloaded before each pass, about 66 cycles from b | stays | the owner, 2026-11-12 |
+| 5 | 2380 | / Tracer / a row in tr_row_cycles = 4 cycles, 6 for a multiply, plus stalls: a fill ms_lin | stays | the owner, 2026-11-12 |
+| 8.11 | 2846 | / 0 / PARAMS / [7:0] = 4 / type 4, the replayer / 4 / | `jolt/replayer.md` (with 2842–2856) | the replayer's window |
+| 8.11 | 2847 | / 1 / STATUS / [0] run in progress; [1] 0 / [0] is v1.1's periph_running (4.19.11) / 0 / | `jolt/replayer.md` (with 2842–2856) | the replayer's window |
+| 8.11 | 2848 | / 2 / ERRORS / [0] reserved (v1.2: bad write), [1] queue overrun, [2] invalid expansion, [ | `jolt/replayer.md` (with 2842–2856) | the replayer's window |
+| 8.11 | 2849 | / 5–7 / EVENTS, EVENTS_PEEK, EVENTS_MASK / [0] run done (depth 1), [2] code credit, [3] re | `jolt/replayer.md` (with 2842–2856) | the replayer's window |
+| 8.11 | 2850 | / 4, 8, 9 / — / / reserved: the replayer has no DMA / — / | `jolt/replayer.md` (with 2842–2856) | the replayer's window |
+| 8.11 | 2851 | / 32 / RUN_CONFIG (R/W) / [23:0] rows to run; [24] use the store log; [25] output rd_prev; | `jolt/replayer.md` (with 2842–2856) | the replayer's window |
+| 8.11 | 2853 | / 34 / EXPANSION_OFFSET (R) / [15:0]; [31:16] 0 / the row within the current expansion whe | `jolt/replayer.md` (with 2842–2856) | the replayer's window |
+| 8.11 | 2854 | / 35 / EXPANSION_OPCODE (R) / [31:0] / the instruction awaiting a controller-fed expansion | `jolt/replayer.md` (with 2842–2856) | the replayer's window |
+| 11 | 3058 | / replayer (4.19.14), peripheral 1 on tiles 0–63: ALU and comparator, 128 × 64-bit true du | stays | the owner, 2026-11-12 |
+| 11 | 3059 | / **total per tile** / / **≈ 0.52–0.61 mm²** with the replayer and the fifth port, about 3 | stays | the owner, 2026-11-12 |
+| 12 | 3089 | - **Paths that cross the gap:** engine table accesses, and the traffic director's port-B w | stays | the default: a row stays with its table |

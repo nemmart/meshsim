@@ -592,7 +592,7 @@ Left alone, as the prompt says: the "(meshsim)" markers for undefined behaviour,
 flags …)" phrases (line 28's sentence defines them), every `[meas: …]` tag (line 20 explains them), and "gold is the
 Java emulator" (D40).
 
-### 7.2 Paths made true of v1.35's tree (73 citations on 52 lines)
+### 7.2 Paths made true of v1.35's tree (73 citations on 55 lines, six of them waiting on question 2)
 
 Relative to v1.35's root; what v1.35 doesn't carry is cited as `v1.3/…`. Every new path exists today (checked in the
 repository). `sw/mesh.h` is `fw/include/mesh.h`, not `fw/mesh.h`. Bare `mesh.h` (2520, 2667) and `REGISTERS.md` (1814)
@@ -646,7 +646,7 @@ name files in the tree and stay. In the appendix, line 3 also changes "`machine-
 
 ### 7.4 Counts so far
 
-Edited lines: 12 simulator, 52 path (some lines in both), 2 version; section 13 rewritten (added). Final counts come
+Edited lines: 12 simulator, 55 path (some lines in both), 2 version; section 13 rewritten (added). Final counts come
 with stage 2.
 
 ## 8. Questions for the owner

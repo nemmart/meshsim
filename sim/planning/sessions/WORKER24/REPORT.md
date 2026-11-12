@@ -61,6 +61,8 @@ only, so sort_test refuses a release build); `sort_test` in SUITES.
   as F3's six are. Sweep's own ready points (4, 8) are unaffected.
 - **F6. PhaseLog's read-port peak** counted one more than ref's when a store and an injection fell in the same cycle.
   Fixed by W20 (673f1733): no phases CSV differs in it now.
+- **F7. Invariant 8's command-read check reports a violation v1.3 doesn't** in the sweep's workloads (after Mach's
+  boot): a regression on main (W26, 020519bd); see "Open".
 - **Q6. No v1.3 run takes the PLAN path** (full size, the runner's p4, the 2,000-key kit: direct, LB, TH, BT only).
   Reported; no case invented.
 
@@ -77,4 +79,8 @@ the Makefile's `include tests/sort.mk`, `run_tests.sh` (the sort and sweep steps
   the run CSVs and logs byte-identical).
 - **`Chip::new_phase`** (W20's item 8, W26's disjoint tracking): SortTest's new phase at every core wake, for invariant 2
   during the sort.
-- `sweep full` is ported but not run (v1.3's takes about 25 minutes; nothing in run_tests.sh runs it).
+- **F7 (W26)**: since invariant 8's command-read check (020519bd), the sweep's workloads report a violation v1.3
+  doesn't (a command landing in slot 0 "before the core read the previous one", tile 0, the first command after
+  Mach's boot), so `sweep-quick` differs from v1.3's log (it was byte-identical before), and `sweep full` (Quest 183)
+  equals v1.3's in every cycle, delta and peak but reports the violations. When W26's fix lands: sweep-quick and
+  `sweep full` again (the fixtures `tests/sort/ref/sweep-full.{log,csv}` are in place).

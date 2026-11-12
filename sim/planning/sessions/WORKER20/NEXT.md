@@ -26,3 +26,12 @@ One more, from W25 (F2): Stage B's detail lines and the kit's results.csv print 
 replayer, which needs the replayer's violations recorded as chip violations through the checker. That's yours (the
 replayer is an existing unit). W25 ports the replayer's own message texts and lists (its rp_results detail); you record
 the chip-level facts. Agree the boundary with W25 through me if it's unclear.
+
+From W22 (P4, NetTest; details in sim-w22's NOTES.md), six needs:
+1. Cc::received on the coreless machine;
+2. reset_stats;
+3. a harness op to put into a tile's send-port hold;
+4. the write engine's and GATHER queue's arrival logs;
+5. Chip refusing a K below the formula at build, as ref does;
+6. the checker kinds NetTest provokes: no-endpoint, stray, size 11, bad packets, invariants 10, 11, 19, 21 and 22.
+NetTest is a long suite and the first wave-2 suite to hit the checker hard, so these are worth ordering early.

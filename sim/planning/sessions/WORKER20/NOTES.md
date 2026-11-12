@@ -146,6 +146,11 @@ remaining kinds, interleaved as the suites ask.
   its refusal lifted) and `Chip::log()` ("cycle T tile K: TRACE 0xV", the part of ref's Chip.log v1.35 keeps).
   MachSelf's TRACE case (search.c, N = 4096, one run; SearchBench's data with java.util.Random: tiles 0, 7, 63's stores
   and their cycles) equal to ref's. The scratch layout of machself.sh now has fw/images too.
+- **W24's F6 fixed**: PhaseLog's read-port peak by ref's rule (ReadPort.peak: in use right after a store, the same
+  cycle's injection counted out, ref's injection running before the core). PhaseLog keeps it itself, cycle by cycle,
+  from the core's stores and the read side's injections after each cycle (`PhaseLog::after_cycle`); the core's
+  `rp_peak` stays a plain statistic. MachSelf's rdpeak case (search.c at SRAM read latency 4, variant 1: PhaseLog's CSV,
+  peak_readPort 1 in ref) fails without the fix (2) and passes with it.
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

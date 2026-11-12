@@ -2,6 +2,9 @@
 # programs on W20's harness (tests/mach.h, tests/suite.h), each one's output against ref's log of the same run_tests.sh
 # step (tests/p4suites/, from oracle/ref/p4suites.sh). Included by sim/Makefile (one line).
 #   suite_net   NetTest (steps net, net-shuf, net-shuf2, skewtable)
-P4_SUITES := $(B)/suite_net
+#   suite_mem   MemTest (steps mem, mem-shuf, mem-shuf2)
+P4_SUITES := $(B)/suite_net $(B)/suite_mem
 $(B)/suite_net: $(B)/tests/suite_net.o $(MACH_LINK) $(LIB_OBJ)
+	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
+$(B)/suite_mem: $(B)/tests/suite_mem.o $(MACH_LINK) $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)

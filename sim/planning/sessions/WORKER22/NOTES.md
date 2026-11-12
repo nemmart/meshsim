@@ -173,3 +173,23 @@ W22-14. (owner: `new_phase` to W20, big SRAM's recording to W26) **Chip::new_pha
   `reqbus-shuf` "P5"; they are P4's (C11, G1, C17).
 - **MemTest**: gap map done (above): per-area and per-client statistics (owner's call), W22-14, W22-4.
 - **run_tests.sh**: searchbench, agbench, reqbus, reqbus-shuf relabelled P4 (pushed to main's file, owner told).
+- **MemTest** (`tests/suite_mem.cpp`; ref's `U` as a sim of BigSram and a driver, its puts through `Sim::put_late`,
+  refusals from `hold_refusals`). Each group's lines against mem, mem-shuf (3), mem-shuf2 (8): clang suite, clang and
+  gcc debug. 128 + 34 of the 171 assertions, every printed line but two:
+  | group | lines | |
+  |---|---|---|
+  | decode, partial, wrap | 0 | pass |
+  | stall, combining, latency | 1 each | equal |
+  | throughput | 7 | equal |
+  | priority, return order | 1 each | equal (packets: 0, pass; its 3 UB stops name tile, client, chunk) |
+  | mem_idle | 0 | pass |
+  | oversubscription + memReport | 10 | equal |
+  | token window | 1 | **differs**: "issue waits (9 cycles)", ref 80 (finding F1) |
+  | disjoint | 1 | waits on W22-14 |
+- **Finding F1: the read queue's `window_full_cycles` undercounts** (src/units/inject.h, W11's unit and W20's harness
+  path alike). ref counts every cycle the issue phase finds no token free while a client has a request; the C++ unit is
+  event-driven and sleeps while the window is full (`wake`: a client with no free token doesn't wake it; a freed token
+  does), so the cycles asleep aren't counted: 9 here, ref 80. A statistic only (no timing or behaviour), but the value
+  is printed by MemTest. Fix proposed (the owner's call: it changes a unit): account the wait lazily, as Injection's
+  `token_wait_cycles` / `wait_from` already does: the cycle the wait began, the span added when the unit next steps.
+  Under SIM_CHECKS only, or in every build (the existing counter is wrong in every build).

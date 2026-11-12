@@ -85,8 +85,16 @@ Commit and push after each step; each step checked against `ref`.
 
 - **Step 2, the checker: its fact interface published** (`src/check.h`, `src/check.cpp`; MODE=suite in the Makefile):
   the units record fixed-size facts (Kind, cycle, tile, four arguments) into the harness's list; the harness formats
-  them into ref's strings, in ref's report order (check.h's Slot), between cycles. The formatter (tests/checker.cpp)
-  and the units' record calls come next.
+  them into ref's strings, in ref's report order (check.h's Slot), between cycles.
+- **Step 2, first kinds**: `tests/checker.{h,cpp}` (the formatter: ref's LinkWord.describe and whyBad, one message per
+  slot per tile per cycle with the last fact's text, Chip.violation's count and cap, violation_report), wired into Chip
+  (installed at every run; processed after each). Recorded so far: the injection path's six checks, the director's
+  bad packet, size 11, count-only on counter 0 and read-port overlap. `oracle/ref/CheckSelf.java` (`checkself.sh`,
+  fixture `tests/mach/checkself.out`): equal in the debug and suite builds (gcc, clang); the release builds skip it.
+- **Next in step 2**: the remaining kinds (the director's uncounted/boot/command checks and unexpected arrivals, the
+  register block, the controller's memories, the read port, the AG, the read queue, the write engine, big SRAM's
+  disjoint buffers, HIST, the rotations, the request bus, C&C, the endpoints), ERRORS (invariant 15, condSeen), the
+  overflow scan (ref's FIFO names), the config switches (check_unexpected, check_errors, ...), then reset.
 
 ## What the body needs outside `sim/tests/` (additions only; the owner hears if any changes an existing operation)
 

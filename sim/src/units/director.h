@@ -26,6 +26,7 @@
 
 #include <cstdint>
 
+#include "check.h"
 #include "sim.h"
 #include "base/fatal.h"
 #include "units/linkword.h"
@@ -91,14 +92,27 @@ struct Director {
         const unsigned mode = lw::mode(h), ctr = lw::counter(h), size = lw::size(h);
         const uint32_t a = lw::addr(h);
         per_mode[mode]++;
+        namespace ck = sim::check;                             // W20: the checker's facts (src/check.h)
         if (lw::read_port_tag(h)) rp_accepted++;
-        else if (c.through_last(rp_stores) > rp_accepted && lw::src(h) != cfg.tile && !command(h)) rp_overlaps++;
+        else if (c.through_last(rp_stores) > rp_accepted && lw::src(h) != cfg.tile && !command(h)) {
+            rp_overlaps++;
+            ck::record(c.now(), int(cfg.tile), ck::Kind::DIR_READPORT_OVERLAP, c.through_last(rp_stores) - rp_accepted, d, h, hi);
+        }
         if (mode == lw::M_WRITE && size != lw::SIZE_UNDEF && !lw::aligned(a, size))
             FATAL("director (tile %u): a mode-0 packet at 0x%x not aligned to its size, cycle %llu: UB (v1.25 s8b)", cfg.tile, a, (unsigned long long)c.now());
-        if (lw::bad_packet(mode, size, a, cfg.periph_present)) { c.put(bad); bad_packets++; return sim::Wake::none(); }
-        if (size == lw::SIZE_UNDEF) { undefined_size++; violations++; return sim::Wake::none(); }
+        if (lw::bad_packet(mode, size, a, cfg.periph_present)) {
+            c.put(bad); bad_packets++;
+            ck::record(c.now(), int(cfg.tile), ck::Kind::DIR_BAD_PACKET, 0, d, h, hi);
+            return sim::Wake::none();
+        }
+        if (size == lw::SIZE_UNDEF) {
+            undefined_size++; violations++;
+            ck::record(c.now(), int(cfg.tile), ck::Kind::DIR_SIZE_UNDEF, 0, d, h, hi);
+            return sim::Wake::none();
+        }
         if (lw::reserved_mode(mode))
             FATAL("director (tile %u): a packet in the reserved mode %u at cycle %llu: UB (v1.25 s8e)", cfg.tile, mode, (unsigned long long)c.now());
+        if (mode == lw::M_COUNT && ctr == 0) { ck::record(c.now(), int(cfg.tile), ck::Kind::DIR_COUNT_CTR0, 0, d, h, hi); }   // a fact only (the count stays as before)
         if (ctr != 0 && lw::counted_mode(mode)) c.put(kline, sim::Word(ctr));   // decremented at endCycle(t + K)
         switch (mode) {
         case lw::M_WRITE: {

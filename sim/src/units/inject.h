@@ -27,6 +27,7 @@
 #include <cstdint>
 
 #include "base/fatal.h"
+#include "check.h"
 #include "sim.h"
 #include "units/net.h"
 
@@ -211,7 +212,7 @@ struct Injection {
 
     // ref's SRAMReadQueue.loops: a controller's broadcast never reaches itself (W14-01; M3, C&C 1-3 as units 64-66)
     bool loops(unsigned dst) const { return dst == me || (dst == lw::BROADCAST && me < 64); }
-    void check(uint64_t h);           // InjectionPath's invariants (meshsim's checks; the packet is injected anyway)
+    void check(uint64_t t, uint64_t d, uint64_t h, uint64_t hi);   // InjectionPath's invariants (meshsim's checks; injected anyway)
 };
 
 // ---- the step (inline: the run function inlines it) -----------------------------------------------------------------
@@ -244,7 +245,7 @@ inline sim::Wake Injection::step(sim::Ctx& c) {
                 from_read++;
             }
             else { c.take(send); from_send++; }
-            check(h);
+            check(c.now(), d, h, cw);
             c.put(to_router, d, h, cw);
             injected++;
         }

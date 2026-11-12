@@ -84,6 +84,11 @@ struct Rv32 {
     uint64_t load_wait_t = kNever; uint32_t load_wait_pc = 0;
     uint64_t pending_t = kNever; uint64_t send_w[3] = {};   // M2: a send store's packet awaiting acceptance (ref's pendingT)
     int ck_tile = -1; uint64_t ck_t = 0;   // W20: the checker's facts (src/check.h) under this tile, -1 none; the step's cycle
+    // W24 (diagnostic only; owner's Q3, 2026-11-11): the lowest nonzero stack pointer, SortTest's "stack headroom"
+    // (ref's monitor reads every core's x[2] after every cycle; here taken at the writes to x2, the only place it
+    // changes, so idle-skipped cycles need nothing). Off by default: the harness arms it (min_sp_watch) with the current
+    // x2. Off, it costs one predictable branch on a retire that writes a register; nothing else reads it.
+    bool min_sp_watch = false; int32_t min_sp = INT32_MAX;
     // ---- configuration, and permanent state allocated apart ----
     Rv32Timing timing;
     uint32_t periph_present = 1;           // PARAMS [2:0]: which windows are present (present: not modelled yet)
@@ -372,7 +377,10 @@ struct Rv32 {
         }
         bool w = wr && rd != 0;
         if (log) log->add(t, T_RETIRE, w, ipc, ins, a, b, res);
-        if (w) x[rd] = res;
+        if (w) {
+            x[rd] = res;
+            if (min_sp_watch && rd == 2 && res != 0 && int32_t(res) < min_sp) min_sp = int32_t(res);   // W24 (above)
+        }
         pc = next;
     }
 

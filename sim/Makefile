@@ -97,6 +97,7 @@ include src/units/cc.mk
 include tests/chain.mk
 include tests/tracersuites.mk
 include tests/mach.mk
+include tests/p4suites.mk
 include tools/regs/regs.mk
 include tools/delivery/delivery.mk
 include tests/p7b.mk

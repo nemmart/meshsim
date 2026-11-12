@@ -1,0 +1,24 @@
+tests/p4suites: made by oracle/ref/p4suites.sh --fixtures from sim/ref at 5d8aaf475593491d6eeacc91c7ad6f169a827fcd
+each <step>.log: v1.3's run_tests.sh step of that name (net-quick.log: the net step in quick mode),
+run in a scratch copy of ref/meshsim's layout with fw/images' images
+  net-quick    NetTest -1 quick
+  net          NetTest -1
+  net-shuf     NetTest 5 quick
+  net-shuf2    NetTest 11 quick
+  skewtable    NetTest -1 skewtable 40
+  mem          MemTest -1
+  mem-shuf     MemTest 3
+  mem-shuf2    MemTest 8
+  engine       EngineTest -1
+  eng-shuf     EngineTest 4
+  engine-full  EngineTest -1 full
+  agtest       AgTest -1
+  agtest-shuf  AgTest 4
+  rdport       ReadPortGatherTest -1
+  rdport-shuf  ReadPortGatherTest 4
+  rdport-full  ReadPortGatherTest -1 full
+  searchbench  SearchBench
+  reqbus       RequestBusTest -1
+  reqbus-shuf  RequestBusTest 4
+  agbench      AgBench
+openjdk version "21.0.13.0.3" 2026-10-24

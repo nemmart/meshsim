@@ -197,11 +197,33 @@ remaining kinds, interleaved as the suites ask.
   once, drained one a cycle) equal to ref. Note: ref doesn't report a push into a full FIFO while its tile sleeps (idle
   skip: the block's counter is looked at only when the tile steps); ours records it at t. RequestBusTest never pushes
   into a full FIFO, so it doesn't show; a test that does would differ there (and only there).
-- **B20 (the reset) in progress**: `sw.disjoint = c.check_disjoint` (W26's switch); `Sim::flush_ports()` (harness-only:
+- **B20 (the reset) done** (see below; first piece: `sw.disjoint = c.check_disjoint` (W26's switch); `Sim::flush_ports()` (harness-only:
   every Link, Fifo, credit Fifo and Hold emptied with the inputs' pending bits, Fifo overflow records cleared as ref's
   flush; registers, wires, RegFiles, Counts kept). Next: Chip::reset (the end-of-cycle effects of the register block and
   port B, the flush, every unit field for field from ref's resets: Tile.reset's list, the request bus, C&C 1's
   peripheral, C&C's model; the checker's ERRORS state; a wake), Cc::reset(hard), NetSelf's case with StateFp.
+- **B20 done**: `Chip::reset(hard)` (ref's doReset at the end of the cycle just run: the register block's end of cycle
+  (the preview) and port B's last write first; `Sim::flush_ports`; every unit as ref's resets leave it: AG, gather,
+  read port, read queue and tokens, write engine, router (its occupancy mask too), SRAM queues, the table and HIST pipes
+  and request FIFOs, the slot (SlotCore::reset), the request port and bus (the leaves' and nodes' counts made consistent),
+  cmem tracking, TileControl.reset, Controller.reset with W23's trap/first-image cycles, the director's counters, C&C's
+  model and C&C 1's peripheral (READY_EXPECT 0, READY cleared); the checker's error lines; ref's log line; a wake),
+  `resets()`, `last_reset_at()`, `Cc::reset(hard)` (the queued form: its step's cycle, two waits, READY_EXPECT all).
+  Found: ref's reset clears DMA_CONFIG and DMA_RECORD_BASE_ADDRESS but not the engines' copies (Tile.setMasterConfig,
+  setRecordBase): the register block now keeps `dma_master`/`record_master` (equal to the registers until a reset),
+  published to the engines, and StateFp's writers read those (test_memconf and test_statefp_g1 set them too).
+  MachSelf's reset case (the a2a cut by cc.reset(false) mid-phase at 5201; StateFp at the reset, the next cycle, the
+  queue's end, and 20,000 cycles into a reboot) equal to ref, seeds -1 and 4; `Chip::fingerprint_lines`/`fingerprint_dump`
+  for diffing. Not yet: the machine with C&C 1-3 as cores (FATAL; CcCores.reset).
+- **W22-16**: `TileRef::we_ts_req` / `we_hist_req` (ref's weTsReq.put / weHistReq.put at t = cycle() + 1: the write engine
+  puts them on its lines in its step at t; PTR's returns of those dropped, as ref's writer awaits none; harness-only).
+  NetSelf's figure-12 case (three PTR increments and a HIST one, ts_engine_latency 1 and 3: the cycles they're taken and
+  the values) equal to ref.
+- **W23's request 11**: a core's undefined behaviour stops the run with ref's message (`Rv32::ub_fatal_tile`, set by the
+  harness: "undefined behavior at cycle T, tile K, controller: a misaligned W-byte load from 0x.. at pc 0x.. (...)").
+  NetSelf's case (suite::ub) equal to ref's UndefinedBehavior text.
+- **The AG report**: `Chip::ag_report()` (ref's agReport, its text). MachSelf's a2a prints it, equal to ref, but the a2a
+  runs streams only (all zeros): EngineTest's drift line (W22) is the real check.
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

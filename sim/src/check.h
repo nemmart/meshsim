@@ -62,7 +62,8 @@ enum class Kind : uint16_t {
     ERROR_LINE,                 // a0 1/0: the tile's error line rose or fell (no message; drives condSeen's clearing)
     // ---- C&C 1's peripheral, S1 ----
     CC1_PERIPH,                 // a0 an index into checker.cpp's table of cc1p messages, a1-a3 its arguments
-    S1_LATE,                    // a0 the tile, a1 the cycles late (s1.lastLate's form, checker.cpp)
+    S1_LATE,                    // a0 what (0 big SRAM's ordering point, 1 PTR, 2 HIST: s1.h), a1 the tile, a2 the chunk or
+                                //   index, a3 the latency (s1.lastLate's text, checker.cpp)
     // ---- invariant 1 ----
     FIFO_OVERFLOW,              // a0 the FIFO's id in the harness's table of ref's names (checker.cpp), at its cycle
     // ---- the router ----

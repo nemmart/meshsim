@@ -128,7 +128,7 @@ Commit and push after each piece; each kind checked line for line against `ref` 
 - **Kinds recorded but no case reaches yet** (kept up to date; check each when a suite does; likeliest W23's CtrlTest
   and RecipeTest, W22's RequestBusTest): a port-B write as the core reads that word; a test's load clearing invariant 8's
   bit (TileRef::load); HIST/PTR table-window busy met by an instruction; a test's HIST load (no check yet); the slot's
-  DMA_HDR/ADDR mid-transfer (a case planned) and full post; the C&C 1 and stub region writes; the Tracer's violations;
+  full post; the C&C 1 and stub region writes; the Tracer's violations;
   the full request push; the receive queue overflow; the endpoints' checks (after W20's call in Net's sends); the read
   port's size 11 and misaligned destination (UB at the director); a late rotation (invariant 3: AgTest's
   pending groups may reach it).
@@ -183,3 +183,36 @@ Commit and push after each piece; each kind checked line for line against `ref` 
   protected tests. CheckSelf: written then read, Chip.newPhase, read then written (2 lines); the a2a (0); and a read,
   GO (with a command, for READY), then a write: 0 lines, 1 without the GO trigger (so it exercises it). Line for line,
   clang and gcc suite, clang debug.
+- **The DMA case** (PeripheralSlot.setHdr/setAddr, 4.17.9; recorded in 1a): ref's test peripheral on tile 7
+  (`MachConfig::test_peripheral_tile`, W20; Config.testPeripheral in CheckSelf, TestPeripheral.java added to
+  checkself.sh's compile), a 7-word transfer started, DMA_HDR and DMA_ADDR stored again while it runs: 2 lines, line for
+  line (clang and gcc suite, clang debug). Tests only (no unit changed).
+- **W22's F6 (invariant 2's phases) and the access count**: ref starts a disjoint phase at the test's newPhase, every
+  GO, and every counters-done latch (TileControl.java:280: the local wake, set when not gated and not cleared in the
+  cycle). The block now counts the phases its endCycle(t) starts (`RegBlockState::new_phases`, 0-2: a GO and a latch in
+  one endCycle make two, as ref's two newPhase calls; not in the digest) and drives them on a second SIM_CHECKS-only
+  Wire, `t<k>.ctl.phases` ((t + 1) << 2 | n), which big SRAM reads (in place of the GO Wire; the core keeps `go_seen`
+  for F4). No level changes (the same producer). `BigSram::disjoint_violations` (SIM_CHECKS): ref's disjointViolations,
+  every offending access, not only the phase's first (MemTest's last assertion; W22 swaps out its -1 stand-in).
+  CheckSelf: tile 12 copies A -> B, its latch, B -> A (no violation), then one run reading and writing one buffer
+  (flagged, phase 2), and the access count (16), line for line (clang and gcc suite). ReadPortGatherTest's disjoint
+  group passes (W22's repro). Protected tests the same (clang suite, release); the order-independence set again: the
+  16K sort (plain, shuffle, step-all, instance) and T2's boot (with step-all for the run) and M1's goldens, both builds.
+- **S1 (invariant 24's measurement, as ref has it)**: `src/units/s1.h`, one `S1Tile` per tile (fixed sizes, made in
+  add_g1 under SIM_CHECKS, owned by the director; the write engine, big SRAM, the table and HIST stores and the core hold
+  its pointer): the director's acceptances in we-in order (ref's acceptQ), the write engine's stage acceptances (stAcc),
+  chunk -> acceptance for big-SRAM writes (sramAcc: open addressing, a put replaces; **staged with its cycle and
+  applied at the next use in a later cycle**, because ref's tile runs big SRAM before the write engine, so a put of t
+  follows big SRAM's removes of t), PTR's and HIST's acceptances per index (pooled FIFOs), and the measurement (S1's
+  fields). Big SRAM checks a write's chunks as it enters its area's queue (BigSRAM.s1Ordered: later than K + 4 is an
+  `S1_LATE` fact) and counts the store; the table and HIST stores at each write-back; the core's HIST loads (the
+  table-window case, from HIST_WB_AT; ref's -1 when none yet). The checker reports one S1 message a cycle, the last in
+  ref's child order (tile by tile; big SRAM, PTR, HIST). `units::s1_report` is S1.report(K) over the tiles. W20's
+  overflow case runs with S1 on again (both sides): 4 late lines and the report; the table-window case prints the
+  report (PTR and HIST paths): line for line, clang and gcc suite, clang debug. Protected tests the same (clang suite,
+  release); the 16K sort passes in the suite build with S1 on.
+  **For W20:** `MachConfig::measure_s1 = false` sets each tile's `unit<Director>("dir").s1->on = false` (ref's
+  measureS1); a `Chip::s1_report()` (or S1Bench's port) can sum the tiles with `units::s1_report`.
+  Not checked against ref: the core's HIST loads (no case loads HIST by instruction; TileRef::load's own path doesn't
+  count them), and two same-cycle orders that only an acceptance mismatch reaches (a write-back with its index's queue
+  empty, a take with the acceptance queue empty: we-in overflows).

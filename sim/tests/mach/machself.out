@@ -1,3 +1,7 @@
+reset seed -1: at 5201 fp 486a8801b15d983c; next fp 2515f8d58c14a16d; queue done at 5204 fp f906437726fdb936; rerun NOT stopped at 25204 fp a4f457b6e9c8cd25 violations 0
+  cycle 5201: reset (soft): every unit to the boot ROM
+reset seed 4: at 5201 fp 486a8801b15d983c; next fp 2515f8d58c14a16d; queue done at 5204 fp f906437726fdb936; rerun NOT stopped at 25204 fp a4f457b6e9c8cd25 violations 0
+  cycle 5201: reset (soft): every unit to the boot ROM
 trace: finished at cycle 4311
   tile 0: 14 TRACE stores 1943:5ea4 2128:5ea4 2314:5ea4 2500:5ea4 2686:5ea4 2872:5ea4 3059:5ea4 3246:5ea4 3432:5ea4 3618:5ea4 3805:5ea4 3991:5ea4 4174:5ea4 4246:5ea4
   tile 7: 14 TRACE stores 1943:5ea4 2128:5ea4 2314:5ea4 2500:5ea4 2686:5ea4 2873:5ea4 3059:5ea4 3245:5ea4 3431:5ea4 3616:5ea4 3801:5ea4 3986:5ea4 4169:5ea4 4241:5ea4
@@ -53,14 +57,17 @@ wfi: stopped at cycle 1616; bootStart 0 runAt 77; allExited true allInWfi false;
   r[1] 0x13
 a2a seed -1: stopped at cycle 7698; bootStart 0 runAt 98; allExited true allInWfi false; halts []; exit(0) 0 exit(63) 0
   fp 032cb3291ab35a73
+    address generator: 0 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
   phaseLog [97, 98] [1028, 1029] [4506, 4507] [7660, 7661]
   misplaced 0; lastGoAt 7661 lastAllReadyAt 7660; busy false; sram t9 0x40000 240000000000005d t50 0x40100 c8400000000001b3
 a2a seed 4: stopped at cycle 7698; bootStart 0 runAt 98; allExited true allInWfi false; halts []; exit(0) 0 exit(63) 0
   fp 032cb3291ab35a73
+    address generator: 0 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
   phaseLog [97, 98] [1028, 1029] [4506, 4507] [7660, 7661]
   misplaced 0; lastGoAt 7661 lastAllReadyAt 7660; busy false; sram t9 0x40000 240000000000005d t50 0x40100 c8400000000001b3
 a2a seed -1 kit: stopped at cycle 7704; bootStart 0 runAt 108; allExited true allInWfi false; halts []; exit(0) 0 exit(63) 0
   fp f62b3ed6d2a77d7f
+    address generator: 0 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
   phaseLog [107, 108] [1037, 1038] [4511, 4512] [7670, 7671]
   misplaced 0; lastGoAt 7671 lastAllReadyAt 7670; busy false; sram t9 0x40000 240000000000005d t50 0x40100 c8400000000001b3
 cores: booted true at cycle 883; bootStart 0; mbox 0 852 867 2; tile 0 pc 0x2000064, cc1 pc 0x1000b38

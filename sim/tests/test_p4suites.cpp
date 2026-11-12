@@ -56,6 +56,11 @@ TEST(engine_equals_ref_log) { run_step("suite_engine -1", "engine.log"); }
 TEST(eng_shuf_equals_ref_log) { run_step("suite_engine 4", "eng-shuf.log"); }
 TEST(reqbus_equals_ref_log) { run_step("suite_reqbus -1", "reqbus.log"); }
 TEST(reqbus_shuf_equals_ref_log) { run_step("suite_reqbus 4", "reqbus-shuf.log"); }
+TEST(mem_equals_ref_log) { run_step("suite_mem -1", "mem.log"); }
+TEST(mem_shuf_equals_ref_log) { run_step("suite_mem 3", "mem-shuf.log"); }
+TEST(mem_shuf2_equals_ref_log) { run_step("suite_mem 8", "mem-shuf2.log"); }
+TEST(rdport_equals_ref_log) { run_step("suite_rdport -1", "rdport.log"); }
+TEST(rdport_shuf_equals_ref_log) { run_step("suite_rdport 4", "rdport-shuf.log"); }
 // the debug options (p4_debug.h): the same log under step-all and the instance-major order (the rest: p4_debug_checks.sh)
 TEST(net_quick_step_all_equals_ref_log) { run_step("suite_net -1 quick --step-all", "net-quick.log"); }
 TEST(engine_instance_major_equals_ref_log) { run_step("suite_engine -1 --instance-major", "engine.log"); }

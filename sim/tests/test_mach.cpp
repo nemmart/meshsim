@@ -8,6 +8,7 @@
 
 #include "base/fatal.h"
 #include "harness.h"
+#include "suite.h"
 #include "java_random.h"
 #include "mach.h"
 #include "units/ag.h"
@@ -79,6 +80,7 @@ void a2a(int64_t seed, bool kit = false) {
         const std::string d = m.c.digest();                 // B25: its fp field, ref's StateFp of the chip
         say("  fp %s\n", d.substr(d.find(" fp ") + 4).c_str());
     }
+    say("%s", m.c.ag_report().c_str());
     std::string pl = "  phaseLog";
     for (const auto& e : m.c.cc().phase_log()) pl += " [" + std::to_string(e[0]) + ", " + std::to_string(e[1]) + "]";
     say("%s\n", pl.c_str());
@@ -160,8 +162,39 @@ void trace_case(bool rdpeak = false) {                       // H6: MachSelf.tra
         say("%s\n", sb.c_str());
     }
 }
+std::string fp_of(const Mach& m) { const std::string d = m.c.digest(); return d.substr(d.find(" fp ") + 4); }
+void reset_case(int64_t seed) {                               // B20: MachSelf.resetCase
+    Mach m(Mach::cfg(seed));
+    mach::A2A data(7, 2000);
+    for (unsigned s = 0; s < 64; s++) {
+        mach::TileRef p = m.c.tile(s);
+        for (size_t k = 0; k < data.rec[s].size(); k++) p.sram_poke64(mach::A2A::SRC + 2 * uint32_t(k), uint64_t(data.rec[s][k]));
+        for (unsigned d = 0; d < 64; d++) p.sram_poke(0xF0000 + d, uint32_t(data.cnt[s][d]));
+        for (unsigned src = 0; src < 64; src++) p.sram_poke(0xF0000 + 64 + src, uint32_t(data.cnt[src][s]));
+        for (unsigned g = 0; g < 16; g++) p.sram_poke(0xF0000 + 128 + g, uint32_t(data.R[g]));
+        p.sram_poke(0xF0000 + 144, 0);
+    }
+    m.boot("a2a");
+    m.c.cc().command(units::lw::BROADCAST, 1u << 24).go().command(units::lw::BROADCAST, 2u << 24).go();
+    m.run([&] { return m.c.cycle() >= 5200; }, 100000);
+    m.c.cc().reset(false);
+    m.run([&] { return m.c.resets() == 1; }, 100000);
+    std::string sb = "reset seed " + std::to_string(seed) + ": at " + std::to_string(m.c.last_reset_at()) + " fp " + fp_of(m);
+    m.c.step(); sb += "; next fp " + fp_of(m);
+    m.run([&] { return !m.c.cc().busy(); }, 100000);
+    sb += "; queue done at " + std::to_string(m.c.cycle()) + " fp " + fp_of(m);
+    m.boot("a2a");
+    m.c.cc().command(units::lw::BROADCAST, 1u << 24).go().command(units::lw::BROADCAST, 2u << 24).go().command(units::lw::BROADCAST, 3u << 24).go();
+    const bool ok = m.run([&] { return m.all_stopped(); }, 20000);
+    sb += std::string("; rerun ") + (ok ? "stopped" : "NOT stopped") + " at " + std::to_string(m.c.cycle()) + " fp " + fp_of(m) +
+          " violations " + std::to_string(m.c.violations());
+    say("%s\n", sb.c_str());
+    for (const std::string& l : m.c.log()) if (l.find("reset") != std::string::npos) say("  %s\n", l.c_str());
+}
 void machself() {
     out.clear();
+    reset_case(-1);
+    reset_case(4);
     trace_case();
     if (sim::check::kOn) trace_case(true);                 // (PhaseLog: the debug and suite builds)
     if (sim::check::kOn) { phases(-1); phases(4); }        // (PhaseLog's FIFO peaks: the debug and suite builds)
@@ -581,8 +614,51 @@ void back_pressure_case() {
     sb += " delivered " + std::to_string(b.delivered()) + " violations " + std::to_string(n.c.violations());
     say("%s\n", sb.c_str());
 }
+void figure12_case(unsigned L) {
+    mach::MachConfig k = mach::MachConfig::defaults();
+    k.ts_engine_latency = L; k.K = std::max(k.K, k.k_min()); k.check_errors = false; k.check_unexpected = false;
+    mach::Chip c(k);
+    mach::TileRef p = c.tile(7), h = c.tile(20);
+    p.set_ptr(9, 0x1000); h.hist_poke(3, 100);
+    std::string sb = "figure 12, L = " + std::to_string(L) + ":";
+    const units::TableStore& ts = p.unit<units::TableStore>("ts");
+    const units::HistStore& hs = h.unit<units::HistStore>("hist");
+    for (int r = 0; r < 3; r++) {
+        const uint64_t before = ts.rmws;
+        p.we_ts_req(c.cycle() + 1, units::mem::OP_ADD_RET, units::mem::IDX_PTR + 9, 2);
+        int64_t tr = -1;
+        for (int i = 0; i < 50 && tr < 0; i++) { c.step(); if (ts.rmws > before) tr = c.cycle(); }
+        c.step(); c.step();
+        char b[32]; std::snprintf(b, sizeof b, "%x", p.ptr(9));
+        sb += " ptr@" + std::to_string(tr) + " " + b;
+    }
+    const uint64_t before = hs.rmws;
+    h.we_hist_req(c.cycle() + 1, 0, 3, 1);
+    int64_t tr = -1;
+    for (int i = 0; i < 50 && tr < 0; i++) { c.step(); if (hs.rmws > before) tr = c.cycle(); }
+    c.step(); c.step();
+    sb += "; hist@" + std::to_string(tr) + " " + std::to_string(h.hist_peek(3));
+    say("%s\n", sb.c_str());
+}
+void ub_case() {
+    const std::string msg = suite::ub([] {
+        mach::MachConfig k = mach::MachConfig::machine();
+        k.periph_type = 0;
+        Net n(k);
+        mach::TileRef p = n.c.tile(9);
+        p.poke_local(0x01000000, 0x00102503);
+        p.poke_local(0x01000004, 0x0000006F);
+        n.c.cc().set_expect(1ull << 9);
+        n.c.cc().command(9, 0x4Au << 24, {0x01000000}).go();
+        n.c.run(2000);
+    }, {"tile 9", "controller", "misaligned 4-byte load"}, "a misaligned load");
+    say("ub: %s\n", msg.empty() ? "ran on" : msg.c_str());
+}
 void netself() {
     out.clear();
+    ub_case();
+    figure12_case(1);
+    figure12_case(3);
     back_pressure_case();
     drain_case();
     test_peripheral_case();
@@ -669,12 +745,19 @@ void checkself() {
     }
     {
         mach::MachConfig k = Net::cfg(-1);
-        k.queue_depth = 2; k.we_in_depth = 1; k.measure_s1 = false;
+        k.queue_depth = 2; k.we_in_depth = 1;   // W26: S1 on again
         Net n(k);
         for (unsigned s = 20; s < 40; s++) for (unsigned i = 0; i < 4; i++)
             n.at(s, 10 + i, 9, lw::M_WRITE, 1, uint32_t(lw::R_SRAM) << 24 | (s * 16 + 2 * i) << 2, lw::SIZE_64, s * 100 + i, 0);
         n.run_all(2000);
         say("%s", n.c.violation_report().c_str());
+#ifdef SIM_CHECKS
+        {   // W26: S1.report (s1.h)
+            const units::S1Tile* t[64];
+            for (unsigned x = 0; x < 64; x++) t[x] = n.c.tile(x).unit<units::Director>("dir").s1.get();
+            say("%s\n", units::s1_report(t, 64, k.K).c_str());
+        }
+#endif
     }
     {
         mach::MachConfig k = Net::cfg(-1);
@@ -772,6 +855,13 @@ void checkself() {
         }
         n.run_all(1000);
         say("%s", n.c.violation_report().c_str());
+#ifdef SIM_CHECKS
+        {   // W26: S1's PTR and HIST paths
+            const units::S1Tile* s1t[64];
+            for (unsigned x = 0; x < 64; x++) s1t[x] = n.c.tile(x).unit<units::Director>("dir").s1.get();
+            say("%s\n", units::s1_report(s1t, 64, k.K).c_str());
+        }
+#endif
     }
     {   // W26 (1a): the peripheral slot's own checks (window 1: word 8 stored, word 10 loaded, word 22 stored)
         mach::MachConfig k = Mach::cfg(-1);
@@ -928,6 +1018,35 @@ void checkself() {
         m.c.run(200);
         say("%s", m.c.violation_report().c_str());
     }
+    {   // W26: the slot's DMA_HDR and DMA_ADDR changed mid-transfer (ref's test peripheral on tile 7)
+        mach::MachConfig k = mach::MachConfig::machine();
+        k.periph_type = 0; k.test_peripheral_tile = 7;
+        Net n(k);
+        n.c.run(200);
+        const uint32_t W1 = 0xFFFFF800u + 0x200, hdr = 7u | 1u << 12 | 65u << 25 | 5u << 19;
+        const uint32_t st[5][2] = {{W1 + 32, hdr}, {W1 + 36, 0x400}, {W1 + 16, 1}, {W1 + 32, hdr}, {W1 + 36, 0x500}};
+        for (const auto& s : st) { n.c.tile(7).store(n.c.cycle() + 1, s[0], s[1]); n.step(); }
+        for (int i = 0; i < 40; i++) n.step();
+        say("%s", n.c.violation_report().c_str());
+    }
+    {   // W26 (W22's F6): invariant 2's phases at the counters-done latch: A -> B, latch, B -> A; then one run on one buffer
+        Net n(Net::cfg(-1));
+        mach::TileRef p = n.c.tile(12);
+        const uint32_t A = 0x20000, B = 0x40000, N = 64;
+        for (uint32_t i = 0; i < N; i++) p.sram_poke64(A + 2 * i, 0xA000ull + i);
+        const uint32_t runs[3][2] = {{A, B}, {B, A}, {A, A + 2 * N - 16}};
+        for (uint32_t r = 0; r < 3; r++) {
+            p.set_stream(r, stream_src(runs[r][0]), 0, stream_count(N, SIZE_64, 1, lw::M_SRC, 0));
+            p.set_ptr(12, runs[r][1]); p.set_remaining(1, N);
+            p.set_master_config(master_config(RUN_STREAMS, r, 1, 0, 0, 1));
+            p.pulse(PULSE_START);
+            n.c.run(600);
+        }
+        say("%s", n.c.violation_report().c_str());
+#ifdef SIM_CHECKS
+        say("disjoint-buffer accesses counted: %llu\n", (unsigned long long)p.unit<units::BigSram>("sram").disjoint_violations);
+#endif
+    }
     {
         mach::MachConfig k = Net::cfg(-1);
         k.max_violation_messages = 3;
@@ -1011,3 +1130,4 @@ TEST(mach_config_front_end) {
     CHECK(!k.set_args({"cfg.K"}, err));
     CHECK(!mach::MachConfig::dropped().empty());
 }
+

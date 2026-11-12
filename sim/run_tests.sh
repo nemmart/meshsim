@@ -44,7 +44,7 @@ SUITES="suite_memsys suite_rvc suite_tracer"
 EQUIVS="test_golden test_tileslotconf"
 SUITES="$SUITES suite_ccbench suite_hooks suite_regdoc suite_accounting"                       # W23 (P5)
 SUITES="$SUITES suite_replayer stageb"               # W25 (P7b)
-SUITES="$SUITES suite_net suite_search suite_agbench suite_engine suite_reqbus"   # W22 (P4)
+SUITES="$SUITES suite_net suite_search suite_agbench suite_engine suite_reqbus suite_mem suite_rdport"   # W22 (P4)
 SUITES="$SUITES sort_test sweep"                     # W24 (P6)
 
 if [ "$BUILD" = 1 ]; then
@@ -100,20 +100,20 @@ NETREF=tests/p4suites/net.log; [ "$MODE" = quick ] && NETREF=tests/p4suites/net-
 step net       1 "network, packets, director" $NETREF -- $S/suite_net -1 $Q
 step net-shuf  1 "shuffled child order (seed 5)" tests/p4suites/net-shuf.log -- $S/suite_net 5 quick
 step net-shuf2 1 "shuffled child order (seed 11)" tests/p4suites/net-shuf2.log -- $S/suite_net 11 quick
-pending mem           "big SRAM, read and write queues" "P4: W22-14, the disjoint check"
-pending mem-shuf      "shuffled child order (seed 3)" "P4: W22-14, the disjoint check"
-pending mem-shuf2     "shuffled child order (seed 8)" "P4: W22-14, the disjoint check"
+step mem 1 "big SRAM, read and write queues" tests/p4suites/mem.log -- $S/suite_mem -1
+step mem-shuf 1 "shuffled child order (seed 3)" tests/p4suites/mem-shuf.log -- $S/suite_mem 3
+step mem-shuf2 1 "shuffled child order (seed 8)" tests/p4suites/mem-shuf2.log -- $S/suite_mem 8
 step engine 1 "address generator, write engine, all-to-all (small)" tests/p4suites/engine.log -- $S/suite_engine -1
 step eng-shuf 1 "shuffled child order (seed 4)" tests/p4suites/eng-shuf.log -- $S/suite_engine 4
 pending ctrl          "control and the controller (from C)" "P5"
 pending ctrl-shuf     "shuffled child order (seed 4)" "P5"
 equiv riscv           "riscv-tests rv32ui/rv32um on the controller" "test_golden (every program's retire trace equal to ref's)" -- $S/test_golden
-pending rdport        "read port, GATHER (Java; the C parts PENDING (phase 2))" "P4: W22-18, W26's invariant 8"
+step rdport 1 "read port, GATHER (Java; the C parts PENDING (phase 2))" tests/p4suites/rdport.log -- $S/suite_rdport -1
 step accounting 1 "per-phase accounting (from C)" tests/ctlsuites/accounting.log -- bash -c "$S/suite_accounting -1 && { cmp -s results/phases-a2a.csv tests/ctlsuites/phases-a2a.csv || echo 'FAIL results/phases-a2a.csv differs from v1.3s'; }"
 step searchbench 3 "search steps through the read port (microbenchmark, from C)" tests/p4suites/searchbench.log -- $S/suite_search
-pending rdport-shuf   "shuffled child order (seed 4)" "P4: W22-18, W26's invariant 8"
-pending agtest        "address generator read-ahead, figure 12's PTR/HIST ports" "P4: W22-16, W26's AG stream checks"
-pending agtest-shuf   "shuffled child order (seed 4)" "P4: W22-16, W26's AG stream checks"
+step rdport-shuf 1 "shuffled child order (seed 4)" tests/p4suites/rdport-shuf.log -- $S/suite_rdport 4
+pending agtest        "address generator read-ahead, figure 12's PTR/HIST ports" "P4: W22-16 (figure 12)"
+pending agtest-shuf   "shuffled child order (seed 4)" "P4: W22-16 (figure 12)"
 step cc-build      2 "building the controllers' firmware (sw/build_cc.sh: sw/cc/cc1.c, cc23.c; WORKER14)" - -- fw_part cc
 step recipes-build 1 "building the v1.2 recipes (sw/build_recipes.sh: wip/sw/recipes/, unedited)" - -- fw_part recipes
 pending recipes       "the v1.2 recipes as suites, and the book's code blocks against their sources" "P5"
@@ -150,7 +150,7 @@ if [ "$MODE" != quick ]; then
   sort_bt() { local d; d=$(tests/sort/keys.sh 16384 trace10-10) || return 1; $S/sort_test -1 run label=bt16k-$1 keys=$d/trace10-10.keys fmt=$1 ready=8 force=bt; }
   step sort-bt-kv32 2 "BT, forced, trace hot 10 / 10 % at 64 x 16,384, 32-bit values (a few minutes)" tests/sort/ref/sort-bt-kv32.log -- sort_bt kv32
   step sort-bt-k128 2 "the same, 128-bit values" tests/sort/ref/sort-bt-k128.log -- sort_bt k128
-  pending rdport-full     "gather 1 at full size (Java; the C parts PENDING (phase 2))" "P4: W22-18, W26's invariant 8"
+  step rdport-full 1 "gather 1 at full size (Java; the C parts PENDING (phase 2))" tests/p4suites/rdport-full.log -- $S/suite_rdport -1 full
   step accounting-full 1 "per-phase accounting, full-size all-to-all from C" tests/ctlsuites/accounting-full.log -- bash -c "$S/suite_accounting -1 full && { cmp -s results/phases-a2a-full.csv tests/ctlsuites/phases-a2a-full.csv || echo 'FAIL results/phases-a2a-full.csv differs from v1.3s'; }"
   step agbench 3 "read-ahead measurements: ag_lookahead, zero-length groups, start to first request (a few minutes)" tests/p4suites/agbench.log -- $S/suite_agbench
   pending s1bench         "item S1: K's margin over the write path, L = 1-4, and the table-window case (a few minutes)" "P5 (W23)"

@@ -53,6 +53,7 @@ final class MachSelf {
             for (String u : StateFp.CHIP_UNITS) { o = new StateFp.Out(); StateFp.chipUnit(o, m.c, u, m.c.cycle); all = StateFp.fmix(all ^ o.done()); nn++; }
             System.out.printf("  fp %016x%n", StateFp.fmix(all ^ nn));
         }
+        System.out.print(m.c.agReport());
         StringBuilder pl = new StringBuilder("  phaseLog");
         for (long[] e : m.c.cc.phaseLog) pl.append(' ').append(java.util.Arrays.toString(e));
         System.out.println(pl);
@@ -147,7 +148,44 @@ final class MachSelf {
         }
     }
 
+    static String fp(Mach m) {
+        StateFp.Out o; long all = 0x6A09E667F3BCC908L; int nn = 0;
+        for (Tile p : m.c.tiles) for (String u : StateFp.TILE_UNITS) { o = new StateFp.Out(); StateFp.unit(o, m.c, p, u, m.c.cycle); all = StateFp.fmix(all ^ o.done()); nn++; }
+        for (String u : StateFp.CHIP_UNITS) { o = new StateFp.Out(); StateFp.chipUnit(o, m.c, u, m.c.cycle); all = StateFp.fmix(all ^ o.done()); nn++; }
+        return String.format("%016x", StateFp.fmix(all ^ nn));
+    }
+    /** B20: the a2a's run cut by C&C's queued soft reset mid-phase, the state across it (StateFp), then the a2a again. */
+    static void resetCase(long seed) {
+        Mach m = new Mach(Mach.cfg(seed));
+        A2A data = new A2A(7, 2000);
+        for (Tile p : m.c.tiles) {
+            int s = p.idx;
+            for (int k = 0; k < data.rec[s].length; k++) p.sram.poke64(A2A.SRC + 2 * k, data.rec[s][k]);
+            for (int d = 0; d < 64; d++) p.sram.poke(0xF0000 + d, data.cnt[s][d]);
+            for (int src = 0; src < 64; src++) p.sram.poke(0xF0000 + 64 + src, data.cnt[src][s]);
+            for (int g = 0; g < 16; g++) p.sram.poke(0xF0000 + 128 + g, data.R[g]);
+            p.sram.poke(0xF0000 + 144, 0);
+        }
+        m.boot("a2a");
+        m.c.cc.command(LinkWord.BROADCAST, 1 << 24).go().command(LinkWord.BROADCAST, 2 << 24).go();
+        m.run(() -> m.c.cycle >= 5200, 100000);                          // the a2a phase under way
+        m.c.cc.reset(false);
+        m.run(() -> m.c.resets == 1, 100000);
+        StringBuilder sb = new StringBuilder("reset seed " + seed + ": at " + m.c.lastResetAt + " fp " + fp(m));
+        m.c.step(); sb.append("; next fp ").append(fp(m));
+        m.run(() -> !m.c.cc.busy(), 100000);
+        sb.append("; queue done at ").append(m.c.cycle).append(" fp ").append(fp(m));
+        m.boot("a2a");
+        m.c.cc.command(LinkWord.BROADCAST, 1 << 24).go().command(LinkWord.BROADCAST, 2 << 24).go().command(LinkWord.BROADCAST, 3 << 24).go();
+        boolean ok = m.run(m::allStopped, 20_000);
+        sb.append("; rerun ").append(ok ? "stopped" : "NOT stopped").append(" at ").append(m.c.cycle).append(" fp ").append(fp(m)).append(" violations ").append(m.c.violations);
+        System.out.println(sb);
+        for (String l : m.c.log) if (l.contains("reset")) System.out.println("  " + l);
+    }
+
     public static void main(String[] a) throws Exception {
+        resetCase(-1);
+        resetCase(4);
         trace();
         trace(true);
         phases(-1);

@@ -110,8 +110,8 @@ struct TileCtl {
     uint32_t ck_errors = 0;
     bool ck_line = false;
     void apply_host() {
-        if (host.mask & HostWrites::DMA_CONFIG) s.dma_config = host.dma_config;
-        if (host.mask & HostWrites::RECORD_BASE) s.record_base = host.record_base;
+        if (host.mask & HostWrites::DMA_CONFIG) s.dma_config = s.dma_master = host.dma_config;
+        if (host.mask & HostWrites::RECORD_BASE) s.record_base = s.record_master = host.record_base;
         if (host.mask & HostWrites::STARTS) s.dma_starts += host.starts;
         for (unsigned k = 0; k < 8; k++) if (host.mask & HostWrites::REMAINING << k) s.remaining[k] = host.remaining[k];
         host = HostWrites{};
@@ -120,12 +120,13 @@ struct TileCtl {
     // W26 (the checker, SIM_CHECKS only): a GO taken at endCycle(t), as t + 1, for the core's command-slot check (ref's
     // endCycle clears cmem.slot0Unread at a GO while the core is in the boot ROM: TileCore::step)
     sim::WireOut go_out;
+    sim::WireOut phase_out;            // W26: invariant 2's phases of endCycle(t): (t + 1) << 2 | how many (big_sram.h)
     bool go_wire = false;
     TileCtl(sim::Ports& p, const RegBlockState& initial, bool router_ovf_event = false, bool g4_ = false, bool slot_ = false,
             bool go_wire_ = false)
         : s(initial), ovf_event(router_ovf_event), g4(g4_), slot(slot_), go_wire(go_wire_) {
 #ifdef SIM_CHECKS
-        if (go_wire) p.out(go_out, "go_seen");
+        if (go_wire) { p.out(go_out, "go_seen"); p.out(phase_out, "phases"); }
 #endif
         if (slot) p.in(slot_win, "slot_win");
         if (ovf_event) p.in(ovf, "ovf", 0);
@@ -183,6 +184,7 @@ struct TileCtl {
         s.end_cycle(c.now() - 1, in);
 #ifdef SIM_CHECKS
         if (go_wire && in.go) c.drive(go_out, c.now());       // W26: the GO of endCycle(now - 1)
+        if (go_wire && s.new_phases) c.drive(phase_out, c.now() << 2 | s.new_phases);   // W26: its new disjoint phases
 #endif
         if (host_on && host.mask) apply_host();                // W20 (harness-only)
         if constexpr (sim::check::kOn) {                       // W20: the checker's facts (invariant 15)
@@ -200,8 +202,8 @@ struct TileCtl {
         if constexpr (sim::kDebug)
             for (unsigned r = 0; r < kRegs; r++)
                 if (pub[r] != s.reg(r)) FATAL("register block: register %u is 0x%x, published 0x%x (RegBlockState::publish misses it)", r, s.reg(r), pub[r]);
-        if (s.dma_config != pub_dma[0]) { pub_dma[0] = s.dma_config; c.write(dma, DMA_R_CONFIG, s.dma_config); }
-        if (s.record_base != pub_dma[1]) { pub_dma[1] = s.record_base; c.write(dma, DMA_R_RECORD_BASE, s.record_base); }
+        if (s.dma_master != pub_dma[0]) { pub_dma[0] = s.dma_master; c.write(dma, DMA_R_CONFIG, s.dma_master); }
+        if (s.record_master != pub_dma[1]) { pub_dma[1] = s.record_master; c.write(dma, DMA_R_RECORD_BASE, s.record_master); }
         c.drive(wake, s.wake());
         c.drive(irq, s.irq());
         if (s.ready_pulse || s.error_line != error_out) {
@@ -326,6 +328,7 @@ struct TileCore {
     // t as ref's core sees them (table_store.h, ag.h: busy_hist, busy_ptr, running), same-cycle Wires
     // An instruction at t is judged on the state at t; a test's store (TileRef::store, made here at t) on ref's flags as
     // the cycle before left them (ref's harness store runs between cycles: the stores' and the AG's flags of t - 1).
+    S1Tile* s1 = nullptr;              // W26: S1 (s1.h), SIM_CHECKS only (add_g1)
     sim::WireIn busy_hist, busy_ptr, ag_running, go_seen;   // (go_seen: TileCtl's GO, the command-slot check below)
     sim::Word go_last = 0;
     bool table_busy = false, host_now = false;
@@ -466,6 +469,12 @@ struct TileCore {
         }
         uint32_t hist(uint32_t i) const {                // RmwPipe.ctrlRead: on a write-back cycle, the engine's value
             u.table_check(c, TBL_HIST, i);               // W26: the window's check (Controller.window)
+#ifdef SIM_CHECKS
+            if (u.s1 && u.s1->on) {                      // W26: S1's table-window case (the last write-back; ref's -1 none)
+                const uint32_t at = c.read(u.hist, HIST_WB_AT);
+                u.s1->hist_load(int64_t(c.now()) - (at ? int64_t(at) - 1 : -1));
+            }
+#endif
             if (c.read(u.hist, HIST_WB_AT) == uint32_t(c.now() + 1)) return c.read(u.hist, HIST_WB_VAL);
             return c.read(u.hist, i);
         }

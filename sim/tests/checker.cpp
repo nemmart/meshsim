@@ -192,6 +192,12 @@ std::string Checker::text(const Fact& f) const {
     case Kind::DISJOINT:                                   // (W26) BigSRAM.mark's text, the phase's first
         return fmt("chunk 0x%x %s after being %s in the same phase (invariant 2, phase %u)", unsigned(a[0]), a[1] ? "written" : "read",
                    a[2] ? "written" : "read", unsigned(a[3]));
+    case Kind::S1_LATE:                                    // (W26) S1.lastLate (BigSRAM.s1Ordered, TableStore's write-backs)
+        if (a[0] == 0)
+            return fmt("tile %u: big SRAM chunk 0x%x in its area's queue %" PRIu64 " cycles after acceptance, past K + 4 = %u (invariant 24)",
+                       unsigned(a[1]), unsigned(a[2]), a[3], sw_.K + 4);
+        return fmt("tile %u: %s[%u] complete %" PRIu64 " cycles after acceptance, past K = %u (invariant 24)", unsigned(a[1]),
+                   a[0] == 1 ? "PTR" : "HIST", unsigned(a[2]), a[3], sw_.K);
     case Kind::HIST_OVERFLOW: return "a counter exceeded 17 bits (invariant 6)";
     case Kind::ROTATION_LATE: return "address generator: a rotation started late (invariant 3; drift, see agReport)";
     case Kind::READ_RETURN_REFUSED: return "SIMULATOR: a read return was refused by the injection point";
@@ -321,6 +327,10 @@ void Checker::process(int64_t now, bool scan, bool final) {
         size_t j = i + 1;                                    // a group: one cycle, one slot, one tile (each overflow alone)
         while (j < fs.size() && fs[i].kind != Kind::FIFO_OVERFLOW && at(fs[j]) == t && rank(fs[j]) == rank(fs[i]) && fs[j].tile == fs[i].tile) j++;
         const Fact* lastp = &fs[j - 1];
+        if (rank(*lastp) == int(Slot::S1_LATE)) {           // W26: ref's s1.lastLate is the last in its tiles' child order
+            for (size_t k = i; k < j; k++)                    // (tile by tile; in a tile big SRAM, then PTR, then HIST)
+                if (fs[k].a[1] > lastp->a[1] || (fs[k].a[1] == lastp->a[1] && fs[k].a[0] >= lastp->a[0])) lastp = &fs[k];
+        }
         if (rank(*lastp) == int(Slot::ENDPOINT)) {          // W26: ref's text is the last of the highest endpoint that ever had one
             for (size_t k = i; k < j; k++) { const unsigned e = unsigned(fs[k].a[1]) - 64; if (e < 3) { ep_last_[e] = fs[k]; ep_has_[e] = true; } }
             for (unsigned e = 0; e < 3; e++) if (ep_has_[e]) lastp = &ep_last_[e];

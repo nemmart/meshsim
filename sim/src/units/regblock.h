@@ -28,6 +28,9 @@ struct RegBlockState {
     uint32_t req_n = 0, set_w[3] = {};          // the request port's FIFO count and REQUEST_SET_W0-W2
     // ---- M2 (W8): TileControl's registers and qualifiers ----
     uint32_t router_hdr = 0, router_addr = 0, router_w[3] = {}, dma_config = 0, record_base = 0, rd_setup = 0;
+    // W20 (B20): the engines' copies (ref's Tile.setMasterConfig, setRecordBase: set with the registers, but a reset
+    // clears only the registers, so they differ only after one); published to the engines through `dma`
+    uint32_t dma_master = 0, record_master = 0;
     uint64_t rp_errors = 0;            // W11: read-port stores dropped (ReadPort.errors: ERRORS [7], READ_PORT)
     // W15 (M3): the peripheral slot's live bits at t (its window RegFile's Win::R_LIVE, set by TileCtl before end_cycle):
     // [2:0] EVENTS [15:13] ((events | DMA done) & EVENTS_MASK != 0 per peripheral), [5:3] ERRORS [13:11] (ERRORS != 0)
@@ -50,6 +53,9 @@ struct RegBlockState {
     // qualifying arrival (spuriousEdges), and the cycles of the last done, the last landed command and the last READY
     // pulse (lastDoneAt, lastLandedAt: -1 before any; readyPulseAt: INT64_MIN before any)
     uint64_t spurious_edges = 0;
+    // W26 (invariant 2; not in the digest): the disjoint-buffer phases this endCycle starts (ref's sram.newPhase at a GO and
+    // at the counters-done latch, TileControl.java:234, :280; 0-2), for big SRAM through TileCtl's `phase_out` Wire
+    uint8_t new_phases = 0;
     int64_t last_done_at = -1, last_landed_at = -1, ready_pulse_at = INT64_MIN;
     int64_t counter_write_at[8] = {-1, -1, -1, -1, -1, -1, -1, -1};   // each write counter's last store (counterWriteAt)
     uint64_t sends_by_size[3] = {};             // send stores by size: 32, 64, 128 bits (sendsBySize)
@@ -88,7 +94,8 @@ struct RegBlockState {
             else remaining[in.kline]--;
         }
         if (in.freed) { if (req_n == 0) violations++; else req_n--; }   // the bus freed the head at t, before the tile ran
-        if (in.go) { done = landed = gate = false; gos++; events |= 1u << EV_GO; }                    // 1.
+        new_phases = 0;                                                  // W26
+        if (in.go) { done = landed = gate = false; gos++; events |= 1u << EV_GO; new_phases++; }      // 1.
         uint32_t clears = 0;
         dma_pulse = false;
         if (in.op == BUS_STORE) clears = apply(t, in.arg, in.v, in.ag_running);                                     // 2.
@@ -143,7 +150,7 @@ struct RegBlockState {
         bool cond = counters_zero();
         if (cond && !cond_all_prev && q_all) {
             q_all = false;
-            if (!gated && !(clears >> EV_COUNTERS_DONE & 1)) events |= 1u << EV_COUNTERS_DONE;
+            if (!gated && !(clears >> EV_COUNTERS_DONE & 1)) { events |= 1u << EV_COUNTERS_DONE; new_phases++; }   // (W26: ref's newPhase)
         } else if (cond && !cond_all_prev) spurious_edges++;                                   // W23: statistics
         cond_all_prev = cond;
     }
@@ -182,9 +189,9 @@ struct RegBlockState {
         case DMA_CONFIG:
             if ((v >> 18 & 7) > 4 || (v >> 21 & 7) > 4)
                 FATAL("register block: DMA_CONFIG 0x%x at cycle %llu: a reserved digit selector (5-7: UB, spec 4.15)", v, (unsigned long long)t);
-            dma_config = v;
+            dma_config = v; dma_master = v;
             break;
-        case DMA_RECORD_BASE_ADDRESS: record_base = v & 0x1FFFFF; break;
+        case DMA_RECORD_BASE_ADDRESS: record_base = v & 0x1FFFFF; record_master = record_base; break;
         case ROUTER_HDR: router_hdr = v & ~(3u << 17) & ~0x1FFFEu; break;   // size and spare: stores ignored, read 0
         case ROUTER_ADDR: router_addr = v; break;
         case ROUTER_SET_W0: case ROUTER_SET_W1: case ROUTER_SET_W2: router_w[r - ROUTER_SET_W0] = v; break;

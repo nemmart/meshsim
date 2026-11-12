@@ -89,7 +89,7 @@ void go_to_first_request(Mach& m, unsigned k, const char* recipe, const char* ru
     const int64_t go = m.c.cc().phase_log().at(k + 1)[1];                 // v1.2: entry 0 is the boot's GO
     int64_t fmin = INT64_MAX, fmax = 0, smin = INT64_MAX, smax = 0, lead = -1; bool same_lead = true;
     for (unsigned t = 0; t < 64; t++) {
-        const units::AddrGen& ag = m.c.tile(t).unit<units::AddrGen>("ag");
+        const units::AddrGen& ag = m.c.unit<units::AddrGen>(unit_name(t, "ag"));
         const int64_t f = ag.first_request_at - go, st = ag.started_at - 1 - go, l = ag.first_request_at - (ag.started_at - 1);
         fmin = std::min(fmin, f); fmax = std::max(fmax, f); smin = std::min(smin, st); smax = std::max(smax, st);
         if (lead < 0) lead = l; else if (lead != l) same_lead = false;

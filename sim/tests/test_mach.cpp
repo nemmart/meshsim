@@ -171,8 +171,51 @@ void a2a_net(int64_t seed, int gap) {
     say("  then %s at cycle %lld; t5 gather drained %llu\n", ok ? "quiescent" : "NOT quiescent", (long long)n.c.cycle(),
         (unsigned long long)t5.unit<units::Gather>("gather").drained);
 }
+std::string recv(Net& n, unsigned c) {
+    const auto r = n.received(c);
+    std::string sb = std::to_string(r.size()) + " [";
+    for (const auto& e : r) sb += " " + std::to_string(e[0]) + ":" + hx(e[1]) + ":" + hx(e[2]);
+    return sb + " ]";
+}
+void controllers(int64_t seed) {
+    Net n(Net::cfg(seed));
+    int64_t T0 = n.c.cycle() + 2;
+    n.cnc_send({T0, lw::BROADCAST, lw::M_SRC, 0, Net::tagged(64, T0)});
+    bool ok = n.run_all(500);
+    int64_t lo = INT64_MAX, hi = 0, copies = 0;
+    for (unsigned d = 0; d < 64; d++) for (const auto& e : n.log(d)) { lo = std::min(lo, int64_t(e[0])); hi = std::max(hi, int64_t(e[0])); copies++; }
+    say("controllers seed %lld: broadcast %s at cycle %lld; %lld copies, first %lld last %lld; C&C 1 received %s\n", (long long)seed,
+        ok ? "drained" : "NOT drained", (long long)n.c.cycle(), (long long)copies, (long long)(lo - T0), (long long)(hi - T0), recv(n, 0).c_str());
+    n.clear_logs();
+    T0 = n.c.cycle() + 2;
+    n.cnc_send({T0, 9, lw::M_WRITE, 0x80 + 12, 0xCAFE0003ull, lw::SIZE_32, 0, 0});
+    n.cnc_send({T0 + 1, 9, lw::M_WRITE, 0x80, 0x0000C0DEull, lw::SIZE_32, 0, 0});
+    for (unsigned k = 0; k < 5; k++) n.cnc_send({T0 + 1, 20 + k, lw::M_WRITE, 0x100, k, lw::SIZE_64, 0, 2});
+    ok = n.run_all(500);
+    say("  command %s at cycle %lld; t9 dmem[0x20] %s dmem[0x23] %s\n", ok ? "drained" : "NOT drained", (long long)n.c.cycle(),
+        w(n, 9, 0x20).c_str(), w(n, 9, 0x23).c_str());
+    logs(n, {9, 20, 24});
+    n.clear_logs();
+    T0 = n.c.cycle() + 2;
+    for (unsigned s : {0u, 2u, 37u, 63u}) for (unsigned c = 0; c < 3; c++) n.at(s, T0 + c, 64 + c, lw::M_WRITE, 3, 0x100, lw::SIZE_32, s, 0);
+    ok = n.run_all(500);
+    say("  to the controllers %s at cycle %lld\n", ok ? "drained" : "NOT drained", (long long)n.c.cycle());
+    for (unsigned c = 0; c < 3; c++) say("  C&C %u received %s\n", c + 1, recv(n, c).c_str());
+    n.clear_logs();
+    n.send(1, 66, lw::M_WRITE, 2, 0x200, lw::SIZE_64, 0x77, 0);
+    n.run_all(300);
+    const int src = n.received(2).size() == 1 ? int(lw::src(n.received(2)[0][2])) : -1;
+    n.clear_logs();
+    n.send(1, lw::BROADCAST, lw::M_COUNT, 1, 0, lw::SIZE_32, 9, 0);
+    n.run_all(300);
+    int reached = 0;
+    for (unsigned d = 0; d < 64; d++) if (n.log(d).size() == 1 && lw::src(n.log(d)[0][2]) == 65) reached++;
+    say("  C&C 2 -> C&C 3 from %d; C&C 2's broadcast reaches %d tiles once, controllers %zu %zu %zu\n", src, reached,
+        n.received(0).size(), n.received(1).size(), n.received(2).size());
+}
 void netself() {
     out.clear();
+    controllers(-1); controllers(3);
     packets(-1); packets(5);
     reads();
     a2a_net(-1, 0); a2a_net(4, 0); a2a_net(-1, 8);

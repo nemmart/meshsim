@@ -886,24 +886,25 @@ void Sim::wake_all() {
     if (impl_->threads) return impl_->threads->wake_all();
     for (uint32_t k = 0; k < impl_->e.ninst; k++) impl_->e.mark(k);
 }
-bool Sim::in_flight(const std::vector<uint16_t>& shifted) const {
+bool Sim::in_flight(const std::vector<uint16_t>& shifted, const std::vector<uint16_t>& ignored) const {
     if (impl_->running) FATAL("Sim::in_flight during a run: between runs only");
-    if (impl_->threads) return impl_->threads->in_flight(shifted);
+    if (impl_->threads) return impl_->threads->in_flight(shifted, ignored);
     const Engine& e = impl_->e;
-    for (uint32_t k = 0; k < e.ninst; k++) if (e.mask[k] & ~e.edges[k]) return true;
+    auto in = [](const std::vector<uint16_t>& v, uint16_t ty) { for (uint16_t x : v) if (x == ty) return true; return false; };
+    for (uint32_t k = 0; k < e.ninst; k++)
+        if ((e.mask[k] & ~e.edges[k]) && !in(ignored, impl_->inst[k].type)) return true;
     for (uint32_t wi = 0; wi < e.nwheels; wi++) {
         const Wheel& wh = e.wheels[wi];
         if (wh.kind != Kind::link && wh.kind != Kind::fifo && wh.kind != Kind::credit && wh.kind != Kind::hold) continue;
         for (uint32_t b = 0; b <= wh.mask; b++) {
             const Bucket& bk = wh.buckets[b];
             if (!bk.count()) continue;
-            if (wh.kind != Kind::link || shifted.empty() || b != (e.now & wh.mask)) return true;
-            const Word* p = bk.begin();                  // a Link's bucket of now(): only words into a shifted unit
-            for (uint32_t m = bk.count(); m; m--, p += wh.width + 1) {
+            if (wh.kind != Kind::link || (shifted.empty() && ignored.empty())) return true;
+            const bool now = b == (e.now & wh.mask);
+            const Word* p = bk.begin();                  // a Link's bucket: words into ignored units, and into shifted
+            for (uint32_t m = bk.count(); m; m--, p += wh.width + 1) {   // units at now(), don't count
                 const uint16_t ty = impl_->inst[e.links[p[0]].owner].type;
-                bool sh = false;
-                for (uint16_t x : shifted) sh = sh || x == ty;
-                if (!sh) return true;
+                if (!in(ignored, ty) && !(now && in(shifted, ty))) return true;
             }
         }
     }

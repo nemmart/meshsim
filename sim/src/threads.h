@@ -150,7 +150,7 @@ struct Threads {
     uint64_t steps(const std::string& name) const;
     void wake(const std::string& name);              // W10: Sim::wake, in the unit's domain
     void wake_all();                                 // W20 (harness-only): Sim::wake_all, every domain
-    bool in_flight(const std::vector<uint16_t>& shifted) const;          // W20 (harness-only): Sim::in_flight, any domain
+    bool in_flight(const std::vector<uint16_t>& shifted, const std::vector<uint16_t>& ignored) const;          // W20 (harness-only): Sim::in_flight, any domain
     uint64_t digest() const;
     std::string sleepers() const;
 

@@ -119,8 +119,14 @@ struct Chip::Impl {
     std::vector<units::HarnessFeed> feeds;
     std::vector<std::vector<E4>> ring_store;            // tile k's ring r (0: ret, 1-3: clients 0-2) at 4k + r
     std::vector<std::vector<E4>> logs;
+    // the endpoints' harness parts (cnc.h's HarnessSends): C&C 1 (the Java model), C&C 2, C&C 3
+    units::HarnessSends sends[3];
+    std::vector<units::HarnessSends::E> send_store[3];
+    std::vector<E4> recv[3];
+    void push_send(unsigned cc, const units::HarnessSends::E& e);
     bool net = false;
     std::vector<uint16_t> shifted;                      // the register block's and the core's types (Sim::in_flight)
+    std::vector<uint16_t> lines;                        // C&C's row collectors and C&C: ref's READY and error lines
     void enable_net(const MachConfig& c);
     void push(unsigned tile, unsigned ring, const E4& e);
 
@@ -192,6 +198,7 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         m.sim->unit<units::TileCtl>(units::tile_unit(k, "ctl")).host_on = true;
     }
     m.shifted = {m.sim->type_of(units::tile_unit(0, "ctl")), m.sim->type_of(units::tile_unit(0, "core"))};
+    if (!c.cc_cores) m.lines = {m.sim->type_of("row0"), m.sim->type_of("cnc")};
     m.has_cnc = !c.cc_cores;
     if (!c.cc_cores) m.cc = std::make_unique<Cc>(*this);
     for (uint32_t id = units::CncProgram::kCalls; id-- > 0;) m.free_ids.push_back(id);
@@ -241,7 +248,7 @@ bool Chip::drain(uint64_t max) { return run_until([this] { return quiescent(); }
 // stores, the read queue, big SRAM's area queues, the write engine's stage, the gather engine, the read port).
 bool Chip::quiescent() const {
     sim::Sim& s = *impl_->sim;
-    if (s.in_flight(impl_->shifted)) return false;
+    if (s.in_flight(impl_->shifted, impl_->lines)) return false;
     for (unsigned k = 0; k < 64; k++) {
         TileRef p = const_cast<Chip*>(this)->tile(k);
         for (const auto& f : p.unit<units::Router>("router").q) if (f.count) return false;   // the router's own FIFOs
@@ -756,6 +763,27 @@ void Chip::Impl::enable_net(const MachConfig& c) {
         d.log = reinterpret_cast<uint64_t(*)[4]>(logs[k].data());
         d.log_cap = c.log_capacity; d.log_n = 0;
     }
+    if (c.cc_cores) FATAL("Net: the coreless machine has C&C 1's Java model (no cc_cores)");
+    for (unsigned k = 0; k < 3; k++) {
+        recv[k].assign(c.log_capacity, {});
+        sends[k].log = reinterpret_cast<uint64_t(*)[4]>(recv[k].data());
+        sends[k].log_cap = c.log_capacity;
+        if (k == 0) sim->unit<units::Cnc>("cnc").hs = &sends[0];
+        else sim->unit<units::Endpoint>("ep" + std::to_string(k + 1)).hs = &sends[k];
+    }
+}
+void Chip::Impl::push_send(unsigned cc, const units::HarnessSends::E& e) {   // between cycles: grow if full
+    units::HarnessSends& h = sends[cc];
+    std::vector<units::HarnessSends::E>& v = send_store[cc];
+    if (h.n == h.cap) {
+        std::vector<units::HarnessSends::E> w(std::max<size_t>(64, 2 * size_t(h.cap)));
+        for (uint32_t i = 0; i < h.n; i++) w[i] = h.e[(h.head + i) % h.cap];
+        v.swap(w);
+        h.e = v.data(); h.cap = uint32_t(v.size()); h.head = 0;
+    }
+    h.e[(h.head + h.n) % h.cap] = e;
+    h.n++;
+    sim->wake(cc == 0 ? std::string("cnc") : "ep" + std::to_string(cc + 1));
 }
 void Chip::Impl::push(unsigned tile, unsigned ring, const E4& e) {   // between cycles: grow if full, refresh the pointer
     units::HarnessFeed::Ring& r = ring == 0 ? feeds[tile].ret : feeds[tile].cl[ring - 1];
@@ -796,10 +824,27 @@ void Net::rd(unsigned tile, unsigned cl, int64_t T, uint32_t src_chunk, unsigned
     if (cl > 2) FATAL("Net.rd: client %u (0-2)", cl);
     c.impl().push(tile, 1 + cl, {uint64_t(T), units::mem::req_a(src_chunk, width, mode, counter, dst), units::mem::req_b(dst_addr), 0});
 }
-void Net::cnc_send(const CncSend&) { FATAL("Net: C&C's sends from the harness (Net.cncSends) come with W20's next commit"); }
+void Net::cnc_send(const CncSend& s) {
+    const units::CncPacket p{uint8_t(s.dst), uint8_t(s.mode), uint8_t(s.counter), uint8_t(s.size), s.addr, s.lo, s.hi};
+    c.impl().push_send(0, {s.T, p});
+}
+void Net::send(unsigned cc, unsigned dst, unsigned mode, unsigned counter, uint32_t addr, unsigned size, uint64_t lo, uint64_t hi) {
+    if (cc > 2) FATAL("Net::send: C&C %u (0-2)", cc + 1);
+    const units::CncPacket p{uint8_t(dst), uint8_t(mode), uint8_t(counter), uint8_t(size), addr, lo, hi};
+    c.impl().push_send(cc, {c.cycle() + 1, p});
+}
+std::vector<std::array<uint64_t, 4>> Net::received(unsigned cc) const {
+    const Chip::Impl& m = c.impl_const();
+    return std::vector<std::array<uint64_t, 4>>(m.recv[cc].begin(), m.recv[cc].begin() + m.sends[cc].log_n);
+}
 uint32_t Net::cm(uint32_t w) { return w < 0x800 ? uint32_t(units::lw::R_PMEM) << 24 | w << 2 : (w - 0x800) << 2; }
 int64_t Net::late() const { int64_t n = 0; for (const auto& f : const_cast<Chip&>(c).impl().feeds) n += int64_t(f.late); return n; }
-bool Net::pending() const { for (const auto& f : const_cast<Chip&>(c).impl().feeds) if (f.pending()) return true; return false; }
+bool Net::pending() const {
+    const Chip::Impl& m = c.impl_const();
+    for (const auto& f : m.feeds) if (f.pending()) return true;
+    for (const auto& h : m.sends) if (h.n) return true;
+    return false;
+}
 void Net::step() { c.step(); }
 bool Net::run_all(uint64_t max) {
     for (uint64_t i = 0; i < max; i++) {
@@ -813,7 +858,10 @@ std::vector<std::array<uint64_t, 4>> Net::log(unsigned tile) const {
     const units::Director& d = const_cast<Chip&>(c).unit<units::Director>(units::tile_unit(tile, "dir"));
     return std::vector<std::array<uint64_t, 4>>(c.impl_const().logs[tile].begin(), c.impl_const().logs[tile].begin() + d.log_n);
 }
-void Net::clear_logs() { for (unsigned k = 0; k < 64; k++) c.unit<units::Director>(units::tile_unit(k, "dir")).log_n = 0; }
+void Net::clear_logs() {
+    for (unsigned k = 0; k < 64; k++) c.unit<units::Director>(units::tile_unit(k, "dir")).log_n = 0;
+    for (auto& h : c.impl().sends) h.log_n = 0;
+}
 unsigned Net::max_router_peak() const {
     unsigned m = 0;
     for (unsigned k = 0; k < 64; k++) {

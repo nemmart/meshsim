@@ -349,9 +349,14 @@ public:
     // Net.rd: a read-queue request from client cl (0-2) of tile, presented from cycle T (FIFO order per client)
     void rd(unsigned tile, unsigned cl, int64_t T, uint32_t src_chunk, unsigned width, unsigned mode, unsigned counter,
             unsigned dst, uint32_t dst_addr);
-    // Net.cncSends: {T, dst, mode, addr, lo[, size, hi[, counter]]}, in order
-    struct CncSend { int64_t T; unsigned dst, mode; uint32_t addr; uint64_t lo; unsigned size; uint64_t hi; unsigned counter; };
+    // Net.cncSends: {T, dst, mode, addr, lo[, size, hi[, counter]]}, in order (C&C 1 puts it at T - 1, visible at T)
+    struct CncSend { int64_t T; unsigned dst, mode; uint32_t addr; uint64_t lo; unsigned size = 1; uint64_t hi = 0; unsigned counter = 1; };
     void cnc_send(const CncSend& s);
+    // ref's ccs[cc].send(c.cycle, ...) between cycles: C&C cc + 1's endpoint sends now. Here the put is made at the next
+    // cycle's step, one cycle after ref's (its delivery one cycle later); counts and order are the same.
+    void send(unsigned cc, unsigned dst, unsigned mode, unsigned counter, uint32_t addr, unsigned size, uint64_t lo, uint64_t hi);
+    // ref's ccs[cc].received: {t, payload [63:0], header, payload [127:64]} of every packet C&C cc + 1 received
+    std::vector<std::array<uint64_t, 4>> received(unsigned cc) const;
     static uint32_t cm(uint32_t packed_word);               // Net.cm: a v1.1 packed controller-memory word's address
     static uint64_t tagged(uint64_t seq, int64_t T) { return seq << 32 | (uint64_t(T) & 0xFFFFFFFFull); }
 
@@ -360,7 +365,7 @@ public:
     bool run_all(uint64_t max);                             // until every queue is empty and the machine quiescent
     // the director's log: {t, payload [63:0], header, payload [127:64]} of every accepted packet
     std::vector<std::array<uint64_t, 4>> log(unsigned tile) const;
-    void clear_logs();
+    void clear_logs();                                      // the directors' logs and the endpoints' received
     unsigned max_router_peak() const;
 };
 

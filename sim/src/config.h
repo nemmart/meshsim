@@ -381,8 +381,10 @@ public:
     // bucket). Regs, Wires, RegFiles, Counts and credit returns are state, not motion. For ref's Chip.quiescent.
     // `shifted`: unit types (type_of) that apply a Link word at t + 1 that ref applied at the end of t (sim.h, THE
     // SHIFTED END OF CYCLE; the core's port B): a Link word due at now() into such a unit is ref's own cycle now() - 1,
-    // done, so it isn't counted. With no types (the default) every Link word counts, as before the parameter was added.
-    bool in_flight(const std::vector<uint16_t>& shifted = {}) const;
+    // done, so it isn't counted. `ignored`: unit types whose inputs aren't motion at all for the caller (ref's READY and
+    // error lines into C&C's row collectors and C&C: wires with a delay in ref, not buses). With no types (the default)
+    // every input and every Link word counts, as before the parameters were added.
+    bool in_flight(const std::vector<uint16_t>& shifted = {}, const std::vector<uint16_t>& ignored = {}) const;
     // W10 (measurement): with Options::time_threads, a split machine's phases as shares of its threads' time over the runs
     // ("compute imbalance barrier drain publish clear end other"); "one domain" otherwise.
     std::string thread_times() const;

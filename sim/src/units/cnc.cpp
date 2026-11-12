@@ -156,6 +156,7 @@ sim::Wake Cnc::step(sim::Ctx& c) {
     if (c.ready(rx)) {
         const sim::Word* w = c.peek(rx);
         const uint64_t d = w[0], h = w[1], hi = w[2];
+        if (hs) hs->record(uint64_t(t), w, 64);              // W20 (harness-only): Endpoint.received
         c.take(rx);
         if (rx_count >= rx_depth) { rx_overflow = true; rx_lost++; }
         else {
@@ -178,6 +179,12 @@ sim::Wake Cnc::sequence(sim::Ctx& c, int64_t t) {
         return c.next();
     }
     pending_retry = 0;
+    if (hs && hs->due(t)) {                                   // W20 (harness-only): ref's Net.cncSends
+        if (cur < released) FATAL("C&C 1: the harness's send (Net.cncSends) while C&C's queue runs: not modelled");
+        send_packet(c, hs->pop());
+        pending_retry = 1;
+        return c.next();
+    }
     // the sequencer: at most one register action a cycle; instant steps take none
     while (cur < released) {
         const CncStep& s = prog[cur];
@@ -223,7 +230,7 @@ sim::Wake Cnc::sequence(sim::Ctx& c, int64_t t) {
             return after_step(c);
         }
     }
-    return sim::Wake::none();
+    return hs ? hs->wake(c) : sim::Wake::none();              // W20 (harness-only): the next harness send
 }
 
 uint64_t Cnc::digest() const {
@@ -260,6 +267,24 @@ Endpoint::Endpoint(sim::Ports& p, unsigned addr, const NetConfig& c) : address(u
 }
 
 sim::Wake Endpoint::step(sim::Ctx& c) {
+    if (hs) {                                                 // W20 (harness-only): the harness's sends and trace
+        const int64_t t = int64_t(c.now());
+        bool next = false;
+        if (pending_retry && c.refused(send)) { c.put(send, retry_w[0], retry_w[1], retry_w[2]); next = true; }
+        else {
+            pending_retry = 0;
+            if (hs->due(t)) {                                 // Endpoint.send: src its address, the payload masked
+                const CncPacket& p = hs->pop();
+                retry_w[0] = lw::mask_lo(p.lo, p.size); retry_w[1] = lw::hdr(address, p.dst, p.mode, p.counter, p.addr, p.size);
+                retry_w[2] = lw::mask_hi(p.hi, p.size);
+                c.put(send, retry_w[0], retry_w[1], retry_w[2]);
+                pending_retry = 1; next = true;
+            }
+        }
+        if (c.ready(rx)) { hs->record(uint64_t(t), c.peek(rx), address); c.take(rx); received++; }
+        if (next || c.ready(rx)) return c.next();
+        return hs->wake(c);
+    }
     if (!c.ready(rx)) return sim::Wake::none();
     c.take(rx);
     received++;

@@ -61,7 +61,50 @@ final class NetSelf {
         System.out.printf("  then %s at cycle %d; t5 gather drained %d%n", ok ? "quiescent" : "NOT quiescent", n.c.cycle, t5.gatherStub.taken);
     }
 
+    static String recv(Net n, int c) {
+        StringBuilder sb = new StringBuilder(n.c.ccs[c].received.size() + " [");
+        for (long[] e : n.c.ccs[c].received) sb.append(String.format(" %d:%s:%s", e[0], hex(e[1]), hex(e[2])));
+        return sb.append(" ]").toString();
+    }
+
+    static void controllers(long seed) {
+        Net n = new Net(Net.cfg(seed));
+        long T0 = n.c.cycle + 2;                                   // C&C 1's broadcast (NetTest's broadcast group, s = 64)
+        n.cncSends.add(new long[] { T0, LinkWord.BROADCAST, LinkWord.M_SRC, 0, Net.tagged(64, T0) });
+        boolean ok = n.runAll(500);
+        long lo = Long.MAX_VALUE, hi = 0, copies = 0;
+        for (int d = 0; d < 64; d++) for (long[] e : n.log(d)) { lo = Math.min(lo, e[0]); hi = Math.max(hi, e[0]); copies++; }
+        System.out.printf("controllers seed %d: broadcast %s at cycle %d; %d copies, first %d last %d; C&C 1 received %s%n", seed,
+                ok ? "drained" : "NOT drained", n.c.cycle, copies, lo - T0, hi - T0, recv(n, 0));
+        n.clearLogs();
+        T0 = n.c.cycle + 2;                                        // a command from C&C 1 (an argument, then slot 0)
+        n.cncSends.add(new long[] { T0, 9, LinkWord.M_WRITE, 0x80 + 12, 0xCAFE0003L, LinkWord.SIZE_32, 0, 0 });
+        n.cncSends.add(new long[] { T0 + 1, 9, LinkWord.M_WRITE, 0x80, 0x0000C0DEL, LinkWord.SIZE_32, 0, 0 });
+        for (int k = 0; k < 5; k++) n.cncSends.add(new long[] { T0 + 1, 20 + k, LinkWord.M_WRITE, 0x100, k, LinkWord.SIZE_64, 0, 2 });   // back to back
+        ok = n.runAll(500);
+        System.out.printf("  command %s at cycle %d; t9 dmem[0x20] %s dmem[0x23] %s%n", ok ? "drained" : "NOT drained", n.c.cycle, w(n, 9, 0x20), w(n, 9, 0x23));
+        logs(n, 9, 20, 24);
+        n.clearLogs();
+        T0 = n.c.cycle + 2;                                        // tiles to C&C 1-3
+        for (int s : new int[] { 0, 2, 37, 63 }) for (int c = 0; c < 3; c++) n.at(s, T0 + c, 64 + c, LinkWord.M_WRITE, 3, 0x100, LinkWord.SIZE_32, s, 0);
+        ok = n.runAll(500);
+        System.out.printf("  to the controllers %s at cycle %d%n", ok ? "drained" : "NOT drained", n.c.cycle);
+        for (int c = 0; c < 3; c++) System.out.println("  C&C " + (c + 1) + " received " + recv(n, c));
+        n.clearLogs();                                             // C&C 2 -> C&C 3, C&C 2's broadcast (sizes and sources only)
+        n.c.ccs[1].send(n.c.cycle, 66, LinkWord.M_WRITE, 2, 0x200, LinkWord.SIZE_64, 0x77, 0);
+        n.runAll(300);
+        int src = n.c.ccs[2].received.size() == 1 ? LinkWord.src(n.c.ccs[2].received.get(0)[2]) : -1;
+        n.clearLogs();
+        n.c.ccs[1].send(n.c.cycle, LinkWord.BROADCAST, LinkWord.M_COUNT, 1, 0, LinkWord.SIZE_32, 9, 0);
+        n.runAll(300);
+        int reached = 0; for (int d = 0; d < 64; d++) if (n.log(d).size() == 1 && LinkWord.src(n.log(d).get(0)[2]) == 65) reached++;
+        System.out.printf("  C&C 2 -> C&C 3 from %d; C&C 2's broadcast reaches %d tiles once, controllers %d %d %d%n", src, reached,
+                n.c.ccs[0].received.size(), n.c.ccs[1].received.size(), n.c.ccs[2].received.size());
+    }
+
     public static void main(String[] a) {
+        controllers(-1);
+        controllers(3);
         packets(-1);
         packets(5);
         reads();

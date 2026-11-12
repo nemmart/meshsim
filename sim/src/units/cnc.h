@@ -85,6 +85,34 @@ public:
     static constexpr uint32_t kCalls = 256;               // CALL ids 0 .. kCalls - 1
 };
 
+// W20 (harness-only; P2): ref's Net harness at a controller's endpoint (sim/tests/mach.h): its sends (Net.cncSends,
+// Endpoint.send) and its receive trace (Endpoint.received). Null on every machine but the harness's Net machine.
+//   sends   {T, packet}, in order: the endpoint puts the head on its send Hold in its step at t when T <= t + 1 (ref's
+//           feed() put it at t, between cycles t and t + 1: visible at t + 1); a refusal is presented again, as the
+//           endpoint's own sends are (ref's feed() waits for the Hold to empty: the same cycles)
+//   log     {t, payload [63:0], header, payload [127:64]} of every packet taken from the receive FIFO (fatal when full)
+// The rings are the harness's (grown between cycles; the pointers refreshed then).
+struct HarnessSends {
+    struct E { int64_t T; CncPacket p; };
+    E* e = nullptr;
+    uint32_t cap = 0, head = 0, n = 0;
+    uint64_t (*log)[4] = nullptr;
+    uint32_t log_cap = 0, log_n = 0;
+    bool due(int64_t t) const { return n && e[head].T <= t + 1; }
+    const CncPacket& pop() { const CncPacket& p = e[head].p; head = (head + 1) % cap; n--; return p; }
+    sim::Wake wake(sim::Ctx& c) const {                       // the step that puts the next send
+        if (!n) return sim::Wake::none();
+        const int64_t at = e[head].T - 1, t = int64_t(c.now());
+        return at <= t + 1 ? c.next() : sim::Wake::at_cycle(uint64_t(at));
+    }
+    void record(uint64_t t, const sim::Word* w, uint8_t who) {
+        if (!log) return;
+        if (log_n == log_cap) FATAL("endpoint %u: the harness's receive log is full (%u entries)", who, log_cap);
+        uint64_t* x = log[log_n++];
+        x[0] = t; x[1] = w[0]; x[2] = w[1]; x[3] = w[2];
+    }
+};
+
 // ---- C&C 1: the sequencer and its peripheral ----------------------------------------------------------------------
 struct Cnc {
     static constexpr unsigned kRows = 8, kRx = 64;
@@ -113,6 +141,7 @@ struct Cnc {
     uint32_t last_command_word = 0xFFFFFFFFu;
     uint8_t pending_retry = 0;        // a refused send is presented again
     uint64_t retry_w[3] = {};
+    HarnessSends* hs = nullptr;       // W20 (harness-only): ref's Net harness's sends and receive trace; null otherwise
     // the receive FIFO (6.6): {payload [63:0], src, arrival, payload [127:64], size}
     uint64_t rxq[kRx][5] = {};
     uint32_t rx_head = 0, rx_count = 0;
@@ -172,6 +201,10 @@ struct Endpoint {
     sim::FifoIn rx;                   // tile k's to-controller output; one packet taken per cycle
     uint8_t address = 0;              // 65, 66
     uint64_t received = 0;
+    // W20 (harness-only; P2): the harness's sends and receive trace (HarnessSends); null otherwise
+    HarnessSends* hs = nullptr;
+    uint8_t pending_retry = 0;
+    uint64_t retry_w[3] = {};
     Endpoint(sim::Ports& p, unsigned address, const NetConfig& c);
     sim::Wake step(sim::Ctx& c);
     uint64_t digest() const { return received; }

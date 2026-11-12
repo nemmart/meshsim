@@ -237,3 +237,14 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   Config defaults); v1.3's only use of 1 is the kit sweep's `ready-1` point in both sets. **The chip builder refuses
   `ready_latency` below 3 with a message naming the field, and those two sweep runs end with no result in v1.35**, listed
   under "Runs with no result" like v1.3's own refused points (W24's F3). Sweep's own ready points (4 and 8) are unaffected.
+- **D48. v1.35's checks are v1.3's checks, not the spec's wider promises** (integrator, 2026-11-12, W26's question on the
+  docs session's findings 9-12; D38's "no other improvements"). W26 found that several findings compare v1.35 with the
+  spec's wording rather than with v1.3: (1) **size 11 and two stream cases are not fatal in v1.3** (ref's director flags
+  and drops a size-11 packet, "meshsim's choice, flagged, dropped, no error"; the injection path and stream-entry checks
+  only count), and v1.35 does the same; (2) **invariant 17's limits (1, 3 and 1 outstanding requests, the tag windows,
+  reads during a group run), invariant 18 for modes 1-3 into big SRAM, and invariant 24's overtaking read have no check
+  in v1.3** (no check, counter or message in `ref`; invariant 24 has only S1's measurement, which is ported). Porting
+  "everything v1.3 had" (D39) means v1.3's checks: v1.35 doesn't add checks v1.3 lacked, or make fatal what v1.3 only
+  counts. These are gaps between the spec and the simulator inherited from v1.3, recorded as such in the spec's
+  CHANGES (not as v1.35 differing from v1.3), for a later version to add. If the docs session can point to v1.3 code
+  checking any of them, that one is ported.

@@ -316,3 +316,10 @@ What I do test-side or add myself: C&C 1's model's `expect` (Cnc's field, set be
   task needed) log and `phases-a2a-full.csv` too, in the suite build. Runner steps accounting and accounting-full (each
   with its CSV compared: a FAIL line if it differs); make check compares the log and the CSV in the debug builds (the
   CSV's write-engine and GATHER peaks exist only with the checker's builds, phase_log.h).
+- **cccores matched** (W20's fa0838fc: set_errors on the controllers): log-equal with D44's mask, plain and shuffled,
+  in the suite build; runner steps cccores, cccores-shuf on; back in make check in every build.
+- **S1Bench matched** (`tests/ctl/suite_s1bench.cpp`, on W26's S1 and W20's s1_report): log-equal to ref's (60 passed,
+  2 s), suite build. Runner step s1bench (full mode); make check in the checker's builds. Its S1 line at L = 4 (the
+  docs session's): "L = 4, K = 12, rcp_bucket: S1: accept -> complete, the largest: big SRAM 12 (128000 writes; in its
+  area's queue by 11), PTR 7 (64000 updates), HIST 7 (51200 updates); K = 12: margin 0 before the controller's reaction
+  (+4); the table-window case: 2048 HIST loads ..." (every L: margin 2 at L = 1, 0 at L = 2-4; no write LATE).

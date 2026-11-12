@@ -132,7 +132,7 @@ void write_engine() {
         m.run_all(5000);
         bool good = true; for (int j = 0; j < 200; j++) if (q.sram_peek64(0x20000 + 2 * j) != uint64_t(j)) good = false;
         check(good, "L = %u: every write lands", L);
-        const unsigned stage_peak = 0;   // ref's writer.stageHighWater: not kept by the C++ write engine (asked of the owner)
+        const unsigned stage_peak = writer(q).stage_peak;   // ref's writer.stageHighWater (SIM_CHECKS)
         check(stage_peak <= 2 * L + 2, "L = %u: stage within 2L + 2", L);
         eq(0, we_in_peak(m.c, 10) > 1 ? 1 : 0, "L = %u: the input FIFO never holds more than one (one a cycle sustained)", L);
         no_violations(m.c, suite::str("L = %u", L));

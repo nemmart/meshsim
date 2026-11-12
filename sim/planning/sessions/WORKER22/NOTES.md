@@ -82,6 +82,13 @@ suites set is in `MachConfig` already. ref's shuffled logs differ from the unshu
   `window_full_cycles` with ref's MemConf fixtures) print the same before and after (clang release); test_mem,
   test_memconf, MemTest's groups in clang debug; NetTest's ported groups unchanged.
 
+- **The write engine's stage peak (approved 2026-11-12)**: `WriteEngine::stage_peak` (src/units/write_engine.h), under
+  SIM_CHECKS only, the stage's count after a take (ref's stageHighWater, WriteEngine.java:109).
+- **F3, the write engine's UB stop names the PTR (approved 2026-11-12)**: "a write through PTR[src N] = chunk 0x..."
+  (`PTR[digit]` for mode 2), as ref's; text only, in the FATAL path (behaviour unchanged).
+  Both checked: test_chip and test_sort print the same before and after (clang release); EngineTest's write engine
+  group equal to ref's (its line, peaks 3, 5, 7, 9; its `ub` names "PTR[src 9]").
+
 ## Asks of W20 (through the integrator; named W22-n, so they don't collide with other workers' numbers)
 
 From NetTest's gap map (2026-11-11). NetTest's other groups (structure, unicast's packets, routes, the controllers'
@@ -265,3 +272,7 @@ W22-17. **SearchBench needs the TRACE store log** (ref's `p.ctl.traceHook = (t, 
 - **make check (partial, 2026-11-12)**: copies 322 equal; gcc debug 72 of 72 run tests pass (test_ctl_suites.cpp, W23's,
   doesn't compile in gcc debug: -Werror=maybe-uninitialized inside std::function; owner told W23); gcc release 73 of
   73; clang debug and release not finished. EngineTest pushed as work in progress (owner: nothing only in the tree).
+- **NetTest's port-B placeholder replaced** (W22-15 on main): `cm_idle` reads the core's `port_b` Link through
+  `Sim::observe` exactly as W20's `phase_done` does (nothing arriving after the next cycle). Probed: low at the accept
+  and the cycle after, idle from accept + cm_latency (ref: written at t + cm_latency); net.log still byte for byte.
+- **EngineTest's write engine group equal** (stage peak, F3).

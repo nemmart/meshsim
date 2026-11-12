@@ -141,3 +141,23 @@ Commit and push after each step; each step checked against `ref`.
   0 until W26's tracking lands, phase_log.h; 64 in some of v1.3's SPLIT phases). The sweep group waits for the Config
   fields (W20's next item).
 - **Checks of this change** (2026-11-12): sort_test, test_sort_suites and test_sort_kit built and run in all six builds (clang and gcc: suite, release, debug): all pass, the release builds' sort_test checks passing without running (PhaseLog). The runner's five sort steps with `--check`: no log differs.
+- **Sweep (D10)**: `tests/sweep_main.cpp` → `sweep [quick|full]` (W20's Config front end, main 4a2930f0, and
+  PhaseLog; MODE=suite): **sweep-quick's log and CSV byte-identical** to v1.3's (94 s here). The `sweep-quick` step is
+  live in run_tests.sh; with --check its CSV is compared too (a difference prints a FAIL line into the log).
+- **The kit's sweep group at 2,000** against Quest 178: the six F3 points refused as v1.3 refuses them (K below kMin);
+  **38 run CSVs byte-identical**, their 38 logs equal; the phases CSVs equal but `unreadOverwrites` (W26) and F6.
+  **But two more runs are refused here and ran in v1.3: F5.** sort_test now flushes each printed line, so a refused
+  run's log keeps its inputs line, as Java's does.
+- **F5. `ready_latency` 1 is refused by v1.35's chip builder** (`src/units/chip.cpp`: `ready_latency < 3` is FATAL,
+  since M2's stage 4: the READY lines are Links of ready_latency - 2 through the row collectors). v1.3 runs it: the
+  kit's sweep has a `ready-1` point in both sets (`cfg.readyLatency=1`), which v1.3 completes and v1.35 refuses (a log,
+  no CSV; SUMMARY lists them under "Runs with no result"). Sweep's own points (4, 8) are unaffected. **For the owner:**
+  model ready latencies 1-2 (the line wiring restructured), or record a deliberate difference (D30: v1.35 needs
+  ready_latency >= 3; the physical default is 8).
+- **F6. PhaseLog's `readPort` peak differs at sram read latency 3 and 4** (the kit's sweep: 1-28 phases of 99 in 4 runs,
+  C++ 2 where v1.3 has 1; every run CSV and log equal). ref's ReadPort.inUse() is `stores - injected` with `injected`
+  counting the injections of the current cycle as they happen; the C++ `rp_peak` (tile_ctl.h) subtracts injections
+  before t (the free-entry count's rule), so a store in the same cycle as an injection counts one more. A statistic,
+  W20's (PhaseLog); for W20 through the integrator.
+- **F5 ruled (D47, 2026-11-12)**: ready_latency below 3 stays refused, a deliberate difference; the kit's two `ready-1` runs end with no result, listed under "Runs with no result" as F3's. **F6** is with W20.
+- **The full pass** (2026-11-12, after merging main with W23's fix): copies check; gcc debug, clang debug, gcc release, clang release, every test run alone, all pass (test_ctl_suites included); the suite builds (gcc, clang): test_sort_suites and test_sort_kit pass.

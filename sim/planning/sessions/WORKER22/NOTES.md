@@ -196,7 +196,7 @@ W22-14. (owner: `new_phase` to W20, big SRAM's recording to W26) **Chip::new_pha
   | priority, return order | 1 each | equal (packets: 0, pass; its 3 UB stops name tile, client, chunk) |
   | mem_idle | 0 | pass |
   | oversubscription + memReport | 10 | equal |
-  | token window | 1 | **differs**: "issue waits (9 cycles)", ref 80 (finding F1) |
+  | token window | 1 | equal after F1's fix (was 9 cycles, ref 80) |
   | disjoint | 1 | waits on W22-14 |
 - **Finding F1: the read queue's `window_full_cycles` undercounts** (src/units/inject.h, W11's unit and W20's harness
   path alike). ref counts every cycle the issue phase finds no token free while a client has a request; the C++ unit is

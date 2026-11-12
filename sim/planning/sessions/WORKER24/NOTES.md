@@ -167,3 +167,4 @@ Commit and push after each step; each step checked against `ref`.
   still 0 in every phase** (v1.3: nonzero in 4,417 rows of these 84 files): W26 counts it
   (`TileCore::track.overwritten_unread`, rv32.h) but PhaseLog doesn't read it yet (tests/phase_log.cpp:79,
   `v[17] += 0`, "pending"). For W20 through the integrator; then the phases CSVs again.
+- **Quest 183** (claimed after re-reading NUMBERS.md; pushed): v1.3's `Sweep full` (sortlogs.sh's new sweep-full step) and the C++ `sweep full` side by side on the runner, the log and CSV byte for byte; v1.3's become the fixtures.

@@ -166,7 +166,7 @@ subsections not named in "why" stay in the platform whole. The sort's own engine
 | `machine-spec.md` | 1913-1918 | h4 | 4.19.14 Cost | spec/jolt/replayer.md |  |
 | `machine-spec.md` | 1919-1956 | h4 | 4.19.15 Stream decompression | spec/jolt/replayer.md |  |
 | `machine-spec.md` | 1957-1975 | h3 | 4.20 UART | machine-spec.md |  |
-| `machine-spec.md` | 1976-2361 | h3 | 4.21 The Tracer (peripheral type 3) | spec/jolt/tracer.md | 4.21 leaves a stub |
+| `machine-spec.md` | 1976-2358 | h3 | 4.21 The Tracer (peripheral type 3) | spec/jolt/tracer.md | 4.21 leaves a stub |
 | `machine-spec.md` | 1982-2007 | h4 | 4.21.1 Overview | spec/jolt/tracer.md |  |
 | `machine-spec.md` | 2008-2055 | h4 | 4.21.2 Its region and the state record | spec/jolt/tracer.md |  |
 | `machine-spec.md` | 2056-2168 | h4 | 4.21.3 Control: the window, the pulses and the queues | spec/jolt/tracer.md |  |
@@ -682,3 +682,18 @@ with stage 2.
 8. Item 113's open part (the pending tags) with the replayer, though 4.21 cites it too.
 9. The appendix's line 3 version (7.3): v1.35 rather than "v1.25" kept as its derivation date.
 10. Line 38 ("How v1.3's text is meant") staying under its v1.3 title in a v1.35 document.
+
+## 9. Stage 2: what changed from this plan (2026-11-12)
+
+The owner approved stage 1 with corrections; the move follows them. `map.tsv` is this map's machine-readable copy
+(written by `build.py`), and its ranges are the ones the text gives (4.21 is 1976–2358).
+
+- **The checker's wording** (lines 28, 2942): three mechanisms, not one; line 24 stays as v1.3 wrote it.
+  `MECHANISMS.md` gives each check's mechanism; the exceptions are in `FINDINGS.md`.
+- **Line 20** cites `spec/CHANGES-v1.3-to-v1.35.md`, which maps the drivers the labels name, not `planning/`.
+- **Line 16** drops "(being rewritten for v1.2)", as an edit.
+- **8.11's heading** drops "and the replayer's", as an edit (kind *heading*).
+- **Question 2:** the two report paths fixed to the real files. **Question 3:** as read. **Question 4:** as named.
+  **Question 1** (items 103, 137, 153) is with the owner: they stand as *unclear*.
+- **The appendix** says v1.35 and keeps its derivation statement.
+- `spec/history/README.md` says carried text keeps its worker names and session codes.

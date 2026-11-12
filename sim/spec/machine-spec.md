@@ -1670,7 +1670,7 @@ One register per action (owner and Tony, 2026-10-28), replacing v1.1's `TILE_PUL
 | register | v1.1 | action |
 |---|---|---|
 | `PULSE_DONE` | `TILE_PULSE` [0] | the `done` pulse (6.3); READY then fires automatically when a command has landed |
-| `PULSE_DMA` | `TILE_PULSE` [1] | start: load the run in `DMA_CONFIG` and begin it (4.2), clearing DMA run done (`EVENTS` [10]); ignored while a run is running (meshsim flags it) |
+| `PULSE_DMA` | `TILE_PULSE` [1] | start: load the run in `DMA_CONFIG` and begin it (4.2), clearing DMA run done (`EVENTS` [10]); a start while a run is running is undefined behaviour (invariant 26; meshsim stops) |
 | a window's `PULSE_RUN` | `TILE_PULSE` [2] | moved into each peripheral's window (4.17.2) |
 | C&C 1's `PULSE_GO` | `TILE_PULSE` [3] | moved into C&C 1's peripheral (8.14) |
 

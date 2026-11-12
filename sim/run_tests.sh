@@ -100,20 +100,20 @@ NETREF=tests/p4suites/net.log; [ "$MODE" = quick ] && NETREF=tests/p4suites/net-
 step net       1 "network, packets, director" $NETREF -- $S/suite_net -1 $Q
 step net-shuf  1 "shuffled child order (seed 5)" tests/p4suites/net-shuf.log -- $S/suite_net 5 quick
 step net-shuf2 1 "shuffled child order (seed 11)" tests/p4suites/net-shuf2.log -- $S/suite_net 11 quick
-pending mem           "big SRAM, read and write queues" "P4"
-pending mem-shuf      "shuffled child order (seed 3)" "P4"
-pending mem-shuf2     "shuffled child order (seed 8)" "P4"
-pending engine        "address generator, write engine, all-to-all (small)" "P4"
-pending eng-shuf      "shuffled child order (seed 4)" "P4"
+pending mem           "big SRAM, read and write queues" "P4: W22-14, the disjoint check"
+pending mem-shuf      "shuffled child order (seed 3)" "P4: W22-14, the disjoint check"
+pending mem-shuf2     "shuffled child order (seed 8)" "P4: W22-14, the disjoint check"
+pending engine        "address generator, write engine, all-to-all (small)" "P4: W26's invariants 3 and 6"
+pending eng-shuf      "shuffled child order (seed 4)" "P4: W26's invariants 3 and 6"
 pending ctrl          "control and the controller (from C)" "P5"
 pending ctrl-shuf     "shuffled child order (seed 4)" "P5"
 equiv riscv           "riscv-tests rv32ui/rv32um on the controller" "test_golden (every program's retire trace equal to ref's)" -- $S/test_golden
-pending rdport        "read port, GATHER (Java; the C parts PENDING (phase 2))" "P4"
+pending rdport        "read port, GATHER (Java; the C parts PENDING (phase 2))" "P4: W22-18, W26's invariant 8"
 pending accounting    "per-phase accounting (from C)" "P5 (W23)"
-pending searchbench   "search steps through the read port (microbenchmark, from C)" "P4"
-pending rdport-shuf   "shuffled child order (seed 4)" "P4"
-pending agtest        "address generator read-ahead, figure 12's PTR/HIST ports" "P4"
-pending agtest-shuf   "shuffled child order (seed 4)" "P4"
+pending searchbench   "search steps through the read port (microbenchmark, from C)" "P4: W26's invariant 8 (F4)"
+pending rdport-shuf   "shuffled child order (seed 4)" "P4: W22-18, W26's invariant 8"
+pending agtest        "address generator read-ahead, figure 12's PTR/HIST ports" "P4: W22-16, W26's AG stream checks"
+pending agtest-shuf   "shuffled child order (seed 4)" "P4: W22-16, W26's AG stream checks"
 step cc-build      2 "building the controllers' firmware (sw/build_cc.sh: sw/cc/cc1.c, cc23.c; WORKER14)" - -- fw_part cc
 step recipes-build 1 "building the v1.2 recipes (sw/build_recipes.sh: wip/sw/recipes/, unedited)" - -- fw_part recipes
 pending recipes       "the v1.2 recipes as suites, and the book's code blocks against their sources" "P5"
@@ -125,8 +125,8 @@ pending hooks         "the register map, the send port, the pulses (from Java)" 
 pending hooks-shuf    "shuffled child order (seed 4)" "P5"
 equiv periph          "the peripheral framework: the standard window, events, region writes, the DMA" "test_tileslotconf (W15's TileSlotConf: PeripheralSlotTest's groups on a real tile, against ref)" -- $S/test_tileslotconf
 pending periph-shuf   "shuffled child order (seed 4)" "P5 (test_tileslotconf has no shuffled run yet)"
-pending reqbus        "the request port, the request bus and the receive queues in the tree" "P4"
-pending reqbus-shuf   "shuffled child order (seed 4)" "P4"
+pending reqbus        "the request port, the request bus and the receive queues in the tree" "P4: W22-9 to W22-13"
+pending reqbus-shuf   "shuffled child order (seed 4)" "P4: W22-9 to W22-13"
 # cccores: log-equal (D44's mask) once TileRef::set_errors reaches the controllers (W20: host_on is set on tiles 0-63
 # only, so C&C 2's ERRORS bit is dropped; with it set on cc1-cc3.ctl too, 77 passed, release and suite builds). Then:
 #   MASK_EXTRA=$D44_MASK step cccores      1 "C&C 1-3 as cores ..." tests/ctlsuites/cccores.log -- $S/suite_cccores -1
@@ -150,16 +150,16 @@ if [ "$MODE" != quick ]; then
   sort_bt() { local d; d=$(tests/sort/keys.sh 16384 trace10-10) || return 1; $S/sort_test -1 run label=bt16k-$1 keys=$d/trace10-10.keys fmt=$1 ready=8 force=bt; }
   step sort-bt-kv32 2 "BT, forced, trace hot 10 / 10 % at 64 x 16,384, 32-bit values (a few minutes)" tests/sort/ref/sort-bt-kv32.log -- sort_bt kv32
   step sort-bt-k128 2 "the same, 128-bit values" tests/sort/ref/sort-bt-k128.log -- sort_bt k128
-  pending rdport-full     "gather 1 at full size (Java; the C parts PENDING (phase 2))" "P4"
+  pending rdport-full     "gather 1 at full size (Java; the C parts PENDING (phase 2))" "P4: W22-18, W26's invariant 8"
   pending accounting-full "per-phase accounting, full-size all-to-all from C" "P5 (W23)"
-  pending agbench         "read-ahead measurements: ag_lookahead, zero-length groups, start to first request (a few minutes)" "P4"
+  pending agbench         "read-ahead measurements: ag_lookahead, zero-length groups, start to first request (a few minutes)" "P4: not yet ported"
   pending s1bench         "item S1: K's margin over the write path, L = 1-4, and the table-window case (a few minutes)" "P5 (W23)"
   step ccbench 16 "C&C 1-3 as cores (WORKER14): the boot and a phase against the Java model" tests/ctlsuites/ccbench.log -- $S/suite_ccbench
   # the sweep's CSV checked too (with --check): a difference prints a FAIL line into the step's log
   sweep_quick() { $S/sweep quick || return 1; [ "$CHECK" = 0 ] || cmp -s results/sweep-quick.csv tests/sort/ref/sweep-quick.csv || echo "FAIL: results/sweep-quick.csv differs from tests/sort/ref/sweep-quick.csv"; }
   step sweep-quick 4 "parameter sweep, quick (about 1 minute; 'java Sweep full' takes about 25)" tests/sort/ref/sweep-quick.log -- sweep_quick
   pending ctrl-full       "the all-to-all from C on the four data sets" "P5"
-  pending engine-full     "full-size all-to-alls (4 data sets) and radix sort (about 1.5 minutes)" "P4"
+  pending engine-full     "full-size all-to-alls (4 data sets) and radix sort (about 1.5 minutes)" "P4: W26's invariants 3 and 6"
   step skewtable 1 "fan-in under 0/+1 skew, 40 skew patterns (several minutes)" tests/p4suites/skewtable.log -- $S/suite_net -1 skewtable 40
 fi
 # ---- v1.3's summary ------------------------------------------------------------------------------------------------

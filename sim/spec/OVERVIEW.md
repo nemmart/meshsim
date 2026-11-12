@@ -1,8 +1,8 @@
 # Overview: what we are building, and where it stands
 
-*Draft for the owner's review, 2026-11-12. Two pages by design; read it before `machine-spec.md`. Sources:
+*2026-11-12; confirmed by the owner. Two pages by design; read it before `machine-spec.md`. Sources:
 **[spec]** v1.3's spec and decisions, modelled in meshsim; **[plan]** the analytical studies in
-`jolt-asic-planning`, not measured; **[owner]** stated on 2026-11-12 and first written down here (listed at the end).*
+`jolt-asic-planning`, not measured; **[owner]** the owner's statements of 2026-11-12, first written down here.*
 
 ## 1. The goal
 
@@ -97,14 +97,3 @@ macro shapes and physical latencies are guesses.
 C++**, checked unit by unit against v1.3: the full-size sort about 18× faster on six threads, a traced segment
 about 6.5× [Quest 157, 171]. The point is shorter iterations, and trying a new peripheral or a new target before
 any RTL exists.
-
-## To confirm (removed once confirmed)
-
-1. The goal: a 2²⁹ Jolt proof in under 100 ms, pipelined, in TSMC 12 nm.
-2. The network: 8 LVDS pairs each way, about 1 GB/s per chip; daisy-chaining supported, direct preferred.
-3. Sorting serves the sumchecks that need address order (RAM read-write; perhaps bytecode).
-4. The two mesh regimes, the per-tile flag, and backpressure reaching the address generator only.
-5. The two control waits stay in software; no ECC, with the host verifying every proof.
-6. Retargetable: a platform with a plug-in slot for peripherals.
-7. The split of responsibilities; the RTL may diverge from the spec here and there, hopefully by little. Today
-   v1.3's RTL matches meshsim's function, with timing within 5% (Tony).

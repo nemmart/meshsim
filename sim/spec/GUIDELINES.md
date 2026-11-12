@@ -1,9 +1,9 @@
 # Guidelines: the rules the design follows
 
-*Draft for the owner's review, 2026-11-12. The spec says what each unit does; this page says what every unit, and
-every change, has to respect. Short by design. Each rule names where it comes from: a section of `machine-spec.md`
-(v1.3), a decision, or **[new]**: said by the owner on 2026-11-12 or first formulated here, and listed at the end to
-confirm. A ruling is the current answer, not a proof: anyone may reopen one with a reason [new].*
+*2026-11-12; confirmed by the owner. The spec says what each unit does; this page says what every unit, and every
+change, has to respect. Short by design. Each rule names where it comes from: a section of `machine-spec.md`
+(v1.3), a decision, or **[owner]**: the owner's statements of 2026-11-12, first written down here. A ruling is the
+current answer, not a proof: anyone may reopen one with a reason [owner].*
 
 ## 1. Authority, and how the text is meant
 
@@ -12,7 +12,7 @@ confirm. A ruling is the current answer, not a proof: anyone may reopen one with
   is welcome (owner, 2026-11-06; the spec's preamble).
 - **The spec and meshsim are the high-level design; the RTL owns what is buildable and the exact timing.** The RTL
   may diverge here and there, hopefully by little. They must agree on results and on behaviour at the architecture's
-  level [new]. What the RTL work turns up comes back as a delta into the next version (README).
+  level [owner]. What the RTL work turns up comes back as a delta into the next version (README).
 - **Where a decisions log and the spec differ, the spec is the authority** (preamble).
 
 ## 2. Who checks what
@@ -28,7 +28,7 @@ confirm. A ruling is the current answer, not a proof: anyone may reopen one with
 - **`ERRORS` means something is wrong.** On a correct program and correct hardware it reads 0 forever; anything
   informational belongs in the simulator's reports (4.13).
 - **A hang has one backstop,** C&C 1's watchdog (6.1).
-- **No ECC or parity.** A corrupted run gives a proof that fails verification, and is run again [new].
+- **No ECC or parity.** A corrupted run gives a proof that fails verification, and is run again [owner].
 
 ## 3. One design, many instances
 
@@ -38,7 +38,7 @@ confirm. A ruling is the current answer, not a proof: anyone may reopen one with
   (6.6). **Every peripheral connects the same way:** a region, a standard register window, events, errors, an
   optional DMA (4.17).
 - **The platform doesn't know what it is proving.** Tiles, mesh, control and memory are the platform; what is
-  specific to a proof system is a peripheral, or firmware. A new unit goes in a peripheral slot unless it can't [new].
+  specific to a proof system is a peripheral, or firmware. A new unit goes in a peripheral slot unless it can't [owner].
 - **Same words, same places.** Every block and window starts `PARAMS`, `STATUS`, `ERRORS`; registers are named by
   family; every register carrying a packet header lays it out the same way (8.1).
 
@@ -56,13 +56,13 @@ confirm. A ruling is the current answer, not a proof: anyone may reopen one with
   4.12).
 - **Order holds only within one sending unit, one destination and one kind.** Otherwise a program orders things
   itself, with a fence (3.2).
-- **The mesh has two regimes** [new; the second is proposed, not yet specified]. **Strict rotation:** a schedule
+- **The mesh has two regimes** [owner; the second is proposed, not yet specified]. **Strict rotation:** a schedule
   says who sends when, nothing is backpressured, a full router queue is an error (3.2, 4.7). **Elastic,** for
   traffic into the file system: a per-tile flag masks that error and a full queue backpressures to the address
   generator, never to the controller; the flag changes only between phases, with the mesh empty.
 - **Credits only where a path can't form a cycle** (the request bus, a peripheral's queues); the mesh, a torus, is
-  scheduled [new, from 3.3 and 4.19.8].
-- **A new bulk pattern on the mesh comes with a schedule and a fan-in bound,** checked in simulation [new].
+  scheduled [owner, from 3.3 and 4.19.8].
+- **A new bulk pattern on the mesh comes with a schedule and a fan-in bound,** checked in simulation [owner].
 
 ## 6. Time and cost
 
@@ -70,7 +70,7 @@ confirm. A ruling is the current answer, not a proof: anyone may reopen one with
   identical (5, 6.3, 10). Physical values stay open until there is a PDK.
 - **Every unit is charged to the logic budget, and additions must fit.** Tables go in SRAM; comparators, muxes and
   per-entry flops are what spend it (11).
-- **A wait that only orders events may be a software constant,** tuned at bring-up, where the failure is visible [new].
+- **A wait that only orders events may be a software constant,** tuned at bring-up, where the failure is visible [owner].
 
 ## 7. The simulator's part
 
@@ -90,13 +90,3 @@ confirm. A ruling is the current answer, not a proof: anyone may reopen one with
 - **The RTL moves from one frozen version to the next by a guide,** unit by unit, each item marked whether it
   affects the RTL (the `CHANGES-…-to-…` files).
 - **Section and item numbers are never reused.** A section that is removed or moved leaves a one-line stub (preamble).
-
-## To confirm (removed once confirmed)
-
-1. A ruling can be reopened with a reason.
-2. The RTL may diverge from the spec here and there; the two agree on results and architecture-level behaviour.
-3. No ECC or parity; proof verification is the check.
-4. The platform doesn't know what it is proving; proof-specific units are peripherals or firmware.
-5. The mesh's two regimes, and credits only on paths that can't form a cycle.
-6. A new bulk pattern on the mesh needs a schedule and a fan-in bound.
-7. A wait that only orders events may stay a software constant, tuned at bring-up.

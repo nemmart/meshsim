@@ -53,8 +53,31 @@ suites set is in `MachConfig` already. ref's shuffled logs differ from the unshu
 
 ## Asks of W20 (through the integrator)
 
-(none yet)
+From NetTest's gap map (2026-11-11). NetTest's other groups (structure, unicast's packets, routes, the controllers'
+sends, in-order, fan-in, the queue peaks) port onto what `mach.h` has now.
+
+1. **`Cc::received()` on the coreless machine** (ref's `n.c.cnc.received`; FATAL today): broadcast, cncPort.
+2. **`Chip::reset_stats()`** (ref's `resetStats`, the peaks restart; FATAL today, planned with step 4): unicast and
+   broadcast call it before every offset, and the router peaks they read depend on it.
+3. **A tile's send-port hold from the harness** (ref's `Tile.sendHold`: `put(t, payload, header, hi)`, `isEmpty(t)`,
+   `refusals`): injection, loopback.
+4. **The write engine's and the GATHER queue's arrival logs** (ref's `writer.record()`/`writer.log`,
+   `gatherStub.record()`/`log`): director (which modes reach which unit, in order).
+5. **K below the formula refused at build** (ref's `Chip` throws IllegalArgumentException "... below ..." when K <
+   kMin()): today `mach::Chip` builds with any K. NetTest runs it under `suite::throws`.
+6. **The checker kinds NetTest provokes, recorded**: the injection path's no-endpoint (a packet for 70), size 11 at
+   the sender and the director, bad packets at both (7 in the director group), DIR_UNEXPECTED ("stray"), and the
+   director's invariants 10, 11, 19, 21, 22 (W20's "next in step 2").
 
 ## Progress
 
-- 2026-11-11: plan agreed; branch made.
+- 2026-11-11: plan agreed; branch made. Toolchain: clang 18.1.3, gcc 13.3.0, JDK 21.0.13 (apt). clang release on
+  main: builds, every test passes.
+- **Fixtures (step 2)**: `oracle/ref/p4suites.sh`; the 16 local steps regenerated from `sim/ref` into
+  `tests/p4suites/`. **`ref/results` is stale for every one of my steps** (assertion counts differ: mem 171 not 177,
+  engine 365 not 371, agtest 240 not 239, rdport 587 not 562, net 31,328 not 31,330), and its `net.log` is the quick
+  run's output (`random*3` column `-`), not the all run's. Neither is used: the fixtures are ref's regeneration.
+- **Quest 176** (claimed, pushed): the four long steps (skewtable, engine-full, rdport-full, agbench) on the runner, and
+  the 16 local steps regenerated there and compared (the runner's JDK). Task copy in `tasks/`.
+- **NetTest's gap map**: the asks above; everything else maps onto `mach.h` and the units' existing state (router
+  FIFOs' peaks and overflows, `routed`, `injected`, the director's counters, the route tables).

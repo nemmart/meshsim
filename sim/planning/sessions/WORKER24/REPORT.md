@@ -73,5 +73,6 @@ the Makefile's `include tests/sort.mk`, `run_tests.sh` (the sort and sweep steps
 
 ## Open
 
-- **`Chip::new_phase`** (W20's item 8, W26's disjoint tracking): SortTest's new phase at every core wake, for invariant 2
-  during the sort.
+- **Invariant 2 during the sort**: sort_test starts a new disjoint-buffer phase on a tile at every core wake, as
+  SortTest does (Chip::new_phase's per-tile form); BigSram::new_phase is still W26's empty placeholder. When its body
+  (the disjoint tracking and the DISJOINT fact) lands: the sort steps, the kit's 92 jobs and the four-build pass again.

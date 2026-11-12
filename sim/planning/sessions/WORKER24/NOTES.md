@@ -183,3 +183,10 @@ Commit and push after each step; each step checked against `ref`.
   - `sweep full` (543 s here): log and CSV byte-identical to Quest 183's fixtures (v1.3's Sweep full);
   - the kit at 2,000, all 92 jobs: **84 run CSVs, 84 phases CSVs and 84 logs byte-identical to Quest 178's** (logs but
     the simulator's field); the other 8 refused as expected (F3's six as v1.3, D47's two).
+- **new_phase wired** (main 95dcf63c with W20's Chip::new_phase, f92e13ae; BigSram::new_phase still W26's empty
+  placeholder): sort_test's monitor starts a new disjoint-buffer phase on a tile whenever its core leaves WFI, tile by
+  tile as SortTest's `p.sram.newPhase()` (ref's Chip.newPhase is every tile at once; Chip::new_phase's per-tile body
+  used here, the unit woken). **First check, nothing changed**: sort-p1, sort, sort-shuf, sort-bt-kv32, sort-bt-k128
+  log-equal; test_sort_suites (every SortFp reference point) passes; the kit's 92 jobs again: 84 run CSVs, 84 phases
+  CSVs and 84 logs byte-identical to Quest 178's, the 8 refused as before. gcc debug compiles it clean. When W26's body
+  lands: the sort steps, the kit's 92 jobs and the four-build pass again.

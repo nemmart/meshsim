@@ -8,6 +8,7 @@
 #include "harness.h"
 #include "mach.h"
 #include "units/ag.h"
+#include "units/big_sram.h"
 #include "units/gather.h"
 #include "units/linkword.h"
 #include "units/tile_ctl.h"
@@ -456,4 +457,20 @@ TEST(mach_row_hook_destroyed_cleanly) {
         CHECK_EQ(rows, 0u);
     }
     CHECK(true);
+}
+
+// W22's F2: mem_idle reads an area queue as it wraps, at its configured depth (8), not at the array's (16): a write
+// queued in the slot after the wrap holds mem_idle low; a stale write past the depth doesn't.
+TEST(mach_mem_idle_sees_a_wrapped_queue) {
+    mach::Chip c(mach::MachConfig::defaults());
+    mach::TileRef p = c.tile(3);
+    units::BigSram& m = p.unit<units::BigSram>("sram");
+    CHECK_EQ(m.cfg.area_queue_depth, 8u);
+    CHECK(p.mem_idle());
+    m.head[5] = 7; m.count[5] = 2;                           // entries in slots 7 and 0
+    m.q[5][7].write = false; m.q[5][0].write = true; m.q[5][8].write = false;
+    CHECK(!p.mem_idle());                                    // the write in slot 0 (not slot 8)
+    m.q[5][0].write = false; m.q[5][8].write = true;         // a stale write past the depth
+    CHECK(p.mem_idle());
+    m.count[5] = 0;
 }

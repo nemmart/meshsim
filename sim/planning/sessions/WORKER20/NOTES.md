@@ -98,6 +98,9 @@ remaining kinds, interleaved as the suites ask.
 - **W25's F6 fixed**: the slot freed whatever row buffer the replayer pointed at (the row hook's vector, after
   `Chip::on_row`): a double free. The slot now frees only the buffer it allocated (`SlotCore::Ref::rows`).
   test_mach's `mach_row_hook_destroyed_cleanly` fails under ASan without the fix. W25 can drop stageb.cpp's workaround.
+- **W22's F2 fixed**: `TileRef::mem_idle` read big SRAM's area queues modulo the array's 16, not the configured
+  depth (8): after a wrap it read a stale slot. Now `BigSram::at(a, j)`; test_mach's `mach_mem_idle_sees_a_wrapped_queue`
+  fails with the old indexing.
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

@@ -746,7 +746,7 @@ bool TileRef::mem_idle() const {
     const units::BigSram& m = unit<units::BigSram>("sram");
     if (!port_empty(s, m.wr)) return false;
     for (unsigned a = 0; a < units::BigSram::AREAS; a++)
-        for (unsigned j = 0; j < m.count[a]; j++) if (m.q[a][(m.head[a] + j) % units::BigSram::MAX_DEPTH].write) return false;
+        for (unsigned j = 0; j < m.count[a]; j++) if (m.at(a, j).write) return false;   // (the queue wraps at its depth: W22's F2)
     return true;
 }
 // ts_busy (4.15): either store's pipeline or request FIFOs busy; requests and returns on their way are in the ports

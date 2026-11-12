@@ -96,3 +96,14 @@ lines).
 - **Finding**: v1.3's committed `results/*.log` are stale for my steps (ctrl 6,893 checks there, 6,954 now; cond
   141 / 153; hooks 142 / 141; recipes 2,042 / 2,056): the fixtures are regenerated from `sim/ref`, never taken from
   `results/` (as W20's F1).
+- **Approved (integrator, 2026-11-12):** three statistics in `src/units/rv32.h`, ref's Controller fields the suites
+  read: `trap_at`, `trap_cause` (the last trap; -1 before any) and `first_image_at` (the first fetch from program memory
+  since the reset). Counters only, set in `trap` and `fetch_execute`; not in the digest or the trace. W20's reset must
+  set them back to -1 (ref's Controller.reset).
+- **W20 requests 9 and 10** (parked by the integrator): ERRORS bits set from the test after the block's endCycle (ref's
+  `ctl.conditions |= bits`), and `checkErrors` switched off mid-run. Stand-ins in `tests/ctl/ctl.h`, marked STAND-IN.
+  **A suite that passes only through a stand-in is not counted as matched.**
+- **Step 1, CcCoresTest** (`tests/ctl/suite_cccores.cpp`, `tests/ctl/ctl.h`, `tests/ctlsuites.mk`,
+  `tests/test_ctl_suites.cpp`): clang release, 77 passed, the log equal to ref's but for one figure in errorPath's
+  printed line: "dump done at +770026", ref +770025. errorPath is the one group using both stand-ins (the ERRORS bits
+  possibly a cycle early): **not matched** until W20's 9 and 10 replace them.

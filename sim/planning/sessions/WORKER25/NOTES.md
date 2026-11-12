@@ -176,3 +176,6 @@ the `-q` estimate, the guest delivery's whereabouts.
   replayer's violations as chip violations (the CL4 case's "meshsim: violations: 256; ..." part; not recorded yet), (b)
   a MachConfig field for the replayer's log-queue depth (`-q 512`; PeriphSlotConfig has it, MachConfig doesn't pass it).
   Neither blocks the driver's start: the CL4 line and `-q 512` wait for them.
+- **Quest 177** (the runner's data listed): **no item-113 guest delivery** anywhere under `$DATA`, the queue's data or
+  `/tmp` (no name matching item113, a guest's name, replay-inputs or guest). v1.3's `stageb-<guest>` steps
+  (`DELIVERY=`) have no input on the runner: making one needs the guests traced (jolt-cpp) into a delivery. To the owner.

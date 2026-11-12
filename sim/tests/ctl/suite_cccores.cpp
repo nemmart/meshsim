@@ -180,10 +180,10 @@ void error_path() {
     units::Rv32& cc1 = core(m.c, 64); units::Rv32& cc2 = core(m.c, 65);
     suite::check((cc1.mstatus & 8) != 0 && cc1.mtvec == m.cc1.sym("cc1_trap"), "C&C 1: its own handler, interrupts on");
     suite::check((cc2.mstatus & 8) != 0 && cc2.mtvec == m.cc23.sym("trap_handler"), "C&C 2: recipe 24's handler, interrupts on");
-    set_check_errors(m.c, false);                                // STAND-IN (ctl.h)
+    m.c.set_check_errors(false);
     const int64_t t0 = m.c.cycle();
-    inject_errors(m.c, 9, 1u << units::RegBlockState::COND_DRIFT);       // two units fail at once (STAND-IN, ctl.h)
-    inject_errors(m.c, 65, 1u << units::RegBlockState::COND_DRIFT);
+    m.c.tile(9).set_errors(1u << units::RegBlockState::COND_DRIFT);      // two units fail at once
+    m.c.tile(65).set_errors(1u << units::RegBlockState::COND_DRIFT);
     suite::check(m.run([&] { return m.toast_info(10) != 0; }, 3000000), "C&C 1 trapped, drained the reports and finished its dump");
     suite::check(cc1p(m.c).toast, "the toast pin is latched");
     suite::eq(CAUSE_EXTERNAL, int32_t(m.toast_info(0)), "C&C 1's mcause: the hard interrupt (its ERRORS [11], the unit-error bit)");

@@ -515,7 +515,7 @@ struct ReqBusPlacement {
     unsigned recv[TARGETS] = {};
 };
 inline ReqBusIO add_reqbus(sim::Config& cfg, const ReqBusConfig& rc, uint64_t tiles, unsigned ccs,
-                           const ReqBusPlacement* place = nullptr) {
+                           const ReqBusPlacement* place = nullptr, bool cc_leaves = true) {   // (W20: false, ReqHost's)
     if (rc.credit_latency != 0 && rc.credit_latency != 3)
         FATAL("reqbus: credit latency %u: 0 (exact, D34) or 3 (the spec)", rc.credit_latency);
     ReqBusIO io;
@@ -534,7 +534,7 @@ inline ReqBusIO add_reqbus(sim::Config& cfg, const ReqBusConfig& rc, uint64_t ti
     char nm[16];
     for (unsigned k = 0; k < SENDERS; k++) {
         const bool tile = k < 64;
-        if (tile ? !(tiles >> k & 1) : !(ccs >> (k - 64) & 1)) continue;
+        if (tile ? !(tiles >> k & 1) : !(ccs >> (k - 64) & 1) || !cc_leaves) continue;
         ReqNode& node = tile ? *io.row[k / 8] : *io.root;
         const unsigned slot = tile ? k % 8 : 8 + (k - 64);
         if (place) cfg.domain(place->leaf[k]);
@@ -568,6 +568,54 @@ void wire_sender(sim::Config& cfg, const ReqBusIO& io, unsigned k, Req& r) {
         cfg.link(r.qcredit, io.root->qcredit[k - 64], io.queue_credit_latency());
     }
 }
+
+// W20 (harness-only; P2, W22-10): ref's RequestBus driven from a test on the machine with C&C's Java model
+// (RequestBusTest's Net(Config.machine())): `controllerSend` (a request entering the root's controller input 8 + c, its
+// eight beats arriving one a cycle from t + hop, ref's: no request port in between) and the receive queues' pops (ref's
+// `receive`: popped at the end of t, the credit back to the root at t + 1). The harness (sim/tests/mach.cpp) puts beat 0
+// as of the cycle just run (Sim::put_late) and leaves beats 1-7 and the pops to this unit. Built only when asked
+// (ChipSpec::reqbus_host); the machine with C&C 1-3 as cores has their cores' ports instead.
+struct ReqHost {
+    sim::LinkOut beat[TARGETS];       // to the root's input 8 + c (Link(hop))
+    sim::LinkIn credit[TARGETS];      // mode 3: the root's credits for those inputs (consumed, unused: ref has none)
+    sim::LinkOut pop[TARGETS];        // to the receive queue (Link(1)): ref's receive at t
+    sim::LinkOut qcredit[TARGETS];    // to the root (Link(queue credit latency))
+    sim::RegFileIn head[TARGETS];     // the receive queues' heads (wired, unread: the harness reads the queues themselves)
+    bool exact = false;
+    struct Send { uint32_t w[4]; int64_t store_t; unsigned next; bool on; };
+    Send send[TARGETS] = {};
+    int64_t pop_at[TARGETS] = {-1, -1, -1};
+    explicit ReqHost(sim::Ports& p, const ReqBusConfig& rc) : exact(rc.credit_latency == 0) {
+        static const char* kB[TARGETS] = {"beat0", "beat1", "beat2"}, *kC[TARGETS] = {"credit0", "credit1", "credit2"};
+        static const char* kP[TARGETS] = {"pop0", "pop1", "pop2"}, *kQ[TARGETS] = {"qcredit0", "qcredit1", "qcredit2"};
+        for (unsigned c = 0; c < TARGETS; c++) {
+            p.out(beat[c], kB[c], 3);
+            if (!exact) p.in(credit[c], kC[c], 1);
+            p.out(pop[c], kP[c], 0);
+            p.out(qcredit[c], kQ[c], 1);
+            static const char* kH[TARGETS] = {"head0", "head1", "head2"};
+            p.in(head[c], kH[c]);
+        }
+    }
+    sim::Wake step(sim::Ctx& c) {
+        const int64_t t = int64_t(c.now());
+        bool more = false;
+        for (unsigned k = 0; k < TARGETS; k++) {
+            if (!exact) while (c.ready(credit[k])) c.take(credit[k]);
+            Send& s = send[k];
+            if (s.on && s.next < BEATS) {
+                c.put(beat[k], beat_w0(s.next, 64 + k, s.store_t), sim::Word(s.w[0]) | sim::Word(s.w[1]) << 32,
+                      sim::Word(s.w[2]) | sim::Word(s.w[3]) << 32);
+                if (++s.next == BEATS) s.on = false;
+            }
+            more = more || s.on;
+            if (pop_at[k] == t) { c.put(pop[k]); c.put(qcredit[k], sim::Word(t)); pop_at[k] = -1; }
+            else if (pop_at[k] >= 0) more = true;
+        }
+        return more ? c.next() : sim::Wake::none();
+    }
+    uint64_t digest() const { return 0; }
+};
 
 // A control built without the bus (a lone tile's tests): its request side tied off. A REQUEST_SEND is FATAL there
 // (nothing to carry it); a controller's queue reads empty.

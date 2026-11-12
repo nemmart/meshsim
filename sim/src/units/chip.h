@@ -105,6 +105,8 @@ struct ChipSpec {
     bool cc_cores = false;
     bool cc3_dma = false;                     // C&C 3's DMA input (ref's cc3Tracer)
     uint32_t host_capacity = 4096;            // each host port's queue (packets)
+    bool reqbus_host = false;                 // W20 (harness-only): the request bus's receive queues and controller
+                                              //   inputs on the machine with C&C's model, driven by ReqHost (reqbus.h)
 };
 
 TileIO tile_cycle(sim::Config& cfg, const ChipSpec& spec, unsigned k);

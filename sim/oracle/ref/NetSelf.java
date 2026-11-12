@@ -219,7 +219,38 @@ final class NetSelf {
         logs(n, 9, 30);
     }
 
+    /** W22-10: ref's RequestBus from a test on Net(Config.machine()): a tile's request (through its core's stores), a
+     *  controllerSend, the receivers' side (pending, get, receive, underflows), the credits, the drops at the root. */
+    static void reqbus() {
+        Config k = Config.machine(); k.periphType = 0;
+        Net n = new Net(k);
+        n.c.run(200);
+        Tile p = n.c.tiles[5];
+        final int REG = 0xFFFFF800;
+        int[][] st = { { 18, (0 << 7) | (0x21 << 10) }, { 19, 0x1111 }, { 20, 0x2222 }, { 21, 0x3333 } };   // W0 (target 0) .. SEND
+        for (int[] x : st) { p.core.store(n.c.cycle + 1, REG + 4 * x[0], x[1], -1); n.step(); }
+        RequestBus b = n.c.reqBus;
+        b.controllerSend(n.c.cycle, 1, (0 << 7) | (0x55 << 10), 1, 2, 3);
+        StringBuilder sb = new StringBuilder("reqbus:");
+        long first = -1;
+        for (int i = 0; i < 200 && b.queue[0].size() < 2; i++) { n.step(); if (first < 0 && b.pending(0, n.c.cycle + 1)) first = n.c.cycle; }
+        sb.append(" first pending at ").append(first).append(", two queued at ").append(n.c.cycle);
+        sb.append("; head ").append(hex(b.get(0, n.c.cycle + 1, 0) & 0xFFFFFFFFL)).append(" ").append(hex(b.get(0, n.c.cycle + 1, 3) & 0xFFFFFFFFL));
+        sb.append("; credits ").append(b.credits[0]);
+        sb.append("; receive ").append(hex(b.receive(0, n.c.cycle + 1) & 0xFFFFFFFFL)).append(" size ").append(b.queue[0].size()).append(" credits ").append(b.credits[0]);
+        n.step();
+        sb.append("; then credits ").append(b.credits[0]).append(" head ").append(hex(b.get(0, n.c.cycle + 1, 0) & 0xFFFFFFFFL));
+        sb.append("; receive ").append(hex(b.receive(0, n.c.cycle + 1) & 0xFFFFFFFFL)); n.step();
+        sb.append("; receive on empty ").append(b.receive(0, n.c.cycle + 1)).append(" underflows ").append(b.underflows);
+        for (int[] x : new int[][] { { 18, (3 << 7) | (0x31 << 10) }, { 21, 0x77 }, { 18, (5 << 7) | (0x32 << 10) }, { 21, 0x78 } }) { p.core.store(n.c.cycle + 1, REG + 4 * x[0], x[1], -1); n.step(); }
+        n.runAll(500);
+        sb.append("; dropped ").append(b.dropped.size()).append(" delivered ").append(b.delivered.size()).append(" credits ").append(b.credits[0]).append(" at ").append(n.c.cycle);
+        sb.append("; violations ").append(n.c.violations);
+        System.out.println(sb);
+    }
+
     public static void main(String[] a) {
+        reqbus();
         onMachine(0);
         onMachine(4);
         feedOnlyInNet();

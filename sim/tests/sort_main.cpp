@@ -43,6 +43,7 @@
 #include "sort_kit.h"
 #include "suite.h"
 #include "units/ag.h"
+#include "units/big_sram.h"
 #include "units/regblock.h"
 #include "units/tile_ctl.h"
 
@@ -290,7 +291,19 @@ struct Machine {
         return false;
     }
     // SortTest.Machine.monitor's profiles (its stack watch is the core's own, Q3)
+    bool was_wfi[64] = {};
     void monitor() {
+        // invariant 2 per run: a new disjoint-buffer phase on a tile whenever its core leaves WFI (SortTest's
+        // p.sram.newPhase(), tile by tile; the big SRAM's own, woken as Chip::new_phase wakes it)
+        for (unsigned i = 0; i < 64; i++) {
+            const bool wfi = c.tile(i).in_wfi();
+            if (!wfi && was_wfi[i]) {
+                const std::string u = units::tile_unit(i, "sram");
+                c.unit<units::BigSram>(u).new_phase();
+                c.touched(u);
+            }
+            was_wfi[i] = wfi;
+        }
         const size_t ph = c.phases().phases.size() - 1;                 // PhaseLog's phases.size() - 1 (-1: none yet)
         if (!pf.watch.empty()) {
             auto& w = pf.watch_by_phase[ph];

@@ -44,7 +44,7 @@ SUITES="suite_memsys suite_rvc suite_tracer"
 EQUIVS="test_golden test_tileslotconf"
 SUITES="$SUITES suite_ccbench"                       # W23 (P5)
 SUITES="$SUITES suite_replayer stageb"               # W25 (P7b)
-SUITES="$SUITES suite_net"                           # W22 (P4)
+SUITES="$SUITES suite_net suite_search"              # W22 (P4)
 SUITES="$SUITES sort_test sweep"                     # W24 (P6)
 
 if [ "$BUILD" = 1 ]; then
@@ -110,7 +110,7 @@ pending ctrl-shuf     "shuffled child order (seed 4)" "P5"
 equiv riscv           "riscv-tests rv32ui/rv32um on the controller" "test_golden (every program's retire trace equal to ref's)" -- $S/test_golden
 pending rdport        "read port, GATHER (Java; the C parts PENDING (phase 2))" "P4: W22-18, W26's invariant 8"
 pending accounting    "per-phase accounting (from C)" "P5 (W23)"
-pending searchbench   "search steps through the read port (microbenchmark, from C)" "P4: W26's invariant 8 (F4)"
+step searchbench 3 "search steps through the read port (microbenchmark, from C)" tests/p4suites/searchbench.log -- $S/suite_search
 pending rdport-shuf   "shuffled child order (seed 4)" "P4: W22-18, W26's invariant 8"
 pending agtest        "address generator read-ahead, figure 12's PTR/HIST ports" "P4: W22-16, W26's AG stream checks"
 pending agtest-shuf   "shuffled child order (seed 4)" "P4: W22-16, W26's AG stream checks"

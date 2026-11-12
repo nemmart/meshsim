@@ -340,3 +340,6 @@ W22-18. **The read port's host queue (for W20)**: ref's `readPort.hostQueue(addr
   P4 suite in the runner and in make check (test_p4suites); each other suite joins both when its log is equal.
 - **Quest 184** (claimed after re-reading NUMBERS.md, pushed): engine-full and rdport-full's ported groups on the C++
   against v1.3's logs (printed lines; the FAIL lines, W26's, listed). Task copy in `tasks/`.
+- **SearchBench complete** (W26's F4 fix on main): byte for byte equal to searchbench.log, 56 of 56 (clang suite build;
+  clang debug too, 17 s). In run_tests.sh (step searchbench, `suite_search` in SUITES; `quick --check`: no LOG
+  DIFFERS) and in make check (test_p4suites).

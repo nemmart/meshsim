@@ -51,3 +51,4 @@ void run_step(const char* command, const char* log) {
 TEST(net_quick_equals_ref_log) { run_step("suite_net -1 quick", "net-quick.log"); }
 TEST(net_shuf_equals_ref_log) { run_step("suite_net 5 quick", "net-shuf.log"); }
 TEST(net_shuf2_equals_ref_log) { run_step("suite_net 11 quick", "net-shuf2.log"); }
+TEST(searchbench_equals_ref_log) { run_step("suite_search", "searchbench.log"); }

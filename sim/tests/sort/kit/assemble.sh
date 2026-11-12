@@ -1,7 +1,7 @@
 #!/bin/bash
 # assemble.sh OUTDIR [KEYDIR] -- the sort's measurement kit on meshsim v1.35 (WORKER24, P6, row D8): v1.3's kit
 # (meshsim/kit) on the C++ binaries, no Java to run it (D40). Run from sim/ after a release build, or it builds one.
-#   OUTDIR/sort_test, sort_summary     the simulator's sort driver (v1.3's SortTest) and SortSummary (clang release)
+#   OUTDIR/sort_test, sort_summary     the simulator's sort driver (v1.3's SortTest) and SortSummary (clang, MODE=suite)
 #   OUTDIR/image/sort.{code.bin,data.bin,sym}, fw/boot/bootrom.hex, data/hops.txt   what sort_test reads
 #   OUTDIR/sw/bootrom.hex, hops.txt    links to them, under the names the inputs line gives them (v1.3's)
 #   OUTDIR/run.sh, tools/runjob.sh, jobs.txt (v1.3's job list), README.md
@@ -13,8 +13,10 @@
 set -eu
 SIM=$(cd "$(dirname "$0")/../../.." && pwd); HERE=$SIM/tests/sort/kit
 O=${1:?usage: assemble.sh OUTDIR [KEYDIR]}; KD=${2:-}
-B=$SIM/build/clang-release
-(cd "$SIM" && make -s CC_NAME=clang MODE=release build/clang-release/sort_test build/clang-release/sort_summary)   # the rules' targets are relative
+# the suite build (release flags with the checker's facts): PhaseLog's write-engine input and GATHER queue peaks exist
+# only there (tests/phase_log.h)
+B=$SIM/build/clang-suite
+(cd "$SIM" && make -s CC_NAME=clang MODE=suite build/clang-suite/sort_test build/clang-suite/sort_summary)   # the rules' targets are relative
 mkdir -p "$O/tools" "$O/image" "$O/sw" "$O/fw/boot" "$O/data" "$O/pipeline/keys"
 cp "$B/sort_test" "$B/sort_summary" "$O/"
 cp "$HERE/run.sh" "$HERE/README.md" "$HERE/jobs.txt" "$O/"; cp "$HERE/tools/runjob.sh" "$O/tools/"

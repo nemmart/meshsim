@@ -16,5 +16,6 @@ Differences from v1.3's kit, all tooling: the simulator is `sort_test` (the inpu
 kit's own two fixes to v1.3's (NOTES F2: v1.3's image files, the boot ROM beside the simulator); `make_jobs.py` isn't
 carried (Python avoided, D40; `jobs.txt` is its output). Six sweep points are refused as v1.3 refuses them (F3).
 
-**Status** (WORKER24): the p4 and shuffle groups run; their CSVs and logs equal v1.3's (`n2000.tgz`, Quest 178) but
-for the peaks (W20's PhaseLog); the phases CSVs and the sweep's `cfg.*` fields wait for W20's PhaseLog and Config.
+**Status** (WORKER24): built in the suite build (W20's PhaseLog runs there). The p4 and shuffle groups at 2,000: every
+CSV byte-identical to v1.3's (`n2000.tgz`, Quest 178), every log equal, every phases CSV equal but `unreadOverwrites`
+(W26's); at full size, a sample equal (Quest 181). The sweep group's `cfg.*` fields wait for W20's Config.

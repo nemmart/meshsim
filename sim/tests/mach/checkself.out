@@ -33,6 +33,20 @@ violations: 9
   cycle 18 tile 33: FIFO overflow t33.to-up<from-left (invariant 1)
   cycle 17 tile 33: FIFO overflow t33.to-up<from-right (invariant 1)
   cycle 26 tile 33: FIFO overflow t33.to-up<from-down (invariant 1)
+violations: 13
+  cycle 18 tile 12: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_1 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=4 dst=12 mode=0(write@addr) ctr=1 addr=0x03000208 size=64 payload=0x0000000000000003
+  cycle 24 tile 21: uncounted write to region 0x3: big-SRAM data and peripheral writes are always counted (3.1, 6.2; invariant 22): src=5 dst=21 mode=0(write@addr) ctr=0 addr=0x03000300 size=64 payload=0x0000000000000005
+  cycle 25 tile 9: unexpected arrival (a stray, at acceptance): WRITE_COUNTER_1 has nothing armed for it (invariant 9; the error follows at its decrement, K = 8 cycles later): src=3 dst=9 mode=0(write@addr) ctr=1 addr=0x03000100 size=64 payload=0x0000000000000001
+  cycle 27 tile 20: uncounted mode-1 packet: modes 1-3 are always counted (3.1, invariant 22): src=5 dst=20 mode=1(write@PTR[src]) ctr=0 addr=0x00000000 size=64 payload=0x0000000000000004
+  cycle 29 tile 22: uncounted write into controller memory from unit 5: only commands and boot overlays, from C&C 1-3, are uncounted (3.1; invariant 22): src=5 dst=22 mode=0(write@addr) ctr=0 addr=0x00000400 size=32 payload=0x00000006
+  cycle 30 tile 23: write into data memory's reserved first 16 bytes (2.2; invariant 22): src=6 dst=23 mode=0(write@addr) ctr=1 addr=0x00000008 size=64 payload=0x0000000000000007
+  cycle 35 tile 24: write into the reply block other than a 32- or 64-bit reply at the sender's own pair, REPLY + 8 x 6 (4.12; invariant 11): src=6 dst=24 mode=0(write@addr) ctr=1 addr=0x00007bf8 size=32 payload=0x00000008
+  cycle 36 tile 25: write into the command block other than an uncounted one from C&C 1-3 inside it (4.12; invariant 11): src=7 dst=25 mode=0(write@addr) ctr=0 addr=0x00007fc0 size=32 payload=0x00000009
+  cycle 41 tile 26: write past the end of data memory: the high offset bits are ignored and it aliases (2.2; invariant 19): src=7 dst=26 mode=0(write@addr) ctr=1 addr=0x0000fff0 size=128 payload=0x000000000000000b_000000000000000a
+  cycle 42 tile 27: mode-0 write at or past the end of big SRAM (chunk 0x100000): undefined (2.2; invariant 19): src=8 dst=27 mode=0(write@addr) ctr=1 addr=0x03400000 size=64 payload=0x000000000000000c
+  cycle 44 tile 27: a big-SRAM write at chunk 0x100000, at or past the end of big SRAM: undefined (4.1; invariant 19): src=8 dst=27 mode=0(write@addr) ctr=1 addr=0x03400000 size=64 payload=0x000000000000000c
+  cycle 48 tile 25: an overlay write landed after the unit's command and before its start (6.2: the overlays and the first command are of one kind, the command last): src=64 dst=126 mode=0(write@addr) ctr=0 addr=0x00000200 size=32 payload=0x0000000d
+  cycle 57 tile 30: a command (unicast) after overlays of the other kind: the mesh orders packets only within a kind (6.2; invariant 25): src=64 dst=30 mode=0(write@addr) ctr=0 addr=0x00007fc0 size=32 payload=0x0000000e
 violations: 12
   cycle 10 tile 10: count-only packet on counter 0 sent: it does nothing (3.1, invariant 21): src=0 dst=20 mode=5(count-only) ctr=0 addr=0x00000000 size=32 payload=0x00000000
   cycle 11 tile 11: count-only packet on counter 0 sent: it does nothing (3.1, invariant 21): src=0 dst=20 mode=5(count-only) ctr=0 addr=0x00000000 size=32 payload=0x00000001

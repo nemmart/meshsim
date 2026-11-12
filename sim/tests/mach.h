@@ -114,6 +114,8 @@ struct MachConfig {
                                        //   simulated all the same (asleep, they cost little); Chip::parked_untouched is ref's check
     // ---- the simulator and its checks (spec 9) [step 2] ----
     int64_t shuffle_seed = -1;         // >= 0: the debug shuffle with this seed
+    bool step_all = false;             // the framework's debug options (sim.h DEBUG CHECKS; W22's ask 8): every unit
+    bool instance_major = false;       //   stepped every cycle; the instance-major order (else type-major)
     unsigned max_violation_messages = 50;
     bool strict_replies = false, check_read_port_overlap = true, check_command_read = true, check_disjoint = true;
     bool measure_s1 = true, check_errors = true, check_unexpected = true;
@@ -187,6 +189,16 @@ public:
     void set_stream(unsigned i, uint32_t src, uint32_t dest, uint32_t count);   // STREAM[i]'s three words
     void set_group(unsigned g, uint32_t lo, uint32_t hi);   // GROUP[g]
     void pulse(uint32_t bits);                              // TILE_PULSE's start, acting from the next cycle
+    // ref's sendHold (the send port's holding register, from a test): put(t, ...) at t = cycle() (as of the cycle just
+    // run: Sim::put_late) or cycle() + 1 (made by the core in its step then); empty(t) for t = cycle() + 1; refusals
+    void send_put(int64_t t, uint64_t lo, uint64_t hdr, uint64_t hi);
+    bool send_empty(int64_t t) const;
+    uint64_t send_refusals() const;
+    // ref's writer.record()/log and gatherStub.record()/log: {t, payload [63:0], header, payload [127:64]} from now on
+    void record_writer();
+    std::vector<std::array<uint64_t, 4>> writer_log() const;
+    void record_gather();
+    std::vector<std::array<uint64_t, 4>> gather_log() const;
     uint32_t remaining(unsigned ctr) const;                 // the director's write counters (dir.remaining[ctr])
     void set_remaining(unsigned ctr, uint32_t v);
     bool mem_idle() const;                                  // mem_idle (4.1)
@@ -243,6 +255,7 @@ public:
     std::vector<std::array<int64_t, 2>> phase_log() const;
     std::vector<std::array<uint64_t, 4>> received() const;  // Endpoint.received: {t, payload lo, header, payload hi}
     uint64_t ready_bits() const;                            // the READY bits as C&C sees them
+    // (received: ref's cnc.received, on either machine without cc_cores: {t, payload [63:0], header, payload [127:64]})
 private:
     Chip* c_;
 };
@@ -295,7 +308,10 @@ public:
     void reset(bool hard);                                  // takes effect at the end of the current cycle
     uint64_t resets() const;
     int64_t last_reset_at() const;
-    void reset_stats();                                     // ref's resetStats (the peaks restart)
+    void reset_stats();                                     // ref's resetStats: the units' statistics to 0, the router
+                                                            //   FIFOs' peaks to their occupancy (the framework's FIFOs
+                                                            //   keep no peak: W22's ask 7, the owner's call)
+    std::vector<std::array<uint64_t, 4>> received(unsigned cc) const;   // ref's ccs[cc].received (C&C cc + 1; no cc_cores)
 
     struct Impl;                                            // mach.cpp: the machine, its memories, the harness units
     Impl& impl() { return *impl_; }

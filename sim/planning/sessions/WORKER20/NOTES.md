@@ -58,6 +58,24 @@ remaining kinds, interleaved as the suites ask.
   StageB machine (lone and full) line for line, its six register-block violations included (the first CTL facts: reserved
   bits, record base, counter wraps; also done early, done with GO masked, reserved accesses, SRAM_RD_DEST size). The row
   hook is unchecked against ref yet (it needs a replay window): W25's StageB will.
+- **W22's asks 1-6 and 8 done** (ask 7, the framework FIFOs' peak, is the owner's call):
+  1. `Cc::received` / `Chip::received(cc)` on either machine (the endpoints' receive traces on every chip without
+     cc_cores; an overflow of the trace is reported when it is read).
+  2. `Chip::reset_stats` (ref's resetStats: the router's FIFO peaks to their occupancy and the units' counters ref
+     zeroes; the framework's FIFOs keep no peak).
+  3. `TileRef::send_put(t, ...)` (t = the cycle just run: put_late; the next: the core's host send), `send_empty`,
+     `send_refusals` (`Sim::hold_refusals`, harness-only).
+  4. `record_writer`/`writer_log`, `record_gather`/`gather_log` (harness-only logs in WriteEngine and the drain).
+  5. K below kMin refused at build, ref's message (a FATAL: `suite::throws` catches it).
+  6. the director's remaining checks as facts: strays at acceptance (invariant 9: the director reads the counters'
+     view through `regs`, harness-only wiring `G1Config::stray_check`; ref's pendingAdd of the same cycle isn't seen),
+     uncounted mode/region/source and the overlay after a command (22, 6.2), the reserved bytes, command and reply
+     blocks (11, 22), past data/program memory and past big SRAM (19), the command after overlays of the other kind
+     (25); the write engine's write past big SRAM (19). CheckSelf's director case line for line.
+  8. `MachConfig::step_all`, `instance_major`.
+- **The runner's riscv and periph steps**: `equiv LOG "what" "equivalent" -- $S/test_x` (pass or fail, the log names
+  the equivalent): riscv by test_golden (every program's retire trace equal to ref's), periph by test_tileslotconf
+  (W15's TileSlotConf). periph-shuf stays PENDING (no shuffled run of TileSlotConf yet).
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

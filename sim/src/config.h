@@ -389,6 +389,8 @@ public:
     // fatal in the timing builds, which don't keep it. One domain only.
     uint32_t fifo_peak(FifoIn p) const;
     void fifo_restart_peak(FifoIn p);
+    // W20 (harness-only; P2): a Hold's refusals so far (ref's WordHold.refusals), between runs. One domain only.
+    uint64_t hold_refusals(HoldIn p) const;
     // W20 (harness-only; P2): data in motion anywhere, between runs: an input holding data (a Link word visible, a Fifo
     // not empty, a Hold occupied) or a put still on its way (a Link, Fifo, credit Fifo or Hold entry in a delivery
     // bucket). Regs, Wires, RegFiles, Counts and credit returns are state, not motion. For ref's Chip.quiescent.

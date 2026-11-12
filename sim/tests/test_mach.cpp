@@ -367,6 +367,28 @@ void checkself() {
     }
     {
         mach::MachConfig k = Net::cfg(-1);
+        k.check_unexpected = true;
+        Net n(k);
+        const uint32_t SR = uint32_t(lw::R_SRAM) << 24;
+        n.at(3, 10, 9, lw::M_WRITE, 1, SR | 0x100, lw::SIZE_64, 1, 0);
+        n.c.tile(12).set_remaining(1, 1);
+        n.at(4, 10, 12, lw::M_WRITE, 1, SR | 0x200, lw::SIZE_64, 2, 0);
+        n.at(4, 11, 12, lw::M_WRITE, 1, SR | 0x208, lw::SIZE_64, 3, 0);
+        n.at(5, 12, 20, lw::M_SRC, 0, 0, lw::SIZE_64, 4, 0);
+        n.at(5, 13, 21, lw::M_WRITE, 0, SR | 0x300, lw::SIZE_64, 5, 0);
+        n.at(5, 14, 22, lw::M_WRITE, 0, Net::cm(0x900), lw::SIZE_32, 6, 0);
+        n.at(6, 15, 23, lw::M_WRITE, 1, 8, lw::SIZE_64, 7, 0);
+        n.at(6, 16, 24, lw::M_WRITE, 1, 0x7BC0 + 8 * 7, lw::SIZE_32, 8, 0);
+        n.at(7, 17, 25, lw::M_WRITE, 0, 0x7FC0, lw::SIZE_32, 9, 0);
+        n.at(7, 18, 26, lw::M_WRITE, 1, 0x7FF0 + 0x8000, lw::SIZE_128, 10, 11);
+        n.at(8, 19, 27, lw::M_WRITE, 1, SR | (0x100000u << 2), lw::SIZE_64, 12, 0);
+        n.cnc_send({30, lw::BROADCAST, lw::M_WRITE, 0x200, 13, lw::SIZE_32, 0, 0});
+        n.cnc_send({31, 30, lw::M_WRITE, 0x7FC0, 14, lw::SIZE_32, 0, 0});
+        n.run_all(2000);
+        say("%s", n.c.violation_report().c_str());
+    }
+    {
+        mach::MachConfig k = Net::cfg(-1);
         k.max_violation_messages = 3;
         Net n(k);
         for (unsigned i = 0; i < 6; i++) n.at(10 + i, 10 + i, 20, lw::M_COUNT, 0, 0, lw::SIZE_32, i, 0);

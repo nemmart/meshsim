@@ -134,6 +134,7 @@ struct Chip::Impl {
     std::vector<units::HarnessFeed> feeds;
     std::vector<std::vector<E4>> ring_store;            // tile k's ring r (0: ret, 1-3: clients 0-2) at 4k + r
     std::vector<std::vector<E4>> logs;
+    std::vector<E4> writer_logs[64], gather_logs[64];     // TileRef::record_writer, record_gather
     // the endpoints' harness parts (cnc.h's HarnessSends): C&C 1 (the Java model), C&C 2, C&C 3
     units::HarnessSends sends[3];
     std::vector<units::HarnessSends::E> send_store[3];
@@ -155,6 +156,9 @@ struct Chip::Impl {
 Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     Impl& m = *impl_;
     if (!c.start_skew.empty()) FATAL("mach: a per-tile start_skew comes with W20's step 3");
+    if (c.K < c.k_min())                                   // TrafficDirector's constructor (ref: IllegalArgumentException)
+        FATAL("K = %u is below meshsim's max(2L + 4, L + 4, cm_latency, rp_latency) = %u at L = %u (4.7, D49; invariant 24)",
+              c.K, c.k_min(), c.ts_engine_latency);
     if (c.cc3_tracer && !c.cc_cores) FATAL("mach: cc3_tracer needs cc_cores (ref's Config)");
     m.hops = units::load_hops(data_path({"data/hops.txt"}).c_str());
     m.rom = bootrom();
@@ -175,6 +179,7 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         g.periph_present = 1; g.periph_slot = true; g.periph_only = c.test_periph_tile;
     }
     g.cc3_tracer = c.cc3_tracer;
+    g.stray_check = sim::check::kOn;                      // the director's stray check (a checker fact: on with SIM_CHECKS)
     g.K = c.K; g.cm_latency = c.cm_latency;
     g.ts_engine_latency = c.ts_engine_latency;
     g.ag_lookahead = c.ag_lookahead > 0 ? unsigned(c.ag_lookahead) : 0;
@@ -196,6 +201,8 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     m.prog.release();                                     // C&C's queue starts empty; the harness appends (Cc)
     sim::Options opt;
     if (c.shuffle_seed >= 0) opt.shuffle_seed = uint64_t(c.shuffle_seed) + 1;   // 0 is "none" in the framework
+    opt.step_all = c.step_all;
+    opt.order = c.instance_major ? sim::Options::Order::instance_major : sim::Options::Order::type_major;
     opt.threads = c.threads;
     opt.observe_arrivals = true;                          // the register block as ref has it at the end of a cycle
     sim::Config sc(opt);
@@ -227,6 +234,7 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         units::TileCtl& b = m.sim->unit<units::TileCtl>(units::unit_prefix(k) + "ctl");
         b.ck_tile = int(k); b.s.ck_tile = int(k);
         m.sim->unit<units::TileCore>(units::unit_prefix(k) + "core").rv.ck_tile = int(k);
+        if (k < 64) m.sim->unit<units::WriteEngine>(units::tile_unit(k, "we")).ck_tile = int(k);
     }
     if (sim::check::kOn) {                                // ref's FIFO names (Router, Tile, Endpoint)
         static const char* const kOutName[6] = {"to-right", "to-left", "to-down", "to-up", "eject", "to-cnc"};
@@ -251,6 +259,14 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         }
     }
     m.has_cnc = !c.cc_cores;
+    if (!c.cc_cores)                                      // the endpoints' receive traces (ref's received), every machine
+        for (unsigned k = 0; k < 3; k++) {
+            m.recv[k].assign(c.log_capacity, {});
+            m.sends[k].log = reinterpret_cast<uint64_t(*)[4]>(m.recv[k].data());
+            m.sends[k].log_cap = c.log_capacity;
+            if (k == 0) m.sim->unit<units::Cnc>("cnc").hs = &m.sends[0];
+            else m.sim->unit<units::Endpoint>("ep" + std::to_string(k + 1)).hs = &m.sends[k];
+        }
     if (!c.cc_cores) m.cc = std::make_unique<Cc>(*this);
     for (uint32_t id = units::CncProgram::kCalls; id-- > 0;) m.free_ids.push_back(id);
 }
@@ -445,7 +461,24 @@ std::string Chip::violation_report() {
 void Chip::reset(bool) { FATAL("mach: reset comes with W20's step 2"); }
 uint64_t Chip::resets() const { return 0; }
 int64_t Chip::last_reset_at() const { return -1; }
-void Chip::reset_stats() { FATAL("mach: reset_stats comes with W20's step 4 (PhaseLog)"); }
+// ref's Chip.resetStats (Tile.resetStats, the units' own): statistics only, never state the machine runs on
+void Chip::reset_stats() {
+    for (unsigned k = 0; k < 64; k++) {
+        TileRef p = tile(k);
+        units::Router& r = p.unit<units::Router>("router");
+        for (auto& f : r.q) f.peak = f.count;
+        r.injected = r.routed = r.ejected = r.eject_errors = r.route_errors = r.from_cnc_words = r.to_cnc_words = 0;
+        units::Director& d = p.unit<units::Director>("dir");
+        for (auto& x : d.per_mode) x = 0;
+        d.accepted = d.bad_packets = 0;
+        units::Injection& in = p.unit<units::Injection>("inj");
+        in.injected = in.from_read = in.from_send = in.send_wait_cycles = 0;
+        units::WriteEngine& we = p.unit<units::WriteEngine>("we");
+        we.taken = we.written = we.stall_cycles = 0;
+        units::TableStore& ts = p.unit<units::TableStore>("ts");
+        ts.table_reads = ts.rmws = 0;
+    }
+}
 
 // ================================================================================================= a tile
 namespace {
@@ -504,6 +537,54 @@ std::string TileRef::halt_report() const {
     char b[160];
     std::snprintf(b, sizeof b, "tile %u: %s at pc=0x%x", k_, r.halt >= 0 && r.halt <= 8 ? kName[r.halt] : "?", r.pc);
     return b;   // ref's report adds the halting instruction (and a bus error's address): not kept by the C++ core yet
+}
+
+// ---- the send port's holding register from a test (ref's Tile.sendHold) ----
+void TileRef::send_put(int64_t t, uint64_t lo, uint64_t hdr, uint64_t hi) {
+    units::TileCore& core = unit<units::TileCore>("core");
+    if (t == c_->cycle()) {                                 // as of the cycle just run
+        const sim::Word w[3] = {lo, hdr, hi};
+        c_->sim().put_late(un(k_, "core"), core.send, w, 3);
+        return;
+    }
+    if (t != c_->cycle() + 1) FATAL("mach: tile %u: a send-hold put at cycle %lld (the cycle just run or the next)", k_, (long long)t);
+    if (core.host_send) FATAL("mach: tile %u: a second send-hold put pending", k_);
+    core.host_send = true; core.host_send_t = uint64_t(t);
+    core.host_send_w[0] = lo; core.host_send_w[1] = hdr; core.host_send_w[2] = hi;
+    c_->touched(un(k_, "core"));
+}
+bool TileRef::send_empty(int64_t t) const {               // WordHold.isEmpty(t): nothing in it, nothing put for t
+    if (t != c_->cycle() + 1) FATAL("mach: tile %u: send_empty(%lld): the next cycle only", k_, (long long)t);
+    const units::TileCore& core = unit<units::TileCore>("core");
+    if (core.host_send) return false;
+    sim::PortEntry e[1];
+    const sim::PortView v = c_->sim().observe(unit<units::Injection>("inj").send, e, 1);
+    return !v.valid && !v.put && v.n == 0;
+}
+uint64_t TileRef::send_refusals() const { return c_->sim().hold_refusals(unit<units::Injection>("inj").send); }
+void TileRef::record_writer() {
+    Chip::Impl& m = c_->impl();
+    auto& v = m.writer_logs[k_];
+    v.assign(c_->cfg().log_capacity, {});
+    units::WriteEngine& we = unit<units::WriteEngine>("we");
+    we.log = reinterpret_cast<uint64_t(*)[4]>(v.data()); we.log_cap = uint32_t(v.size()); we.log_n = 0;
+}
+std::vector<std::array<uint64_t, 4>> TileRef::writer_log() const {
+    const units::WriteEngine& we = unit<units::WriteEngine>("we");
+    const auto& v = c_->impl().writer_logs[k_];
+    return std::vector<std::array<uint64_t, 4>>(v.begin(), v.begin() + we.log_n);
+}
+void TileRef::record_gather() {
+    units::Gather& g = unit<units::Gather>("gather");
+    if (!g.drain) FATAL("mach: tile %u: record_gather: ref's gatherStub (the drain, real_responder off) only", k_);
+    auto& v = c_->impl().gather_logs[k_];
+    v.assign(c_->cfg().log_capacity, {});
+    g.log = reinterpret_cast<uint64_t(*)[4]>(v.data()); g.log_cap = uint32_t(v.size()); g.log_n = 0;
+}
+std::vector<std::array<uint64_t, 4>> TileRef::gather_log() const {
+    const units::Gather& g = unit<units::Gather>("gather");
+    const auto& v = c_->impl().gather_logs[k_];
+    return std::vector<std::array<uint64_t, 4>>(v.begin(), v.begin() + g.log_n);
 }
 
 // ---- a test's loads and stores through the core (ref's Controller.load, store) ----
@@ -735,7 +816,7 @@ int64_t Cc::last_go_at() const { return c_->unit<units::Cnc>("cnc").last_go_at; 
 int64_t Cc::last_all_ready_at() const { return c_->unit<units::Cnc>("cnc").last_all_ready_at; }
 int64_t Cc::last_run_at() const { return c_->impl().last_run_at; }
 std::vector<std::array<int64_t, 2>> Cc::phase_log() const { FATAL("mach: Cc::phase_log comes with W20's step 4 (PhaseLog)"); }
-std::vector<std::array<uint64_t, 4>> Cc::received() const { FATAL("mach: Cc::received comes with the coreless machine"); }
+std::vector<std::array<uint64_t, 4>> Cc::received() const { return c_->received(0); }
 uint64_t Cc::ready_bits() const { FATAL("mach: Cc::ready_bits comes with the coreless machine"); }
 
 // ================================================================================================= Mach
@@ -981,13 +1062,6 @@ void Chip::Impl::enable_net(const MachConfig& c) {
         d.log_cap = c.log_capacity; d.log_n = 0;
     }
     if (c.cc_cores) FATAL("Net: the coreless machine has C&C 1's Java model (no cc_cores)");
-    for (unsigned k = 0; k < 3; k++) {
-        recv[k].assign(c.log_capacity, {});
-        sends[k].log = reinterpret_cast<uint64_t(*)[4]>(recv[k].data());
-        sends[k].log_cap = c.log_capacity;
-        if (k == 0) sim->unit<units::Cnc>("cnc").hs = &sends[0];
-        else sim->unit<units::Endpoint>("ep" + std::to_string(k + 1)).hs = &sends[k];
-    }
 }
 void Chip::Impl::push_send(unsigned cc, const units::HarnessSends::E& e) {   // between cycles: grow if full
     units::HarnessSends& h = sends[cc];
@@ -1057,8 +1131,12 @@ void Net::send(unsigned cc, unsigned dst, unsigned mode, unsigned counter, uint3
         c.sim().put_late(n, c.unit<units::Endpoint>(n).send, w, 3);
     }
 }
-std::vector<std::array<uint64_t, 4>> Net::received(unsigned cc) const {
-    const Chip::Impl& m = c.impl_const();
+std::vector<std::array<uint64_t, 4>> Net::received(unsigned cc) const { return c.received(cc); }
+std::vector<std::array<uint64_t, 4>> Chip::received(unsigned cc) const {
+    if (cfg_.cc_cores || cc > 2) FATAL("mach: received(%u): C&C 1-3's endpoints of the model (no cc_cores)", cc);
+    const Impl& m = *impl_;
+    if (m.sends[cc].lost) FATAL("mach: C&C %u's receive trace overflowed (%u kept, %llu lost): raise MachConfig::log_capacity",
+                                cc + 1, m.sends[cc].log_cap, (unsigned long long)m.sends[cc].lost);
     return std::vector<std::array<uint64_t, 4>>(m.recv[cc].begin(), m.recv[cc].begin() + m.sends[cc].log_n);
 }
 uint32_t Net::cm(uint32_t w) { return w < 0x800 ? uint32_t(units::lw::R_PMEM) << 24 | w << 2 : (w - 0x800) << 2; }
@@ -1084,7 +1162,7 @@ std::vector<std::array<uint64_t, 4>> Net::log(unsigned tile) const {
 }
 void Net::clear_logs() {
     for (unsigned k = 0; k < 64; k++) c.unit<units::Director>(units::tile_unit(k, "dir")).log_n = 0;
-    for (auto& h : c.impl().sends) h.log_n = 0;
+    for (auto& h : c.impl().sends) { h.log_n = 0; h.lost = 0; }
 }
 unsigned Net::max_router_peak() const {
     unsigned m = 0;

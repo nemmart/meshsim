@@ -36,6 +36,27 @@ final class CheckSelf {
             n.runAll(2000);
             System.out.print(n.c.violationReport());
         }
+        {   // the director's invariants 9 (strays), 11, 19, 22, 25
+            Config k = Net.cfg(-1); k.checkUnexpected = true;
+            Net n = new Net(k);
+            int SR = LinkWord.R_SRAM << 24;
+            n.at(3, 10, 9, LinkWord.M_WRITE, 1, SR | 0x100, LinkWord.SIZE_64, 1, 0);                 // a stray (nothing armed)
+            n.c.tiles[12].dir.remaining[1] = 1;
+            n.at(4, 10, 12, LinkWord.M_WRITE, 1, SR | 0x200, LinkWord.SIZE_64, 2, 0);                // armed for one
+            n.at(4, 11, 12, LinkWord.M_WRITE, 1, SR | 0x208, LinkWord.SIZE_64, 3, 0);                // the second: a stray
+            n.at(5, 12, 20, LinkWord.M_SRC, 0, 0, LinkWord.SIZE_64, 4, 0);                           // uncounted mode 1
+            n.at(5, 13, 21, LinkWord.M_WRITE, 0, SR | 0x300, LinkWord.SIZE_64, 5, 0);                // uncounted big-SRAM write
+            n.at(5, 14, 22, LinkWord.M_WRITE, 0, Net.cm(0x900), LinkWord.SIZE_32, 6, 0);             // uncounted, not a controller
+            n.at(6, 15, 23, LinkWord.M_WRITE, 1, 8, LinkWord.SIZE_64, 7, 0);                         // the reserved first 16 bytes
+            n.at(6, 16, 24, LinkWord.M_WRITE, 1, 0x7BC0 + 8 * 7, LinkWord.SIZE_32, 8, 0);            // another's reply pair
+            n.at(7, 17, 25, LinkWord.M_WRITE, 0, 0x7FC0, LinkWord.SIZE_32, 9, 0);                    // the command block, from a tile
+            n.at(7, 18, 26, LinkWord.M_WRITE, 1, 0x7FF0 + 0x8000, LinkWord.SIZE_128, 10, 11);         // past data memory's end
+            n.at(8, 19, 27, LinkWord.M_WRITE, 1, SR | (0x100000 << 2), LinkWord.SIZE_64, 12, 0);     // past big SRAM's end
+            n.cncSends.add(new long[] { 30, LinkWord.BROADCAST, LinkWord.M_WRITE, 0x200, 13, LinkWord.SIZE_32, 0, 0 });   // a broadcast overlay
+            n.cncSends.add(new long[] { 31, 30, LinkWord.M_WRITE, 0x7FC0, 14, LinkWord.SIZE_32, 0, 0 });                 // then a unicast command
+            n.runAll(2000);
+            System.out.print(n.c.violationReport());
+        }
         {   // the message cap (maxViolationMessages): the count goes on
             Config k = Net.cfg(-1); k.maxViolationMessages = 3;
             Net n = new Net(k);

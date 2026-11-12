@@ -18,6 +18,9 @@
 #   command: normally $S/suite_<name> with v1.3's arguments ($S is the suites' build directory; $Q is `quick` or empty).
 #   The step's suite program must be in SUITES below (built before the steps run). A step still waiting:
 #     pending LOG "description" "who or what it waits for"
+#   A v1.3 suite whose C++ equivalent is a make-check test (not a port of its log): pass or fail, named in the log
+#     equiv LOG "description" "the equivalent" -- $S/test_x
+#   (its test in EQUIVS below).
 set -u
 cd "$(dirname "$0")"
 MODE=all CHECK=0 BUILD=1
@@ -37,11 +40,13 @@ mkdir -p results
 
 # The suite programs the steps run (each worker adds its own; targets of sim/Makefile).
 SUITES="suite_memsys suite_rvc suite_tracer"
+# The make-check tests standing for a v1.3 suite (equiv steps)
+EQUIVS="test_golden test_tileslotconf"
 SUITES="$SUITES suite_ccbench"                       # W23 (P5)
 
 if [ "$BUILD" = 1 ]; then
   echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
-  make -s -j"${JOBS:-4}" MODE=suite CC_NAME="$CC_NAME" $(for x in $SUITES; do echo "$S/$x"; done) > results/.build.log 2>&1 \
+  make -s -j"${JOBS:-4}" MODE=suite CC_NAME="$CC_NAME" $(for x in $SUITES $EQUIVS; do echo "$S/$x"; done) > results/.build.log 2>&1 \
     || { cat results/.build.log; echo "== the build failed"; exit 1; }
 fi
 
@@ -66,6 +71,13 @@ step() {
   fi
 }
 pending() { echo "== $2"; echo "PENDING ($3)" | tee "results/$1.log"; }
+equiv() {
+  local log=$1 what=$2 eq=$3; shift 3
+  [ "$1" = -- ] && shift
+  echo "== $what"
+  if "$@" > "results/$log.out" 2>&1; then echo "$log: equal to v1.3's by its C++ equivalent, $eq: $(tail -1 "results/$log.out" | sed 's|.*/||')" | tee "results/$log.log"
+  else { cat "results/$log.out"; echo "FAIL $log: its C++ equivalent, $eq, failed"; } | tee "results/$log.log" | tail -3; fi
+}
 # W23: one part of fw/build.sh, checked against the committed images (v1.3's build_cc.sh and build_recipes.sh steps).
 # Without the RISC-V toolchain (the runner has none) the step says so: the committed images are what the suites run.
 fw_part() {
@@ -90,7 +102,7 @@ pending engine        "address generator, write engine, all-to-all (small)" "P4"
 pending eng-shuf      "shuffled child order (seed 4)" "P4"
 pending ctrl          "control and the controller (from C)" "P5"
 pending ctrl-shuf     "shuffled child order (seed 4)" "P5"
-pending riscv         "riscv-tests rv32ui/rv32um on the controller" "P5"
+equiv riscv           "riscv-tests rv32ui/rv32um on the controller" "test_golden (every program's retire trace equal to ref's)" -- $S/test_golden
 pending rdport        "read port, GATHER (Java; the C parts PENDING (phase 2))" "P4"
 pending accounting    "per-phase accounting (from C)" "P5 (W23)"
 pending searchbench   "search steps through the read port (microbenchmark, from C)" "P6"
@@ -106,8 +118,8 @@ pending cond-shuf     "shuffled child order (seed 4)" "P5"
 pending regdoc        "REGISTERS.md and mesh.h against their generators, the draft header and the simulator" "P5"
 pending hooks         "the register map, the send port, the pulses (from Java)" "P5"
 pending hooks-shuf    "shuffled child order (seed 4)" "P5"
-pending periph        "the peripheral framework: the standard window, events, region writes, the DMA" "P5"
-pending periph-shuf   "shuffled child order (seed 4)" "P5"
+equiv periph          "the peripheral framework: the standard window, events, region writes, the DMA" "test_tileslotconf (W15's TileSlotConf: PeripheralSlotTest's groups on a real tile, against ref)" -- $S/test_tileslotconf
+pending periph-shuf   "shuffled child order (seed 4)" "P5 (test_tileslotconf has no shuffled run yet)"
 pending reqbus        "the request port, the request bus and the receive queues in the tree" "P5"
 pending reqbus-shuf   "shuffled child order (seed 4)" "P5"
 # cccores: log-equal (D44's mask) in the builds without the checker; this runner's suite build has it on, and the

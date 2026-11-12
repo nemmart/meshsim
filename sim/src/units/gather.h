@@ -74,6 +74,8 @@ struct Gather {
     // machine): one entry taken a cycle, counted (Drain.taken), nothing read. Set by the harness only.
     bool drain = false;
     uint64_t drained = 0;
+    uint64_t (*log)[4] = nullptr;      // the drain's log (harness-only), when the harness gives one
+    uint32_t log_cap = 0, log_n = 0;
 
     Gather() = default;
     Gather(sim::Ports& p, unsigned gather_depth, uint32_t tile = 0, bool wired_ = false) : me(tile), wired(wired_) {
@@ -95,7 +97,15 @@ struct Gather {
         const uint64_t o = c.overflows(in);                  // the queue's overflow: an event to the block (D29)
         if (o != ovf_seen) { overflows += o - ovf_seen; ovf_seen = o; c.put(ovf); }
         if (drain) {                                         // W20 (harness-only): ref's Drain
-            if (c.ready(in)) { c.take(in); drained++; }
+            if (c.ready(in)) {
+                if (log) {                                     // ref's gatherStub.record()/log: {t, payload, header}
+                    if (log_n == log_cap) FATAL("gather drain: the harness's log is full (%u entries)", log_cap);
+                    const sim::Word* w = c.peek(in);
+                    uint64_t* e = log[log_n++];
+                    e[0] = c.now(); e[1] = w[0]; e[2] = w[1]; e[3] = w[2];
+                }
+                c.take(in); drained++;
+            }
             return c.ready(in) ? c.next() : sim::Wake::none();
         }
         bool put = false;

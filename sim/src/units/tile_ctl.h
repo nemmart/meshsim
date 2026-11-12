@@ -412,11 +412,19 @@ struct TileCore {
     static constexpr unsigned kHostStores = 16;
     HostStore host_st[kHostStores] = {};
     uint32_t host_n = 0;
+    // W20 (harness-only): ref's Tile.sendHold.put(t, ...) from a test for a later cycle: put on the send Hold in the
+    // core's step at t (one at a time; ref's put for the cycle just run is Sim::put_late)
+    uint64_t host_send_t = 0, host_send_w[3] = {};
+    bool host_send = false;
     sim::Wake step(sim::Ctx& c) {
         if (c.ready(port_b)) {
             if (rv.stop == Stop::running) apply_port_b(c.peek(port_b));
             c.take(port_b);
         }
+        if (host_send && host_send_t == c.now()) {            // W20 (harness-only)
+            c.put(send, host_send_w[0], host_send_w[1], host_send_w[2]);
+            host_send = false;
+        } else if (host_send && host_send_t < c.now()) FATAL("tile core: a test's send for cycle %llu not made", (unsigned long long)host_send_t);
         if (host_n) {                                         // W20 (harness-only)
             Env e{c, *this};
             uint32_t k = 0;
@@ -433,10 +441,11 @@ struct TileCore {
                 if (coreless) return sim::Wake::at_cycle(at);
             }
         }
-        if (coreless) return sim::Wake::none();              // W20 (harness-only)
+        if (coreless) return host_send ? sim::Wake::at_cycle(host_send_t) : sim::Wake::none();   // W20 (harness-only)
         Env e{c, *this};
         uint64_t next = rv.step(e, c.now());
         for (uint32_t i = 0; i < host_n; i++) if (host_st[i].t < next) next = host_st[i].t;   // W20 (harness-only)
+        if (host_send && host_send_t < next) next = host_send_t;
         return next == Rv32::kNever ? sim::Wake::none() : sim::Wake::at_cycle(next);
     }
     uint64_t digest() const { return digest_mix(rv.digest(), rv.pending_t ^ rv.send_w[0] ^ rv.send_w[1] << 1 ^ rv.send_w[2] << 2); }
@@ -470,6 +479,7 @@ struct G1Config {
     bool periph_slot = false;          // W15 (M3): the peripheral slot (the replayer as peripheral 1) and its paths
     PeriphType periph1 = PT_REPLAYER;  // W15: a mesh tile's peripheral 1 in the slot (tests: PT_TEST)
     bool cc3_tracer = false;           // W16 (M3): C&C 3's peripheral 1 the Tracer (ref's cc3Tracer), else the stub
+    bool stray_check = false;          // W20 (harness-only): the director reads the counters (`regs`) for ref's stray check
     int periph_only = -1;              // W20 (harness-only): >= 0: only this mesh tile has peripheral 1 (and the slot, if
                                        //   periph_slot); the other mesh tiles none (ref's periphType 0 + testPeripheral)
     unsigned K = 8, cm_latency = 2;    // the write counters' line, director -> port B

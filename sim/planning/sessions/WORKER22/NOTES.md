@@ -89,6 +89,10 @@ suites set is in `MachConfig` already. ref's shuffled logs differ from the unshu
   Both checked: test_chip and test_sort print the same before and after (clang release); EngineTest's write engine
   group equal to ref's (its line, peaks 3, 5, 7, 9; its `ub` names "PTR[src 9]").
 
+- **F5, the traffic director's UB stops (approved 2026-11-12)**: src/units/director.h:124, 136 name the unit
+  "traffic director (tile N): ..." as ref's (TrafficDirector.java:88, 98); text only, in the FATAL path. AgTest's
+  `ub` on the misaligned destination now passes; test_chip, test_sort, test_g1_tile unchanged (clang release).
+
 ## Asks of W20 (through the integrator; named W22-n, so they don't collide with other workers' numbers)
 
 From NetTest's gap map (2026-11-11). NetTest's other groups (structure, unicast's packets, routes, the controllers'
@@ -307,3 +311,5 @@ W22-17. **SearchBench needs the TRACE store log** (ref's `p.ctl.traceHook = (t, 
   - In `computed`, a UB stop runs in suite::ub's forked child, while ref keeps the facts recorded before its stop in
     the machine; the parent runs to the cycle before the stop's (named in its message) so the flags checked after it
     can be there.
+- **F5 done**: AgTest 198 of the 206 ported (seeds -1, 4); the 8 left are W26's stream-entry flags (its 1c). F4 is
+  W26's (invariant 8's command-slot check), not W20's (owner).

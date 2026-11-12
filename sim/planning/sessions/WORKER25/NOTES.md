@@ -215,3 +215,17 @@ the `-q` estimate, the guest delivery's whereabouts.
   kept as v1.3 has them (`DELIVERY=`: `stageb-<guest>`, `$S/stageb $DELIVERY state <guest>`, no reference log: none
   exists), unrun on the runner (owner's ruling). The guest step's command smoke-tested on a stand-in synthetic delivery
   named lrd_x0. `./run_tests.sh quick --check`: passes.
+- **W20's F2 chip side merged (6c746b30): the CL4 line is one cycle off (F8).** In the suite and debug builds (the
+  checker on) the CL4 case's "meshsim: violations: 256; ..." line now appears, every one of the 256 messages equal to
+  ref's but its cycle: ref's says `cycle 23808` for the replayer's `t0 @23807` (ref's Chip.violation reports c.cycle
+  while the replayer settles cycle t lazily in the next one, t + 1), ours `cycle 23807`. **F8 (for W20)**: a
+  PERIPH_VIOLATION fact's cycle should be t + 1. The step `stageb` stays PENDING until then; `test_stageb` compares
+  everything else strictly and reports the meshsim line on its own (PENDING when it differs or no checker is built).
+- **F7 goes to W26** (owner, 2026-11-12: the checker's remaining kinds); **F6 stays with W20** (workaround kept).
+- **Quest 180** (claimed after re-reading NUMBERS.md; task from `tasks/mk_acceptance_xcheck.sh` at sim-w25 HEAD):
+  `oracle/acceptance_crosscheck.sh` on the runner with `--calibration` and three real cases on deliveries converted by
+  v1.35's convert_delivery in scratch: W9's selected windows of evm-zone-29 and of cyclone-29 (AB, F on each), and
+  evm-zone-29 windows 0-127 (AB, F every 32nd); processes = min(nproc, 16). The crosscheck gained `--real`,
+  `--no-small`, `KIT135` (a prebuilt kit: no git in a task) and `KEEP` (the cases' outputs into the results). The
+  bundle (6.5 MB) checked locally: unpacked, HASHES, the crosscheck run from it on a stand-in delivery (equal), and
+  convert_delivery built from the kit's sources.

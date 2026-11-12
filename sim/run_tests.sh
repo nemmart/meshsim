@@ -45,7 +45,7 @@ EQUIVS="test_golden test_tileslotconf"
 SUITES="$SUITES suite_ccbench"                       # W23 (P5)
 SUITES="$SUITES suite_replayer stageb"               # W25 (P7b)
 SUITES="$SUITES suite_net"                           # W22 (P4)
-SUITES="$SUITES sort_test"                           # W24 (P6)
+SUITES="$SUITES sort_test sweep"                     # W24 (P6)
 
 if [ "$BUILD" = 1 ]; then
   echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
@@ -156,7 +156,9 @@ if [ "$MODE" != quick ]; then
   pending agbench         "read-ahead measurements: ag_lookahead, zero-length groups, start to first request (a few minutes)" "P4"
   pending s1bench         "item S1: K's margin over the write path, L = 1-4, and the table-window case (a few minutes)" "P5 (W23)"
   step ccbench 16 "C&C 1-3 as cores (WORKER14): the boot and a phase against the Java model" tests/ctlsuites/ccbench.log -- $S/suite_ccbench
-  pending sweep-quick     "parameter sweep, quick (about 1 minute; 'java Sweep full' takes about 25)" "P6"
+  # the sweep's CSV checked too (with --check): a difference prints a FAIL line into the step's log
+  sweep_quick() { $S/sweep quick || return 1; [ "$CHECK" = 0 ] || cmp -s results/sweep-quick.csv tests/sort/ref/sweep-quick.csv || echo "FAIL: results/sweep-quick.csv differs from tests/sort/ref/sweep-quick.csv"; }
+  step sweep-quick 4 "parameter sweep, quick (about 1 minute; 'java Sweep full' takes about 25)" tests/sort/ref/sweep-quick.log -- sweep_quick
   pending ctrl-full       "the all-to-all from C on the four data sets" "P5"
   pending engine-full     "full-size all-to-alls (4 data sets) and radix sort (about 1.5 minutes)" "P4"
   step skewtable 1 "fan-in under 0/+1 skew, 40 skew patterns (several minutes)" tests/p4suites/skewtable.log -- $S/suite_net -1 skewtable 40

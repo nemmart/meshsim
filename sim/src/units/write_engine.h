@@ -11,6 +11,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstdio>
 
 #include "base/fatal.h"
 #include "check.h"
@@ -62,6 +63,10 @@ struct WriteEngine {
     uint64_t (*log)[4] = nullptr;   // W20 (harness-only): ref's writer.record()/log: {t, payload lo, header, payload hi}
     uint32_t log_cap = 0, log_n = 0;
     uint64_t taken = 0, written = 0, stall_cycles = 0, augmented = 0, explicit_writes = 0, out_of_range = 0;
+#ifdef SIM_CHECKS
+    uint32_t stage_peak = 0;        // W22 (P4; approved 2026-11-12; SIM_CHECKS only): ref's stageHighWater, the stage's count
+                                    // after a take (WriteEngine.java:109), for EngineTest. A statistic.
+#endif
 
     WriteEngine(sim::Ports& p, unsigned we_in_depth, unsigned ts_engine_latency, uint32_t chunks) : mem_chunks(chunks) {
         if (ts_engine_latency < 1 || 2 * ts_engine_latency + 2 > MAX_STAGE) FATAL("write engine: ts_engine_latency %u", ts_engine_latency);
@@ -119,9 +124,13 @@ inline sim::Wake WriteEngine::step(sim::Ctx& c) {
             const uint32_t base = augment_base(c.read(dma, DMA_R_RECORD_BASE));
             lo = (lo & 0xFFFFFFFFull) | uint64_t(((a - base) & 0x1FFFFF) >> 1) << 32; hi = 0; n = 2; augmented++;
         } else n = 1u << lw::size(h);
-        if (a & (n - 1))
-            FATAL("write engine: tile %u, cycle %llu: a write through PTR = chunk 0x%x, not aligned to its %u-bit write "
-                  "(undefined behaviour, v1.25 s8b): header 0x%llx", lw::dst(h), (unsigned long long)t, a, 32 * n, (unsigned long long)h);
+        if (a & (n - 1)) {   // W22 (F3, approved 2026-11-12): the PTR named as ref names it (PTR[digit] for mode 2, PTR[src N] otherwise)
+            char which[24];
+            if (mode == lw::M_BUCKET) std::snprintf(which, sizeof which, "digit");
+            else std::snprintf(which, sizeof which, "src %u", lw::src(h));
+            FATAL("write engine: tile %u, cycle %llu: a write through PTR[%s] = chunk 0x%x, not aligned to its %u-bit write "
+                  "(undefined behaviour, v1.25 s8b): header 0x%llx", lw::dst(h), (unsigned long long)t, which, a, 32 * n, (unsigned long long)h);
+        }
         if (a + n > mem_chunks) {                               // undefined (4.1, invariant 19): dropped
             out_of_range++;
             if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::WE_PAST_SRAM, a, st_d[head], h, st_c[head]);   // W20
@@ -154,6 +163,9 @@ inline sim::Wake WriteEngine::step(sim::Ctx& c) {
             st_have[i] = 0; aw[(aw_head + aw_n) % cap] = uint8_t(i); aw_n++;
             if (const uint32_t hd = hist_digit(cfgw)) c.put(hist_req, mem::OP_ADD_RET, digit(d, hd), 1);
         }
+#ifdef SIM_CHECKS
+        if (count > stage_peak) stage_peak = count;         // W22: WriteEngine.stageHighWater
+#endif
     }
     // Stepped again while the head can be written or more input can be taken; a head awaiting its PTR is woken by the
     // return, a refusal by its edge.

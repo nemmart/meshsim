@@ -32,6 +32,7 @@
 #include "mach.h"
 #include "p4_java.h"
 #include "suite.h"
+#include "units/tile_ctl.h"
 #include "units/director.h"
 #include "units/inject.h"
 #include "units/linkword.h"
@@ -390,9 +391,16 @@ void in_order_full_rate() {
 // ------------------------------------------------------------------ the traffic director (4.8, v1.2)
 enum : uint32_t { CMD = 0x7FC0, RPL = 0x7BC0, CMD_DWORD = CMD >> 2, RW = RPL >> 2 };   // ControllerMemories
 enum : unsigned { COND_BAD = 1, COND_UNEXPECTED = 2 };                               // Conditions
-// W22-15 (interim): ref's TrafficDirector.cmIdle(t), nothing on its way to port B. Until W20's accessor lands this reads
-// "never idle", so the one check on it passes without testing anything (recorded in NOTES).
-bool cm_idle(Chip&, unsigned) { return false; }
+// ref's TrafficDirector.cmIdle(t): nothing on its way to port B, as ref has it at the end of the cycle just run (a word
+// arriving at the next cycle landed at ref's end of this one): the port-B half of W20's TileRef::phase_done (W22-15).
+bool cm_idle(Chip& c, unsigned k) {
+    sim::PortEntry e[64];
+    const TileRef tr = c.tile(k);
+    const units::TileCore& core = tr.unit<units::TileCore>("core");
+    const uint32_t n = c.sim().observe(core.port_b, e, 64).n;
+    for (uint32_t i = 0; i < n; i++) if (e[i].at > uint64_t(c.cycle()) + 1) return false;
+    return true;
+}
 
 void director() {
     suite::group("director");

@@ -381,6 +381,9 @@ public:
     // cycle would have been (refused if the Hold is occupied then, as that put would be). Between runs only; the unit
     // must not have put on `p` in the cycle just run (fatal: two puts). One domain only (fatal on a split machine).
     void put_late(const std::string& unit, HoldOut p, const Word* w, unsigned n);
+    // W20 (harness-only; P2): a Fifo's overflows so far and the put cycle of its first (kNoCycle if none), between runs
+    // (ref's WordFIFO.overflow, overflowCycle: the checker's invariant 1). One domain only (fatal on a split machine).
+    uint64_t fifo_overflows(FifoIn p, Cycle* first) const;
     // W20 (harness-only; P2): data in motion anywhere, between runs: an input holding data (a Link word visible, a Fifo
     // not empty, a Hold occupied) or a put still on its way (a Link, Fifo, credit Fifo or Hold entry in a delivery
     // bucket). Regs, Wires, RegFiles, Counts and credit returns are state, not motion. For ref's Chip.quiescent.

@@ -67,6 +67,9 @@ void a2a(int64_t seed) {
     m.c.cc().command(units::lw::BROADCAST, 1u << 24).go().command(units::lw::BROADCAST, 2u << 24).go().command(units::lw::BROADCAST, 3u << 24).go();
     const bool ok = m.run([&] { return m.all_stopped(); }, 2000000);
     report("a2a seed " + std::to_string(seed), m, ok);
+    std::string pl = "  phaseLog";
+    for (const auto& e : m.c.cc().phase_log()) pl += " [" + std::to_string(e[0]) + ", " + std::to_string(e[1]) + "]";
+    say("%s\n", pl.c_str());
     say("  misplaced %d; lastGoAt %lld lastAllReadyAt %lld; busy %s; sram t9 0x40000 %016llx t50 0x40100 %016llx\n", data.verify(m.c),
         (long long)m.c.cc().last_go_at(), (long long)m.c.cc().last_all_ready_at(), tf(m.c.cc().busy()),
         (unsigned long long)m.c.tile(9).sram_peek64(0x40000), (unsigned long long)m.c.tile(50).sram_peek64(0x40100));
@@ -310,9 +313,34 @@ void core() {
     sb += " dmem[0xe0] " + w(n, 40, 0xe0);
     say("%s\n", sb.c_str());
 }
+void phase_done_probe(int64_t seed) {
+    mach::MachConfig k = mach::MachConfig::defaults();
+    k.shuffle_seed = seed; k.check_errors = false;
+    Net n(k);
+    mach::A2A d(7, 600);
+    d.load(n.c, 0);
+    const int64_t t0 = n.c.cycle();
+    const std::vector<int> skew = n.c.start_skew();
+    bool started[64] = {};
+    int64_t first[4] = {-1, -1, -1, -1}, all = -1;
+    const unsigned watch[4] = {0, 5, 40, 63};
+    for (int i = 0; i < 100000 && all < 0; i++) {
+        for (unsigned p = 0; p < 64; p++) if (!started[p] && n.c.cycle() >= t0 + skew[p]) { n.c.tile(p).pulse(mach::fields::PULSE_START); started[p] = true; }
+        n.c.step();
+        if (n.c.cycle() < t0 + 3) continue;
+        for (int j = 0; j < 4; j++) if (first[j] < 0 && n.c.tile(watch[j]).phase_done()) first[j] = n.c.cycle() - t0;
+        bool a = true;
+        for (unsigned p = 0; p < 64 && a; p++) a = n.c.tile(p).phase_done();
+        if (a) all = n.c.cycle() - t0;
+    }
+    say("phaseDone seed %lld: tiles 0 5 40 63 first at +%lld +%lld +%lld +%lld; all at +%lld\n", (long long)seed, (long long)first[0],
+        (long long)first[1], (long long)first[2], (long long)first[3], (long long)all);
+}
 void netself() {
     out.clear();
     core();
+    phase_done_probe(-1);
+    phase_done_probe(4);
     controllers(-1); controllers(3);
     packets(-1); packets(5);
     reads();

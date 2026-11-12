@@ -212,6 +212,10 @@ sim::Wake Cnc::sequence(sim::Ctx& c, int64_t t) {
             for (unsigned k = 0; k < 64; k++) c.put(go[k]);
             gos++;
             last_go_at = t;
+            if (plog) {                                       // W20 (harness-only): ref's phaseLog.add({seen, t})
+                if (plog_n == plog_cap) FATAL("C&C: the harness's phase log is full (%u GOs)", plog_cap);
+                plog[plog_n][0] = seen; plog[plog_n][1] = t; plog_n++;
+            }
             seen = -1;
             cur++;
             return after_step(c);

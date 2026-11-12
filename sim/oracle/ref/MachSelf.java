@@ -34,6 +34,9 @@ final class MachSelf {
         m.c.cc.command(LinkWord.BROADCAST, 1 << 24).go().command(LinkWord.BROADCAST, 2 << 24).go().command(LinkWord.BROADCAST, 3 << 24).go();
         boolean ok = m.run(m::allStopped, 2_000_000);
         report("a2a seed " + seed, m, ok);
+        StringBuilder pl = new StringBuilder("  phaseLog");
+        for (long[] e : m.c.cc.phaseLog) pl.append(' ').append(java.util.Arrays.toString(e));
+        System.out.println(pl);
         System.out.printf("  misplaced %d; lastGoAt %d lastAllReadyAt %d; busy %b; sram t9 0x40000 %016x t50 0x40100 %016x%n", data.verify(m.c),
                 m.c.cc.lastGoAt, m.c.cc.lastAllReadyAt, m.c.cc.busy(), m.c.tiles[9].sram.peek64(0x40000), m.c.tiles[50].sram.peek64(0x40100));
     }

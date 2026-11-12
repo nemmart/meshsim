@@ -174,6 +174,14 @@ std::string Checker::text(const Fact& f) const {
     case Kind::HIST_OVERFLOW: return "a counter exceeded 17 bits (invariant 6)";
     case Kind::ROTATION_LATE: return "address generator: a rotation started late (invariant 3; drift, see agReport)";
     case Kind::READ_RETURN_REFUSED: return "SIMULATOR: a read return was refused by the injection point";
+    // ---- the request bus (RequestBus.runCycle), the endpoints (Endpoint.send; W26) ----
+    case Kind::REQBUS_QUEUE_OVERFLOW: return fmt("SIMULATOR: target %u's receive queue overflowed (the root's credits should prevent it)", unsigned(a[0]));
+    case Kind::REQBUS_NO_RECEIVER:
+        return fmt("a request from unit %u for target %u%s dropped at the root (3.3, 6.7)", unsigned(a[0]), unsigned(a[1]),
+                   a[1] >= 4 ? " (reserved)" : " (no receiver: deferred with the file system, item 119)");
+    case Kind::EP_BAD_PACKET: return "bad packet (" + why_bad(a[0]) + ") sent by " + std::to_string(a[1]) + " (3.1, invariant 5)";
+    case Kind::EP_SIZE_UNDEF: return fmt("packet with size 11, undefined, sent by %u (3.1, invariant 5)", unsigned(a[1]));
+    case Kind::EP_RESERVED_MODE: return fmt("packet in the reserved mode %u sent by %u (3.1, invariant 21)", unsigned(a[0]), unsigned(a[1]));
     case Kind::CNC_RX_LOST: return "C&C's receive FIFO was full: a packet for C&C was lost (6.6)";
     default: break;
     }
@@ -290,7 +298,12 @@ void Checker::process(int64_t now, bool scan, bool final) {
         }
         size_t j = i + 1;                                    // a group: one cycle, one slot, one tile (each overflow alone)
         while (j < fs.size() && fs[i].kind != Kind::FIFO_OVERFLOW && at(fs[j]) == t && rank(fs[j]) == rank(fs[i]) && fs[j].tile == fs[i].tile) j++;
-        const Fact& last = fs[j - 1];
+        const Fact* lastp = &fs[j - 1];
+        if (rank(*lastp) == int(Slot::ENDPOINT)) {          // W26: ref's text is the last of the highest endpoint that ever had one
+            for (size_t k = i; k < j; k++) { const unsigned e = unsigned(fs[k].a[1]) - 64; if (e < 3) { ep_last_[e] = fs[k]; ep_has_[e] = true; } }
+            for (unsigned e = 0; e < 3; e++) if (ep_has_[e]) lastp = &ep_last_[e];
+        }
+        const Fact& last = *lastp;
         Unit* u = fs[i].tile >= 0 && fs[i].tile < 67 ? &u_[fs[i].tile] : nullptr;
         bool say = true;                                     // ref's once-only rules (Chip.checkInvariants)
         switch (sim::check::slot_of(last.kind)) {

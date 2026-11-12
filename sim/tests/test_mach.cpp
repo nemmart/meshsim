@@ -8,6 +8,7 @@
 
 #include "base/fatal.h"
 #include "harness.h"
+#include "suite.h"
 #include "java_random.h"
 #include "mach.h"
 #include "units/ag.h"
@@ -79,6 +80,7 @@ void a2a(int64_t seed, bool kit = false) {
         const std::string d = m.c.digest();                 // B25: its fp field, ref's StateFp of the chip
         say("  fp %s\n", d.substr(d.find(" fp ") + 4).c_str());
     }
+    say("%s", m.c.ag_report().c_str());
     std::string pl = "  phaseLog";
     for (const auto& e : m.c.cc().phase_log()) pl += " [" + std::to_string(e[0]) + ", " + std::to_string(e[1]) + "]";
     say("%s\n", pl.c_str());
@@ -612,8 +614,51 @@ void back_pressure_case() {
     sb += " delivered " + std::to_string(b.delivered()) + " violations " + std::to_string(n.c.violations());
     say("%s\n", sb.c_str());
 }
+void figure12_case(unsigned L) {
+    mach::MachConfig k = mach::MachConfig::defaults();
+    k.ts_engine_latency = L; k.K = std::max(k.K, k.k_min()); k.check_errors = false; k.check_unexpected = false;
+    mach::Chip c(k);
+    mach::TileRef p = c.tile(7), h = c.tile(20);
+    p.set_ptr(9, 0x1000); h.hist_poke(3, 100);
+    std::string sb = "figure 12, L = " + std::to_string(L) + ":";
+    const units::TableStore& ts = p.unit<units::TableStore>("ts");
+    const units::HistStore& hs = h.unit<units::HistStore>("hist");
+    for (int r = 0; r < 3; r++) {
+        const uint64_t before = ts.rmws;
+        p.we_ts_req(c.cycle() + 1, units::mem::OP_ADD_RET, units::mem::IDX_PTR + 9, 2);
+        int64_t tr = -1;
+        for (int i = 0; i < 50 && tr < 0; i++) { c.step(); if (ts.rmws > before) tr = c.cycle(); }
+        c.step(); c.step();
+        char b[32]; std::snprintf(b, sizeof b, "%x", p.ptr(9));
+        sb += " ptr@" + std::to_string(tr) + " " + b;
+    }
+    const uint64_t before = hs.rmws;
+    h.we_hist_req(c.cycle() + 1, 0, 3, 1);
+    int64_t tr = -1;
+    for (int i = 0; i < 50 && tr < 0; i++) { c.step(); if (hs.rmws > before) tr = c.cycle(); }
+    c.step(); c.step();
+    sb += "; hist@" + std::to_string(tr) + " " + std::to_string(h.hist_peek(3));
+    say("%s\n", sb.c_str());
+}
+void ub_case() {
+    const std::string msg = suite::ub([] {
+        mach::MachConfig k = mach::MachConfig::machine();
+        k.periph_type = 0;
+        Net n(k);
+        mach::TileRef p = n.c.tile(9);
+        p.poke_local(0x01000000, 0x00102503);
+        p.poke_local(0x01000004, 0x0000006F);
+        n.c.cc().set_expect(1ull << 9);
+        n.c.cc().command(9, 0x4Au << 24, {0x01000000}).go();
+        n.c.run(2000);
+    }, {"tile 9", "controller", "misaligned 4-byte load"}, "a misaligned load");
+    say("ub: %s\n", msg.empty() ? "ran on" : msg.c_str());
+}
 void netself() {
     out.clear();
+    ub_case();
+    figure12_case(1);
+    figure12_case(3);
     back_pressure_case();
     drain_case();
     test_peripheral_case();

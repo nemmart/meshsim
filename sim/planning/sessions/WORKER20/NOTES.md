@@ -215,6 +215,15 @@ remaining kinds, interleaved as the suites ask.
   MachSelf's reset case (the a2a cut by cc.reset(false) mid-phase at 5201; StateFp at the reset, the next cycle, the
   queue's end, and 20,000 cycles into a reboot) equal to ref, seeds -1 and 4; `Chip::fingerprint_lines`/`fingerprint_dump`
   for diffing. Not yet: the machine with C&C 1-3 as cores (FATAL; CcCores.reset).
+- **W22-16**: `TileRef::we_ts_req` / `we_hist_req` (ref's weTsReq.put / weHistReq.put at t = cycle() + 1: the write engine
+  puts them on its lines in its step at t; PTR's returns of those dropped, as ref's writer awaits none; harness-only).
+  NetSelf's figure-12 case (three PTR increments and a HIST one, ts_engine_latency 1 and 3: the cycles they're taken and
+  the values) equal to ref.
+- **W23's request 11**: a core's undefined behaviour stops the run with ref's message (`Rv32::ub_fatal_tile`, set by the
+  harness: "undefined behavior at cycle T, tile K, controller: a misaligned W-byte load from 0x.. at pc 0x.. (...)").
+  NetSelf's case (suite::ub) equal to ref's UndefinedBehavior text.
+- **The AG report**: `Chip::ag_report()` (ref's agReport, its text). MachSelf's a2a prints it, equal to ref, but the a2a
+  runs streams only (all zeros): EngineTest's drift line (W22) is the real check.
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

@@ -281,6 +281,10 @@ public:
     void rp_host_queue(uint32_t addr, uint32_t dest);       // a 32-bit read on counter 2 to dest, one a cycle from the next
     bool rp_idle() const;                                   // every entry free and nothing queued from the host
     bool rp_all_accepted() const;                           // every result issued accepted by the director, none queued
+    // ---- the write engine's request lines from a test (W22-16; ref's weTsReq.put, weHistReq.put: AgTest's figure 12) ----
+    // put(t, op, idx, add) at t = cycle() + 1: on the line to PTR (idx: mem::IDX_PTR + i) or to HIST, arriving L later
+    void we_ts_req(int64_t t, uint32_t op, uint32_t idx, uint32_t add);
+    void we_hist_req(int64_t t, uint32_t op, uint32_t idx, uint32_t add);
     // ---- the register block from a test (W23's (d)) ----
     void set_events(uint32_t bits);                         // ref's ctl.events |= bits (sticky; from the next cycle on)
     void schedule_go(int64_t t);                            // ref's ctl.scheduleGo(t): GO seen at t (this tile only)
@@ -410,6 +414,7 @@ public:
     // ref's Chip.log as far as v1.35 keeps it: with log_trace, "cycle T tile K: TRACE 0xV" for every TRACE store, in
     // cycle order (tiles in order within a cycle)
     std::vector<std::string> log() const;
+    std::string ag_report() const;                          // ref's Chip.agReport (one line, ref's text)
     // ---- reset (6.1) [step 2] ----
     void reset(bool hard);                                  // takes effect at the end of the current cycle
     uint64_t resets() const;

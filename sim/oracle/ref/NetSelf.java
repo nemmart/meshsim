@@ -378,7 +378,43 @@ final class NetSelf {
         System.out.println(sb);
     }
 
+    /** W22-16: AgTest's figure-12 requests on the write engine's lines (weTsReq, weHistReq) from the test. */
+    static void figure12(int L) {
+        Config k = Config.defaults(); k.withTsLatency(L); k.checkErrors = false; k.checkUnexpected = false;
+        Chip c = new Chip(k); Tile p = c.tiles[7], h = c.tiles[20];
+        p.setPtr(9, 0x1000); h.hist.poke(3, 100);
+        StringBuilder sb = new StringBuilder("figure 12, L = " + L + ":");
+        for (int r = 0; r < 3; r++) {
+            long before = p.ts.rmws; p.weTsReq.put(c.cycle + 1, TableStore.OP_ADD_RET, TableStore.PTR + 9, 2);
+            long tr = -1; for (int i = 0; i < 50 && tr < 0; i++) { c.step(); if (p.ts.rmws > before) tr = c.cycle; }
+            c.step(); c.step();
+            sb.append(" ptr@").append(tr).append(" ").append(Integer.toHexString(p.ptr(9)));
+        }
+        long before = h.hist.rmws; h.weHistReq.put(c.cycle + 1, 0, 3, 1);
+        long tr = -1; for (int i = 0; i < 50 && tr < 0; i++) { c.step(); if (h.hist.rmws > before) tr = c.cycle; }
+        c.step(); c.step();
+        sb.append("; hist@").append(tr).append(" ").append(h.hist.peek(3));
+        System.out.println(sb);
+    }
+
+    /** W23's request 11: a core's misaligned load stops the run with ref's UndefinedBehavior, naming tile and reason. */
+    static void ubStop() {
+        Config k = Config.machine(); k.periphType = 0;
+        Net n = new Net(k);
+        Tile p = n.c.tiles[9];
+        int B = Registers.PMEM_BASE;
+        p.core.pokeLocal(B, 0x00102503);                                 // lw a0, 1(zero): misaligned
+        p.core.pokeLocal(B + 4, 0x0000006F);
+        n.c.cc1p.expect = 1L << 9;
+        n.c.cc.command(9, Registers.CMD_JUMP << 24, B).go();
+        try { n.c.run(2000); System.out.println("ub: ran on"); }
+        catch (UndefinedBehavior e) { System.out.println("ub: " + e.getMessage()); }
+    }
+
     public static void main(String[] a) {
+        ubStop();
+        figure12(1);
+        figure12(3);
         backPressure();
         drain();
         testPeripheral();

@@ -59,6 +59,10 @@ struct WriteEngine {
     uint64_t ovf_seen = 0;               // we-in's overflows reported so far
 
     // ---- statistics and ref's checks ----
+    // W20 (harness-only; W22-16, AgTest's figure 12): ref's weTsReq.put / weHistReq.put from a test, made in this
+    // step at t: [0] PTR's line, [1] HIST's; {t, op, idx, add}, valid when t != 0
+    uint64_t host_req[2][4] = {};
+    uint32_t host_rets = 0;         //   PTR returns of the test's requests still to come (dropped: ref's writer awaits none)
     int ck_tile = -1;               // W20: the checker's facts under this tile (src/check.h); -1 none
     uint64_t (*log)[4] = nullptr;   // W20 (harness-only): ref's writer.record()/log: {t, payload lo, header, payload hi}
     uint32_t log_cap = 0, log_n = 0;
@@ -105,15 +109,24 @@ struct WriteEngine {
 // WriteEngine.runCycle(t): a PTR return; the write side (a refusal retried, else the stage's head if its PTR is in);
 // one packet in while the stage has room.
 inline sim::Wake WriteEngine::step(sim::Ctx& c) {
+    for (unsigned l = 0; l < 2; l++)                           // W20 (harness-only): a test's request on a line at t
+        if (host_req[l][0] && host_req[l][0] == c.now()) {
+            c.put(l == 0 ? ts_req : hist_req, host_req[l][1], host_req[l][2], host_req[l][3]);
+            host_req[l][0] = 0;
+            if (l == 0) host_rets++;                           // PTR's ADD_RET returns the old value here
+        }
     const uint64_t t = c.now();
     if (const uint64_t o = c.overflows(in); o != ovf_seen) { ovf_seen = o; c.put(ovf_ev); }   // D29: an event
     if (c.ready(ts_ret)) {                                     // pointer returns, in order
         const uint32_t old = uint32_t(c.peek(ts_ret)[1]);
         c.take(ts_ret);
-        if (aw_n == 0) FATAL("write engine: a PTR return at cycle %llu with nothing awaiting it", (unsigned long long)t);
-        const unsigned i = aw[aw_head];
-        aw_head = uint8_t((aw_head + 1) % cap); aw_n--;
-        st_ptr[i] = old & 0x1FFFFF; st_have[i] = 1;
+        if (aw_n == 0 && host_rets) host_rets--;               // W20 (harness-only): a test's request's return, dropped
+        else {
+            if (aw_n == 0) FATAL("write engine: a PTR return at cycle %llu with nothing awaiting it", (unsigned long long)t);
+            const unsigned i = aw[aw_head];
+            aw_head = uint8_t((aw_head + 1) % cap); aw_n--;
+            st_ptr[i] = old & 0x1FFFFF; st_have[i] = 1;
+        }
     }
     if (c.refused(to_sram)) { c.put(to_sram, last_put[0], last_put[1], last_put[2]); stall_cycles++; }
     else if (count > 0 && st_have[head]) {
@@ -175,6 +188,8 @@ inline sim::Wake WriteEngine::step(sim::Ctx& c) {
     // Stepped again while the head can be written or more input can be taken; a head awaiting its PTR is woken by the
     // return, a refusal by its edge.
     if ((count > 0 && st_have[head]) || (count < cap && c.ready(in))) return c.next();
+    if (host_req[0][0] || host_req[1][0])                     // W20 (harness-only): a test's request still to make
+        return sim::Wake::at_cycle(host_req[0][0] && (!host_req[1][0] || host_req[0][0] < host_req[1][0]) ? host_req[0][0] : host_req[1][0]);
     return sim::Wake::none();
 }
 

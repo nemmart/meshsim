@@ -391,6 +391,7 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         units::TileCtl& b = m.sim->unit<units::TileCtl>(units::unit_prefix(k) + "ctl");
         b.ck_tile = int(k); b.s.ck_tile = int(k);
         m.sim->unit<units::TileCore>(units::unit_prefix(k) + "core").rv.ck_tile = int(k);
+        m.sim->unit<units::TileCore>(units::unit_prefix(k) + "core").rv.ub_fatal_tile = int(k);   // ref's UndefinedBehavior stop
         if (k < 64) m.sim->unit<units::WriteEngine>(units::tile_unit(k, "we")).ck_tile = int(k);
     }
     if (sim::check::kOn) {                                // ref's FIFO names (Router, Tile, Endpoint)
@@ -1086,6 +1087,31 @@ std::vector<std::array<int64_t, 2>> TileRef::trace_log() const {   // as ref has
             r.push_back({c_->cycle(), int64_t(uint32_t(e[i].w[1]))});
     return r;
 }
+std::string Chip::ag_report() const {                       // ref's Chip.agReport
+    uint64_t rot_late = 0, max_rot = 0, grp_late = 0, max_grp = 0, stalls = 0;
+    int late_tiles = 0, max_drift = 0, drift_group = -1;
+    for (unsigned k = 0; k < 64; k++) {
+        const units::AddrGen& a = const_cast<Chip*>(this)->unit<units::AddrGen>(units::tile_unit(k, "ag"));
+        rot_late += a.rotations_late; max_rot = std::max(max_rot, a.max_rot_late);
+        grp_late += a.groups_late_prefetch; max_grp = std::max(max_grp, a.max_group_late);
+        stalls += a.stall_cycles; if (a.rotations_late > 0) late_tiles++;
+    }
+    for (unsigned g = 0; g < units::AddrGen::MAXGROUPS; g++) {
+        int64_t lo = INT64_MAX, hi = INT64_MIN;
+        for (unsigned k = 0; k < 64; k++) {
+            const int64_t v = const_cast<Chip*>(this)->unit<units::AddrGen>(units::tile_unit(k, "ag")).group_start[g];
+            if (v < 0) continue;
+            lo = std::min(lo, v); hi = std::max(hi, v);
+        }
+        if (hi >= lo && hi - lo > max_drift) { max_drift = int(hi - lo); drift_group = int(g); }
+    }
+    char b[400];
+    std::snprintf(b, sizeof b, "    address generator: %llu request stall cycles; rotations late %llu on %d tiles (max %llu cycles); group starts "
+                  "waiting for read-ahead %llu (max %llu, timetable); drift between tiles at a group start %d%s\n",
+                  (unsigned long long)stalls, (unsigned long long)rot_late, late_tiles, (unsigned long long)max_rot, (unsigned long long)grp_late,
+                  (unsigned long long)max_grp, max_drift, drift_group >= 0 ? (" (group " + std::to_string(drift_group) + ")").c_str() : "");
+    return b;
+}
 std::vector<std::string> Chip::log() const {
     std::vector<std::array<int64_t, 3>> all;
     for (unsigned k = 0; k < 64; k++)
@@ -1240,6 +1266,19 @@ bool TileRef::rp_all_accepted() const {
     const units::TileCore& core = unit<units::TileCore>("core");
     return core.host_rd_n == 0 && core.rp_stored == unit<units::Director>("dir").rp_accepted;
 }
+
+// ---- the write engine's request lines from a test (W22-16) ----
+namespace {
+void we_req(TileRef& p, Chip& c, unsigned k, unsigned line, int64_t t, uint32_t op, uint32_t idx, uint32_t add) {
+    if (t != c.cycle() + 1) FATAL("mach: tile %u: a write-engine request at cycle %lld: the next cycle only", k, (long long)t);
+    units::WriteEngine& we = p.unit<units::WriteEngine>("we");
+    if (we.host_req[line][0]) FATAL("mach: tile %u: a second write-engine request on one line in a cycle", k);
+    we.host_req[line][0] = uint64_t(t); we.host_req[line][1] = op; we.host_req[line][2] = idx; we.host_req[line][3] = add;
+    c.touched(units::tile_unit(k, "we"));
+}
+}  // namespace
+void TileRef::we_ts_req(int64_t t, uint32_t op, uint32_t idx, uint32_t add) { we_req(*this, *c_, k_, 0, t, op, idx, add); }
+void TileRef::we_hist_req(int64_t t, uint32_t op, uint32_t idx, uint32_t add) { we_req(*this, *c_, k_, 1, t, op, idx, add); }
 
 // ---- the register block from a test (W23's (d)) ----
 void TileRef::set_events(uint32_t bits) { unit<units::TileCtl>("ctl").host_events |= bits; c_->touched(un(k_, "ctl")); }

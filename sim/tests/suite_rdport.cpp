@@ -115,7 +115,8 @@ bool cm_idle(Chip& c, unsigned k) {
     return true;
 }
 uint64_t router_overflows(Chip& c, unsigned k, int only_out = -1, bool skip_out = false) {
-    const units::Router& r = c.tile(k).unit<units::Router>("router");
+    const TileRef tr = c.tile(k);
+    const units::Router& r = tr.unit<units::Router>("router");
     uint64_t n = 0;
     for (unsigned o = 0; o < units::Router::kOut; o++) {
         if (only_out >= 0 && ((int(o) == only_out) == skip_out)) continue;

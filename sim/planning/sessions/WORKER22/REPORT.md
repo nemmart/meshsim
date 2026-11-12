@@ -14,10 +14,10 @@ of the same `run_tests.sh` step, regenerated from `sim/ref` (not `ref/results`, 
 | C5 | EngineTest | engine, eng-shuf, engine-full | **byte for byte** (365 of 365; engine-full 92 s); live; engine and eng-shuf in make check |
 | C11 | SearchBench | searchbench | **byte for byte**, 56 of 56; live; in make check |
 | G1 | AgBench | agbench | **byte for byte** (145 lines); live (all mode) |
-| C7 | ReadPortGatherTest | rdport, rdport-shuf, rdport-full | every group equal (rdport-full's too) but disjoint: W22-14 (W26's disjoint tracking under W20's new_phase) |
-| C4 | MemTest | mem, mem-shuf, mem-shuf2 | every group equal but disjoint: W22-14 |
+| C17 | RequestBusTest | reqbus, reqbus-shuf | **byte for byte** (50 of 50); live; both in make check |
+| C7 | ReadPortGatherTest | rdport, rdport-shuf, rdport-full | every printed line equal; 586 of 587: the legal run of the disjoint group waits on F6 (W26) |
+| C4 | MemTest | mem, mem-shuf, mem-shuf2 | every printed line equal; 170 of 171: the disjoint group's count of every offending access (W26) |
 | C6 | AgTest | agtest, agtest-shuf | 206 of 206 ported (no printed lines); figure 12 (34) waits on W22-16 |
-| C17 | RequestBusTest | reqbus, reqbus-shuf | from C, the receive side, drops: pass; basics, fairness, credits, back-pressure wait on W22-19 (the delivery records) and W22-20 (req_send: any number of pushes between cycles) |
 
 The steps not yet equal stay PENDING in run_tests.sh with what each waits on; each goes live (and into make check where
 v1.3's step is quick) when its log is equal.
@@ -74,7 +74,12 @@ test_chip and test_sort print the same before and after every one of them (clang
   boot (SearchBench, ReadPortGatherTest's gather from C).
 - **The Net's director logs are fixed in size** (16,384 a tile), ref's are lists: the full-size all-to-alls overflowed
   them (Quest 184); suites that don't read them run on the plain chip.
-- **W22-20** (W20): `req_send` takes one push a cycle; ref's RequestPort.send any number between cycles.
+- **W22-20** (W20, fixed): `req_send` took one push a cycle; ref's RequestPort.send any number between cycles.
+- **F6** (W26): ref starts a disjoint-buffer phase at the counters-done latch too (TileControl.java:280), not only at
+  newPhase and GO; ReadPortGatherTest's legal A -> B, local wake, B -> A run is flagged without it.
+- **ref's disjointViolations** (every offending access) isn't kept by the C++ big SRAM (W26: a counter in its mark()).
+- **The local new_phase no-op broke eng-shuf** once W26's disjoint check went live: replaced by W20's Chip::new_phase
+  wherever ref calls newPhase.
 - **ref's committed results are stale** for every P4 step (assertion counts differ; its net.log is the quick run's).
 
 ## 6. Runner tasks
@@ -88,6 +93,7 @@ test_chip and test_sort print the same before and after every one of them (clang
 
 ## 7. Still to do
 
-- W22-14 (MemTest's and ReadPortGatherTest's disjoint groups), W22-16 (AgTest's figure 12), W22-19 and W22-20
-  (RequestBusTest's four groups): then each step live, and the quick ones in make check.
-- rdport-full as a live step once its suite is complete; a runner pass of the full steps at the end.
+- W26: F6 and the disjoint counter: then MemTest and ReadPortGatherTest byte for byte, their steps live, the quick ones
+  in make check, rdport-full live.
+- W22-16 (after W20's reset): AgTest's figure 12, then agtest and agtest-shuf live and in make check.
+- A runner pass of the full steps at the end.

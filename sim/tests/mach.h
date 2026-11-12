@@ -268,6 +268,7 @@ public:
     void clear_violation_messages();
     std::string violation_report();                         // ref's violationReport() (scans the overflows first)
     void scan_overflows();                                  // ref's scanOverflows
+    void finalize_checks() const;                           // the checker's report through the cycle just run
     // ---- reset (6.1) [step 2] ----
     void reset(bool hard);                                  // takes effect at the end of the current cycle
     uint64_t resets() const;

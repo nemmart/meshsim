@@ -39,6 +39,7 @@
 #include <type_traits>
 
 #include "config.h"
+#include "check.h"
 #include "sim.h"
 #include "units/chip.h"
 #include "units/director.h"
@@ -98,6 +99,11 @@ struct TileCtl {
     };
     bool host_on = false;
     HostWrites host;
+    // W20 (P2): the checker's facts (src/check.h): the ERRORS value and the error line as ref has them at the end of a
+    // cycle (invariant 15). `ck_tile` is set by the harness (its unit number); -1 records nothing.
+    int ck_tile = -1;
+    uint32_t ck_errors = 0;
+    bool ck_line = false;
     void apply_host() {
         if (host.mask & HostWrites::DMA_CONFIG) s.dma_config = host.dma_config;
         if (host.mask & HostWrites::RECORD_BASE) s.record_base = host.record_base;
@@ -162,6 +168,13 @@ struct TileCtl {
         if (slot) s.slot_live = c.read(slot_win, Win::R_LIVE);   // W15: liveEvents(t), liveErrors(t), as ref's view at t
         s.end_cycle(c.now() - 1, in);
         if (host_on && host.mask) apply_host();                // W20 (harness-only)
+        if constexpr (sim::check::kOn) {                       // W20: the checker's facts (invariant 15)
+            if (ck_tile >= 0) {
+                const uint32_t v = s.conditions | s.live_errors();
+                if (v != ck_errors) { ck_errors = v; sim::check::record(c.now() - 1, ck_tile, sim::check::Kind::ERRORS_SET, v); }
+                if (s.error_line != ck_line) { ck_line = s.error_line; sim::check::record(c.now() - 1, ck_tile, sim::check::Kind::ERROR_LINE, ck_line); }
+            }
+        }
         if (g4) c.drive(ag_start, s.dma_starts);
         // only the registers that changed (W12, D31): the same register file, without 33 writes a step
         for (uint64_t m = s.publish(pub); m; m &= m - 1) { const unsigned r = unsigned(__builtin_ctzll(m)); c.write(regs, r, pub[r]); }

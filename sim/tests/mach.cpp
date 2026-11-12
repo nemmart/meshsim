@@ -110,6 +110,10 @@ struct Chip::Impl {
     uint8_t skew[64] = {};
     std::unique_ptr<Cc> cc;
     std::unique_ptr<Checker> checker;                    // ref's violations (src/check.h; on with SIM_CHECKS)
+    // ref's hardware FIFOs for invariant 1 (Tile.hardwareFifos, then C&C's receive FIFOs), in ref's scan order
+    struct Hw { int tile; units::Router* router; unsigned q; const sim::FifoIn* in; bool reported; };
+    std::vector<Hw> hw;
+    void collect_overflows();
     int64_t last_run_at = -1;
     // C&C's CALL steps run between cycles (Cc::call): id -> the harness's function, run after the cycle it ran in
     struct Call { uint32_t id; std::function<void(int64_t)> fn; };
@@ -201,7 +205,33 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     }
     m.shifted = {m.sim->type_of(units::tile_unit(0, "ctl")), m.sim->type_of(units::tile_unit(0, "core"))};
     if (!c.cc_cores) m.lines = {m.sim->type_of("row0"), m.sim->type_of("cnc")};
-    m.checker = std::make_unique<Checker>(sim::check::kOn ? c.check_capacity : 0, c.max_violation_messages);
+    CheckSwitches sw;
+    sw.errors = c.check_errors; sw.unexpected = c.check_unexpected; sw.read_port_overlap = c.check_read_port_overlap;
+    sw.command_read = c.check_command_read; sw.strict_replies = c.strict_replies; sw.K = c.K;
+    m.checker = std::make_unique<Checker>(sim::check::kOn ? c.check_capacity : 0, c.max_violation_messages, sw);
+    for (unsigned k = 0; k < m.nunits; k++) m.sim->unit<units::TileCtl>(units::unit_prefix(k) + "ctl").ck_tile = int(k);
+    if (sim::check::kOn) {                                // ref's FIFO names (Router, Tile, Endpoint)
+        static const char* const kOutName[6] = {"to-right", "to-left", "to-down", "to-up", "eject", "to-cnc"};
+        static const char* const kPortName[6] = {"from-left", "from-right", "from-up", "from-down", "loopback", "from-cnc"};
+        for (unsigned k = 0; k < 64; k++) {
+            units::Router& r = m.sim->unit<units::Router>(units::tile_unit(k, "router"));
+            const std::string t = "t" + std::to_string(k) + ".";
+            for (unsigned o = 0; o < units::Router::kOut; o++)
+                for (unsigned f = 0; f < r.nfeed[o]; f++) {
+                    m.hw.push_back({int(k), &r, r.first[o] + f, nullptr, false});
+                    m.checker->fifo_names.push_back(t + kOutName[o] + "<" + kPortName[r.feed[o][f]]);
+                }
+            m.hw.push_back({int(k), nullptr, 0, &m.sim->unit<units::WriteEngine>(units::tile_unit(k, "we")).in, false});
+            m.checker->fifo_names.push_back(t + "we-in");
+            m.hw.push_back({int(k), nullptr, 0, &m.sim->unit<units::Gather>(units::tile_unit(k, "gather")).in, false});
+            m.checker->fifo_names.push_back(t + "gather-q");
+        }
+        if (!c.cc_cores) {
+            m.hw.push_back({-1, nullptr, 0, &m.sim->unit<units::Cnc>("cnc").rx, false}); m.checker->fifo_names.push_back("cc1.rx");
+            m.hw.push_back({-1, nullptr, 0, &m.sim->unit<units::Endpoint>("ep2").rx, false}); m.checker->fifo_names.push_back("cc2.rx");
+            m.hw.push_back({-1, nullptr, 0, &m.sim->unit<units::Endpoint>("ep3").rx, false}); m.checker->fifo_names.push_back("cc3.rx");
+        }
+    }
     m.has_cnc = !c.cc_cores;
     if (!c.cc_cores) m.cc = std::make_unique<Cc>(*this);
     for (uint32_t id = units::CncProgram::kCalls; id-- > 0;) m.free_ids.push_back(id);
@@ -212,6 +242,22 @@ Chip::~Chip() { if (impl_ && impl_->checker) impl_->checker->uninstall(); }
 sim::Sim& Chip::sim() { return *impl_->sim; }
 void Chip::touched(const std::string& name) { impl_->sim->wake(name); }
 int64_t Chip::cycle() const { return int64_t(impl_->sim->now()) - 1; }
+
+// Invariant 1's facts: every hardware FIFO that has overflowed since the last look, at its first overflow's put cycle
+// (ref's overflowCycle), once per FIFO (ref's reportedOverflows), before the facts are processed.
+void Chip::Impl::collect_overflows() {
+    if (!sim::check::kOn) return;
+    for (size_t i = 0; i < hw.size(); i++) {
+        Hw& h = hw[i];
+        if (h.reported) continue;
+        uint64_t n = 0, first = 0;
+        if (h.router) { n = h.router->q[h.q].overflows; first = h.router->q[h.q].first_overflow; }
+        else { sim::Cycle f = 0; n = sim->fifo_overflows(*h.in, &f); first = f; }
+        if (!n) continue;
+        h.reported = true;
+        checker->add({first, h.tile, sim::check::Kind::FIFO_OVERFLOW, 0, {uint64_t(i), 0, 0, 0}});
+    }
+}
 
 void Chip::Impl::run_calls() {
     units::Cnc* c = cnc();
@@ -230,12 +276,18 @@ void Chip::Impl::run_calls() {
 void Chip::step() {
     impl_->checker->install();
     impl_->sim->run(1);
+    impl_->collect_overflows();
     impl_->checker->process(cycle(), false);
     impl_->run_calls();
 }
 void Chip::run(uint64_t n) {
     impl_->sim->wake_all();
-    if (impl_->calls.empty()) { impl_->checker->install(); impl_->sim->run(n); impl_->checker->process(cycle(), false); }
+    if (impl_->calls.empty()) {
+        impl_->checker->install();
+        impl_->sim->run(n);
+        impl_->collect_overflows();
+        impl_->checker->process(cycle(), false);
+    }
     else for (uint64_t i = 0; i < n; i++) step();
     scan_overflows();
 }
@@ -302,12 +354,30 @@ void Chip::host_command(unsigned c, uint32_t word, const std::vector<uint32_t>& 
 }
 
 // ---- the checker (checker.cpp): ref's Chip.violations, violationMessages, violationReport, scanOverflows ----
-uint64_t Chip::violations() const { return impl_->checker->violations(); }
-const std::vector<std::string>& Chip::violation_messages() const { return impl_->checker->messages(); }
-void Chip::clear_violation_messages() { impl_->checker->clear_messages(); }
-void Chip::scan_overflows() { impl_->checker->process(cycle(), true); }
+// The report through the cycle just run: the register blocks' ERRORS and error lines as ref has them at its end (their
+// own facts for it come at their next step: block_at_end now; the duplicates later are harmless, the rule is
+// idempotent), then every fact through it.
+void Chip::finalize_checks() const {
+    if (!sim::check::kOn) return;
+    Chip& me = const_cast<Chip&>(*this);
+    Checker& ck = *impl_->checker;
+    for (unsigned k = 0; k < 64; k++) {
+        const units::RegBlockState b = me.tile(k).block();
+        const uint32_t v = b.conditions | b.live_errors();
+        sim::check::Fact f{uint64_t(cycle()), int32_t(k), sim::check::Kind::ERRORS_SET, 0, {v, 0, 0, 0}};
+        ck.add(f);
+        f.kind = sim::check::Kind::ERROR_LINE; f.a[0] = b.error_line;
+        ck.add(f);
+    }
+    ck.process(cycle(), false, true);
+}
+uint64_t Chip::violations() const { finalize_checks(); return impl_->checker->violations(); }
+const std::vector<std::string>& Chip::violation_messages() const { finalize_checks(); return impl_->checker->messages(); }
+void Chip::clear_violation_messages() { finalize_checks(); impl_->checker->clear_messages(); }
+void Chip::scan_overflows() { impl_->collect_overflows(); impl_->checker->process(cycle(), true); }
 std::string Chip::violation_report() {
     scan_overflows();
+    finalize_checks();
     std::string sb = "violations: " + std::to_string(violations()) + "\n";
     for (const std::string& s : violation_messages()) sb += "  " + s + "\n";
     return sb;

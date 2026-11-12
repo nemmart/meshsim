@@ -270,6 +270,26 @@ void checkself() {
     }
     {
         mach::MachConfig k = Net::cfg(-1);
+        k.check_errors = true;
+        Net n(k);
+        n.at(3, 10, 9, lw::M_WRITE, 0, 0xFF000000u, lw::SIZE_32, 0x11, 0);
+        n.at(4, 12, 12, lw::M_WRITE, 0, 0xFE000000u, lw::SIZE_32, 0x22, 0);
+        n.at(5, 30, 9, lw::M_COUNT, 1, 0, lw::SIZE_32, 0x33, 0);
+        n.at(6, 31, 9, lw::M_WRITE, 0, 0xFF000000u, lw::SIZE_32, 0x44, 0);
+        n.run_all(1000);
+        say("%s", n.c.violation_report().c_str());
+    }
+    {
+        mach::MachConfig k = Net::cfg(-1);
+        k.queue_depth = 2; k.we_in_depth = 1; k.measure_s1 = false;
+        Net n(k);
+        for (unsigned s = 20; s < 40; s++) for (unsigned i = 0; i < 4; i++)
+            n.at(s, 10 + i, 9, lw::M_WRITE, 1, uint32_t(lw::R_SRAM) << 24 | (s * 16 + 2 * i) << 2, lw::SIZE_64, s * 100 + i, 0);
+        n.run_all(2000);
+        say("%s", n.c.violation_report().c_str());
+    }
+    {
+        mach::MachConfig k = Net::cfg(-1);
         k.max_violation_messages = 3;
         Net n(k);
         for (unsigned i = 0; i < 6; i++) n.at(10 + i, 10 + i, 20, lw::M_COUNT, 0, 0, lw::SIZE_32, i, 0);

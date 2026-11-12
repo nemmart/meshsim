@@ -1,0 +1,1462 @@
+{
+"edits": [
+[
+"machine-spec.md",
+1,
+"v1.3/spec/machine-spec.md",
+1,
+"version",
+"# Machine specification — 64-tile mesh processor, v1.3",
+"# Machine specification — 64-tile mesh processor, v1.35"
+],
+[
+"machine-spec.md",
+10,
+"v1.3/spec/machine-spec.md",
+12,
+"path",
+"- `tables/`: the replayer's expansion tables (4.19.5, 4.19.6), universal, built from jolt-cpp `821e1bd` by the table builder, with the opcode table and a manifest.",
+"- `data/tables/`: the replayer's expansion tables (4.19.5, 4.19.6), universal, built from jolt-cpp `821e1bd` by the table builder, with the opcode table and a manifest."
+],
+[
+"machine-spec.md",
+11,
+"v1.3/spec/machine-spec.md",
+13,
+"path",
+"- `diagrams/`: the figure set, numbered part.figure (1.0–9.3; part 9 is the Tracer, v1.3); `diagrams/README.md` is the index. Each section below names the figures that draw it. **The figures are still at v1.1** (the 169-bit link word, modes 0–15, the peripheral slot, RUN/HALT) and are to be redrawn.",
+"- `v1.3/diagrams/`: the figure set, numbered part.figure (1.0–9.3; part 9 is the Tracer, v1.3); `v1.3/diagrams/README.md` is the index. Each section below names the figures that draw it. **The figures are still at v1.1** (the 169-bit link word, modes 0–15, the peripheral slot, RUN/HALT) and are to be redrawn."
+],
+[
+"machine-spec.md",
+13,
+"v1.3/spec/machine-spec.md",
+15,
+"path+sim",
+"- `sw/mesh.h` and `sw/REGISTERS.md`: the tile-program interface and the programmer's register reference, generated from the register tables of section 8. Both must match section 8; **they are still at v1.1** until regenerated.",
+"- `fw/include/mesh.h` and `fw/REGISTERS.md`: the tile-program interface and the programmer's register reference, generated from the register table. Both must match section 8."
+],
+[
+"machine-spec.md",
+14,
+"v1.3/spec/machine-spec.md",
+16,
+"path+sim",
+"- `sw/CONVENTIONS.md`, `sw/RECIPES.md`: the software conventions and the recipe book (being rewritten for v1.2).",
+"- `fw/CONVENTIONS.md`, `fw/RECIPES.md`: the software conventions and the recipe book."
+],
+[
+"machine-spec.md",
+15,
+"v1.3/spec/machine-spec.md",
+17,
+"sim",
+"- `meshsim/`: the cycle-level simulator, which models every unit described here and is where the measured numbers come from. **meshsim is still at v1.1**; its port to this document follows.",
+"- `src/`: meshsim, the cycle-level simulator, which models every unit described here. v1.35's is in C++, checked against v1.3's, in Java, where the measured numbers come from (Markers, below)."
+],
+[
+"machine-spec.md",
+16,
+"v1.3/spec/machine-spec.md",
+18,
+"path",
+"- `results/`: the measured sort.",
+"- `v1.3/results/`: the measured sort."
+],
+[
+"machine-spec.md",
+18,
+"v1.3/spec/machine-spec.md",
+20,
+"sim",
+"**Markers.** An unmarked statement is decided. *(Proposed)* means suggested and not yet ruled on; *(Open)* means still to be settled; *(Deferred)* means set aside until the design it belongs to (the file system, C&C 1's firmware), listed in section 13; *(likely to change)* marks a decided value expected to move. Section 13 gathers every proposed, open and deferred item. Numbers are marked [meas: meshsim] (measured on the simulator, with the test where it matters), [meas: RV32 ISS] (measured on a 64-tile RV32 instruction-set simulator), [built] (as implemented in the simulator), [model] (from a model), [derived] or [estimate] (a rough estimate). **Every measurement in this document was taken on meshsim v1.1 or earlier**; one that v1.2's changes may invalidate carries **v1.1 measurement; to be re-measured in v1.2** (or v1.0) in its label, and is kept as the best number known until the simulator is updated. Decisions cite the owner (O), Tony (T) for the controller core and the link, or the integrator, with a date where it helps.",
+"**Markers.** An unmarked statement is decided. *(Proposed)* means suggested and not yet ruled on; *(Open)* means still to be settled; *(Deferred)* means set aside until the design it belongs to (the file system, C&C 1's firmware), listed in section 13; *(likely to change)* marks a decided value expected to move. Section 13 gathers every proposed, open and deferred item. Numbers are marked [meas: meshsim] (measured on the simulator, with the test where it matters), [meas: RV32 ISS] (measured on a 64-tile RV32 instruction-set simulator), [built] (as implemented in the simulator), [model] (from a model), [derived] or [estimate] (a rough estimate). **Every number marked [meas: meshsim] was measured on meshsim's Java implementation, v1.0 to v1.3**, and a test or driver a label names is a Java one (`spec/CHANGES-v1.3-to-v1.35.md` names what replaces each in v1.35); one labelled *v1.0 measurement; to be re-measured in v1.2* (or *in v1.1*) has not been re-measured since, and is kept as the best number known (item 24). Decisions cite the owner (O), Tony (T) for the controller core and the link, or the integrator, with a date where it helps."
+],
+[
+"machine-spec.md",
+26,
+"v1.3/spec/machine-spec.md",
+28,
+"sim",
+"In the rules below, **\"(hardware)\"** marks a checked rule and **\"(meshsim)\"** marks UB; section 9 lists the invariants meshsim checks. (DECISIONS-v1.25 section 8a, replacing v1.2's \"Who checks what\" of 2026-10-28; the simulation-only assertions are for Tony to confirm.)",
+"In the rules below, **\"(hardware)\"** marks a checked rule and **\"(meshsim)\"** marks UB; section 9 lists the invariants meshsim checks. (DECISIONS-v1.25 section 8a, replacing v1.2's \"Who checks what\" of 2026-10-28; the simulation-only assertions are for Tony to confirm.) **Where this document says meshsim stops, errors or flags,** v1.35's meshsim does one of three things: **undefined behaviour is fatal** in every build, the run ending with a message naming the access (`src/base/fatal.h`); **the silent traps** (4.13) **stop the core**; and **every other invariant of section 9 is counted** in every build and, in the debug and suite builds, also reported by name while the run goes on (`src/check.h`), so a test fails on a violation it doesn't expect."
+],
+[
+"machine-spec.md",
+568,
+"v1.3/spec/machine-spec.md",
+610,
+"path",
+"- **`PTR[me]`:** the output start, **128-bit aligned too, whatever *k* is** (DECISIONS-v1.25 section 8c). **Gather buffers are 128-bit aligned**, source and destination; misalignment is UB (4.1). The software convention is that allocations are 128-bit aligned in general (`sw/CONVENTIONS.md`).",
+"- **`PTR[me]`:** the output start, **128-bit aligned too, whatever *k* is** (DECISIONS-v1.25 section 8c). **Gather buffers are 128-bit aligned**, source and destination; misalignment is UB (4.1). The software convention is that allocations are 128-bit aligned in general (`fw/CONVENTIONS.md`)."
+],
+[
+"machine-spec.md",
+711,
+"v1.3/spec/machine-spec.md",
+753,
+"sim",
+"So in **meshsim's model**, **K ≥ max(2·L + 4, L + 4, `cm_latency`, `rp_latency`)**: 6 at the default L = 1, and K = 8 (meshsim's default) covers L ≤ 2. *(Revised 2026-11-01, W4-08: meshsim's big-SRAM write path measures 2·L + 4, one cycle more than the earlier count of 2·L + 3; at L = 3 and 4 the earlier formula left K a cycle short and the radix sort's back-to-back bucket passes read stale chunks.)* meshsim errors if K is set below its formula, and S1Bench measures the margin.",
+"So in **meshsim's model**, **K ≥ max(2·L + 4, L + 4, `cm_latency`, `rp_latency`)**: 6 at the default L = 1, and K = 8 (meshsim's default) covers L ≤ 2. *(Revised 2026-11-01, W4-08: meshsim's big-SRAM write path measures 2·L + 4, one cycle more than the earlier count of 2·L + 3; at L = 3 and 4 the earlier formula left K a cycle short and the radix sort's back-to-back bucket passes read stale chunks.)* meshsim errors if K is set below its formula, and its S1 measurement checks the margin (`measure_s1`, `tests/mach.h`)."
+],
+[
+"machine-spec.md",
+837,
+"v1.3/spec/machine-spec.md",
+879,
+"path",
+"- **Programs** are C, built bare-metal (`gcc` for `riscv64-unknown-elf`, `-march=rv32i_zmmul_zicsr -mabi=ilp32`, with `WFI` and the CSR accesses from inline assembly) with a start-up file, a linker script and the generated register header `sw/mesh.h`. A C `/` or `%` by a non-power of two compiles to a library call. The register block and the peripheral windows sit in the top 2 KB of the map, so a register access compiles to an x0-relative `lw` or `sw`; through the header's struct pointers (8.1) a compiler may add one base-address instruction, the same on every unit (owner, 2026-10-29).",
+"- **Programs** are C, built bare-metal (`gcc` for `riscv64-unknown-elf`, `-march=rv32i_zmmul_zicsr -mabi=ilp32`, with `WFI` and the CSR accesses from inline assembly) with a start-up file, a linker script and the generated register header `fw/include/mesh.h`. A C `/` or `%` by a non-power of two compiles to a library call. The register block and the peripheral windows sit in the top 2 KB of the map, so a register access compiles to an x0-relative `lw` or `sw`; through the header's struct pointers (8.1) a compiler may add one base-address instruction, the same on every unit (owner, 2026-10-29)."
+],
+[
+"machine-spec.md",
+897,
+"v1.3/spec/machine-spec.md",
+939,
+"path",
+"**Below them, the stack** grows down from 0x00007BC0 (software convention, `sw/CONVENTIONS.md`).",
+"**Below them, the stack** grows down from 0x00007BC0 (software convention, `fw/CONVENTIONS.md`)."
+],
+[
+"machine-spec.md",
+950,
+"v1.3/spec/machine-spec.md",
+992,
+"path",
+"- **A wake consumes nothing** (owner, 2026-10-23): hardware never consumes an event on wake, so a program consumes or masks an event before its next `WFI`, or that `WFI` falls straight through. **The `sw/mesh.h` wait helpers follow every `WFI` with a load of `EVENTS`**: `wfi()` consumes what woke it (counters done, at the reset mask), and `wait_for_command()` consumes GO (6.3). The load costs 2 cycles, as every register-block load does (DECISIONS-v1.2 section 45; 4.11), and is the same code on every tile, so synchronised starts (6.3) are unaffected.",
+"- **A wake consumes nothing** (owner, 2026-10-23): hardware never consumes an event on wake, so a program consumes or masks an event before its next `WFI`, or that `WFI` falls straight through. **The `fw/include/mesh.h` wait helpers follow every `WFI` with a load of `EVENTS`**: `wfi()` consumes what woke it (counters done, at the reset mask), and `wait_for_command()` consumes GO (6.3). The load costs 2 cycles, as every register-block load does (DECISIONS-v1.2 section 45; 4.11), and is the same code on every tile, so synchronised starts (6.3) are unaffected."
+],
+[
+"machine-spec.md",
+1177,
+"v1.3/spec/machine-spec.md",
+1219,
+"path",
+"*Removed in v1.2: v1.1's \"HALT, a halted controller and the empty slot\". See `CHANGES-v1.2.md`.*",
+"*Removed in v1.2: v1.1's \"HALT, a halted controller and the empty slot\". See `spec/history/CHANGES-v1.2.md`.*"
+],
+[
+"machine-spec.md",
+1350,
+"v1.3/spec/machine-spec.md",
+2439,
+"sim",
+"3. **C&C 1 is booted from outside** (owner, 2026-10-29): endpoint 64 takes the C&C 2/3 branch of the ROM, and **the outside world lands C&C 1's overlays and first command**: the host through Ingress/Egress on silicon, the test harness in meshsim. **In meshsim v1.2, C&C 1 stays a behavioural Java model** (as `CnC.java` in v1.1), driving its peripheral's registers from the harness; likewise C&C 2 and C&C 3 until their firmware exists.",
+"3. **C&C 1 is booted from outside** (owner, 2026-10-29): endpoint 64 takes the C&C 2/3 branch of the ROM, and **the outside world lands C&C 1's overlays and first command**: the host through Ingress/Egress on silicon, the test harness in meshsim. **In meshsim, C&C 1 is a behavioural model by default** (`src/units/cnc.h`), driving its peripheral's registers from the harness, and so are C&C 2 and C&C 3; with `cc_cores` (`tests/mach.h`) all three are cores, booted through the host port."
+],
+[
+"machine-spec.md",
+1382,
+"v1.3/spec/machine-spec.md",
+2471,
+"path",
+"- **The command word** (`sw/mesh.h`): [31:24] type, [23] parity, [22:0] argument.",
+"- **The command word** (`fw/include/mesh.h`): [31:24] type, [23] parity, [22:0] argument."
+],
+[
+"machine-spec.md",
+1387,
+"v1.3/spec/machine-spec.md",
+2476,
+"path",
+"**`WFI`** stalls the core until the wake term holds, then continues at the next instruction. **All wakes are events** (4.12): `WFI` completes on the events pending in `EVENTS` under `EVENTS_MASK` and `EVENTS_REQUIRED`, among them GO ([8]), counters done ([7], which also covers a request's data and reply, 6.7), a counter's own done ([6:0]), the end of a DMA run ([10]), a received request ([12], 4.18) and the peripherals' live bits ([15:13], 4.17.3; the replayer's, 4.19.9). From the `done` pulse until GO the `done` gate overrides the term to GO alone. A wake consumes nothing; the `sw/mesh.h` helpers follow every `WFI` with a load of `EVENTS` (4.12). Errors don't wake `WFI`; they trap (4.13).",
+"**`WFI`** stalls the core until the wake term holds, then continues at the next instruction. **All wakes are events** (4.12): `WFI` completes on the events pending in `EVENTS` under `EVENTS_MASK` and `EVENTS_REQUIRED`, among them GO ([8]), counters done ([7], which also covers a request's data and reply, 6.7), a counter's own done ([6:0]), the end of a DMA run ([10]), a received request ([12], 4.18) and the peripherals' live bits ([15:13], 4.17.3; the replayer's, 4.19.9). From the `done` pulse until GO the `done` gate overrides the term to GO alone. A wake consumes nothing; the `fw/include/mesh.h` helpers follow every `WFI` with a load of `EVENTS` (4.12). Errors don't wake `WFI`; they trap (4.13)."
+],
+[
+"machine-spec.md",
+1389,
+"v1.3/spec/machine-spec.md",
+2478,
+"path",
+"**`wait_for_command()`**: the controller pulses `done` and then executes `WFI` **immediately**, as two back-to-back instructions in a `sw/mesh.h` inline helper; on waking it **loads `EVENTS`, consuming GO** (GO stays in `EVENTS_MASK`, 4.12), then **reads command slot 0 and returns the command word** (the simulator checks that every command word is read before the next lands). The boot ROM's tile branch is the same helper, without the read (6.2).",
+"**`wait_for_command()`**: the controller pulses `done` and then executes `WFI` **immediately**, as two back-to-back instructions in a `fw/include/mesh.h` inline helper; on waking it **loads `EVENTS`, consuming GO** (GO stays in `EVENTS_MASK`, 4.12), then **reads command slot 0 and returns the command word** (the simulator checks that every command word is read before the next lands). The boot ROM's tile branch is the same helper, without the read (6.2)."
+],
+[
+"machine-spec.md",
+1453,
+"v1.3/spec/machine-spec.md",
+2542,
+"sim",
+"- **In meshsim v1.2,** C&C 1 is a behavioural model driving these registers from the harness, and so are C&C 2 and C&C 3 until their firmware exists (6.2).",
+"- **In meshsim,** C&C 1 is by default a behavioural model driving these registers from the harness, and so are C&C 2 and C&C 3; as an option all three are cores (6.2)."
+],
+[
+"machine-spec.md",
+1601,
+"v1.3/spec/machine-spec.md",
+2690,
+"path",
+"- **The C header** (owner and integrator, 2026-10-28/29; W3-16, W3-27; Tony may redo the details). The block and each window are declared as C structs overlaid on their addresses: `TileRegs` for the block, a `PeripheralStd` macro listing the ten standard members at the top of each peripheral's struct, and a type per peripheral ending in `Regs` (`ReplayerRegs`, 8.11). Access is through pointers, `#define tile ((volatile TileRegs *)0xFFFFF800)`, used as `tile->EVENTS`, so a whole-block copy, which would consume events and pop requests, needs an explicit `*tile`. Every member is `volatile uint32_t`, accessed one word at a time. `sw/mesh.h` (version 1.2) and `sw/REGISTERS.md` are generated from the same register table and must match this section.",
+"- **The C header** (owner and integrator, 2026-10-28/29; W3-16, W3-27; Tony may redo the details). The block and each window are declared as C structs overlaid on their addresses: `TileRegs` for the block, a `PeripheralStd` macro listing the ten standard members at the top of each peripheral's struct, and a type per peripheral ending in `Regs` (`ReplayerRegs`, 8.11). Access is through pointers, `#define tile ((volatile TileRegs *)0xFFFFF800)`, used as `tile->EVENTS`, so a whole-block copy, which would consume events and pop requests, needs an explicit `*tile`. Every member is `volatile uint32_t`, accessed one word at a time. `fw/include/mesh.h` (version 1.2) and `fw/REGISTERS.md` are generated from the same register table and must match this section."
+],
+[
+"machine-spec.md",
+1673,
+"v1.3/spec/machine-spec.md",
+2762,
+"ruling",
+"| `PULSE_DMA` | `TILE_PULSE` [1] | start: load the run in `DMA_CONFIG` and begin it (4.2), clearing DMA run done (`EVENTS` [10]); ignored while a run is running (meshsim flags it) |",
+"| `PULSE_DMA` | `TILE_PULSE` [1] | start: load the run in `DMA_CONFIG` and begin it (4.2), clearing DMA run done (`EVENTS` [10]); a start while a run is running is undefined behaviour (invariant 26; meshsim stops) |"
+],
+[
+"machine-spec.md",
+1732,
+"v1.3/spec/machine-spec.md",
+2821,
+"heading",
+"### 8.11 The peripheral windows: the standard words and the replayer's",
+"### 8.11 The peripheral windows: the standard words"
+],
+[
+"machine-spec.md",
+1758,
+"v1.3/spec/machine-spec.md",
+2860,
+"path",
+"*Removed in v1.2: v1.1's sender registers, `SENDER_SEND` and `SENDER_ADDR`. A peripheral's output is its DMA (4.17.9, 8.11). See `CHANGES-v1.2.md`.*",
+"*Removed in v1.2: v1.1's sender registers, `SENDER_SEND` and `SENDER_ADDR`. A peripheral's output is its DMA (4.17.9, 8.11). See `spec/history/CHANGES-v1.2.md`.*"
+],
+[
+"machine-spec.md",
+1809,
+"v1.3/spec/machine-spec.md",
+2942,
+"sim",
+"**Every invariant is a meshsim check** (owner, 2026-10-28): meshsim stops with an error naming the access, unless the invariant says it reports. **The hardware checks none of them as such;** where it has an error bit for the same mistake, the invariant says so (**hardware:** `ERRORS` [*n*]), and every other rule here is software's alone (the preamble's split, 4.13). Numbers survive from v1.1 where the subject does; new invariants start at 19.",
+"**Every invariant is a meshsim check** (owner, 2026-10-28): v1.35's meshsim checks each in one of three ways (the preamble): undefined behaviour is fatal in every build, the silent traps (23) stop the core, and the rest are counted in every build and reported by name in the debug and suite builds. **The hardware checks none of them as such;** where it has an error bit for the same mistake, the invariant says so (**hardware:** `ERRORS` [*n*]), and every other rule here is software's alone (the preamble's split, 4.13). Numbers survive from v1.1 where the subject does; new invariants start at 19."
+],
+[
+"machine-spec.md",
+1817,
+"v1.3/spec/machine-spec.md",
+2950,
+"path",
+"7. *(Withdrawn in v1.2: there is no RUN/HALT line. See `CHANGES-v1.2.md`.)*",
+"7. *(Withdrawn in v1.2: there is no RUN/HALT line. See `spec/history/CHANGES-v1.2.md`.)*"
+],
+[
+"machine-spec.md",
+1818,
+"v1.3/spec/machine-spec.md",
+2951,
+"sim",
+"8. **Overwritten-unread results are counted, not failed:** reply-block words and read-port results overwritten before the program reads them are a reported statistic, per phase. Exchanges legitimately land words a program ignores. A strict mode (meshsim's `Config.strictReplies`) makes them violations for tests that want the guarantee. Separately, no `SRAM_RD_ADDR_QUEUE` store may find the queue full (**hardware:** `ERRORS` [7]).",
+"8. **Overwritten-unread results are counted, not failed:** reply-block words and read-port results overwritten before the program reads them are a reported statistic, per phase. Exchanges legitimately land words a program ignores. A strict mode (meshsim's `strict_replies` (`tests/mach.h`)) makes them violations for tests that want the guarantee. Separately, no `SRAM_RD_ADDR_QUEUE` store may find the queue full (**hardware:** `ERRORS` [7])."
+],
+[
+"machine-spec.md",
+1824,
+"v1.3/spec/machine-spec.md",
+2957,
+"sim",
+"14. **Read-port results and incoming traffic do not overlap** (4.3): no packet from outside the tile, other than C&C 1's command writes, arrives while the tile has read-port results outstanding (issued and not yet accepted by the traffic director). Checked as actual overlap in time [built: meshsim's `Config.checkReadPortOverlap`, on by default].",
+"14. **Read-port results and incoming traffic do not overlap** (4.3): no packet from outside the tile, other than C&C 1's command writes, arrives while the tile has read-port results outstanding (issued and not yet accepted by the traffic director). Checked as actual overlap in time [built: meshsim's `check_read_port_overlap` (`tests/mach.h`), on by default]."
+],
+[
+"machine-spec.md",
+2024,
+"v1.3/spec/machine-spec.md",
+3464,
+"path",
+"Not part of the hardware specification; it is here because it explains the GATHER engine and augmenting. The program is in `sort/program/` (the split in `sort/split/`, skew handling in `sort/skew/`), and its measured times are in `results/`. For a 32-bit key and a value of *k* records (*k* = 2 for 128-bit values), the sort has six steps:",
+"Not part of the hardware specification; it is here because it explains the GATHER engine and augmenting. The program is in `fw/sort/program/` (the split in `fw/sort/split/`, skew handling in `fw/sort/skew/`), and its measured times are in `v1.3/results/`. For a 32-bit key and a value of *k* records (*k* = 2 for 128-bit values), the sort has six steps:"
+],
+[
+"machine-spec.md",
+2028,
+"v1.3/spec/machine-spec.md",
+3468,
+"path",
+"3. **Split:** a bisection on key values. Owners exchange probe keys (replies) and counts ((lb, ub) pairs written into the receiver's data memory) from the send port, and every tile counts by binary searches of its own run through the controller read port (4.3). Exact on all 25 data sets: ≈ 203K cycles on uniform, 246K mean over the 24 non-trivial sets, 367K worst, with a seed bracket and an early exit to idle barriers [meas: RV32 ISS]. Interface and memory: `sort/split/BINDING.md`.",
+"3. **Split:** a bisection on key values. Owners exchange probe keys (replies) and counts ((lb, ub) pairs written into the receiver's data memory) from the send port, and every tile counts by binary searches of its own run through the controller read port (4.3). Exact on all 25 data sets: ≈ 203K cycles on uniform, 246K mean over the 24 non-trivial sets, 367K worst, with a seed bracket and an early exit to idle barriers [meas: RV32 ISS]. Interface and memory: `fw/sort/split/BINDING.md`."
+],
+[
+"machine-spec.md",
+2039,
+"v1.3/spec/machine-spec.md",
+3479,
+"path",
+"**Skew handling** (`sort/skew/`). A three-stage switch picks the transfer path for step 4: direct, loopback-as-local-copy (LB), the one-layer two-hop (TH), or the balanced two-hop (BT), with every tile making the same choice from the group maxima. K + V including planning: 215K uniform, 199K sorted and all-equal, 420K reverse, 772–786K Zipf and trace, 741K at 99 % one value [model; planner cycles measured on an RV32 ISS]. The planner is an overlay (≈ 8.5 KB). C&C 1 issues a fixed maximum number of layer phases, and tiles finish empty layers at once (≈ 30 cycles each). The switch is format-aware: for 32-bit values it costs the keys all-to-all only (trace sets take BT at 332–343K against 0.59–1.00M direct; sorted and all-equal LB at 66.7K; reverse TH at 149.0K) [model]. TH and BT run every stream at the full window and so use a group gap of 4 (4.2).",
+"**Skew handling** (`fw/sort/skew/`). A three-stage switch picks the transfer path for step 4: direct, loopback-as-local-copy (LB), the one-layer two-hop (TH), or the balanced two-hop (BT), with every tile making the same choice from the group maxima. K + V including planning: 215K uniform, 199K sorted and all-equal, 420K reverse, 772–786K Zipf and trace, 741K at 99 % one value [model; planner cycles measured on an RV32 ISS]. The planner is an overlay (≈ 8.5 KB). C&C 1 issues a fixed maximum number of layer phases, and tiles finish empty layers at once (≈ 30 cycles each). The switch is format-aware: for 32-bit values it costs the keys all-to-all only (trace sets take BT at 332–343K against 0.59–1.00M direct; sorted and all-equal LB at 66.7K; reverse TH at 149.0K) [model]. TH and BT run every stream at the full window and so use a group gap of 4 (4.2)."
+],
+[
+"machine-spec.md",
+2048,
+"v1.3/spec/machine-spec.md",
+3488,
+"path",
+"The plan estimated ≈ 1.37M cycles for the whole sort at *k* = 2 on uniform data [model]. **Measured at v1.25: 1,229,008 cycles** for the full-size sort `p4/uniform-k128` (64 tiles × 65,536 records), against v1.2's 1,360,082: **131,074 fewer, all from the even-*k* gathers** (4.4) [meas: meshsim, WORKER11, Quest 089; v1.2: Quest 077 and 086]. Older times are in `results/` (v1.1: `RESULTS-full-size.md`). Since v1.1 the values all-to-all of the 128-bit-value format sends one packet per value instead of two.",
+"The plan estimated ≈ 1.37M cycles for the whole sort at *k* = 2 on uniform data [model]. **Measured at v1.25: 1,229,008 cycles** for the full-size sort `p4/uniform-k128` (64 tiles × 65,536 records), against v1.2's 1,360,082: **131,074 fewer, all from the even-*k* gathers** (4.4) [meas: meshsim, WORKER11, Quest 089; v1.2: Quest 077 and 086]. Older times are in `v1.3/results/` (v1.1: `v1.3/RESULTS-full-size.md`). Since v1.1 the values all-to-all of the 128-bit-value format sends one packet per value instead of two."
+],
+[
+"jolt/replayer.md",
+7,
+"v1.3/spec/machine-spec.md",
+1287,
+"path",
+"*No figures yet; the figure set gains a replayer part (handoff in `CHANGES-v1.1.md`).*",
+"*No figures yet; the figure set gains a replayer part (handoff in `v1.3/CHANGES-v1.1.md`).*"
+],
+[
+"jolt/replayer.md",
+11,
+"v1.3/spec/machine-spec.md",
+1291,
+"path",
+"**Ground truth** (DECISIONS-v1.3 section 17; owner, 2026-11-04, replacing 2026-10-26's parts G and H; item 113). The trace the replayer reproduces, and the Tracer writes (4.21), is **a16z's Jolt's**: the 80-byte trace row and the sequence of pc and `instr_idx` that a16z's verifier checks a proof against. **a16z decides:** jolt-cpp has no verifier of its own; it proves `jolt_verifier::JoltProof` against a16z's `jolt_program` preprocessing, from its submodule `third-party/jolt` at **`a16z/jolt` `7189216`**, the verifier's source, so where jolt-cpp builds a different bytecode or image its proofs fail verification, and following a16z is forced, not a preference. **Gold is the Java emulator in `wip/gold/`** (WORKER18): self-contained, it writes the segment file byte-identical to WORKER16's tool, and its rows match jolt-cpp's on both workloads at 2²⁹ and a16z's (at `17a9459`, a descendant of `7189216` with every file the findings rest on unchanged) wherever jolt-cpp's do; where the two differ at the edges (`wip/planning/upstream/UPSTREAM-DIFFS.md`) the owner rules case by case, by default for a16z, and gold follows. **jolt-cpp `88dca85` is the pin, checked** (DECISIONS-v1.3 section 14 (c); item 154), its submodule being the verifier's. Both checks passed: `src/tracer/isa` is unchanged since `821e1bd`, and every window's rows, the segment files and `capture_writes`' output identical to `821e1bd`'s on both workloads at 2²⁹ (WORKER16, merged at fa59d9a). So the tables built at `821e1bd` (`tables/`) and this section's citations stand. jolt-cpp is checked against **as data, not code** (its rows, its segment files). The formats that are ours (the run log and its streams, the LRU coder, the state record, how template words are delivered) are ours to define, provided the rows that come out match. `spec/replayer-opcodes.md` is normative for the replayer as built. The rules tagged *(pending the upstream check, item 113)* were found by reading source before gold existed; stage 3 found no difference in any row it exercised, and each tag goes as gold's guests settle its case against a16z (item 113). *(v1.26.1: `LayerZero-Research/jolt` `735355e` was the ground truth and jolt-cpp the gold standard.)*",
+"**Ground truth** (DECISIONS-v1.3 section 17; owner, 2026-11-04, replacing 2026-10-26's parts G and H; item 113). The trace the replayer reproduces, and the Tracer writes (4.21), is **a16z's Jolt's**: the 80-byte trace row and the sequence of pc and `instr_idx` that a16z's verifier checks a proof against. **a16z decides:** jolt-cpp has no verifier of its own; it proves `jolt_verifier::JoltProof` against a16z's `jolt_program` preprocessing, from its submodule `third-party/jolt` at **`a16z/jolt` `7189216`**, the verifier's source, so where jolt-cpp builds a different bytecode or image its proofs fail verification, and following a16z is forced, not a preference. **Gold is the Java emulator in `pipeline/gold/`** (WORKER18): self-contained, it writes the segment file byte-identical to WORKER16's tool, and its rows match jolt-cpp's on both workloads at 2²⁹ and a16z's (at `17a9459`, a descendant of `7189216` with every file the findings rest on unchanged) wherever jolt-cpp's do; where the two differ at the edges (`v1.3/planning/upstream/UPSTREAM-DIFFS.md`) the owner rules case by case, by default for a16z, and gold follows. **jolt-cpp `88dca85` is the pin, checked** (DECISIONS-v1.3 section 14 (c); item 154), its submodule being the verifier's. Both checks passed: `src/tracer/isa` is unchanged since `821e1bd`, and every window's rows, the segment files and `capture_writes`' output identical to `821e1bd`'s on both workloads at 2²⁹ (WORKER16, merged at fa59d9a). So the tables built at `821e1bd` (`data/tables/`) and this section's citations stand. jolt-cpp is checked against **as data, not code** (its rows, its segment files). The formats that are ours (the run log and its streams, the LRU coder, the state record, how template words are delivered) are ours to define, provided the rows that come out match. `spec/jolt/replayer-opcodes.md` is normative for the replayer as built. The rules tagged *(pending the upstream check, item 113)* were found by reading source before gold existed; stage 3 found no difference in any row it exercised, and each tag goes as gold's guests settle its case against a16z (item 113). *(v1.26.1: `LayerZero-Research/jolt` `735355e` was the ground truth and jolt-cpp the gold standard.)*"
+],
+[
+"jolt/replayer.md",
+35,
+"v1.3/spec/machine-spec.md",
+1315,
+"path",
+"**Rate.** A row takes a fixed 3 cycles, or 5 for a multiply (4.19.7), plus stalls. **Measured at v1.25** [meas: v1.25's acceptance runs, Quest 083 and 084: meshsim's Stage B on every window of both workloads at 2²⁹, `WORKER11/REPORT.md` section 5]: on the windows holding real rows, **3.32 cycles per row on EVM Zone** (per window 3.00–3.59, median 3.32) and **3.16 on Cyclone** (3.00–3.50, median 3.10); over all 8,192 windows, the padding ones included (3.00), 3.21 and 3.11. A pass is so about 218K cycles on average and at most 235K, **about 0.22 ms at 1 GHz with everything local, 0.24 ms at worst**. Stalls are 0.24 % of a pass on EVM Zone and 0.62 % on Cyclone, most of it the fixed image and code loads (190 cycles a pass), the write log's waits and, on Cyclone, controller-fed expansions (4.19.9). The consuming kernels likely need 3–6 cycles per row anyway [estimate].",
+"**Rate.** A row takes a fixed 3 cycles, or 5 for a multiply (4.19.7), plus stalls. **Measured at v1.25** [meas: v1.25's acceptance runs, Quest 083 and 084: meshsim's Stage B on every window of both workloads at 2²⁹, `v1.3/planning/sessions/WORKER11-REPORT.md` section 5]: on the windows holding real rows, **3.32 cycles per row on EVM Zone** (per window 3.00–3.59, median 3.32) and **3.16 on Cyclone** (3.00–3.50, median 3.10); over all 8,192 windows, the padding ones included (3.00), 3.21 and 3.11. A pass is so about 218K cycles on average and at most 235K, **about 0.22 ms at 1 GHz with everything local, 0.24 ms at worst**. Stalls are 0.24 % of a pass on EVM Zone and 0.62 % on Cyclone, most of it the fixed image and code loads (190 cycles a pass), the write log's waits and, on Cyclone, controller-fed expansions (4.19.9). The consuming kernels likely need 3–6 cycles per row anyway [estimate]."
+],
+[
+"jolt/replayer.md",
+65,
+"v1.3/spec/machine-spec.md",
+1345,
+"path",
+"**The densities at v1.25** (words per real row, load / store / advice / non-sequential) [meas: Quest 085, every window of both v1.25 deliveries at 2²⁹, counted from the reference rows and checked word for word against each state record's raw stream lengths]: **0.181 / 0.156 / 0.00001 / 0.011 on EVM Zone (total 0.348)** and **0.163 / 0.100 / 0.0003 / 0.043 on Cyclone (total 0.306)**. Per full window of real rows the total's median is 0.366 on EVM Zone (0.172–0.418) and 0.330 on Cyclone (0.107–0.833). **Cyclone's dense stretches are sustained, not bursts:** its worst 512-, 1,024- and 4,096-row spans hold 0.838, 0.836 and 0.834 words per row, most of it write log (up to 0.754); EVM Zone's are 0.781, 0.683 and 0.600. A 64-window replay pass reads on average **7.7 MB of log raw on EVM Zone, 6.3 MB with each stream in its smaller form**, and 7.1 MB and 2.9 MB on Cyclone [same]. The totals match the derived expectation from v1.2's figures, about a ninth above `4f36b3d`'s 0.315 and 0.277, with v1.25's shorter expansions removing rows but no log words; the mix moved, since the workload changed: EVM Zone's stores rose and its non-sequential words fell. What the logs cost the replayer **at v1.25** is small: read-log waits average 59 cycles per window on EVM Zone and 63 on Cyclone, write-log waits 267 and 222, together about 0.15 % of a pass [meas: v1.25's acceptance runs, Quest 083 and 084: meshsim's Stage B on every window of both workloads at 2²⁹, `WORKER11/REPORT.md` section 5]. **At v1.26, with 4 KB queues** (4.19.8), they cost less: read-log waits average **39.2** cycles per window on EVM Zone and **43.5** on Cyclone, write-log waits **100.0** and **84.5**, together **0.066 %** and **0.063 %** of a pass. The 8 KB control (the same v1.26 model and controller with v1.25's 512-entry logs) waits the same on the read log and **176.2** and **153.6** on the write log, 0.102 % and 0.097 % [meas: Quest 098 and 099 (4 KB) and 100 and 101 (8 KB): meshsim's Stage B on every window of both workloads at 2²⁹, `WORKER20/REPORT.md` section 5; item 143]. The control, not v1.25's figures, is the comparison for the queue size, since v1.26 changed the pass start (4.19.11). The waits are all at a pass's start (4.19.8).",
+"**The densities at v1.25** (words per real row, load / store / advice / non-sequential) [meas: Quest 085, every window of both v1.25 deliveries at 2²⁹, counted from the reference rows and checked word for word against each state record's raw stream lengths]: **0.181 / 0.156 / 0.00001 / 0.011 on EVM Zone (total 0.348)** and **0.163 / 0.100 / 0.0003 / 0.043 on Cyclone (total 0.306)**. Per full window of real rows the total's median is 0.366 on EVM Zone (0.172–0.418) and 0.330 on Cyclone (0.107–0.833). **Cyclone's dense stretches are sustained, not bursts:** its worst 512-, 1,024- and 4,096-row spans hold 0.838, 0.836 and 0.834 words per row, most of it write log (up to 0.754); EVM Zone's are 0.781, 0.683 and 0.600. A 64-window replay pass reads on average **7.7 MB of log raw on EVM Zone, 6.3 MB with each stream in its smaller form**, and 7.1 MB and 2.9 MB on Cyclone [same]. The totals match the derived expectation from v1.2's figures, about a ninth above `4f36b3d`'s 0.315 and 0.277, with v1.25's shorter expansions removing rows but no log words; the mix moved, since the workload changed: EVM Zone's stores rose and its non-sequential words fell. What the logs cost the replayer **at v1.25** is small: read-log waits average 59 cycles per window on EVM Zone and 63 on Cyclone, write-log waits 267 and 222, together about 0.15 % of a pass [meas: v1.25's acceptance runs, Quest 083 and 084: meshsim's Stage B on every window of both workloads at 2²⁹, `v1.3/planning/sessions/WORKER11-REPORT.md` section 5]. **At v1.26, with 4 KB queues** (4.19.8), they cost less: read-log waits average **39.2** cycles per window on EVM Zone and **43.5** on Cyclone, write-log waits **100.0** and **84.5**, together **0.066 %** and **0.063 %** of a pass. The 8 KB control (the same v1.26 model and controller with v1.25's 512-entry logs) waits the same on the read log and **176.2** and **153.6** on the write log, 0.102 % and 0.097 % [meas: Quest 098 and 099 (4 KB) and 100 and 101 (8 KB): meshsim's Stage B on every window of both workloads at 2²⁹, `v1.3/planning/sessions/WORKER20-REPORT.md` section 5; item 143]. The control, not v1.25's figures, is the comparison for the queue size, since v1.26 changed the pass start (4.19.11). The waits are all at a pass's start (4.19.8)."
+],
+[
+"jolt/replayer.md",
+137,
+"v1.3/spec/machine-spec.md",
+1417,
+"path",
+"| [7:0] | `opcode` | the row opcode, 0–170, numbered in the tracer's order at `821e1bd` (`isa/riscv.inc`, enum `OpCode`; `tables/opcode_table.txt` lists all 171); 4.19.7 lists the ones that occur in rows |",
+"| [7:0] | `opcode` | the row opcode, 0–170, numbered in the tracer's order at `821e1bd` (`isa/riscv.inc`, enum `OpCode`; `data/tables/opcode_table.txt` lists all 171); 4.19.7 lists the ones that occur in rows |"
+],
+[
+"jolt/replayer.md",
+230,
+"v1.3/spec/machine-spec.md",
+1510,
+"path",
+"**v1.3: a16z decides two cases differently** (owner, 2026-11-05; DECISIONS-v1.3 section 17; `planning/upstream/UPSTREAM-DIFFS.md` D13, D14), and gold follows a16z:",
+"**v1.3: a16z decides two cases differently** (owner, 2026-11-05; DECISIONS-v1.3 section 17; `v1.3/planning/upstream/UPSTREAM-DIFFS.md` D13, D14), and gold follows a16z:"
+],
+[
+"jolt/replayer.md",
+234,
+"v1.3/spec/machine-spec.md",
+1514,
+"path",
+"**The hardware is unchanged** (the policy and the offset are data); **the universal tables are not yet**: `tables/replayer/` is still built from jolt-cpp `821e1bd`, with `rd0` = 0 on the LR/SC templates and `rd0` = 1 on every NOP-policy template but ADDI's. Neither workload has such an instruction. **Decided (owner, 2026-11-06; item 158): the tables are rebuilt to a16z's rule right after v1.3's freeze, not in v1.3**; it changes no hardware. The rest of this subsection describes the tables as they stand.",
+"**The hardware is unchanged** (the policy and the offset are data); **the universal tables are not yet**: `data/tables/replayer/` is still built from jolt-cpp `821e1bd`, with `rd0` = 0 on the LR/SC templates and `rd0` = 1 on every NOP-policy template but ADDI's. Neither workload has such an instruction. **Decided (owner, 2026-11-06; item 158): the tables are rebuilt to a16z's rule right after v1.3's freeze, not in v1.3**; it changes no hardware. The rest of this subsection describes the tables as they stand."
+],
+[
+"jolt/replayer.md",
+236,
+"v1.3/spec/machine-spec.md",
+1516,
+"path",
+"**What the remap and the exemptions produce** (owner, 2026-10-26; `spec/replayer-opcodes.md` section 5) *(pending the upstream check, item 113; v1.3: D13, D14 above)*:",
+"**What the remap and the exemptions produce** (owner, 2026-10-26; `spec/jolt/replayer-opcodes.md` section 5) *(pending the upstream check, item 113; v1.3: D13, D14 above)*:"
+],
+[
+"jolt/replayer.md",
+276,
+"v1.3/spec/machine-spec.md",
+1556,
+"path",
+"**The tables are universal** (DECISIONS-v1.25 section 5): one decode table, one ROM and one controller-fed set, covering **every RV64IMAC instruction and every inline jolt-cpp supports**, built once per jolt-cpp version by the table builder (an offline tool, `build_tables` in jolt-asic-planning PR #2) and good for any guest program. They are in `tables/` (`replayer/decode_table.bin`, `rom.bin`, `templates.bin`, `template_index.bin`), with the opcode table and a manifest. v1.2's tables were per program; trimming them to what one program uses was rejected, because a new guest would need the builder rerun before it could run.",
+"**The tables are universal** (DECISIONS-v1.25 section 5): one decode table, one ROM and one controller-fed set, covering **every RV64IMAC instruction and every inline jolt-cpp supports**, built once per jolt-cpp version by the table builder (an offline tool, `build_tables` in jolt-asic-planning PR #2) and good for any guest program. They are in `data/tables/` (`replayer/decode_table.bin`, `rom.bin`, `templates.bin`, `template_index.bin`), with the opcode table and a manifest. v1.2's tables were per program; trimming them to what one program uses was rejected, because a new guest would need the builder rerun before it could run."
+],
+[
+"jolt/replayer.md",
+278,
+"v1.3/spec/machine-spec.md",
+1558,
+"path",
+"**The table builder's rules** (software contract): every entry is written, because the table isn't reset; **an unused entry is class 3, invalid** (DECISIONS-v1.25 section 5, revising v1.2's controller class): with universal tables an unused index is an encoding that is no valid instruction, which Jolt itself rejects, so reaching one is an error, the invalid expansion v1.2 already raises for class 3 (4.19.11), with no new error bit (owner, 2026-11-01). An instruction whose index bits include immediate bits (the U, J and most I formats) has its entry **replicated** across every index those bits can form. **At `821e1bd`** the table has **306 ROM entries, 17 controller entries** (the 15 inlines, class 1; CSRRW and CSRRS, class 2) **and 1,725 invalid** [built: `tables/replayer/listing.txt`]. Program-level choices are still the tracer's: **the code stream carries whichever instruction word the tracer's bytecode decodes,** and the tables cover that word (owner, 2026-10-27). jolt-cpp builds the bytecode from the raw bytes but rewrites them at decode time (`apply_host_io_encoding`, `host_io_encoding.cpp:79–92`): under the legacy raw-ECALL host-I/O encoding a host-I/O ECALL becomes `VirtualHostIO x0, x0, 0`, and the tracer puts its **canonical word 0x0000205B** in the code stream, not ECALL's 0x00000073. So that word's entry is the custom-2 funct3-2 entry, a one-word `VirtualHostIO` template **with no operands** (all three slots immediate 0, `rd0` = 0; 4.19.4; v1.2's template was under the rd = x0 remap), and ECALL's own entry is unaffected (a ROM template, 4.19.6).",
+"**The table builder's rules** (software contract): every entry is written, because the table isn't reset; **an unused entry is class 3, invalid** (DECISIONS-v1.25 section 5, revising v1.2's controller class): with universal tables an unused index is an encoding that is no valid instruction, which Jolt itself rejects, so reaching one is an error, the invalid expansion v1.2 already raises for class 3 (4.19.11), with no new error bit (owner, 2026-11-01). An instruction whose index bits include immediate bits (the U, J and most I formats) has its entry **replicated** across every index those bits can form. **At `821e1bd`** the table has **306 ROM entries, 17 controller entries** (the 15 inlines, class 1; CSRRW and CSRRS, class 2) **and 1,725 invalid** [built: `data/tables/replayer/listing.txt`]. Program-level choices are still the tracer's: **the code stream carries whichever instruction word the tracer's bytecode decodes,** and the tables cover that word (owner, 2026-10-27). jolt-cpp builds the bytecode from the raw bytes but rewrites them at decode time (`apply_host_io_encoding`, `host_io_encoding.cpp:79–92`): under the legacy raw-ECALL host-I/O encoding a host-I/O ECALL becomes `VirtualHostIO x0, x0, 0`, and the tracer puts its **canonical word 0x0000205B** in the code stream, not ECALL's 0x00000073. So that word's entry is the custom-2 funct3-2 entry, a one-word `VirtualHostIO` template **with no operands** (all three slots immediate 0, `rd0` = 0; 4.19.4; v1.2's template was under the rd = x0 remap), and ECALL's own entry is unaffected (a ROM template, 4.19.6)."
+],
+[
+"jolt/replayer.md",
+282,
+"v1.3/spec/machine-spec.md",
+1562,
+"path",
+"**The ROM is 8 KB, 512 × 128-bit words, dual-ported,** loaded by mode-0 writes to the replayer's region (4.19.10); one port serves the replayer's reads and the other the writes, which it accepts even while a pass runs. It is a RAM; \"ROM\" says that replay never writes it. **It is a cache of templates,** filled by the table builder (owner, 2026-10-26): **any instruction may be controller-fed** through its decode class (4.19.5), so what the ROM holds is a choice, not a requirement. **The goal** (DECISIONS-v1.25 section 5): every expansion except the inlines and the advice generators is in the ROM, so the controller feeds only what is inherently special, and everything executed routinely, the atomics and the system instructions included, comes from the ROM. **The fill at `821e1bd`**, the universal tables (4.19.5) [built: `tables/replayer/listing.txt`]:",
+"**The ROM is 8 KB, 512 × 128-bit words, dual-ported,** loaded by mode-0 writes to the replayer's region (4.19.10); one port serves the replayer's reads and the other the writes, which it accepts even while a pass runs. It is a RAM; \"ROM\" says that replay never writes it. **It is a cache of templates,** filled by the table builder (owner, 2026-10-26): **any instruction may be controller-fed** through its decode class (4.19.5), so what the ROM holds is a choice, not a requirement. **The goal** (DECISIONS-v1.25 section 5): every expansion except the inlines and the advice generators is in the ROM, so the controller feeds only what is inherently special, and everything executed routinely, the atomics and the system instructions included, comes from the ROM. **The fill at `821e1bd`**, the universal tables (4.19.5) [built: `data/tables/replayer/listing.txt`]:"
+],
+[
+"jolt/replayer.md",
+311,
+"v1.3/spec/machine-spec.md",
+1591,
+"path",
+"**What a row computes is defined in `spec/replayer-opcodes.md`** (owner, 2026-10-26, part F; item 112), which is **normative** for it (its sections 1–5): for each of the 94 opcodes that occur in Jolt's rows, its slots, the exact rd formula (widths, extension, wraparound, shift masks), its control transfer, its log word and, for the load and store rows, its memory fields, all derived from `execute_instruction` (`trace_owner.cpp:145`) and checked against it with 252 test vectors; **v1.25 regenerates it at `821e1bd`** from the harness outputs of WORKER9 (DECISIONS-v1.25 section 1). This section keeps the classes, the schedules and the pc and `instr_idx` rules. A row reads each slot's value as `read_reg_vals` does (a register slot reads its register, an immediate slot carries its value, `trace_owner.cpp:78–83`), with three departures from the tracer:",
+"**What a row computes is defined in `spec/jolt/replayer-opcodes.md`** (owner, 2026-10-26, part F; item 112), which is **normative** for it (its sections 1–5): for each of the 94 opcodes that occur in Jolt's rows, its slots, the exact rd formula (widths, extension, wraparound, shift masks), its control transfer, its log word and, for the load and store rows, its memory fields, all derived from `execute_instruction` (`trace_owner.cpp:145`) and checked against it with 252 test vectors; **v1.25 regenerates it at `821e1bd`** from the harness outputs of WORKER9 (DECISIONS-v1.25 section 1). This section keeps the classes, the schedules and the pc and `instr_idx` rules. A row reads each slot's value as `read_reg_vals` does (a register slot reads its register, an immediate slot carries its value, `trace_owner.cpp:78–83`), with three departures from the tracer:"
+],
+[
+"jolt/replayer.md",
+325,
+"v1.3/spec/machine-spec.md",
+1605,
+"path",
+"**Row classes and their schedules.** Of the tracer's 171 opcodes at `821e1bd`, 94 occur in Jolt's rows (NOP among them, in padding); 74 occur only as source instructions, which their templates replace, and 3 never occur (`VirtualMove` 130, `VirtualAdviceRemU` 164, `VirtualAdviceRemUW` 168) [derived: the appendix's harness at `821e1bd`; `tables/opcode_table.txt`]. Codes are the tracer's at `821e1bd` (`isa/riscv.inc`). **They are renumbered from v1.2's**, and the ALU decodes them: six opcodes are inserted at 110–115 and three removed, so v1.2's codes 0–109 are unchanged, 110–111 move up by 6, 114–153 by 4 and 155–167 by 3, and 112, 113 and 154 are gone. **61 row opcodes change** (52 renumbered, 3 removed, 6 new); `spec/replayer-opcodes.md` section 2.0 lists every one:",
+"**Row classes and their schedules.** Of the tracer's 171 opcodes at `821e1bd`, 94 occur in Jolt's rows (NOP among them, in padding); 74 occur only as source instructions, which their templates replace, and 3 never occur (`VirtualMove` 130, `VirtualAdviceRemU` 164, `VirtualAdviceRemUW` 168) [derived: the appendix's harness at `821e1bd`; `data/tables/opcode_table.txt`]. Codes are the tracer's at `821e1bd` (`isa/riscv.inc`). **They are renumbered from v1.2's**, and the ALU decodes them: six opcodes are inserted at 110–115 and three removed, so v1.2's codes 0–109 are unchanged, 110–111 move up by 6, 114–153 by 4 and 155–167 by 3, and 112, 113 and 154 are gone. **61 row opcodes change** (52 renumbered, 3 removed, 6 new); `spec/jolt/replayer-opcodes.md` section 2.0 lists every one:"
+],
+[
+"jolt/replayer.md",
+334,
+"v1.3/spec/machine-spec.md",
+1614,
+"path",
+"*(Proposed, item 37: the class of every opcode; the notes settle only the principle.)* The class L rows are exactly those whose word has `from_log` set (4.19.3): the flag, not the opcode, decides that a row takes a log word. The replayer **executes 88 opcodes** (v1.2: 85): the S and M classes and the nine executed class L opcodes, the eight memory opcodes and `VirtualAdvice` (`tables/opcode_table.txt` marks them S, M and L). A word with any other opcode is an invalid expansion *(Proposed, item 36)*.",
+"*(Proposed, item 37: the class of every opcode; the notes settle only the principle.)* The class L rows are exactly those whose word has `from_log` set (4.19.3): the flag, not the opcode, decides that a row takes a log word. The replayer **executes 88 opcodes** (v1.2: 85): the S and M classes and the nine executed class L opcodes, the eight memory opcodes and `VirtualAdvice` (`data/tables/opcode_table.txt` marks them S, M and L). A word with any other opcode is an invalid expansion *(Proposed, item 36)*."
+],
+[
+"jolt/replayer.md",
+349,
+"v1.3/spec/machine-spec.md",
+1629,
+"path",
+"**The edge cases** (AUIPC's use of the source instruction's pc, JAL and JALR linking pc + `pc_increment`, `VirtualHostIO` reading and writing nothing, `VirtualShiftData…`'s lane, `VirtualROTRIW`'s min(32, tz(imm)), the shift masks, MULHU, the advice values) are in `spec/replayer-opcodes.md`. **Extension is per opcode:** several word forms zero-extend rather than sign-extend (`VirtualPow2W`, `VirtualShiftRightBitmaskW`, `VirtualROTRIW` and the `VirtualXORROTW…` forms among them; the appendix's flag F5 lists them), so the appendix's rd formula, not the opcode's name, decides.",
+"**The edge cases** (AUIPC's use of the source instruction's pc, JAL and JALR linking pc + `pc_increment`, `VirtualHostIO` reading and writing nothing, `VirtualShiftData…`'s lane, `VirtualROTRIW`'s min(32, tz(imm)), the shift masks, MULHU, the advice values) are in `spec/jolt/replayer-opcodes.md`. **Extension is per opcode:** several word forms zero-extend rather than sign-extend (`VirtualPow2W`, `VirtualShiftRightBitmaskW`, `VirtualROTRIW` and the `VirtualXORROTW…` forms among them; the appendix's flag F5 lists them), so the appendix's rd formula, not the opcode's name, decides."
+],
+[
+"jolt/replayer.md",
+376,
+"v1.3/spec/machine-spec.md",
+1656,
+"path",
+"**Rate.** A row is 3 cycles, or 5 for class M. **The multiply density, measured at v1.25** [meas: v1.25's acceptance runs, Quest 083 and 084: meshsim's Stage B on every window of both workloads at 2²⁹, `WORKER11/REPORT.md` section 5] [derived exactly: a pass's cycles less 3 per row and its stalls are 2 per class M row, and a padding window leaves 0]: **15.7 % of EVM Zone's rows** (per window median 15.7 %, maximum 28.6 %) and **7.1 % of Cyclone's** (median 4.1 %, maximum 24.7 %). So a 64K-row pass averages 3.32 cycles per row on EVM Zone and 3.16 on Cyclone, at most 3.59, with stalls: about 218K cycles, 0.22 ms at 1 GHz with everything local, or about 10 ms for the 46 passes of an Akita proof [estimate from the measured rate] (4.19.1).",
+"**Rate.** A row is 3 cycles, or 5 for class M. **The multiply density, measured at v1.25** [meas: v1.25's acceptance runs, Quest 083 and 084: meshsim's Stage B on every window of both workloads at 2²⁹, `v1.3/planning/sessions/WORKER11-REPORT.md` section 5] [derived exactly: a pass's cycles less 3 per row and its stalls are 2 per class M row, and a padding window leaves 0]: **15.7 % of EVM Zone's rows** (per window median 15.7 %, maximum 28.6 %) and **7.1 % of Cyclone's** (median 4.1 %, maximum 24.7 %). So a 64K-row pass averages 3.32 cycles per row on EVM Zone and 3.16 on Cyclone, at most 3.59, with stalls: about 218K cycles, 0.22 ms at 1 GHz with everything local, or about 10 ms for the 46 passes of an Akita proof [estimate from the measured rate] (4.19.1)."
+],
+[
+"jolt/replayer.md",
+389,
+"v1.3/spec/machine-spec.md",
+1669,
+"path",
+"All four are dual-ported, so pushes land while the replayer runs. Every refill is local (4.19.13), and a half covers the local refill latency (a few hundred cycles) with room to spare. **Every queue is 4 KB** (DECISIONS-v1.26 item 3, from DECISIONS-v1.3 section 12; v1.25's two logs were 8 KB each): by the measured densities (4.19.2), the logs average 0.31–0.35 words per real row together and at most about 0.83 in Cyclone's densest windows, so a log's half-queue refill, 128 entries or 256 words, lasts at least about 300 rows even if one log carried both densities, some 900 cycles at 3 cycles a row, against a local refill of a few hundred [derived]. **Measured** (item 143; meshsim's Stage B, `replay_ctl.c` on tile 0, every window of both workloads at 2²⁹; cycles per window, average with the largest in brackets) [meas: Quest 098–101, `WORKER20/REPORT.md` section 5]:",
+"All four are dual-ported, so pushes land while the replayer runs. Every refill is local (4.19.13), and a half covers the local refill latency (a few hundred cycles) with room to spare. **Every queue is 4 KB** (DECISIONS-v1.26 item 3, from DECISIONS-v1.3 section 12; v1.25's two logs were 8 KB each): by the measured densities (4.19.2), the logs average 0.31–0.35 words per real row together and at most about 0.83 in Cyclone's densest windows, so a log's half-queue refill, 128 entries or 256 words, lasts at least about 300 rows even if one log carried both densities, some 900 cycles at 3 cycles a row, against a local refill of a few hundred [derived]. **Measured** (item 143; meshsim's Stage B, `replay_ctl.c` on tile 0, every window of both workloads at 2²⁹; cycles per window, average with the largest in brackets) [meas: Quest 098–101, `v1.3/planning/sessions/WORKER20-REPORT.md` section 5]:"
+],
+[
+"jolt/replayer.md",
+499,
+"v1.3/spec/machine-spec.md",
+1779,
+"path",
+"**Controller-fed templates and their numbers** (owner, 2026-10-26, part G; item 114; **the key, v1.25**: DECISIONS-v1.25 section 5 and `tables/README.md`). The controller-fed set is universal like the rest of the tables (4.19.5): its **template words** (`templates.bin`) and an **index** (`template_index.bin`) of 16-byte entries, each the entry's **key** (bytes 0–3), the template's word offset (4–7) and length in words (8–11), its `rd0` (12) and its decode class (13), with 14–15 spare. **The entries are sorted by key, ascending, and a template's number is its entry's position**, 0–127; numbers may share template words, so the limit of **128** counts index entries, not template storage. A universal set can't list every instruction word, so **the key is the instruction word with its register fields normalized**, and the controller computes **key(*w*)** from the presented word *w* (`EXPANSION_OPCODE`) before the lookup. key(*w*) keeps every bit of *w* except:",
+"**Controller-fed templates and their numbers** (owner, 2026-10-26, part G; item 114; **the key, v1.25**: DECISIONS-v1.25 section 5 and `data/tables/README.md`). The controller-fed set is universal like the rest of the tables (4.19.5): its **template words** (`templates.bin`) and an **index** (`template_index.bin`) of 16-byte entries, each the entry's **key** (bytes 0–3), the template's word offset (4–7) and length in words (8–11), its `rd0` (12) and its decode class (13), with 14–15 spare. **The entries are sorted by key, ascending, and a template's number is its entry's position**, 0–127; numbers may share template words, so the limit of **128** counts index entries, not template storage. A universal set can't list every instruction word, so **the key is the instruction word with its register fields normalized**, and the controller computes **key(*w*)** from the presented word *w* (`EXPANSION_OPCODE`) before the lookup. key(*w*) keeps every bit of *w* except:"
+],
+[
+"jolt/replayer.md",
+502,
+"v1.3/spec/machine-spec.md",
+1782,
+"path",
+"Operand codes 129–131 still resolve against the presented word, not the key. **A word whose key has no entry is an error:** jolt-cpp rejects it (a CSR it doesn't support), so a traced program has none. **At `821e1bd`** the set has **75 numbers**, the 15 inlines and 60 CSR keys (CSRRW and CSRRS for jolt-cpp's six CSRs, mstatus, mtvec, mscratch, mepc, mcause and mtval, five patterns each), in 13,821 words [built: `tables/replayer/listing.txt`]. v1.2 keyed each program's set by the exact instruction word. A tile that keeps only the templates its window uses keeps every word that any of its numbers references (item 115).",
+"Operand codes 129–131 still resolve against the presented word, not the key. **A word whose key has no entry is an error:** jolt-cpp rejects it (a CSR it doesn't support), so a traced program has none. **At `821e1bd`** the set has **75 numbers**, the 15 inlines and 60 CSR keys (CSRRW and CSRRS for jolt-cpp's six CSRs, mstatus, mtvec, mscratch, mepc, mcause and mtval, five patterns each), in 13,821 words [built: `data/tables/replayer/listing.txt`]. v1.2 keyed each program's set by the exact instruction word. A tile that keeps only the templates its window uses keeps every word that any of its numbers references (item 115)."
+],
+[
+"jolt/replayer.md",
+506,
+"v1.3/spec/machine-spec.md",
+1786,
+"path",
+"**Controller-fed expansions** are only **the inlines (custom-0) and the CSR instructions, CSRRW and CSRRS** (DECISIONS-v1.25 section 6: \"the controller feeds the inlines, the advice generators and the CSR instructions, and nothing else\"; the advice generators are the Tracer's, v1.3). The CSR instructions are the one deliberate exception to the ROM goal (4.19.6): their expansion depends on which CSR and on the register pattern, which a single decode entry can't see, and they are rare in guest code. **At v1.25** [meas: v1.25's acceptance runs, Quest 083 and 084: meshsim's Stage B on every window of both workloads at 2²⁹, `WORKER11/REPORT.md` section 5]: **Cyclone** averages 6.6 controller-fed expansions per window of real rows (1,154 of its 5,670 such windows have any, at most 176), and their stalls average 812 cycles a window, 0.26 % of a pass; **EVM Zone** has 665 in all, in 4 windows (at most 230), 11 stall cycles a window on average. v1.1 measured about 13 per window on Cyclone, about 0.4 % of a pass, with ECALL, EBREAK and MRET still among them [meas: design notes]. **The controller-fed set reaches the tiles by broadcast** (DECISIONS-v1.3 section 25; v1.3). C&C 3 holds all of it, since the Tracer can meet any template, and ORs each window's template bitmap (the record's word 67, set by the Tracer for the inlines only, 4.21.4) into the segment's used set. **When the proving stages start**, once the segment is traced, it broadcasts **all 60 CSR templates** (102 words, always) **and the inlines the segment used**, with their index entries, to every tile once; **each tile keeps the CSR templates and the inlines its own record's bitmap names**, with every word any of those numbers references, in big SRAM (4.19.13). So every tile has its templates before its replayer runs. *(The broadcast's mechanics, a size-first command so each tile arms its counter, item 115.)* (v1.26.1: every tile preloaded the whole set.)",
+"**Controller-fed expansions** are only **the inlines (custom-0) and the CSR instructions, CSRRW and CSRRS** (DECISIONS-v1.25 section 6: \"the controller feeds the inlines, the advice generators and the CSR instructions, and nothing else\"; the advice generators are the Tracer's, v1.3). The CSR instructions are the one deliberate exception to the ROM goal (4.19.6): their expansion depends on which CSR and on the register pattern, which a single decode entry can't see, and they are rare in guest code. **At v1.25** [meas: v1.25's acceptance runs, Quest 083 and 084: meshsim's Stage B on every window of both workloads at 2²⁹, `v1.3/planning/sessions/WORKER11-REPORT.md` section 5]: **Cyclone** averages 6.6 controller-fed expansions per window of real rows (1,154 of its 5,670 such windows have any, at most 176), and their stalls average 812 cycles a window, 0.26 % of a pass; **EVM Zone** has 665 in all, in 4 windows (at most 230), 11 stall cycles a window on average. v1.1 measured about 13 per window on Cyclone, about 0.4 % of a pass, with ECALL, EBREAK and MRET still among them [meas: design notes]. **The controller-fed set reaches the tiles by broadcast** (DECISIONS-v1.3 section 25; v1.3). C&C 3 holds all of it, since the Tracer can meet any template, and ORs each window's template bitmap (the record's word 67, set by the Tracer for the inlines only, 4.21.4) into the segment's used set. **When the proving stages start**, once the segment is traced, it broadcasts **all 60 CSR templates** (102 words, always) **and the inlines the segment used**, with their index entries, to every tile once; **each tile keeps the CSR templates and the inlines its own record's bitmap names**, with every word any of those numbers references, in big SRAM (4.19.13). So every tile has its templates before its replayer runs. *(The broadcast's mechanics, a size-first command so each tile arms its counter, item 115.)* (v1.26.1: every tile preloaded the whole set.)"
+],
+[
+"jolt/replayer.md",
+559,
+"v1.3/spec/machine-spec.md",
+1839,
+"ruling",
+"**`PULSE_RUN`: a pass** (4.17.2). Sets `STATUS` [0], giving the replayer its single-ported memories until it finishes, clears the rows-run count, and **runs from the working state as it is** (4.19.2): pc, `instr_idx` and the offset in the state word, the registers in the image, the sizes read from part 0, and **the row count and flags from `RUN_CONFIG`** (4.19.9; v1.26.1). **It does nothing else** (DECISIONS-v1.26 items 10 and 12): it copies nothing (part 0 is the working state), and the pass's resets (the queues flushed, the credits set to 2, the size counters cleared, the decompressors reset) were done by the state word's write (4.19.8). The first row starts at once; **with a row count of 0 there is none**, and the pass ends in the next cycle (4.19.9). Every pass of the same window starts identically because the controller reloads words 0–65 before it (4.19.10); a run without that reload would carry on from the last pass's end state, with its queues, credits and counters as they were: a violation (invariant 16), and **meshsim flags a pass started with no state write since the previous pass**. *(v1.25: the run emptied the queues, set the credits, reset the decompressors, copied the state word into working registers, latched the flags and lengths and copied the image into the working file, 64 cycles.)* **Run only, no resume,** as for every engine: a run while the replayer runs is ignored (meshsim flags it, 4.13).",
+"**`PULSE_RUN`: a pass** (4.17.2). Sets `STATUS` [0], giving the replayer its single-ported memories until it finishes, clears the rows-run count, and **runs from the working state as it is** (4.19.2): pc, `instr_idx` and the offset in the state word, the registers in the image, the sizes read from part 0, and **the row count and flags from `RUN_CONFIG`** (4.19.9; v1.26.1). **It does nothing else** (DECISIONS-v1.26 items 10 and 12): it copies nothing (part 0 is the working state), and the pass's resets (the queues flushed, the credits set to 2, the size counters cleared, the decompressors reset) were done by the state word's write (4.19.8). The first row starts at once; **with a row count of 0 there is none**, and the pass ends in the next cycle (4.19.9). Every pass of the same window starts identically because the controller reloads words 0–65 before it (4.19.10); a run without that reload would carry on from the last pass's end state, with its queues, credits and counters as they were: a violation (invariant 16), and **meshsim flags a pass started with no state write since the previous pass**. *(v1.25: the run emptied the queues, set the credits, reset the decompressors, copied the state word into working registers, latched the flags and lengths and copied the image into the working file, 64 cycles.)* **Run only, no resume,** as for every engine: a run while the replayer runs is undefined behaviour (4.13; owner, 2026-11-01: a pulse while a peripheral is busy is UB; meshsim stops)."
+],
+[
+"jolt/replayer.md",
+658,
+"v1.3/spec/machine-spec.md",
+1938,
+"path",
+"- **An LD to x0** (owner, 2026-10-26, part G, ruling N5) *(pending the upstream check, item 113)*: **E[15] takes the value popped from the read log,** as for any LD, even though the row writes nothing and **its record reports a memory value of 0** (4.19.7, flag F4 of `spec/replayer-opcodes.md`). The two rules are separate: the decompressor sees the log value, the record sees what rd holds. The tracer's encoder applies the same rule.",
+"- **An LD to x0** (owner, 2026-10-26, part G, ruling N5) *(pending the upstream check, item 113)*: **E[15] takes the value popped from the read log,** as for any LD, even though the row writes nothing and **its record reports a memory value of 0** (4.19.7, flag F4 of `spec/jolt/replayer-opcodes.md`). The two rules are separate: the decompressor sees the log value, the record sees what rd holds. The tracer's encoder applies the same rule."
+],
+[
+"jolt/replayer.md",
+698,
+"v1.3/spec/machine-spec.md",
+2961,
+"path",
+"    - the replayer's: no bad write (UB, meshsim only, 4.19.10); no `RUN_CONFIG` write while a pass runs (UB, meshsim only, 4.19.9; v1.26.1); no queue overrun, no invalid expansion, no stream underflow and no input left over at done (hardware: its `ERRORS` [1]–[6], 4.19.11); no other tile writes its region during a pass (4.19.13); every refill except a stream's last is exactly half a queue, and no refill exceeds the credit taken for it (4.19.8); no LPDDR read targets a replayer queue (its overflow goes through big SRAM, 4.19.13); every opcode word and log word a pass is given is consumed in order, and a pass consumes exactly its tile's log; every queue push, whatever its source, has landed before the state write (4.19.8); no part-0 write while a pass runs, words 66–67 included (4.19.10); the record's words 0–65 are reloaded before every pass (4.19.10; v1.26); no zero mask reaches `VirtualSRL`, `VirtualSRLI`, `VirtualSRA` or `VirtualSRAI` (4.19.7; the result is undefined, owner, 2026-10-26); `offset_imm` is set only on `VirtualShiftData…` rows (4.19.3); no memory row is misaligned (4.19.7; jolt-cpp aborts on one); a non-contiguous mask reaching `VirtualPext` or `VirtualPextSigned` is correct and only **reported**, as a statistic (4.19.7); and the replayer's rows equal gold's and a16z's (the ground truth, 4.19; jolt-cpp's at the pin wherever they agree; the validation harness, item 58; the vectors of `spec/replayer-opcodes.md` section 9; item 113);",
+"    - the replayer's: no bad write (UB, meshsim only, 4.19.10); no `RUN_CONFIG` write while a pass runs (UB, meshsim only, 4.19.9; v1.26.1); no queue overrun, no invalid expansion, no stream underflow and no input left over at done (hardware: its `ERRORS` [1]–[6], 4.19.11); no other tile writes its region during a pass (4.19.13); every refill except a stream's last is exactly half a queue, and no refill exceeds the credit taken for it (4.19.8); no LPDDR read targets a replayer queue (its overflow goes through big SRAM, 4.19.13); every opcode word and log word a pass is given is consumed in order, and a pass consumes exactly its tile's log; every queue push, whatever its source, has landed before the state write (4.19.8); no part-0 write while a pass runs, words 66–67 included (4.19.10); the record's words 0–65 are reloaded before every pass (4.19.10; v1.26); no zero mask reaches `VirtualSRL`, `VirtualSRLI`, `VirtualSRA` or `VirtualSRAI` (4.19.7; the result is undefined, owner, 2026-10-26); `offset_imm` is set only on `VirtualShiftData…` rows (4.19.3); no memory row is misaligned (4.19.7; jolt-cpp aborts on one); a non-contiguous mask reaching `VirtualPext` or `VirtualPextSigned` is correct and only **reported**, as a statistic (4.19.7); and the replayer's rows equal gold's and a16z's (the ground truth, 4.19; jolt-cpp's at the pin wherever they agree; the validation harness, item 58; the vectors of `spec/jolt/replayer-opcodes.md` section 9; item 113);"
+],
+[
+"jolt/tracer.md",
+9,
+"v1.3/spec/machine-spec.md",
+1980,
+"path",
+"The **Tracer** is **C&C 3's peripheral** (2, 6.6): the RV64 row machine that executes the guest program and writes each window's **run log**, the state record and the three streams that the tiles' replayers consume (4.19.2). It runs one **segment** of 2²² rows per proof, as 64 runs of one window each, and stops at the end of every run until its output is drained. It is **peripheral 1, type 3**, and uses the standard window throughout (4.17). This section specifies it in full for the model and the RTL; it states `planning/DECISIONS-v1.3.md` sections 1–25 as decided (cited **§*n*** in this section; the owner's rulings on SP1's plan, 2026-11-05, are recorded there up to 830b8e7), **the answers to the seventeen questions that building it in meshsim raised** (B1, WORKER22; cited **B1 Q*n***, `planning/sessions/WORKER22-SPEC-QUESTIONS.md`, distinct from SP1's questions, cited \"owner, 2026-11-05, Q*n*\", all answered by the owner on 2026-11-05 and 2026-11-06), and the owner's rulings of 2026-11-06. Its own additions are gathered in section 13 (items 144–158). **It states defaults** (the front matter's \"How v1.3's text is meant\"): what the Tracer must do observably is the rule, and where a mechanism is given it is a reasonable way to get there, which the RTL may better. 4.21.1–4.21.9 are the hardware; **4.21.10 is the software contract** around it, the segment's sequence on the chip.",
+"The **Tracer** is **C&C 3's peripheral** (2, 6.6): the RV64 row machine that executes the guest program and writes each window's **run log**, the state record and the three streams that the tiles' replayers consume (4.19.2). It runs one **segment** of 2²² rows per proof, as 64 runs of one window each, and stops at the end of every run until its output is drained. It is **peripheral 1, type 3**, and uses the standard window throughout (4.17). This section specifies it in full for the model and the RTL; it states `spec/history/DECISIONS-v1.3.md` sections 1–25 as decided (cited **§*n*** in this section; the owner's rulings on SP1's plan, 2026-11-05, are recorded there up to 830b8e7), **the answers to the seventeen questions that building it in meshsim raised** (B1, WORKER22; cited **B1 Q*n***, `v1.3/planning/sessions/WORKER22-SPEC-QUESTIONS.md`, distinct from SP1's questions, cited \"owner, 2026-11-05, Q*n*\", all answered by the owner on 2026-11-05 and 2026-11-06), and the owner's rulings of 2026-11-06. Its own additions are gathered in section 13 (items 144–158). **It states defaults** (the front matter's \"How v1.3's text is meant\"): what the Tracer must do observably is the rule, and where a mechanism is given it is a reasonable way to get there, which the RTL may better. 4.21.1–4.21.9 are the hardware; **4.21.10 is the software contract** around it, the segment's sequence on the chip."
+],
+[
+"jolt/tracer.md",
+56,
+"v1.3/spec/machine-spec.md",
+2027,
+"path",
+"A write to an unused or unmapped offset is UB (meshsim), as on the replayer (4.19.10). **The decode table and the ROM are loaded once, at startup**, over the same path from C&C 3 that later fills the queues (owner, 2026-11-04, figure 9.1), with the Tracer stopped. They hold **the replayer's universal tables, unchanged** (§13; `tables/replayer/`): the Tracer's templates are the replayer's. *(Item 156, accepted, owner, 2026-11-05: the Tracer's ROM is single-ported, written only while stopped, since nothing reloads it while tracing; the replayer's second port serves loads that the Tracer never has.)*",
+"A write to an unused or unmapped offset is UB (meshsim), as on the replayer (4.19.10). **The decode table and the ROM are loaded once, at startup**, over the same path from C&C 3 that later fills the queues (owner, 2026-11-04, figure 9.1), with the Tracer stopped. They hold **the replayer's universal tables, unchanged** (§13; `data/tables/replayer/`): the Tracer's templates are the replayer's. *(Item 156, accepted, owner, 2026-11-05: the Tracer's ROM is single-ported, written only while stopped, since nothing reloads it while tracing; the replayer's second port serves loads that the Tracer never has.)*"
+],
+[
+"jolt/tracer.md",
+166,
+"v1.3/spec/machine-spec.md",
+2137,
+"path",
+"**The controller's loops** (C&C 3's firmware, for orientation; the rules are the text above, 4.21.6 and 4.21.10; meshsim's `sw/tracer/tracer_ctl.c` is the working version). Per proof, once the update stream is applied and the Tracer's copy exists (§22):",
+"**The controller's loops** (C&C 3's firmware, for orientation; the rules are the text above, 4.21.6 and 4.21.10; meshsim's `fw/tracer/tracer_ctl.c` is the working version). Per proof, once the update stream is applied and the Tracer's copy exists (§22):"
+],
+[
+"jolt/tracer.md",
+200,
+"v1.3/spec/machine-spec.md",
+2171,
+"path",
+"**The machine** (§13, §25). The Tracer executes the guest as **the rows of Jolt's expanded trace**, one row at a time, exactly as 4.19.7 defines them and `spec/replayer-opcodes.md` computes them, on a **128-register machine**: registers 0–127, x0–x31 and the virtual registers 32–127, held in the working register file that is the record's image; register 0 reads 0 and drops writes. There is no second bank, no untraced row and no `advice_reg` (§13: the host supplies every advice value). Rows are strictly sequential, as on the replayer, so a row's reads see the previous row's writes.",
+"**The machine** (§13, §25). The Tracer executes the guest as **the rows of Jolt's expanded trace**, one row at a time, exactly as 4.19.7 defines them and `spec/jolt/replayer-opcodes.md` computes them, on a **128-register machine**: registers 0–127, x0–x31 and the virtual registers 32–127, held in the working register file that is the record's image; register 0 reads 0 and drops writes. There is no second bank, no untraced row and no `advice_reg` (§13: the host supplies every advice value). Rows are strictly sequential, as on the replayer, so a row's reads see the previous row's writes."
+],
+[
+"jolt/tracer.md",
+204,
+"v1.3/spec/machine-spec.md",
+2175,
+"path",
+"2. **Form its code-stream word** (4.19.2): a 32-bit instruction as it is; **a compressed one decompressed** to its 32-bit form by the RISC-V C extension's expansion as a16z's decoder does it (`crates/jolt-riscv/src/uncompress.rs` at 7189216; gold's, `wip/gold/`), **with bit 0 cleared** as its flag. a16z decides where jolt-cpp differs (item 113): `C.SLLI` with rd = x0, a HINT, is `SLLI x0, x0, shamt` (UPSTREAM-DIFFS D12). A 16-bit encoding with no 32-bit form, `c.unimp` (0x0000) among them, is an invalid expansion, `ERRORS` [2] (§17: it throws only if executed). The word goes into the code FIFO as the window's next code value (4.21.6).",
+"2. **Form its code-stream word** (4.19.2): a 32-bit instruction as it is; **a compressed one decompressed** to its 32-bit form by the RISC-V C extension's expansion as a16z's decoder does it (`crates/jolt-riscv/src/uncompress.rs` at 7189216; gold's, `pipeline/gold/`), **with bit 0 cleared** as its flag. a16z decides where jolt-cpp differs (item 113): `C.SLLI` with rd = x0, a HINT, is `SLLI x0, x0, shamt` (UPSTREAM-DIFFS D12). A 16-bit encoding with no 32-bit form, `c.unimp` (0x0000) among them, is an invalid expansion, `ERRORS` [2] (§17: it throws only if executed). The word goes into the code FIFO as the window's next code value (4.21.6)."
+],
+[
+"jolt/tracer.md",
+276,
+"v1.3/spec/machine-spec.md",
+2247,
+"path",
+"**Misalignment** (owner, 2026-11-05; DECISIONS-v1.3 section 25; item 150). **The rule is a16z's own, on every memory row:** a load or store row's **floor address**, *a* = ea − (ea & *m*), ea = rs1 + imm, must be **a multiple of 8**, with ***m* = 0, 4, 6 and 7 for the doubleword (LD, SD), word, halfword and byte rows** (`VirtualLoad/StoreW`, `…H`, `…B`); otherwise the row is \"misaligned access\", `ERRORS` [12], which stops the Tracer (4.21.8). *a* is the row's address of appendix section 3, the same the range comparator checks, and the test sits beside it. **One rule for every row**, a native instruction's rows and an inline template's own LD and SD rows alike, at any row, a segment's first rows included. It is exactly what both tracers abort on: a16z at 7189216 in `tracer/src/instruction/floor_access.rs:66–75` (LD and SD through `tracer/src/emulator/mmu.rs:323, 431`), and jolt-cpp in `checked_memory_address` (`isa/riscv.hpp:257–268`, 821e1bd), as gold ports it (`wip/gold/src/gold/Isa.java:60–68`); UPSTREAM-DIFFS D6.",
+"**Misalignment** (owner, 2026-11-05; DECISIONS-v1.3 section 25; item 150). **The rule is a16z's own, on every memory row:** a load or store row's **floor address**, *a* = ea − (ea & *m*), ea = rs1 + imm, must be **a multiple of 8**, with ***m* = 0, 4, 6 and 7 for the doubleword (LD, SD), word, halfword and byte rows** (`VirtualLoad/StoreW`, `…H`, `…B`); otherwise the row is \"misaligned access\", `ERRORS` [12], which stops the Tracer (4.21.8). *a* is the row's address of appendix section 3, the same the range comparator checks, and the test sits beside it. **One rule for every row**, a native instruction's rows and an inline template's own LD and SD rows alike, at any row, a segment's first rows included. It is exactly what both tracers abort on: a16z at 7189216 in `tracer/src/instruction/floor_access.rs:66–75` (LD and SD through `tracer/src/emulator/mmu.rs:323, 431`), and jolt-cpp in `checked_memory_address` (`isa/riscv.hpp:257–268`, 821e1bd), as gold ports it (`pipeline/gold/src/gold/Isa.java:60–68`); UPSTREAM-DIFFS D6."
+],
+[
+"jolt/tracer.md",
+293,
+"v1.3/spec/machine-spec.md",
+2264,
+"path",
+"- **a miss is coded 32-bit exactly when the value's top 32 bits are 0**, 64-bit otherwise *(Item 151, accepted, owner, 2026-11-05: gold's frame-5 encoder's rule, `wip/gold/src/gold/SegmentWriter.java`; any fixed rule decodes, but set 2 must reproduce set 1 and gold the Tracer)*. A code value is always a 32-bit miss or a hit.",
+"- **a miss is coded 32-bit exactly when the value's top 32 bits are 0**, 64-bit otherwise *(Item 151, accepted, owner, 2026-11-05: gold's frame-5 encoder's rule, `pipeline/gold/src/gold/SegmentWriter.java`; any fixed rule decodes, but set 2 must reproduce set 1 and gold the Tracer)*. A code value is always a 32-bit miss or a hit."
+],
+[
+"jolt/tracer.md",
+370,
+"v1.3/spec/machine-spec.md",
+2341,
+"path",
+"*Software only: what C&C 1, C&C 3 and the tiles' firmware do around the Tracer in the first implementation, where the DMA writes each window straight into its tile (4.21.6). The hardware is 4.21.1–4.21.9 and the rules it relies on are 4.12, 4.13 and 6.2–6.4; meshsim's `sw/cc/cc1.c` (`CC_SEGMENT`), `sw/tracer/tracer_ctl.c` and `sw/replay/replay_ctl.c` (layout 5) are the working version.*",
+"*Software only: what C&C 1, C&C 3 and the tiles' firmware do around the Tracer in the first implementation, where the DMA writes each window straight into its tile (4.21.6). The hardware is 4.21.1–4.21.9 and the rules it relies on are 4.12, 4.13 and 6.2–6.4; meshsim's `fw/cc/cc1.c` (`CC_SEGMENT`), `fw/tracer/tracer_ctl.c` and `fw/replay/replay_ctl.c` (layout 5) are the working version.*"
+],
+[
+"jolt/replayer-opcodes.md",
+3,
+"v1.3/spec/replayer-opcodes.md",
+3,
+"path+version",
+"*Part of the machine specification, v1.25, linked from `machine-spec.md` 4.19 (4.19.7, item 112). **Derived from jolt-cpp `821e1bd`** as copied into the standalone tracer of `github.com/quarky93/jolt-asic-planning`, branch `tracer-standalone-main` (PR #2), from the harness outputs WORKER9 regenerated there (`tools/replayer-opcodes/out-821e1bd/`). v1.2's appendix was derived at `4f36b3d` (PR #1). File references are to `tracer/src/tracer/`. **Section 2's source column, section 6's emit sites and every reference marked 821e1bd are at `821e1bd`; the other file:line references were taken at `4f36b3d` and name the same code, whose line numbers may have moved** (`machine-spec.md` item 137).*",
+"*Part of the machine specification, v1.35, linked from `spec/jolt/replayer.md` 4.19 (4.19.7, item 112). **Derived from jolt-cpp `821e1bd`** as copied into the standalone tracer of `github.com/quarky93/jolt-asic-planning`, branch `tracer-standalone-main` (PR #2), from the harness outputs WORKER9 regenerated there (`v1.3/tools/replayer-opcodes/out-821e1bd/`). v1.2's appendix was derived at `4f36b3d` (PR #1). File references are to `tracer/src/tracer/`. **Section 2's source column, section 6's emit sites and every reference marked 821e1bd are at `821e1bd`; the other file:line references were taken at `4f36b3d` and name the same code, whose line numbers may have moved** (`machine-spec.md` item 137).*"
+],
+[
+"jolt/replayer-opcodes.md",
+5,
+"v1.3/spec/replayer-opcodes.md",
+5,
+"path",
+"**What v1.25 changed here** (`CHANGES-v1.25.md`): the opcodes are renumbered (six inserted at 110–115, three removed, so codes shift by +6, +4 or +3 by position; 61 row opcodes change, section 2.0); `VirtualLoadB/H/W` and `VirtualStoreB/H/W` are new (section 2 G, section 3); `VirtualAlignAddr`, `VirtualAssertHalfwordAlignment` and `VirtualAssertWordAlignment` are gone; `VirtualShiftData…` reads the base register plus `shift_offset`; `VirtualHostIO` has no operands; `VirtualPext` and `VirtualPextSigned` are required for any mask; the signed-immediate set adds the narrow memory rows and `VirtualShiftData…`; sections 6–9 are regenerated.",
+"**What v1.25 changed here** (`spec/history/CHANGES-v1.25.md`): the opcodes are renumbered (six inserted at 110–115, three removed, so codes shift by +6, +4 or +3 by position; 61 row opcodes change, section 2.0); `VirtualLoadB/H/W` and `VirtualStoreB/H/W` are new (section 2 G, section 3); `VirtualAlignAddr`, `VirtualAssertHalfwordAlignment` and `VirtualAssertWordAlignment` are gone; `VirtualShiftData…` reads the base register plus `shift_offset`; `VirtualHostIO` has no operands; `VirtualPext` and `VirtualPextSigned` are required for any mask; the signed-immediate set adds the narrow memory rows and `VirtualShiftData…`; sections 6–9 are regenerated."
+],
+[
+"jolt/replayer-opcodes.md",
+12,
+"v1.3/spec/replayer-opcodes.md",
+12,
+"path",
+"- **Ground truth** (`machine-spec.md` 4.19 and item 113; DECISIONS-v1.3 section 17, v1.3): the trace is **a16z's Jolt's**, the verifier's source being `a16z/jolt` at `7189216` (jolt-cpp `88dca85`'s submodule), so a16z decides where jolt-cpp differs; **gold is the Java emulator** in `wip/gold/`; jolt-cpp is the pin (`88dca85`, checked identical to `821e1bd` on both workloads; its `isa/` unchanged since `821e1bd`, from which this file is derived) and is checked against as data. Where a16z and jolt-cpp differ, the owner rules and this file is corrected. *(v1.26.1: `LayerZero-Research/jolt` `735355e` was the ground truth and jolt-cpp the gold standard.)*",
+"- **Ground truth** (`machine-spec.md` 4.19 and item 113; DECISIONS-v1.3 section 17, v1.3): the trace is **a16z's Jolt's**, the verifier's source being `a16z/jolt` at `7189216` (jolt-cpp `88dca85`'s submodule), so a16z decides where jolt-cpp differs; **gold is the Java emulator** in `pipeline/gold/`; jolt-cpp is the pin (`88dca85`, checked identical to `821e1bd` on both workloads; its `isa/` unchanged since `821e1bd`, from which this file is derived) and is checked against as data. Where a16z and jolt-cpp differ, the owner rules and this file is corrected. *(v1.26.1: `LayerZero-Research/jolt` `735355e` was the ground truth and jolt-cpp the gold standard.)*"
+],
+[
+"jolt/replayer-opcodes.md",
+13,
+"v1.3/spec/replayer-opcodes.md",
+13,
+"path",
+"- **The harness** that produced sections 6 and 9 is in the package at **`tools/replayer-opcodes/`**, with instructions for regenerating the tables against a later tracer commit; its `821e1bd` outputs and the edited `vec.cpp` (new vectors for the narrow memory rows, `ShiftData…` with offsets, and non-contiguous PEXT masks) are in `tools/replayer-opcodes/out-821e1bd/`.",
+"- **The harness** that produced sections 6 and 9 is in the package at **`v1.3/tools/replayer-opcodes/`**, with instructions for regenerating the tables against a later tracer commit; its `821e1bd` outputs and the edited `vec.cpp` (new vectors for the narrow memory rows, `ShiftData…` with offsets, and non-contiguous PEXT masks) are in `v1.3/tools/replayer-opcodes/out-821e1bd/`."
+],
+[
+"jolt/replayer-opcodes.md",
+99,
+"v1.3/spec/replayer-opcodes.md",
+99,
+"path",
+"**61 row opcodes change** (an ALU decoding v1.2's numbers would misread every one): 52 keep their name under a new code, 3 are removed and 6 are new. The 36 row opcodes from 0 to 109 keep their codes (36 + 52 + 3 = v1.2's 91; 36 + 52 + 6 = v1.25's 94). The three opcodes that never occur move with their ranges (`VirtualMove` 126 → 130, `VirtualAdviceRemU` 161 → 164, `VirtualAdviceRemUW` 165 → 168). Every row opcode whose code changes [derived: the v1.2 and v1.25 appendices' section 2 tables, checked against `tables/opcode_table.txt`]:",
+"**61 row opcodes change** (an ALU decoding v1.2's numbers would misread every one): 52 keep their name under a new code, 3 are removed and 6 are new. The 36 row opcodes from 0 to 109 keep their codes (36 + 52 + 3 = v1.2's 91; 36 + 52 + 6 = v1.25's 94). The three opcodes that never occur move with their ranges (`VirtualMove` 126 → 130, `VirtualAdviceRemU` 161 → 164, `VirtualAdviceRemUW` 165 → 168). Every row opcode whose code changes [derived: the v1.2 and v1.25 appendices' section 2 tables, checked against `data/tables/opcode_table.txt`]:"
+],
+[
+"jolt/replayer-opcodes.md",
+1303,
+"v1.3/spec/replayer-opcodes.md",
+1303,
+"path",
+"*Harness sources: `tools/replayer-opcodes/` (`enum.cpp`, the opcode and slot-form enumeration, and `vec.cpp`, these vectors, with `summarize.py`); the `821e1bd` outputs, and the `vec.cpp` edited for it, are in `tools/replayer-opcodes/out-821e1bd/`. The README in `tools/replayer-opcodes/` gives the build; for `821e1bd`, build against PR #2's branch `tracer-standalone-main` instead of `4f36b3d`. `ShiftData…` vectors take their `shift_offset` from `vec.cpp` (the harness applies it to the next vector), shown here in the inputs.*",
+"*Harness sources: `v1.3/tools/replayer-opcodes/` (`enum.cpp`, the opcode and slot-form enumeration, and `vec.cpp`, these vectors, with `summarize.py`); the `821e1bd` outputs, and the `vec.cpp` edited for it, are in `v1.3/tools/replayer-opcodes/out-821e1bd/`. The README in `v1.3/tools/replayer-opcodes/` gives the build; for `821e1bd`, build against PR #2's branch `tracer-standalone-main` instead of `4f36b3d`. `ShiftData…` vectors take their `shift_offset` from `vec.cpp` (the harness applies it to the next vector), shown here in the inputs.*"
+]
+],
+"added": [
+[
+"machine-spec.md",
+6,
+"- `spec/OVERVIEW.md` and `spec/GUIDELINES.md`: what is being built and where it stands, and the rules the design follows; read them first."
+],
+[
+"machine-spec.md",
+7,
+"- `spec/jolt/`: the Jolt-specific units, the replayer (4.19) and the Tracer (4.21), with what belongs only to them and the opcode appendix (`spec/jolt/replayer-opcodes.md`)."
+],
+[
+"machine-spec.md",
+8,
+"- `spec/CHANGES-v1.3-to-v1.35.md`: v1.35 against v1.3; nothing changes for the RTL."
+],
+[
+"machine-spec.md",
+9,
+"- `spec/history/`: what changed in each version (the `CHANGES-*` files, each version's \"in brief\"), the decisions logs behind them, and section 13's full record. Where a log and this document differ, this document is the authority."
+],
+[
+"machine-spec.md",
+1243,
+"### 4.19 The replayer (peripheral type 4)"
+],
+[
+"machine-spec.md",
+1245,
+"*Moved in v1.35 to `spec/jolt/replayer.md`, with 4.19.1–4.19.15.*"
+],
+[
+"machine-spec.md",
+1266,
+"### 4.21 The Tracer (peripheral type 3)"
+],
+[
+"machine-spec.md",
+1268,
+"*Moved in v1.35 to `spec/jolt/tracer.md`, with 4.21.1–4.21.10.*"
+],
+[
+"machine-spec.md",
+1753,
+"The replayer's window (peripheral 1 on tiles 0–63): moved in v1.35 to `spec/jolt/replayer.md`."
+],
+[
+"machine-spec.md",
+1800,
+"### 8.16 The Tracer's window (C&C 3's peripheral)"
+],
+[
+"machine-spec.md",
+1802,
+"*Moved in v1.35 to `spec/jolt/tracer.md`.*"
+],
+[
+"machine-spec.md",
+1828,
+"    - the replayer's and the Tracer's: in `spec/jolt/replayer.md` and `spec/jolt/tracer.md`."
+],
+[
+"machine-spec.md",
+1900,
+"| replayer (4.19), Tracer (4.21) | in `spec/jolt/replayer.md` and `spec/jolt/tracer.md` |"
+],
+[
+"machine-spec.md",
+1959,
+"## 13. Open items"
+],
+[
+"machine-spec.md",
+1961,
+"What is open, proposed or deferred in v1.35's design, each with the section it affects; possible later additions are marked *later*. The replayer's and the Tracer's items are in `spec/jolt/replayer.md` and `spec/jolt/tracer.md`. Numbers are never reused. Every item's history (its text as first written and each version's change of status) is `spec/history/machine-spec-v1.3-section-13.md`; the decisions are in `spec/history/`. The logic budget (section 11) is unreviewed; v1.2 rescaled it for the 256-bit link word and the 32 KB controller memories (item 127)."
+],
+[
+"machine-spec.md",
+1963,
+"| item | what is to be settled | section | status |"
+],
+[
+"machine-spec.md",
+1964,
+"|---|---|---|---|"
+],
+[
+"machine-spec.md",
+1965,
+"| 1 | Memory-compiler numbers for a big-SRAM area macro: latency, density, arrangement | 4.1 | open |"
+],
+[
+"machine-spec.md",
+1966,
+"| 2 | The area request-queue depth in hardware (8 in meshsim) | 4.1 | open |"
+],
+[
+"machine-spec.md",
+1967,
+"| 3 | Write combining: whether narrow writes to one row combine into one access | 4.1, 4.9 | open |"
+],
+[
+"machine-spec.md",
+1968,
+"| 4 | The bound on area queueing a phase may cause, and the placement rules that keep it | 4.1, 4.2 | open |"
+],
+[
+"machine-spec.md",
+1969,
+"| 5 | `PTR`/`HIST` macros: a write must land intact while port A reads the same address | 4.10 | open |"
+],
+[
+"machine-spec.md",
+1970,
+"| 6 | The GATHER request queue's in-flight bound under heavier read-queue load | 4.4 | open |"
+],
+[
+"machine-spec.md",
+1971,
+"| 7 | Gapless one-word exchanges: simulate them, then tighten the gap if queues stay low | 4.2 | open |"
+],
+[
+"machine-spec.md",
+1972,
+"| 8 | The physical latencies of the three control lines, `ready_latency`, `go_latency` and `error_latency`, settled together | 10 | open (owner, 2026-11-12) |"
+],
+[
+"machine-spec.md",
+1973,
+"| 10 | Above the chip: cards, FPGAs, links and each chip's DRAM are not specified | 2 | open |"
+],
+[
+"machine-spec.md",
+1974,
+"| 13 | The sort's output format (keys carry the receive-buffer ordinal) | 14 | open |"
+],
+[
+"machine-spec.md",
+1975,
+"| 24 | Re-measurement: labels in this document and in `schedule.md` still say \"to be re-measured\" | all | open |"
+],
+[
+"machine-spec.md",
+1976,
+"| 61 | The request tree's physical design: node placement, `reqbus_latency` | 3.3, 12 | open |"
+],
+[
+"machine-spec.md",
+1977,
+"| 62 | Simulating the new paths: eject priority, loopback token waits, drift | 4.5, 4.7, 6.7 | open |"
+],
+[
+"machine-spec.md",
+1978,
+"| 70 | The eject loopback priority (decided), to be confirmed in simulation | 4.7 | open |"
+],
+[
+"machine-spec.md",
+1979,
+"| 107 | 4.25 MB of big SRAM per tile, a tentative working figure | 4.1 | open |"
+],
+[
+"machine-spec.md",
+1980,
+"| 116 | Read-port reads overlapping incoming traffic: revisit the rule and invariant 14 | 4.3, 9 | open |"
+],
+[
+"machine-spec.md",
+1981,
+"| 117 | Storing the reserved link bits (power) | 3.1 | open |"
+],
+[
+"machine-spec.md",
+1982,
+"| 121 | The core's CSRs beyond the trap CSRs, `mcycle` and `mtime`, and their reset values | 4.11, 6.1 | open |"
+],
+[
+"machine-spec.md",
+1983,
+"| 124 | The soft reset's keep list | 6.1 | open |"
+],
+[
+"machine-spec.md",
+1984,
+"| 126 | Whether hardware records a request dropped at the root | 3.3, 6.7 | open |"
+],
+[
+"machine-spec.md",
+1985,
+"| 128 | K's margin, validated across workloads | 4.1, 4.8, 4.10 | open |"
+],
+[
+"machine-spec.md",
+1986,
+"| 129 | Whether `STREAM_SRC` stays a chunk address | 4.2 | open |"
+],
+[
+"machine-spec.md",
+1987,
+"| 82 | Partly settled; left: the request receivers' attachment, the engines' type numbers; 65 as C&C 2 still proposed | 2, 2.1 | decided, part open |"
+],
+[
+"machine-spec.md",
+1988,
+"| 15 | A status bit with READY, for per-owner completion | 8.14 | proposed |"
+],
+[
+"machine-spec.md",
+1989,
+"| 27 | Drop the one-read-size-per-group rule | 4.2 | proposed |"
+],
+[
+"machine-spec.md",
+1990,
+"| 28 | 128-bit staging from C&C | 6.2 | proposed |"
+],
+[
+"machine-spec.md",
+1991,
+"| 63 | Each node wormhole-routes whole requests, round-robin | 3.3 | proposed |"
+],
+[
+"machine-spec.md",
+1992,
+"| 64 | The request port's FIFO and its stall rule | 4.18 | proposed |"
+],
+[
+"machine-spec.md",
+1993,
+"| 67 | A read's data: 128-bit packets in ascending address order | 6.7 | proposed |"
+],
+[
+"machine-spec.md",
+1994,
+"| 120 | The table window's address | 4.10, 8.9 | proposed |"
+],
+[
+"machine-spec.md",
+1995,
+"| 48 | Decided: a peripheral's fixed landing latency; still proposed: its value, `rp_latency` = 2 | 4.17.5, 10 | decided, part proposed |"
+],
+[
+"machine-spec.md",
+1996,
+"| 84 | Decided: the request; still proposed: beat order, the row node writing the requestor, 16 requests per target queue | 3.3, 4.18 | decided, part proposed |"
+],
+[
+"machine-spec.md",
+1997,
+"| 133 | Still proposed: the handler parks in a plain loop | 4.13 | decided, part proposed |"
+],
+[
+"machine-spec.md",
+1998,
+"| 83 | The target numbering; target 3 deferred with the file system (119) | 3.3 | proposed, part deferred |"
+],
+[
+"machine-spec.md",
+1999,
+"| 60 | The memory system's side, with the file system (119) | 6.7, 7 | deferred |"
+],
+[
+"machine-spec.md",
+2000,
+"| 119 | The file system and the RW engine, with their design (the Tracer's side is specified) | 3.3, 6.1, 6.7, 7 | deferred |"
+],
+[
+"machine-spec.md",
+2001,
+"| 122 | The handler's report header, with C&C 1's request format | 4.13 | deferred |"
+],
+[
+"machine-spec.md",
+2002,
+"| 130 | A 1×4 test chip; mesh size as a parameter | 2, 4.2, 4.6 | deferred |"
+],
+[
+"machine-spec.md",
+2003,
+"| 142 | The region-decode check, to the RTL | 3.1, 4.13 | deferred |"
+],
+[
+"machine-spec.md",
+2004,
+"| 118 | Decided: sending peripherals' src and port; deferred: the rest of the controllers' routing, the DMA port's flow control | 4.16, 4.17.9 | decided, part deferred |"
+],
+[
+"machine-spec.md",
+2005,
+"| 17 | A direct path from the GATHER engine to the write side | 4.4 | later |"
+],
+[
+"machine-spec.md",
+2006,
+"| 18 | Fusing the local gather with the values all-to-all | 4.2, 4.4 | later |"
+],
+[
+"machine-spec.md",
+2007,
+"| 19 | An arrival-order form of augmenting for mode 4 | 4.9 | later |"
+],
+[
+"machine-spec.md",
+2008,
+"| 20 | A search engine for the split | 4.3 | later |"
+],
+[
+"machine-spec.md",
+2009,
+"| 21 | A port-B reader for bulk transfers from controller memory | 4.5 | later |"
+],
+[
+"machine-spec.md",
+2010,
+"| 22 | Whole-row fetches for 64-bit streams | 4.2 | later |"
+],
+[
+"machine-spec.md",
+2011,
+"| 125 | Signed counters | 4.12, 6.2 | later |"
+],
+[
+"machine-spec.md",
+2013,
+"**The index:** where each item lives; *closed* means settled, its record in the history file."
+],
+[
+"machine-spec.md",
+2015,
+"1 here; 2 here; 3 here; 4 here; 5 here; 6 here; 7 here; 8 here; 9 closed; 10 here; 11 closed; 12 closed; 13 here; 14 closed; 15 here; 16 closed; 17 here; 18 here; 19 here; 20 here; 21 here; 22 here; 23 closed; 24 here; 25 closed; 26 closed; 27 here; 28 here; 29 closed; 30 closed; 31 closed; 32 closed; 33 closed; 34 closed; 35 `spec/jolt/replayer.md`; 36 `spec/jolt/replayer.md`; 37 closed; 38 `spec/jolt/replayer.md`; 39 `spec/jolt/replayer.md`; 40 closed; 41 closed; 42 `spec/jolt/replayer.md`; 43 closed; 44 closed; 45 closed; 46 closed; 47 closed; 48 here; 49 closed; 50 closed; 51 closed; 52 closed; 53 closed; 54 closed; 55 closed; 56 `spec/jolt/replayer.md`; 57 `spec/jolt/replayer.md`; 58 closed; 59 `spec/jolt/replayer.md`; 60 here; 61 here; 62 here; 63 here; 64 here; 65 closed; 66 closed; 67 here; 68 closed; 69 closed; 70 here; 71 closed; 72 closed; 73 closed; 74 closed; 75 closed; 76 closed; 77 closed; 78 closed; 79 closed; 80 closed; 81 closed; 82 here; 83 here; 84 here; 85 closed; 86 closed; 87 closed; 88 closed; 89 closed; 90 closed; 91 closed; 92 closed; 93 closed; 94 closed; 95 closed; 96 closed; 97 closed; 98 closed; 99 closed; 100 closed; 101 closed; 102 closed; 103 closed (owner, 2026-11-12); 104 closed; 105 closed; 106 closed; 107 here; 108 closed; 109 closed; 110 closed; 111 closed; 112 closed; 113 `spec/jolt/replayer.md`; 114 closed; 115 `spec/jolt/replayer.md`; 116 here; 117 here; 118 here; 119 here; 120 here; 121 here; 122 here; 123 `spec/jolt/replayer.md`; 124 here; 125 here; 126 here; 127 closed; 128 here; 129 here; 130 here; 131 closed; 132 closed; 133 here; 134 closed; 135 closed; 136 closed; 137 `spec/jolt/replayer.md`; 138 closed; 139 `spec/jolt/replayer.md`; 140 `spec/jolt/replayer.md`; 141 closed; 142 here; 143 closed; 144 closed; 145 closed; 146 closed; 147 `spec/jolt/tracer.md`; 148 `spec/jolt/tracer.md`; 149 closed; 150 closed; 151 closed; 152 closed; 153 `spec/jolt/tracer.md`; 154 closed; 155 closed; 156 closed; 157 closed; 158 `spec/jolt/replayer.md`."
+],
+[
+"machine-spec.md",
+2017,
+"**Closed since v1.3:** 103, the split run log: a pass that runs without the store log never feeds the write log, so only store rows draw from it; the sizing was settled by item 143's measurement (owner, 2026-11-12)."
+],
+[
+"jolt/replayer.md",
+1,
+"# The replayer: machine specification, v1.35"
+],
+[
+"jolt/replayer.md",
+3,
+"*Part of the machine specification (`spec/machine-spec.md`), moved here whole in v1.35 with its section numbers: 4.19, the replayer's part of 8.11, its invariant (section 9, 16) and its parameters (section 10). The opcode appendix is `spec/jolt/replayer-opcodes.md`.*"
+],
+[
+"jolt/replayer.md",
+678,
+"From 8.11, the peripheral windows:"
+],
+[
+"jolt/replayer.md",
+696,
+"From section 9, invariant 16 (the peripherals' and the replayer's invariants):"
+],
+[
+"jolt/replayer.md",
+700,
+"From section 10, the parameter summary:"
+],
+[
+"jolt/replayer.md",
+702,
+"| parameter | default |"
+],
+[
+"jolt/replayer.md",
+703,
+"|---|---|"
+],
+[
+"jolt/replayer.md",
+706,
+"## Open items (section 13's numbering)"
+],
+[
+"jolt/replayer.md",
+708,
+"Settled items are listed in `spec/machine-spec.md` section 13's index; their record is `spec/history/machine-spec-v1.3-section-13.md`."
+],
+[
+"jolt/replayer.md",
+710,
+"| item | what is to be settled | section | status |"
+],
+[
+"jolt/replayer.md",
+711,
+"|---|---|---|---|"
+],
+[
+"jolt/replayer.md",
+712,
+"| 137 | Re-cite the `4f36b3d` file:line references at the pinned commit, with item 158 in v1.4, when the appendix is regenerated | 4.19 | open (owner, 2026-11-12) |"
+],
+[
+"jolt/replayer.md",
+713,
+"| 59 | Decided: the output row's layout; open: the consumer side, its width and rate, the placement against the materializer | 4.19.12 | decided, part open |"
+],
+[
+"jolt/replayer.md",
+714,
+"| 113 | Decided: the ground truth (a16z, `7189216`); open: each case tagged \"pending the upstream check\", until gold settles it | 4.19, 4.19.12 | decided, part open |"
+],
+[
+"jolt/replayer.md",
+715,
+"| 140 | Open, with Tony: the PEXT method, and so a non-contiguous mask's cycles | 4.19.7 | decided, part open |"
+],
+[
+"jolt/replayer.md",
+716,
+"| 35 | The `virt` bit stored per word; the NOP row's virtual flag (pending the upstream check, 113) | 4.19.3, 4.19.4 | proposed |"
+],
+[
+"jolt/replayer.md",
+717,
+"| 38 | The decode index's special groups (AMO, custom-0, SYSTEM) | 4.19.5 | proposed |"
+],
+[
+"jolt/replayer.md",
+718,
+"| 39 | The padding and shared NOP rows at ROM words 0 and 1 | 4.19.6 | proposed |"
+],
+[
+"jolt/replayer.md",
+719,
+"| 42 | Fetch and decode overlap the previous row | 4.19.7 | proposed |"
+],
+[
+"jolt/replayer.md",
+720,
+"| 56 | Jolt's conventions kept as table data | 4.19.3, 4.19.4, 4.19.7 | proposed |"
+],
+[
+"jolt/replayer.md",
+721,
+"| 57 | The replayer's hardwired Jolt behaviour (two rules pending the upstream check, 113) | 4.19.7 | proposed |"
+],
+[
+"jolt/replayer.md",
+722,
+"| 36 | Decided: what the replayer executes; still proposed: it doesn't check that temporaries stay in 40–47 | 4.19.4, 4.19.7 | decided, part proposed |"
+],
+[
+"jolt/replayer.md",
+723,
+"| 115 | Decided: C&C 3 broadcasts the used set; still proposed: the size-first command | 4.19.2, 4.19.13 | decided, part proposed |"
+],
+[
+"jolt/replayer.md",
+724,
+"| 123 | Decided: the status words; still proposed: the event and error bits | 8.11, 4.19.9, 4.19.11 | decided, part proposed |"
+],
+[
+"jolt/replayer.md",
+725,
+"| 158 | Rebuild the universal tables to a16z's rule for LR/SC with rd = x0 and the NOP rows' virtual flag; scheduled for v1.4, v1.35 keeping v1.3's tables unchanged | 4.19.4 | decided, not yet done (owner, 2026-11-12) |"
+],
+[
+"jolt/replayer.md",
+726,
+"| 139 | Possible later addition: a SYSTEM-group decode putting the CSR templates in the ROM | 4.19.6, 4.19.9 | decided, part later |"
+],
+[
+"jolt/tracer.md",
+1,
+"# The Tracer: machine specification, v1.35"
+],
+[
+"jolt/tracer.md",
+3,
+"*Part of the machine specification (`spec/machine-spec.md`), moved here whole in v1.35 with its section numbers: 4.21, its window (8.16), its invariant (section 9, 16) and its parameters (section 10).*"
+],
+[
+"jolt/tracer.md",
+424,
+"From section 9, invariant 16 (the peripherals' and the replayer's invariants):"
+],
+[
+"jolt/tracer.md",
+428,
+"From section 10, the parameter summary:"
+],
+[
+"jolt/tracer.md",
+430,
+"| parameter | default |"
+],
+[
+"jolt/tracer.md",
+431,
+"|---|---|"
+],
+[
+"jolt/tracer.md",
+434,
+"## Open items (section 13's numbering)"
+],
+[
+"jolt/tracer.md",
+436,
+"Settled items are listed in `spec/machine-spec.md` section 13's index; their record is `spec/history/machine-spec-v1.3-section-13.md`."
+],
+[
+"jolt/tracer.md",
+438,
+"| item | what is to be settled | section | status |"
+],
+[
+"jolt/tracer.md",
+439,
+"|---|---|---|---|"
+],
+[
+"jolt/tracer.md",
+440,
+"| 153 | The Tracer's timing: measured in meshsim; the RTL's values are to replace it | 4.21.9 | open (owner, 2026-11-12) |"
+],
+[
+"jolt/tracer.md",
+441,
+"| 147 | To measure: the local caches' sizes, by gold replaying both workloads | 4.21.5 | decided, part open |"
+],
+[
+"jolt/tracer.md",
+442,
+"| 148 | The fill bus's statuses, to revisit with the memory system's design | 4.21.5, 4.21.8 | decided, part deferred |"
+],
+[
+"history/machine-spec-v1.3-preamble.md",
+1,
+"# v1.3's machine specification: the preamble's history"
+],
+[
+"history/machine-spec-v1.3-preamble.md",
+3,
+"*Moved whole from `v1.3/spec/machine-spec.md` in v1.35: the companion bullets for the history documents (lines 6–11) and each version's \"in brief\" (lines 30–36, 40–70), unchanged; their paths are v1.3's.*"
+],
+[
+"history/machine-spec-v1.3-section-13.md",
+1,
+"# v1.3's machine specification: section 13 as it stood"
+],
+[
+"history/machine-spec-v1.3-section-13.md",
+3,
+"*Moved whole from `v1.3/spec/machine-spec.md` (lines 3094–3458) in v1.35, unchanged; its paths and line references are v1.3's. Today's open items are `spec/machine-spec.md` section 13.*"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+1,
+"# v1.3 to v1.35"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+3,
+"*What v1.35 changes against v1.3. The hardware is v1.3's; the simulator is v1.3's rewritten in C++ (`src/`); the spec is v1.3's, restructured.*"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+5,
+"## For the RTL"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+7,
+"**Nothing changes.** v1.35's hardware is v1.3's, unit for unit: every normative statement, register, number and parameter of v1.3's spec stands. The guide from v1.26.1 is still `spec/history/CHANGES-v1.26.1-to-v1.3.md`."
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+9,
+"## Where v1.3's spec went"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+11,
+"Every section keeps its number; a section that moved leaves a one-line stub under its number in `spec/machine-spec.md`."
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+13,
+"| v1.3 | v1.35 |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+14,
+"|---|---|"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+15,
+"| `machine-spec.md`, all but what follows | `spec/machine-spec.md`, the platform |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+16,
+"| 4.19, the replayer; 8.11's replayer window; its invariant (9, 16) and parameters (10) | `spec/jolt/replayer.md` |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+17,
+"| 4.21, the Tracer; 8.16, its window; its invariant (9, 16) and parameters (10) | `spec/jolt/tracer.md` |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+18,
+"| `replayer-opcodes.md`, the appendix | `spec/jolt/replayer-opcodes.md` |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+19,
+"| `schedule.md` | `spec/schedule.md` |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+20,
+"| the preamble's \"in brief\" blocks and its companions for the history documents | `spec/history/machine-spec-v1.3-preamble.md` |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+21,
+"| section 13 as it stood | `spec/history/machine-spec-v1.3-section-13.md`; the new section 13 lists what is open today |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+22,
+"| the `CHANGES-*` files; `v1.3/planning/DECISIONS-v1.2.md` to `-v1.3.md` | `spec/history/`, names unchanged |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+24,
+"Every statement about the simulator and every path was made true of v1.35; nothing else in the text changed."
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+26,
+"## The simulator's deliberate differences from v1.3's"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+28,
+"v1.35's meshsim matches v1.3's results exactly, and its cycle counts exactly except in these cases, each approved and recorded (the decision in brackets):"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+30,
+"- **A counter store and a decrement in the same cycle** (D27). The traffic director judges a due decrement without the core's counter store of the same cycle, which reaches the register block a cycle later; v1.3's simulator did the same through its fixed step order. No reference program reaches the case."
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+31,
+"- **A router FIFO's overflow is counted at t + 1** (D28), with its `ERRORS` bit. v1.3's counted it whenever the FIFO was next touched, a variable number of cycles late. No reference program overflows one."
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+32,
+"- **A second READY pulse while the first is still visible** (D29). v1.35 keeps the spec's sticky bit and counts the case (`ready_repulses`); v1.3's read 0 at C&C 1 until the new pulse landed. Likewise an overflow that feeds `ERRORS` reaches the register block as an event, counted at t + 1. No reference program reaches either."
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+33,
+"- **C&C 1's peripheral applies a store one cycle later** (D33, D44): at t + 1, as every peripheral slot does, where v1.3's applied it within the store's cycle. C&C 1's own work (the watchdog's first count, a UART byte's start) runs a cycle later; one suite's printed figure differs by one cycle and is masked in its comparison."
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+34,
+"- **The request bus's credit latency is a setting** (D34): 0 is exact as v1.3's (every sender in the bus's domain); 3, the default, is the spec's, each port's leaf in its tile. They differ only when a node's 8-beat buffer fills, which is counted; the reference runs never reach it."
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+36,
+"## Where v1.35's checks differ from the rule"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+38,
+"The machine specification's preamble gives the rule: undefined behaviour is fatal, the silent traps stop the core, and every other invariant is counted and, in the debug and suite builds, reported. As of 2026-11-12 these cases differ:"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+40,
+"- **Counted, not fatal:** a packet of size 11 (3.1, undefined); a stream with a misaligned source or destination, or with *d* = 126 from a mesh tile (4.2), which are also not reported."
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+41,
+"- **Counted but not reported:** a late rotation (invariant 3) and a `HIST` count past 17 bits (invariant 6). **Reported but not counted** in the release build: uncounted traffic other than mode 0 (invariant 22)."
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+42,
+"- **Not checked:** a buffer both read and written in one run (invariant 2); `DMA_HDR` or `DMA_ADDR` changed mid-transfer (4.17.9); the 1, 3 and 1 requests outstanding, the tag windows and reads during a group run (invariant 17); one source per destination for modes 1–3 into big SRAM (invariant 18); the overtaking read (invariant 24), which only the harness's S1 measurement covers; a Tracer transfer asking for more than its credits cover (4.21)."
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+44,
+"## The drivers the spec's measurements name"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+46,
+"The `[meas: …]` labels name v1.3's Java tests and drivers (Markers). What replaces each in v1.35:"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+48,
+"| v1.3 (Java) | v1.35 |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+49,
+"|---|---|"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+50,
+"| NetTest (fan-in, `skewtable`) | `tests/suite_net.cpp` |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+51,
+"| MemTest | `tests/suite_mem.cpp` |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+52,
+"| EngineTest | `tests/suite_engine.cpp` |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+53,
+"| Stage B | `tests/stageb.cpp` |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+54,
+"| AllToAllTest (`measure`), an older name: in v1.3 the all-to-all is EngineTest with the A2A helper | ported: `tests/suite_engine.cpp`, with `A2A` in `tests/mach.h` |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+55,
+"| ReadPortGatherTest | being ported: `tests/suite_rdport.cpp` |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+56,
+"| SearchBench | ported: `tests/suite_search.cpp` (56 of 56 assertions, `tests/p4suites/searchbench.log`) |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+57,
+"| CondTest | being ported |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+58,
+"| S1Bench | being ported; `measure_s1` (`tests/mach.h`) is the harness side of its measurement |"
+],
+[
+"CHANGES-v1.3-to-v1.35.md",
+59,
+"| SplitRun | not carried: its driver doesn't build in v1.3 |"
+],
+[
+"history/README.md",
+1,
+"# spec/history"
+],
+[
+"history/README.md",
+3,
+"What v1.35's restructuring took out of v1.3's spec, moved whole and unchanged: each version's `CHANGES-*` guide, the four decisions logs the spec cites (`DECISIONS-v1.2.md` to `DECISIONS-v1.3.md`), the preamble's \"in brief\" blocks and history companions (`machine-spec-v1.3-preamble.md`), and section 13 as it stood (`machine-spec-v1.3-section-13.md`)."
+],
+[
+"history/README.md",
+5,
+"These are history: their paths and line numbers are v1.3's, and nothing here is kept true of v1.35. Where a log and `spec/machine-spec.md` differ, the spec is the authority. Carried text, here and in the spec, keeps its worker names and session codes: the restructuring moves text and doesn't rewrite it."
+],
+[
+"history/README.md",
+7,
+"`EDITS.md` lists every line the restructuring changed or added, with the old and new text of each edit."
+],
+[
+"jolt/README.md",
+1,
+"# spec/jolt"
+],
+[
+"jolt/README.md",
+3,
+"The Jolt-specific units, plugged into the platform's peripheral slot (4.17): `replayer.md` (4.19, with its part of 8.11, its invariant and parameters), `tracer.md` (4.21, 8.16, its invariant and parameters) and the replayer's opcode appendix, `replayer-opcodes.md`. Section numbers are the machine specification's; `spec/machine-spec.md` keeps a stub under each, and its section 13 indexes the items listed here."
+],
+[
+"check/README.md",
+1,
+"# spec/check"
+],
+[
+"check/README.md",
+3,
+"The tools that restructured v1.3's spec as v1.35's and prove it a move. They read `v1.3/`, so this folder is left out of the frozen copy; the record of every edit is `spec/history/EDITS.md`."
+],
+[
+"check/README.md",
+5,
+"- `MAP.md`: the plan (where each unit went, the new section 13, the edits), reviewed before the move; `map.tsv`, its line ranges."
+],
+[
+"check/README.md",
+6,
+"- `build.py`: builds the destinations from `v1.3/` by line range, applies the edits, writes `map.tsv`, `edits.json` and `spec/history/EDITS.md`."
+],
+[
+"check/README.md",
+7,
+"- `check_move.py`: the proof (run from the repository root): every source line in exactly one destination, unchanged and in order, or an edit; every destination line a source line, an edit or added; every section number a heading; every path present."
+],
+[
+"check/README.md",
+8,
+"- `inventory.py`, `section13.py`: the source's units, and section 13's statuses with their evidence."
+],
+[
+"check/README.md",
+9,
+"- `MECHANISMS.md`: what v1.35's meshsim does for each check the spec promises; `FINDINGS.md`: what looks wrong, for the owner."
+],
+[
+"check/README.md",
+11,
+"**At the freeze:** rerun `MECHANISMS.md` against `main`; bring the drivers' table of `spec/CHANGES-v1.3-to-v1.35.md` up to date; the section \"Where v1.35's checks differ from the rule\" should then be empty, and is removed; rebuild and rerun `check_move.py`."
+]
+]
+}

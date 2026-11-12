@@ -81,6 +81,7 @@ public:
     };
     // ref's meshsim flags (violate).
     enum : int { V_ADVICE_UNCONSUMED = 1, V_UNDEFINED, V_END_NO_NFV, V_XFER_NO_NFV, V_INLINE_NO_TEMPLATE };
+    static void violation_text(int code, uint64_t a, uint64_t b, char* o, size_t n);   // W26: ref's text (the checker)
     struct Fact {
         int64_t t = 0;
         int code = 0, bits = 0;

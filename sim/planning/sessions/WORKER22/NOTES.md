@@ -82,6 +82,22 @@ suites set is in `MachConfig` already. ref's shuffled logs differ from the unshu
   `window_full_cycles` with ref's MemConf fixtures) print the same before and after (clang release); test_mem,
   test_memconf, MemTest's groups in clang debug; NetTest's ported groups unchanged.
 
+- **The write engine's stage peak (approved 2026-11-12)**: `WriteEngine::stage_peak` (src/units/write_engine.h), under
+  SIM_CHECKS only, the stage's count after a take (ref's stageHighWater, WriteEngine.java:109).
+- **F3, the write engine's UB stop names the PTR (approved 2026-11-12)**: "a write through PTR[src N] = chunk 0x..."
+  (`PTR[digit]` for mode 2), as ref's; text only, in the FATAL path (behaviour unchanged).
+  Both checked: test_chip and test_sort print the same before and after (clang release); EngineTest's write engine
+  group equal to ref's (its line, peaks 3, 5, 7, 9; its `ub` names "PTR[src 9]").
+
+- **F5, the traffic director's UB stops (approved 2026-11-12)**: src/units/director.h:124, 136 name the unit
+  "traffic director (tile N): ..." as ref's (TrafficDirector.java:88, 98); text only, in the FATAL path. AgTest's
+  `ub` on the misaligned destination now passes; test_chip, test_sort, test_g1_tile unchanged (clang release).
+
+- **The write engine's writes by size (approved 2026-11-12)**: `WriteEngine::written_by_size[3]`, under SIM_CHECKS
+  only, counted where a write is put to big SRAM (ref's writtenBySize, WriteEngine.java:81). ReadPortGatherTest's
+  gather group: 20 of 20. Timing builds: test_chip and test_sort print the same; of the 30 release objects that include
+  write_engine.h, 2 differ, only in FATAL's `__LINE__` argument (`mov $imm,%esi`).
+
 ## Asks of W20 (through the integrator; named W22-n, so they don't collide with other workers' numbers)
 
 From NetTest's gap map (2026-11-11). NetTest's other groups (structure, unicast's packets, routes, the controllers'
@@ -168,6 +184,24 @@ W22-16. **The write engine's RMW requests from the harness** (figure 12: ref's `
 queued write can be missed (mem_idle true too early) or a served one seen. `m.at(a, j)` is the fix. MemTest's mem_idle
 group passes either way (its queues never wrap while it asks).
 
+### SearchBench and EngineTest (2026-11-12)
+
+W22-17. **SearchBench needs the TRACE store log** (ref's `p.ctl.traceHook = (t, v) -> ...`: the cycle of every TRACE
+    store per tile, search.c's `mark()`), W20's step 4 (H6, `MachConfig::log_trace`, not on main yet). Everything else
+    it uses is there (Mach::boot, Cc's command/go/busy, run, word by symbol, halt_summary, the block's `dones`, the read
+    port's FIFO overflows through `Sim::fifo_overflows`); Java's `%,d`, `%.1f`, `%.2f` (HALF_UP on the shortest
+    digits, as W21's `java_2f`) are suite-side.
+- **EngineTest**: writeengine, alltoall, drift, inv6 ported (`tests/suite_engine.cpp`); localcopy, streamruns, exchange,
+  radix, lategroups and fence stop on ref's `runLocal` (W22-15). Against engine.log: **all-to-all equal** (5 lines:
+  the table, the bound, the queue peaks, agReport's late/drift figures); the rest wait on:
+  - **the write engine's stage peak** (ref's `writer.stageHighWater`, the count after a take, WriteEngine.java:109;
+    printed by the write engine group's line): a statistic the C++ write engine doesn't keep: **the owner's call**
+    (proposed as the others: under SIM_CHECKS, where ref updates it);
+  - **finding F3: the write engine's UB stop doesn't name the PTR** (src/units/write_engine.h:123): ref says "a write
+    through PTR[src 9] = chunk 0x50009 ..." (or `PTR[digit]` for mode 2), the C++ "a write through PTR = chunk
+    0x50009". EngineTest's `ub` requires "PTR[src 9]". Diagnostic text only (the FATAL path): **the owner's call**;
+  - W26: drift's "invariant 3" (AG drift) and inv6's "invariant 6" (HIST over 17 bits) aren't recorded yet.
+
 ## Progress
 
 - 2026-11-11: plan agreed; branch made. Toolchain: clang 18.1.3, gcc 13.3.0, JDK 21.0.13 (apt). clang release on
@@ -244,3 +278,98 @@ group passes either way (its queues never wrap while it asks).
 - **make check**: `tests/test_p4suites.cpp` runs net-quick, net-shuf, net-shuf2 byte for byte (debug builds; skipped in
   release, where the Fifo peaks aren't kept); clang debug 48 s, all pass. `suite_mem` builds in the timing builds as a
   stub that says it needs SIM_CHECKS (its statistics don't exist there).
+- **make check (partial, 2026-11-12)**: copies 322 equal; gcc debug 72 of 72 run tests pass (test_ctl_suites.cpp, W23's,
+  doesn't compile in gcc debug: -Werror=maybe-uninitialized inside std::function; owner told W23); gcc release 73 of
+  73; clang debug and release not finished. EngineTest pushed as work in progress (owner: nothing only in the tree).
+- **NetTest's port-B placeholder replaced** (W22-15 on main): `cm_idle` reads the core's `port_b` Link through
+  `Sim::observe` exactly as W20's `phase_done` does (nothing arriving after the next cycle). Probed: low at the accept
+  and the cycle after, idle from accept + cm_latency (ref: written at t + cm_latency); net.log still byte for byte.
+- **EngineTest's write engine group equal** (stage peak, F3).
+- **EngineTest: every printed line equal to engine.log and eng-shuf.log** (clang suite build): write engine, local copy
+  (8 lines), stream runs, one-word exchange (5), radix sort, late groups (2), all-to-all (5), fence; drift's line too.
+  363 of 365 assertions: the 2 left are W26's kinds ("invariant 3", "invariant 6"). The six runLocal groups on
+  W20's `phase_done`; `new_phase` is a local no-op until W20's Chip::new_phase lands (nothing records the
+  disjoint-buffer check yet, W26, so it changes nothing meanwhile). The radix sort's Net sizes the directors' logs for
+  its 5 passes (`log_capacity` 5N + 64: ref's log is a list). engine-full (4 data sets at full size): the runner, later.
+- **make check, the four builds on 6e0d9e2d (2026-11-12)**: copies 322 equal; clang debug 74 of 74, clang release 74 of
+  74, gcc release 74 of 74, gcc debug 73 of 73 (test_ctl_suites.cpp, W23's, doesn't compile in gcc debug: owner told
+  W23). gcc caught a `-Wdangling-reference` in suite_net and suite_engine (a TileRef temporary), fixed in 6e0d9e2d.
+  (test_suite_replayer failed once in gcc debug only because an interrupted build had deleted suite_replayer; rebuilt,
+  it passes.)
+- **SearchBench** (`tests/suite_search.cpp`; Java's `%.Nf` and `%,d` in `tests/p4_java.cpp`): on W20's TRACE log
+  (record_trace). **Every printed line equal to searchbench.log** (both N, every cycles-per-step row, both fits, the
+  63-search totals): 54 of 56 assertions. The 2 left are \"no violations\" for each N: **finding F4 (for W20)**: the C++
+  checker reports 3 violations ref doesn't: \"a command landed in command slot 0 before the core read the previous
+  one (6.3)\" at cycle 139 on tile 0 and 143 on tiles 8 and 56, src 64, dst 126, payload 0x01800001 (the first
+  broadcast command after the boot). Recorded by TileCore's port-B tracking (src/units/tile_ctl.h, CMEM_COMMAND_UNREAD;
+  W20's). The machine's timing is ref's (every measured figure equal), so the check's bookkeeping of the boot ROM's
+  slot-0 read differs from ControllerMemories': the three tiles nearest C&C 1, where the command lands soonest after
+  the boot. Reproduce: `build/clang-suite/suite_search` (MODE=suite).
+- **AgTest** (`tests/suite_ag.cpp`; ref's runLocal on `phase_done`; rd_running and rd_done read through STATUS with
+  `TileRef::load`): worked example 26, queue bounds 64, mixed sizes 8, rulings 13 (\"dst 70\" included): all pass;
+  computed fields 86 of 95. 197 of the 206 ported pass (seeds -1 and 4); figure 12's 34 wait on W22-16. The 9 left:
+  - W26: the AG's stream-entry flags (read size 11, d = 70, d = 126, mode-4, mode-3 at 128, the misaligned
+    destination and source, counter 0): 8 checks;
+  - **finding F5 (the owner's call, as F3)**: the director's UB stops say \"director (tile N): ...\"
+    (src/units/director.h:124, 136); ref names the unit \"traffic director\" (TrafficDirector.java:88, 98), and AgTest's
+    `ub` requires it. Text only, in the FATAL path: \"traffic director (tile N): ...\".
+  - In `computed`, a UB stop runs in suite::ub's forked child, while ref keeps the facts recorded before its stop in
+    the machine; the parent runs to the cycle before the stop's (named in its message) so the flags checked after it
+    can be there.
+- **F5 done**: AgTest 198 of the 206 ported (seeds -1, 4); the 8 left are W26's stream-entry flags (its 1c). F4 is
+  W26's (invariant 8's command-slot check), not W20's (owner).
+
+### ReadPortGatherTest (2026-11-12)
+
+`tests/suite_rdport.cpp` (prints as it goes, as Java's `out()`; `set_record_base` for ref's `gather.base`). Ported: read
+port from C (rdport.c), reserved streams, gather (k = 1, 2, 3, 4, 8), gather counting and alignment, gather from C
+(gather.c, C&C's phase log). **Every printed line ported is equal to rdport.log** (from C, the gather table's 6 lines,
+gather from C's 64 cycles). Reserved streams (9) and counting (21) pass. What's left:
+W22-18. **The read port's host queue (for W20)**: ref's `readPort.hostQueue(addr, dest)` (a read-port read queued from
+    the harness, as a store to SRAM_RD_ADDR_QUEUE would), `readPort.idle(t)` and `readPort.allAccepted()`: the
+    all-to-all under read-port traffic, the tolerance runs and the overlap check (three groups).
+- **The write engine's writes by size** (ref's `writer.writtenBySize[n]`, counted where a write goes to big SRAM,
+  WriteEngine.java:81): a statistic the C++ write engine doesn't keep: **the owner's call** (as the stage peak). The
+  gather group's 5 \"value packets\" checks read it; a placeholder fails them meanwhile.
+- W26: from C's \"the overflow (invariant 8)\" (the 65th store into a full SRAM_RD_ADDR_QUEUE: not recorded yet), and
+  gather from C's \"no invariant violations\": the same 3 command-slot violations as F4 (cycle 77 on tile 0, 81 on 8
+  and 56; payload 0x01801000), W26's invariant-8 command check.
+- W22-14: the disjoint-buffer group.
+- **run_tests.sh** (shared; owner told): the P4 steps still PENDING now name what each waits on (W22-14, W22-16,
+  W22-18, W22-9 to W22-13, W26's kinds; agbench: not yet ported). Only NetTest is byte for byte, so it stays the only
+  P4 suite in the runner and in make check (test_p4suites); each other suite joins both when its log is equal.
+- **Quest 184** (claimed after re-reading NUMBERS.md, pushed): engine-full and rdport-full's ported groups on the C++
+  against v1.3's logs (printed lines; the FAIL lines, W26's, listed). Task copy in `tasks/`.
+- **SearchBench complete** (W26's F4 fix on main): byte for byte equal to searchbench.log, 56 of 56 (clang suite build;
+  clang debug too, 17 s). In run_tests.sh (step searchbench, `suite_search` in SUITES; `quick --check`: no LOG
+  DIFFERS) and in make check (test_p4suites).
+- **AgBench complete** (`tests/suite_agbench.cpp`, G1): byte for byte equal to agbench.log (145 lines: the lookahead
+  tables with and without stalls, the zero-length groups, start to the first request), 14 s on the clang suite build
+  (1,500 machines). In run_tests.sh's full block (step agbench, `suite_agbench` in SUITES); not in make check (a
+  full-only step in v1.3).
+- **Quest 184 result**: build PASS; rdport-full's ported groups all equal (from C 1 line, the gather table's 7 with the
+  65,536-value row, gather from C 1), the FAILs W26's (invariant 8; F4, fixed since). engine-full aborted: the Net's
+  directors' logs (fixed size, 16,384) overflowed on the full-size all-to-alls (ref's logs are lists). Fixed: the
+  all-to-all group runs on the plain chip (ref only uses the Net's chip there); engine and eng-shuf still equal.
+  engine-full then checked locally (clang suite build): every printed line equal to engine-full.log in three blocks
+  (lines 1-18; the all-to-all at full size, 15 lines, 85 s; drift and fence), the 2 FAILs W26's invariants 3 and 6.
+- **Spec items 62 and 70 (Quest 185, for the docs session)**: `tests/p4_drift.cpp` over engine-full's data sets, on the
+  runner (Intel Core i5-14400F, 6 P + 4 E cores, 64 GB, Linux 6.8.0, clang 18.1.3; machine.sh's record in Quest's
+  results/185-w22-drift/machine.txt). **No drift on any run** (ERRORS [3] on 0 tiles, 0 AG drift events), the control
+  (EngineTest's drift case) detected (tile 7, first at cycle 106, 158 events). **Send-port token waits 0** on every
+  run, and the read side's window-full cycles 0: these runs send nothing through the send port (every packet is an AG
+  read return), and no read ever waited for a token. Run cycles equal engine-full.log's (71,238 ... 82,025). Attempt 1
+  printed the whole table (exit 0) but its last check matched the table's padding wrongly; fixed for the retry.
+- **On main (2026-11-12): W22-9, W22-10 (W20), W22-13 and invariants 3, 6, 8, the AG stream checks (W26).**
+  - **EngineTest complete**: engine, eng-shuf and engine-full byte for byte (365 of 365; engine-full 92 s locally).
+    Live in run_tests.sh (engine-full in the all block); engine and eng-shuf in make check.
+  - AgTest 206 of 206 ported (figure 12: W22-16). ReadPortGatherTest from C 516 of 516. MemTest: W22-14.
+  - **RequestBusTest** (`tests/suite_reqbus.cpp`, on W20's ReqBus): from C (req.c, C&C 2 draining from the test) 6 of
+    6. The rest needs:
+W22-11. **A tile's request port from the test** (still open): ref's `req.setW(i, v)`, `req.send(t, w3)` (a REQUEST_SEND
+    without the core, \"as a store at the current cycle would\") and `req.canPush(t)`: fairness, credits,
+    back-pressure, the receive side, drops.
+W22-19. **The delivered requests' records** (new): ref's `RequestBus.delivered` list, each with `deliveredAt` and
+    `srcTile` (ReqBus::delivered() is the count): basics (the unloaded latency, `q.deliveredAt - ts`), fairness (the
+    span of deliveredAt), credits (srcTile 10, 20).
+- Quest 185's three attempts ran before the check's fix: its results removed for a re-run (Quest's commit 70b44a3).

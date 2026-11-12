@@ -1,3 +1,14 @@
+hooks: peek 80 peek 80 EVENTS 80 then peek 0; GET0 0 RECV 0 ERRORS@208 0 ERRORS@209 4000 ERRORS@210 4000 ERRORS@211 4000 peek@212 0 peek@213 0 peek@214 0 peek@215 0 peek@216 0 peek@217 100 peek@218 100
+  window 1: 4 0 0 0 0 0 0 0
+  req: canPush true setW 0 pending at 217 head 1100c 99
+  rdport: idle true all true; queued: idle false all false; idle at 17, all accepted at 19; dmem[0x100..0x109] 500 501 502 503 504 505 506 507 508 509
+reqbus: first pending at 217, two queued at 225; head 15441 3; credits 126; receive 3 size 1 credits 126; then credits 126 head 8405; receive 3333; receive on empty 0 underflows 1; dropped 0 delivered 2 credits 128 at 231; violations 0
+machine periph 0: quiescent at 240; late 0; t9 dmem[0x112] ca t40 dmem[0x80] beef t30 sram 0x10 1234; violations 74
+  tile 9: 9 arrivals [205 9000000ca 112100489 0] [213 ca 100100480 0] [214 12000000ca 124100492 0] [217 3f000000ca 17e1004bf 0] [221 1b000000ca 13610049b 0] [222 beef 80003f05 0]
+  tile 30: 2 arrivals [219 1234 c00010120f06 0] [222 beef 80003f05 0]
+machine periph 4: quiescent at 240; late 0; t9 dmem[0x112] ca t40 dmem[0x80] beef t30 sram 0x10 1234; violations 74
+  tile 9: 9 arrivals [205 9000000ca 112100489 0] [213 ca 100100480 0] [214 12000000ca 124100492 0] [217 3f000000ca 17e1004bf 0] [221 1b000000ca 13610049b 0] [222 beef 80003f05 0]
+  tile 30: 2 arrivals [219 1234 c00010120f06 0] [222 beef 80003f05 0]
 feed: after Chip.run(40) at 43: t9 0 t20 0 t12 @18; late 0; pending true; then runAll drained at 75: late 5 t9 @63 @64 @65 @66 @67 t20 @70 t12 @18 @60
 core: store dmem null; load dmem beef; PARAMS 78d00001 STATUS 0 ERRORS 0; WRITE_COUNTER_2 7; boot ROM [1] 7828293; halfword STATUS null; PTR null
   stores: STATUS store to a read-only register; byte ROUTER_SET_W1 sub-word store to a register; program store to program memory; boot ROM store to the boot ROM; unmapped store to an unmapped address

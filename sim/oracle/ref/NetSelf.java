@@ -201,7 +201,126 @@ final class NetSelf {
         System.out.println(sb);
     }
 
+    /** Net on the machine as specified (HooksTest's and RequestBusTest's machine(): controllers on, the tiles waiting in
+     *  their boot ROMs), periphType 0 and 4: packets into data memory and big SRAM, a broadcast (W22-9). */
+    static void onMachine(int periph) {
+        Config k = Config.machine(); k.periphType = periph;
+        Net n = new Net(k);
+        n.c.run(200);                                              // the boot ROMs reach their WFI
+        long T0 = n.c.cycle + 2;
+        for (int s = 0; s < 64; s += 9) n.at(s, T0, 9, LinkWord.M_WRITE, 0, Net.cm(0x900 + 2 * s), LinkWord.SIZE_64, Net.tagged(s, T0), 0);
+        n.at(5, T0 + 1, LinkWord.BROADCAST, LinkWord.M_WRITE, 0, Net.cm(0x880), LinkWord.SIZE_32, 0xBEEF, 0);
+        n.at(6, T0 + 2, 30, LinkWord.M_WRITE, 1, LinkWord.R_SRAM << 24 | 0x40, LinkWord.SIZE_64, 0x1234, 0);
+        boolean ok = n.runAll(2000);
+        StringBuilder sb = new StringBuilder("machine periph " + periph + ": " + (ok ? "quiescent" : "NOT quiescent") + " at " + n.c.cycle + "; late " + n.late);
+        sb.append("; t9 dmem[0x112] ").append(w(n, 9, 0x112)).append(" t40 dmem[0x80] ").append(w(n, 40, 0x80)).append(" t30 sram 0x10 ").append(hex(n.c.tiles[30].sram.peek(0x10)));
+        sb.append("; violations ").append(n.c.violations);
+        System.out.println(sb);
+        logs(n, 9, 30);
+    }
+
+    /** W22-10: ref's RequestBus from a test on Net(Config.machine()): a tile's request (through its core's stores), a
+     *  controllerSend, the receivers' side (pending, get, receive, underflows), the credits, the drops at the root. */
+    static void reqbus() {
+        Config k = Config.machine(); k.periphType = 0;
+        Net n = new Net(k);
+        n.c.run(200);
+        Tile p = n.c.tiles[5];
+        final int REG = 0xFFFFF800;
+        int[][] st = { { 18, (0 << 7) | (0x21 << 10) }, { 19, 0x1111 }, { 20, 0x2222 }, { 21, 0x3333 } };   // W0 (target 0) .. SEND
+        for (int[] x : st) { p.core.store(n.c.cycle + 1, REG + 4 * x[0], x[1], -1); n.step(); }
+        RequestBus b = n.c.reqBus;
+        b.controllerSend(n.c.cycle, 1, (0 << 7) | (0x55 << 10), 1, 2, 3);
+        StringBuilder sb = new StringBuilder("reqbus:");
+        long first = -1;
+        for (int i = 0; i < 200 && b.queue[0].size() < 2; i++) { n.step(); if (first < 0 && b.pending(0, n.c.cycle + 1)) first = n.c.cycle; }
+        sb.append(" first pending at ").append(first).append(", two queued at ").append(n.c.cycle);
+        sb.append("; head ").append(hex(b.get(0, n.c.cycle + 1, 0) & 0xFFFFFFFFL)).append(" ").append(hex(b.get(0, n.c.cycle + 1, 3) & 0xFFFFFFFFL));
+        sb.append("; credits ").append(b.credits[0]);
+        sb.append("; receive ").append(hex(b.receive(0, n.c.cycle + 1) & 0xFFFFFFFFL)).append(" size ").append(b.queue[0].size()).append(" credits ").append(b.credits[0]);
+        n.step();
+        sb.append("; then credits ").append(b.credits[0]).append(" head ").append(hex(b.get(0, n.c.cycle + 1, 0) & 0xFFFFFFFFL));
+        sb.append("; receive ").append(hex(b.receive(0, n.c.cycle + 1) & 0xFFFFFFFFL)); n.step();
+        sb.append("; receive on empty ").append(b.receive(0, n.c.cycle + 1)).append(" underflows ").append(b.underflows);
+        for (int[] x : new int[][] { { 18, (3 << 7) | (0x31 << 10) }, { 21, 0x77 }, { 18, (5 << 7) | (0x32 << 10) }, { 21, 0x78 } }) { p.core.store(n.c.cycle + 1, REG + 4 * x[0], x[1], -1); n.step(); }
+        n.runAll(500);
+        sb.append("; dropped ").append(b.dropped.size()).append(" delivered ").append(b.delivered.size()).append(" credits ").append(b.credits[0]).append(" at ").append(n.c.cycle);
+        sb.append("; violations ").append(n.c.violations);
+        System.out.println(sb);
+    }
+
+    /** W22-11, W22-18, W23's (b)-(d): a tile's request port, the read port's host queue, loads with side effects and from
+     *  a present peripheral's window, sticky EVENTS bits and a scheduled GO from the test. */
+    static void hooks() {
+        final int REG = 0xFFFFF800, EVENTS = REG + 4 * 6, PEEK = REG + 4 * 7, ERRORS = REG + 8, GET0 = REG + 4 * 18, RECV = REG + 4 * 21;
+        {   // (c), (d) on the machine, periphType 0
+            Config k = Config.machine(); k.periphType = 0;
+            Net n = new Net(k);
+            n.c.run(200);
+            Tile p = n.c.tiles[3];
+            StringBuilder sb = new StringBuilder("hooks:");
+            int c9 = 1 << Registers.EV_COUNTERS_DONE, go = 1 << Registers.EV_GO;
+            p.ctl.events |= c9;
+            sb.append(" peek ").append(hx(p.core.load(n.c.cycle + 1, PEEK, 4)));
+            n.step();
+            sb.append(" peek ").append(hx(p.core.load(n.c.cycle + 1, PEEK, 4)));
+            p.core.store(n.c.cycle + 1, REG + 4 * 8, c9, -1); n.step(); n.step(); n.step();   // EVENTS_MASK = c9
+            sb.append(" EVENTS ").append(hx(p.core.load(n.c.cycle + 1, EVENTS, 4)));
+            n.step(); n.step(); n.step();
+            sb.append(" then peek ").append(hx(p.core.load(n.c.cycle + 1, PEEK, 4)));
+            sb.append("; GET0 ").append(hx(p.core.load(n.c.cycle + 1, GET0, 4)));
+            sb.append(" RECV ").append(hx(p.core.load(n.c.cycle + 1, RECV, 4)));
+            for (int i = 0; i < 4; i++) { sb.append(" ERRORS@").append(n.c.cycle + 1).append(" ").append(hx(p.core.load(n.c.cycle + 1, ERRORS, 4))); n.step(); }
+            long T = n.c.cycle + 5;
+            p.ctl.scheduleGo(T);
+            while (n.c.cycle < T + 2) { sb.append(" peek@").append(n.c.cycle + 1).append(" ").append(hx(p.core.load(n.c.cycle + 1, PEEK, 4))); n.step(); }
+            System.out.println(sb);
+        }
+        {   // (b): window 1 of the replayer (periphType 4), words 0-7
+            Config k = Config.machine(); k.periphType = 4;
+            Net n = new Net(k);
+            n.c.run(200);
+            Tile p = n.c.tiles[9];
+            StringBuilder sb = new StringBuilder("  window 1:");
+            for (int w = 0; w < 8; w++) sb.append(" ").append(hx(p.core.load(n.c.cycle + 1, REG + 0x200 + 4 * w, 4)));
+            System.out.println(sb);
+        }
+        {   // W22-11: the request port from the test, on the machine with the queues
+            Config k = Config.machine(); k.periphType = 0;
+            Net n = new Net(k);
+            n.c.run(200);
+            Tile s = n.c.tiles[12];
+            StringBuilder sb = new StringBuilder("  req:");
+            s.req.setW(0, (0 << 7) | (0x44 << 10)); s.req.setW(1, 0x44);
+            sb.append(" canPush ").append(s.req.canPush(n.c.cycle + 1));
+            s.req.send(n.c.cycle, 0x99);
+            sb.append(" setW ").append(s.req.setW[0] | s.req.setW[1] | s.req.setW[2]);
+            long first = -1;
+            for (int i = 0; i < 100 && first < 0; i++) { n.step(); if (n.c.reqBus.pending(0, n.c.cycle + 1)) first = n.c.cycle; }
+            sb.append(" pending at ").append(first).append(" head ").append(hx(n.c.reqBus.get(0, n.c.cycle + 1, 0))).append(" ").append(hx(n.c.reqBus.get(0, n.c.cycle + 1, 3)));
+            System.out.println(sb);
+        }
+        {   // W22-18: the read port's host queue, on the coreless machine
+            Net n = new Net(Net.cfg(-1));
+            Tile p = n.c.tiles[6];
+            for (int i = 0; i < 16; i++) p.sram.poke(0x1000 + i, 0x500 + i);
+            StringBuilder sb = new StringBuilder("  rdport: idle ").append(p.readPort.idle(n.c.cycle)).append(" all ").append(p.readPort.allAccepted());
+            for (int i = 0; i < 10; i++) p.readPort.hostQueue(0x1000 + i, Net.cm(0x900 + i));
+            sb.append("; queued: idle ").append(p.readPort.idle(n.c.cycle)).append(" all ").append(p.readPort.allAccepted());
+            long idleAt = -1, accAt = -1;
+            for (int i = 0; i < 200 && accAt < 0; i++) { n.step(); if (idleAt < 0 && p.readPort.idle(n.c.cycle)) idleAt = n.c.cycle; if (p.readPort.allAccepted()) accAt = n.c.cycle; }
+            sb.append("; idle at ").append(idleAt).append(", all accepted at ").append(accAt);
+            n.runAll(500);
+            sb.append("; dmem[0x100..0x109]"); for (int i = 0; i < 10; i++) sb.append(" ").append(w(n, 6, 0x100 + i));
+            System.out.println(sb);
+        }
+    }
+
     public static void main(String[] a) {
+        hooks();
+        reqbus();
+        onMachine(0);
+        onMachine(4);
         feedOnlyInNet();
         core();
         phaseDoneProbe(-1);

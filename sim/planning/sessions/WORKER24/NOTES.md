@@ -141,3 +141,45 @@ Commit and push after each step; each step checked against `ref`.
   0 until W26's tracking lands, phase_log.h; 64 in some of v1.3's SPLIT phases). The sweep group waits for the Config
   fields (W20's next item).
 - **Checks of this change** (2026-11-12): sort_test, test_sort_suites and test_sort_kit built and run in all six builds (clang and gcc: suite, release, debug): all pass, the release builds' sort_test checks passing without running (PhaseLog). The runner's five sort steps with `--check`: no log differs.
+- **Sweep (D10)**: `tests/sweep_main.cpp` → `sweep [quick|full]` (W20's Config front end, main 4a2930f0, and
+  PhaseLog; MODE=suite): **sweep-quick's log and CSV byte-identical** to v1.3's (94 s here). The `sweep-quick` step is
+  live in run_tests.sh; with --check its CSV is compared too (a difference prints a FAIL line into the log).
+- **The kit's sweep group at 2,000** against Quest 178: the six F3 points refused as v1.3 refuses them (K below kMin);
+  **38 run CSVs byte-identical**, their 38 logs equal; the phases CSVs equal but `unreadOverwrites` (W26) and F6.
+  **But two more runs are refused here and ran in v1.3: F5.** sort_test now flushes each printed line, so a refused
+  run's log keeps its inputs line, as Java's does.
+- **F5. `ready_latency` 1 is refused by v1.35's chip builder** (`src/units/chip.cpp`: `ready_latency < 3` is FATAL,
+  since M2's stage 4: the READY lines are Links of ready_latency - 2 through the row collectors). v1.3 runs it: the
+  kit's sweep has a `ready-1` point in both sets (`cfg.readyLatency=1`), which v1.3 completes and v1.35 refuses (a log,
+  no CSV; SUMMARY lists them under "Runs with no result"). Sweep's own points (4, 8) are unaffected. **For the owner:**
+  model ready latencies 1-2 (the line wiring restructured), or record a deliberate difference (D30: v1.35 needs
+  ready_latency >= 3; the physical default is 8).
+- **F6. PhaseLog's `readPort` peak differs at sram read latency 3 and 4** (the kit's sweep: 1-28 phases of 99 in 4 runs,
+  C++ 2 where v1.3 has 1; every run CSV and log equal). ref's ReadPort.inUse() is `stores - injected` with `injected`
+  counting the injections of the current cycle as they happen; the C++ `rp_peak` (tile_ctl.h) subtracts injections
+  before t (the free-entry count's rule), so a store in the same cycle as an injection counts one more. A statistic,
+  W20's (PhaseLog); for W20 through the integrator.
+- **F5 ruled (D47, 2026-11-12)**: ready_latency below 3 stays refused, a deliberate difference; the kit's two `ready-1` runs end with no result, listed under "Runs with no result" as F3's. **F6** is with W20.
+- **The full pass** (2026-11-12, after merging main with W23's fix): copies check; gcc debug, clang debug, gcc release, clang release, every test run alone, all pass (test_ctl_suites included); the suite builds (gcc, clang): test_sort_suites and test_sort_kit pass.
+- **The kit's 92 runs at 2,000 against Quest 178 again** (2026-11-12, main with W20's F6 fix 673f1733 and W26's
+  invariant 8 020519bd, suite build): **84 run CSVs byte-identical, 84 logs equal** (first field aside); the 8 without
+  a result are F3's six and D47's two. **F6 fixed**: no phases CSV differs beyond column 27. **But `unreadOverwrites` is
+  still 0 in every phase** (v1.3: nonzero in 4,417 rows of these 84 files): W26 counts it
+  (`TileCore::track.overwritten_unread`, rv32.h) but PhaseLog doesn't read it yet (tests/phase_log.cpp:79,
+  `v[17] += 0`, "pending"). For W20 through the integrator; then the phases CSVs again.
+- **Quest 183** (claimed after re-reading NUMBERS.md; pushed): v1.3's `Sweep full` (sortlogs.sh's new sweep-full step) and the C++ `sweep full` side by side on the runner, the log and CSV byte for byte; v1.3's become the fixtures.
+- **Quest 183's result** (runner, i5-14400F; C++ 423 s, v1.3 905 s, side by side, not timing): v1.3's `Sweep full`
+  committed as `tests/sort/ref/sweep-full.{log,csv}`. The C++ `sweep full` equals it in every cycle count, delta and peak
+  (the CSV but its violations column), **but reports 3 violations in every point** (and so no band): "a command landed
+  in command slot 0 before the core read the previous one (6.3)", tile 0, at the first command after the boot (cycles
+  77-139). **F7, a regression on main from W26's invariant 8 (020519bd, CMEM_COMMAND_UNREAD)**: the build of 183 had
+  merged it; `sweep quick` on today's main fails the same way (the sweep-quick step: LOG DIFFERS), while it was
+  byte-identical before. v1.3 reports nothing there. The sort's runs aren't affected (their first command comes after
+  the cores wait in WFI; the 92 kit runs passed after the merge). For W26 through the integrator; then `sweep full`
+  again (its fixtures are in place).
+- **All three byte-identical** (2026-11-12, main 554a99a2 with W26's 6532b75c, F7's fix (W22's F4), and W20's
+  8abebaed, PhaseLog's unreadOverwrites; suite build, this container):
+  - `sweep quick`: log and CSV byte-identical to v1.3's (the sweep-quick step);
+  - `sweep full` (543 s here): log and CSV byte-identical to Quest 183's fixtures (v1.3's Sweep full);
+  - the kit at 2,000, all 92 jobs: **84 run CSVs, 84 phases CSVs and 84 logs byte-identical to Quest 178's** (logs but
+    the simulator's field); the other 8 refused as expected (F3's six as v1.3, D47's two).

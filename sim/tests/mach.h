@@ -101,6 +101,8 @@ struct MachConfig {
     unsigned area_queue_depth = 8, sram_read_latency = 2, read_tokens = 64;
     bool write_combining = false, fifo_count_before_pop = true;
     bool test_read_clients = false;    // the read queue's AG client a harness-fed FIFO (Net::rd), no AG
+    bool reqbus_host = false;          // the request bus driven from the test (Chip::reqbus(), W22-10): its receive queues and
+                                       //   controller inputs on the machine with C&C's model (ref's RequestBus there)
     // ---- C&C, the lines (6) ----
     unsigned go_latency = 8, run_latency = 1, ready_latency = 8, cnc_reaction = 1, stage_delay = 64;
     unsigned cnc_rx_depth = 64, cc_dma_depth = 4, cc_link_latency = 1;
@@ -176,6 +178,31 @@ constexpr uint32_t master_config(uint32_t kind, uint32_t start, uint32_t count, 
 
 class Chip;
 
+// ======================================================================= the request bus from a test (ref's RequestBus)
+// On the machine with C&C's Java model and MachConfig::reqbus_host (RequestBusTest's Net(Config.machine())): ref's
+// RequestBus as a test drives it, between cycles. t is the cycle the call stands for (ref's: the next, cycle() + 1, for
+// the receivers' side; the cycle just run for controller_send); the reads are as ref has them at the end of the cycle
+// just run, the test's own pops already counted out.
+class ReqBus {
+public:
+    explicit ReqBus(Chip& c) : c_(&c) {}
+    bool pending(unsigned target, int64_t t) const;                  // ref's pending(target, t)
+    uint32_t get(unsigned target, int64_t t, unsigned i) const;      // ref's get(target, t, i): word i of the head, 0 if none
+    uint32_t receive(unsigned target, int64_t t);                   // ref's receive: pops the head at t (its credit back at
+                                                                     //   t + 1), returns its word 3; an underflow (0) if none
+    bool peek_request(unsigned target, int64_t t, uint32_t w[4]) const;   // ref's peekRequest (false: none)
+    void controller_send(int64_t t, unsigned cc, uint32_t w0, uint32_t w1, uint32_t w2, uint32_t w3);   // ref's controllerSend
+    size_t queue_size(unsigned target) const;                        // ref's queue[target].size()
+    int64_t credits(unsigned target) const;                          // ref's credits[target]
+    uint64_t underflows() const { return underflows_; }              // ref's underflows (the test's receives)
+    uint64_t dropped() const;                                        // ref's dropped.size()
+    uint64_t delivered() const;                                      // ref's delivered.size()
+private:
+    Chip* c_;
+    uint64_t underflows_ = 0, popped_[3] = {};
+    bool head(unsigned target, int64_t t, uint32_t w[4]) const;
+};
+
 // ================================================================================================ a tile (ref's Tile)
 class TileRef {
 public:
@@ -232,12 +259,26 @@ public:
 
     // ---- a test's loads and stores through the core (ref's Controller.load(t, ea, width), store(t, ea, v, mask)) ----
     // load: what a load at t = cycle() + 1 returns (the memories, the boot ROM, HIST, the registers as the core sees
-    // them at t); nullopt is ref's null (a bus error). Loads with a side effect (EVENTS, REQUEST_RECEIVE) and the
-    // peripheral windows aren't modelled here yet (fatal: ask W20).
+    // them at t, a present peripheral's window); nullopt is ref's null (a bus error). Its side effects are ref's, made
+    // by the core in its step at t: EVENTS consumes what it returned under the mask, a window's consuming word likewise,
+    // REQUEST_RECEIVE on a mesh tile reads 0 and sets receive underflow (ERRORS [14], visible two cycles later).
     std::optional<uint32_t> load(int64_t t, uint32_t ea, unsigned width) const;
     // store: ref's bus-error reason ("" for none, ref's null); a store that isn't a bus error is made by the core in its
     // step at t (t >= cycle() + 1), through the instruction's path. `mask` as ref's (-1 a whole word).
     std::string store(int64_t t, uint32_t ea, uint32_t v, uint32_t mask = 0xFFFFFFFFu);
+
+    // ---- the request port from a test (W22-11; ref's req.setW, req.send, req.canPush, req.setW[]) ----
+    void req_set_w(unsigned i, uint32_t v);                 // ref's req.setW(i, v): REQUEST_SET_W<i> without a store
+    void req_send(int64_t t, uint32_t w3);                  // ref's req.send(t, w3), t the cycle just run: pushed as of t
+    bool req_can_push(int64_t t) const;                     // ref's req.canPush(t), t = cycle() + 1
+    uint32_t req_w(unsigned i) const;                       // ref's req.setW[i]
+    // ---- the read port's host queue (W22-18; ref's ReadPort.hostQueue, idle, allAccepted) ----
+    void rp_host_queue(uint32_t addr, uint32_t dest);       // a 32-bit read on counter 2 to dest, one a cycle from the next
+    bool rp_idle() const;                                   // every entry free and nothing queued from the host
+    bool rp_all_accepted() const;                           // every result issued accepted by the director, none queued
+    // ---- the register block from a test (W23's (d)) ----
+    void set_events(uint32_t bits);                         // ref's ctl.events |= bits (sticky; from the next cycle on)
+    void schedule_go(int64_t t);                            // ref's ctl.scheduleGo(t): GO seen at t (this tile only)
 
     // ---- the controller (the machine as specified) ----
     uint32_t pc() const;
@@ -312,6 +353,7 @@ public:
     TileRef tile(unsigned k) { return TileRef(*this, k); }  // 0-63; 64-66 the controllers with cc_cores
     Cc& cc();                                               // C&C 1's model (not with cc_cores)
     PhaseLog& phases();                                     // ref's Chip.phases, attached at the first call (phase_log.h)
+    ReqBus& reqbus();                                       // ref's Chip.reqBus from a test (MachConfig::reqbus_host)
     bool all_stopped() const;                               // no tile's core in RUN
     bool all_exited() const;                                // every tile ended through SIM_EXIT
     bool all_in_wfi() const;
@@ -412,8 +454,9 @@ public:
     std::string halt_summary() const;                       // Mach.haltSummary, ref's text
 };
 
-// ================================================================================ the coreless machine fed (Net)
-// ref's Net: per-tile packet queues fed through each tile's read-return holding register (the injection point's top
+// ===================================================================== a machine fed from the harness (Net)
+// ref's Net, on any machine (the coreless one or Config.machine(), as ref's; not with cc_cores): per-tile packet queues
+// fed through each tile's read-return holding register (the injection point's top
 // priority: a packet scheduled for cycle T is taken by the injection point at T), per-tile read-queue client requests,
 // C&C's sends, and per-tile arrival logs at the director. The feeding is ref's `feed()`, run between cycles before each
 // cycle, so it sees exactly what ref's harness saw. The harness's ports into the injection unit and the director's

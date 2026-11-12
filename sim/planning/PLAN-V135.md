@@ -41,6 +41,11 @@ is checked against v1.3 as M1-M3's units were.
 | now | the docs session: `sim/spec/` (the overview, the guidelines, the spec's restructuring, on `v1.35-spec`) | the docs session (D45) |
 | 3 | P8: the rest of the docs from `V135-DOCS-PROPOSAL.md` sections 3-5, the comment strip, cleanup; then the freeze check, with section 6's docs gate | last |
 
+**The restructured spec is on main** (`sim/spec/`, 35 files, the owner's rulings applied; the docs session, D45). At the
+freeze, `spec/CHANGES-v1.3-to-v1.35.md`'s section "Where v1.35's checks differ from the rule" must come out empty and be
+removed: every check in the spec session's findings 9-12 is ported by then (W26's queue), and the spec session reruns its
+mechanisms table to confirm.
+
 ## Status
 
 | worker | state |

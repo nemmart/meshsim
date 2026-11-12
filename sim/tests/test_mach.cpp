@@ -124,9 +124,12 @@ void phases(int64_t seed) {
     say("%s", m.c.phases().report().c_str());
     say("%s", m.c.phases().csv().c_str());
 }
-void trace_case() {                                          // H6: MachSelf.trace()
+void trace_case(bool rdpeak = false) {                       // H6: MachSelf.trace(); rdpeak: W24's F6 (PhaseLog's read-port peak)
     const int N = 4096;
-    Mach m(Mach::cfg(-1));
+    mach::MachConfig cfg = Mach::cfg(-1);
+    if (rdpeak) cfg.sram_read_latency = 4;
+    Mach m(cfg);
+    if (rdpeak) m.c.phases();
     test::JavaRandom r(N);
     for (unsigned p = 0; p < 64; p++) {
         std::vector<int64_t> k(N);
@@ -138,11 +141,17 @@ void trace_case() {                                          // H6: MachSelf.tra
     }
     m.boot("search");
     for (unsigned p = 0; p < 64; p++) m.c.tile(p).record_trace();
-    m.c.cc().command(units::lw::BROADCAST, 1u << 24 | 0u << 8 | 4u).go();
+    m.c.cc().command(units::lw::BROADCAST, 1u << 24 | (rdpeak ? 1u : 0u) << 8 | 4u).go();
     m.run([&] { return !m.c.cc().busy(); }, 5000000);
     uint64_t d0[64];
     for (unsigned p = 0; p < 64; p++) d0[p] = m.c.tile(p).block().dones;
     const bool ok = m.run([&] { for (unsigned p = 0; p < 64; p++) if (m.c.tile(p).block().dones <= d0[p]) return false; return true; }, 5000000);
+    if (rdpeak) {
+        m.c.phases().close();
+        say("rdpeak: %s at cycle %lld\n", ok ? "finished" : "NOT finished", (long long)m.c.cycle());
+        say("%s", m.c.phases().csv().c_str());
+        return;
+    }
     say("trace: %s at cycle %lld\n", ok ? "finished" : "NOT finished", (long long)m.c.cycle());
     for (unsigned t : {0u, 7u, 63u}) {
         const auto l = m.c.tile(t).trace_log();
@@ -154,6 +163,7 @@ void trace_case() {                                          // H6: MachSelf.tra
 void machself() {
     out.clear();
     trace_case();
+    if (sim::check::kOn) trace_case(true);                 // (PhaseLog: the debug and suite builds)
     if (sim::check::kOn) { phases(-1); phases(4); }        // (PhaseLog's FIFO peaks: the debug and suite builds)
     stageb(true);
     stageb(false);
@@ -399,8 +409,127 @@ void feed_only_in_net() {
     sb += " t12"; for (const auto& e : n.log(12)) sb += " @" + std::to_string(e[0]);
     say("%s\n", sb.c_str());
 }
+void on_machine(int periph) {
+    mach::MachConfig k = mach::MachConfig::machine();
+    k.periph_type = periph;
+    Net n(k);
+    n.c.run(200);
+    const int64_t T0 = n.c.cycle() + 2;
+    for (unsigned s = 0; s < 64; s += 9) n.at(s, T0, 9, lw::M_WRITE, 0, Net::cm(0x900 + 2 * s), lw::SIZE_64, Net::tagged(s, T0), 0);
+    n.at(5, T0 + 1, lw::BROADCAST, lw::M_WRITE, 0, Net::cm(0x880), lw::SIZE_32, 0xBEEF, 0);
+    n.at(6, T0 + 2, 30, lw::M_WRITE, 1, uint32_t(lw::R_SRAM) << 24 | 0x40, lw::SIZE_64, 0x1234, 0);
+    const bool ok = n.run_all(2000);
+    std::string sb = "machine periph " + std::to_string(periph) + ": " + (ok ? "quiescent" : "NOT quiescent") + " at " + std::to_string(n.c.cycle()) +
+                     "; late " + std::to_string(n.late());
+    sb += "; t9 dmem[0x112] " + w(n, 9, 0x112) + " t40 dmem[0x80] " + w(n, 40, 0x80) + " t30 sram 0x10 " + hx(n.c.tile(30).sram_peek(0x10));
+    sb += "; violations " + std::to_string(n.c.violations());
+    say("%s\n", sb.c_str());
+    logs(n, {9, 30});
+}
+void reqbus_case() {
+    mach::MachConfig k = mach::MachConfig::machine();
+    k.periph_type = 0; k.reqbus_host = true;
+    Net n(k);
+    n.c.run(200);
+    mach::TileRef p = n.c.tile(5);
+    const uint32_t REG = 0xFFFFF800u;
+    const uint32_t st[4][2] = {{18, (0u << 7) | (0x21u << 10)}, {19, 0x1111}, {20, 0x2222}, {21, 0x3333}};
+    for (const auto& x : st) { p.store(n.c.cycle() + 1, REG + 4 * x[0], x[1]); n.step(); }
+    mach::ReqBus& b = n.c.reqbus();
+    b.controller_send(n.c.cycle(), 1, (0u << 7) | (0x55u << 10), 1, 2, 3);
+    std::string sb = "reqbus:";
+    int64_t first = -1;
+    for (int i = 0; i < 200 && b.queue_size(0) < 2; i++) { n.step(); if (first < 0 && b.pending(0, n.c.cycle() + 1)) first = n.c.cycle(); }
+    sb += " first pending at " + std::to_string(first) + ", two queued at " + std::to_string(n.c.cycle());
+    sb += "; head " + hx(b.get(0, n.c.cycle() + 1, 0)) + " " + hx(b.get(0, n.c.cycle() + 1, 3));
+    sb += "; credits " + std::to_string(b.credits(0));
+    { const uint32_t r = b.receive(0, n.c.cycle() + 1); sb += "; receive " + hx(r) + " size " + std::to_string(b.queue_size(0)) + " credits " + std::to_string(b.credits(0)); }
+    n.step();
+    sb += "; then credits " + std::to_string(b.credits(0)) + " head " + hx(b.get(0, n.c.cycle() + 1, 0));
+    sb += "; receive " + hx(b.receive(0, n.c.cycle() + 1)); n.step();
+    { const uint32_t r = b.receive(0, n.c.cycle() + 1); sb += "; receive on empty " + std::to_string(r) + " underflows " + std::to_string(b.underflows()); }
+    const uint32_t st2[4][2] = {{18, (3u << 7) | (0x31u << 10)}, {21, 0x77}, {18, (5u << 7) | (0x32u << 10)}, {21, 0x78}};
+    for (const auto& x : st2) { p.store(n.c.cycle() + 1, REG + 4 * x[0], x[1]); n.step(); }
+    n.run_all(500);
+    sb += "; dropped " + std::to_string(b.dropped()) + " delivered " + std::to_string(b.delivered()) + " credits " + std::to_string(b.credits(0)) +
+          " at " + std::to_string(n.c.cycle());
+    sb += "; violations " + std::to_string(n.c.violations());
+    say("%s\n", sb.c_str());
+}
+void hooks_case() {
+    const uint32_t REG = 0xFFFFF800u, EVENTS = REG + 4 * 6, PEEK = REG + 4 * 7, ERRORS = REG + 8, GET0 = REG + 4 * 18, RECV = REG + 4 * 21;
+    {
+        mach::MachConfig k = mach::MachConfig::machine();
+        k.periph_type = 0;
+        Net n(k);
+        n.c.run(200);
+        mach::TileRef p = n.c.tile(3);
+        std::string sb = "hooks:";
+        const uint32_t c9 = 1u << units::EV_COUNTERS_DONE;
+        p.set_events(c9);
+        sb += " peek " + hxo(p.load(n.c.cycle() + 1, PEEK, 4));
+        n.step();
+        sb += " peek " + hxo(p.load(n.c.cycle() + 1, PEEK, 4));
+        p.store(n.c.cycle() + 1, REG + 4 * 8, c9); n.step(); n.step(); n.step();
+        sb += " EVENTS " + hxo(p.load(n.c.cycle() + 1, EVENTS, 4));
+        n.step(); n.step(); n.step();
+        sb += " then peek " + hxo(p.load(n.c.cycle() + 1, PEEK, 4));
+        sb += "; GET0 " + hxo(p.load(n.c.cycle() + 1, GET0, 4));
+        sb += " RECV " + hxo(p.load(n.c.cycle() + 1, RECV, 4));
+        for (int i = 0; i < 4; i++) { sb += " ERRORS@" + std::to_string(n.c.cycle() + 1) + " " + hxo(p.load(n.c.cycle() + 1, ERRORS, 4)); n.step(); }
+        const int64_t T = n.c.cycle() + 5;
+        p.schedule_go(T);
+        while (n.c.cycle() < T + 2) { sb += " peek@" + std::to_string(n.c.cycle() + 1) + " " + hxo(p.load(n.c.cycle() + 1, PEEK, 4)); n.step(); }
+        say("%s\n", sb.c_str());
+    }
+    {
+        mach::MachConfig k = mach::MachConfig::machine();
+        k.periph_type = 4;
+        Net n(k);
+        n.c.run(200);
+        mach::TileRef p = n.c.tile(9);
+        std::string sb = "  window 1:";
+        for (uint32_t w = 0; w < 8; w++) sb += " " + hxo(p.load(n.c.cycle() + 1, REG + 0x200 + 4 * w, 4));
+        say("%s\n", sb.c_str());
+    }
+    {
+        mach::MachConfig k = mach::MachConfig::machine();
+        k.periph_type = 0; k.reqbus_host = true;
+        Net n(k);
+        n.c.run(200);
+        mach::TileRef s = n.c.tile(12);
+        std::string sb = "  req:";
+        s.req_set_w(0, (0u << 7) | (0x44u << 10)); s.req_set_w(1, 0x44);
+        sb += std::string(" canPush ") + tf(s.req_can_push(n.c.cycle() + 1));
+        s.req_send(n.c.cycle(), 0x99);
+        sb += " setW " + std::to_string(s.req_w(0) | s.req_w(1) | s.req_w(2));
+        int64_t first = -1;
+        for (int i = 0; i < 100 && first < 0; i++) { n.step(); if (n.c.reqbus().pending(0, n.c.cycle() + 1)) first = n.c.cycle(); }
+        sb += " pending at " + std::to_string(first) + " head " + hx(n.c.reqbus().get(0, n.c.cycle() + 1, 0)) + " " + hx(n.c.reqbus().get(0, n.c.cycle() + 1, 3));
+        say("%s\n", sb.c_str());
+    }
+    {
+        Net n(Net::cfg(-1));
+        mach::TileRef p = n.c.tile(6);
+        for (uint32_t i = 0; i < 16; i++) p.sram_poke(0x1000 + i, 0x500 + i);
+        std::string sb = std::string("  rdport: idle ") + tf(p.rp_idle()) + " all " + tf(p.rp_all_accepted());
+        for (uint32_t i = 0; i < 10; i++) p.rp_host_queue(0x1000 + i, Net::cm(0x900 + i));
+        sb += std::string("; queued: idle ") + tf(p.rp_idle()) + " all " + tf(p.rp_all_accepted());
+        int64_t idle_at = -1, acc_at = -1;
+        for (int i = 0; i < 200 && acc_at < 0; i++) { n.step(); if (idle_at < 0 && p.rp_idle()) idle_at = n.c.cycle(); if (p.rp_all_accepted()) acc_at = n.c.cycle(); }
+        sb += "; idle at " + std::to_string(idle_at) + ", all accepted at " + std::to_string(acc_at);
+        n.run_all(500);
+        sb += "; dmem[0x100..0x109]";
+        for (uint32_t i = 0; i < 10; i++) sb += " " + w(n, 6, 0x100 + i);
+        say("%s\n", sb.c_str());
+    }
+}
 void netself() {
     out.clear();
+    hooks_case();
+    reqbus_case();
+    on_machine(0);
+    on_machine(4);
     feed_only_in_net();
     core();
     phase_done_probe(-1);
@@ -412,9 +541,11 @@ void netself() {
 }
 }  // namespace
 
+std::string without_violations(const std::string& x);   // (below: the release builds leave the checker's counts out)
 TEST(mach_net_as_refs_Net) {
     netself();
-    const std::string want = file("tests/mach/netself.out");
+    out = without_violations(out);
+    const std::string want = without_violations(file("tests/mach/netself.out"));
     if (out != want) std::fprintf(stderr, "---- got\n%s---- want (tests/mach/netself.out)\n%s", out.c_str(), want.c_str());
     CHECK(out == want);
 }
@@ -429,8 +560,8 @@ std::string without_violations(const std::string& x) {
         if (e == std::string::npos) e = x.size();
         std::string l = x.substr(at, e - at);
         at = e + 1;
-        if (l.rfind("phases seed ", 0) == 0) skip = true;     // PhaseLog's sections: the debug and suite builds only
-        if (l.rfind("stageb ", 0) == 0) skip = false;
+        if (l.rfind("phases seed ", 0) == 0 || l.rfind("rdpeak: ", 0) == 0) skip = true;   // PhaseLog's: debug and suite only
+        if (l.rfind("stageb ", 0) == 0 || (skip && l.rfind("phases seed ", 0) != 0 && l.rfind("a2a ", 0) == 0)) skip = false;
         if (skip) continue;
         if (l.rfind("violations: ", 0) == 0 || l.rfind("  cycle ", 0) == 0) continue;
         const size_t v = l.find("; violations ");
@@ -579,6 +710,106 @@ void checkself() {
             n.c.tile(9).store(t, a, uint32_t(t));
             n.step();
         }
+        n.run_all(1000);
+        say("%s", n.c.violation_report().c_str());
+    }
+    {   // W26 (1a): the peripheral slot's own checks (window 1: word 8 stored, word 10 loaded, word 22 stored)
+        mach::MachConfig k = Mach::cfg(-1);
+        k.check_errors = false; k.max_violation_messages = 200;
+        Mach m(k);
+        const uint32_t P = 0x01000000, LOOP = 0x0000006F, X1 = 0x80000093;
+        const std::vector<std::vector<uint32_t>> prog = {{LOOP}, {X1, 0x2200A023, LOOP}, {X1, 0x2280A103, LOOP}, {X1, 0x2400AC23, LOOP}};
+        for (unsigned t = 0; t < 64; t++) {
+            const auto& w = prog[t % prog.size()];
+            for (size_t i = 0; i < w.size(); i++) m.c.tile(t).poke_local(P + 4 * uint32_t(i), w[i]);
+        }
+        m.c.run(40);
+        m.c.cc().command(lw::BROADCAST, 0x4Au << 24, {P}).run_when_ready();
+        m.c.run(300);
+        say("%s", m.c.violation_report().c_str());
+    }
+    {   // W26 (1a): a WFI woken by another event than GO with done set, the done gate off
+        mach::MachConfig k = Mach::cfg(-1);
+        k.check_errors = false; k.max_violation_messages = 200; k.done_gate = false;
+        Mach m(k);
+        const uint32_t P = 0x01000000;
+        const uint32_t w[8] = {0x80000093, 0x40000113, 0x0220A023, 0x00100193, 0x0030A623, 0x0030A823, 0x10500073, 0x0000006F};
+        for (unsigned t = 0; t < 64; t++) {
+            if (t % 5 == 2) for (uint32_t i = 0; i < 8; i++) m.c.tile(t).poke_local(P + 4 * i, w[i]);
+            else m.c.tile(t).poke_local(P, 0x0000006F);
+        }
+        m.c.run(40);
+        m.c.cc().command(lw::BROADCAST, 0x4Au << 24, {P}).run_when_ready();
+        m.c.run(300);
+        say("%s", m.c.violation_report().c_str());
+    }
+    {   // W26 (1b): the request bus's root drops requests for targets 3, 5, 7 (W22-13)
+        mach::MachConfig k = Mach::cfg(-1);
+        k.check_errors = false; k.max_violation_messages = 200;
+        Mach m(k);
+        const uint32_t P = 0x01000000, LOOP = 0x0000006F, X1 = 0x80000093;
+        const std::vector<std::vector<uint32_t>> prog = {{LOOP}, {X1, 0x18000113, 0x0420A423, 0x0400AA23, LOOP},
+                                                         {X1, 0x28000113, 0x0420A423, 0x0400AA23, LOOP}, {X1, 0x38000113, 0x0420A423, 0x0400AA23, LOOP}};
+        for (unsigned t = 0; t < 64; t++) {
+            const auto& w = prog[t % prog.size()];
+            for (size_t i = 0; i < w.size(); i++) m.c.tile(t).poke_local(P + 4 * uint32_t(i), w[i]);
+        }
+        m.c.run(40);
+        m.c.cc().command(lw::BROADCAST, 0x4Au << 24, {P}).run_when_ready();
+        m.c.run(800);
+        say("%s", m.c.violation_report().c_str());
+    }
+    {   // W26 (1b): C&C's receive FIFO full
+        mach::MachConfig k = Net::cfg(-1);
+        k.cnc_rx_depth = 4;
+        Net n(k);
+        for (unsigned i = 0; i < 8; i++) n.at(10 + i, 40 + i, lw::CC1, lw::M_WRITE, 0, 0x100, lw::SIZE_32, i, 0);
+        n.run_all(2000);
+        say("%s", n.c.violation_report().c_str());
+    }
+    {   // W26 (W22's F4): the command slot after the boot (the boot ROM takes the boot command at GO)
+        mach::MachConfig k = Mach::cfg(-1);
+        k.max_violation_messages = 200;
+        Mach m(k);
+        m.boot("search");
+        m.c.cc().command(lw::BROADCAST, 2u << 24).go();
+        m.c.run_until([&] { return m.c.all_stopped(); }, 20000);
+        say("%s", m.c.violation_report().c_str());
+    }
+    {   // W26: the read port: stores into a full queue (invariant 8)
+        mach::MachConfig k = Net::cfg(-1);
+        k.read_port_depth = 2;
+        Net n(k);
+        while (n.c.cycle() < 19) n.step();
+        for (int64_t t = 20; t < 32; t++) {
+            if (t == 20) n.c.tile(9).store(t, 0xFFFFF880u, (1u << 17) | (2u << 19) | 0x100);
+            else n.c.tile(9).store(t, 0xFFFFF87Cu, uint32_t(0x40 + 2 * t));
+            n.step();
+        }
+        n.run_all(1000);
+        say("%s", n.c.violation_report().c_str());
+    }
+    {   // W26: the AG's stream-entry checks (checkEntry): eight streams of count 0 on tile 9
+        Net n(Net::cfg(-1));
+        n.c.tile(9).set_stream(0, stream_src(0x100), 0x0, stream_count(0, 3, 1, 0, 9));
+        n.c.tile(9).set_stream(1, stream_src(0x100), 0x0, stream_count(0, 2, 1, 3, 9));
+        n.c.tile(9).set_stream(2, stream_src(0x100), 0x104, stream_count(0, 1, 1, 0, 9));
+        n.c.tile(9).set_stream(3, stream_src(0x101), 0x0, stream_count(0, 1, 1, 0, 9));
+        n.c.tile(9).set_stream(4, stream_src(0x100), 0x0, stream_count(0, 0, 1, 0, 70));
+        n.c.tile(9).set_stream(5, stream_src(0x100), 0x0, stream_count(0, 0, 1, 0, 126));
+        n.c.tile(9).set_stream(6, stream_src(0x100), 0x0, stream_count(0, 0, 1, 4, 5));
+        n.c.tile(9).set_stream(7, stream_src(0x100), 0x0, stream_count(0, 0, 0, 5, 9));
+        n.c.tile(9).set_master_config(master_config(RUN_STREAMS, 0, 8, 0, 0, 1));
+        n.c.tile(9).pulse(PULSE_START);
+        n.c.run(200);
+        say("%s", n.c.violation_report().c_str());
+    }
+    {   // W26: invariant 6: HIST counts past 17 bits, reported once a tile
+        Net n(Net::cfg(-1));
+        n.c.tile(9).set_master_config(master_config(0, 0, 0, 0, 1, 1));
+        for (unsigned i = 0; i < 256; i++) n.c.tile(9).hist_poke(i, 0x1FFFF);
+        n.c.tile(9).set_remaining(1, 8);
+        for (unsigned i = 0; i < 4; i++) n.at(12 + i, 10 + 3 * i, 9, lw::M_SRC, 1, 0, lw::SIZE_64, 0x0101ull * (i + 1), 0);
         n.run_all(1000);
         say("%s", n.c.violation_report().c_str());
     }

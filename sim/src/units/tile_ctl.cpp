@@ -47,13 +47,14 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     // W15: the slot's paths behind periph_slot; W14: a controller (64-66) has a receive side (its target's queue), every
     // core the request port's send side
     auto& c = cfg.add<TileCore>(t + "core", core, k, g.cfg.read_port_depth, periph_slot, k >= 64, g.cfg.done_gate, sim::check::kOn);
-    auto& b = cfg.add<TileCtl>(t + "ctl", block, kHasOvfEvent<ControlIO>, true, periph_slot);
+    auto& b = cfg.add<TileCtl>(t + "ctl", block, kHasOvfEvent<ControlIO>, true, periph_slot, sim::check::kOn);
     auto& d = cfg.add<Director>(t + "dir", dc);
     auto& we = cfg.add<WriteEngine>(t + "we", g.we_in_depth, g.cfg.ts_engine_latency, g.cfg.mem_chunks);
     auto& ag = cfg.add<AddrGen>(t + "ag", k, lookahead, true, sim::check::kOn);
     auto& ga = cfg.add<Gather>(t + "gather", g.gather_depth, k, true);
     auto& ts = cfg.add<TableStore>(t + "ts", true, sim::check::kOn);   // W26: the busy Wires under SIM_CHECKS (the checker)
     auto& hs = cfg.add<HistStore>(t + "hist", sim::check::kOn);
+    hs.ck_tile = int(k);                                  // W26: invariant 6's fact
     SramConfig sc;
     sc.mem_chunks = g.cfg.mem_chunks; sc.area_queue_depth = g.cfg.area_queue_depth;
     sc.write_combining = g.cfg.write_combining; sc.fifo_count_before_pop = g.cfg.fifo_count_before_pop;
@@ -84,6 +85,7 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
         cfg.connect(hs.busy_hist, c.busy_hist);
         cfg.connect(ts.busy_ptr, c.busy_ptr);
         cfg.connect(ag.running_out, c.ag_running);
+        cfg.connect(b.go_out, c.go_seen);
     }
     // G3 (W11): the write engine's PTR RMWs, count-on-arrival, and its writes into the big SRAM
     cfg.link(we.ts_req, ts.req_we, g.cfg.ts_engine_latency);

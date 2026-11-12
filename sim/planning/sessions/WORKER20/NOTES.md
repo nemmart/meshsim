@@ -146,6 +146,38 @@ remaining kinds, interleaved as the suites ask.
   its refusal lifted) and `Chip::log()` ("cycle T tile K: TRACE 0xV", the part of ref's Chip.log v1.35 keeps).
   MachSelf's TRACE case (search.c, N = 4096, one run; SearchBench's data with java.util.Random: tiles 0, 7, 63's stores
   and their cycles) equal to ref's. The scratch layout of machself.sh now has fw/images too.
+- **W24's F6 fixed**: PhaseLog's read-port peak by ref's rule (ReadPort.peak: in use right after a store, the same
+  cycle's injection counted out, ref's injection running before the core). PhaseLog keeps it itself, cycle by cycle,
+  from the core's stores and the read side's injections after each cycle (`PhaseLog::after_cycle`); the core's
+  `rp_peak` stays a plain statistic. MachSelf's rdpeak case (search.c at SRAM read latency 4, variant 1: PhaseLog's CSV,
+  peak_readPort 1 in ref) fails without the fix (2) and passes with it.
+- **W22-9 / W23's (a): Net on any machine** (Config.machine() included, as ref's; not with cc_cores). NetSelf's
+  machine case (HooksTest's and RequestBusTest's machine(): the tiles waiting in their boot ROMs, periphType 0 and 4:
+  data memory, big SRAM, a broadcast; the 74 violations they raise) equal to ref.
+- **PhaseLog's unreadOverwrites** now W26's `TileCore::track.overwritten_unread` summed over the tiles (ref's
+  cmem.overwrittenUnread), plus port B's write of the cycle just run (ref counts it at that cycle; the C++ core takes it
+  at its next step: `TileCore::overwrites` on a copy of the tracking, beside W26's track_port_b). The local fixtures
+  have only zeros there: W24's kit CSVs (4,417 nonzero rows in v1.3) are the check.
+- **W22-10 done**: `MachConfig::reqbus_host` and `Chip::reqbus()` (ref's RequestBus from a test on the machine with
+  C&C's model: pending, get, peek_request, receive with its underflows, controller_send, queue sizes, credits, dropped,
+  delivered; reads as ref has them at the end of the cycle, the test's pops counted out). Units: `ReqHost` (reqbus.h,
+  harness-only: controllerSend's eight beats straight into the root's input 8 + c from t + hop, beat 0 as of the cycle
+  just run; the pops and their credits), the receive queues and controller inputs built without leaves
+  (`add_reqbus(..., cc_leaves = false)`, `ChipSpec::reqbus_host`); the bus exact (D34's credit latency 0) on that machine.
+  Framework: `Sim::put_late` on a Link, `Sim::has_unit` (harness-only). Found: ref's quiescent leaves the request bus out
+  (Tile.quiescent, Chip.quiescent), so `Chip::quiescent` now ignores the bus's units too. NetSelf's reqbus case (a
+  tile's request through its core's stores, a controllerSend, pending/get/receive/underflow, credits, the root's drops
+  of targets 3 and 5) equal to ref.
+- **W22-11, W22-12, W22-18 and W23's (b)-(d) done**: `TileRef::req_set_w`, `req_send` (as of the cycle just run, put_late
+  on the core's push; the block's count and W0-W2 as ref's send leaves them), `req_can_push`, `req_w`; the core's data
+  port through `load`/`store` (W22-12), loads now with ref's side effects (EVENTS consumed under the mask, a window's
+  consuming word, REQUEST_GET on a mesh tile 0, REQUEST_RECEIVE 0 with receive underflow), made by the core in its step at
+  t (TileCore's host posts, harness-only), and from a present peripheral's window (`Sim::regfile_value`, harness-only);
+  `rp_host_queue`, `rp_idle` (ref's rule: a return injected at t frees its entry at t + 1; InjReadSide's injNow
+  statistic), `rp_all_accepted` (TileCore's host reads, harness-only); `set_events` (sticky, as `set_errors`) and
+  `schedule_go(t)` (TileCtl's host GO at its endCycle(t); the preview includes it). NetSelf's hooks case (sticky EVENTS,
+  EVENTS consumed, GET/RECEIVE and ERRORS [14]'s timing, a scheduled GO, window 1 with the replayer, the request port,
+  the host queue's idle/all-accepted cycles and its results) equal to ref.
 - Found on the way: `peek_local` now applies port B's write of the cycle just run (it reaches the C++ core a cycle
   after ref's memory has it), so memory read right after a run that stops at quiescence is ref's.
 

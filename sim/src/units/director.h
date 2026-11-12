@@ -121,7 +121,7 @@ struct Director {
             ck::record(c.now(), int(cfg.tile), ck::Kind::DIR_READPORT_OVERLAP, c.through_last(rp_stores) - rp_accepted, d, h, hi);
         }
         if (mode == lw::M_WRITE && size != lw::SIZE_UNDEF && !lw::aligned(a, size))
-            FATAL("director (tile %u): a mode-0 packet at 0x%x not aligned to its size, cycle %llu: UB (v1.25 s8b)", cfg.tile, a, (unsigned long long)c.now());
+            FATAL("traffic director (tile %u): a mode-0 packet at 0x%x not aligned to its size, cycle %llu: UB (v1.25 s8b)", cfg.tile, a, (unsigned long long)c.now());
         if (lw::bad_packet(mode, size, a, cfg.periph_present)) {
             c.put(bad); bad_packets++;
             ck::record(c.now(), int(cfg.tile), ck::Kind::DIR_BAD_PACKET, 0, d, h, hi);
@@ -133,7 +133,7 @@ struct Director {
             return sim::Wake::none();
         }
         if (lw::reserved_mode(mode))
-            FATAL("director (tile %u): a packet in the reserved mode %u at cycle %llu: UB (v1.25 s8e)", cfg.tile, mode, (unsigned long long)c.now());
+            FATAL("traffic director (tile %u): a packet in the reserved mode %u at cycle %llu: UB (v1.25 s8e)", cfg.tile, mode, (unsigned long long)c.now());
         if (mode == lw::M_COUNT && ctr == 0) { ck::record(c.now(), int(cfg.tile), ck::Kind::DIR_COUNT_CTR0, 0, d, h, hi); }   // a fact only (the count stays as before)
         if constexpr (ck::kOn) {                               // W20: ref's checkUncounted, bootKinds (facts only)
             if (ctr == 0 && mode != lw::M_GATHER && mode != lw::M_COUNT) {

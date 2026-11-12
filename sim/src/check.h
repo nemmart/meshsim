@@ -96,7 +96,8 @@ enum class Kind : uint16_t {
                                 //   a3 the phase (the harness reports once per tile and phase, as ref)
     // ---- the HIST store, the AG's rotations ----
     HIST_OVERFLOW,              // (no arguments; once per tile)
-    ROTATION_LATE,              // (no arguments; the first per tile)
+    ROTATION_LATE,              // a0 the AG's run number (ref reports the first late rotation of each run: its counter
+                                //   restarts at a run's load, Chip.checkInvariants' s[7])
     // ---- the register block (TileControl.violate) ----
     CTL_WFI_WOKEN,              // (no arguments)
     CTL_RESERVED_BITS,          // a0 the register's index (checker.cpp's names), a1 the reserved bits set
@@ -112,8 +113,13 @@ enum class Kind : uint16_t {
     CTL_MRET,                   // (no arguments)
     CTL_ALIAS,                  // a0 the (word) address past the end of data or program memory
     CTL_DMEM_RESERVED,          // a0 the store's address (into data memory's first 16 bytes)
+    CTL_REQ_FULL,               // (no arguments) a request pushed into a full request FIFO (RequestPort.send; harness only)
     CTL_TABLE_BUSY,             // a0 the table (table_store.h: STREAM_SRC 0, DEST 1, COUNT 2, GROUP 3, PTR 4, HIST 5), a1 the
                                 //   word index: the window accessed while its engine uses it (Controller.window, 4.10)
+    SLOT_VIOLATION,             // the peripheral slot's own (PeripheralSlot.violate, W26): a0 its code (periph_slot.h F_*),
+                                //   a1, a2 its arguments, a3 a full post's depth; F_PERIPHERAL: a1 n, a2 the peripheral's type
+    TRACER_VIOLATION,           // the Tracer's (Tracer.violate through its slot, W26): a0 its code (tracer.h V_*), a1, a2 its
+                                //   arguments (V_UNDEFINED: a2 the ALU's text, a static string)
     PERIPH_VIOLATION,           // a peripheral's violation through its slot to the block (ref's Peripheral.Host.violate):
                                 //   the replayer's (F2): a0 its code, a1-a3 its arguments (units/replayer.h)
     // ---- the controller's memories (ControllerMemories) ----
@@ -142,7 +148,7 @@ enum class Kind : uint16_t {
     REQBUS_QUEUE_OVERFLOW,      // a0 the target
     REQBUS_NO_RECEIVER,         // a0 the source unit, a1 the target
     CNC_RX_LOST,                // (no arguments)
-    EP_BAD_PACKET,              // a0 the reason's index, a1 the sender's address
+    EP_BAD_PACKET,              // a0 the header (LinkWord.whyBad's reason from it), a1 the sender's address
     EP_SIZE_UNDEF,              // a1 the sender's address
     EP_RESERVED_MODE,           // a0 the mode, a1 the sender's address
     // ---- the cores' own checks (CcCores.check: the same per-unit kinds, reported in slot CORES at tile 64-66) ----

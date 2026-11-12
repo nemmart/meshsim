@@ -956,6 +956,32 @@ void Sim::put_late(const std::string& unit, HoldOut p, const Word* w, unsigned n
     for (unsigned i = 0; i < n; i++) x[1 + i] = w[i];
     e.pending++;
 }
+void Sim::put_late(const std::string& unit, LinkOut p, const Word* w, unsigned n) {
+    if (impl_->running) FATAL("Sim::put_late('%s') during a run: between runs only", unit.c_str());
+    if (impl_->threads) FATAL("Sim::put_late('%s'): one domain only (the harness's machines run one thread)", unit.c_str());
+    auto it = impl_->by_name.find(unit);
+    if (it == impl_->by_name.end()) FATAL("Sim::put_late: no unit named '%s'", unit.c_str());
+    Engine& e = impl_->e;
+    if (e.now == 0) FATAL("Sim::put_late('%s'): before the machine's first cycle", unit.c_str());
+    Route& r = e.routes[p.route];
+#ifdef SIM_DEBUG
+    if (r.owner != it->second) FATAL("Sim::put_late: the Hold isn't '%s''s", unit.c_str());
+#endif
+    if (r.kind != Kind::link || r.cls != kNoClass || r.width != n)
+        FATAL("Sim::put_late('%s'): a Link of width %u by value (this one: width %u)", unit.c_str(), n, unsigned(r.width));
+    const Cycle t = e.now - 1;                          // the cycle just run: the put is that cycle's
+    if (r.last_put == t) FATAL("Sim::put_late('%s'): the unit put on this Hold in cycle %llu already (two puts)", unit.c_str(),
+                               (unsigned long long)t);
+    r.last_put = t;
+    const Wheel& wh = e.wheels[r.wheel];
+    const Cycle at = t + r.latency;
+    Bucket& b = wh.buckets[at & wh.mask];
+    if (b.empty() && e.due_ok) e.due[at & 63] |= uint64_t(1) << r.wheel;
+    Word* x = b.append();
+    x[0] = r.dest;
+    for (unsigned i = 0; i < n; i++) x[1 + i] = w[i];
+    e.pending++;
+}
 void Sim::wake_all() {
     if (impl_->running) FATAL("Sim::wake_all during a run: between runs only");
     if (impl_->threads) return impl_->threads->wake_all();
@@ -995,6 +1021,17 @@ Cycle Sim::now() const { return impl_->threads ? impl_->threads->now() : impl_->
 const Sizes& Sim::sizes() const { return impl_->threads ? impl_->threads->sizes() : impl_->sizes; }
 std::string Sim::partition() const { return impl_->threads ? impl_->threads->partition() : std::string("one domain"); }
 
+uint32_t Sim::regfile_value(RegFileIn p, unsigned i) const {   // W20 (harness-only)
+    if (impl_->running) FATAL("Sim::regfile_value during a run: between runs only");
+    if (impl_->threads) FATAL("Sim::regfile_value: one domain only");
+    const RegFilePort& r = impl_->e.regfiles[p.idx];
+    if (i >= r.n) FATAL("Sim::regfile_value: register %u of %u", i, r.n);
+    return r.regs[i];
+}
+bool Sim::has_unit(const std::string& name) const {      // W20 (harness-only)
+    if (impl_->threads) FATAL("Sim::has_unit: one domain only");
+    return impl_->by_name.count(name) != 0;
+}
 uint16_t Sim::type_of(const std::string& name) const {
     if (impl_->threads) return impl_->threads->type_of(name);
     auto it = impl_->by_name.find(name);

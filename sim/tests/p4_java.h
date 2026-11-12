@@ -47,3 +47,11 @@ inline std::string jlist_int(const std::vector<int>& v) {
 }
 
 }  // namespace p4
+
+namespace p4 {
+// Java's Formatter for %.Nf: the double's shortest decimal digits (Double.toString's), rounded HALF_UP at N places
+// (W21's java_2f generalised); width as %W.Nf (right-aligned, spaces).
+std::string jfixed(double x, int prec, int width = 0);
+// Java's %,d: groups of three with commas
+std::string jgroup(int64_t v, int width = 0);
+}  // namespace p4

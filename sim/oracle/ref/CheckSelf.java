@@ -132,6 +132,97 @@ final class CheckSelf {
             n.runAll(1000);
             System.out.print(n.c.violationReport());
         }
+        {   // the peripheral slot's own checks through the block (PeripheralSlot.violate; W26, 1a): a store to window 1's
+            // word 8 (no DMA on a mesh tile), a load of its reserved word 10, a store to its reserved word 22
+            Config k = Mach.cfg(-1); k.checkErrors = false; k.maxViolationMessages = 200;
+            Mach m = new Mach(k);
+            int P = Registers.PMEM_BASE, LOOP = 0x0000006F, X1 = 0x80000093;
+            int[][] prog = { { LOOP }, { X1, 0x2200A023, LOOP }, { X1, 0x2280A103, LOOP }, { X1, 0x2400AC23, LOOP } };
+            for (Tile p : m.c.tiles) { int[] w = prog[p.idx % prog.length]; for (int i = 0; i < w.length; i++) p.core.pokeLocal(P + 4 * i, w[i]); }
+            m.c.run(40);
+            m.c.cc.command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, P).runWhenReady();
+            m.c.run(300);
+            System.out.print(m.c.violationReport());
+        }
+        {   // a WFI woken by an event other than GO with done set, the done gate off (TileControl.takeWake; W26, 1a):
+            // EVENTS_MASK = run done, done pulsed, a run of count 0 started, WFI
+            Config k = Mach.cfg(-1); k.checkErrors = false; k.maxViolationMessages = 200; k.doneGate = false;
+            Mach m = new Mach(k);
+            int P = Registers.PMEM_BASE;
+            int[] w = { 0x80000093, 0x40000113, 0x0220A023, 0x00100193, 0x0030A623, 0x0030A823, 0x10500073, 0x0000006F };
+            for (Tile p : m.c.tiles) if (p.idx % 5 == 2) for (int i = 0; i < w.length; i++) p.core.pokeLocal(P + 4 * i, w[i]); else p.core.pokeLocal(P, 0x0000006F);
+            m.c.run(40);
+            m.c.cc.command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, P).runWhenReady();
+            m.c.run(300);
+            System.out.print(m.c.violationReport());
+        }
+        {   // the request bus's root drops a request for a reserved target or one without a receiver (W26, 1b; W22-13):
+            // REQUEST_SET_W0 = target << 7, REQUEST_SEND, from tiles 1, 2, 3 mod 4 to targets 3, 5, 7
+            Config k = Mach.cfg(-1); k.checkErrors = false; k.maxViolationMessages = 200;
+            Mach m = new Mach(k);
+            int P = Registers.PMEM_BASE, LOOP = 0x0000006F, X1 = 0x80000093;
+            int[][] prog = { { LOOP }, { X1, 0x18000113, 0x0420A423, 0x0400AA23, LOOP }, { X1, 0x28000113, 0x0420A423, 0x0400AA23, LOOP },
+                             { X1, 0x38000113, 0x0420A423, 0x0400AA23, LOOP } };
+            for (Tile p : m.c.tiles) { int[] w = prog[p.idx % prog.length]; for (int i = 0; i < w.length; i++) p.core.pokeLocal(P + 4 * i, w[i]); }
+            m.c.run(40);
+            m.c.cc.command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, P).runWhenReady();
+            m.c.run(800);
+            System.out.print(m.c.violationReport());
+        }
+        {   // C&C's receive FIFO full (W26, 1b; the endpoints' send checks wait for the harness's Net.step to call them)
+            Config k = Net.cfg(-1); k.cncRxDepth = 4;
+            Net n = new Net(k);
+            for (int i = 0; i < 8; i++) n.at(10 + i, 40 + i, LinkWord.CC1, LinkWord.M_WRITE, 0, 0x100, LinkWord.SIZE_32, i, 0);
+            n.runAll(2000);
+            System.out.print(n.c.violationReport());
+        }
+        {   // the command slot after the boot (W26, W22's F4): the boot ROM takes the boot command at GO, so the first command
+            // after it may land before the program reads slot 0 (TileControl.endCycle), queued right behind the boot
+            Config k = Mach.cfg(-1); k.maxViolationMessages = 200;
+            Mach m = new Mach(k);
+            m.boot("search");
+            m.c.cc.command(LinkWord.BROADCAST, 2 << 24).go();
+            m.run(m::allStopped, 20000);
+            System.out.print(m.c.violationReport());
+        }
+        {   // the read port (ReadPort.store; W26): stores into a full queue (invariant 8; a misaligned destination is UB at the director)
+            Config k = Net.cfg(-1); k.readPortDepth = 2;
+            Net n = new Net(k);
+            while (n.c.cycle < 19) n.step();
+            for (int t = 20; t < 32; t++) {
+                if (t == 20) n.c.tiles[9].core.store(t, 0xFFFFF880, (1 << 17) | (2 << 19) | 0x100, -1);
+                else n.c.tiles[9].core.store(t, 0xFFFFF87C, 0x40 + 2 * t, -1);
+                n.step();
+            }
+            n.runAll(1000);
+            System.out.print(n.c.violationReport());
+        }
+        {   // the address generator's stream-entry checks (AddressGenerator.checkEntry; W26): eight streams of count 0 (each
+            // visited and checked, nothing issued) on tile 9: size 11, mode 3 at 128, a misaligned destination, a misaligned
+            // source, d = 70, the broadcast on a mesh tile, a gather to another unit, count-only on counter 0
+            Net n = new Net(Net.cfg(-1));
+            n.c.tiles[9].setStream(0, Fields.streamSrc(0x100, 0), 0x0, Fields.streamCount(0, 3, 1, 0, 9));
+            n.c.tiles[9].setStream(1, Fields.streamSrc(0x100, 0), 0x0, Fields.streamCount(0, 2, 1, 3, 9));
+            n.c.tiles[9].setStream(2, Fields.streamSrc(0x100, 0), 0x104, Fields.streamCount(0, 1, 1, 0, 9));
+            n.c.tiles[9].setStream(3, Fields.streamSrc(0x101, 0), 0x0, Fields.streamCount(0, 1, 1, 0, 9));
+            n.c.tiles[9].setStream(4, Fields.streamSrc(0x100, 0), 0x0, Fields.streamCount(0, 0, 1, 0, 70));
+            n.c.tiles[9].setStream(5, Fields.streamSrc(0x100, 0), 0x0, Fields.streamCount(0, 0, 1, 0, 126));
+            n.c.tiles[9].setStream(6, Fields.streamSrc(0x100, 0), 0x0, Fields.streamCount(0, 0, 1, 4, 5));
+            n.c.tiles[9].setStream(7, Fields.streamSrc(0x100, 0), 0x0, Fields.streamCount(0, 0, 0, 5, 9));
+            n.c.tiles[9].setMasterConfig(Fields.masterConfig(Fields.RUN_STREAMS, 0, 8, 0, 0, 1));
+            n.c.tiles[9].pulse(Fields.PULSE_START);
+            n.c.run(200);
+            System.out.print(n.c.violationReport());
+        }
+        {   // invariant 6 (W26): HIST counts past 17 bits (every HIST word at 0x1FFFF, count-on-arrival): reported once a tile
+            Net n = new Net(Net.cfg(-1));
+            n.c.tiles[9].setMasterConfig(Fields.masterConfig(0, 0, 0, 0, 1, 1));
+            for (int i = 0; i < 256; i++) n.c.tiles[9].hist.poke(i, 0x1FFFF);
+            n.c.tiles[9].dir.remaining[1] = 8;
+            for (int i = 0; i < 4; i++) n.at(12 + i, 10 + 3 * i, 9, LinkWord.M_SRC, 1, 0, LinkWord.SIZE_64, 0x0101L * (i + 1), 0);
+            n.runAll(1000);
+            System.out.print(n.c.violationReport());
+        }
         {   // the message cap (maxViolationMessages): the count goes on
             Config k = Net.cfg(-1); k.maxViolationMessages = 3;
             Net n = new Net(k);

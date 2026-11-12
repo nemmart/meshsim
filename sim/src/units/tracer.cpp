@@ -1,6 +1,8 @@
 // tracer.cpp: the Tracer (tracer.h), ported from `ref`'s Tracer.java (WORKER14), method for method and in its order.
 #include "units/tracer.h"
 
+#include "check.h"
+
 #include <cstdio>
 #include <cstring>
 
@@ -91,6 +93,24 @@ void Tracer::violate(int64_t t, int code, uint64_t a, uint64_t b) {
         f.t = t; f.code = code; f.bits = 0; f.a = a; f.b = b;
     }
     n_violations++;
+    // W26: ref's host.violate: the slot passes it to the register block, a chip violation (the text: violation_text)
+    sim::check::record(uint64_t(t), me_, sim::check::Kind::TRACER_VIOLATION, uint64_t(code), a, b);
+}
+// W26: ref's Tracer.violate texts (W14's), for the checker: a, b as violate's (V_UNDEFINED: the op, the ALU's text)
+void Tracer::violation_text(int code, uint64_t a, uint64_t b, char* o, size_t n) {
+    char nb[24];
+    auto op = [&](uint64_t v) -> const char* {
+        const char* nm = v < 256 ? alu::name_or_null(unsigned(v)) : nullptr;
+        if (nm) return nm;
+        std::snprintf(nb, sizeof nb, "op%lld", (long long)int32_t(uint32_t(v)));
+        return nb;
+    };
+    switch (code) {
+        case V_ADVICE_UNCONSUMED: std::snprintf(o, n, "a word-0 write with advice still unconsumed (%llu values): a mid-segment rewrite is UB (4.21.3)", (unsigned long long)a); break;
+        case V_UNDEFINED: std::snprintf(o, n, "undefined result: %s in %s", b ? reinterpret_cast<const char*>(uintptr_t(b)) : "?", op(a)); break;
+        case V_XFER_NO_NFV: std::snprintf(o, n, "a control transfer from a row without next_from_value (%s)", op(a)); break;
+        default: std::snprintf(o, n, "%s", violation_name(code)); break;
+    }
 }
 // Sets ERRORS bits; every error but queue overrun stops the Tracer where it is (item 152).
 void Tracer::error(int64_t t, int bits, int code, uint64_t a, uint64_t b) {
@@ -463,7 +483,7 @@ void Tracer::row(int64_t T) {
     const unsigned pc_inc = !last ? 0 : compressed ? 2 : 4;
     const uint64_t pcv = pc();
     alu::exec(op, v_rs1, v_rs2, v_rd, pcv, pc_inc, i0p0, log_word, so, alu_);
-    if (alu_.undefined != nullptr) violate(T, V_UNDEFINED, op);
+    if (alu_.undefined != nullptr) violate(T, V_UNDEFINED, op, uint64_t(reinterpret_cast<uintptr_t>(alu_.undefined)));   // (W26: the text)
     // assertions (4.21.4: evaluated, appendix 2 H)
     if (!assertion_holds(op, v_rs1, v_rs2)) { error(T, 1 << ERR_ASSERT, E_ASSERT, v_rs1, v_rs2); return; }
     // pc and instr_idx (4.19.7, 4.21.4)

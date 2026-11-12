@@ -1,0 +1,1433 @@
+# Decisions toward v1.3
+
+One entry per decision, in the order made; later entries may revise earlier ones, and superseded points are
+marked in place. Labels: O owner decision, T confirmed by Tony. Builds on v1.2 (`DECISIONS-v1.2.md` and, once
+written, the v1.2 spec). **v1.3's focus is the Tracer** (owner, 2026-10-29).
+
+---
+
+**How v1.3's spec is meant** (owner, 2026-11-06): it makes **reasonable default calls** so Tony can start the RTL, and states
+what the hardware must do observably rather than how. Where the RTL finds a better way, the spec follows it; nobody should feel
+strongly about a default. (So, for instance, item 142's region decode is Tony's choice, and item 148's fill statuses are frozen
+as the default interface: ok, hole, not owned, beyond the depth's capacity.)
+
+## 1. The Tracer: components (2026-10-29; restated 2026-11-01)
+
+The Tracer is C&C 3's peripheral (v1.2, 25): the RV64 row machine that executes the guest program and writes each window's run
+log, the streams the tiles' replayers consume (spec 4.19). It is its own core (section 25), and around it (O):
+
+1. **Its startup state:** the replayer's 68-word state record (section 23), naming the guest's memory and map files.
+2. **The memory interface:** 16 KB instruction and data caches; every miss a 128 B line of a file, (root, depth, line), translated
+   by the memory system (sections 20, 21). (Replaces a page table held locally.)
+3. **The jump LRU** (64 entries, pc to `instr_idx`) and the jump-target map file behind it (section 18).
+4. **The read queue** (4 KB, the segment's advice) and the **expansion queue** (4 KB, controller-fed expansions), in the
+   replayer's region map (section 12). (Replaces two local expansion memories, 8 KB and 4 KB.)
+5. **The LRU compressors: two sets of three**, one compressor per stream (code, read log, write log) in each set (sections 3-4).
+6. **The big FIFOs** (2), one window each (section 2), and **the output queues** 0-3 the DMA sends (section 24).
+
+## 2. The big FIFOs (2026-10-29)
+
+Decided (O).
+
+- **Two FIFOs, each exactly 65,536 entries: one window of 2¹⁶ rows** (owner, 2026-11-01; was 72 x 1,024 = 73,728, an eighth
+  of headroom for pipelined windows): **the Tracer stops at done until its queues are emptied**, so nothing fills while
+  anything drains. The drain is at most about 768 KB per window (the code FIFO's 256 KB and the log FIFO's 520 KB, full), so
+  about 0.05-0.1 ms at one 128-bit packet a cycle and 1 GHz [estimate], against about 1.6 ms of budget per window (100 ms per
+  segment of 64 windows): a few percent at worst, less at the measured densities.
+  - **The code FIFO, 32 bits wide:** one opcode word per native instruction, at most one per row.
+  - **The log FIFO, 65 bits wide:** a 64-bit read-log or write-log word, and **a tag bit** saying which. One
+    FIFO with the tag, rather than a separate 1-bit FIFO kept in lockstep. The words stay in row order, which
+    is what the write log's last-load entry (E[15], spec 4.19.15) needs when the logs are compressed.
+    **Widened to 66 bits, a 2-bit tag** (owner, 2026-11-05; WORKER21's Q1): load, other read log, or write log. Set 2 compresses
+    from the FIFO after done, when the rows are gone, and must update E[15] on exactly the load rows the replayer will; a
+    read-log word may also be advice or a jump's next `instr_idx`, and whether a branch pops depends on registers set 2 lacks,
+    so the kind can't be recovered from the code stream. Cost: 8 KB more SRAM. **The tags never leave the Tracer:** set 2 uses
+    them to route the words to queues 2 and 3 and to update E[15], and the streams carry the 64-bit words only.
+- **At most one log word per row** (spec 4.19.15: "the core takes one code value per instruction and at most
+  one log value per row": an LD row pops the read log, an SD row the write log, no row both). So a window's
+  log words always fit. **This bound sizes the FIFO, so it must hold**: a row producing two log words would
+  overflow the FIFO mid-window, and since a window can't drain before it ends, the Tracer would deadlock.
+  *To validate:* the tracer model and the delivered run logs confirm no window exceeds 65,536 log words.
+- *(Windows were to be pipelined, window n draining while n + 1 filled; superseded: drain, then go, above.)*
+- *(Spec slip, passed to the v1.2 spec:* v1.1's 4.19.15 bounds a stream's length by "64K rows × at most two log
+  words × 66 bits", about 8.6 Mbit, which contradicts its own one-value-per-row rule. The bound is
+  64K × 66 bits, about 4.3 Mbit, within the 24-bit length field.)
+
+## 3. Two-pass compression (2026-10-29)
+
+Decided (O).
+
+- **Set 1 sizes:** as each raw word enters its FIFO, the same word runs through set 1's compressor for its
+  stream, which counts the compressed size and discards the output.
+- **At the window's end**, each stream's compressed size is compared with its raw size.
+- **Set 2 compresses on the way out:** a stream drains through set 2 if compressed is smaller, raw otherwise.
+  The choice is per window and per stream, recorded in the run log's per-run flags (spec 4.19.15, item 108).
+- *(Set 1 was to size window n + 1 while set 2 compressed window n; superseded by section 2's drain, then go: set 1 sizes each
+  window as it is traced, set 2 compresses it on the way out after done, before the next go.)*
+- **Set 2 reproduces set 1 exactly:** both start each window from the same table state and apply the same
+  rules, so set 2's output is exactly the size set 1 counted.
+- **Two sets of three, kept, each stream's compression switchable on and off** (owner, 2026-11-01): a per-stream enable bit; off
+  sends the stream raw, on lets the window's measurement pick the smaller. The second set stays because a stream's length must
+  be known at done (the state record goes first, and the replayer takes its sizes from it, section 24) while the FIFOs hold raw
+  words; compressing on entry instead would need separate read- and write-log FIFOs, each a whole window at compression's worst
+  case, about 0.5 MB more.
+
+## 4. The LRU tables (2026-10-29)
+
+Decided (O). The Tracer's encoders match the replayer's decoders (spec 4.19.15, item 104) exactly.
+
+- **Reset to all zeros at every window start (on the Tracer, by `PULSE_RUN`: section 24)**, as the replayer's decoder resets. Seeding the table with
+  distinct values was considered and dropped: it saves at most a few hits in a 65,536-row window.
+- **The encoder's tie rule:** a value matching several entries (duplicates are legal, 4.19.15) is coded as the
+  **lowest matching index**; in the write log, a match with the last-load entry E[15] is coded as index 15
+  first (4.19.15's existing rule). The decoder doesn't depend on the choice; it makes the encoding
+  deterministic, which set 2 reproducing set 1 requires.
+
+## 5. Window and proof boundaries (2026-10-29; restated 2026-11-01)
+
+Decided (O).
+
+- **Between windows** (every 2¹⁶ rows, each a run ending in done, section 24): **nothing is flushed or loaded.** The caches,
+  the jump LRU and the read queue carry straight on; C&C 3 drains the window's output and pulses go. A window boundary is only a
+  cut point in the run log.
+- **Between proofs** (each ASIC traces one segment of 64 windows per proof): **a new state is written** (section 23), which
+  invalidates the local caches and the jump LRU **without flushing dirty lines**, and flushes the queues; it names the next
+  proof's memory file (the Tracer's copy of its start image) and map.
+- **Why discarding is safe:** the Tracer writes into its own copy of memory (section 22), throwaway; the next proof's images are
+  built separately, by the Updater from the update stream. Within a proof, an evicted dirty line is still written back to the
+  copy's pages, since the program may read it again; at the proof's end the copy is freed with the proof's arena (section 20).
+- **The processor's state doesn't carry across a proof boundary:** each proof starts from its own frame 2 (sections 15, 23).
+  (Replaces an inference that it did.)
+
+## 6. The Tracer's output per window (2026-10-29)
+
+Agreed (O). The Tracer's output is defined from the replayer's side (spec 4.19); per window of 2¹⁶ rows it
+produces:
+
+- **The state record**, 67 × 128-bit words (1,072 bytes; spec 4.19.2) *(at v1.3, 68 words in a new order: the state word
+  first, the bitmap last, with a files word the replayers ignore; section 23)*:
+
+| word | contents | goes to |
+|---|---|---|
+| 0 | **template bitmap**, 128 bits: bit *i* set if the window uses controller-fed template *i* (0-127, spec 4.19.5) | the controllers: the tile's, to stage only the templates its window uses, and the chip's used set (spec item 115) |
+| 1 | **state word**: pc, `instr_idx`, next offset, the four flags (code, read log, write log compressed; includes store log) | replayer part 0, offset 0x000 |
+| 2 | **stream word**: the three streams' exact lengths in bits | replayer part 0, offset 0x010 |
+| 3-66 | **register image**: 64 words, two registers each | replayer part 0, offset 0x020 |
+
+- **The three streams**, code, read log and write log, each raw or LRU-compressed (3), into the replayer's queues.
+- The compressed flags in the state word and the lengths in the stream word are the two-pass compression's choice
+  and counts (3).
+
+## 7. The Tracer's expansion tables (2026-10-29)
+
+Agreed (O). Answers T1. *(Section 13 removes the untraced advice rows and their bank-1 registers; the rest stands.)*
+
+- **The 8 KB and 4 KB memories are a ROM of expansion templates and a decode table**, the replayer's sizes and
+  **format** (spec 4.19.3-4.19.6), built by the same table builder. The Tracer expands each instruction into rows
+  as the replayer will, to count rows, place window boundaries inside an expansion (the next offset) and know
+  which rows are traced.
+- **Their contents differ from the replayer's** (as concluded in a v1.1 session, reconstructed here):
+  - **Untraced advice rows.** Where Jolt's expansion takes advice (DIV and REM, for example), the Tracer's
+    template adds **untraced rows** that compute the advice in the register file's second bank, and the traced rows
+    read it through `advice_reg` (expansion word [62:56]). The replayer's template has the traced rows only and pops
+    the advice from the run log; an `untraced` word (expansion word [55]) reaching a replayer is an invalid
+    expansion (spec 4.19.11). This is why the run log differs from jolt-cpp's memory log on purpose (spec 4.19.2).
+  - **Registers for untraced work** (owner, 2026-10-29): an advice expansion runs with tracing off in **bank 1**, the
+    register file's second 128 registers; the result stays in a bank-1 register, which the traced row reads through
+    `advice_reg`. Bank 0 (0-127: x0-x31 and the virtual registers) is all the register image carries and all the
+    replayer sees. Operand codes 128-145 are taken by the special operands (spec 4.19.3), so **untraced work uses
+    registers 146-255**: code *c* names register *c*, and registers 128-145 are left unused (no remapping). Placing the
+    special codes at the top instead would have given the same 110 registers, only starting at 128; renumbering now
+    would ripple through the replayer, its model, the table builder and the test vectors for no capacity, so it stays.
+  - **Coverage** (owner, 2026-10-29; T4): a defined list of templates goes in the Tracer's 8 KB ROM, and **the few
+    that don't fit are fed by its controller, C&C 3, in the replayer's style** (spec 4.19.5): the Tracer reaches
+    such an instruction, presents it and waits, and C&C 3 supplies the expansion words (the Tracer's variant, with
+    any untraced advice rows).
+  - **Consequences:** the Tracer has an **expansion queue** that C&C 3 writes, a **"new expansion" event** and an
+    **`EXPANSION_OPCODE`** word in its peripheral window (as the replayer's, v1.2 section 39), and **stalls** while
+    C&C 3 responds; rare, as for the replayer (about 13 per window, around 0.4 % of a pass, spec 4.19.5).
+
+## 8. A divider for advice (2026-10-29)
+
+*(Superseded by section 13: advice comes from the host, so the Tracer needs no divider.)*
+
+Decided (O, T).
+
+- **The Tracer's row ALU includes the RV64 M extension's division as base operations:** DIV, DIVU, REM, REMU and
+  the W forms (DIVW, DIVUW, REMW, REMUW). They are used **only by untraced rows**; the replayer never executes
+  them (an untraced word reaching a replayer is already an invalid expansion, spec 4.19.11), so it needs no divider.
+- **The DIV/REM advice** (Jolt's `VirtualAdviceDivU`, `Div`, `Rem` and their W forms, spec 4.19.7) is then **one
+  untraced row** with the native operation, writing a bank-1 register (7), which the traced advice row reads through
+  `advice_reg`.
+- **To verify, not assume:** that Jolt's advice values equal RISC-V M's results in the edge cases (division by zero:
+  quotient all ones, remainder the dividend; signed overflow, −2⁶³ ÷ −1; the W forms' 32-bit sign extension). Where
+  Jolt differs, the untraced expansion adds a fix-up row.
+- **Still open:** the inlines' `VirtualAdvice` (BLAKE3, secp256k1 and others, which C&C 3 feeds, 7): computed by
+  untraced rows, or by C&C 3's software when it supplies their expansion words (T5).
+
+## 9. Moving to jolt-cpp's current expansions (2026-10-30)
+
+Decided (O). From WORKER7's F1.
+
+- **The hardware moves to jolt-cpp `main`**, away from the spec's reference copy (jolt-asic-planning `4f36b3d`, taken
+  from jolt-cpp on 2026-10-19). The trace our hardware produces has to match what the Jolt prover we pair with
+  expects, so following Jolt is not optional, only when.
+- **Why Jolt changed:** `main` re-expands the sub-word loads and stores and the 32-bit atomics around "load the aligned
+  doubleword, then work on the byte lane", and the expansions are much shorter:
+
+| instruction | `4f36b3d` rows | `main` rows |
+|---|---|---|
+| LB, LBU | 4 | 3 |
+| LH, LHU, LW, LWU | 5 | 3 |
+| SB | 8 | 6 |
+| SH, SW | 9 | 6 |
+| LR.W | 9 | 7 |
+| SC.W | 26 | 21 |
+| AMOSWAP.W | 18 | 8 |
+| AMOADD/AND/XOR/OR.W | 19 | 9 |
+| AMOMIN/MAX(U).W | 24 | 13 |
+
+- **What changed in the row operations** *(corrected 2026-10-31 by WORKER9's diff of `821e1bd` against `4f36b3d`; the
+  first version of this list, read at `52fbbab`, wrongly called `VirtualPext`, `WindowMask` and `ShiftData` new: they
+  already existed at `4f36b3d` and are in v1.2's replayer opcode table, spec 4.19.7)*:
+  - **New opcodes, only:** `VirtualLoadB/H/W` and `VirtualStoreB/H/W`, which load or store the doubleword containing
+    the access (address rounded down); memory rows like LD/SD.
+  - **`ShiftData*` changed meaning:** its second operand is now the base register, with the access's offset in a new
+    field, `shift_offset` (signed), so **the expansion word must carry it**.
+  - **Narrow memory rows** now carry the access's immediate, and the address is rounded down to the doubleword.
+  - **A misaligned access** aborts the tracer instead of producing an assertion row; `VirtualAlignAddr` and the
+    alignment assertions are gone.
+  - **`VirtualHostIO`** has no operands any more (still one row, different contents).
+  - **The AMO\*.W bodies** changed beyond their length (e.g. `AMOMAXU/MINU.W` now sign-extend).
+  - **The opcode numbering** shifted: 6 opcodes inserted, 3 removed.
+  - **PEXT** (owner, 2026-10-31; revises the 2026-10-30 entry; answers T6). **The spec requires `VirtualPext` and
+    `VirtualPextSigned` to be correct for any mask, contiguous or not**, replacing v1.1's narrowing to contiguous masks
+    (spec invariant 16). Jolt's prover proves the general case (jolt-cpp's PEXT lookup table and its prefix/suffix
+    split handle any mask), so a future expansion could use a scattered mask, and the hardware must still run it.
+    **How is the implementation's choice**, not the spec's: a single-pass extract network, or an iterative unit taking
+    one run of ones per cycle (the mask's lowest run `x…x 1ⁿ 0ᵐ` each cycle: two trailing-zero counts, a shifter and a
+    mask generator), as Tony first sketched. **The spec promises full speed only for contiguous masks**, every mask
+    current Jolt produces; any other mask takes an implementation-defined number of cycles.
+  - Gone: `VirtualAlignAddr` and the alignment assertions.
+- **Timing** (owner, 2026-10-31; *revised: the move is milestone v1.25, between v1.2 and v1.3*): **v1.2 stays on `4f36b3d`**, so the simulator port, the sort and the replayer run against
+  what was built and measured; **the move is v1.3 work**, together with the Tracer, since both the replayer's and the
+  Tracer's tables are rebuilt anyway. Pin a specific `main` commit when the work starts, not a moving branch.
+- **The work:** diff the two versions' expansions in full; rebuild the replayer's opcode table, ROM templates and
+  decode table (spec 4.19.6's template count and ROM fill); add `shift_offset` to the expansion word; regenerate the
+  replayer's test vectors; and the same for the Tracer's tables (7, 8). WORKER7's advice work is unaffected (the
+  division-family advice code is byte-identical).
+
+## 10. The Tracer computes all its advice; C&C 3 generates long expansions (2026-11-01)
+
+*(Superseded by section 13 for advice: the host supplies it, and C&C 3 generates no inverses. Q10 stays moot.)*
+
+Decided (O). Answers T5; makes Q10 moot.
+
+- **The Tracer computes every advice value itself, through expansions** (untraced rows, 7-8). **C&C 3 never computes
+  advice**; it only feeds template words. "Every advice" in jolt-cpp is the division family (six advice opcodes,
+  WORKER7's templates) and `VirtualAdvice` in the seven secp256k1 inlines: the field and scalar multiply and square
+  (200-381 untraced rows, generated and checked by WORKER7), the two division inlines and GLV. Upstream Rust Jolt's
+  advice tape doesn't apply (jolt-cpp doesn't implement it; WORKER7's F2).
+- **Q10 is moot:** C&C 3 never needs the inline's operands, so it never reads the Tracer's dirty cache lines.
+- **Long expansions are generated, not stored.** The division inlines' advice needs a modular inverse, about 53,000-
+  110,000 untraced rows as one straight-line template (about 1.7 MB of `templates.bin`, more than C&C 3 can hold). But
+  **C&C 3 produces the template words, so it can loop**: a Fermat inverse repeats one short block (square, and multiply
+  where the exponent's bit is 1), so C&C 3 holds the block once, a few hundred words, and emits it the required number
+  of times.
+  - **The sequence must not depend on the data**, since C&C 3 never sees the operands. Fermat's method qualifies: the
+    exponent is the fixed p − 2, so the order of rows is the same every time. A data-dependent inverse (binary GCD)
+    would not.
+  - **The feed is paced by the credits** (owner): a credit is permission to send up to half a queue, filled in as many
+    pieces as C&C 3 likes (v1.2 section 10), so C&C 3 generates the words on the fly and sends them in batches as credits
+    arrive. No buffer holds the whole expansion, and no streaming rate is required: if C&C 3 falls behind, the Tracer
+    waits, which is acceptable at this rarity.
+  - **The expansion's length is known up front** and sent in the first word, as for any controller-fed template.
+    *(Revised by v1.25 section 5, Q6: it counts **traced** words only; untraced words are marked and uncounted.)*
+- **For the table builder:** a long data-independent expansion is emitted as **a loop body plus a repeat count** (and
+  any prologue and epilogue), not as its full word sequence.
+
+## 11. The Tracer's time budget, and what the workloads cost it (2026-11-01)
+
+*(Section 13 removes the untraced rows this budget counts; its host-supplied backup for T7 is now the plan.)*
+
+From WORKER12's counts (`WORKER12/REPORT.md`; both workloads at 2²⁹, traced totals matching WORKER9's). *Corrected the same
+day: the first version assumed one row per cycle and counted only window 34's untraced rows; the Tracer runs at **about 4 cycles
+per row** (owner), and windows 33-36 all fall in the same proof.*
+
+- **The Tracer's time budget: under 100 ms** (owner) **per proof**, in which each Tracer traces its own 4M-row segment (a
+  proof is the whole run over 128 ASICs: section 14).
+- **The target: 4 cycles per traced instruction** (owner, 2026-11-05), a traced instruction being one row of Jolt's trace
+  (not a native RISC-V instruction, about 1.5 rows on average): the core's design point, as 4.21.9 states. Against the budget's
+  ceiling of about 24 cycles per row at 1 GHz (10⁸ cycles for a 2²²-row segment), that leaves a wide margin for cache misses,
+  map probes and the drain; B1 reports the core's cycles per row and the all-in figure per segment.
+- **Measured** (WORKER22, Quest 110b, both workloads at 2²⁹, every window and boundary matching): **4.65 cycles per row on EVM
+  Zone, 4.48 on Cyclone**, the worst segment 23.8 ms before the drain. **Fine as it is** (owner, 2026-11-05: ample spare
+  capacity), so the **16 KB caches stay**, though a 32 KB instruction cache would take EVM Zone to 4.37 (its fetch stalls are
+  capacity misses).
+  **With the output path** (Quest 110d, milestone 2): every window and boundary still matches, the cycles per row unchanged, and
+  the drain about 4 M cycles per segment; **all in, rows plus drain: EVM Zone 23.6 ms median, 23.7 ms worst; Cyclone 21.2 ms
+  median, 27.2 ms worst** (segment 10), against 100 ms.
+- **What the workloads cost**, at about 4 cycles per row and 1 GHz:
+  - **Cyclone:** 96,687 untraced rows against 371.5 M traced (0.026 %), all from the division family; at most 129 in any window.
+    No secp256k1 inlines. A proof is about 17 ms.
+  - **EVM Zone:** 32.0 M untraced rows (9.0 % of traced), 98 % from 254 DIVQ and 2 DIVR, **all in windows 33-36, so all in its
+    first proof** (window 34 alone: 11.07 M untraced against 65,536 traced).
+
+| EVM Zone's first proof | traced | untraced | at 4 cycles per row |
+|---|---|---|---|
+| single Fermat loop, as built | 4.19 M | about 32.0 M | **about 145 ms: over the budget** |
+| addition chain (C4) | 4.19 M | about 16.8 M | **about 84 ms: under, with about 16 % margin** |
+
+- **Q8 and T7: keep the single Fermat loop, with host-supplied advice as the backup** (owner, 2026-11-01). The loop puts EVM
+  Zone's first proof at about 145 ms, over the budget, but the system has a fallback that needs no Tracer hardware:
+  - **The host already knows every advice value**, in order, because it emulates the program itself.
+  - **C&C 3 already generates the inverse's expansion on the fly** (10). Instead of the 124,000-row loop it can send **a short
+    expansion that puts the known results into the right bank-1 registers** (a few untraced rows, the values as constants); the
+    traced rows read them through `advice_reg` exactly as before, so the trace and the replayer are unchanged.
+  - **What it needs, if used:** the host delivers each advice result to C&C 3 through Ingress **before the Tracer reaches the
+    call**, keyed by its position in the run (`instr_idx`), and C&C 3 matches them; the values equal jolt-cpp's, as they will if
+    the host computes them with jolt-cpp.
+  - It is a fallback for any heavy advice, not only the inverse. Used only if a workload's advice threatens the budget.
+  - The addition chain stays candidate C4; an inverse unit in the Tracer is not needed.
+- **The CSR decision holds** (v1.25 section 6): Cyclone runs 8,751 CSR instructions (10 per trap, 875 traps, at most 160 in any
+  window), EVM Zone none.
+
+## 12. The Tracer's region: parts 0 and 1 (2026-11-01)
+
+*(Section 13: no untraced rows, so bank 1 holds no untraced scratch; the starting state is unchanged.)*
+
+Decided (O). The Tracer is C&C 3's peripheral; everything C&C 3 or the memory system gives it arrives as 128-bit packet writes into
+its region, with **offset bits [22:20] picking the part**, as in the replayer's (spec 4.19.10, CL1).
+
+- **The Tracer's region is the replayer's map** (owner, 2026-11-01, restated): the same parts, offsets and loader code.
+
+| part | the replayer (spec 4.19.10) | the Tracer |
+|---|---|---|
+| 0 | the state record, the decode table at 0x1000, the ROM at 0x2000 | the same: its state is the replayer's 68-word record (section 23), its templates the replayer's universal tables (section 13) |
+| 1 | the code queue port, 4 KB | unused (zero length) |
+| 2 | the read-log queue port, **4 KB at v1.3** (8 KB at v1.25) | **the read queue: the segment's advice** (section 24), 4 KB |
+| 3 | the write-log queue port, **4 KB at v1.3** (8 KB at v1.25) | unused (zero length) |
+| 4 | the expansion queue port, 4 KB | the same: controller-fed expansions |
+
+  **Every queue is 4 KB at v1.3** (owner): the replayer's read-log and write-log queues shrink from 8 KB. Enough by the measured
+  densities (spec 4.19.15, Quest 085): the logs average 0.31-0.35 words per real row together (read 0.19-0.21), at most about 0.83
+  in Cyclone's densest windows; a half-queue refill (the credit, 4.19.8) lasts about 900 cycles at the measured worst density (WORKER19's
+  correction of an earlier 1,500), against a refill of a few hundred [estimate]. To confirm by meshsim's Stage B on both workloads (the stall
+  counts). (This replaces a part-0 text that ignored the stream word, gave bank 1 no initial state and started at an instruction
+  boundary; all three are superseded.)
+  - **T2, answered (WORKER16, 2026-11-01; `sessions/WORKER16-REPORT.md`):** at instruction boundaries, pc, `instr_idx`, registers 0-127
+    and RAM are the **whole** state: restarts matched at 1,096 of 1,096 points on Cyclone and 673 of 673 on EVM Zone at 2²⁹, once
+    mid-secp points carry jolt-cpp's advice buffer (`trace_owner.cpp:49-50`; section 13 covers it). The CSRs and the LR/SC
+    reservation are live, in registers 32-39. **Registers 40-47** are never read across an instruction but set the next write's
+    `rd_prev`, and jolt-cpp's JIT doesn't track them (section 13, open (c)); registers 48-127 were 0 at every instruction start.
+- **The page table is the guest's memory as a file** (owner, 2026-11-01; restated with section 20): **`.pages` is a sparse file**
+  whose byte offset is the guest address minus `lowest_address`, and **its tree is the page table**, in 4 KB pages throughout
+  (replacing a fixed three-level table with 8 top registers, before that 16 KB pages, 11 + 10 + 11 bits, a 4 GiB table and a flat
+  512 MiB one). Future programs are unknown, so the hardware takes the general case; storage scales with the pages that exist.
+  - **a data page:** 4 KB, 512 cells of 8 bytes;
+  - **index pages of 1,024 entries** above it, each level covering 1,024 times the one below (4 MB, 4 GB, 4 TB);
+  - **the depth follows the file's length** (section 20): **2 for K up to 2²⁹ cells** (a 4 GB, 32-bit offset; both workloads), 3
+    above it, up to section 14's 2³² cells.
+  - **One chunk size everywhere** (data pages, index pages, files, logs), so the memory system has a single 4 KB pool and
+    nothing fragments.
+  - **Translation belongs to the memory system** (section 20): the Tracer asks for (root, depth, line) of `.pages`; the memory
+    system's tree walker does the rest, through the shared cache (no TLB, section 21 (b)), at most one index read per level.
+  - **Measured clustering** (WORKER17, 2²⁹, in 16 KB pages): EVM Zone 69 pages in 3 16 MiB regions; Cyclone 693 pages in 4
+    (the 2.9 MB untrusted advice, and one 7.75 MiB run of stack plus heap). At 4 KB both still fit a handful of leaf tables.
+  - **Entries are 32 bits; bits 30:0 address the file system** (LPDDR) **in 128 B units** (owner; 2³¹ x 128 B = 256 GiB), the
+    format in LPDDR: **an address names a 128 B unit**, and **the memory system reads a page (4 KB, the most efficient), a half
+    page (2 KB), or 128 B (poor)** (owner). Tables and data pages are whole 4 KB pages, so a page-table entry's low 5 bits are 0 and
+    fetching a table or a data page is one page read; other pointers (a half page, a 128 B unit) use the finer addressing.
+    - **every entry, at every level:** bits 30:0, the page's address (an index page or a data page); **bit 31, the owned bit**
+      (owner, 2026-11-01): 1 means this file created the page; 0 means the page is shared from an ancestor and must be copied
+      before any change (section 20's `cow_open`). It is never cleared; whether a file may be written at all is a file-level
+      read-only flag. (Replaces a write bit, which freezing cleared and so lost ownership; and before that a read-only bit on
+      bottom entries only.)
+    - **no entry: `0xFFFFFFFF`** (owner), at every level; no valid entry has its low bits set, and address 0 stays usable. A table
+      must be filled with `0xFFFFFFFF`, not zeroed: a zeroed entry is a valid pointer to address 0.
+  - **A 512 KB cache of the file system, shared by the whole chip** (owner, 2026-11-01): **4,096 lines of 128 B**, caching
+    file-system (LPDDR) addresses, **after** translation, not any unit's address space; **a miss fills 128 B** (owner). One cache
+    in front of LPDDR keeps every unit coherent (the Tracer's tables and pages, C&C 2's directories and files, the Updater's
+    images, the cores): nothing sees stale data, and no private caches need invalidating. A copied page has a new address, so
+    copies can't alias, and pages shared between proofs are cached once.
+    - **Bulk streams bypass it** (integrator's proposal, with the sharing): the Updater's image building and the logs move whole
+      pages or half pages directly, invalidating any cached lines they overwrite, so they don't push others' working sets out.
+    - **Priority: the file system above the Tracer** (owner); the Updater, which must never stall (the broadcast stream), above
+      both for LPDDR bandwidth.
+    - **Line accesses only** (owner): word accesses happen only in the Tracer's local caches (section 21); every client of the
+      shared cache reads or writes whole 128 B lines (a client changing part of a line holds the line).
+    - **Organization: 8-way set-associative, 512 sets** (owner, 2026-11-01): an address is
+      already in 128 B units, so its low 9 bits pick the set and the other 22 bits are the tag; replacement LRU within a set.
+    - **Banking:** 8 banks of 64 KB, interleaved on the line address's low bits (a page's 32 lines spread over all of them);
+      each bank serves one 1,024-bit line per cycle; arbitration per bank, the file system ahead of the Tracer.
+    - **Misses: non-blocking**, about 8 to 16 outstanding (so a Tracer miss to LPDDR doesn't hold up a file-system hit); a miss
+      fills 128 B.
+    - **Write-back, write-allocate;** optionally, when all 32 lines of a page are dirty, they go back as one page write.
+    - **Coherence with bulk streams through allocation:** streams write freshly allocated pages, and **a page has no lines in
+      the cache when it is allocated**: freeing a page invalidates its 32 lines (one tag lookup in each of the 32 sets it spans),
+      so bulk writes never snoop.
+    - **Open:** the ways, the banks and the outstanding misses, from gold replaying both workloads' address streams (section 21
+      (d)).
+    - **The file system moves data pages directly** (owner), whole 4 KB pages like the Updater (section 20's buffers), and
+      reads and updates **index pages through it** (section 20). So the shared cache serves the Tracer and the controllers' line accesses. One coherence rule covers every page
+      client: **writing a page directly invalidates its 32 lines in the cache**, and **a page read directly has no dirty lines
+      there**, by ownership (the only pages dirtied through the cache are the Tracer's private copies, which no page client
+      reads during a segment).
+  - *(A page-table stream format, a walk of the 2,048 top-level entries and their leaves, was proposed here and is superseded:
+    the tables live as files and are read in place, section 19.)*
+- **Findings from upstream Jolt** (a16z/jolt `main` at `17a9459`, read 2026-11-01; `common/src/jolt_device.rs`, `constants.rs`):
+  addresses are 64-bit, with **no 4 GiB limit in Jolt** (jolt-cpp's 4 GiB is its emulator's own reservation). The used space is
+  **one contiguous range**: the I/O region (trusted and untrusted advice, inputs, outputs, termination and panic words) **below
+  `RAM_START_ADDRESS` (0x8000_0000)**, then the program, a stack canary, the stack and the heap (configurable, default 32 MiB)
+  **above it**. Every address is remapped to a cell index `(address − lowest_address) / 8`, `lowest_address` being the bottom of
+  the advice area; below it is an error; K bounds the number of cells. The range moves with configuration (a Jolt test with 512
+  MiB of advice puts `lowest_address` at 0x4000_0000). **Programs use both ends of the range and leave the middle empty** (owner).
+  So: a directory indexed from a **base register set to `lowest_address`** suits it. Not yet checked against jolt-cpp's layout.
+- **Next research area for v1.3** (owner, 2026-11-01): **the Tracer's memory: the page table and how it maps Jolt's layout** (its
+  two levels and sizes, the base, what an unmapped page means, the entry format, how C&C 3 builds and loads it per proof, the
+  throwaway layer, how jolt-cpp's layout compares with upstream's). "Needs to be dug into a lot more"; section 12's sizes are
+  proposals only.
+
+## 13. Advice comes from the host, in the read log (2026-11-01)
+
+Decided (O). Supersedes section 7's untraced advice rows and their bank-1 registers, section 8, and section 10's first and
+third bullets; answers T7 the way section 11 kept as the backup; makes C4 moot.
+
+- **The host supplies every advice value.** For each slice the host sends the Tracer an **input read log** of that slice's
+  advice words in row order. An advice row (`VirtualAdvice`, or the division family's advice) **pops the next read-log word into
+  `rd`, in the Tracer exactly as in the replayer** (spec 4.19.7); the Tracer copies each word into the read log it writes for the
+  replayers.
+- **Slices: 128 advice streams for a 2²⁹ run, one per 2²² (4M) rows**, aligned with the replayer windows. Rows are Jolt's,
+  virtual rows included. A sequence that crosses a boundary puts its pending words at the head of the next stream.
+- **The host builds them with jolt-cpp's JIT engine**, extended to emit the streams as it runs: the quotient or remainder for the
+  division family, `evaluate(operation, a, b)`'s 8 words for the secp256k1 inlines. The JIT already runs to each slice's start
+  (`execute_upto_cycle`, `trace_owner.cpp`), handing over to the interpreter inside virtual sequences, where `prepare_advice`
+  runs today. Work item W2.
+- **No untraced rows.** Every untraced row existed to compute advice (WORKER12 at 2²⁹: 32.0M on EVM Zone, nearly all from 254
+  `SECP256K1_DIVQ` Fermat inverses at about 124K rows each, up to 11.07M in one window; 97K on Cyclone). Gone with them: their use
+  of bank 1, `advice_reg`, section 8's divider, and C&C 3's generated inverses. **The Tracer's templates become the replayer's.**
+- **The starting state stays T2's:** pc, `instr_idx`, next offset and registers 0-127. jolt-cpp's secp advice buffer
+  (`secp_advice`, `next_secp_word`, `trace_owner.cpp:49-50`) is the one piece of state WORKER16 found outside them, live mid-sequence;
+  under this section it becomes the head of the next slice's stream.
+- **Size, measured (WORKER16, 2²⁹):** EVM Zone 3,782 advice words in all (per slice: min 1, mean 44.5, max 3,676; its secp work
+  all in slice 0); Cyclone 96,687 (min 0, mean 1,086, max 3,094). No 2²² boundary fell inside a secp sequence on either run.
+- **Words per operation:** a secp inline takes `shape(op).advice_words` (`inlines/secp256k1_shapes.hpp:10-16`), not always 8:
+  4 for MULQ, SQUAREQ and MULR, 6 for GLVR, 8 for DIVQ and DIVR; the division family takes 1. The streams must carry exactly
+  what the rows consume, or they fall out of step (W2).
+- **New for the Tracer:** a read-log input queue with its credits, fed by its controller.
+- **Open:**
+  - (a) ~~v1.25: the expansion word's tracer-only fields~~ **done:** reserved in v1.25 (DECISIONS-v1.25 section 9, spec `b7c90fb`).
+  - (b) ~~Whether bank 1 has any use left~~ **decided: probably not** (owner, 2026-11-01): with no untraced rows and a
+    128-register processor state (section 15), **the Tracer is a 128-register machine**; bank 1 (registers 128-255) goes.
+  - (c) **Registers 40-47 at a slice's start.** They set the next write's `rd_prev` and come from trace history, not RISC-V
+    state; jolt-cpp's JIT doesn't track them (WORKER16). jolt-cpp's tracer and GPU compressed-trace expander do handle them
+    (owner): find how, and what that means for slice starting states built on the host (W2).
+    **Scoped** (WORKER16, W3 report): the JIT tracks registers 0-47; 14 families (53 opcodes) write 40-47, each final value a
+    formula of what the JIT already has (operands, effective address, aligned memory word, quotient, reservation registers, pc);
+    note `rd` = x0 remaps `rd` to 40 and shifts the temporaries up by one. Plan: the four frequent families inline (about 99.5%),
+    a generic helper for the rest; the formulas are verified only once built, by the W3 checker's restarts.
+    **Deferred** with W2 (owner): needed in the long run, not soon.
+    **Rewound chunks** (WORKER17, 2026-11-04): a rewound chunk's header holds the boundary's registers, not the sequence start's
+    (`trace_owner.cpp:705`); both workloads hit it (230 chunks on EVM Zone, 48,081 on Cyclone), and no expanded row is wrong (every
+    row's rs1, rs2 and `rd_prev` equal the last value written, over all rows). It holds only because jolt-cpp's expansions don't
+    read a register 0-47 that the sequence changed before the boundary; nothing enforces it. The GPU expander, same headers and
+    replay, wasn't run.
+
+## 14. RAM K: up to 2³², one K per run (2026-11-01)
+
+Decided (O); also a reasonable size for the chip (O).
+
+- **RAM K ranges up to 2³² cells** (32 GiB of guest range). Smaller runs keep the smaller sizes: K is the next power of two above
+  the highest touched cell, as jolt-cpp chooses it (`node_context.cpp:318-371`, `trace_owner.cpp:1134-1140` at the pin; a
+  program-image floor, 2²³ for both workloads). Measured (WORKER17, 2²⁹): EVM Zone 2²³, Cyclone 2²⁴. K follows the run, not the
+  layout, so it can change between inputs of the same program.
+- **A proof is the whole run** (owner, 2026-11-01: a 4M segment is never its own proof): T = 2²⁹ for our workloads, spread over the
+  128 ASICs, one segment each. So **jolt-cpp's chunks are 8 bits** (log T ≥ 25, `config.hpp:121-127`; we match jolt-cpp, open (b)).
+- **The RAM one-hot chunks follow K:** *d* = ⌈log K / 8⌉ (`onehot_params.cpp:11-12, 48`), and the RAM `ra` virtualization's degree
+  is *d* + 1 (upstream `relations/ram/ra_virtualization.rs:60-62`). **At K = 2³², *d* = 4 and the degree is 5**; our workloads
+  (2²³, 2²⁴) have *d* = 3, degree 4. jolt-cpp's whole-run proofs use the same (WORKER17).
+- **jolt-cpp's K limits** (WORKER17): the `ra` virtualization accepts 2-6 chunks at the pin (`MAX_D` = 6), 2-8 at HEAD, so at
+  8-bit chunks it is no limit. But **the GPU read-write checking refuses K above 2²⁴ at the pin, whatever the chunk width**
+  (`RW_MAX_ADDRESS_SPACE = 1u << 24`, `ram/gpu/rw_sparse.hpp:33`, checked at `rw_sparse.tpp:93-97`), **2³⁰ at HEAD**; and the GPU
+  output check holds `ram_k` in a `uint32_t` (`ram/gpu/output_check.cu:89`). Both workloads fit, Cyclone exactly at 2²⁴. *(Earlier
+  text here assumed 4M-row proofs, and then said the pin was no limit at 8-bit chunks; both superseded.)*
+- **What jolt-cpp sizes densely by K** (WORKER17, at the pin; upstream not yet read):
+
+| sumcheck | dense in K | sized by T or by region |
+|---|---|---|
+| read-write checking | CPU: arrays and loops over K; GPU: about 7 K field elements | the accesses, sparse over T |
+| raf evaluation | 2 K field elements | |
+| output check | K / cards field elements per card, plus initial and final RAM snapshots of K x 8 bytes on every card | |
+| `ra` virtualization, Val check, Hamming booleanity | | T |
+| program image, untrusted advice | | their own words |
+
+  At K = 2³² a snapshot is 32 GiB and a K-sized array of field elements 128 GiB, so **jolt-cpp as written can't reach 2³²**.
+  Against that, our workloads touch 69 and 693 pages (1.1 and 11 MB). Open (d).
+- **Upstream's side, and the verifier** (WORKER17, 2026-11-04, a16z at 7189216; `sessions/WORKER17-REPORT.md` 8a0f058). Between f8fc214
+  (jolt-cpp 821e1bd's submodule), 7189216 (88dca85's) and 17a9459 nothing changes what RAM checking proves (a transcript change,
+  and #2190's range check of direct RAM loads; then only prover kernels).
+  - **The verifier is never dense in K:** Val_init's public part is evaluated as sparse word segments over the inputs and the
+    program image (`stage4/verify.rs:244-269`), with the committed advice and program image placed by block selectors; the output
+    check's publics are a range mask and sparse segments.
+  - **The layout bounds K:** the verifier takes a power of two from `compute_min_ram_k` up to `compute_max_ram_k`, the whole
+    layout (`verifier.rs:473-494`), so K = 2³² needs a layout over 16 GiB above `lowest_address`; our workloads' layouts allow at
+    most 2²⁴ (EVM Zone) and 2²⁶ (Cyclone).
+  - **Upstream's prover is dense in K in five sumchecks:** read-write checking (`val_final`, `val_init`; it also requires
+    log K ≤ 32), the output check (`val_io`, `io_mask`, `val_final`), raf evaluation, and the val check and `ra` claim reduction
+    (full eq tables over K). jolt-cpp's val check isn't: the GPU's uses at most four 8-bit chunk tables, the CPU's evaluates
+    eq(r_address, cell) per access.
+  - **The binding order is the prover's choice:** the verifier takes it from the proof's config. Upstream's prover defaults to
+    cycle-first; jolt-cpp binds address-first, confirmed in its kernels (RAM and registers, CPU and GPU).
+- **The hardware's sumcheck engines** handle the RAM `ra` virtualization at degrees 3 to 5 (*d* = 2 to 4). The other RAM
+  sumchecks' degrees don't depend on K; they gain address rounds, up to 32.
+- **Open:**
+  - (a) ~~per slice or whole run~~ **decided: one K for the whole run** (owner, 2026-11-01).
+  - (b) ~~the chunk width~~ **decided: match jolt-cpp** (owner, 2026-11-01): it is part of the proof's shape, which the
+    verifier shares. With a proof being the whole run, that is 8 bits (above).
+  - (c) ~~Moving the jolt-cpp pin~~ **decided** (owner, 2026-11-01): **v1.25 stays at 821e1bd** (frozen, accepted there);
+    **v1.3 moves to a deliberate new pin**, HEAD (88dca85) or later, after two checks: `src/tracer/isa` unchanged (true at
+    88dca85: 13 commits, the tracer's only change is image loading and reset, #1544), and row hashes per window identical on both
+    2²⁹ workloads. PR #2's tracer copy (7 files) is re-synced between WORKER16's tasks, not during one.
+  - (d) **The K-dense steps** (above): our hardware computes them over the touched pages instead (an absent page is zero, so
+    untouched cells contribute nothing or a closed form), or K is capped where dense structures fit. Read (above): the verifier
+    needs nothing dense, and the binding order is ours to choose. **88dca85's limits, confirmed** (WORKER17): GPU read-write
+    checking K ≤ 2³⁰ (`rw_sparse.hpp:35`; its packed column 31 bits, the write flag in bit 31, `:33-34`), `MAX_D` 8
+    (`ra_virtual.hpp:29`, 2-8 accepted), the output check's `uint32_t ram_k` (`output_check.cu:89`), and **`SumcheckContext::ram_k`
+    a `uint32_t` at both commits** (`sumcheck_context.hpp:36`), so every C++ sumcheck sees K as 32 bits and 2³² would truncate to 0;
+    `mem_waddr_p1` is 32-bit and holds the absolute address. **So jolt-cpp's real ceiling at 88dca85 is K = 2³⁰**, against this
+    section's 2³² for the hardware.
+
+## 15. What the host sends per segment: images and transport (2026-11-01)
+
+Decided (O), from the planning discussion of 2026-10-19 recorded in jolt-asic-planning PR #1 (branch `tracer-standalone`,
+`docs/write-stream-experiments.md`, with measurements on both workloads) and meshsim's planning notes of 2026-10-27. A proof is
+128 **segments** of 4M (2²²) rows, one per ASIC.
+
+- **Each segment comes from the host with three chunks** (owner):
+  1. **the processor state** at the segment's start: pc, `instr_idx`, the next offset, and registers 0-127. **A segment can start
+     inside a sequence, just like a replayer window** (owner): the next offset is then nonzero, registers 48-127 hold the
+     sequence's live scratch, and the sequence's pending advice words head the advice log (section 13). The host takes this
+     state from its interpreter, which steps the last rows to the exact cut (the JIT stops at the instruction boundary before);
+     at an instruction boundary registers 48-127 are 0;
+  2. **the advice log**, the segment's read-log input (section 13);
+  3. **the memory updates list**, the segment's delta: each word written during the segment with its last value (the dirty set,
+     "R-dirty" in PR #1; the host reads the values from guest memory at the segment's end, so stores are never logged).
+- **A proof's stream starts with the page counts** (owner; frame 1, section 16), before any chunk: **a per-segment table** (the
+  4 KB pages each segment writes) and **a per-ASIC table** (each ASIC's exact page needs). Every ASIC
+  reads all 128 counts, so C&C 3 can reserve exactly the pages the proof needs before any data arrives: its own segment's
+  private copies (below) and the pages the updates add to the start and final images. That is the planning notes' "the host
+  computes each ASIC's exact page count, so memory never runs out mid-proof". The host's JIT has the counts from its page
+  bitmaps (PR #1 section 4).
+- **Who needs what.** A segment's ASIC needs its own processor state and advice log. Memory is shared: the start image of segment
+  *k* is the initial image plus the updates of segments 0 to *k* - 1, and the final image is the initial image plus all of them.
+  So every ASIC receives **every segment's updates list, applied in segment order** (section 16; owner, 2026-11-01, replacing
+  PR #1's single stream sorted by address and merged across segments: per-segment lists are simpler on both sides and are what
+  one pass over a run produces).
+- **Three images per ASIC:** the initial image (cached, permanent), its segment's start image, and the final image, built by
+  applying the segments' lists in order (the planning notes' Updater, unit 73).
+- **Two copies of memory at the segment's start** (owner): the proof needs the start image intact, and the Tracer runs on its own
+  copy and changes it. With the page table (section 12) the second copy costs only the written pages:
+  - pages the segment only reads are **shared**, marked read-only;
+  - pages the segment writes are **duplicated before the Tracer starts**, the Tracer's table pointing at the private copy. The
+    host's JIT knows exactly which pages those are (PR #1 measured 182 and 499 pages written in a whole 2²⁹ run, EVM Zone and Cyclone).
+  - So **the Tracer never copies on write** (owner): a store to a page its copy doesn't own, or to a hole, means a table is wrong
+    or corrupted, a checked error (section 25).
+- **An absent page reads as zero** (PR #1 section 4). Answers T3's question for absent pages.
+- **The encoding: an LRU coder with bounded expansion, not LZ4** (owner): an LZ4 match can expand into a long copy while consuming
+  almost no input, so output outruns input and data must queue as it flows in from the host. A bounded-expansion code (each code
+  word at most one 64-bit value) keeps the decoder at the link's pace with only the 8 KB input queue (planning notes: no ring in
+  LPDDR). Measured, R-dirty with an LRU of 512: about 2.6 MB per proof for EVM Zone and 12.5 MB for Cyclone, against about 25.8 MB
+  raw for Cyclone; a raw mode per segment covers incompressible data.
+  **A small LRU: 32 entries** (owner): a hit names its entry in 5 bits, 6 with the hit flag. PR #1 measured 512 entries (49-83%
+  hits); 32 entries hit less, which the links' slack absorbs; to measure.
+- **The transport is one byte stream, identical for every ASIC** (owner). So the per-segment chunks (processor state, advice log)
+  travel in the same stream as the broadcast updates, and **each ASIC picks out its own segment's chunks**, by their position:
+  frames come in segment order (section 16). Below the byte stream: LVDS in, an 8 KB byte queue with flow control, credit-based flow to the Updater,
+  which must never stall (planning notes). How the stream reaches each ASIC (PR #1's chain per card, route 2') doesn't change
+  what an ASIC receives.
+- **Open:**
+  - (b) ~~the framing~~ **decided: section 16.** (The segment tag isn't needed: frames come in segment order.)
+  - (c) ~~FIFO against true LRU~~ **decided: true LRU** (owner): at 32 entries it is a move-to-front list, the same on both
+    sides (a hit sends the entry's rank and moves it to the front; a miss sends the value and pushes it at the front, dropping
+    the last). **Packing: copy the replayer's stream coding** (owner; spec 4.19.15): bit-packed, least significant bit first;
+    **hit:** flag 1, then a 5-bit index (6 bits); **miss:** flag 0, a size bit (0 = 32, 1 = 64), then the value, a 32-bit miss
+    zero-extended. Here the bits run least significant first within each byte of the byte stream. When the table resets (each
+    segment's updates, or each chunk) is open with (b)'s framing.
+  - (d) the physical topology (the chain, route 2'), which doesn't change the stream;
+  - (e) ~~the read-only pages~~ **measured** (WORKER17, 2²⁹): EVM Zone 11 read-only and 58 written pages; Cyclone 194 and 499.
+    Per segment, written pages min / median / max: 10 / 10 / 39 and 3 / 19 / 266; read-only: 6 / 8 / 12 and 8 / 69 / 180. All of
+    Cyclone's untrusted advice is read (178 pages); EVM Zone reads all 64 KiB of its trusted advice. Only 85 and 89 of the 128
+    segments have rows; the rest are padding.
+
+## 16. The segment file: framing (2026-11-01)
+
+Decided (O). **A tool on the host runs the trace and writes the file** (a slow one first is fine), which later runs load instead of
+tracing again (W3). It is also the byte stream every ASIC receives (section 15). "We might opt for something else later, but it's
+a really easy format to work with, from multiple languages" (O).
+
+- **Framing, as jolt-cpp's RPC messages** (`src/jolt-infra/rpc/message.{h,cpp}`: a response is [count][code][data], `header_limbs`
+  = 2): every frame is
+  - **u32 length, in 32-bit words, the header included** (so 2 + the data words, at least 2), least significant byte first;
+  - **u32 type**;
+  - **the data, zero-padded to a whole number of 32-bit words.** Every multi-byte value is least significant byte first.
+  - jolt-cpp rejects a zero length and caps a message at 2²⁶ words (256 MiB); a segment's raw updates are at most about 34 MB
+    (one new word per cycle), so the cap is comfortable.
+- **Frame types:**
+
+| type | frame | data |
+|---|---|---|
+| 1 | page counts | **a per-segment table**, 128 x u32: the 4 KB data pages each segment writes; then **a per-ASIC table**, 128 x 3 u32: for the ASIC running segment *k*, the exact pages, data and index together, of its start image (the union of segments 0 to *k* - 1's writes, with their paths), its final image (the union of *k* to 127's) and its Tracer's copy (segment *k*'s own) (section 20's arenas) |
+| 2 | processor state | pc, `instr_idx`, the next offset, registers 0-127: 131 x u64, 1,048 bytes |
+| 3 | advice log | the segment's advice words, u64 each, in row order (section 13) |
+| 4 | updates, raw | the segment's update words, u64 each |
+| 5 | updates, LRU-compressed | a u32 count of the 64-bit words encoded, then the codes (below) |
+| 6 | jump-target supplement | section 18: the run's jump targets the program's static table lacks, as (key u32, base `instr_idx` u32) pairs, the key *o* = pc − `lowest_address` (spec item 146) | the pairs (exact encoding the host tools', WORKER18 and WORKER16); part of the program's load, with the initial image (*replaces* the old code map's start address and (base, mask) pairs per 64 B block, section 18) |
+
+- **Frame 7, the proof parameters** (owner, 2026-11-05, on WORKER21's proposal; spec item 155): log₂ K, `lowest_address` and
+  a16z's `MemoryLayout` fields, all computed on the host as a16z does; **sent once, first, before frame 1.** C&C 3 fills word
+  66 from it, and the proving side reads the same frame: one source for both (answers the question left to SP1). Not the
+  program file (K follows the run), nor frame 1 (a fixed table of counts). Its layout: the host tools' (gold, WORKER16).
+- **Frame 7's data** (2026-11-05, merging WORKER18's and WORKER16's proposals): u32 format version (1), u32 field count *n*,
+  then *n* u64 fields, little-endian: **log₂ K, `lowest_address`, then a16z's `MemoryLayout` in its declaration order**
+  (`common/src/jolt_device.rs:302-325`; the verifier's struct, so a16z's order rather than jolt-cpp's); fields are added only at
+  the end. Computed as a16z computes them (**K by a16z's prover rule**, the run's highest access raised to the image floor, within
+  `compute_min_ram_k`..`compute_max_ram_k`; WORKER18). **Frame 2's word 66:** the host fills log₂ K and `lowest_address` from
+  frame 7, leaving the two roots and depths 0 for C&C 3 (section 22). **Frame 1, this pass:** the per-segment table in 4 KB
+  pages; the per-ASIC table waits for F1's index layout. Gold takes jumpmap's `HashTable` and `StaticTargets` into itself (jumpmap
+  then uses gold's), so the dependency stays one way.
+- **Order:** frame 7 once, first; then frame 1 once; then frame 6, the proof's jump-target supplement; then for each segment in order, frames 2, 3, and
+  one of 4 or 5 (the host's choice per segment).
+- **The update words:** the segment's dirty runs in address order (PR #1's "R-dirty"): each run is **a header word** (the start
+  cell in the low 32 bits, the word count in the high 32) **followed by that many values**, each the word's last value in the
+  segment. Headers and values form one sequence of 64-bit words, so frames 4 and 5 carry exactly the same words.
+- **Frame 5's codes:** the replayer's coding (spec 4.19.15) with a 32-entry table: bit-packed, least significant bit first within
+  each byte; **hit:** flag 1, a 5-bit index; **miss:** flag 0, a size bit (0 = 32, 1 = 64), the value (a 32-bit miss
+  zero-extended); true LRU, move to front. **The table is all zeros at the start of each frame 5**, so each decodes on its own;
+  the leading word count tells the decoder where the codes end (the last byte may hold spare bits).
+
+## 17. A Java emulator of Jolt's tracer, to become our gold (2026-11-01)
+
+Decided (O).
+
+- **A standalone Java program** in `wip/gold/` that reads the guest's ELF (parsed by hand: no ELF library), sets up Jolt's memory,
+  and runs the emulation, producing Jolt's trace rows and, at the gold stage, section 16's segment file.
+- **Self-contained and clear** (owner): its own folder and build, no imports from meshsim's classes (the replayer model, the
+  universal tables), no native code, no use of the C++ tools. Each part is written to be read: the ELF loader; the memory layout;
+  an RV64 interpreter; **Jolt's expansions written out per instruction family as plain code** (following jolt-cpp's
+  `isa/virtual.cpp`, not the 128-bit expansion words); the CSRs, traps, LR/SC and ECALL; the inlines; the advice (secp256k1 in
+  `BigInteger`).
+- **Validation is central** (owner). jolt-cpp is checked against as **data, not code**: its rows (per-window hashes, as WORKER16
+  and WORKER17 do), WORKER16's segment files, WORKER17's layout and page tables.
+- **Stage 1, a Tracer model:** the loader, the layout, the interpreter and the expansions, with advice taken from the data
+  (jolt-cpp's rows, or frame 3); rows identical to jolt-cpp's on the small inputs, then on both workloads at 2²⁹.
+  **Stage 1 done** (WORKER18, 2026-11-01): rows identical to jolt-cpp's on both small inputs (every record) and both workloads
+  at 2²⁹ (every window hash; EVM Zone's 3,674 advice words all consumed); all 15 inlines match jolt-cpp's emit lists row for
+  row, checked on every build. About 16.5 M rows/s on one CPU: a 2²⁹ run in about 22 s (jolt-cpp's `row_dump`: 27-29 s).
+- **Stage 2, gold:** it computes everything itself (the advice, the processor state at each cut, the dirty runs, the page counts)
+  and writes the segment file. **It earns gold** by writing files byte-identical to WORKER16's tool (W3) on both workloads at 2²⁹
+  and on the hard-cut tests; the C++ tool then becomes the cross-check.
+  **Stage 2 done: gold earned** (WORKER18, 2026-11-01; `wip/planning/sessions/WORKER18-REPORT.md`): the emulator writes section 16's file
+  **byte-identical** to WORKER16's tool (ca30b5e) on both workloads at 2²⁹ (13.5 and 15.5 s) and on both hard-cut files, with the
+  secp256k1 advice computed in `BigInteger`; `wip/gold/check.sh` reruns all four. Seven of jolt-cpp's example guests also match
+  on every record (MULH and MULHSU, the division family, SRA and SRAW, LR.D and SC.D, every AMO, all seven secp operations,
+  SHA-256 and the other inlines). Never executed yet: EBREAK, FENCE, KECCAK256 without absorb, `VirtualAssertEQ`,
+  LegacyRawEcall mode, the abort paths. **The Java emulator is now our gold;** WORKER16's tool is the cross-check.
+- **The gold loader loads only instructions we can prove** (owner, 2026-11-01; a ruling on `wip/planning/upstream/UPSTREAM-DIFFS.md` D4):
+  - **an instruction Jolt can't prove** in the ELF's load stream (CSRRC and the immediate CSR forms, a CSR outside the six,
+    FENCE.I, WFI, SRET and other privileged instructions) **throws an exception at load**, as upstream rejects it at decode
+    (`instruction/mod.rs:1230-1323`). jolt-cpp instead decodes these as UNIMP and drops them from the bytecode, shifting later pcs
+    (`isa/decoder.cpp:597-640, 1200-1207`; D4); gold follows upstream here, by design;
+  - **the exception: the standard UNIMP encodings** (`c.unimp` 0x0000, `unimp` 0xC0001073), which compilers place after code
+    that can't return and as padding: **loaded as an unreachable marker** (upstream's `UNIMPL`), **throwing only if executed**;
+    *narrowed (owner, 2026-11-04, by section 17's rulings): **only `c.unimp` (0x0000) is the marker**, which a16z also skips;
+    `unimp` 0xC0001073 is **rejected at load**, as a16z's preprocessing rejects the ELF (UPSTREAM-DIFFS D4; a16z's rejection of the
+    standard `unimp` is written up as U3);*
+  - everything else loads and runs as now. For every valid program (both workloads included) nothing changes, so the
+      byte-identical acceptance holds.
+  - **Gold has one loading mode** (owner, 2026-11-01): no permissive mode. ACT4 is run by **rebuilding its ELFs under a target of
+    our own** (its linker script putting code and data in separate segments, one executable `PT_LOAD`; the ACT4 sources
+    unmodified, as upstream requires), so each test that then loads strictly is a provable program; a test whose data is
+    inherently inside its code is reported as such. Only if some can't be relinked, an ACT4-only runner in `test/` decodes at run
+    time like `jolt-emu`, executing through gold's ordinary machine; gold's loader stays single-mode.
+- **Stage 3, validation against upstream Jolt** (owner, 2026-11-01; recorded now, added to WORKER18's work at a stopping point):
+  upstream's own Rust tracer, pinned (17a9459, the commit section 12 read; HEAD has since been restructured into `crates/`),
+  produces rows on the same ELFs and inputs, as data. Its `Cycle` rows need a mapping to jolt-cpp's format first. Where jolt-cpp
+  and upstream differ, each difference is recorded and the owner decides which the gold follows (by default upstream: the spec's
+  ground truth is upstream Jolt's trace, item 113). This is ST1's work, done through the emulator.
+  **Stage 3's result** (WORKER18, 2026-11-01): **upstream at 17a9459 produces the same rows as jolt-cpp** on every run (both small
+  inputs and seven example guests record by record; both workloads at 2²⁹ by every window and the run hash), and **gold matches
+  upstream everywhere jolt-cpp does**. The inlines are unchanged since f8fc214 (all 15 upstream dumps byte-identical to
+  jolt-cpp's). Mapping: upstream's kinds are jolt-cpp's opcodes (NoOp is NOP); four upstream-only virtual kinds never occur. The
+  differences are at the edges, recorded in `wip/planning/upstream/UPSTREAM-DIFFS.md` for the owner's rulings: the program image (PT_LOAD
+  segments against sections), upstream's stack-canary check, jolt-cpp's LegacyRawEcall mode, UNIMP (dropped from jolt-cpp's
+  bytecode, rejected upstream), a jump into the middle of an instruction, the misaligned-access checks, the bytecode count's
+  convention, and the padding rule (to confirm). Eleven hand-assembled guests cover the paths no workload reached.
+- **Rulings on `wip/planning/upstream/UPSTREAM-DIFFS.md`** (owner, 2026-11-04). **"Upstream" is a16z's Jolt, and it decides:** jolt-cpp has no
+  verifier of its own; it proves `jolt_verifier::JoltProof` against a16z's `jolt_program` preprocessing, from its submodule
+  `third-party/jolt` at **7189216** (the verifier's pin, at jolt-cpp 88dca85, v1.3's pin, **moved and checked** 2026-11-05: PR #2's tracer re-synced, every
+  2¹⁶-row window's hash, the segment files and `capture_writes` output identical to 821e1bd on both workloads at 2²⁹; WORKER16,
+  `sessions/WORKER16-PIN-REPORT.md`, merged into `tracer-standalone-main` at fa59d9a; v1.25's 821e1bd carries f8fc214, 20
+  commits earlier, with nothing in RAM checking different, section 14), so a16z's bytecode is what every proof is checked against. Where jolt-cpp
+  builds a different bytecode or image, its proofs fail verification, so following a16z is forced, not a preference. The findings
+  were made at 17a9459; **they hold at 7189216** (WORKER18: an ancestor, 17 commits back, with every file D1, D3 and D12 depend on
+  identical).
+  - **D1, the program image: follow a16z** (by sections: the code is the text sections). jolt-cpp decodes the whole executable
+    `PT_LOAD` segment, so an ordinary layout with `.rodata` in that segment fails at load, and decodable data between code shifts
+    its `instr_idx`, making its proofs fail verification silently. **A jolt-cpp fix and a bug report**, with demo guests.
+  - **D3, raw ECALLs: follow a16z, no rewriting.** jolt-cpp's LegacyRawEcall mode rewrites the code, so the bytecode it proves
+    differs from a16z's. **Gold executes a raw ECALL as a16z does, trapping through `mtvec`, with no special detection**; a
+    program relying on legacy raw-ECALL host I/O then fails as it would in a16z, and giving it a clearer error is the host
+    tracer's job, as for D5 (section 25). **A jolt-cpp fix and a bug report.**
+  - **D5, executing where the static decode found no instruction start** (a jump into the middle of an instruction): **the host
+    tracer rejects it.** The host runs the program before the proof and its JIT already maps pcs to bytecode entries, so such a
+    run never reaches the chip; if one did, the Tracer's "jump target not in the map" check (section 25) catches it. Gold, the
+    host tracer's reference, rejects it the same way.
+  - **D12, C.SLLI with rd = x0 (a RISC-V HINT): follow a16z**, decoded as `SLLI x0, x0, n`, a no-op; jolt-cpp's decoder wrongly
+    rejects it. **A jolt-cpp fix and a bug report**, with a guest as reproducer.
+  - **D4, narrowed:** `unimp` 0xC0001073 is rejected at load, as a16z does; `c.unimp` stays the only unreachable marker (above).
+  - **The program's end is detected by `JAL x0, 0`**, with 4.19.2's end-of-trace encoding unchanged; a JALR or branch to 0 is the
+    D5 error (section 25).
+  - ~~`LR.D x0` or `LR.W x0` loading a nonzero word: rejected by the host and gold~~ **D14, follow a16z** (owner, 2026-11-05;
+    WORKER18): a16z remaps an LR or SC with rd = x0 to a temporary, as for other instructions (its exemptions are only ECALL,
+    MRET, EBREAK, CSRRW, CSRRS: `expand/operands.rs:51-60`), so such a load is **provable** and its rows are a16z's. jolt-cpp also
+    exempts LR/SC and the inlines (citing an a16z PR its code no longer follows), so **jolt-cpp's rows differ from a16z's for
+    every `LR x0`**, zero or not: WORKER17's premise held only for jolt-cpp. Gold follows a16z and drops the rejection; **a
+    jolt-cpp fix and a bug report**, like D1, D3, D12; whether its inline exemption changes any rows, to check. Neither workload
+    has an `LR x0`.
+  - **D13, follow a16z** (owner, 2026-11-05; WORKER18): the no-op row an rd = x0 instruction is rewritten to (`ADDI x0, x0, 0`)
+    is flagged virtual in jolt-cpp but not in a16z, so jolt-cpp's row differs and its proofs of such programs fail
+    verification. Gold follows a16z; **a jolt-cpp fix and a bug report**, like D1, D3, D12, D14.
+  - **What to report** is one list, ordered by impact, at the top of `wip/planning/upstream/UPSTREAM-DIFFS.md` (12 entries for jolt-cpp, 3 for
+    a16z), each with its evidence, reproducer, bug report (`wip/planning/upstream/bug-reports/`) and fix branch.
+  - **D2 and the rest: deferred.** U1 and U2 (a16z's ACT4 configuration and `jolt-emu`'s exit check) and U3 (a16z rejecting the
+    standard `unimp`, 0xC0001073) are a16z's bugs, written up for the owner to decide whether to report.
+
+## 18. The Tracer's pc to `instr_idx` map (2026-11-01)
+
+Decided (O). The replayer takes the next `instr_idx` of a control transfer from the read log (spec 4.19.7); the Tracer writes
+those words, so it needs pc to `instr_idx` for every jump target. `instr_idx` is the row's index in the committed bytecode: it
+advances by 1 on every row (each virtual row is its own bytecode entry), so a target's value is its instruction's **base**, the
+index of its expansion's first row (1 + the expansion lengths of every instruction below it); a row inside an expansion is the
+base plus its offset. Sequential flow needs no lookup (the Tracer knows each expansion's length as it runs it), and a segment's
+start comes in frame 2. **Only jumps need the map.**
+
+- **A 64-entry pc to `instr_idx` LRU in the Tracer** (owner): a hit costs nothing.
+- **On a miss, the Tracer probes the hash table itself** (owner, 2026-11-01; replacing a lookup by the controller through a
+  `TARGET_PC` register and event): a multiply, a shift, one line read and 16 comparators.
+- **Revised: one table per proof, built whole on the host** (owner, 2026-11-05, on WORKER26's plan): **the static analysis
+  (below) plus the run's own targets** (the host runs the program anyway, for the memory updates), merged by the host into **a
+  single table**, about 70K entries, with its hash constants chosen for it, and **sent with the proof** (frame 6 carries the
+  table's lines and its three constants). **No supplement inserted on chip**, so no inserter, no private page copies and no
+  open question of who inserts. Not a table of the run's targets alone: that would be far smaller (about 6K and 4K entries) and
+  give unfounded confidence in the cache footprint. Cost: about 1 MB per proof in the stream, against 2.6-12.5 MB of updates.
+  **Measured** (WORKER26, small inputs; at 2²⁹ to follow): the static analysis needs more kinds than direct and return targets.
+  Far calls written as AUIPC+JALR (EVM Zone: 263 of 5,526 run targets missed without them) and AUIPC+ADDI code addresses are
+  added, then the data scan, then **the instruction after each ECALL** (MRET returns there: Cyclone's 6 misses); section 18's
+  "6,183 of 6,189" probably counted the AUIPC pairs as direct. What no static scan can see (EVM Zone's 2 function pointers
+  stored at run time) the run's targets supply. Tables: k = 13 (1 MB), load 0.32-0.38, every key in its home line, 0 map errors
+  over every jump. **Frame 6's data: u32 k, u32 p1, u32 p3, then the 2ᵏ lines** (WORKER26's format, with WORKER22's file layout
+  for bring-up).
+  **The footprint is one line per distinct target** (WORKER26 at 2²⁹): the hash scatters a segment's targets, so its ~2,500
+  land almost one to a line (worst segment 323 KB EVM Zone, 270 KB Cyclone), only 12-15% under a table of every instruction
+  start; k = 13 is already the smallest the half-full rule allows. **Future option, not decided** (owner, 2026-11-05): **a base
+  table from about 100 runs' targets** (profile-guided), plus each proof's own run's targets, instead of the static analysis:
+  about 6K entries, so perhaps k = 10, and a segment's targets would share lines (roughly 120 KB instead of 275 KB), with
+  correctness kept by merging each run's own targets. Useful as **a lower bound** on the map's cost against today's table. (The
+  other lever, a hash keeping nearby pcs in one line, likewise only if B1's timing shows the map pushing data out.)
+  **Targets that aren't instruction starts** (174 EVM Zone, 108 Cyclone, dropped from the table; WORKER26): all **c.unimp
+  traps** (0x0000, D4's unreachable marker, not in the bytecode), reached only by failed checks' branches and after calls that
+  never return; none taken in any run, so a jump there is the map error, as it should be.
+  *The design it replaces (2026-11-01), for the record:*
+- **The table: one hash table of target pc to base `instr_idx`, static per program, with a per-proof supplement inserted into
+  it** (owner, 2026-11-01; robust to programs whose runs jump to many targets, where a per-proof table could swell to megabytes
+  in the broadcast stream):
+  - **the static table, a program file**, built once by the host from the ELF and cached on chip like the initial image, **at most
+    half full**: every **direct target** (branch and JAL offsets), every **return address** (the instruction after each call), and
+    every **code pointer found in data** (an aligned 64-bit word in the data or read-only sections equal to an instruction start).
+    Measured (integrator, both workloads at 2²⁹; the ELFs are stripped, so no symbols): direct and return targets alone, under 70K
+    entries (about 1 MB at half full), cover **6,183 of EVM Zone's 6,189** distinct targets and **4,205 of Cyclone's 4,228**; the
+    rest are indirect (0.00% and 0.17% of jumps). The data scan isn't measured yet.
+  - **the supplement, frame 6:** the run's targets the static table lacks, a list of (pc, base) pairs (here 6 and 23); the host
+    knows them exactly, having run the program.
+  - **inserted at proof start by the lookup's own rule** (home line, else step by *p*₃), into **private copies of the table pages
+    they land in** (section 15's mechanism for written pages), freed at the proof's end; so each proof sees one table, the static
+    table stays intact, and **the Tracer has one lookup path and one format**.
+  - **The robustness is in software** (owner): a program that jumps to many targets a simple analysis misses makes the supplement
+    big, and the fix is a better analysis on the host, with no hardware change.
+  - Open: who inserts (C&C 3 at proof start, or the host sending patched lines); the host checks that no inserted key lands more
+    than two lines from home.
+- **The hash** (owner): the line is the top *k* bits of pc x *p*₁ (multiplicative hashing; *p*₁ odd), so the table has 2*ᵏ* lines;
+  the 16 entries of a line are compared at once; on a full line the probe steps by an odd *p*₃ (mod 2*ᵏ*). An entry is 8 bytes:
+  the pc as an offset into the code (u32) and the base (u32). The host chooses *k* and *p*₁ so every key sits in its home line
+  (measured on both workloads with every instruction start at load 0.26-0.29: the fullest line held 9 of 16, so a smaller table of
+  actual targets has even more room).
+- **The hash's constants are configurable: Tracer registers** (owner, 2026-11-04): **`HASH_MUL`** = *p*₁ (32 bits; the key
+  is the pc's 32-bit offset into the code) and **`HASH_STEP`**: [23:0] *p*₃, a **24-bit prime** (odd, so the probe visits every
+  line mod 2*ᵏ*); and **`HASH_LINES`** = *k*, the table's log₂ lines, a register of its own (owner, 2026-11-05, on WORKER21's
+  proposal; replacing *k* in `HASH_STEP` [28:24]). The host chooses them per program (above); C&C 3
+  writes them once per proof, and they are sticky like `RUN_CONFIG`. They are context by section 24's resume test, but word 66
+  has no room (4 bits spare), so registers are the pragmatic home, and the replayer's record is untouched. (A header line in the
+  map file was the alternative: it costs the Tracer a read at load.) Word numbers: SP1's.
+- **Where the Tracer keeps it: a file read over the fill bus** (owner, 2026-11-05, on WORKER21's proposal; sections 19, 21), no
+  dedicated SRAM in the first implementation, and the 64-entry LRU kept. **The key is *o* = pc − `lowest_address`** (u32,
+  sharing the fetch path's `.pages` subtractor; spec item 146), so frame 6 and the static table use it; a free entry is key
+  0xFFFFFFFF; **the probe reads at most 3 lines** (home, then steps of *p*₃), and a free slot or 3 lines without a match is the
+  map error, [7]. *(Was open: a dedicated 128 KB SRAM, the integrator's proposal.)*
+- **What it replaces** (all superseded, recorded here for the history): a code map of one (base, mask) pair per 64 B of code,
+  walked by decoding forward and summing expansion lengths from a 2,048-entry length table (with an rd = x0 bit, the CSR rules by
+  rd and rs1, and inlines and CSRs sent to the controller through `LENGTH_OPCODE` with a 16-entry LRU); and before that, one word
+  per 128 B of code with a decode walk of about 30 cycles. The length and CSR findings stay true of jolt-cpp (`isa/virtual.cpp`:
+  `num_cycles` 1210-1276, `should_nop_for_rd0` 108-112, CSRRW and CSRRS 1287-1302).
+- **Open:**
+  - (a) ~~the LRU's size~~ **decided: 64 entries** (owner, 2026-11-01), on the measurement below: even Cyclone's worst segment
+    costs under 1% of the budget at 64, so a bigger LRU buys little. **Measured** (integrator, 2026-11-01, gold replaying both workloads at 2²⁹; each segment's caches start
+    cold, a segment running on its own ASIC; multiplicative hash with the golden-ratio constant, 2^k lines at most half full):
+
+| | EVM Zone | Cyclone |
+|---|---|---|
+| instruction starts (table keys) | 616,231 | 545,760 |
+| table | 2¹⁷ lines, 16 MB, load 0.29 | 2¹⁷ lines, 16 MB, load 0.26 |
+| fullest line (of 16) | 9: every key in its home line | 8: every key in its home line |
+| jumps | 4.06 M (1.1% of rows) | 15.9 M (4.3% of rows) |
+| LRU misses, 64 / 256 / 1,024 entries | 3.8% / 3.1% / 2.0% | 19.0% / 7.4% / 2.3% |
+| worst segment, LRU 64: misses, of which a line's first touch | 8,665, 3,048 | 87,261, 2,467 |
+
+    **So a lookup is always one line read**, and the cost is small: the worst segment (Cyclone, LRU 64) is about 2,500 cold line
+    reads from LPDDR at **80 cycles** (owner: an idle LPDDR4X miss, about 50 ns at the DRAM plus the controller, at 1 GHz) and
+    85,000 warm ones at about 6, roughly 0.7 M cycles, under 1% of the Tracer's 100 ms budget per segment [estimate]. The warm
+    ones assume the segment's hash lines stay in the 512 KB cache: they are 316 KB (Cyclone) and 390 KB (EVM Zone), so they compete
+    with the Tracer's data and code; a bigger LRU, or hashing by 32 B code block (pc >> 5), would shrink that. Cold lines (one per distinct target, about 2,500-3,000 per segment) dominate
+    and don't depend on the LRU's size; a 256-entry LRU halves Cyclone's warm misses.
+  - (b) the hash function and the table's exact layout (software, free to change);
+  - (c) building the table on the host (from the bytecode's instruction starts).
+
+## 19. Launching a program (2026-11-01)
+
+Decided (O). **A file is its root's 32-bit address and its length** (section 20), so launching is handing the Tracer two files'
+roots and depths:
+
+- **`<program>.pages`, the guest's memory** (section 12): the Tracer is given **its root and depth**, and then just starts, asking
+  for (root, depth, line). (This replaces 8 middle-table addresses loaded into Tracer registers, and then a slot.)
+- **The jump-target table** (section 18): the Tracer is given the proof's map's root and depth too; the proof's supplement (frame 6)
+  goes into private copies of the pages it lands in.
+- **No load step:** everything is read in place, through the shared 512 KB cache.
+- **Fragmentation: none.** With one 4 KB chunk size, any free page fits any request, so the memory system needs no buddy
+  allocator and no compaction (this replaces a 4, 8 and 16 KB scheme with lifetime-separated allocation). A growing file, such
+  as a log, takes the next free page wherever it is (section 20's tree); a log is read sequentially, so scattering costs nothing
+  (each page is one efficient 4 KB read).
+- **Open:**
+  - (c) whether a log lives only for its proof or can outlive it (a re-run).
+
+## 20. The file system (2026-11-01)
+
+Decided (O). Run by C&C 2 (the planning notes of 2026-10-27), over section 12's single pool of 4 KB pages; addresses in 128 B units.
+
+- **Free-space management lives in C&C 3** (owner, 2026-11-01), the page manager of the planning notes (the page pool, the
+  per-proof bitmaps and arenas): the file system on C&C 2 asks it for pages and returns them. **Its design is black-boxed for
+  now** behind that interface (allocate a page, free a page, the arena operations).
+- **A file is a tree whose depth follows its length** (owner, 2026-11-01; replaces a chain of index pages, each 1,023 pointers
+  plus a next pointer): index pages of **1,024 pointers**, no next pointer:
+
+| depth | structure | maximum size |
+|---|---|---|
+| 0 | the data page itself | 4 KB |
+| 1 | an index page of 1,024 data pages | 4 MB |
+| 2 | an index page of 1,024 index pages | 4 GB |
+| 3 | three levels | 4 TB |
+
+  - **Growing** past a depth allocates one index page whose entry 0 points to the old root, which becomes the new root: the old
+    tree moves down a level untouched (one page, one pointer, the directory entry's location updated).
+  - **The depth follows from the length**, so it needs no field. **Random access** is one read per level, at most three.
+  - **Holes:** an entry of `0xFFFFFFFF` means no page there, so a sparse file costs only the pages it has.
+  - **The page table is such a file** (integrator's observation, owner's direction): a depth-3 file's root entries each cover
+    4 GB, a middle table of 1,024 leaf tables of 1,024 data pages, the layout section 12 had as 9 + 10 + 10 bits. So **`.pages` is a sparse depth-3
+    file whose contents are the guest's memory**, using the root's first 8 entries (32 GiB); a guest address is a file offset.
+    **Its depth follows the run's K like any file's** (owner): Jolt's used range is a low part (I/O and advice, just below
+    0x8000_0000) and a high part (program, stack, heap), both inside a 32-bit window from `lowest_address`, so for K up to 2²⁹ cells
+    the offset is 32 bits and **`.pages` is a depth-2 file (4 GB)**; both workloads are (EVM Zone 2²³ cells, 64 MiB; Cyclone 2²⁴,
+    128 MiB). Only K above 2²⁹ cells, up to section 14's 2³², needs depth 3.
+- **The memory system reads files directly** (owner): **a request names the file itself: its root's address (31 bits), its
+  depth (0 to 3) and a line** (owner, 2026-11-01; replacing a table of file slots), so the memory system holds no per-file state
+  and any client can read any file. It translates by walking the tree (at most three
+  index reads) through the shared cache (no TLB, section 21 (b), 2026-11-05), then reads the line from the cache. **One translator for everything:** the Tracer's
+  guest memory is just a file (its `.pages`), and so is any table or log read by offset. **A hole reads as zero; writing to one
+  is a checked error** (section 25), only software allocating. Bulk page transfers (the Updater, the file system's own moves) still bypass the cache, and
+  writing a page directly still invalidates its lines. A request's line number is up to 35 bits (a depth-3 file of 4 TB); with the
+  root and depth, about 68 bits.
+- **How the file system reaches a file** (owner, 2026-11-01): **index pages through the shared cache**, a line at a time, both
+  reading and updating entries; **data pages directly**, as whole 4 KB pages into its buffers. **It finds a page through the
+  memory system's translator**: it asks which page (root, depth, offset) is, the hardware walker
+  doing the work (no TLB, section 21 (b)), so there is **one walker in the chip**; software walks a tree only to change it (fill, copy, free, grow), writing
+  the index entry through the cache so the walker sees it, and invalidating any translation of the old entry. (This replaces the
+  file system bypassing the cache entirely.)
+  **So the file system has fast `read_page` and `write_page` primitives anywhere in it** (owner): (root, depth, offset) through
+  the translator to a page, then one direct 4 KB transfer, whatever the file's size or depth. A `write_page` to a hole in a sparse file
+  fills the hole first; in a dense file it overwrites within the length, or appends at the end.
+- **Copy-on-write files** (owner, 2026-11-01):
+  - **`freeze(path)`** sets the file's **read-only flag** in its directory entry: O(1), no walk (the flag, not the entries,
+    makes a file unwritable).
+  - **`cow_open(source_path, dest_path)`** makes a new file at the destination **sharing everything with the source but its
+    root page**, which is copied with its entries' owned bits cleared, so the copy owns nothing yet. **The source must be
+    frozen.**
+  - **a write** to a file that isn't frozen walks down: an entry with owned bit 1 is written through in place; one with owned bit
+    0 has its page copied into a new page (whose own entries keep owned 0, since its children are still shared), the entry
+    pointing to the copy with owned 1 (path copying). Only the paths to written pages diverge, once each.
+  - **deleting a file** frees exactly what its owned bits reach, stopping at any entry with owned 0 (an ancestor's page). **A
+    source must outlive its copies** (proposed, integrator: a count of copies in its directory entry's reserved bytes, a delete
+    allowed only at 0); a frozen source can have many.
+  - **per-proof arenas** (owner, 2026-11-01): everything made during a proof (section 22: the cycle-0 image, the start and final
+    images, the Tracer's copy, the proof's map) dies with the proof, so the proof's pages come from **its own pool, tracked by a
+    per-proof bitmap**, and cleanup is one bitmap merge (the planning notes' per-proof bitmaps), no tree walks. **Frame 1's 128
+    page counts size the pool** before any data arrives: the updates the start and final images take (every segment's written
+    pages), the Tracer's private copies (the ASIC's own segment's), the cycle-0 image's input and advice pages, and **the index
+    pages the copies add along their paths, from exact totals the host sends** (owner, 2026-11-01). Neither the trees nor
+    per-segment counts give them: writes can be scattered (each write into a fresh 4 MB region needs a new index page), and counts
+    don't add (a page written in two segments is one private page in an image that takes both, and an owned path is copied only
+    once), so an image's need is the size of the **union** of the writes it takes, which differs on every ASIC. So frame 1 carries
+    **a per-ASIC table**: for the ASIC running segment *k*, the exact pages (data and index) of its start image, its final image
+    and its Tracer's copy; the arena is that row's sum plus the cycle-0 image's input and advice pages. **The host computes them**
+    from each segment's set of written pages: prefix unions for the start images, suffix unions for the final images, each
+    union's index pages being its distinct 4 MB and 4 GB regions. Frame 1 also keeps **the per-segment table** of pages written. Only the permanent files (the program image, the program's map) live outside it.
+  - **Uses:** section 22.
+- **File-system calls** (owner) for what hardware never does, served by C&C 2: **fill a hole** (allocate a page at an offset,
+  growing the tree or adding index pages as needed), used for example by the Updater building the memory image for the next
+  trace; and, by the same token, **copy a page** (replacing a shared page with a private copy, the Updater's streaming
+  copy-on-write) and **free a page** (making a hole). Each invalidates any translation of that page cached for the file.
+- **A directory holds each file's name and length** (owner), with its first pointer (the data page, or the first index page). The
+  length also says which form a file has (at most 4 KB: a single page).
+- **A directory entry is a fixed 128 bytes** (owner), exactly one 128 B unit, so it can be addressed and read on its own, and a 4 KB
+  directory page holds 32 entries. Least significant byte first:
+
+| bytes | field |
+|---|---|
+| 0-95 | **the name**, at most 95 bytes, zero-padded, so always followed by at least one zero byte (owner) |
+| 96-103 | **the file's length** in bytes, u64 |
+| 104-107 | **its location**, u32: the data page, or the first index page (128 B units) |
+| 108-111 | **its type**, u32 |
+| 112-127 | reserved, 0 (the 32 bytes of important information are bytes 96-127) |
+
+- **Open:**
+- **Sparse and dense files** (owner, 2026-11-01), the same tree, different rules:
+  - **dense:** no holes; it grows only by **appending** (pages allocated in order) and is read anywhere within its length. Logs,
+    segment files, directories, the static jump-target table. A hole in a dense file means it is corrupt.
+  - **sparse:** holes allowed and read as zero; it can **grow** (its length set beyond its pages, without allocating) and take
+    **writes of arbitrary pages** (filling a hole at any offset), copies and frees of single pages. The guest's memory (`.pages`)
+    and the images the Updater builds.
+  - The file-system calls follow: append for both; fill a hole, copy a page and free a page for sparse files only.
+  - Proposed (integrator, to confirm): a flag in the type word (bit 31 set for sparse), so any kind can be either.
+- **The type is the kind of file** (owner), **0 marking a free entry**, and **a directory is a type** (owner): a directory is a file
+  of 128-byte entries, single-page or chained like any file, so directories nest. Proposed values (integrator, to confirm):
+
+| type | kind |
+|---|---|
+| 0 | free entry |
+| 1 | directory |
+| 2 | data (any other file) |
+| 3 | page table (`.pages`, section 19) |
+| 4 | (unassigned; was the code map) |
+| 5 | log |
+| 6 | segment file (section 16) |
+
+- **Open:**
+- **At most 10 directory levels** (owner), so a full path fits **1,024 bytes of the file system's memory**: 10 names of at most
+  95 bytes, plus 10 separators, is at most 960 bytes.
+- **The path isn't kept once a file is open** (owner): opening walks the path through the directories in a temporary 1,024-byte
+  buffer, freed once the entry is found. **An open file is a 64-byte record plus a 4 KB page buffer** in the file system's memory:
+  - **the record** (proposed layout, integrator, to confirm): the **file descriptor number** (u32, owner; naturally the record's
+    index in the table), **the directory entry's address** (u32: an entry is one 128 B unit, so one address names it), location
+    (u32, the tree's root), type (u32), length (u64), current position (u64), the current position's index page (u32), flags (the buffer's page and whether it is
+    dirty), the rest reserved. Updating the file (its length after an append) writes back to its entry through the address.
+  - **the buffer: 4 KB of an open file cached in memory** (owner): the data page at the current position, so reads and writes
+    within a page touch no memory, and an append fills the page before it is written out.
+  - **The buffers are a pool managed by LRU** (owner): a file that needs a buffer takes a free one, or **flushes the least recently
+    used** (writing it back if dirty) and takes that. So the number of open files (64-byte records) and the number of buffers are
+    separate choices; a file whose buffer was taken simply reloads its page when next used.
+  - **Sizes: 512 open files; 128 buffers for files being read and written; 32 more buffers just for directory pages** (owner),
+    each pool managed by LRU: the records take 32 KB (512 x 64 bytes), the file buffers 512 KB, the directory buffers 128 KB, so
+    about 672 KB of the file system's memory. **The file system reads and writes whole 4 KB pages directly**, bypassing the shared
+    cache (section 12), so these buffers are its only cache.
+- **A superblock at address 0** (owner), **cached by the file system** (C&C 2), which reads it at boot: it identifies the file
+  system and says where the root directory is. Address 0 is otherwise an ordinary address (`0xFFFFFFFF` is "none"), but a zeroed
+  pointer is a valid pointer to it, so the superblock's magic catches a stray write or a foreign memory at the next check.
+  Proposed contents (integrator, to confirm), least significant byte first, in the first 128 B of page 0 (the rest of the page
+  reserved): a magic (8 bytes), a version (u32), the root directory's location (u32, 128 B units), later the free-page map's
+  location and the memory's size; the rest reserved, 0.
+- **Open:**
+  - (a) the superblock's exact contents; the type values above;
+  - (b) ~~whether `.pages` is a file~~ decided: a sparse depth-3 file (above). Formerly: whether `.pages`, the page table's tree, is stored as a file's pages
+    or is a structure outside the file system, reached only by the Tracer's pointers.
+
+## 21. The Tracer's local caches (2026-11-01)
+
+Decided (O). In front of section 12's shared 512 KB cache, which acts as an L2 for the Tracer; a local miss is a (root, depth,
+line) request to the memory system, which translates it (section 20). **The 512 KB cache sits close to the memory** (owner,
+2026-11-01): with the translator and its walker, and the file system's index accesses all going through it, it is the
+memory system's centre, not the Tracer's. The Tracer's local 16 KB caches absorb the longer trip over the 1,024-bit fill bus.
+(This reverses an earlier placement next to the Tracer, made while the file system bypassed the cache.)
+
+- **16 KB of data and 16 KB of instructions, local to the Tracer: 128 lines of 128 B each** (owner).
+- **Each line is tagged by its line in the guest's memory file only** (2026-11-01; replacing two tags, guest address and
+  memory-system address). With translation in the memory system the Tracer has **no TLB** (and neither has the memory system, (b)), and no use for a memory-system tag: a
+  dirty victim is written back by its line (with the file's root and depth), translated again by the memory system (the walk usually hitting index lines in the shared cache), and nothing
+  else writes the Tracer's pages during a segment, so nothing needs to invalidate a line by its memory address; the caches are
+  invalidated at the segment's boundary.
+- **Access to them is single-cycle** (owner).
+- **The Tracer's whole interface to the memory system: reads and writes of one 128 B line of a file** (owner, 2026-11-01), as
+  (root, depth, line), each request knowing exactly which line it wants. There are exactly three reasons (owner): **a program miss** and
+  **a data miss** (the guest's memory file, where code and data both live; a data miss may also write back its dirty victim),
+  and **a mapping miss** (a pc to `instr_idx` LRU miss: one line of the jump-target table, its own file, the line chosen by the
+  hash). Translation is the memory system's; the Tracer's streams (advice in, logs out) move as whole pages and never use the
+  cache.
+- **A miss fills from the shared cache over a 128 B (1,024-bit) bus** (owner): a line per transfer.
+- **Coherence is nearly free for the Tracer** (integrator's note): during a segment nothing else writes what it sees (its written
+  pages are private copies, its shared pages read-only, its tables unchanged), so the local caches need no protocol. Dirty data
+  lines are written back to the shared cache on eviction, and both caches are invalidated at a segment's boundary; dirty lines left
+  at a segment's end can be discarded, the Tracer's copy being throwaway (the next images come from the updates). Aliasing is
+  harmless: two guest addresses can share a memory-system page only if it is read-only.
+- **Open:**
+  - (a) ~~the associativity~~ **decided: fully associative** (owner): 128 lines each, one Tracer, so the comparators' power is
+    acceptable;
+  - (b) ~~a small page TLB~~, ~~TLBs, now the memory system's~~ **no TLB anywhere** (owner, 2026-11-05, replacing 2026-11-01's
+    TLB tagged by (root, page) and its cache of upper index entries): **translation is the walk, through the shared cache**,
+    since an index entry is nothing special, just more lines in it (it's all files). A local miss in a depth-2 file costs about
+    three shared-cache accesses (the upper index, the leaf index, the data line), some 18 cycles on hits against about 7 with a
+    TLB; but one 128 B index line covers 32 pages (128 KB), so a segment's whole index stays hot in a handful of lines, and behind
+    the 16 KB local caches misses are rare (at 1 per 100 rows the walk adds about 0.12 cycles per row, against the target of
+    4). B1 reports the walk's share; a TLB comes back only if the numbers ask for one.
+  - **The shared cache's write-back policy** (owner, 2026-11-05; WORKER22's Q12; the model's, the memory system being a black
+    box): **the next victim in every set is kept free or clean.** When a set's least-recently-used line is dirty, it is evicted at
+    once, in the background, into the write buffer (its way left empty); a clean LRU line stays, hittable, and is dropped at no
+    cost when a fill needs its way. So **a fill never waits for a write-back**, and the cache keeps all 8 ways while its LRU lines
+    are clean. **The write buffer:** 4 lines, draining to LPDDR at one line per 80 cycles (parameters). **A read that misses the
+    cache waits until the buffer is empty**, so the buffer is never searched (a dirty line that has left the cache but not yet
+    reached LPDDR can't be read stale). The model reports early evictions, write-backs and read waits per segment; if the waits
+    matter (Cyclone's heaviest segment writes about 1 MB, twice the cache), a 4-entry address compare in the buffer is the
+    cheap fix. **A Tracer write-back that misses the shared cache allocates without an LPDDR read** (owner, 2026-11-05;
+    WORKER22's Q13): the Tracer always writes a whole 128 B line, so the line is taken into a free or clean way and marked dirty,
+    and comes back to the Tracer from there on its next access; it reaches LPDDR only when evicted dirty.
+  - (c) ~~an instruction line bringing its code map words~~ moot: the code map is gone (section 18).
+  - (d) sizes to confirm by measurement: the gold emulator can replay both 2²⁹ workloads' address streams through these caches
+    and the shared one, the walk's index reads included, and report hit rates (WORKER18, after ACT4).
+
+## 22. The images and maps as copy-on-write files (2026-11-01)
+
+Decided (O), with section 20's `freeze` and `cow_open`. Each file shares every unchanged page with the one it came from and costs
+only the pages its changes touch; a source outlives its copies.
+
+**The jump-target map** (section 18):
+
+| file | made by | lifetime |
+|---|---|---|
+| `<program>.map`, the original hash table | built by the host from the ELF, then frozen | permanent |
+| the proof's map | `cow_open` of it, then frame 6's supplement inserted (path-copying only the pages it lands in) | one proof |
+
+**The memory images**, on the ASIC running segment *k*:
+
+| file | made by | lifetime |
+|---|---|---|
+| the program image | the ELF's memory, then frozen | permanent |
+| **the cycle-0 image** | `cow_open` of the program image, the proof's inputs and advice written in, then **frozen** (owner: one more step) | one proof |
+| **the start image** of segment *k* | `cow_open` of the cycle-0 image, segments 0 to *k* - 1's updates written (the Updater), then frozen; kept intact for the prover's RAM checking | one proof |
+| **the Tracer's copy** | `cow_open` of the start image, the pages the segment writes pre-copied (frame 1's counts), given to the Tracer | one segment, thrown away |
+| **the final image** | `cow_open` of the start image, segments *k* to 127's updates written, then frozen | one proof |
+
+The "two copies at the segment's start" (section 15) are the frozen start image and the Tracer's copy of it. **Cleanup:** all of
+the proof's files come from its arena (section 20), so the proof's end frees them in one bitmap merge; the program image and
+the program's map, permanent, stay.
+
+**When the updates are applied** (owner, 2026-11-01): **the whole stream, all 128 segments, is received and applied before tracing
+starts**, the images being **built as the data arrives** (owner), never buffered first: the ASIC running segment *k* writes segments 0 to *k* - 1's updates into its start image (then
+freezes it and `cow_open`s the final image) and segments *k* to 127's into its final image (then freezes it), keeping its own
+segment's frames 2 and 3. When the stream ends, every ASIC hands its Tracer its copy's root and depth and **all 128 Tracers start
+together.** (So the stream's transfer time is part of a proof's latency, unless the next proof's stream arrives during the
+current proof.)
+
+## 23. The Tracer's startup state (2026-11-01)
+
+Decided (O). **The Tracer's state takes the replayer's state record** (spec 4.19.2; section 6), so **one record format, 68
+words**, runs from the host through the Tracer to the replayers (owner, 2026-11-01): the replayer's 67 and one more for the
+files, which **the replayers carry too and ignore** (owner):
+
+| word | part 0 offset | contents | for the Tracer |
+|---|---|---|---|
+| 0 | 0x000 | the state word: pc, `instr_idx`, the next offset; **from v1.26.1 no per-pass flags** ([115], [116] reserved; the flags are in `RUN_CONFIG`, DECISIONS-v1.26 items 13, 15) | the processor state at the segment's first row (frame 2) |
+| 1 | 0x010 | the stream word: each stream's 128-bit words, values out and compression flag (DECISIONS-v1.26 item 2); **at v1.3 four streams: code, read log, write log, and advice** (owner, 2026-11-04) | **the advice field: the segment's advice size at load, counting down live** as advice is popped; the three output fields written at each done with run *n*'s totals (section 24) |
+| 2-65 | 0x020 | the register image: 64 words, two registers each | registers 0-127 |
+| 66 | 0x420 | the files and the proof's memory bounds: **the guest's memory file** (root address, depth), **the jump-target map file** (root, depth), and (owner, 2026-11-04) **log₂ K** (6 bits) and ~~`lowest_address` in 4 KB units (52 bits; page-aligned, being 0x8000_0000 − 2ⁿ)~~ **the I/O region's size, 0x8000_0000 − `lowest_address`, in bytes, exact** (31 bits, [102:72]; owner, 2026-11-05, on WORKER18's finding that small guests' `lowest_address` isn't page-aligned, e.g. 0x7fffffe0; the host rejects an I/O region of 2 GiB or more), 103 of 128 bits | from C&C 3 (section 22): the Tracer's copy, the proof's map, and the proof's K and layout; the bounds set the `.pages` offset (section 12) and the range comparator (section 25) (a replayer ignores it) |
+| 67 | 0x430 | the template bitmap, 128 bits: which controller-fed inlines the window uses (section 25) | **all cleared** (owner) |
+
+**The order** (owner, 2026-11-01): **pc, `instr_idx`, the offset and the flags first, the bitmap last**, so the layout is uniform
+everywhere: the record's words land in part 0 at consecutive offsets, the first three exactly where v1.25 has them, and **the
+write to word 0, the state word, flushes the queues** (section 24). (Replaces the bitmap as word 0, which v1.25's 67-word
+record had and part 0 didn't hold.)
+
+- **The stream word carries four streams: code, read log, write log, and advice** (owner, 2026-11-04). The three output fields
+  are the window's streams, written by the Tracer at each done (run *n*'s totals, section 24), so output queue 0 is part 0
+  read in place; **the advice field** is the Tracer's input: the segment's advice size at load, and, as part of the working
+  state (DECISIONS-v1.26 item 12), **the live count remaining**, counting down as advice is popped. So nothing is overwritten:
+  at done the Tracer writes only the three output fields (and the bitmap, word 67), and the end-of-segment leftover check
+  reads the advice field in place. **The replayer ignores the advice field.** Advice is never compressed and all 64-bit, so its
+  field is a value count only (the words are half of it, rounded up): at most 2²² per segment, 23 bits. **The stream word is
+  rearranged, contiguous** (owner, 2026-11-04; not split across v1.26's two spare gaps), **in v1.26.1**, so SP1 and Tony both
+  start from the final layout: word counts [15:0] code, [31:16] read log, [47:32] write log; values out [64:48] code, [81:65]
+  read log, [98:82] write log; compression flags [99] code, [100] read log, [101] write log; **advice values [124:102]** (23 bits,
+  0 to 2²² inclusive; its word count is ceil(values / 2), and it needs no flag); [127:125] spare. Replayers ignore the advice
+  field; their advice still comes in the read log.
+- **The advice queue is the Tracer's read queue** (owner): the same name and role as the replayer's read log, from which both
+  units pop advice (section 13). It is 4 KB (section 24) and **never compressed**, so the Tracer has **no LRU decoder** on its
+  input; the code and write queues are simply zero length.
+- **Frame 2** (section 16) takes the same layout, so the host's processor state, the Tracer's startup state, its per-window output
+  and the replayer's state are one record (replacing frame 2's flat 131 u64; WORKER16's tool and gold follow when they next
+  change).
+- **Loading it (the write to word 0, section 24) invalidates the Tracer's local caches**, the 16 KB instruction and data caches
+  and the jump LRU, **without flushing dirty lines** (owner): the previous segment's copy of memory is throwaway (section 21).
+
+## 24. The Tracer's peripheral window (2026-11-01)
+
+Decided (O). The Tracer is C&C 3's peripheral, built like the others (spec 4.17):
+
+- **Starting:** C&C 3 **writes the startup state** (section 23) into part 0, then pulses run (below). **There is no start pulse**
+  (owner, 2026-11-04): the write to word 0 does all its work (below). *(Was: a start pulse loading the state and invalidating
+  the local caches.)*
+- **Running** (owner, 2026-11-01): C&C 3 sets **a row-count register**, typically **65,536** (one window, 2¹⁶ rows), and
+  **pulses go**; it then feeds the Tracer expansions and advice as their flags ask, and the Tracer **raises done** after that
+  many rows, stopping exactly there, even inside an expansion. Its state carries on, so the next go continues the run: a segment
+  is 64 such runs, each ending on a window boundary, where its logs are drained.
+- **Its DMA** (spec 4.17.9, v1.1's "sender") sends the Tracer's output: a transfer names one of **up to four output queues**
+  (`DMA_HDR` [13:12]), so the Tracer's four are numbered to match the replayer's parts (owner, 2026-11-01): **queue 0, the state
+  record; 1, the code log; 2, the read log; 3, the write log**, so output queue *n* feeds a replayer's part *n*.
+- **The output queues are padded to whole 128-bit words** (owner, 2026-11-01): a stream, raw or compressed, ends mid-word, so
+  at the window's end the packer **commits its last partial 128-bit word to the queue**, the rest of it padding (anything, below).
+  The queue-length registers count that word, so a length in 128-bit words is always exact for sending.
+- **Sends move 128-bit values** (owner, 2026-11-01): **the DMA's count is in 128-bit words**, every packet 128 bits (a v1.3
+  change to spec 4.17.9, which counts 32-bit words up to 4,095 and ends with 64- and 32-bit remainder packets). C&C 3 reads a
+  queue's length (in 128-bit words, rounded up; the padding after a stream's last bit can be anything, even in a compressed
+  stream (owner), since the stream word gives the exact bit length and value count and the decoder stops there) and sends that many with the DMA, in transfers of C&C 3's choosing: in the first implementation they go directly into the tiles' memory, so no replayer
+  credits pace them (owner, 2026-11-04, below; replacing transfers sized to the replayer's credits, half a 4 KB queue, 128 words).
+- **Wake flags** (events), each waking the controller (revised 2026-11-05: expand, **the expansion credit**, advice, **the four queue-service flags**, done, and the DMA's completion, 4.17.9):
+  - **expand:** an instruction needs its expansion from the controller (`EXPANSION_OPCODE` holds its word, as in the replayer's
+    controller-fed path, spec 4.19.9);
+  - **done:** the rows the row-count register asked for are traced **and the window's output is fully drained** (revised
+    2026-11-05, the drain below; the state queue's service flag marks the rows' end);
+  - ~~**code log**, **read log** and **write log:** each stream has something ready~~ dropped 2026-11-04, and **replaced by
+    the queue-service flags** (owner, 2026-11-05, below);
+  - **expansion credit** (owner, 2026-11-05; WORKER21's Q3): **as the replayer's** (spec 4.19.9), so a controller-fed expansion
+    longer than the 4 KB expansion queue (KECCAK's 3,121 words against 256 entries) streams in, C&C 3 refilling as the Tracer
+    consumes; identical mechanism, depth and firmware pattern;
+  - **advice:** the read queue (section 23: the advice input) has room, so send more of the segment's advice (owner). **The queue is 4 KB**
+    (owner: it mirrors the replayer's typical queue sizes; was 2 KB): 512 advice words. Advice is consumed slowly (the division family takes one word per expansion of about 12 rows,
+    a secp operation at most 8 in up to 240), so a full queue lasts thousands of rows, far longer than the controller takes to
+    refill it; proposed (integrator): raise the flag when half is free.
+- **On the Tracer, `PULSE_RUN` also starts a window, so it resets the output compressors** (owner, 2026-11-01): each window's
+  streams must decode on their own (a replayer resets its decompressors with each window's state), and on the Tracer a run is a
+  window, so `PULSE_RUN` resets both compressor sets' LRU tables to zero (section 4's "every window start"), along with the
+  window's other output state: the template bitmap, the packers and the output queues' lengths (integrator, the same reasoning).
+  Everything that carries across the segment (the processor state, the read queue and its counter, the caches, the jump LRU)
+  is left alone.
+- **Setting the state resets everything; `PULSE_RUN` only starts running** (owner, 2026-11-01; DECISIONS-v1.26 item 10), the same
+  rule as the replayer's: the state write flushes the queues, latches the sizes, clears the size counters and sets the credits;
+  the Tracer's go is `PULSE_RUN`, which runs the next `RUN_CONFIG` [23:0] rows and nothing else, so the read queue's counter runs across
+  the segment's 64 runs.
+- **The Tracer has exactly two pulses, as every peripheral** (owner, 2026-11-04): **`PULSE_RUN`** (4.17.2) runs the next
+  `RUN_CONFIG` [23:0] rows; **`PULSE_DMA`** (4.17.9) starts a DMA transfer from one of the four output queues. **The write to word 0**
+  flushes the queues, latches the sizes, clears the counters, sets the credits, and **also invalidates the instruction and data
+  caches and the jump LRU** (without flushing dirty lines, section 23). That is safe although words 1-67 follow, because the
+  caches only fill during execution, which begins at `PULSE_RUN`. **On the Tracer, word 0 is written only at a segment's start:**
+  a rewrite mid-segment would flush the read queue and the caches and lose the segment's progress, and word 0 holds no
+  per-pass flags from v1.26.1 (they are in `RUN_CONFIG`, which the Tracer ignores), so **a mid-segment rewrite is UB** (section 8a). Everything else is a register write: the state
+  through part 0, `RUN_CONFIG`, and the hash's constants, `HASH_MUL`, `HASH_STEP` and `HASH_LINES` (section 18; written once per proof,
+  sticky).
+- **The read queue's end** (owner, 2026-11-01): **the advice log is per segment**, all 4M rows, not per run of 65,536, and
+  **its size is part of the startup state** (section 23's stream word), so the Tracer knows it from the start. It counts the words it pops:
+  **a pop beyond the size sets an `ERRORS` bit (advice underflow)** at once, instead of the Tracer waiting forever for the
+  watchdog. **Leftover advice is checked in software:** the Tracer raises done every 65,536 rows with the read queue meant to
+  carry on (owner), so a done with advice left is normal; C&C 3 reads the count of words not yet consumed after the segment's
+  64th done (it must be 0), in place: the stream word's advice field (section 23). (This replaces a "last advice" pulse.) Under section 8a it
+  earns a check: the advice comes from this proof's run, so a disagreement between the host's advice and the trace depends on the
+  input data, where simulation of our firmware may not reach.
+- **The same in v1.3's replayer** (owner, 2026-11-01): **it takes its input sizes when its state is set**, the state record's
+  stream word giving each stream's exact length (code, read log, write log), and checks its pops against them the same way: one
+  beyond a stream's length is an underflow error at once, and **reaching done without exhausting its input queues is an error**
+  (owner): a replayer's window consumes all its input, so its done does mark the end.
+  A starved window becomes a named error, not a hang caught by C&C 1's watchdog. A change to the replayer at v1.3 (v1.25 is
+  frozen); the expansion queue, fed per expansion, ends by `seq_remaining` and is left as is.
+- **A stream's size is two numbers** (owner, 2026-11-01), since some streams are LRU-coded: **its 128-bit words** (the stream as
+  sent, raw or coded, padding included; bits replaced, as useful to no one) and **the values out** (the 32- or 64-bit values it
+  decodes to, where a decoder stops). Both are checked: the decoder reading past the
+  words, or a consumer popping past the values out, is an underflow error at once; and at the end both must be used up exactly
+  (a coded stream whose bits are all read but which decodes to fewer or more values is corrupt). For the Tracer's advice, raw
+  64-bit words, the bits are 64 times the values. **For the replayer this changes its state record** at v1.3: the stream word
+  carries bit lengths today, so the value counts need room (more fields, or another word; open).
+  **A mismatch sets one of the peripheral's condition bits** (owner): its `ERRORS`, raising its error line (4.13). Proposed
+  (integrator): one bit per stream (on the replayer code, read log, write log; on the Tracer advice), so the error names the
+  stream.
+  **The replayer's new `ERRORS` bits at v1.3** (owner, 2026-11-01), after v1.25's [0] reserved, [1] queue overrun, [2] invalid
+  expansion: **[3] code-stream underflow, [4] read-log underflow, [5] write-log underflow, [6] done with input left over** (one
+  bit; the controller reads the queue occupancies to see which stream).
+- **A Tracer run is at most 65,536 rows** (owner, 2026-11-05; WORKER21): its FIFOs hold one window, so a `RUN_CONFIG` row
+  count above 65,536 is UB on the Tracer; a longer trace is done in chunks. (The 24-bit count serves the replayer and reads a
+  run's progress exactly.)
+- **The DMA's packets: src 74, through C&C 3's down port** (owner, 2026-11-05; spec item 118, which was deferred): a sending
+  peripheral's DMA packets carry **src = its controller's id + 8** (72-74 for C&C 1-3's engines, as v1.1's engine endpoints
+  were numbered), enter the controller's router as an extra input, and **leave through its down port**, the link to its tile
+  (tile 2 for C&C 3), arriving like any neighbour's. 72-74 are **sources only**: packets for 67-125 stay errors, nothing replies
+  to them, and a DMA's general writes need none.
+- **The drain: service requests with credits, and done last** (owner, 2026-11-05; WORKER21's Q2 and Q8). One scan of the log
+  FIFO feeds output queues 2 and 3 in row order; with small queues and a DMA sending one queue per transfer, that deadlocks (the
+  DMA waiting on one queue while the scan waits on the other). So:
+  - **output queues 1-3 (code, read log, write log) are 4 KB each**, and each counts **credits**: one per 2 KB chunk present
+    (so 0-2), plus one for the last part of a finished stream: **at a stream's end the Tracer raises a service request even
+    with less than 2 KB in the queue** (owner, 2026-11-05); none if the remainder is 0 (a stream of a whole number of chunks, or empty). **Its service flag is up while it holds a credit**; each DMA
+    transfer of a chunk takes one. A request only goes up for data already in the queue, so a transfer never waits on the scan,
+    and a full queue stalls the scan only while its own request is up: **no deadlock, one scan, the DMA unchanged.** A window
+    heavy in one log and empty in the other just raises that queue's flag repeatedly;
+  - **the order:** when the run's rows finish, the Tracer posts **state queue needs service** (queue 0; the sizes are then fixed
+    and readable, so it also serves as "traced"); then the stream queues' service flags as set 2 fills them; and **done only
+    once every queue is empty and the last transfer has finished.** So C&C 3 is purely reactive (it sends what each request
+    asks for, by the queue-length registers), and **done means ready for the next `PULSE_RUN`**: no rule against pulsing before
+    the drain ends is needed (Q8 dissolved).
+  - **Sizing a transfer is C&C 3's job** (owner, 2026-11-05): each transfer asks for at most what the credit it answers covers,
+    2 KB for a chunk and exactly the remainder for a stream's last part (the queue-length registers give it); asking for more
+    words than the queue will hold is UB (the DMA would wait for data that never comes), flagged by meshsim, with no hardware
+    check.
+  - Cost: about 12 KB of queues, four flags.
+- **The window's record is assembled by C&C 3, not the Tracer** (owner, 2026-11-01). **At each done, the Tracer presents its
+  current state** (the state word and the registers: the end of the window just traced) **and the window's totals** (the stream
+  word, the compression flags, the template bitmap). C&C 3 builds window *n*'s 68-word record from the state it remembered at the
+  window's start plus those totals, then remembers the Tracer's new state as window *n* + 1's start; window 0's start is the state
+  it loaded. So the Tracer keeps no snapshot of past state (saving about 1 KB of registers), and **the end-of-segment check is
+  software:** after the 64th done the Tracer's state is the segment's end, which C&C 3 compares with the next segment's frame 2.
+  **Clarified** (owner, 2026-11-04): **everything is read out at done, and nothing writes a state between runs**; C&C 3 only
+  pulses run. At the end of run *n* the working state is window *n*'s end, which is **window *n* + 1's start**, and window *n*'s
+  own start no longer exists anywhere. So at done *n* output queue 0's 68 words are mixed: words 0 and 2-66 (the state) are
+  **window *n* + 1's start**, and words 1 and 67 (the stream word and the template bitmap) are **run *n*'s totals**. C&C 3
+  reassembles by where it sends each piece: the state words to tile *n* + 1, as its record's start (window 0's start is the
+  state loaded at the segment's start), and run *n*'s totals and its three streams to tile *n*. No copy, no snapshot, and C&C 3
+  need not hold the state itself. **Where they land will evolve** (owner, 2026-11-04): **first, the DMA writes them directly into the
+  compute tiles' memory** (so no replayer credits pace the drain, and C&C 3 can interleave the queues' transfers freely); **later,
+  they will probably land in C&C 3's memory and go to LPDDR by file calls, for a later replay.**
+  **Arming the tiles' counters** (owner, 2026-11-05; WORKER22's Q15; an intermediate step): every write into a tile's big SRAM
+  is counted, armed before it arrives (invariant 22), but a window's stream sizes exist only after it is traced. **The record's
+  pieces are fixed** (66 words of state to tile *n* + 1, 2 of totals to tile *n*), so the tiles arm for them at boot. **For the
+  streams, a handshake:** C&C 3 sends tile *n* its totals first; the tile reads the sizes from word 1, arms its counter for the
+  streams and replies "armed"; only then does C&C 3 send the streams (one round trip per window, negligible against the drain,
+  the scans waiting on full queues meanwhile). The later design lands the windows in C&C 3's memory and LPDDR files instead;
+  candidate C2 (signed counters) would remove the handshake.
+  **The segment's barriers, as finally ruled** (owner, 2026-11-05; WORKER22's fan-in hang and Q17; replacing that day's first
+  READY/GO wording, which had tiles raise READY with armed counters, a done-early error): **the same rule as every phase**
+  (4.13: "the window between GO and arming is kept", closed by timing, 2026-10-29). (1) Tiles boot and raise **READY** with
+  nothing armed; (2) **C&C 1 pulses GO and starts C&C 3**, and each tile arms its counters for the record's pieces on waking;
+  (3) **C&C 3 sends nothing sooner than `stage_delay` after the GO** (as invariant 25's announced staging), the tiles' arming
+  path being short and identical; if the timing ever failed, the tile raises **unexpected arrival** ([2]), not a silent loss;
+  (4) the deliveries, the streams on the per-window handshake; (5) each tile raises **READY when its counters reach 0** (its
+  window has landed, a genuine done), which replaces C&C 3 reporting done; (6) C&C 1 sees all 64 READY and issues the **final
+  GO**: the replay. No "booted" packets and no request-tree barrier. Q16's early replay is replaced. Signed counters (item 125)
+  stay the candidate that would remove the window and the handshake together.
+- **A new state is written only at the start of a proof** (owner, 2026-11-01): one segment per ASIC per proof, so between the
+  64 windows of a segment nothing is loaded; C&C 3 only reads the state and the queue lengths at each done, drains the output
+  queues, and pulses go. **The read queue persists across the windows**, since the segment's advice runs across them (its size
+  in the state counts down over the whole segment).
+- **Part 0's state is the working state** (owner, 2026-11-01; DECISIONS-v1.26 item 12): writing words 0-65 writes the live
+  registers, pc, `instr_idx` and offset; there is no copy at a run's start. So the Tracer's 64 runs carry on from wherever the
+  last stopped, and its state at done is read straight from the working state into output queue 0 (window *n* + 1's start,
+  above).
+- **The state is a memory on both units** (owner, 2026-11-01): address-mapped in part 0, as the replayer's at v1.25, not a queue;
+  the whole 68-word record, in section 23's order, at consecutive offsets from 0x000, so the Tracer's DMA sends output queue 0's
+  words as they are, in the two pieces above. **The write to word 0, the state word at 0x000, is the flushing write.**
+- **Setting the state flushes the queues**, on the Tracer and on the replayer alike (owner, 2026-11-01): a state write empties
+  every input and output queue, so the new state starts clean, the read queue afresh for the new segment's advice. **So C&C 3
+  reads the state out and drains the output queues before writing a new one** (owner): what isn't read out first is simply lost.
+  (For the replayer this moves the clearing to the state write; at v1.25 a run's start, `PULSE_RUN`, empties the queues, spec
+  4.19.8.)
+- **Four queue-length registers** (owner, 2026-11-01), **in 128-bit words**, for the output the controller sends on: **state,
+  code, read log, write log.** The state queue is always **68 words** per window (section 23's record: the template bitmap,
+  the state word, the stream word, the 64-word register image and the files word), the other three vary with the window.
+- **Its registers follow the replayer's** (spec 4.19.9; owner, 2026-11-01), the rest living in its region and state record:
+
+| word | register | |
+|---|---|---|
+| 32 | **`RUN_CONFIG`** (R/W) | **[23:0] the rows the next run traces**, typically 65,536; [24], [25] the replayer's per-pass flags, ignored here (DECISIONS-v1.26 item 13, v1.26.1; replacing `RUN_CYCLES`) |
+| 33 | `ROWS_RUN` (R) | rows of this run completed, 24 bits (the same word on both units from v1.26.1, item 14) |
+| 34 | `EXPANSION_OFFSET` (R) | the row within the current expansion where the next row starts (the same word on both units) |
+| 35 | `EXPANSION_OPCODE` (R) | the instruction awaiting a controller-fed expansion (the same word on both units) |
+
+  plus the usual `PARAMS`, `STATUS`, `ERRORS`, `EVENTS`, the two pulses (`PULSE_RUN`, `PULSE_DMA`), the DMA's words, and the four queue lengths
+  (above). **Ruled** (owner, 2026-11-05, on WORKER21's proposals; spec 4.21.3, 8.16): words 36-39 the queue lengths (state,
+  code, read log, write log, in 128-bit words), 40 `HASH_MUL`, 41 `HASH_STEP`, 42 `HASH_LINES`, 43 **`EXPANSION_TEMPLATE`** (W:
+  C&C 3 stores the inline's number with a valid bit, setting its bitmap bit; `PULSE_RUN` sets it again when a run starts inside
+  that inline); **the advice flag is a credit** like the replayer's (depth 2, half a queue each, set to 2 by the word-0 write);
+  **the per-stream compression enables** in `RUN_CONFIG` [28:26] on the Tracer (sticky; the replayer ignores them).
+- **Statistics registers** (owner, 2026-11-06; spec item 157): a minimal fixed set, **words 44-51**, eight read-only 32-bit
+  counters cleared by the word-0 write: cycles running, stall cycles for fetch, data, map probe and output, I- and D-cache misses,
+  map probes. Words 52-127 reserved.
+
+## 25. The Tracer's core, and the program's end (2026-11-01)
+
+Decided (O).
+
+- **The Tracer is a different beast from the replayer** (owner): its own core, not the replayer's with a memory path added. What
+  the two share is formats and tables, not the design: the 68-word state record (section 23), the region map (section 12), the
+  universal tables and templates (section 13), the controller-fed expansion path, and the read queue.
+- **After the program ends, the Tracer produces padding rows until its 4M rows are exhausted** (owner): once pc reaches 0 (spec
+  4.19.2's end of trace: the last real row jumps to pc 0 and sets `instr_idx` to 0), every further row is an all-zero NOP, up to
+  the segment's 2²² rows, so every window has its rows and a segment past the program's end (frame 2 at pc 0) is traced like any
+  other.
+  **The end is detected by any JAL with immediate 0, whatever its rd** (owner, 2026-11-05, WORKER21's Q5, refining 11-04's
+  `JAL x0, 0`): the templates mark every such JAL word (jolt-cpp's `imm0_pc0`), and a16z treats each as the pc stalling. So
+  `JAL x0, 0`, `C.J 0` (decompressed to it), **EBREAK** (its expansion holds `JAL v40, 0`, so EBREAK ends the program), and
+  `JAL ra, 0` (which writes `ra` and ends) all end it; the host rejects none of them. Otherwise as 11-04: gold, and later the Tracer,
+  recognise the program's end by that instruction and then emit 4.19.2's encoding unchanged (the last real row's next pc 0 and
+  `instr_idx` 0, then the padding rows). **Only the detection changes:** a JALR or branch to address 0 is not an end but the
+  "jump target not in the map" error, as a16z fails there (replacing "any jump to pc 0 ends the run", jolt-cpp's sentinel).
+- **C&C 3's memory is the home of every controller-fed expansion** (owner, 2026-11-01): the 75 templates of the universal
+  tables (15 inlines, 60 CSR keys; 13,821 words, `templates.bin`, 216 KB, `tables/replayer/`), since the Tracer can meet any of
+  them; it answers the Tracer's expand flag from there. **It broadcasts the set used in the segment's 4M rows to all the tiles**,
+  once, and **each tile trims it to what its own window uses** (its record's template bitmap, word 0). (So a tile has the
+  templates it needs once the segment's set has been broadcast.) **The broadcast happens when the proving stages start**
+  (owner, 2026-11-01), once the segment is traced, so every tile has its templates before its replayer runs.
+- **The template bitmap tracks the inlines only** (owner, 2026-11-01). Of the 75 controller-fed templates, **15 are the inlines**
+  (13,719 words, nearly all of the 216 KB) and **60 are CSR variants**: 2 instructions x 6 CSRs x 5 register patterns (rd = x0,
+  rs1 = x0, rd = rs1, or neither, as jolt-cpp's expansion distinguishes; `tables/README.md`), only **102 words** in all. So **all
+  60 CSR templates are always broadcast** (about 1.6 KB), and the bitmap's job is just to keep the big inline templates off tiles
+  that don't need them: the Tracer sets an inline's bit when it starts one in a window and reports the bitmap at done; C&C 3 puts
+  it in the record's word 0 (its 128-bit layout kept) and ORs it into the segment's set for the broadcast. The template number
+  comes back from C&C 3 with its answer to the expand flag, since it looks the template up anyway (integrator's proposal).
+- **An instruction can straddle two lines, and two pages** (owner, 2026-11-01: a fact of life): a 4-byte instruction starting in
+  a line's last 2 bytes (a jump can land there) takes its second half from the next line, which can be in the next page. The fetch
+  asks for both lines, each its own instruction-cache lookup and, on a miss, its own (root, depth, line) request, translated
+  independently by the memory system; a second half in a page that doesn't exist is the checked error below.
+- **What the Tracer checks** (owner, 2026-11-01): **errors, in its `ERRORS`, raising its error line**, for what plausibly comes
+  from corruption somewhere (a host table or a page damaged on the way, a hardware fault), where hanging or running on would hide
+  it:
+  - **a jump target not in the map** (the probe finds neither the pc nor a free slot within its bound);
+  - **a store where the copy can't write** (owner, 2026-11-05, WORKER21's Q6; the statuses frozen as the default, item 148,
+    2026-11-06): **a hole or a page the copy
+    doesn't own** (section 15), one `ERRORS` bit, [8], since a line is writable only when its fill succeeded; the fill status
+    can still tell them apart. **To revisit with the memory system's design:** which statuses and page flags it reports is still a
+    black box, so this follows WORKER21's proposed fill responses (ok, hole, not owned, beyond the length) until then.
+    **Stores into code** (owner, 2026-11-05, WORKER21's Q10): Jolt executes its fixed bytecode, but the Tracer fetches through
+    memory, so a store into the text would make its trace silently differ from a16z's. **"Code" is the text sections** (the
+    ELF's `SHF_EXECINSTR` sections, overlaps merged: exactly what a16z decodes into bytecode, D1, and what the jump map covers);
+    an ELF with no section headers can't be proven and is rejected at load. **The host scans its write list** (the pages, or
+    cells, each segment writes, which it already has, section 15) against the text ranges once per segment, before anything is
+    sent, and rejects the program if any write falls in code: a check over the list, **not on the JIT's load/store path**.
+    **The Tracer's backstop is free:** a segment's copy owns only its written pages (section 15), so once the scan passes it never
+    owns a text page, and a store into code lands on a page not owned and sets [8]. Nothing new reaches the Tracer: no read-only
+    flag from the memory system, no comparator. (Replaces the host marking text pages not writable.) A program storing into its
+    own code is rejected where a16z, with no region permissions, would prove it: a deliberate divergence.
+    Formerly: **a write to a hole** in the guest's memory (an index entry of `0xFFFFFFFF`), reported by the memory system's walker to the
+    requester;
+  - **an access to a page that doesn't exist**, beyond the file's length;
+  - **a failed `VirtualAssert…` row** (owner, 2026-11-05, WORKER21's Q7): the expansions' assertions (alignment, the division
+    and remainder checks, no-overflow), **a checked error**: such a run is unprovable (R1CS checks the same condition), the row
+    computes the comparison anyway, and it catches the host and the Tracer disagreeing (a wrong quotient from the host's
+    advice) before a proof is wasted, as leftover advice earned its check. *(Assumed: the templates assert alignment before every access.)*
+  - **any misaligned access** (owner, 2026-11-05; WORKER21 found that at 821e1bd no template asserts alignment: LD and SD are
+    one-word templates, and both tracers abort on a misaligned access, UPSTREAM-DIFFS D6): **`ERRORS` [12], and the Tracer
+    stops.** **The check is a16z's own rule, on every memory row** (owner, 2026-11-05, on WORKER21's
+    finding, item 150): **the row's floor address, ea − (ea & m), must be a multiple of 8**, with m = 0, 4, 6, 7 for doubleword,
+    word, halfword and byte rows (a16z 7189216 `tracer/src/instruction/floor_access.rs:66-75`; jolt-cpp's
+    `checked_memory_address`). For a native access that is exactly natural alignment for its size; it also covers **the inline
+    templates' own LD and SD rows** (at rs1 or rs2 plus multiples of 8), which no native instruction covers, with no special
+    case and no first-row exception for a segment starting mid-expansion. Such a program can't be traced or proven, so the
+    host's run has already aborted on it: [12] catches the host and the Tracer disagreeing. A few address bits per row.
+  - **a guest access outside the provable range** (owner, 2026-11-04; WORKER17): **a dedicated comparator** in the Tracer's
+    load and store path, `(address − lowest_address) < 8·K`, one subtract and one unsigned compare **on the full 64-bit
+    address** (an address below the start wraps and fails the same compare), alongside the local cache lookup, so it costs no
+    cycle; a failure sets its own `ERRORS` bit. **Not the memory system's length check:** `.pages` is larger than the provable
+    range (a 4 GB file against Cyclone's 2²⁴ cells, so an access past K but inside the file reads a hole as zero), and a request
+    reaching the memory system is already a (root, depth, line). The Tracer takes `lowest_address` and K from word 66 (section
+    23); the upper bound is **8·K, the cell index below K** (owner, 2026-11-06,
+    spec item 149: the RAM sumchecks cover exactly K 64-bit cells, so nothing outside them is checked). Instruction fetch needs none: a pc outside the code misses the jump map. Such a run can't be proven in
+    either codebase (R1CS ties the address to rs1 + imm); a16z's prover rejects it, jolt-cpp's silently drops the access and
+    produces a proof that fails verification. **The host tracer isn't required to check** (a per-access check would slow its JIT;
+    free only if its memory mapping faults). jolt-cpp gets a bug report against its prover;
+  - **advice underflow** (a pop past the read queue's size, section 24);
+  - and in software, **leftover advice** at the segment's end (C&C 3, section 24).
+  **UB** stays for our firmware's own mistakes with the Tracer (a row count or state write out of order). A read of a hole still
+  reads as zero (section 15).
+- **ECALL and host I/O need nothing special: their effects happen when the host runs the code** (owner, 2026-11-01). **ECALL**
+  is a trap into the guest's own handler, 7 ordinary rows (`isa/virtual.cpp:1068-1085`, mirroring upstream's `ecall.rs`): it
+  writes `mepc`, `mcause` = 11, `mtval` = 0 and `mstatus` (virtual registers 32-39) and jumps through `mtvec`; the handler is guest
+  code returning by MRET (Cyclone's 875 traps). **`VirtualHostIO`** is one row with no effect (`trace_owner.cpp:294-297`): its
+  side effects, such as printing, happened in the host's run and don't affect the proof. **A raw ECALL traps, as in a16z's Jolt;
+  legacy raw-ECALL host I/O isn't supported** (owner, 2026-11-04; UPSTREAM-DIFFS D3, section 17): nothing detects or rewrites
+  it (replacing jolt-cpp's LegacyRawEcall mode, which changes the bytecode a16z's verifier checks), so such a program fails as it
+  would in a16z; a clearer error is the host tracer's job.
+  **So the Tracer has no host channel.**
+
+---
+
+## v1.3 work list
+
+Work agreed for v1.3, each with the decisions it carries out. Studies (below) are separate.
+
+| # | task | from | status |
+|---|---|---|---|
+| W1 | ~~Bring the replayer and the Tracer up to date with jolt-cpp's latest~~ | 9 | **moved to v1.25** (owner, 2026-10-31): `DECISIONS-v1.25.md` |
+| W2 | **jolt-cpp's JIT emits the advice streams**: 128 per 2²⁹ run, one per 2²² rows, words in row order (`shape(op).advice_words` per secp op), a crossing sequence's pending words at the head of the next; and **how jolt-cpp handles registers 40-47** at a chunk's start (13 (c)) | 13 | **deferred** (owner, 2026-11-01): the fast JIT version isn't needed any time soon with the Java emulator (W4); the slow tool (W3) produces the advice logs and the full state, registers 40-47 included. The scoping is in `sessions/WORKER16-W3-REPORT.md` for later |
+| W3 | **The segment file tool**: runs the trace on the host and writes section 16's file (page counts, then per segment the processor state, advice log and updates, raw or LRU-coded); slow first | 16 | **done** (WORKER16, jolt-asic-planning `worker16-w3` ca30b5e; `sessions/WORKER16-W3-REPORT.md`): both workloads at 2²⁹ and hard-cut tests pass every check; whole file 1.75 MB (EVM Zone), 10.33 MB (Cyclone) |
+| W4 | **The Java emulator** (`wip/gold/`): self-contained; stage 1 a Tracer model matching jolt-cpp's rows, stage 2 gold, writing section 16's file | 17 | WORKER18: **stages 1-3 done, gold earned**; rulings on the differences in section 17 |
+| W5 | **Upstream's tests through the gold emulator** (owner, 2026-11-01): (a) the **ACT4 architectural tests** (RISC-V International's `riscv-arch-test`, `tests/arch-tests/` upstream): self-checking ELFs for every RV64IMAC instruction, unprivileged, expected signatures baked in at build time by the Sail reference model; upstream skips the CSR tests its tracer doesn't fully support (`tests/arch-tests/skip.txt`). Building them needs riscv-none-elf-gcc 15+ and Sail, once; the ELFs then run as data through gold, jolt-cpp and upstream. (b) **The inline tests** (`jolt-inlines/*/src/tests.rs`): each inline's sequence run on the emulator against an independent library (arkworks for secp256k1, and so on); port their vectors to gold. Check both exist at the pin 17a9459 (seen at HEAD c670357) | 17 | **done** (WORKER18, e9f0444): ACT4 through a test-equipment runner (every ACT4 ELF has data inside its code), 123 of jolt-emu's 125 passes; the inline vectors 5,677 of 5,677 |
+| SP1 | **The Tracer's spec chapter**: overview, region and record, control, execution, memory, output, boundaries, errors, the replayer's v1.3 changes; the 512 KB cache a black box | 1-25 | to start (WORKER21), in parallel with B1 |
+| B1 | **The Tracer's bring-up in meshsim**: its model, a black-box memory system, C&C 3's firmware sending each window to its tile, the segment replayed on the full chip, checked against WORKER9's deliveries and jolt-cpp's rows, compression on and off | 1-25 | **done** (WORKER22, merged 2026-11-06 at e67bc43): T1 on every window at 2²⁹, 18 full-chip T2 runs, the final regression 110v |
+
+**B1's acceptance at 2²⁹: one memory, carried through the segments** (owner, 2026-11-05). Instead of 128 separately built start
+images: **one initial image** (the cycle-0 image, every index level in place), and the segments run **in order on that same
+memory**, each starting where the previous left it. **At each segment's start**, the harness creates (as zero pages, if absent)
+the pages **that segment writes**, from a per-segment list, and marks them owned; every other page is not owned, so a stray store
+still sets [8] (section 15's ownership, exercised without 128 images). **The caches are cold at each segment's start**: the
+word-0 write invalidates the Tracer's, and the model flushes the shared cache at the boundary (each segment runs on its own
+ASIC). Checks at each boundary: the Tracer's state against the next segment's frame 2, and the pages it wrote against the
+segment's update list (frames 4 or 5), which verifies the updates for free. The fast model (T1) carries memory through the
+segments in between, so the full chip (T2) runs only the chosen ones. **WORKER26 builds the initial image, the map, and the
+per-segment lists of pages written**, not 128 images.
+
+| F1 | **The file system on C&C 2, with a shell on C&C 1 over the UART**: C&C 3's page manager black-boxed; mkfs and fsck as host tools | 20, 22 | **moved to v1.4** (owner, 2026-11-05: v1.3's goal is a Tracer design solid enough for Tony to start its RTL) |
+| P1 | **Full-detail simulation at full scale** (owner, 2026-11-05: a priority, delivered with v1.3): exact idle-skipping in meshsim, an "active" flag per unit set by any put on its inputs, a chip-wide line or its timer, cleared when nothing is in progress, counters caught up on waking; **the architecture: each cycle deliver, run, merge, with units grouped into tasks by cost and run in parallel** (one barrier per cycle; same-cycle reads between units audited and made deliveries or last-cycle reads), built on **the mechanism, one timing wheel per tile** (data in flight and scheduled wakes, so only units with something happening are stepped), **then threads over tiles**, each cycle ended at a barrier, cross-tile puts through per-thread outboxes merged there; **GO and READY at 8 cycles** in meshsim (the spec's estimates; 1 isn't physical), applied first with the baselines re-recorded; **stage 2's partitioning measured by tile against by unit type** (e.g. 4 threads for the 67 RV32 cores); **hierarchical: a whole tile sleeps** when all its units are idle and its core sleeps, woken by anything crossing its boundary (link inputs, its controller link, the chip-wide lines, its timer); proven by identical logs with skipping on and off; then **T2 on all 128 segments of both workloads at 2²⁹** | the model's conventions | prompt written (`WORKER28/PROMPT.md`); **not started** (owner); implementation after B1 merges; **stage 1 and the latency commit go into v1.3** (owner, 2026-11-06), before the freeze and its final regression |
+| P2 | **A simulation framework: very fast, parallel, and easy to build units in** (owner, 2026-11-06: simulation is a roadblock; every version after v1.3 grows, with runs of many replays, so it must run blazingly fast): the framework carries the rules (declared ports `Reg`, `Wire`, `Fifo`, `Link`; ordering by combinational wires; automatic double-buffering; wakes on changed inputs; compact storage; threads along registered ports), units written as plain code; designed, then prototyped on a few units and measured (speed and authoring cost), the current simulator as exactness oracle; in Java | the model's conventions | prompt written (`WORKER29/PROMPT.md`); **not part of v1.3** (the foundation for v1.4 on); the owner decides on migration after the prototype; **first A-C in today's engine** (cheap bookkeeping, eager bus commit, status on change), on WORKER29's profile; main benchmark a busy chip replaying ~50 times per proof; a GPU backend (a unit type per warp, over many chips) a design target, not built |
+
+---
+
+## Candidates (not decided)
+
+Options recorded for later, each with the evidence that would justify it.
+
+| # | candidate | why | cost |
+|---|---|---|---|
+| C1 | **Rejected** (owner, 2026-10-31; stated in spec 4.7): not worth fixing at a cost per step; it would be if the cost were per query. **A delay per destination:** decrement a counter **2 cycles** after acceptance for writes to controller memory and peripherals (their landing time is fixed, `cm_latency`, `rp_latency`), and K = 8 only for big SRAM | WORKER4's measurement: a read-port search step costs about **6 cycles more** than in v1.1 (35.9 + 37.42 per active search against 29.8 + 37.43), because v1.2 decrements at K = 8 where v1.1 counted controller-memory writes at landing. The extra is in the **fixed** term: about 6 cycles **per search step**, shared by all the searches active in it, not per probe (the per-search slope is unchanged). So roughly 6 × the steps per split, about a hundred cycles per split and a few hundred per sort: **negligible today**. Streaming work doesn't notice | two delay taps; a counter may then take two decrements in one cycle (one from each tap), a small adder change. Adopt if the sort's measurements show the split slowing |
+| C2 | **Signed counters** (v1.2 section 36): an arrival before arming just goes negative, so the order of arming and arrival stops mattering, and strays are caught as done early | removes the GO-to-arming window | a signed counter; the immediate stray report becomes meshsim's only |
+| C4 | **Moot (section 13).** **An addition chain for the modular inverse** (11): libsecp256k1's for DIVQ, a hand-built one for DIVR | halves the inverse's untraced rows: EVM Zone's first proof about 145 ms → about 84 ms against a 100 ms budget | the segment format already supports it (WORKER9); see T7 |
+| C3 | **Trim the 256-bit word's storage** to the bits in use, with the links staying 256 wide (v1.2 section 2) | power: constant-zero flops are still clocked | revisit when the design has settled |
+
+---
+
+## Studies for other sessions
+
+| # | study | why |
+|---|---|---|
+| ST1 | **Compare the two Jolt tracers' traces:** jolt-cpp (https://github.com/snarkify/jolt-cpp, ours) and the Rust Jolt tracer (https://github.com/a16z/jolt). They are written differently and may work slightly differently but are believed to produce the same traces. Run the same guest programs through both and find every place the traces mismatch (rows, `instr_idx`, advice, memory values, padding) | **answered by section 17's stage 3** (WORKER18): the same rows on every run; edge differences in `wip/planning/upstream/UPSTREAM-DIFFS.md`, for the owner |
+
+---
+
+## Pending questions
+
+| # | question | from | status |
+|---|---|---|---|
+| T1 | What the 8 KB and 4 KB expansion memories hold | 1 | **answered: section 7** (same format and builder as the replayer's ROM and decode table; different contents) |
+| T4 | The Tracer's template coverage | 7 | **answered: section 7** (a list in the ROM; the rest fed by C&C 3, replayer-style) |
+| T2 | The RV64 initial state: what it contains and where it comes from | 1 | **mostly answered: section 12** (part 0 as the replayer's); to verify it's complete |
+| T3 | The page table: its entry format and semantics, and how C&C 3 maintains it | 1 | open (its size and place: section 12) |
+| T8 | ~~Does 512 MiB cover both workloads?~~ | 12 | **withdrawn**: the table covers 4 GiB, sparse (section 12) |
+| T6 | `VirtualPext`/`VirtualPextSigned` in hardware | 9 | **answered: section 9** (any mask must work; the method is the implementation's) |
+| T7 | The modular inverse within the Tracer's 100 ms budget | 11 | **answered: section 13** (host-supplied advice; no inverse on the Tracer) |
+| T5 | The inlines' advice | 8 | **answered: section 13** (the host supplies all advice in the read log; was section 10) |
+
+**Done: frozen as `v1.3/`, 2026-11-06** (from `main` at 1d06dbc). v1.3 is the Tracer, solid enough for the RTL: the spec (4.21 with
+B1's answers folded in, 4.21.10's barriers and deliveries, `CHANGES-v1.3.md`, and **the RTL guide `CHANGES-v1.26.1-to-v1.3.md`**);
+meshsim with the Tracer, its memory system, C&C 3's and C&C 1's firmware, T1 and T2, and P1's stage 1 (exact idle-skipping,
+about 18× on the full chip), with GO, READY and the error line at 8 cycles and `stage_delay` 64; gold, jumpmap and the input
+pipeline. **Accepted:** T1 on every window of both workloads at 2²⁹; 18 full-chip T2 runs (Quest 110m-110u); stage 1 identical
+off and on (114-117b); **the final regression, Quest 118 on 2d8d9c1**: the quick and full suites, the full-size sort (1,229,687
+cycles at latency 8, `BASELINES-8.md`), the 64-window Stage B smoke, T2 segment 0 of both workloads. Out of v1.3: F1 (to v1.4),
+P1's stage 2 and P2 (in progress), item 158 (the tables to a16z's D13/D14 rule, right after the freeze).

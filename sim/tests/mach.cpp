@@ -24,6 +24,7 @@
 #include "units/inject.h"
 #include "units/periph_slot.h"
 #include "units/replayer.h"
+#include "units/reqbus.h"
 #include "units/router.h"
 #include "units/write_engine.h"
 #include "units/cnc.h"
@@ -226,6 +227,7 @@ struct Chip::Impl {
     unsigned nunits = 64;
     uint8_t skew[64] = {};
     std::unique_ptr<Cc> cc;
+    std::unique_ptr<ReqBus> reqbus;
     std::unique_ptr<Checker> checker;                    // ref's violations (src/check.h; on with SIM_CHECKS)
     // ref's hardware FIFOs for invariant 1 (Tile.hardwareFifos, then C&C's receive FIFOs), in ref's scan order
     int digest_seq = -1;                                 // MESHSIM_DIGEST: this chip's place in creation order
@@ -343,6 +345,11 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     spec.domain = c.parts > 1 ? dom : nullptr;
     spec.cc_cores = c.cc_cores; spec.cc3_dma = c.cc3_tracer; spec.host_capacity = c.host_capacity;
     spec.reqbus.fifo_depth = c.request_fifo_depth; spec.reqbus.hop_latency = c.req_hop_latency;
+    spec.reqbus_host = c.reqbus_host && !c.cc_cores;
+    if (c.reqbus_host) {
+        if (c.cc_cores) FATAL("mach: reqbus_host: the machine with C&C's model (C&C 1-3 as cores have their own ports)");
+        spec.reqbus.credit_latency = 0;                   // D34: exact as ref (one domain)
+    }
     for (unsigned q = 0; q < 3; q++) spec.reqbus.queue_depth[q] = c.receive_queue_depth[q];
     if (!c.cc_cores) spec.program = &m.prog;
     units::build_chip(sc, spec);
@@ -360,6 +367,10 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         m.sim->unit<units::TileCtl>(units::unit_prefix(k) + "ctl").host_on = true;
     m.shifted = {m.sim->type_of(units::tile_unit(0, "ctl")), m.sim->type_of(units::tile_unit(0, "core"))};
     if (!c.cc_cores) m.lines = {m.sim->type_of("row0"), m.sim->type_of("cnc")};
+    // ref's quiescent leaves the request bus out (Tile.quiescent, Chip.quiescent: no request port, node or queue)
+    if (c.threads <= 1)
+        for (const char* u : {"t0.reqleaf", "reqbus.row0", "reqbus.root", "cc1.reqrecv", "reqbus.host"})
+            if (m.sim->has_unit(u)) m.lines.push_back(m.sim->type_of(u));
     CheckSwitches sw;
     sw.errors = c.check_errors; sw.unexpected = c.check_unexpected; sw.read_port_overlap = c.check_read_port_overlap;
     sw.command_read = c.check_command_read; sw.strict_replies = c.strict_replies; sw.K = c.K;
@@ -526,6 +537,7 @@ void Chip::Impl::phase_events() {
         const int64_t r = sim->unit<units::TileCtl>(units::tile_unit(k, "ctl")).s.ready_pulse_at;
         if (r != seen_ready[k]) { seen_ready[k] = r; if (r >= 0) phases->on_ready(k, r); }
     }
+    phases->after_cycle();
     const units::Cnc& c = *cnc();
     if (c.seen >= 0 && c.seen != seen_all_ready) { seen_all_ready = c.seen; phases->on_all_ready(c.seen); }
     if (c.gos != seen_gos) {
@@ -537,10 +549,68 @@ void Chip::Impl::phase_events() {
         phases->on_go(c.last_go_at, int32_t(c.last_command_word));
     }
 }
+ReqBus& Chip::reqbus() {
+    if (!cfg_.reqbus_host) FATAL("mach: reqbus(): MachConfig::reqbus_host (the request bus driven from the test)");
+    if (!impl_->reqbus) impl_->reqbus = std::make_unique<ReqBus>(*this);
+    return *impl_->reqbus;
+}
+
+// ---- ref's RequestBus from a test ----
+namespace {
+units::reqbus::ReqRecv& recv_of(Chip& c, unsigned target) {
+    static const char* kRecv[3] = {"cc1.reqrecv", "cc2.reqrecv", "cc3.reqrecv"};
+    if (target > 2) FATAL("mach: reqbus: target %u has no receive queue (0-2)", target);
+    return c.unit<units::reqbus::ReqRecv>(kRecv[target]);
+}
+}  // namespace
+bool ReqBus::head(unsigned target, int64_t t, uint32_t w[4]) const {   // ref's head(target, t): delivered before t
+    const units::reqbus::ReqRecv& r = recv_of(*c_, target);
+    const uint64_t skip = popped_[target] - r.received;                 // the test's pops not yet made
+    if (skip >= r.qn) return false;
+    const auto& e = r.q[(r.qh + skip) % r.depth];
+    if (e.delivered_t >= t) return false;
+    for (unsigned i = 0; i < 4; i++) w[i] = e.w[i];
+    return true;
+}
+bool ReqBus::pending(unsigned target, int64_t t) const { uint32_t w[4]; return head(target, t, w); }
+uint32_t ReqBus::get(unsigned target, int64_t t, unsigned i) const { uint32_t w[4]; return head(target, t, w) ? w[i & 3] : 0; }
+bool ReqBus::peek_request(unsigned target, int64_t t, uint32_t w[4]) const { return head(target, t, w); }
+uint32_t ReqBus::receive(unsigned target, int64_t t) {
+    uint32_t w[4];
+    if (!head(target, t, w)) { underflows_++; return 0; }
+    if (t != c_->cycle() + 1) FATAL("mach: reqbus.receive at cycle %lld: the next cycle only (%lld)", (long long)t, (long long)c_->cycle() + 1);
+    units::reqbus::ReqHost& h = c_->unit<units::reqbus::ReqHost>("reqbus.host");
+    if (h.pop_at[target] >= 0) FATAL("mach: reqbus.receive: a second pop of target %u in cycle %lld", target, (long long)t);
+    h.pop_at[target] = t;
+    popped_[target]++;
+    c_->touched("reqbus.host");
+    return w[3];
+}
+void ReqBus::controller_send(int64_t t, unsigned cc, uint32_t w0, uint32_t w1, uint32_t w2, uint32_t w3) {
+    if (t != c_->cycle()) FATAL("mach: reqbus.controller_send at cycle %lld: the cycle just run only (%lld)", (long long)t, (long long)c_->cycle());
+    if (cc > 2) FATAL("mach: reqbus.controller_send: C&C %u (0-2)", cc + 1);
+    units::reqbus::ReqHost& h = c_->unit<units::reqbus::ReqHost>("reqbus.host");
+    auto& s = h.send[cc];
+    if (s.on) FATAL("mach: reqbus.controller_send: C&C %u's previous request still entering the root (ref's beats overlap: not modelled)", cc + 1);
+    s.w[0] = (w0 & ~0x7Fu) | (64 + cc); s.w[1] = w1; s.w[2] = w2; s.w[3] = w3;
+    s.store_t = t; s.next = 1; s.on = true;
+    const sim::Word b[3] = {units::reqbus::beat_w0(0, 64 + cc, t), sim::Word(s.w[0]) | sim::Word(s.w[1]) << 32, sim::Word(s.w[2]) | sim::Word(s.w[3]) << 32};
+    c_->sim().put_late("reqbus.host", h.beat[cc], b, 3);     // beat 0 as of t: arriving at t + hop, as ref's
+    c_->touched("reqbus.host");
+}
+size_t ReqBus::queue_size(unsigned target) const {
+    const units::reqbus::ReqRecv& r = recv_of(*c_, target);
+    return r.qn - (popped_[target] - r.received);
+}
+int64_t ReqBus::credits(unsigned target) const { return c_->unit<units::reqbus::ReqRoot>("reqbus.root").credits[target & 7]; }
+uint64_t ReqBus::dropped() const { return c_->unit<units::reqbus::ReqRoot>("reqbus.root").dropped; }
+uint64_t ReqBus::delivered() const { return c_->unit<units::reqbus::ReqRoot>("reqbus.root").delivered; }
+
 PhaseLog& Chip::phases() {
     if (!impl_->phases) {
         if (!impl_->has_cnc) FATAL("mach: phases(): C&C 1's model only (not with cc_cores)");
         impl_->phases = std::make_unique<PhaseLog>(*this);
+        impl_->phases->after_cycle();                     // (the read port's counts as they stand now)
         impl_->seen_gos = unit<units::Cnc>("cnc").gos;
         for (unsigned k = 0; k < 64; k++) impl_->seen_ready[k] = unit<units::TileCtl>(units::tile_unit(k, "ctl")).s.ready_pulse_at;
     }
@@ -858,12 +928,50 @@ namespace {
 // The Env Rv32::load reads through, between cycles: the registers as the block publishes them for t (its end of
 // t - 1, block_at_end), HIST as stored.
 struct LoadEnv {
+    sim::Sim& s;
+    units::TileCore& u;
     const units::RegBlockState& b;
     const units::HistStore& h;
+    uint64_t t;
+    unsigned k;
     uint32_t reg(unsigned r) const { return b.reg(r); }
     uint32_t hist(uint32_t i) const { return h.m.hist[i & 255]; }
-    void post(uint32_t, uint32_t, uint32_t) const {
-        FATAL("mach: a test's load with a side effect (EVENTS, REQUEST_RECEIVE): not modelled yet (ask W20)");
+    void post(uint32_t op, uint32_t arg, uint32_t v) const {          // made by the core at t (ref: the load's side effect)
+        if (u.host_post_n == units::TileCore::kHostPosts) FATAL("mach: too many test loads' side effects pending");
+        u.host_post[u.host_post_n++] = {t, 0, uint64_t(op) << 32 | arg, uint64_t(v)};
+    }
+    uint32_t live_events() const {
+        if (!u.receiver) return 0;
+        return s.regfile_value(u.recv, units::reqbus::ReqRecv::R_PENDING) ? 1u << units::EV_REQUEST_PENDING : 0;
+    }
+    uint32_t req_get(unsigned i) const { return u.receiver ? s.regfile_value(u.recv, units::reqbus::ReqRecv::R_W0 + i) : 0; }
+    uint32_t req_receive(bool& ok) const {
+        if (u.receiver) FATAL("mach: a test's REQUEST_RECEIVE on a controller: not modelled yet (ask W20)");
+        ok = false;
+        return 0;
+    }
+    uint32_t rp_free() const {
+        return uint32_t(int64_t(u.rp_depth) - int64_t(u.rp_stored - s.unit<units::Injection>(units::unit_prefix(k) + "inj").rs.rp_injected_n));
+    }
+    int window_load(unsigned n, unsigned w, uint32_t& v) const {      // the core's Env::window_load, from the slot's RegFile
+        using units::Win;
+        if (!u.slot) FATAL("mach: a test's load from peripheral %u's window: the tile has no peripheral slot", n);
+        if (w == 5) {
+            v = s.regfile_value(u.win, Win::reg(n, Win::R_STD + 5));
+            const uint32_t m = s.regfile_value(u.win, Win::reg(n, Win::R_STD + 7));
+            if (v & m) {
+                if (u.host_post_n == units::TileCore::kHostPosts) FATAL("mach: too many test loads' side effects pending");
+                u.host_post[u.host_post_n++] = {t, 1, uint64_t(units::CoreOp::consume(n, v & m)), 0};
+            }
+            return 1;
+        }
+        if (w < Win::STD) { v = s.regfile_value(u.win, Win::reg(n, Win::R_STD + w)); return 1; }
+        v = 0;
+        if (w < Win::OWN0) return 2;
+        const unsigned k = w - Win::OWN0;
+        if (!(s.regfile_value(u.win, Win::reg(n, Win::R_DEFINED + k / 32)) >> (k % 32) & 1)) return 2;
+        v = s.regfile_value(u.win, Win::reg(n, Win::R_OWN + k));
+        return 1;
     }
 };
 }  // namespace
@@ -874,10 +982,69 @@ std::optional<uint32_t> TileRef::load(int64_t t, uint32_t ea, unsigned width) co
         return peek_local(region << 24 | (((units::lw::offset(ea & ~3u)) & (units::MEM_BYTES - 1))));
     units::TileCore& core = unit<units::TileCore>("core");
     const units::RegBlockState b = block();
-    LoadEnv e{b, unit<units::HistStore>("hist")};
+    LoadEnv e{c_->sim(), core, b, unit<units::HistStore>("hist"), uint64_t(t), k_};
     uint32_t v = 0;
+    const uint32_t posts = core.host_post_n;
     if (!core.rv.load(e, ea, width, v)) return std::nullopt;
+    if (core.host_post_n != posts) c_->touched(un(k_, "core"));   // its side effects: the core steps at t
     return v;
+}
+
+// ---- the request port from a test (W22-11) ----
+void TileRef::req_set_w(unsigned i, uint32_t v) {
+    if (i > 2) FATAL("mach: req_set_w(%u): W0-W2", i);
+    unit<units::TileCore>("core").req_set_w[i] = v;          // the core's copy (what a REQUEST_SEND pushes)
+    unit<units::TileCtl>("ctl").s.set_w[i] = v;              // the block's (its view)
+}
+uint32_t TileRef::req_w(unsigned i) const { return unit<units::TileCore>("core").req_set_w[i % 3]; }
+void TileRef::req_send(int64_t t, uint32_t w3) {           // RequestPort.send(t, w3) at the cycle just run
+    if (t != c_->cycle()) FATAL("mach: tile %u: req_send at cycle %lld: the cycle just run only (%lld)", k_, (long long)t, (long long)c_->cycle());
+    units::TileCore& core = unit<units::TileCore>("core");
+    const sim::Word w[2] = {sim::Word(core.req_set_w[0]) | sim::Word(core.req_set_w[1]) << 32, sim::Word(core.req_set_w[2]) | sim::Word(w3) << 32};
+    c_->sim().put_late(un(k_, "core"), core.req_push, w, 2);
+    core.req_set_w[0] = core.req_set_w[1] = core.req_set_w[2] = 0;
+    units::RegBlockState& s = unit<units::TileCtl>("ctl").s;
+    s.req_n++; s.sends++; s.set_w[0] = s.set_w[1] = s.set_w[2] = 0;   // the block's FIFO count, as a REQUEST_SEND at t
+    c_->touched(un(k_, "ctl"));
+}
+bool TileRef::req_can_push(int64_t t) const {               // fifo.size() < depth (the bus frees nothing before t runs)
+    if (t != c_->cycle() + 1) FATAL("mach: tile %u: req_can_push(%lld): the next cycle only", k_, (long long)t);
+    const units::reqbus::ReqLeaf& l = c_->unit<units::reqbus::ReqLeaf>("t" + std::to_string(k_) + ".reqleaf");
+    sim::PortEntry e[4];
+    const uint32_t n = c_->sim().observe(l.push, e, 4).n;    // a push of the cycle just run is in the FIFO for ref
+    uint32_t pending = 0;
+    for (uint32_t i = 0; i < n; i++) if (e[i].at <= uint64_t(t)) pending++;
+    return l.n + pending < l.depth;
+}
+
+// ---- the read port's host queue (W22-18) ----
+void TileRef::rp_host_queue(uint32_t addr, uint32_t dest) {
+    units::TileCore& core = unit<units::TileCore>("core");
+    if (core.host_rd_n == units::TileCore::kHostReads) FATAL("mach: tile %u: more than %u host reads queued", k_, units::TileCore::kHostReads);
+    uint32_t* r = core.host_rd[(core.host_rd_head + core.host_rd_n) % units::TileCore::kHostReads];
+    r[0] = addr; r[1] = dest;
+    core.host_rd_n++;
+    c_->touched(un(k_, "core"));
+}
+bool TileRef::rp_idle() const {                             // ref's free(t) == depth: a return injected at t frees its entry at t + 1
+    const units::TileCore& core = unit<units::TileCore>("core");
+    const units::InjReadSide& rs = unit<units::Injection>("inj").rs;
+    const uint64_t freed = rs.rp_injected_n - (rs.rp_inj_t == uint64_t(c_->cycle()) ? rs.rp_inj_now : 0);
+    return core.host_rd_n == 0 && core.rp_stored == freed;
+}
+bool TileRef::rp_all_accepted() const {
+    const units::TileCore& core = unit<units::TileCore>("core");
+    return core.host_rd_n == 0 && core.rp_stored == unit<units::Director>("dir").rp_accepted;
+}
+
+// ---- the register block from a test (W23's (d)) ----
+void TileRef::set_events(uint32_t bits) { unit<units::TileCtl>("ctl").host_events |= bits; c_->touched(un(k_, "ctl")); }
+void TileRef::schedule_go(int64_t t) {
+    units::TileCtl& b = unit<units::TileCtl>("ctl");
+    if (t <= c_->cycle()) FATAL("mach: tile %u: schedule_go(%lld): a cycle not yet run", k_, (long long)t);
+    if (b.host_go_at >= 0) FATAL("mach: tile %u: a second GO scheduled", k_);
+    b.host_go_at = t;
+    c_->touched(un(k_, "ctl"));
 }
 std::string TileRef::store(int64_t t, uint32_t ea, uint32_t v, uint32_t mask) {
     namespace lw = units::lw;
@@ -976,8 +1143,8 @@ void TileRef::pulse(uint32_t bits) {                       // TILE_PULSE's start
 // tile_ctl.h's block_at_end), with the harness's writes still pending over it.
 units::RegBlockState TileRef::block(bool with_cond) const {
     const units::TileCtl& b = unit<units::TileCtl>("ctl");
-    units::RegBlockState r = units::block_at_end(c_->sim(), b, uint64_t(c_->cycle()));
-    if (with_cond) r.conditions |= b.host_cond;            // set from the test (request 9): ref's ctl has them now
+    units::RegBlockState r = units::block_at_end(c_->sim(), b, uint64_t(c_->cycle()), b.host_go_at == c_->cycle());   // (a test's GO)
+    if (with_cond) { r.conditions |= b.host_cond; r.events |= b.host_events; }   // set from the test: ref's ctl has them now
     if (b.host.mask & units::TileCtl::HostWrites::DMA_CONFIG) r.dma_config = b.host.dma_config;
     if (b.host.mask & units::TileCtl::HostWrites::RECORD_BASE) r.record_base = b.host.record_base;
     if (b.host.mask & units::TileCtl::HostWrites::STARTS) r.dma_starts += b.host.starts;
@@ -1394,10 +1561,7 @@ MachConfig Net::cfg(int64_t shuffle) {
     k.shuffle_seed = shuffle; k.check_unexpected = false; k.check_errors = false;
     return k;
 }
-Net::Net(const MachConfig& cfg) : c(cfg) {
-    if (!cfg.coreless) FATAL("Net: the coreless test machine only (MachConfig::defaults or Net::cfg)");
-    c.impl().enable_net(cfg);
-}
+Net::Net(const MachConfig& cfg) : c(cfg) { c.impl().enable_net(cfg); }   // any machine, as ref's (W22-9: Config.machine())
 void Net::at(unsigned tile, int64_t T, unsigned dst, unsigned mode, uint32_t addr, uint64_t payload) {
     at(tile, T, dst, mode, 1, addr, units::lw::SIZE_64, payload, 0);
 }

@@ -130,6 +130,7 @@ struct InjReadSide {
     // ---- statistics, ref's checks ----
     uint64_t issued[3] = {}, stall_cycles = 0, window_full_cycles = 0, packets = 0, out_of_range = 0, violations = 0;
     uint64_t rp_injected_n = 0;        // read-port returns injected (ReadPort.injected; the "rdport" fingerprint)
+    uint64_t rp_inj_t = ~0ull, rp_inj_now = 0;   // W20: the cycle of the last read-port injection and how many then (statistics)
     uint64_t rp_ties = 0;              // a read-port entry ready in the same cycle as one already waiting (by token order)
     // W22 (finding F1, owner 2026-11-12: v1.3 parity, every build): ref counts window_full_cycles in every cycle the issue
     // finds no token free while a client has a request; this unit sleeps then (nothing wakes it until a token frees or
@@ -385,7 +386,11 @@ inline void InjReadSide::injected(sim::Ctx& c, uint64_t h, Tokens& tok) {
 #endif
     if (tokens_on && loops(lw::dst(h))) tok.loop_held++;   // the token moves to the loopback packet: still held
     free_q[(free_head + free_n) % MAX] = uint8_t(t_); free_n++;
-    if (h & lw::TAG_READPORT) { c.inc(rp_injected); rp_injected_n++; }
+    if (h & lw::TAG_READPORT) {
+        c.inc(rp_injected); rp_injected_n++;
+        if (c.now() != rp_inj_t) { rp_inj_t = c.now(); rp_inj_now = 0; }   // W20: ref's ReadPort.injNow (its entry free from t + 1)
+        rp_inj_now++;
+    }
     publish_busy(c);
 }
 

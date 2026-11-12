@@ -96,3 +96,77 @@ Commit and push after each piece; each kind checked line for line against `ref` 
   messages), line for line (clang and gcc suite, clang debug). Protected tests the same as merged main's (clang release
   and suite); the 16K sort equal (clang release). Not covered against ref yet: the command slot's fact, the same-cycle
   touch; a test's load (TileRef::load) doesn't clear yet (when a suite needs it).
+- **1a, the rest** (F7 withdrawn by W25: the peripheral ERRORS bits were reported already):
+  - `CTL_WFI_WOKEN` (TileControl.takeWake: a wake by another event than GO with done set, the done gate off), at the
+    core's two wake sites (rv32's `woken_in_done`; the Env's `done_gate`).
+  - `SLOT_VIOLATION` (PeripheralSlot.violate, through the block): SlotCore::violate records every slot flag (a reserved
+    window word stored, DMA_HDR or DMA_ADDR changed mid-transfer, a post to a full counter with its depth), the core's
+    load of a reserved window word (rv32's read path; the slot never sees it), and SlotCore::accept a write into C&C 1's
+    peripheral region or a stub engine's (ref's host.violate; F_PERIPHERAL).
+  - `TRACER_VIOLATION` (Tracer.violate through its slot): every Tracer fact, ref's (W14's) texts in
+    `Tracer::violation_text` (V_UNDEFINED now carries the ALU's text as its second argument, as the replayer's does).
+  - `CTL_REQ_FULL` (RequestPort.send into a full FIFO; a harness push only: the core checks canPush), dated at the send.
+  CheckSelf: the slot case (window 1's words 8 and 22 stored, 10 loaded: 48 lines) and the WFI case (13 lines), line for
+  line (clang and gcc suite, clang debug). Not checked against ref (no case reaches them yet): DMA_HDR/ADDR mid-transfer
+  and the full post (controllers' DMA, credits), the C&C 1 and stub region writes (cc_cores), the Tracer's, the full
+  request push. Protected tests the same (clang release, suite); the 16K sort equal; the slot, request-bus and Tracer
+  tests pass (clang suite).
+- **1b, the request bus, the endpoints, C&C's lost receive** (W22-13):
+  - `REQBUS_NO_RECEIVER` (the root drops a request for target 3, "no receiver: deferred", or 4-7, "reserved"; at the
+    root's choice), `REQBUS_QUEUE_OVERFLOW` (a receive queue past its depth: the root's credits prevent it), both chip
+    facts (tile -1) with ref's texts.
+  - `EP_BAD_PACKET`, `EP_SIZE_UNDEF`, `EP_RESERVED_MODE` (Endpoint.send): `units::endpoint_checks(t, address, packet)`
+    (cnc.h), called by C&C 1's sends (Cnc::send_packet) and the endpoints' harness sends (Endpoint::step). The checker
+    takes ref's text rule (the last violation of the highest endpoint that ever had one: Chip.checkInvariants' `el`).
+  - `CNC_RX_LOST` (C&C's receive FIFO full).
+  CheckSelf: the root's drops (programs sending to targets 3, 5, 7: 48 lines) and C&C's receive FIFO full (depth 4),
+  line for line (clang and gcc suite, clang debug). Protected tests the same (clang release, suite); test_reqbus passes.
+  **For W20 (the harness):** ref's Net feeds `cncSends` through `cnc.send`, i.e. Endpoint.send's checks; W20's
+  `Net::step` puts them with `Sim::put_late` directly (and `Net::send` likewise), so their facts need one call to
+  `units::endpoint_checks(c.cycle(), address, p)` there. Until then CheckSelf's endpoint sends are left out.
+  Not checked against ref: the queue overflow (unreachable by design), a reserved mode (UB at the director).
+- **Kinds recorded but no case reaches yet** (kept up to date; check each when a suite does; likeliest W23's CtrlTest
+  and RecipeTest, W22's RequestBusTest): a port-B write as the core reads that word; a test's load clearing invariant 8's
+  bit (TileRef::load); HIST/PTR table-window busy met by an instruction; a test's HIST load (no check yet); the slot's
+  DMA_HDR/ADDR mid-transfer (a case planned) and full post; the C&C 1 and stub region writes; the Tracer's violations;
+  the full request push; the receive queue overflow; the endpoints' checks (after W20's call in Net's sends); the read
+  port's size 11 and misaligned destination (UB at the director); a late rotation (invariant 3: AgTest's
+  pending groups may reach it).
+- **W22's F4 fixed (SearchBench's 3 extra command-slot violations)**: ref's TileControl.endCycle(t) at a GO clears
+  `cmem.slot0Unread` when the core's pc is in the boot ROM (the ROM takes the boot command at GO; its own load of slot 0
+  is incidental), so the first command queued behind the boot may land before the program reads slot 0. Here: a fourth
+  SIM_CHECKS-only Wire, `t<k>.ctl.go_seen` (t + 1 driven at the block's step when it takes the GO of endCycle(t)),
+  read by the core after port B's write of t (ref's order: cmem at t, then endCycle(t)); the core's pc at that step is
+  ref's at the end of t. No level changes (the block is below the core already). CheckSelf: `search` booted with a
+  command queued right behind (ref: 0 violations; without the rule the C++ gave F4's three lines), line for line (clang
+  and gcc suite, clang debug); SearchBench 56 passed, 0 failed (clang suite); protected tests the same (clang release,
+  suite). `track.unread_commands` follows the rule only in the check builds (the Wire's); `overwritten_unread` is
+  unaffected.
+- **For 1d**: the same endCycle also calls `tile.sram.newPhase()` at every GO: the disjoint-buffer phases advance at each
+  GO, besides the harness's `Chip.newPhase`. So BigSram::new_phase needs the GO too (a Link from the block, or the GO
+  Wire above); to agree with W20 and the integrator before 1d.
+- **Side effect, kept noted**: `track.unread_commands` follows the boot-ROM rule (F4) only with the checker built (the
+  GO Wire is SIM_CHECKS-only); `overwritten_unread` doesn't depend on it. W20's `TileCore::overwrites` (8abebaed) is a
+  copy of `track_port_b`'s marking for PhaseLog: change both together.
+- **The integrator's order (2026-11-12)**: the read-port overflow, the AG kinds, invariants 3 and 6, invariant 17,
+  invariant 18, the fatal cases (size 11 and two stream cases stop, as ref), the DMA case, 1d (two triggers: the GO Wire
+  in the tile, W20's Chip::new_phase), S1 with invariant 24's overtaking read, BusTest. FINDINGS.md 9-12 (branch
+  v1.35-spec) for the spec's wording; invariant 8 strict to confirm against it.
+- **The read port** (ReadPort.store): `RP_SIZE_UNDEF`, `RP_QUEUE_FULL` (W22's ReadPortGatherTest: a store into a full
+  queue, invariant 8, ERRORS [7]), `RP_DEST_ALIGN`, at the store's cycle in the core's read-port path. CheckSelf: a
+  depth-2 read port fed by a test's stores (7 lines).
+- **The AG's stream-entry checks** (AddressGenerator.checkEntry, AgTest's 8): the eight facts at each visit. CheckSelf:
+  eight streams of count 0 on tile 9 (each checked, nothing issued). ref's startsWhileRunning and tableWraps are UB in
+  v1.3 (stops), never counted: no kinds. AgTest 206 passed, 0 failed (clang suite; its other groups wait on W22-15/16).
+  Both cases line for line (clang and gcc suite, clang debug); protected tests the same (clang release, suite).
+- **Invariants 3 and 6** (FINDINGS 11): `ROTATION_LATE` at the AG's late rotation, reported once a run (ref's counter
+  restarts at each run's load, so `s[7]` returns to 0: the checker keys on the run number), and `HIST_OVERFLOW` at the
+  HIST store's overflowing RMW (once a tile; `HistStore::ck_tile`, set in add_g1). CheckSelf: HIST at 0x1FFFF counted
+  past 17 bits (1 line), line for line (clang and gcc suite, clang debug); protected tests the same.
+- **Brought to the integrator (2026-11-12), with the evidence from ref**: (a) size 11 and the two stream cases are not
+  fatal in ref: TrafficDirector.java:92 flags and drops size 11 ("meshsim's choice, flagged, dropped, no error"),
+  InjectionPath.java:51 and AddressGenerator.java:94-101 only count; v1.35 does the same (now with facts), so making
+  them stop would differ from ref. (b) Invariant 17's outstanding-request limits, tag windows and reads during a group
+  run, invariant 18 for modes 1-3 into big SRAM and invariant 24's overtaking read have no implementation in ref (no
+  check, counter or text in sim/ref/meshsim/src; 24 only S1's measurement): they're the spec's, not v1.3's, so there is
+  no reference to check them against, and adding them is new behaviour (D38). Waiting for the ruling before either.

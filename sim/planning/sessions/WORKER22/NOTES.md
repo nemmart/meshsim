@@ -313,3 +313,20 @@ W22-17. **SearchBench needs the TRACE store log** (ref's `p.ctl.traceHook = (t, 
     can be there.
 - **F5 done**: AgTest 198 of the 206 ported (seeds -1, 4); the 8 left are W26's stream-entry flags (its 1c). F4 is
   W26's (invariant 8's command-slot check), not W20's (owner).
+
+### ReadPortGatherTest (2026-11-12)
+
+`tests/suite_rdport.cpp` (prints as it goes, as Java's `out()`; `set_record_base` for ref's `gather.base`). Ported: read
+port from C (rdport.c), reserved streams, gather (k = 1, 2, 3, 4, 8), gather counting and alignment, gather from C
+(gather.c, C&C's phase log). **Every printed line ported is equal to rdport.log** (from C, the gather table's 6 lines,
+gather from C's 64 cycles). Reserved streams (9) and counting (21) pass. What's left:
+W22-18. **The read port's host queue (for W20)**: ref's `readPort.hostQueue(addr, dest)` (a read-port read queued from
+    the harness, as a store to SRAM_RD_ADDR_QUEUE would), `readPort.idle(t)` and `readPort.allAccepted()`: the
+    all-to-all under read-port traffic, the tolerance runs and the overlap check (three groups).
+- **The write engine's writes by size** (ref's `writer.writtenBySize[n]`, counted where a write goes to big SRAM,
+  WriteEngine.java:81): a statistic the C++ write engine doesn't keep: **the owner's call** (as the stage peak). The
+  gather group's 5 \"value packets\" checks read it; a placeholder fails them meanwhile.
+- W26: from C's \"the overflow (invariant 8)\" (the 65th store into a full SRAM_RD_ADDR_QUEUE: not recorded yet), and
+  gather from C's \"no invariant violations\": the same 3 command-slot violations as F4 (cycle 77 on tile 0, 81 on 8
+  and 56; payload 0x01801000), W26's invariant-8 command check.
+- W22-14: the disjoint-buffer group.

@@ -1,6 +1,6 @@
 #!/bin/bash
 # build.sh [--check] (WORKER16; W19: from sim/fw): M3's firmware images, prebuilt (D4), byte-identical to 110u's kit
-# (sim/planning/sessions/WORKER13-tasks/IMAGES): cc1, cc23 (C&C 1-3), tracer_ctl (C&C 3), replay_ctl (the tiles), each
+# (IMAGES here, the kit's list of hashes): cc1, cc23 (C&C 1-3), tracer_ctl (C&C 3), replay_ctl (the tiles), each
 # .code.bin, .data.bin and .sym, built by sim/fw/build.sh (v1.3's build_cc.sh, replay/build.sh and tracer/build.sh,
 # byte-identical: oracle/fw_crosscheck.sh); checked against IMAGES and MANIFEST. Also cc_ping (cc_ping.c here:
 # test_cc_units' C&C 1 program), built as sw/tests' programs are (crt0.S, app.ld, -Os). --check compares with the
@@ -14,7 +14,7 @@ OUT=$T/fw bash "$SIM/fw/build.sh" --build-only > "$T/build.log" 2>&1 || { tail "
 mkdir -p "$T/k/sw/build" "$T/k/sw/replay/build" "$T/k/sw/tracer/build"
 cp "$SIM/data/hops.txt" "$T/k/"; cp "$SIM/fw/boot/bootrom.hex" "$T/k/sw/"
 cp "$T"/fw/cc1.* "$T"/fw/cc23.* "$T/k/sw/build/"; cp "$T"/fw/replay_ctl.* "$T/k/sw/replay/build/"; cp "$T"/fw/tracer_ctl.* "$T/k/sw/tracer/build/"
-(cd "$T/k" && sha256sum -c --quiet "$SIM/planning/sessions/WORKER13-tasks/IMAGES") || { echo "build.sh: the images differ from IMAGES (110u's)"; exit 1; }
+(cd "$T/k" && sha256sum -c --quiet "$HERE/IMAGES") || { echo "build.sh: the images differ from IMAGES (110u's)"; exit 1; }
 mkdir -p "$T/out"
 for n in cc1 cc23 replay_ctl tracer_ctl cc_ping; do
   for x in code.bin data.bin sym; do cp "$T/fw/$n.$x" "$T/out/"; done

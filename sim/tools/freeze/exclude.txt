@@ -13,6 +13,7 @@
 # runner task bodies that measured the benches. The benches the build makes stay (bench_sort and bench_chip with their
 # footprint tools, bench_threads, tracer_play).
 ^bench/[^/]+$
+!^bench/README\.md$
 ^bench/quest/
 ^bench/threads/quest/
 ^bench/w10/(common\.inc|mk_task\.sh|[^/]*-body\.sh)$

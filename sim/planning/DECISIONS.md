@@ -248,3 +248,14 @@ after them. The plan for the first milestone is `PLAN-M1.md`.
   counts. These are gaps between the spec and the simulator inherited from v1.3, recorded as such in the spec's
   CHANGES (not as v1.35 differing from v1.3), for a later version to add. If the docs session can point to v1.3 code
   checking any of them, that one is ported.
+- **D41, amended** (owner, 2026-11-13): **logdiff is dropped, not ported.** D41 listed it among the generic run-comparison
+  tools, but logdiff.py is the M10->M11 rename's mapper (rename.py's rules plus hand edits), so it falls under D41's
+  version-specific clause. Its generic function, comparing two runs' logs with timings masked, is run_tests.sh --check
+  (and sort_compare for the sort's runs).
+- **D49. A deliberate difference (D30): C&C's model doesn't see the error line computed before a reset** (integrator,
+  2026-11-13, W28). In `ref`'s cycle, `cc.errorLine(t, err)` runs after `doReset` with `err` computed before the reset,
+  so a tile whose error line was high at the reset gives C&C's model, just cleared, one more high change at t + 8 (the
+  error latency), and its error bit latches about 8 cycles after the reset. Matching it would need a pending level in
+  C&C's model for something no reference run reads (`cc.error()` has no callers in v1.3's tests); it shows only in the
+  fingerprint. MachSelf's floodReset compares the whole-chip fingerprint at and after the reset with C&C's model's
+  error-line words masked, citing D49.

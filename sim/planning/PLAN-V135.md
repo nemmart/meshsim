@@ -50,7 +50,9 @@ mechanisms table to confirm.
 
 (For the next integrator: `INTEGRATOR-HANDOVER-V135.md` has the full state and the messages not yet sent.)
 
-**Done:** P1 (the stand-alone tree), P6 (the sort and its kit), P7a and P7b (the Tracer's suites, Stage B and the
+**Update, 2026-11-13: every port is done and every run_tests.sh step live (none PENDING); W19-W26 and W28-W30 closed (`sessions/README.md`); what remains is the freeze sequence in `tools/freeze/README.md`.**
+
+**Done (end of 2026-11-12):** P1 (the stand-alone tree), P6 (the sort and its kit), P7a and P7b (the Tracer's suites, Stage B and the
 acceptance kit); W20's harness queue (empty, REPORT written); W26's checker queue except CheckSelf's endpoint case and
 whatever CtrlTest's invariants group needs; the restructured spec (`sim/spec/`, merged). `main`: 75 test binaries, and
 `./run_tests.sh quick --check` passing with no log differences.

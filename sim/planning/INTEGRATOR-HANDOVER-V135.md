@@ -79,7 +79,7 @@ cycle() + 1, because ref reports a send made between cycles at the next cycle's 
 **W22**: "Quest 186's rehearsal (I read its VERDICTS): every item PASS (the sort on one thread, T2 on both workloads at
 1 and 6 domains, both chains, the calibration, run_tests all --check with 18 steps PENDING, the machine) except
 sort-split6, which stopped at once with 'FATAL src/units/chip.cpp:260: row_bands: 6 parts (1, 2, 4 or 8)'. Use the
-partition Quests 157/158 used for the sort's 6 threads (placement by load), not row bands, and fix TIMES's chains line.
+partition Quests 157/158 used for the sort's 6 threads (bench_sort --partition tiles; corrected 2026-11-13: not placement by load), not row bands, and fix TIMES's chains line.
 Also: W22-21 is on main (W20, 401534eb): TileRef::ptr and hist_peek show a table store made in the cycle just run; HIST's
 load on the write-back cycle returns the written value; TileRef::store takes the cycle just run for table stores. So
 finish AgTest (240 of 240), switch it on, put both steps in make check, finalise REPORT.md, then regenerate the freeze

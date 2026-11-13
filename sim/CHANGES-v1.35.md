@@ -18,6 +18,7 @@ in `build/<cc>-<mode>/`. The offline input tools stay Java, in `pipeline/` (D40)
 | `meshsim/run_tests.sh [all\|quick]` | `./run_tests.sh [all\|quick]`: the same steps, step names and logs; `--check` compares each log with its reference (`RUNNING.md`) |
 | `SortTest p1`, `sort`, `run …` (with `cfg.<field>=value`) | `sort_test`, the same modes and arguments |
 | `SortCompare` | `sort_compare NEW_DIR REF_DIR [out.md]` |
+| `tools/logdiff.py` | dropped: it mapped one rename between two versions' logs (M10 to M11), not a generic tool; comparing two logs with their timings masked is `./run_tests.sh --check` |
 | `Sweep quick\|full` | `sweep quick\|full` |
 | `TracerT2` | `t2` |
 | `TracerT1` | `chain`, every segment of both workloads on the full chip (D41) |

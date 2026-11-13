@@ -31,22 +31,22 @@ replayed at 1, 4, 8 and 16 processes, for the runner-hours estimate.
 
 As v1.3's: a v1.26 delivery (`manifest.json` or `PROGRAM.manifest.json` with `programs[].window_entries[]`: `index`,
 `first_row`, `rows`, `files`, `rows_sha256`; `PROGRAM/window_NNNNN.*`; `tables/` optional, else the kit's
-`sim/data/tables/replayer`, checked against `sim/data/tables/manifest.json`). A v1.25 delivery is converted first
+`data/tables/replayer`, checked against `data/tables/manifest.json`). A v1.25 delivery is converted first
 (`convert_delivery`).
 
 ## Building and submitting
 
-From `sim/`, committed first (the kit is HEAD's):
+From the version's root folder, committed first (the kit is HEAD's):
 
     tests/acceptance/make_kit.sh /tmp/kit.tgz
     tests/acceptance/make_task.sh /tmp/kit.tgz NNN-w25-calibrate './calibrate.sh $RES/calib' > quest/tasks/NNN-w25-calibrate.sh
 
 The task unpacks the kit, checks its HASHES, builds it with clang (`./build.sh`: the suite build, release flags with the checker on, so the machine's violations reach the verdict as in v1.3), records the machine
-(`sim/tools/machine.sh`) and runs the command. `make_acceptance_task.sh` writes one program's whole acceptance.
+(`tools/machine.sh`) and runs the command. `make_acceptance_task.sh` writes one program's whole acceptance.
 
 ## Differences from v1.3's kit
 
 - No jar, no Java, no Python: the kit carries sim/'s sources and builds on the runner; the summary step is C++.
 - `calibrate.sh`'s delivery is D43's reproducible SyntheticDelivery (v1.3's own differs run to run from the first
-  inline's advice on); its results compare with v1.3 patched as D43 says (`oracle/acceptance_crosscheck.sh`).
+  inline's advice on); its results compare with v1.3 patched as D43 says (the oracle's acceptance cross-check, outside the frozen copy).
 - As in v1.3, `calibrate.sh`'s exit code is `tail`'s (its pipeline has no pipefail): read each run's VERDICT.txt.

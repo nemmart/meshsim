@@ -474,6 +474,12 @@ std::string Chip::digest_impl(std::vector<std::string>* lines_out, const std::st
     rb.fifo_depth = cfg_.request_fifo_depth; rb.hop_latency = cfg_.req_hop_latency;
     for (unsigned q = 0; q < 3; q++) rb.queue_depth[q] = cfg_.receive_queue_depth[q];
     fp::attach_reqbus(m, g1.data(), 64, gc, rbu, rb);
+    if (cfg_.reqbus_host && !cfg_.cc_cores) {             // the bus driven from the test: its receive queues and host
+        static const char* kRecv[units::reqbus::TARGETS] = {"cc1.reqrecv", "cc2.reqrecv", "cc3.reqrecv"};
+        for (unsigned c = 0; c < units::reqbus::TARGETS; c++)
+            if (m.has_unit(kRecv[c])) rbu.recv[c] = &m.unit<units::reqbus::ReqRecv>(kRecv[c]);
+        rbu.host = &m.unit<units::reqbus::ReqHost>("reqbus.host");
+    }
     fp::FpRegistry reg;
     std::vector<unsigned> tiles;
     for (unsigned k = 0; k < 64; k++) { fp::register_g1(reg, g1[k]); fp::register_g2_tile(reg, g2[k]); tiles.push_back(k); }

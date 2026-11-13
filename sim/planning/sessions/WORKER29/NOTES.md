@@ -26,3 +26,5 @@ make check: only my own lines. gcc debug and clang release before every push; th
 - **Step 0**: `tests/test_checkself.cpp` (CheckSelf's sequence moved verbatim, with its own copies of `say`/`file`),
   `$(B)/test_checkself: $(MACH_LINK)` in mach.mk; make check picks it up (tests/test_*.cpp). gcc suite: test_mach's
   seven other tests and test_checkself's one print exactly what the eight printed before.
+  gcc debug 75 of 75 (test_p4suites and test_sort_suites case by case with the filter; suite_bus 154 passed) and clang
+  release 75 of 75.

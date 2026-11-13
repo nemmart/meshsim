@@ -1,16 +1,16 @@
-# The golden traces' images (written by sim/tests/golden/build_images.sh)
+# The golden traces' images (written by tests/golden/build_images.sh)
 
 Toolchain: `riscv64-unknown-elf-gcc (13.2.0-11ubuntu1+12) 13.2.0` (Ubuntu 24.04's gcc-riscv64-unknown-elf
 13.2.0-11ubuntu1+12), binutils `GNU objcopy (2.42-1ubuntu1+6) 2.42`.
 
-Built by `sim/fw/build.sh` (v1.3's flags, start-up files and linker script):
+Built by `fw/build.sh` (v1.3's flags, start-up files and linker script):
 
-- the M1 programs, from `sim/fw/m1/<n>.S`:
+- the M1 programs, from `fw/m1/<n>.S`:
 
       riscv64-unknown-elf-gcc -march=rv32i_zicsr_zmmul -mabi=ilp32 -nostdlib -nostartfiles -static -Wl,--no-relax \
           -Iinclude -T app.ld m1/<n>.S -o <n>.elf
 
-- `hello`, `faults`, `misalign_ld`, `misalign_st`, from `sim/fw/tests/<n>.c` (as v1.3's `sw/build.sh` built them):
+- `hello`, `faults`, `misalign_ld`, `misalign_st`, from `fw/tests/<n>.c` (as v1.3's `sw/build.sh` built them):
 
       riscv64-unknown-elf-gcc -march=rv32i_zicsr_zmmul -mabi=ilp32 -std=gnu11 -ffreestanding -nostdlib -nostartfiles \
           -static -fno-builtin -Wall -Wno-array-bounds -Wl,--no-relax -Iinclude -Os -T app.ld crt0.S tests/<n>.c -o <n>.elf
@@ -53,7 +53,7 @@ ae746f5d1f3fc249c0178d9157668af63b9d22be3271af2031bcf24ea0b96482  wfi_cmd.sym
 ae746f5d1f3fc249c0178d9157668af63b9d22be3271af2031bcf24ea0b96482  wfi_go.sym
 ```
 
-The riscv-tests images, v1.3's (`sim/fw/riscv-tests/bin`):
+The riscv-tests images, v1.3's (`fw/riscv-tests/bin`):
 
 ```
 1a6de2d05c63abefa9944432bb4a716381e81e5bf725162e2d60fe1e15633775  add.code.bin

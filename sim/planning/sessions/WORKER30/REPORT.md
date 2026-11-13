@@ -59,6 +59,22 @@ quick --check):
   messages: sent to W27.
 - **F5.** The Makefile's clang message named lld, which nothing uses: fixed.
 
+## Since (to 2026-11-13, main f99db0ac)
+
+- doccheck: the README rule to two levels below the root (deeper, the nearest README above; none under planning/);
+  paths after a `cd` tried from there; exemptions by document and cited path (`tools/doccheck-exempt.txt`: other-repo,
+  historical, output, cd). Baseline on f99db0ac: 8 MISSING (7 are the unwritten RUNNING.md), 21 OUTSIDE, 2 NO-README
+  (bench/w10, bench/w14: renamed by the strip), 20 DOC-MISSING. After the strip's dry run: 0 NO-README, 0 OUTSIDE,
+  1 DOC-MISSING and 6 MISSING, all RUNNING.md.
+- The strip: the audits to planning/audits/; pinned pipeline files (FROM-V1.3.sha256, inputs/src/) left alone and
+  exempted; `pipeline/check.sh` in its proof (needs a JDK: openjdk-21-jdk-headless); the proof resumable
+  (`STRIP_BUDGET=250 ... --resume`). Dry run on f99db0ac: 289 files' comments, 69 hand entries all used, 25 messages;
+  preprocessed output identical but the 8 units including a messages file; firmware byte-identical; pipeline/check.sh
+  passes. Left: tests/suite_ag.cpp:8, tests/suite_engine.cpp:16 (comments), tests/freeze/make_task.sh:28 (code), W27's.
+- `tests/m3-images/` reads its own IMAGES; `tests/golden/build_images.sh`: paths relative to the root and `--check`
+  (MANIFEST.md's prose only changed, its hash blocks unchanged).
+- Checked on 2bbca480 (main f99db0ac merged): clang release and gcc debug every test, quick --check all passed.
+
 ## Open
 
 The strip runs once, after the ports finish: `tools/freeze/strip.sh` (dry run, review its report), then `--apply

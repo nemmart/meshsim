@@ -69,3 +69,8 @@ tests/sort/kit/README.md	SUMMARY.md	output	a file the kit writes
 bench/README.md	DIR/uniform.keys	output	a usage line's placeholder
 spec/jolt/replayer.md	replayer/decode_table.bin	cd	relative to data/tables/, named earlier in the same sentence: a context the check cannot follow
 tests/TRACE-FORMAT.md	sim/tests/TRACE-FORMAT.md	output	the literal text of the trace header, which both writers emit and every golden trace carries (D38)
+RUNNING.md	tools/check_layout.sh	historical	v1.3's layout check, named as what the layout step replaces
+RUNNING.md	DIR/uniform.keys	output	a placeholder: the key set's folder, made by KeyGen
+RUNNING.md	OUTDIR/run.sh	output	written by the sort kit's assemble.sh into OUTDIR
+RUNNING.md	SUMMARY.md	output	written by the sort kit's run.sh
+RUNNING.md	out.md	output	a placeholder output name in a command

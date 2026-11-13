@@ -1,6 +1,6 @@
 # Skew handling for design v2
 
-Design note for the keys and values all-to-alls on skewed data, with the planner built as host-tested C (`planner/`, `harness/`) and measured in `RESULTS.md`. The spec, `../../spec/machine-spec.md`, is the source of truth; nothing here edits it.
+Design note for the keys and values all-to-alls on skewed data, with the planner built as host-tested C (`planner/`, `harness/`) and measured in `RESULTS.md`. The spec, `spec/machine-spec.md`, is the source of truth; nothing here edits it.
 
 **Markers.**
 - **[meas]**: measured with the harness. Each planner function runs on the RV32I + Zmmul build in an emulator with spec 4.11's timing (1 cycle per instruction, +1 per taken branch or jump, 3 per multiply). Every chosen two-hop path is executed record by record.

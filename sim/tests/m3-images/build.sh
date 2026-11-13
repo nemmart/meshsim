@@ -6,6 +6,7 @@
 # test_cc_units' C&C 1 program), built as sw/tests' programs are (crt0.S, app.ld, -Os). --check compares with the
 # committed files; without it the committed files are rewritten. The boot ROM is sim/fw/boot/bootrom.hex.
 set -eu
+export LC_ALL=C   # byte order for sort, ls and globs, and nm's symbol order: the outputs are the same in any locale
 HERE=$(cd "$(dirname "$0")" && pwd); SIM=$(cd "$HERE/../.." && pwd)
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 OUT=$T/fw bash "$SIM/fw/build.sh" --build-only > "$T/build.log" 2>&1 || { tail "$T/build.log"; exit 1; }

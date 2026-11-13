@@ -9,6 +9,7 @@
 
 #include "base/alloc_guard.h"
 #include "base/fatal.h"
+#include "java_format.h"
 #include "units/row_core.h"
 #include "units/rvc.h"
 
@@ -664,27 +665,6 @@ std::vector<uint64_t> Rig::stream_values(const std::vector<uint64_t>& words, int
 }
 
 namespace {
-// Java's %.2f: the double's decimal digits (shortest round trip, as Java's FloatingDecimal gives for these values)
-// rounded HALF_UP. printf's %.2f rounds the binary value instead, which differs on decimal ties such as 0.125.
-std::string java_2f(double x) {
-    char buf[64];
-    auto res = std::to_chars(buf, buf + sizeof buf, x, std::chars_format::fixed);
-    std::string s(buf, res.ptr);
-    const size_t dot = s.find('.');
-    std::string ip = dot == std::string::npos ? s : s.substr(0, dot);
-    std::string fp = dot == std::string::npos ? "" : s.substr(dot + 1);
-    while (fp.size() < 3) fp += '0';
-    std::string digits = ip + fp.substr(0, 2);
-    if (fp[2] >= '5') {  // HALF_UP: carry through the digits
-        int k = int(digits.size()) - 1;
-        while (k >= 0) {
-            if (digits[size_t(k)] == '9') digits[size_t(k)] = '0', k--;
-            else { digits[size_t(k)]++; break; }
-        }
-        if (k < 0) digits.insert(digits.begin(), '1');
-    }
-    return digits.substr(0, digits.size() - 2) + "." + digits.substr(digits.size() - 2);
-}
 double pct(int64_t a, int64_t b) { return b == 0 ? 0 : 100.0 * double(a) / double(b); }
 }  // namespace
 
@@ -694,8 +674,8 @@ std::string Rig::mem_summary(const MemSystem& m) {
                   "reads %lld, writes %lld; index %lld (%s%% hit), data %lld (%s%% hit), LPDDR reads %lld; walk %lld "
                   "cycles, data %lld; early evictions %lld, write-allocates %lld, read waits %lld (%lld cycles)",
                   (long long)m.reads, (long long)m.writes, (long long)m.index_accesses,
-                  java_2f(pct(m.index_hits, m.index_accesses)).c_str(), (long long)m.data_accesses,
-                  java_2f(pct(m.data_hits, m.data_accesses)).c_str(), (long long)m.lpddr_reads,
+                  jfmt::fixed(pct(m.index_hits, m.index_accesses), 2).c_str(), (long long)m.data_accesses,
+                  jfmt::fixed(pct(m.data_hits, m.data_accesses), 2).c_str(), (long long)m.lpddr_reads,
                   (long long)m.walk_cycles, (long long)m.data_cycles, (long long)m.early_evictions,
                   (long long)m.write_allocates, (long long)m.read_waits, (long long)m.read_wait_cycles);
     return buf;

@@ -34,6 +34,7 @@ void say(const char* fmt, ...) {
     va_end(ap);
     out += b;
 }
+constexpr uint32_t kCmdJump = 0x4A, kPmemBase = 0x01000000;   // ref's Registers.CMD_JUMP, PMEM_BASE
 std::string file(const char* path) {
     std::string s;
     FILE* f = std::fopen(path, "rb");
@@ -394,6 +395,32 @@ void checkself() {
         for (unsigned i = 0; i < 6; i++) n.at(10 + i, 10 + i, 20, lw::M_COUNT, 0, 0, lw::SIZE_32, i, 0);
         n.run_all(1000);
         say("%s", n.c.violation_report().c_str());
+    }
+    // CtrlTest's regs program: the three counter wraps, ROUTER_HDR's and WRITE_COUNTER_2's reserved bits (invariant 21)
+    // and the odd DMA_RECORD_BASE_ADDRESS (invariant 20) on every tile; all 384 messages
+    {
+        mach::MachConfig k = Mach::cfg(-1);
+        k.max_violation_messages = 1000;
+        Mach m(k);
+        m.boot("regs");
+        m.run([&] { return m.all_stopped(); }, 40000);
+        say("%s", m.c.violation_report().c_str());
+    }
+    // CtrlTest's invariants: an overlay landing after a unit's first command and before its start (6.2), from C&C 1
+    {
+        Mach o(Mach::cfg(-1));
+        o.c.run(40);
+        o.c.cc().command(9, kCmdJump << 24, {kPmemBase}).wait_cycles(60).send(9, lw::M_WRITE, 0, 0x400, lw::SIZE_64, 0x5);
+        o.c.run(200);
+        say("%s", o.c.violation_report().c_str());
+    }
+    // CtrlTest's invariants: unicast overlays, then a broadcast command (invariant 25), from C&C 1
+    {
+        Mach q(Mach::cfg(-1));
+        q.c.run(40);
+        q.c.cc().load_words(9, kPmemBase, {1, 2, 3, 4}).command(lw::BROADCAST, kCmdJump << 24, {kPmemBase});
+        q.c.run(300);
+        say("%s", q.c.violation_report().c_str());
     }
 }
 }  // namespace

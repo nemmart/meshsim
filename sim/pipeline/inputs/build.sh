@@ -17,6 +17,7 @@
 # Every step writes into a staging directory beside its target and moves it into place only when complete and checked,
 # with a COMPLETE marker; a re-run skips a complete step (FORCE=1 redoes it). Safe to re-run after an interruption.
 set -u
+export LC_ALL=C   # byte order for sort, ls and globs, and nm's symbol order: the outputs are the same in any locale
 HERE=$(cd "$(dirname "$0")" && pwd); . "$HERE/pins.sh"
 MESHSIM=$(cd "$HERE/../.." && pwd)
 [ $# -ge 2 ] || { sed -n '2,4p' "$0"; exit 1; }

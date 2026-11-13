@@ -43,7 +43,7 @@ were carried (D41); these were dropped:
 | `periphTypes` | an array no driver sets (`test_periph_tile` instead) |
 | `testPeripheral` | a Java function: `test_periph_tile`, the replayer on one tile |
 | `hops` | the hop table: `data/hops.txt` |
-| `errorLatency` | set by no v1.3 driver other than as `readyLatency`; v1.35 carries READY and the error line on one line |
+| `errorLatency` | set by no v1.3 driver other than as `readyLatency`; the simulator uses `ready_latency` for both lines |
 
 `MachConfig::dropped()` gives the same list, and a driver refuses a dropped field with its reason.
 

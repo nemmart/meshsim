@@ -11,7 +11,7 @@ before. **The text below describes the v1.1 program** and is kept for its histor
 (service lines, `DMA_PERIPH_REMAINING`, mode 9) read the v1.2 equivalents above.
 
 
-`replay_ctl.c` is one tile's controller program for replayer passes, against spec 4.19 at mesh-sorter-v1.1-26p (26n's 4.19 is unchanged in 26p). **Final for this milestone (cp14):** it runs on meshsim's v1.1 tile (interim 2026-10-27, `test/StageB.java`), and its rows match byte for byte. Measured: EVM Zone 2²⁹ 3.479 and 3.492 cycles per row, Cyclone input/25 3.090. Software tuning is closed. The next step is proposal P1, in REPLAYER-NOTES.
+`replay_ctl.c` is one tile's controller program for replayer passes, against spec 4.19 at mesh-sorter-v1.1-26p (26n's 4.19 is unchanged in 26p). **Final for this milestone (cp14):** it runs on meshsim's v1.1 tile (interim 2026-10-27, `v1.1/meshsim/test/StageB.java`), and its rows match byte for byte. Measured: EVM Zone 2²⁹ 3.479 and 3.492 cycles per row, Cyclone input/25 3.090. Software tuning is closed. The next step is proposal P1, in REPLAYER-NOTES.
 
 | file | what |
 |---|---|

@@ -6,7 +6,7 @@ The host tool behind the Tracer's bring-up (B1): **one jump-target table per pro
 no dependencies. `HashTable` and `StaticTargets` now live in gold, which builds frame 6 itself (owner, DECISIONS-v1.3
 section 16, 7ab240d); this tool uses gold's, and takes K (`proof.json`'s `log2_k`) from gold's `ProofParams`, a16z's
 prover rule, as frame 7 carries it (its own formula differed from a16z's on six tiny fixtures, by one power of two:
-WORKER16, `wip/planning/sessions/WORKER16-V13-REPORT.md`).
+WORKER16, `v1.3/planning/sessions/WORKER16-V13-REPORT.md`).
 
 ```sh
 ./build.sh                                              # builds gold if needed, then build/

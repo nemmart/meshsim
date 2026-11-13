@@ -10,6 +10,8 @@
 | `delivery/` | `convert_delivery` converts a v1.25 replay delivery to the current format; `synthetic_delivery` writes a synthetic one (D42, D43) | `convert_delivery SRC DST PROGRAM [--manifest M]`; `synthetic_delivery OUT [--program NAME] [--windows N] [--seed S] …` |
 | `check_copies.sh` | checks that every file v1.35 copied from v1.3 (`COPIES.sha256`) still has v1.3's bytes; `make check` runs it | `sh tools/check_copies.sh` |
 | `machine.sh` | records what the machine is and chooses CPUs for a run (D21) | `tools/machine.sh record [FILE]`; `tools/machine.sh cpus KIND [N]` |
+| `doccheck.sh`, `doccheck.mk` | the documents' checks: every cited path exists in the frozen copy, every folder a reader starts in has a README, every document code names is there | `make doccheck`; `tools/doccheck.sh [-v]` |
+| `freeze/` | how the frozen copy is made: the files it leaves out (`freeze/exclude.txt`), the list of its files (`freeze/frozen.sh`), the copy and the comment strip (its `README.md`) | `freeze/README.md` |
 | `test_machine.sh`, `fake_sysfs.sh` | `machine.sh`'s test on fake `/sys` trees with known CPU layouts | `tools/test_machine.sh` |
 
 To change a register: edit `regs/regtable.h` (and `src/units/regmap.h`, the simulator's decoding), regenerate both files

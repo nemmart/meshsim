@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <optional>
 #include <string>
 
@@ -11,12 +13,14 @@
 #include "suite.h"
 #include "java_random.h"
 #include "mach.h"
+#include "statefp.h"
 #include "units/ag.h"
 #include "units/big_sram.h"
 #include "units/gather.h"
 #include "units/cnc.h"
 #include "units/linkword.h"
 #include "units/reqbus.h"
+#include "units/router.h"
 #include "units/tile_ctl.h"
 
 using namespace mach::fields;
@@ -167,6 +171,42 @@ void trace_case(bool rdpeak = false) {                       // H6: MachSelf.tra
     }
 }
 std::string fp_of(const Mach& m) { const std::string d = m.c.digest(); return d.substr(d.find(" fp ") + 4); }
+// The chip's StateFp with C&C's model's error-line words left out (D49: ref feeds C&C's model, after a reset, an error
+// line computed before it, so its error bit latches about the error latency later; v1.35 doesn't).
+std::string fp_d49(const Mach& m) {
+    static const char* const kD49[] = {"errorBit", "errLineSeen", "errLineLast", "errLine.n", "errLine"};
+    uint64_t all = fp::kSeed, nn = 0;
+    for (const std::string& l : m.c.fingerprint_lines()) {
+        const size_t a = l.find(' '), b = l.rfind(' ');
+        const std::string unit = l.substr(a + 1, b - a - 1);
+        if (unit == "chip") continue;
+        uint64_t h = std::stoull(l.substr(b + 1), nullptr, 16);
+        if (unit == "cnc") {                                  // its words again, less D49's
+            char* buf = nullptr; size_t len = 0;
+            FILE* f = open_memstream(&buf, &len);
+            m.c.fingerprint_dump("cnc", f);
+            std::fclose(f);
+            uint64_t g = fp::kSeed, n = 0;
+            for (const char* p = buf; p && *p;) {
+                const char* e = std::strchr(p, '\n'); if (!e) e = p + std::strlen(p);
+                const std::string w(p, size_t(e - p));
+                p = *e ? e + 1 : e;
+                if (w.empty() || w[0] == '#') continue;          // the dump's header
+                const size_t s1 = w.find(' '), s2 = w.rfind(' ');
+                const std::string name = w.substr(s1 + 1, s2 - s1 - 1);
+                bool masked = false;
+                for (const char* k : kD49) if (name == k) masked = true;
+                if (masked) continue;
+                g = fp::fmix(g ^ std::stoull(w.substr(s2 + 1), nullptr, 16)); n++;
+            }
+            std::free(buf);
+            h = fp::fmix(g ^ n);
+        }
+        all = fp::fmix(all ^ h); nn++;
+    }
+    char out[24]; std::snprintf(out, sizeof out, "%016llx", (unsigned long long)fp::fmix(all ^ nn));
+    return out;
+}
 void reset_case(int64_t seed) {                               // B20: MachSelf.resetCase
     Mach m(Mach::cfg(seed));
     mach::A2A data(7, 2000);
@@ -241,11 +281,57 @@ void faults_reads() {
     say("  the reset: %s at %lld; toast %s at %lld\n", ok ? "made" : "NOT made", (long long)m.c.last_reset_at(),
         m.c.toast() ? "true" : "false", (long long)m.c.toast_at());
 }
+// A tile's router overflows as ref counts them between cycles. D28: ref counts an overflow lazily, when the FIFO is
+// next touched (the cycle after its put while the router is busy); here it is counted at the put. So the overflows of
+// the cycle just run are left out, as ref hasn't counted them yet.
+uint64_t router_overflows(Mach& m, unsigned k) {
+    uint64_t r = 0;
+    const uint64_t t = uint64_t(m.c.cycle());
+    for (const auto& f : m.c.unit<units::Router>(units::tile_unit(k, "router")).q) r += f.overflows - (f.put_at == t && !f.put_kept ? 1 : 0);
+    return r;
+}
+uint32_t errors_or(Mach& m) { uint32_t e = 0; for (unsigned q = 0; q < 64; q++) e |= m.c.tile(q).block().conditions; return e; }
+std::string hex(uint32_t v) { char b[16]; std::snprintf(b, sizeof b, "%x", v); return b; }
+// MachSelf.floodReset: the reset with a router FIFO overflowing in the reset's own cycle (cond.c's error 0, as CondTest)
+void flood_reset(int64_t seed) {
+    mach::MachConfig k = Mach::cfg(seed); k.max_violation_messages = 1000; k.reqbus_host = true;
+    Mach m(k);
+    const Mach::Image im = m.boot("cond");
+    m.run([&] { return m.c.cc().last_run_at() >= 0 && !m.c.cc().busy(); }, 20000);
+    units::Cnc& cn = m.c.unit<units::Cnc>("cnc");
+    mach::ReqBus& rb = m.c.reqbus();
+    int got = 0;
+    m.c.cc().command(units::lw::BROADCAST, 0, {(1u << 8) | (1u << 10) | (1u << 1) | (1u << 17) | (1u << 9), 0u}).go();
+    m.run([&] {
+        const int64_t now = m.c.cycle() + 1;
+        while (rb.pending(0, now)) { uint32_t r[4] = {}; rb.peek_request(0, now, r); rb.receive(0, now); if ((r[0] & 0x7F) == 9) got++; }
+        return m.c.tile(9).unit<units::TileCore>("core").rv.parked && got >= 2;
+    }, 200000);
+    m.c.run(10);
+    std::string sb = "flood reset seed " + std::to_string(seed) + ": parked at " + std::to_string(m.c.cycle()) + " reports " +
+                     std::to_string(got) + " tile 9 overflows " + std::to_string(router_overflows(m, 9)) + " ERRORS 0x" +
+                     hex(m.c.tile(9).block().conditions) + " fp " + fp_of(m);
+    m.c.cc().reset(false).command(units::lw::BROADCAST, 0x4Au << 24, {im.sym("_start")}).run_when_ready();   // CMD_JUMP
+    m.run([&] { return m.c.resets() == 1; }, 20000);
+    sb += "; reset at " + std::to_string(m.c.last_reset_at()) + " overflows " + std::to_string(router_overflows(m, 9)) + " fp(D49) " + fp_d49(m);
+    m.c.step();
+    sb += "; next ERRORS 0x" + hex(errors_or(m)) + " fp(D49) " + fp_d49(m);
+    const bool ok = m.run([&] { return !m.c.cc().busy(); }, 20000);
+    m.c.run(50);
+    sb += std::string("; booted ") + (ok ? "true" : "false") + " at " + std::to_string(m.c.cycle()) + " ERRORS 0x" + hex(errors_or(m)) +
+          " unit-error " + std::to_string(int(cn.error_bit)) + " toast " + (cn.error_bit ? "true" : "false") + " line 9 " +
+          std::to_string(int((cn.err_line >> 9) & 1)) + " overflows " + std::to_string(router_overflows(m, 9)) + " fp(D49) " + fp_d49(m) +
+          "; violations " + std::to_string(m.c.violations());
+    say("%s\n", sb.c_str());
+    for (const std::string& v : m.c.violation_messages()) if (v.find("invariant 1)") != std::string::npos) say("  %s\n", v.c_str());
+}
 void machself() {
     out.clear();
     reset_case(-1);
     reset_case(4);
     faults_reads();
+    flood_reset(-1);
+    flood_reset(4);
     trace_case();
     if (sim::check::kOn) trace_case(true);                 // (PhaseLog: the debug and suite builds)
     if (sim::check::kOn) { phases(-1); phases(4); }        // (PhaseLog's FIFO peaks: the debug and suite builds)

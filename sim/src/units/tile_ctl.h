@@ -103,6 +103,10 @@ struct TileCtl {
     // step's facts and line (ref's end of the cycle just run doesn't have them) and before the view for the next cycle
     uint32_t host_cond = 0;
     uint32_t host_events = 0;          // ref's `ctl.events |= bits` from a test (W23's (d)): the same point as host_cond
+    // Harness-only (the reset): ref's STATUS as computed at the end of the reset's cycle, before the reset cleared the
+    // block (TileControl.reset leaves `status` until the next endCycle); block_at_end returns it at that cycle.
+    uint32_t reset_status = 0;
+    int64_t reset_status_at = -1;
     int64_t host_go_at = -1;           // ref's ctl.scheduleGo(t) (W23's (d)): GO seen at t, at this block's endCycle(t)
     // W20 (P2): the checker's facts (src/check.h): the ERRORS value and the error line as ref has them at the end of a
     // cycle (invariant 15). `ck_tile` is set by the harness (its unit number); -1 records nothing.
@@ -274,6 +278,8 @@ RegBlockState block_at_end(const sim::Sim& m, const U& u, uint64_t c, bool go_al
         at_next(u.freed, [&](const sim::PortEntry&) { in.freed = true; });
     }
     b.end_cycle(c, in);
+    if constexpr (requires { u.reset_status_at; })
+        if (u.reset_status_at == int64_t(c)) b.status = u.reset_status;   // the reset's cycle: STATUS as ref kept it
     return b;
 }
 // What the block's endCycle(c) puts on `line` (READY's rising edge, bit 0; the error line, bit 1), which it puts at

@@ -76,6 +76,11 @@ CncProgram& CncProgram::call(uint32_t id) {
     steps.push_back({CncStep::CALL, id, 0});
     return *this;
 }
+CncProgram& CncProgram::call_step(uint32_t id) {        // harness-only
+    if (id >= kCalls) FATAL("C&C program: call id %u (at most %u)", id, kCalls - 1);
+    steps.push_back({CncStep::CALL_STEP, id, 0});
+    return *this;
+}
 CncProgram& CncProgram::wait_host() { steps.push_back({CncStep::WAIT_HOST, 0, 0}); return *this; }   // W20 (harness-only)
 CncProgram& CncProgram::release() {
     releases.push_back({uint32_t(steps.size()), parity()});
@@ -210,6 +215,7 @@ sim::Wake Cnc::sequence(sim::Ctx& c, int64_t t) {
         switch (s.kind) {
         case CncStep::MARK_CMD: last_command_word = s.a; cur++; continue;
         case CncStep::CALL: call_at[s.a] = t; cur++; continue;
+        case CncStep::CALL_STEP: call_at[s.a] = t; cur++; return after_step(c);   // harness-only: takes its cycle
         case CncStep::WAIT_HOST:                              // W20 (harness-only): released between cycles by the harness
             if (host_released == host_waits) return sim::Wake::none();
             host_waits++; cur++; continue;

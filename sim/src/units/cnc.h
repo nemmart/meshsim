@@ -59,6 +59,8 @@ struct CncStep {
         CALL,        // instant: harness bookkeeping, id a (the driver reads the cycle it ran)
         WAIT_HOST,   // W20 (harness-only): ref's waitUntil in W23's form: until the harness, checking its condition between
                      // cycles, releases it (host_released); instant once released, so C&C moves on the next cycle
+        CALL_STEP,   // harness-only: ref's register-action step queued by a test, (c, t) -> { ...; return true; }: as CALL,
+                     // id a, but it takes its cycle (the next step runs the cycle after)
     };
     Kind kind;
     uint32_t a = 0, b = 0;
@@ -76,6 +78,7 @@ public:
     CncProgram& at_all_ready(uint32_t call_id);           // SortTest.Machine.atAllReady
     CncProgram& wait_cycles(uint32_t n);
     CncProgram& call(uint32_t id);
+    CncProgram& call_step(uint32_t id);                   // harness-only: CALL_STEP
     CncProgram& wait_host();                              // W20 (harness-only): WAIT_HOST
     CncProgram& release();                                // the harness queues the next steps here (between cycles)
 

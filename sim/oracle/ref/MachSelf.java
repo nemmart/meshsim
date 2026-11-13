@@ -157,6 +157,18 @@ final class MachSelf {
         for (String u : StateFp.CHIP_UNITS) { o = new StateFp.Out(); StateFp.chipUnit(o, m.c, u, m.c.cycle); all = StateFp.fmix(all ^ o.done()); nn++; }
         return String.format("%016x", StateFp.fmix(all ^ nn));
     }
+    /** The chip's StateFp with C&C's model's error-line words left out (D49: ref feeds C&C's model, after a reset, an error
+     *  line computed before it, so its error bit latches about the error latency later; v1.35 doesn't). */
+    static final java.util.Set<String> D49 = java.util.Set.of("errorBit", "errLineSeen", "errLineLast", "errLine.n", "errLine");
+    static String fpD49(Mach m) {
+        StateFp.Out o; long all = 0x6A09E667F3BCC908L; int nn = 0;
+        for (Tile p : m.c.tiles) for (String u : StateFp.TILE_UNITS) { o = new StateFp.Out(); StateFp.unit(o, m.c, p, u, m.c.cycle); all = StateFp.fmix(all ^ o.done()); nn++; }
+        for (String u : StateFp.CHIP_UNITS) {
+            o = u.equals("cnc") ? new StateFp.Out() { @Override void w(String name, long v) { if (!D49.contains(name)) super.w(name, v); } } : new StateFp.Out();
+            StateFp.chipUnit(o, m.c, u, m.c.cycle); all = StateFp.fmix(all ^ o.done()); nn++;
+        }
+        return String.format("%016x", StateFp.fmix(all ^ nn));
+    }
     /** B20: the a2a's run cut by C&C's queued soft reset mid-phase, the state across it (StateFp), then the a2a again. */
     static void resetCase(long seed) {
         Mach m = new Mach(Mach.cfg(seed));
@@ -224,10 +236,47 @@ final class MachSelf {
         System.out.printf("  the reset: %s at %d; toast %b at %d%n", ok ? "made" : "NOT made", m.c.lastResetAt, m.c.cc1p.toast, m.c.cc1p.toastAt);
     }
 
+    static long routerOverflows(Tile p) { long r = 0; for (WordFIFO[] fs : p.router.q) for (WordFIFO f : fs) r += f.overflowCount; return r; }
+    static int errorsOr(Mach m) { int e = 0; for (Tile q : m.c.tiles) e |= q.ctl.conditions; return e; }
+    /** The reset with a router FIFO overflowing in the reset's own cycle: cond.c's error 0 (tiles 8, 10, 1 and 17 flood
+     *  tile 9), C&C 1 draining the reports until tile 9 parks, then the soft reset and the boot again, as CondTest does. */
+    static void floodReset(long seed) {
+        Mach m = new Mach(Mach.cfg(seed));
+        m.c.cfg.maxViolationMessages = 1000;
+        Mach.Image im = m.boot("cond");
+        m.run(() -> m.c.cc.lastRunAt >= 0 && !m.c.cc.busy(), 20000);
+        Tile p = m.c.tiles[9];
+        m.c.cc.command(LinkWord.BROADCAST, 0, (1 << 8) | (1 << 10) | (1 << 1) | (1 << 17) | (1 << 9), 0).go();
+        int[] got = { 0 };
+        m.run(() -> {
+            long now = m.c.cycle + 1;
+            while (m.c.reqBus.pending(0, now)) { long[] r = m.c.reqBus.peekRequest(0, now); m.c.reqBus.receive(0, now); if ((r[0] & 0x7F) == 9) got[0]++; }
+            return p.core.parked && got[0] >= 2;
+        }, 200000);
+        m.c.run(10);
+        StringBuilder sb = new StringBuilder("flood reset seed " + seed + ": parked at " + m.c.cycle + " reports " + got[0] + " tile 9 overflows " + routerOverflows(p)
+                + " ERRORS 0x" + Integer.toHexString(p.ctl.conditions) + " fp " + fp(m));
+        m.c.cc.reset(false).command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, im.sym("_start")).runWhenReady();
+        m.run(() -> m.c.resets == 1, 20000);
+        sb.append("; reset at ").append(m.c.lastResetAt).append(" overflows ").append(routerOverflows(p)).append(" fp(D49) ").append(fpD49(m));
+        m.c.step();
+        sb.append("; next ERRORS 0x").append(Integer.toHexString(errorsOr(m))).append(" fp(D49) ").append(fpD49(m));
+        boolean ok = m.run(() -> !m.c.cc.busy(), 20000);
+        m.c.run(50);
+        sb.append("; booted ").append(ok).append(" at ").append(m.c.cycle).append(" ERRORS 0x").append(Integer.toHexString(errorsOr(m)))
+          .append(" unit-error ").append(m.c.cc1p.read(m.c.cycle, 2) & 1).append(" toast ").append(m.c.cc1p.toast)
+          .append(" line 9 ").append(m.c.cc1p.read(m.c.cycle, Cnc1Peripheral.ERROR_LINES) >>> 9 & 1)
+          .append(" overflows ").append(routerOverflows(p)).append(" fp(D49) ").append(fpD49(m)).append("; violations ").append(m.c.violations);
+        System.out.println(sb);
+        for (String v : m.c.violationMessages) if (v.contains("invariant 1)")) System.out.println("  " + v);
+    }
+
     public static void main(String[] a) throws Exception {
         resetCase(-1);
         resetCase(4);
         faultsReads();
+        floodReset(-1);
+        floodReset(4);
         trace();
         trace(true);
         phases(-1);

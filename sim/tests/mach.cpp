@@ -869,6 +869,7 @@ void Chip::reset(bool hard) {
         units::RegBlockState x = units::block_at_end(s, b, uint64_t(t), b.host_go_at == t);
         x.ck_tile = b.s.ck_tile; x.tlog = b.s.tlog;
         b.s = x;
+        b.reset_status = x.status; b.reset_status_at = t;   // STATUS stays as computed here until the next end of cycle
         units::TileCore& core = unit<units::TileCore>(units::unit_prefix(k) + "core");
         sim::PortEntry e[8];
         const uint32_t n = s.observe(core.port_b, e, 8).n;
@@ -1600,9 +1601,13 @@ Cc& Cc::go() { c_->impl().prog.go(); publish(*c_); return *this; }
 Cc& Cc::wait_cycles(uint32_t n) { c_->impl().prog.wait_cycles(n); publish(*c_); return *this; }
 Cc& Cc::reset(bool hard) {                                 // ref's step (one register action: the reset at its end),
     Chip* chip = c_;                                       //  then waitCycles(2), then the expect step: the call is instant
-    call([chip, hard](int64_t) { chip->reset(hard); });    //  here, so the wait covers the reset's own cycle too (3)
-    wait_cycles(3);
-    call([chip](int64_t) { chip->cc().set_expect(~uint64_t(0)); });
+    call([chip, hard](int64_t) { chip->reset(hard); });    //  here, so the wait covers the reset's own cycle too (3); the
+    wait_cycles(3);                                        //  expect step is a register action of its own (its cycle)
+    Chip::Impl& m = c_->impl();
+    const uint32_t id = take_id(m);
+    m.prog.call_step(id);
+    m.calls.push_back({id, [chip](int64_t) { chip->cc().set_expect(~uint64_t(0)); }});
+    publish(*c_);
     return *this;
 }
 Cc& Cc::call(std::function<void(int64_t)> fn) {

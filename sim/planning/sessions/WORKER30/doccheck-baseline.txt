@@ -1,69 +1,39 @@
 MISSING BUILDING.md:4: RUNNING.md (code)
-MISSING BUILDING.md:57: bench/README.md (code)
-MISSING CHANGES-v1.35.md:18: meshsim/run_tests.sh (code)
 MISSING CHANGES-v1.35.md:18: RUNNING.md (code)
-MISSING CHANGES-v1.35.md:21: tools/logdiff.py (code)
-MISSING CHANGES-v1.35.md:29: sw/build.sh (code)
 MISSING README.md:18: RUNNING.md (code)
 MISSING README.md:37: RUNNING.md (code)
+MISSING bench/README.md:10: DIR/uniform.keys (code)
+MISSING bench/README.md:12: bench/sort/trace.sh (code)
+MISSING bench/README.md:16: sort/w10.mk (code)
 MISSING data/tables/README.md:48: tracer/tables/build.sh (code)
 MISSING fw/RECIPES.md:3: WORKER6/FINDINGS.md (code)
 MISSING fw/RECIPES.md:301: schedule-4.md (code)
 MISSING fw/RECIPES.md:381: schedule-4.md (code)
 MISSING fw/RECIPES.md:753: WORKER6/FINDINGS.md (code)
-OUTSIDE fw/recipes/README.md:3: wip/sw/RECIPES.md
-OUTSIDE fw/recipes/README.md:7: wip/sw/mesh-v1.2-draft.h
 MISSING fw/recipes/RECIPES.tmpl.md:3: WORKER6/FINDINGS.md (code)
 MISSING fw/recipes/RECIPES.tmpl.md:160: schedule-4.md (code)
 MISSING fw/recipes/RECIPES.tmpl.md:193: schedule-4.md (code)
 MISSING fw/recipes/RECIPES.tmpl.md:369: WORKER6/FINDINGS.md (code)
-MISSING fw/regdoc/README.md:3: ../../diagrams/ (code)
-MISSING fw/regdoc/README.md:6: ../../diagrams/src/ (code)
 MISSING fw/regdoc/README.md:8: ../../Reference.pdf (code)
-MISSING fw/replay/README.md:14: test/StageB.java (code)
-MISSING fw/sort/program/README.md:5: ../../sw/ (code)
-MISSING fw/sort/program/README.md:11: ../../meshsim (code)
-MISSING fw/sort/program/README.md:14: meshsim/tools/check_layout.sh (code)
-MISSING fw/sort/program/README.md:16: ../../kit/ (code)
 MISSING fw/sort/skew/RESULTS.md:3: design_v1/python/split-point-model/data.py (code)
 MISSING fw/sort/skew/RESULTS.md:28: model/export_mats.py (code)
 MISSING fw/sort/skew/RESULTS.md:309: ../harness (code)
 MISSING fw/sort/skew/RESULTS.md:323: model/model-results.json (code)
-MISSING fw/sort/skew/skew-v2.md:3: ../../spec/machine-spec.md (code)
-MISSING fw/sort/split/BINDING.md:66: meshsim/sw/ext/split-bisect/splitdrv.c (code)
-MISSING pipeline/README.md:12: lib/classes.sh (code)
-MISSING pipeline/README.md:12: src/SNAPSHOTS.sh (code)
-OUTSIDE pipeline/README.md:18: sim/tools/delivery/
-OUTSIDE pipeline/gold/README.md:25: wip/planning/sessions/WORKER18-NOTES.md
-OUTSIDE pipeline/gold/README.md:27: wip/planning/sessions/WORKER18-NOTES.md
-OUTSIDE pipeline/gold/README.md:79: wip/planning/sessions/WORKER18-NOTES.md
-OUTSIDE pipeline/inputs/README.md:35: wip/tables/replayer/
-OUTSIDE pipeline/inputs/README.md:47: wip/spec/machine-spec.md
-OUTSIDE pipeline/inputs/README.md:47: wip/planning/DECISIONS-v1.3.md
-OUTSIDE pipeline/inputs/README.md:75: wip/planning/sessions/WORKER18-NOTES.md
-OUTSIDE pipeline/inputs/README.md:78: wip/jumpmap/README.md
 MISSING pipeline/inputs/README.md:86: seg/NNN.pages (code)
 MISSING pipeline/inputs/README.md:86: seg/NNN.json (code)
-MISSING pipeline/inputs/README.md:88: planning/sessions/WORKER26-REPORT.md (code)
 MISSING pipeline/inputs/README.md:90: seg/NNN.pages (code)
 MISSING pipeline/inputs/README.md:90: seg/NNN.written (code)
 MISSING pipeline/inputs/README.md:99: sw/build.sh (code)
 MISSING pipeline/inputs/README.md:99: sw/replay/build.sh (code)
 MISSING pipeline/inputs/README.md:99: acceptance/make_kit.sh (code)
-OUTSIDE pipeline/inputs/README.md:111: wip/planning/sessions/WORKER22-NOTES.md
-OUTSIDE pipeline/inputs/README.md:111: wip/planning/sessions/WORKER22-tasks/make_t1_task.sh
 MISSING pipeline/inputs/README.md:117: seg/NNN.pages (code)
 MISSING pipeline/inputs/README.md:124: manifest/RUN.sha256 (code)
-MISSING pipeline/inputs/README.md:135: quest/make_task.sh (code)
-OUTSIDE pipeline/inputs/README.md:135: sim/oracle/quest/inputs_make_task.sh
-OUTSIDE pipeline/jumpmap/README.md:9: wip/planning/sessions/WORKER16-V13-REPORT.md
 MISSING pipeline/jumpmap/README.md:13: ../gold/build (code)
 MISSING pipeline/jumpmap/README.md:45: seg/NNN.pages (code)
 MISSING pipeline/jumpmap/README.md:46: seg/NNN.json (code)
 MISSING pipeline/keys/README.md:4: pipeline/build/keys/ (code)
 MISSING pipeline/keys/README.md:8: pipeline/build/keys (code)
 MISSING pipeline/keys/README.md:9: pipeline/build/keys (code)
-MISSING spec/GUIDELINES.md:101: ERRATA.md (code)
 MISSING spec/jolt/replayer-opcodes.md:17: isa/virtual.cpp (code)
 MISSING spec/jolt/replayer-opcodes.md:26: utils/math.hpp (code)
 MISSING spec/jolt/replayer-opcodes.md:34: isa/virtual.hpp (code)
@@ -96,10 +66,6 @@ MISSING spec/jolt/tracer.md:276: tracer/src/emulator/mmu.rs (code)
 OUTSIDE src/PORTS.md:3: sim/ref/meshsim
 OUTSIDE src/PORTS.md:5: wip/planning/sessions/WORKER29-DESIGN.md
 OUTSIDE src/PORTS.md:6: sim/ref/meshsim/src/
-MISSING src/PORTS.md:17: test/BusTest.java (code)
-OUTSIDE src/PORTS.md:274: sim/oracle/ref/PortConfGen.java
-OUTSIDE src/PORTS.md:275: sim/oracle/ref/PortConfDriver.java
-OUTSIDE src/PORTS.md:276: sim/oracle/ref/portconf.sh
 OUTSIDE tests/AUDIT-M1.md:7: sim/fw
 OUTSIDE tests/AUDIT-M1.md:9: sim/ref/meshsim/src
 OUTSIDE tests/AUDIT-M1.md:9: sim/tests/TRACE-FORMAT.md
@@ -125,75 +91,28 @@ OUTSIDE tests/AUDIT-M3.md:539: oracle/regen/golden-m3.sh
 MISSING tests/README.md:27: RUNNING.md (code)
 OUTSIDE tests/TRACE-FORMAT.md:3: sim/ref
 OUTSIDE tests/TRACE-FORMAT.md:3: sim/ref/meshsim/src/Observer.java
-OUTSIDE tests/TRACE-FORMAT.md:4: sim/oracle/ref/TraceRun.java
-OUTSIDE tests/TRACE-FORMAT.md:5: sim/tests/golden/
-OUTSIDE tests/TRACE-FORMAT.md:6: oracle/regen/golden.sh
 OUTSIDE tests/TRACE-FORMAT.md:74: sim/tests/TRACE-FORMAT.md
-OUTSIDE tests/TRACE-FORMAT.md:85: sim/fw/boot/bootrom.hex
-OUTSIDE tests/TRACE-FORMAT.md:118: oracle/regen/golden.sh
-OUTSIDE tests/acceptance/README.md:34: sim/data/tables/replayer
-OUTSIDE tests/acceptance/README.md:34: sim/data/tables/manifest.json
-OUTSIDE tests/acceptance/README.md:39: sim/
-OUTSIDE tests/acceptance/README.md:45: sim/tools/machine.sh
-OUTSIDE tests/acceptance/README.md:51: oracle/acceptance_crosscheck.sh
-OUTSIDE tests/golden-m2/README.md:3: sim/tests/AUDIT-M2.md
-OUTSIDE tests/golden-m2/README.md:6: oracle/regen/golden-m2.sh
 OUTSIDE tests/golden-m2/README.md:6: sim/ref
-OUTSIDE tests/golden-m2/README.md:6: sim/oracle/ref
 OUTSIDE tests/golden-m2/README.md:7: sim/ref/meshsim
 OUTSIDE tests/golden-m2/images/MANIFEST.md:3: sim/ref
-OUTSIDE tests/golden-m2/images/MANIFEST.md:4: sim/ref/meshsim/sw/build.sh
-MISSING tests/golden-m2/images/MANIFEST.md:4: sw/ext/sort/build.sh (code)
-OUTSIDE tests/golden-m2/images/MANIFEST.md:5: oracle/regen/golden-m2.sh
 OUTSIDE tests/golden-m2/images/MANIFEST.md:6: sim/ref/meshsim
-MISSING tests/golden-m2/images/MANIFEST.md:6: sw/bootrom.hex (code)
 OUTSIDE tests/golden-m2/images/MANIFEST.md:7: sim/ref
-OUTSIDE tests/golden-m3/README.md:1: sim/tests/AUDIT-M3.md
 OUTSIDE tests/golden-m3/README.md:3: sim/ref
-OUTSIDE tests/golden-m3/README.md:3: sim/oracle/ref/M3Seg.java
-OUTSIDE tests/golden-m3/README.md:10: oracle/regen/golden-m3.sh
-OUTSIDE tests/golden-m3/README.md:13: oracle/regen/golden-m3.sh
 OUTSIDE tests/golden-m3/README.md:17: sim/planning/sessions/WORKER13-tasks/IMAGES
 OUTSIDE tests/golden/images/MANIFEST.md:6: sim/fw/build.sh
 MISSING tests/golden/images/MANIFEST.md:13: sw/build.sh (code)
 OUTSIDE tests/golden/images/MANIFEST.md:56: sim/fw/riscv-tests/bin
-OUTSIDE tests/sort/README.md:3: sim/oracle/ref/
-OUTSIDE tests/sort/README.md:6: ref/
-OUTSIDE tests/sort/README.md:7: oracle/ref/sortlogs.sh
-OUTSIDE tests/sort/README.md:9: oracle/ref/SortFp.java
-OUTSIDE tests/sort/README.md:14: oracle/ref/sortkit.sh
 OUTSIDE tests/sort/kit/README.md:7: sim/
 MISSING tests/sort/kit/README.md:9: OUTDIR/run.sh (code)
 MISSING tests/sort/kit/README.md:13: SUMMARY.md (code)
-NO-README bench/
-NO-README bench/threads/
 NO-README bench/w10/
 NO-README bench/w14/
-NO-README data/tables/replayer/
-NO-README fw/boot/
-NO-README fw/cc/
-NO-README fw/images/
 NO-README fw/images/log8k/
 NO-README fw/images/oldmap/
-NO-README fw/include/
-NO-README fw/m1/
-NO-README fw/regdoc/src/
-NO-README fw/regdoc/svg/
-NO-README fw/riscv-tests/
 NO-README fw/riscv-tests/bin/
-NO-README fw/sort/
-NO-README fw/sort/program/patches/
-NO-README fw/sort/program/sw/
-NO-README fw/sort/program/tools/
-NO-README fw/sort/skew/harness/
 NO-README fw/sort/skew/harness/data/
-NO-README fw/sort/skew/planner/
 NO-README fw/sort/split/
-NO-README fw/tests/
-NO-README fw/tracer/
-NO-README pipeline/gold/src/
 NO-README pipeline/gold/src/gold/
-NO-README pipeline/gold/test/
 NO-README pipeline/gold/test/act4/
 NO-README pipeline/gold/test/cuts/
 NO-README pipeline/gold/test/gold/
@@ -242,8 +161,6 @@ NO-README pipeline/gold/test/guests/unprovable_undecodable/
 NO-README pipeline/gold/test/guests/unprovable_wfi/
 NO-README pipeline/gold/test/v13/
 NO-README pipeline/inputs/lib/
-NO-README pipeline/inputs/manifest/
-NO-README pipeline/inputs/src/
 NO-README pipeline/inputs/src/d97ecde/
 NO-README pipeline/inputs/src/d97ecde/gold/
 NO-README pipeline/inputs/src/d97ecde/gold/src/
@@ -258,7 +175,6 @@ NO-README pipeline/inputs/src/eeb64b5/gold/src/gold/
 NO-README pipeline/inputs/test/
 NO-README pipeline/inputs/test/v125-small/
 NO-README pipeline/inputs/test/v125-small/evm-zone-29/
-NO-README pipeline/jumpmap/out/
 NO-README pipeline/jumpmap/out/assert_eq_pass/
 NO-README pipeline/jumpmap/out/assert_eq_pass/seg/
 NO-README pipeline/jumpmap/out/d12_c_slli_x0/
@@ -283,10 +199,8 @@ NO-README pipeline/jumpmap/out/unimp_unreached/
 NO-README pipeline/jumpmap/out/unimp_unreached/seg/
 NO-README pipeline/jumpmap/src/
 NO-README pipeline/jumpmap/src/jumpmap/
-NO-README pipeline/jumpmap/test/
 NO-README pipeline/jumpmap/test/guests/
 NO-README pipeline/jumpmap/test/guests/jumps/
-NO-README planning/
 NO-README planning/sessions/WORKER19/
 NO-README planning/sessions/WORKER20/
 NO-README planning/sessions/WORKER22/
@@ -305,56 +219,9 @@ NO-README tests/acceptance/summary/c5/
 NO-README tests/acceptance/summary/c5/expect/
 NO-README tests/acceptance/summary/c6/
 NO-README tests/acceptance/summary/c6/expect/
-NO-README tests/cnc1conf/
-NO-README tests/cncconf/
-NO-README tests/ctl/
-NO-README tests/ctlsuites/
-NO-README tests/delivery/
-NO-README tests/engconf/
-NO-README tests/fp-m1/
-NO-README tests/freeze/
-NO-README tests/g1-replay/
-NO-README tests/golden/
-NO-README tests/golden-chain/
-NO-README tests/golden-m2/images/
-NO-README tests/golden-m3/baseline/
-NO-README tests/golden-m3/boot/
-NO-README tests/golden-m3/cover/
 NO-README tests/golden/images/
-NO-README tests/m3-images/
-NO-README tests/mach/
-NO-README tests/memconf/
-NO-README tests/p2suites/
-NO-README tests/p4suites/
-NO-README tests/portconf/
-NO-README tests/replayer/
-NO-README tests/reqconf/
-NO-README tests/routerconf/
-NO-README tests/slotconf/
-NO-README tests/sort/fp/
 NO-README tests/sort/kit/tools/
-NO-README tests/sort/ref/
-NO-README tests/stageb/
-NO-README tests/suite/
-NO-README tests/tileslotconf/
-NO-README tests/tracerconf/
-NO-README tests/tracerparts/
-NO-README tests/tracersuites/
-NO-README tools/delivery/
-NO-README tools/regs/
-DOC-MISSING fw/recipes/rcp.h:21: schedule-4.md
-DOC-MISSING fw/recipes/rcp_a2a.c:1: schedule-4.md
-DOC-MISSING fw/regdoc/src/build_pdf.sh:4: in.md
-DOC-MISSING fw/sort/program/sw/sort.h:3: design_v2/sort/sort-walkthrough.md
-DOC-MISSING fw/tests/a2a.c:1: schedule-4.md
-DOC-MISSING fw/tests/rcp.h:20: design_v2/spec/schedule-4.md
-DOC-MISSING fw/tests/rcp_a2a.c:1: schedule-4.md
 DOC-MISSING pipeline/gold/check.sh:6: wip/planning/sessions/WORKER18-NOTES.md
-DOC-MISSING pipeline/gold/src/gold/SegmentWriter.java:10: wip/planning/sessions/WORKER18-NOTES.md
-DOC-MISSING pipeline/gold/test/gold/InlineVectorTest.java:14: wip/planning/sessions/WORKER18-NOTES.md
-DOC-MISSING pipeline/gold/test/guests/check_guests.sh:4: wip/planning/sessions/WORKER18-NOTES.md
-DOC-MISSING pipeline/inputs/src/d97ecde/gold/src/gold/SegmentWriter.java:10: WORKER18/NOTES.md
-DOC-MISSING pipeline/inputs/src/eeb64b5/gold/src/gold/SegmentWriter.java:10: WORKER18/NOTES.md
 DOC-MISSING src/barrier.h:5: WORKER4/NOTES.md
 DOC-MISSING src/config.h:104: sim/planning/sessions/WORKER10/NOTES.md
 DOC-MISSING src/threads.h:20: NOTES.md
@@ -366,22 +233,11 @@ DOC-MISSING src/units/periph_slot.h:3: WORKER15-NOTES.md
 DOC-MISSING src/units/tile_ctl.h:3: sessions/WORKER8/NOTES.md
 DOC-MISSING src/units/tile_ctl.h:642: NOTES.md
 DOC-MISSING src/units/tile_ctl.h:670: NOTES.md
-DOC-MISSING tests/acceptance/make_acceptance_task.sh:6: NUMBERS.md
-DOC-MISSING tests/acceptance/make_task.sh:3: PIPELINE.md
 DOC-MISSING tests/chain.h:2: sim/planning/sessions/WORKER17-NOTES.md
 DOC-MISSING tests/chain_main.cpp:2: sim/planning/sessions/WORKER17-NOTES.md
-DOC-MISSING tests/ctl/suite_ctrl.cpp:7: NOTES.md
 DOC-MISSING tests/ctl/suite_hooks.cpp:8: NOTES.md
 DOC-MISSING tests/ctl/suite_recipes.cpp:10: NOTES.md
-DOC-MISSING tests/freeze/make_task.sh:8: PIPELINE.md
 DOC-MISSING tests/mach.h:20: sessions/WORKER20/NOTES.md
-DOC-MISSING tests/sort/kit/run.sh:12: OUTDIR/SUMMARY.md
-DOC-MISSING tests/sort/kit/run.sh:14: SUMMARY.md
-DOC-MISSING tests/sort_compare_main.cpp:7: out.md
-DOC-MISSING tests/sort_summary_main.cpp:2: SUMMARY.md
-DOC-MISSING tests/sort_summary_main.cpp:5: OUT.md
-DOC-MISSING tests/sort_summary_main.cpp:5: OUT.md
 DOC-MISSING tests/suite_net.cpp:15: sessions/WORKER22/NOTES.md
 DOC-MISSING tests/test_memconf.cpp:230: NOTES.md
-DOC-MISSING tests/test_sort_kit.cpp:4: SUMMARY.md
-doccheck: 53 documents, 1785 cited paths: 88 MISSING, 79 OUTSIDE; 206 folders: 177 NO-README; 200 documents named in source: 42 DOC-MISSING
+doccheck: 54 documents, 1802 cited paths: 70 MISSING, 37 OUTSIDE; 206 folders: 116 NO-README; 199 documents named in source: 19 DOC-MISSING

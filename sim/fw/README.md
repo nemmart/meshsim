@@ -12,17 +12,17 @@
 | `RECIPES.md` | the recipe book: short C for the common operations, each compiled from `recipes/` |
 
 `include/mesh.h` and `REGISTERS.md` are generated from the register table (`tools/regs/`); edit the table, never the
-files (`tools/README.md`). Both must match spec section 8. The registers' meaning is the spec's.
+files (`tools/README.md`). The spec is their source of truth (sections 2.2, 3.1, 4.11–4.13 and 8, and `spec/jolt/` for
+the replayer's and the Tracer's windows): where they differ, the files are wrong.
 
 ## Building an image
 
 The images are committed, so nothing here needs building to run the simulator. To rebuild them you need the RISC-V
-toolchain (`BUILDING.md`). **The build must run under `LC_ALL=C`**: the symbol files list symbols in the locale's
-collation order.
+toolchain (`BUILDING.md`); without it, `fw/check_images.sh` checks the committed images against their hash lists.
 
-- `LC_ALL=C fw/build.sh --check` rebuilds every image into `fw/build/out/` and checks each against its committed copy,
+- `fw/build.sh --check` rebuilds every image into `fw/build/out/` and checks each against its committed copy,
   byte for byte;
-- `LC_ALL=C fw/build.sh` rewrites `fw/images/` (with its `MANIFEST`) and compares the images that live in a test's
+- `fw/build.sh` rewrites `fw/images/` (with its `MANIFEST`) and compares the images that live in a test's
   fixture folder, never overwriting them;
 - `PARTS="cc recipes"` (any of `boot tests m1 m3 cc recipes replay tracer sort riscv`) limits the build to those parts;
   `RISCV_TESTS=DIR` (a riscv-tests checkout at 3df703c) also rebuilds the riscv-tests images.

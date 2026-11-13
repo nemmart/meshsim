@@ -121,8 +121,8 @@ step cc-build      2 "building the controllers' firmware (sw/build_cc.sh: sw/cc/
 step recipes-build 1 "building the v1.2 recipes (sw/build_recipes.sh: wip/sw/recipes/, unedited)" - -- fw_part recipes
 pending recipes       "the v1.2 recipes as suites, and the book's code blocks against their sources" "P5"
 pending recipes-shuf  "shuffled child order (seed 4)" "P5"
-pending cond          "the errors end to end: ERRORS, the handler's reports, the error lines, the toast pin, the reset" "P5"
-pending cond-shuf     "shuffled child order (seed 4)" "P5"
+step cond      1 "the errors end to end: ERRORS, the handler's reports, the error lines, the toast pin, the reset" tests/ctlsuites/cond.log -- $S/suite_cond -1
+step cond-shuf 1 "shuffled child order (seed 4)" tests/ctlsuites/cond-shuf.log -- $S/suite_cond 4
 step regdoc 1 "REGISTERS.md and mesh.h against their generators, the draft header and the simulator" tests/ctlsuites/regdoc.log -- $S/suite_regdoc
 step hooks      1 "the register map, the send port, the pulses (from Java)" tests/ctlsuites/hooks.log -- $S/suite_hooks -1
 step hooks-shuf 1 "shuffled child order (seed 4)" tests/ctlsuites/hooks-shuf.log -- $S/suite_hooks 4

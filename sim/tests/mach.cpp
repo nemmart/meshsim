@@ -522,10 +522,11 @@ void Chip::Impl::collect_overflows() {
     for (size_t i = 0; i < hw.size(); i++) {
         Hw& h = hw[i];
         if (h.reported) continue;
-        uint64_t n = 0, first = 0;
-        if (h.router) { n = h.router->q[h.q].overflows; first = h.router->q[h.q].first_overflow; }
-        else { sim::Cycle f = 0; n = sim->fifo_overflows(*h.in, &f); first = f; }
-        if (!n) continue;
+        uint64_t first = 0;
+        bool flag = false;                                // ref's overflow flag: set since the last reset cleared it
+        if (h.router) { first = h.router->q[h.q].first_overflow; flag = first != 0; }
+        else { sim::Cycle f = sim::kNoCycle; sim->fifo_overflows(*h.in, &f); first = f; flag = f != sim::kNoCycle; }
+        if (!flag) continue;
         h.reported = true;
         checker->add({first, h.tile, sim::check::Kind::FIFO_OVERFLOW, 0, {uint64_t(i), 0, 0, 0}});
     }
@@ -851,6 +852,7 @@ void Chip::reset(bool hard) {
         ag.refused_now = false; ag.put_this_cycle = false;
         units::Gather& ga = p.unit<units::Gather>("gather");
         ga.left = 0;
+        ga.ovf_seen = s.fifo_overflows(ga.in, nullptr);
         units::Injection& in = p.unit<units::Injection>("inj");
         units::InjReadSide& rs = in.rs;
         rs.ord_n[0] = rs.ord_n[1] = 0; rs.ord_head[0] = rs.ord_head[1] = 0; rs.rp_n = 0;
@@ -865,12 +867,20 @@ void Chip::reset(bool hard) {
         core.host_rd_n = 0; core.host_rd_head = 0;
         units::WriteEngine& we = p.unit<units::WriteEngine>("we");
         we.head = 0; we.count = 0; we.aw_head = 0; we.aw_n = 0;
+        we.ovf_seen = s.fifo_overflows(we.in, nullptr);   // ref's evPrev copied from the counts: no event for what's past
         for (auto& x : we.st_have) x = 0;
         units::Router& r = p.unit<units::Router>("router");
         for (auto& x : r.rr) x = 0;
         r.loopback_last = true;
-        for (auto& f : r.q) { f.head = 0; f.count = 0; f.put_at = 0; }
+        for (auto& f : r.q) {
+            // ref's WordFIFO.flush: a put of t is not yet committed and is dropped, so an overflow of t is never counted;
+            // the overflow flag and cycle are cleared, the count kept
+            if (f.put_at == uint64_t(t) && !f.put_kept) f.overflows--;
+            f.first_overflow = 0;
+            f.head = 0; f.count = 0; f.put_at = 0; f.put_kept = 0;
+        }
         r.occ = 0;
+        r.ovf_due = 0;                                    // the overflows of t, counted at t + 1: dropped with their puts
         units::BigSram& m2 = p.unit<units::BigSram>("sram");
         for (unsigned a = 0; a < units::BigSram::AREAS; a++) { m2.head[a] = 0; m2.count[a] = 0; }
         m2.busy = 0;

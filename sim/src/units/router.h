@@ -191,7 +191,8 @@ inline void Router::push(sim::Ctx& c, unsigned o, unsigned port, const uint64_t*
     q.put_at = t; q.put_w[0] = w[0]; q.put_w[1] = w[1]; q.put_w[2] = w[2]; q.took_after_put = 0;
     if (q.count + (taken >> i & 1) >= q.cap) {
         q.put_kept = 0;
-        if (q.overflows++ == 0) q.first_overflow = t;
+        q.overflows++;
+        if (!q.first_overflow) q.first_overflow = t;   // ref's overflowCycle: the first since a reset cleared it
         ovf_due++;
         return;
     }

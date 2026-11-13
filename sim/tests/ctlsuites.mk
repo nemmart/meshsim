@@ -10,7 +10,7 @@
 #   suite_regdoc    RegDocTest (step regdoc)
 #   suite_accounting AccountingTest (steps accounting, accounting-full; the suite or debug build)
 #   suite_s1bench   S1Bench (step s1bench; the suite or debug build)
-#   suite_cond      CondTest (steps cond, cond-shuf; the suite or debug build)
+#   suite_cond      CondTest (steps cond, cond-shuf; the suite or debug build: the checker's messages are in its log)
 CTL_SUITES := $(B)/suite_cccores $(B)/suite_ccbench $(B)/suite_ctrl $(B)/suite_recipes $(B)/suite_hooks $(B)/suite_regdoc $(B)/suite_accounting $(B)/suite_s1bench $(B)/suite_cond
 $(CTL_SUITES): $(B)/suite_%: $(B)/tests/ctl/suite_%.o $(MACH_LINK) $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)

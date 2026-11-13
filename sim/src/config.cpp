@@ -1034,7 +1034,7 @@ void Sim::flush_ports() {                                      // W20 (harness-o
     for (uint32_t i = 0; i < e.nfifos; i++) {
         FifoPort& f = e.fifos[i];
         f.ring.head = 0; f.ring.n = 0;
-        f.overflows = 0; f.first_overflow = kNoCycle;
+        f.first_overflow = kNoCycle;                       // ref's WordFIFO.flush: the overflow flag and cycle; the count kept
         if (f.ret != kNone) f.credits = f.depth;
 #ifdef SIM_CHECKS
         f.peak = 0;

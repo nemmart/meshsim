@@ -67,3 +67,5 @@ spec/jolt/tracer.md	tracer/src/emulator/mmu.rs	other-repo	a16z's jolt
 tests/sort/kit/README.md	OUTDIR/run.sh	output	a file the kit writes
 tests/sort/kit/README.md	SUMMARY.md	output	a file the kit writes
 bench/README.md	DIR/uniform.keys	output	a usage line's placeholder
+spec/jolt/replayer.md	replayer/decode_table.bin	cd	relative to data/tables/, named earlier in the same sentence: a context the check cannot follow
+tests/TRACE-FORMAT.md	sim/tests/TRACE-FORMAT.md	output	the literal text of the trace header, which both writers emit and every golden trace carries (D38)

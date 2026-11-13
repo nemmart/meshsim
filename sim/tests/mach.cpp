@@ -1647,12 +1647,21 @@ void Cc::drain_reports(bool on) {
     m.drain = on;
     if (on) drain_next(*c_);                               // the next cycle's, as ref's CnC at its runCycle
 }
-std::vector<std::array<int64_t, 5>> Cc::reports() const { return c_->impl_const().reports; }
-std::vector<std::array<int64_t, 5>> Cc::requests() const { return c_->impl_const().requests; }
-std::vector<std::array<int64_t, 4>> Cc::results() const { return c_->impl_const().results; }
+// ref's lists as they stand between cycles: what C&C drained at or before the cycle just run (the harness drains for
+// the next cycle ahead of it, so an entry of cycle() + 1 is left out until that cycle has run)
+namespace {
+template <size_t N> std::vector<std::array<int64_t, N>> drained(const std::vector<std::array<int64_t, N>>& v, int64_t now) {
+    std::vector<std::array<int64_t, N>> r;
+    for (const auto& e : v) if (e[0] <= now) r.push_back(e);
+    return r;
+}
+}  // namespace
+std::vector<std::array<int64_t, 5>> Cc::reports() const { return drained(c_->impl_const().reports, c_->cycle()); }
+std::vector<std::array<int64_t, 5>> Cc::requests() const { return drained(c_->impl_const().requests, c_->cycle()); }
+std::vector<std::array<int64_t, 4>> Cc::results() const { return drained(c_->impl_const().results, c_->cycle()); }
 std::vector<std::array<int64_t, 5>> Cc::reports_of(unsigned id) const {
     std::vector<std::array<int64_t, 5>> r;
-    for (const auto& e : c_->impl_const().reports) if ((e[1] & 0x7F) == int64_t(id)) r.push_back(e);
+    for (const auto& e : c_->impl_const().reports) if ((e[1] & 0x7F) == int64_t(id) && e[0] <= c_->cycle()) r.push_back(e);
     return r;
 }
 void Cc::set_expect(uint64_t tiles) { c_->unit<units::Cnc>("cnc").expect = tiles; c_->touched("cnc"); }

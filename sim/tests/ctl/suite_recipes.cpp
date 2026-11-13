@@ -863,6 +863,46 @@ void cc1() {
     if (m.c.violations() != 0) std::fputs(m.c.violation_report().c_str(), stdout);
 }
 
+// ================================================================ boot (6.2), the handler (recipe 24), the reset (6.1)
+void boot() {
+    suite::group("boot");
+    mach::MachConfig k = cfg(); k.reqbus_host = true;              // C&C 1's request service (drain_reports)
+    Mach m(k);
+    const Mach::Image im = m.boot("rcp_boot");
+    const unsigned P = 16; const uint32_t AT = 0xE0000;           // 16 rows into area 7 (6.2's staging area)
+    mach::Cc& cc = m.c.cc();
+    cc.command(BROADCAST, 0x53u << 24 | P).go().wait_cycles(m.c.cfg().stage_delay);   // CMD_STAGE; the data no sooner
+    for (unsigned i = 0; i < P; i++)                                                  //   than stage_delay after GO
+        cc.send(BROADCAST, units::lw::M_WRITE, 1, 0x03000000u | (AT + 4 * i) << 2, units::lw::SIZE_128, 0x5EED0000ull | i, uint64_t(i) << 32);
+    suite::check(m.run([&] { return idle(m); }, 40000), "every tile armed, took the staged data and pulsed done");
+    int bad = 0, irq = 0;
+    for (unsigned t = 0; t < 64; t++) {
+        for (unsigned i = 0; i < P; i++)
+            if (m.c.tile(t).sram_peek64(AT + 4 * i) != (0x5EED0000ull | i) || m.c.tile(t).sram_peek64(AT + 4 * i + 2) != uint64_t(i) << 32) bad++;
+        const units::Rv32& c = core(m.c, t);
+        if (c.mtvec == im.sym("trap_handler") && (c.mstatus & 8) != 0 && (c.mie & 1u << 11) != 0) irq++;
+    }
+    suite::eq(0, bad, "the 16 staged rows are in every tile's big SRAM (counted, broadcast)");
+    suite::eq(64, irq, "boot part 2 set mtvec to the image's handler and enabled the hard interrupt on every tile");
+    int64_t running = 0; for (unsigned t = 0; t < 64; t++) running = std::max(running, core(m.c, t).first_image_at);
+    meas("boot", "reset release -> all 64 tiles running their image (overlays " + std::to_string((im.code.size() + im.data.size() + 3) / 4) +
+         " packets, broadcast)", running);
+    // the handler (recipe 24): an error on tile 9 with the hard interrupt enabled -> its 24 reports in C&C 1's queue
+    m.c.set_check_errors(false);
+    cc.drain_reports(true);
+    m.c.tile(9).set_errors(1u << 3);                               // Conditions.DRIFT
+    suite::check(m.run([&] { return cc.reports_of(9).size() >= 24; }, 40000), "tile 9's handler sent its 24 reports to C&C 1");
+    const units::Rv32& t9 = core(m.c, 9);
+    suite::check(t9.trap_cause == CAUSE_EXTERNAL && t9.mtvec == im.sym("trap_handler"), "through the image's handler (the hard interrupt)");
+    meas("handler", "trap -> the last of 24 reports in C&C 1's receive queue (tile 9)", cc.reports_of(9).at(23)[0] - t9.trap_at);
+    m.c.set_check_errors(true); m.c.clear_violations();
+    cc.reset(false).command(BROADCAST, CMD_JUMP << 24, {im.sym("_start")}).run_when_ready();
+    suite::check(m.run([&] { return m.c.resets() == 1 && idle(m); }, 40000), "a reset and the boot again");
+    finish(m, "boot", 20000);
+    no_violations(m.c, "boot");
+    meas("boot", "CMD_STAGE with 16 broadcast rows: GO -> all READY", go_to_ready(m, 0));
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -872,7 +912,7 @@ int main(int argc, char** argv) {
     cmdloop(); copy(); cmem(); bucket(); aug(); gather(); xchg(); xvec(); a2a(); rdport(); status(); rules();
     sync_(); blocks();
     selftest();
-    // boot(): W20 (the whole-chip reset)
+    boot();
     signal();
     tables(); replay(); cc1();
     out("recipe cycles [meas: RecipeTest; tile 0 unless stated]:");

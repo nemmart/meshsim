@@ -51,6 +51,7 @@ SUITES="$SUITES suite_net suite_search suite_agbench suite_engine suite_reqbus s
 SUITES="$SUITES suite_ag"                            # P4: AgTest
 SUITES="$SUITES sort_test sweep"                     # W24 (P6)
 SUITES="$SUITES suite_cond"                           # CondTest (P5)
+SUITES="$SUITES suite_recipes"                        # RecipeTest (P5)
 
 if [ "$BUILD" = 1 ]; then
   echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
@@ -129,8 +130,8 @@ step agtest 1 "address generator read-ahead, figure 12's PTR/HIST ports" tests/p
 step agtest-shuf 1 "shuffled child order (seed 4)" tests/p4suites/agtest-shuf.log -- $S/suite_ag 4
 step cc-build      2 "building the controllers' firmware (sw/build_cc.sh: sw/cc/cc1.c, cc23.c; WORKER14)" - -- fw_part cc
 step recipes-build 1 "building the v1.2 recipes (sw/build_recipes.sh: wip/sw/recipes/, unedited)" - -- fw_part recipes
-pending recipes       "the v1.2 recipes as suites, and the book's code blocks against their sources" "P5"
-pending recipes-shuf  "shuffled child order (seed 4)" "P5"
+step recipes      1 "the v1.2 recipes as suites, and the book's code blocks against their sources" tests/ctlsuites/recipes.log -- $S/suite_recipes -1
+step recipes-shuf 1 "shuffled child order (seed 4)" tests/ctlsuites/recipes-shuf.log -- $S/suite_recipes 4
 step cond      1 "the errors end to end: ERRORS, the handler's reports, the error lines, the toast pin, the reset" tests/ctlsuites/cond.log -- $S/suite_cond -1
 step cond-shuf 1 "shuffled child order (seed 4)" tests/ctlsuites/cond-shuf.log -- $S/suite_cond 4
 step regdoc 1 "REGISTERS.md and mesh.h against their generators, the draft header and the simulator" tests/ctlsuites/regdoc.log -- $S/suite_regdoc

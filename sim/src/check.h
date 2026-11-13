@@ -198,6 +198,9 @@ struct Sink {
     Fact* f = nullptr;
     uint32_t cap = 0;
     std::atomic<uint32_t> n{0};
+    // Kinds the installed checker never judges (a switch it holds off): add() drops them, so a long run's unread facts
+    // can't fill the list (v1.3 counts such events without keeping them). One bit per kind; none set by default.
+    uint64_t off[4] = {0, 0, 0, 0};
     void add(uint64_t cycle, int tile, Kind k, uint64_t a0, uint64_t a1, uint64_t a2, uint64_t a3);   // check.cpp
 };
 

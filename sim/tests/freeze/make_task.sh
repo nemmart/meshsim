@@ -25,7 +25,7 @@ tar --sort=name --mtime=@0 --owner=0 --group=0 -czf "$K/kit.tgz" -C "$K" kit
 SHA=$(sha256sum "$K/kit.tgz" | cut -d' ' -f1)
 cat <<HEAD
 #!/bin/bash
-# Task $NAME -- meshsim v1.35's freeze check (sim/ $R, $BR; tests/freeze/make_task.sh, WORKER22). PLAN-V135 step 4:
+# Task $NAME -- meshsim v1.35's freeze check (sim/ $R, $BR; tests/freeze/make_task.sh). PLAN-V135 step 4:
 # 1. ./run_tests.sh all --check (every step, the full-size ones included); 2. the full-size sort (p4 uniform-k128,
 # every fingerprint point against golden-m2, TOTAL 1,229,687, one thread; bench_sort's digest, one thread against 6 by tiles); 3. T2 on evm-zone-29 and
 # cyclone-29 segment 10, every point against golden-m3, one domain and 6; 4. the two 128-segment chains, every segment's

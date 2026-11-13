@@ -5,7 +5,7 @@
 //
 //   suite_ag [seed] [--only=GROUP,...]      groups: worked computed bounds groupsize fig12 rulings
 //
-// STATUS. Every group; figure 12's six checks after a test's table-window store or load wait on W22-21 (W20).
+// STATUS. Every group, figure 12's included: the log equals v1.3's byte for byte (agtest, agtest-shuf).
 //
 // Test-side code (the configuration regime, D6).
 #include <algorithm>

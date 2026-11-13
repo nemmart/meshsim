@@ -35,7 +35,7 @@ public:
     void clear_count() { violations_ = 0; }
     // ref's Chip.doReset: every tile's error line seen as low again (errSeen); the ERRORS seen (condSeen) are kept
     void on_reset() { for (Unit& u : u_) { u.line = false; u.errors = 0; } }
-    CheckSwitches& switches() { return sw_; }
+    CheckSwitches& switches() { sink_.off[0] = sink_.off[1] = sink_.off[2] = sink_.off[3] = 0; return sw_; }   // a switch may change: keep every kind until the next install
     void set_max_messages(unsigned n) { max_messages_ = n; }
     uint32_t facts() const { return sink_.n.load(); }
 

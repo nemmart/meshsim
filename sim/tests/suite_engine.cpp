@@ -12,9 +12,9 @@
 // The statistics it reads that the timing builds don't keep (the Fifo peaks, big SRAM's queue peaks) exist under
 // SIM_CHECKS: run the suite and debug builds.
 //
-// STATUS. Ported: writeengine (its printed line waits on the write engine's stage peak, a statistic for the owner),
-// alltoall, drift, inv6. Waiting on W22-15 (ref's runLocal / phaseDone): localcopy, streamruns, exchange, radix,
-// lategroups, fence.
+// STATUS. Every group (writeengine, alltoall, drift, inv6, localcopy, streamruns, exchange, radix, lategroups, fence):
+// the log equals v1.3's byte for byte (engine, eng-shuf, engine-full).
+//
 //
 // Test-side code (the configuration regime, D6).
 #include <algorithm>

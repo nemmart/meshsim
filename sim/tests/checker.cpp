@@ -221,7 +221,13 @@ Checker::Checker(uint32_t capacity, unsigned max_messages, const CheckSwitches& 
     sink_.cap = capacity;
 }
 
-void Checker::install() { sim::check::sink = sim::check::kOn ? &sink_ : nullptr; }
+void Checker::install() {
+    // drop the facts of kinds this checker's switches hold off (enabled() is false for them, so none is ever judged)
+    for (uint64_t& w : sink_.off) w = 0;
+    for (Kind k : {Kind::DIR_READPORT_OVERLAP, Kind::DIR_UNEXPECTED, Kind::CMEM_COMMAND_UNREAD, Kind::CMEM_REPLY_OVERWRITE, Kind::DISJOINT})
+        if (!enabled(k)) sink_.off[unsigned(k) >> 6] |= uint64_t(1) << (unsigned(k) & 63);
+    sim::check::sink = sim::check::kOn ? &sink_ : nullptr;
+}
 void Checker::uninstall() { if (sim::check::sink == &sink_) sim::check::sink = nullptr; }
 
 void Checker::report(int64_t t, int tile, const std::string& m) {   // Chip.violation

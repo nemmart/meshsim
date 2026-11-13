@@ -27,3 +27,42 @@ tests/sort_summary_main.cpp	SUMMARY.md	output	a file the tool writes
 tests/sort_summary_main.cpp	OUT.md	output	a file the tool writes
 tests/test_sort_kit.cpp	SUMMARY.md	output	a file the tool writes
 tests/freeze/body.sh	SUMMARY.md	output	the kit's summary the task writes
+# The documents' exemptions (the docs session; 38 entries)
+fw/RECIPES.md	WORKER6/FINDINGS.md	historical	a v1.2 session's findings, never kept
+fw/RECIPES.md	schedule-4.md	historical	a v1.2-era document, never committed in any version
+fw/recipes/RECIPES.tmpl.md	WORKER6/FINDINGS.md	historical	RECIPES.md's template: a v1.2 session's findings, never kept
+fw/recipes/RECIPES.tmpl.md	schedule-4.md	historical	RECIPES.md's template: a v1.2-era document, never committed in any version
+fw/sort/skew/RESULTS.md	design_v1/python/split-point-model/data.py	other-repo	the design repository
+fw/sort/skew/RESULTS.md	model/export_mats.py	historical	never committed in any version
+fw/sort/skew/RESULTS.md	model/model-results.json	historical	never committed in any version
+fw/sort/skew/RESULTS.md	../harness	cd	inside "cd ../harness && ./build.sh", run from the planner
+data/tables/README.md	tracer/tables/build.sh	other-repo	jolt-asic-planning
+fw/regdoc/README.md	../../Reference.pdf	output	the PDF script's output; exists in no version
+pipeline/keys/README.md	pipeline/build/keys	output	pipeline/build.sh's output folder
+pipeline/keys/README.md	pipeline/build/keys/	output	pipeline/build.sh's output folder
+pipeline/inputs/README.md	seg/NNN.pages	output	a run's output names
+pipeline/inputs/README.md	seg/NNN.json	output	a run's output names
+pipeline/inputs/README.md	seg/NNN.written	output	a run's output names
+pipeline/inputs/README.md	manifest/RUN.sha256	output	an output name, relative to a run's OUT
+pipeline/inputs/README.md	sw/build.sh	cd	after "cd v1.26.1/meshsim"
+pipeline/inputs/README.md	sw/replay/build.sh	cd	after "cd v1.26.1/meshsim"
+pipeline/inputs/README.md	acceptance/make_kit.sh	cd	after "cd v1.26.1/meshsim"
+pipeline/jumpmap/README.md	seg/NNN.pages	output	a run's output names
+pipeline/jumpmap/README.md	seg/NNN.json	output	a run's output names
+pipeline/jumpmap/README.md	../gold/build	cd	"java -cp ../gold/build", run from pipeline/jumpmap: the gold build's output
+spec/jolt/replayer-opcodes.md	isa/decoder.cpp	other-repo	jolt-cpp
+spec/jolt/replayer-opcodes.md	isa/riscv.hpp	other-repo	jolt-cpp
+spec/jolt/replayer-opcodes.md	isa/virtual.cpp	other-repo	jolt-cpp
+spec/jolt/replayer-opcodes.md	isa/virtual.hpp	other-repo	jolt-cpp
+spec/jolt/replayer-opcodes.md	utils/math.hpp	other-repo	jolt-cpp
+spec/jolt/replayer.md	../utils/math.hpp	other-repo	jolt-cpp
+spec/jolt/replayer.md	inlines/blake3.inc	other-repo	jolt-cpp
+spec/jolt/replayer.md	isa/decoder.cpp	other-repo	jolt-cpp
+spec/jolt/replayer.md	isa/riscv.hpp	other-repo	jolt-cpp
+spec/jolt/replayer.md	isa/riscv.inc	other-repo	jolt-cpp
+spec/jolt/replayer.md	isa/virtual.cpp	other-repo	jolt-cpp
+spec/jolt/replayer.md	src/tracer/isa	other-repo	jolt-cpp
+spec/jolt/tracer.md	crates/jolt-riscv/src/uncompress.rs	other-repo	a16z's jolt
+spec/jolt/tracer.md	tracer/src/emulator/mmu.rs	other-repo	a16z's jolt
+tests/sort/kit/README.md	OUTDIR/run.sh	output	a file the kit writes
+tests/sort/kit/README.md	SUMMARY.md	output	a file the kit writes

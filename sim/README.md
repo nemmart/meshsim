@@ -48,7 +48,7 @@ calibration. The checks the spec promises that neither v1.3's simulator nor v1.3
 | term | meaning |
 |---|---|
 | meshsim | the simulator, whatever its implementation (D37) |
-| `ref` | the reference v1.35 was checked against: v1.3's Java simulator with retire-trace observer hooks added (`Observer.java`, and one guarded line at each call site in `Controller.java`, `ControllerMemories.java` and `TileControl.java`; every other file identical to v1.3's). It is kept outside the frozen copy; v1.3's own simulator is `v1.3/meshsim/` |
+| `ref` | the reference v1.35 was checked against: v1.3's Java simulator with retire-trace observer hooks added (D5; `Observer.java`, and one guarded line at each call site in `Controller.java`, `ControllerMemories.java` and `TileControl.java`; every other file identical to v1.3's). It is kept outside the frozen copy; v1.3's own simulator is `v1.3/meshsim/` |
 | D*n* | decision *n* of v1.35, in `planning/DECISIONS.md`; v1.3's are in `spec/history/` |
 | Quest *n* | task *n* on the project's measurement machine, where the long runs and timings were made |
 | `[meas: …]` | in the spec, a figure measured on a simulator (`spec/machine-spec.md`'s preamble) |

@@ -1,9 +1,9 @@
 # sim/src: the port kinds and their exact semantics
 
-WORKER3, stage 1 (draft for review). Every rule below is `ref`'s (`sim/ref/meshsim`, v1.3, frozen): the class and lines it
+WORKER3, stage 1 (draft for review). Every rule below is `ref`'s (v1.3's simulator with the trace hooks, frozen, outside the frozen copy): the class and lines it
 comes from, then how the framework realises it with its cycle (`sim.h`). Where WORKER29's draft
-(`wip/planning/sessions/WORKER29-DESIGN.md` section 3) or a generic class differs from **the class the machine actually
-runs**, that class wins and the difference is stated. Paths below are relative to `sim/ref/meshsim/src/`.
+(a design note outside the frozen copy, its section 3) or a generic class differs from **the class the machine actually
+runs**, that class wins and the difference is stated. File names below are `ref`'s source files.
 
 ## 0. Which classes the machine runs
 

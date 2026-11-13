@@ -3,8 +3,8 @@
 What each run is, and how to compare against it: `AUDIT-M2.md` sections 6-8. In short:
 
 - `RUNS`: every run (name, local or runner, kept in git or by hash, the driver command).
-- the oracle's `golden-m2.sh [--check] [PATTERN]` (outside the frozen copy): rebuilds `sim/ref` and the oracle's drivers in a scratch copy of
-  `sim/ref/meshsim` with `images/`, runs, and writes (or checks) every file's sha256 in `HASHES`. `ALL=1` adds the
+- the oracle's `golden-m2.sh [--check] [PATTERN]` (outside the frozen copy): rebuilds `ref` (v1.3's simulator with the trace hooks) and the oracle's drivers in a scratch copy of
+  `ref`'s simulator folder with `images/`, runs, and writes (or checks) every file's sha256 in `HASHES`. `ALL=1` adds the
   full-size sort (the runner: Quest 134 made it; its large files are under the runner's `$DATA/w7-golden-m2/`).
   `KEEP=DIR` keeps every file made, the hash-only ones included.
 - Files: `NAME.out` (the run's facts: cycles, results, ref's digest; `timing:` lines removed), `NAME.fp` (the canonical

@@ -1,6 +1,6 @@
 # M3's references (WORKER13; `AUDIT-M3.md` section 7)
 
-Made by Quest 161 (`sim/ref`, sim-w13, the runner: i5-14400F, `baseline/machine.txt`) with the oracle's `M3Seg`,
+Made by Quest 161 (`ref`, sim-w13, the runner: i5-14400F, `baseline/machine.txt`) with the oracle's `M3Seg`,
 which runs `TracerT2.chip` exactly (Quest 160: the same figures as `TracerT2`, hooks on or off).
 
 | file | what |
@@ -14,7 +14,7 @@ which runs `TracerT2.chip` exactly (Quest 160: the same figures as `TracerT2`, h
 | `boot/` | (WORKER16, Quest 165) the boot-end point: every unit's line at cycle 7,222 (`coresBooted`, 1,214 lines per run), extracted from `$DATA/w13-golden-m3/*.fpchip.gz` after checking `HASHES`; `SHA256` |
 
 The runs: **evm-zone-29 segment 10** and **cyclone-29 segment 10**, 64 windows, raw, `Config` defaults (GO 8, READY 8,
-error 8, `stage_delay` 64, idle-skip on), the images in `sim/planning/sessions/WORKER13-tasks/IMAGES` (110u's).
+error 8, `stage_delay` 64, idle-skip on), the images in a task folder outside the frozen copy (110u's).
 
 The boot-end lines of the two runs differ only in `cc3.cmem` and `cc3.sram.data` (C&C 3's segment record and expected
 end state, landed before the boot). The harness's landings (`*.sram.gz`, 8.3 MB each, differing only in C&C 3's part)

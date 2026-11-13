@@ -127,7 +127,10 @@ step regdoc 1 "REGISTERS.md and mesh.h against their generators, the draft heade
 step hooks      1 "the register map, the send port, the pulses (from Java)" tests/ctlsuites/hooks.log -- $S/suite_hooks -1
 step hooks-shuf 1 "shuffled child order (seed 4)" tests/ctlsuites/hooks-shuf.log -- $S/suite_hooks 4
 equiv periph          "the peripheral framework: the standard window, events, region writes, the DMA" "test_tileslotconf (W15's TileSlotConf: PeripheralSlotTest's groups on a real tile, against ref)" -- $S/test_tileslotconf
-pending periph-shuf   "shuffled child order (seed 4)" "P5 (test_tileslotconf has no shuffled run yet)"
+# periph-shuf: test_tileslotconf's shuffled run alone (seed 4, v1.3's), against the same observations of ref; its
+# output must be the plain run's (results/periph.out) byte for byte. (Our shuffle seeds don't map to ref's.)
+periph_shuf() { TILESLOTCONF_SEED=4 "$S/test_tileslotconf" > results/periph-shuf.raw 2>&1; cat results/periph-shuf.raw; cmp -s results/periph-shuf.raw results/periph.out; }
+equiv periph-shuf     "shuffled child order (seed 4)" "test_tileslotconf shuffled (seed 4), its output the plain run's" -- periph_shuf
 step reqbus 2 "the request port, the request bus and the receive queues in the tree" tests/p4suites/reqbus.log -- $S/suite_reqbus -1
 step reqbus-shuf 1 "shuffled child order (seed 4)" tests/p4suites/reqbus-shuf.log -- $S/suite_reqbus 4
 MASK_EXTRA=$D44_MASK step cccores      1 "C&C 1-3 as cores (Config.ccCores, WORKER14): the boot ROM's controller branch, the link, the request tree" tests/ctlsuites/cccores.log -- $S/suite_cccores -1

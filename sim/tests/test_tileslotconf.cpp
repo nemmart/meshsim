@@ -7,6 +7,7 @@
 // Sim::wake), each region write put in the tile's eject one cycle before ref's director accepted it (its "dir" line).
 // The data-memory image, the test peripheral's accepts, the bad packets and the DMA's packets must equal ref's.
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -182,7 +183,15 @@ const char* kGroups[] = {"window", "events", "landing", "dma", "replayer"};
 
 }  // namespace
 
+// TILESLOTCONF_SEED=<n> (run_tests.sh's periph-shuf, v1.3's seed 4; unset by default): only the shuffled run with that
+// seed, against the same observations, so its output is the plain run's.
 TEST(peripheral_slot_test_groups_equal_ref) {
+    if (const char* e = std::getenv("TILESLOTCONF_SEED")) {
+        sim::Options o;
+        o.shuffle_seed = std::strtoll(e, nullptr, 10);
+        for (const char* g : kGroups) CHECK(check(g, o));
+        return;
+    }
     for (int variant = 0; variant < 3; variant++) {
         sim::Options o;
         if (variant == 1) o.step_all = true;

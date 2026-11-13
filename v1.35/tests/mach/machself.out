@@ -1,0 +1,95 @@
+reset seed -1: at 5201 fp 486a8801b15d983c; next fp 2515f8d58c14a16d; queue done at 5204 fp f906437726fdb936; rerun NOT stopped at 25204 fp a4f457b6e9c8cd25 violations 0
+  cycle 5201: reset (soft): every unit to the boot ROM
+reset seed 4: at 5201 fp 486a8801b15d983c; next fp 2515f8d58c14a16d; queue done at 5204 fp f906437726fdb936; rerun NOT stopped at 25204 fp a4f457b6e9c8cd25 violations 0
+  cycle 5201: reset (soft): every unit to the boot ROM
+faults reads: drained at 5000; bus idle 4098 cycles (3 changes, last at 1047), ports idle 4610 cycles (last change at 534), port busy 9578 tile-cycles; toast true at 140
+  received 112; fp 33b70a6161c4a0c4; next cd08416daae7860b; next b1c86e187a7ebfe2; credits 128
+  the reset: made at 5003; toast false at -1
+flood reset seed -1: parked at 967 reports 2 tile 9 overflows 143 ERRORS 0x1 fp 6fbb7adf93e53352; reset at 968 overflows 146 fp(D49) fcf57fe96ea4568a; next ERRORS 0x0 fp(D49) 2dabc3819e03ee55; booted true at 1079 ERRORS 0x0 unit-error 0 toast false line 9 0 overflows 146 fp(D49) 0715faae71f0f357; violations 5
+  cycle 920 tile 9: FIFO overflow t9.eject<from-left (invariant 1)
+  cycle 919 tile 9: FIFO overflow t9.eject<from-right (invariant 1)
+  cycle 919 tile 9: FIFO overflow t9.eject<from-up (invariant 1)
+  cycle 920 tile 9: FIFO overflow t9.eject<from-down (invariant 1)
+flood reset seed 4: parked at 967 reports 2 tile 9 overflows 143 ERRORS 0x1 fp 6fbb7adf93e53352; reset at 968 overflows 146 fp(D49) fcf57fe96ea4568a; next ERRORS 0x0 fp(D49) 2dabc3819e03ee55; booted true at 1079 ERRORS 0x0 unit-error 0 toast false line 9 0 overflows 146 fp(D49) 0715faae71f0f357; violations 5
+  cycle 920 tile 9: FIFO overflow t9.eject<from-left (invariant 1)
+  cycle 919 tile 9: FIFO overflow t9.eject<from-right (invariant 1)
+  cycle 919 tile 9: FIFO overflow t9.eject<from-up (invariant 1)
+  cycle 920 tile 9: FIFO overflow t9.eject<from-down (invariant 1)
+trace: finished at cycle 4311
+  tile 0: 14 TRACE stores 1943:5ea4 2128:5ea4 2314:5ea4 2500:5ea4 2686:5ea4 2872:5ea4 3059:5ea4 3246:5ea4 3432:5ea4 3618:5ea4 3805:5ea4 3991:5ea4 4174:5ea4 4246:5ea4
+  tile 7: 14 TRACE stores 1943:5ea4 2128:5ea4 2314:5ea4 2500:5ea4 2686:5ea4 2873:5ea4 3059:5ea4 3245:5ea4 3431:5ea4 3616:5ea4 3801:5ea4 3986:5ea4 4169:5ea4 4241:5ea4
+  tile 63: 14 TRACE stores 1942:5ea4 2128:5ea4 2313:5ea4 2500:5ea4 2687:5ea4 2873:5ea4 3059:5ea4 3245:5ea4 3431:5ea4 3616:5ea4 3803:5ea4 3988:5ea4 4172:5ea4 4244:5ea4
+rdpeak: finished at cycle 3892
+phase,name,word,go_at,end_at,cycles,ready_spread,slowest_tile,cnc_reaction,instr,wfiCycles,sendStalls,agReq,agStalls,agLate,agRuns,gatherReq,rpReads,injected,ejected,latSumG,latNG,latSumA,latNA,latSumR,latNR,unreadOverwrites,peak_link,peak_eject,peak_toCnC,peak_weIn,peak_gatherQ,peak_area,peak_ptrReq,peak_histReq,peak_agTable,peak_readPort,latmax_gather,latmax_ag,latmax_readport,slow_instr,slow_busy,tile_busy
+0,cmd 4A,0x4A000000,124,1857,1733,0,0,1,85376,4544,0,2112,0,0,64,0,0,2112,2176,0,0,14784,2112,0,0,0,1,1,0,0,0,1,0,0,1,0,0,7,0,1334,1663,1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663;1663
+1,cmd 01,0x01000104,1858,3892,2034,-1,-1,1,103823,15065,0,0,0,0,0,0,3136,3136,3136,0,0,0,0,21952,3136,0,0,1,0,0,0,1,0,0,0,1,0,0,7,-1,-1,1796;1802;1801;1798;1798;1798;1800;1801;1798;1799;1798;1798;1793;1800;1800;1796;1795;1799;1797;1799;1802;1801;1801;1798;1800;1797;1802;1801;1798;1793;1802;1799;1798;1794;1796;1801;1796;1796;1798;1801;1800;1800;1802;1799;1800;1795;1797;1796;1804;1796;1802;1795;1800;1798;1801;1798;1797;1802;1797;1799;1802;1795;1799;1797
+phases seed -1: stopped at cycle 7698
+  #  phase              GO at    cycles  READY spread (slowest)  instr/tile  WFI%   AG req/tile  late  gather/tile  rd-port/tile  AG read lat (max)  inj%  ej%   peaks: link ej toCnC weIn gQ area ptr hist rdPort  C&C
+  0  boot                   98       930       0 (t0 )               668    12           73     0            0             0       5.0 (   5)     8    8           1  1     0    0  0    1   0   0      0  1
+  1  configure            1029      3477       0 (t0 )              3269     0            0     0            0             0       0.0 (   0)     0    0           1  1     0    0  0    0   0   0      0  1
+  2  start (a2a)          4507      3153      91 (t11)                15    99         2000     0            0             0       5.0 (   5)    63   63           4  3     0    1  0    1   1   0      0  1
+  3  exit                 7661        37       - (t- )                24    23            0     0            0             0       0.0 (   0)     0    0           0  0     0    0  0    0   0   0      0  1
+  total GO -> all READY over 4 phases: 7,597 cycles; whole-run peaks: {link=4, eject=3, toCnC=0, weIn=1, gatherQ=0, area=1, ptrReq=1, histReq=0, agTable=1, readPort=0}
+phase,name,word,go_at,end_at,cycles,ready_spread,slowest_tile,cnc_reaction,instr,wfiCycles,sendStalls,agReq,agStalls,agLate,agRuns,gatherReq,rpReads,injected,ejected,latSumG,latNG,latSumA,latNA,latSumR,latNR,unreadOverwrites,peak_link,peak_eject,peak_toCnC,peak_weIn,peak_gatherQ,peak_area,peak_ptrReq,peak_histReq,peak_agTable,peak_readPort,latmax_gather,latmax_ag,latmax_readport,slow_instr,slow_busy,tile_busy
+0,boot,0x4A000000,98,1028,930,0,0,1,42752,6976,0,4672,0,0,64,0,0,4672,4736,0,0,23360,4672,0,0,0,1,1,0,0,0,1,0,0,1,0,0,5,0,668,822,822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822
+1,configure,0x01000000,1029,4506,3477,0,0,1,209216,1088,0,0,0,0,0,0,0,0,64,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,3269,3461,3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461
+2,start (a2a),0x02000000,4507,7660,3153,91,11,1,960,200640,0,128000,0,0,64,0,0,128000,128064,0,0,640000,128000,0,0,0,4,3,0,1,0,1,1,0,1,0,0,5,0,15,19,19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19
+3,exit,0x03000000,7661,7698,37,-1,-1,1,1536,543,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,-1,28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28
+phases seed 4: stopped at cycle 7698
+  #  phase              GO at    cycles  READY spread (slowest)  instr/tile  WFI%   AG req/tile  late  gather/tile  rd-port/tile  AG read lat (max)  inj%  ej%   peaks: link ej toCnC weIn gQ area ptr hist rdPort  C&C
+  0  boot                   98       930       0 (t0 )               668    12           73     0            0             0       5.0 (   5)     8    8           1  1     0    0  0    1   0   0      0  1
+  1  configure            1029      3477       0 (t0 )              3269     0            0     0            0             0       0.0 (   0)     0    0           1  1     0    0  0    0   0   0      0  1
+  2  start (a2a)          4507      3153      91 (t11)                15    99         2000     0            0             0       5.0 (   5)    63   63           4  3     0    1  0    1   1   0      0  1
+  3  exit                 7661        37       - (t- )                24    23            0     0            0             0       0.0 (   0)     0    0           0  0     0    0  0    0   0   0      0  1
+  total GO -> all READY over 4 phases: 7,597 cycles; whole-run peaks: {link=4, eject=3, toCnC=0, weIn=1, gatherQ=0, area=1, ptrReq=1, histReq=0, agTable=1, readPort=0}
+phase,name,word,go_at,end_at,cycles,ready_spread,slowest_tile,cnc_reaction,instr,wfiCycles,sendStalls,agReq,agStalls,agLate,agRuns,gatherReq,rpReads,injected,ejected,latSumG,latNG,latSumA,latNA,latSumR,latNR,unreadOverwrites,peak_link,peak_eject,peak_toCnC,peak_weIn,peak_gatherQ,peak_area,peak_ptrReq,peak_histReq,peak_agTable,peak_readPort,latmax_gather,latmax_ag,latmax_readport,slow_instr,slow_busy,tile_busy
+0,boot,0x4A000000,98,1028,930,0,0,1,42752,6976,0,4672,0,0,64,0,0,4672,4736,0,0,23360,4672,0,0,0,1,1,0,0,0,1,0,0,1,0,0,5,0,668,822,822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822;822
+1,configure,0x01000000,1029,4506,3477,0,0,1,209216,1088,0,0,0,0,0,0,0,0,64,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,3269,3461,3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461;3461
+2,start (a2a),0x02000000,4507,7660,3153,91,11,1,960,200640,0,128000,0,0,64,0,0,128000,128064,0,0,640000,128000,0,0,0,4,3,0,1,0,1,1,0,1,0,0,5,0,15,19,19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19;19
+3,exit,0x03000000,7661,7698,37,-1,-1,1,1536,543,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-1,-1,28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28;28
+stageb lone true: stopped at cycle 837; tile 0 halt 5 pc 0x1000034 exit 0; PARAMS t0 78000001 t1 78100000; parkedUntouched true; violations 6
+violations: 6
+  cycle 478 tile 0: DMA_RECORD_BASE_ADDRESS 0x54321 not aligned to a record (two chunks; 8.7; invariant 20)
+  cycle 485 tile 0: ROUTER_HDR stored with reserved bits set (0x7fffe): ignored, read 0 (8.1; invariant 21)
+  cycle 537 tile 0: WRITE_COUNTER_2 stored with reserved bits set (0xfff00000): ignored, read 0 (8.1; invariant 21)
+  cycle 551 tile 0: WRITE_COUNTER_1 written past 2^20 - 1: the count wraps (4.12)
+  cycle 553 tile 0: WRITE_COUNTER_2 written past 2^20 - 1: the count wraps (4.12)
+  cycle 555 tile 0: WRITE_COUNTER_3 written past 2^20 - 1: the count wraps (4.12)
+stageb lone false: stopped at cycle 837; tile 0 halt 5 pc 0x1000034 exit 0; PARAMS t0 78000001 t1 78100000; parkedUntouched true; violations 6
+violations: 6
+  cycle 478 tile 0: DMA_RECORD_BASE_ADDRESS 0x54321 not aligned to a record (two chunks; 8.7; invariant 20)
+  cycle 485 tile 0: ROUTER_HDR stored with reserved bits set (0x7fffe): ignored, read 0 (8.1; invariant 21)
+  cycle 537 tile 0: WRITE_COUNTER_2 stored with reserved bits set (0xfff00000): ignored, read 0 (8.1; invariant 21)
+  cycle 551 tile 0: WRITE_COUNTER_1 written past 2^20 - 1: the count wraps (4.12)
+  cycle 553 tile 0: WRITE_COUNTER_2 written past 2^20 - 1: the count wraps (4.12)
+  cycle 555 tile 0: WRITE_COUNTER_3 written past 2^20 - 1: the count wraps (4.12)
+regs: stopped at cycle 869; bootStart 0 runAt 108; allExited true allInWfi false; halts []; exit(0) 0 exit(63) 0
+  r[35] 0x23; tile 5 pc 0x1000034 x10 0
+wfi after run(1500): cycle 1500 runAt 77 busy true allInWfi false
+wfi: stopped at cycle 1616; bootStart 0 runAt 77; allExited true allInWfi false; halts []; exit(0) 0 exit(63) 0
+  r[1] 0x13
+a2a seed -1: stopped at cycle 7698; bootStart 0 runAt 98; allExited true allInWfi false; halts []; exit(0) 0 exit(63) 0
+  fp 032cb3291ab35a73
+    address generator: 0 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
+  S1: accept -> complete, the largest: big SRAM 6 (256000 writes; in its area's queue by 5), PTR 4 (128000 updates), HIST 0 (0 updates); K = 8: margin 2 before the controller's reaction (+4)
+  phaseLog [97, 98] [1028, 1029] [4506, 4507] [7660, 7661]
+  misplaced 0; lastGoAt 7661 lastAllReadyAt 7660; busy false; sram t9 0x40000 240000000000005d t50 0x40100 c8400000000001b3
+a2a seed 4: stopped at cycle 7698; bootStart 0 runAt 98; allExited true allInWfi false; halts []; exit(0) 0 exit(63) 0
+  fp 032cb3291ab35a73
+    address generator: 0 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
+  S1: accept -> complete, the largest: big SRAM 6 (256000 writes; in its area's queue by 5), PTR 4 (128000 updates), HIST 0 (0 updates); K = 8: margin 2 before the controller's reaction (+4)
+  phaseLog [97, 98] [1028, 1029] [4506, 4507] [7660, 7661]
+  misplaced 0; lastGoAt 7661 lastAllReadyAt 7660; busy false; sram t9 0x40000 240000000000005d t50 0x40100 c8400000000001b3
+a2a seed -1 kit: stopped at cycle 7704; bootStart 0 runAt 108; allExited true allInWfi false; halts []; exit(0) 0 exit(63) 0
+  fp f62b3ed6d2a77d7f
+    address generator: 0 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
+  S1: accept -> complete, the largest: big SRAM 8 (256000 writes; in its area's queue by 7), PTR 5 (128000 updates), HIST 0 (0 updates); K = 8: margin 0 before the controller's reaction (+4)
+  phaseLog [107, 108] [1037, 1038] [4511, 4512] [7670, 7671]
+  misplaced 0; lastGoAt 7671 lastAllReadyAt 7670; busy false; sram t9 0x40000 240000000000005d t50 0x40100 c8400000000001b3
+a2a seed 4 no S1: stopped at cycle 7698; bootStart 0 runAt 98; allExited true allInWfi false; halts []; exit(0) 0 exit(63) 0
+  fp 032cb3291ab35a73
+    address generator: 0 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
+  S1: accept -> complete, the largest: big SRAM 0 (0 writes; in its area's queue by 0), PTR 0 (0 updates), HIST 0 (0 updates); K = 8: margin 8 before the controller's reaction (+4)
+  phaseLog [97, 98] [1028, 1029] [4506, 4507] [7660, 7661]
+  misplaced 0; lastGoAt 7661 lastAllReadyAt 7660; busy false; sram t9 0x40000 240000000000005d t50 0x40100 c8400000000001b3
+cores: booted true at cycle 883; bootStart 0; mbox 0 852 867 2; tile 0 pc 0x2000064, cc1 pc 0x1000b38

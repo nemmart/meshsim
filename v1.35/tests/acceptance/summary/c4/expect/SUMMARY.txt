@@ -1,0 +1,2 @@
+program syn, windows 0..3 (4), stages AB, 1 JVMs, wall 1 s
+throughput: 0 windows per hour (all stages)

@@ -1,0 +1,184 @@
+#!/bin/bash
+# run_tests.sh: v1.3's runner (sim/ref/meshsim/run_tests.sh) for the suites ported to C++. Same
+# step names, same log names (results/<step>.log), same summary lines; a step not yet ported prints and logs
+# "PENDING (<who or what>)" as v1.3's own pending steps did.
+#
+#   ./run_tests.sh [all|quick] [--check] [--no-build]
+#     all | quick   v1.3's modes: quick leaves out the long steps (v1.3's `if [ "$MODE" != quick ]` block) and passes
+#                   `quick` to the steps that take it
+#     --check       also compare each log with its reference log (v1.3's, or the oracle's regenerated one: the step's
+#                   REF), timing masked (mask() below); a difference fails the run as a FAIL line would
+#     --no-build    use the binaries as they are
+#   Environment: CC_NAME (default clang); the suites build with MODE=suite (release flags, the checker's facts on:
+#   src/check.h), into build/$CC_NAME-suite/.
+#
+# ADDING A STEP (wave 2 and on: each worker adds its own lines, in v1.3's order, and its Makefile include):
+#     step LOG TAIL "description" REF -- command args...
+#   LOG the log's name (v1.3's), TAIL the lines shown (v1.3's TAIL), REF the reference log ("-" for none), then the
+#   command: normally $S/suite_<name> with v1.3's arguments ($S is the suites' build directory; $Q is `quick` or empty).
+#   The step's suite program must be in SUITES below (built before the steps run). A step still waiting:
+#     pending LOG "description" "who or what it waits for"
+#   A v1.3 suite whose C++ equivalent is a make-check test (not a port of its log): pass or fail, named in the log
+#     equiv LOG "description" "the equivalent" -- $S/test_x
+#   (its test in EQUIVS below).
+set -u
+cd "$(dirname "$0")"
+MODE=all CHECK=0 BUILD=1
+for a in "$@"; do
+  case "$a" in
+    all|quick) MODE=$a;;
+    --check) CHECK=1;;
+    --no-build) BUILD=0;;
+    *) echo "usage: ./run_tests.sh [all|quick] [--check] [--no-build]"; exit 2;;
+  esac
+done
+CC_NAME=${CC_NAME:-clang}
+S=build/$CC_NAME-suite
+Q=; [ "$MODE" = quick ] && Q=quick
+mkdir -p results
+: > results/.differs
+# STEP_TIMES=1 (off by default): each step's, each equivalent's and the build's wall time, "LOG N s", in
+# results/.step-times (no step's log changes)
+[ -z "${STEP_TIMES:-}" ] || : > results/.step-times
+
+# The suite programs the steps run (each worker adds its own; targets of sim/Makefile).
+SUITES="suite_memsys suite_rvc suite_tracer"
+# The make-check tests standing for a v1.3 suite (equiv steps)
+EQUIVS="test_golden test_tileslotconf"
+SUITES="$SUITES suite_ccbench suite_cccores suite_hooks suite_regdoc suite_accounting suite_s1bench"
+SUITES="$SUITES suite_replayer stageb"
+SUITES="$SUITES suite_net suite_search suite_agbench suite_engine suite_reqbus suite_mem suite_rdport"
+SUITES="$SUITES suite_ag"                            # P4: AgTest
+SUITES="$SUITES sort_test sweep"
+SUITES="$SUITES suite_cond"                           # CondTest (P5)
+SUITES="$SUITES suite_ctrl"                           # CtrlTest (P5)
+SUITES="$SUITES suite_recipes"                        # RecipeTest (P5)
+
+if [ "$BUILD" = 1 ]; then
+  echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
+  t_build=$SECONDS
+  make -s -j"${JOBS:-4}" MODE=suite CC_NAME="$CC_NAME" $(for x in $SUITES $EQUIVS; do echo "$S/$x"; done) > results/.build.log 2>&1 \
+    || { cat results/.build.log; echo "== the build failed"; exit 1; }
+  # BusTest's throws checks are the framework's debug assertions, so its step runs suite_bus's debug build (tiny)
+  make -s -j"${JOBS:-4}" MODE=debug CC_NAME="$CC_NAME" "build/$CC_NAME-debug/suite_bus" > results/.build-bus.log 2>&1 \
+    || { cat results/.build-bus.log; echo "== the build failed (suite_bus, MODE=debug)"; exit 1; }
+  [ -z "${STEP_TIMES:-}" ] || echo "(build) $((SECONDS - t_build)) s" >> results/.step-times
+fi
+
+# Timing masked for --check: wall-clock figures (seconds, ms, rates) vary by machine; cycles never do.
+# (approved): an `inputs:` line's first field names the simulator (v1.3's meshsim.jar=(classes)): metadata, masked.
+mask() { sed -E 's/[0-9]+(\.[0-9]+)? ?(ms|s|sec|seconds|us|µs|ns)\b/<time>/g; s/[0-9.]+ ?[kKMG]?(cycles|instructions|packets|steps)\/s/<rate>/g; s/^(inputs: )[^ ]+/\1<simulator>/'"${MASK_EXTRA:+; $MASK_EXTRA}"; }
+# A step's own approved mask (MASK_EXTRA, a sed expression, set for that step only): a recorded deliberate difference.
+# D44 (D33 reached): CcCoresTest's error path prints C&C 1's UART dump end, one cycle later here (C&C 1's peripheral
+# applies stores at t + 1); that one figure is masked.
+D44_MASK='s/dump done at \+[0-9]+/dump done at +<D44>/'
+
+step() {
+  local log=$1 tail=$2 what=$3 ref=$4; shift 4
+  [ "$1" = -- ] && shift
+  echo "== $what"
+  local t0=$SECONDS
+  "$@" > "results/$log.log" 2>&1
+  [ -z "${STEP_TIMES:-}" ] || echo "$log $((SECONDS - t0)) s" >> results/.step-times
+  tail -"$tail" "results/$log.log"
+  if [ "$CHECK" = 1 ] && [ "$ref" != - ]; then
+    if [ ! -f "$ref" ]; then echo "LOG DIFFERS ($log): no reference log $ref" | tee -a results/.differs
+    elif ! diff -q <(mask < "$ref") <(mask < "results/$log.log") > /dev/null; then
+      echo "LOG DIFFERS ($log): results/$log.log against $ref" | tee -a results/.differs
+    fi
+  fi
+}
+pending() { echo "== $2"; echo "PENDING ($3)" | tee "results/$1.log"; }
+equiv() {
+  local log=$1 what=$2 eq=$3; shift 3
+  [ "$1" = -- ] && shift
+  echo "== $what"
+  local t0=$SECONDS
+  if "$@" > "results/$log.out" 2>&1; then echo "$log: equal to v1.3's by its C++ equivalent, $eq: $(tail -1 "results/$log.out" | sed 's|.*/||')" | tee "results/$log.log"
+  else { cat "results/$log.out"; echo "FAIL $log: its C++ equivalent, $eq, failed"; } | tee "results/$log.log" | tail -3; fi
+  [ -z "${STEP_TIMES:-}" ] || echo "$log $((SECONDS - t0)) s" >> results/.step-times
+}
+# one part of fw/build.sh, checked against the committed images (v1.3's build_cc.sh and build_recipes.sh steps).
+# Without the RISC-V toolchain (the runner has none), the committed images are checked against the hash lists committed
+# beside them instead (fw/check_images.sh); with it, after the build, that check's image names against the build's.
+fw_part() {
+  if command -v riscv64-unknown-elf-gcc > /dev/null; then PARTS="$*" bash fw/build.sh --check && bash fw/check_images.sh --built fw/build/out "$@"
+  else echo "fw/build.sh ($*): no riscv64-unknown-elf-gcc, so the committed images against their hash lists"; bash fw/check_images.sh "$@"; fi
+}
+
+# ---- v1.3's steps, in v1.3's order -------------------------------------------------------------------------------
+echo "== the layout (v1.3: tools/check_layout.sh; v1.35: tools/check_copies.sh)"; sh tools/check_copies.sh > results/layout.log 2>&1 && tail -1 results/layout.log || { cat results/layout.log; echo "FAIL the layout"; }
+step sw-build   2 "building the tile programs (fw/build.sh: the boot ROM, fw/tests' programs, the M1, M3, replay and Tracer programs)" - -- fw_part boot tests m1 m3 replay tracer
+step sort-build 2 "building the sort program (fw/build.sh's sort part: one image, the split, the planner)" - -- fw_part sort
+step bus 1 "bus primitives (on the framework's port kinds; the debug build, its throws checks being debug assertions)" tests/p2suites/bus.log -- build/$CC_NAME-debug/suite_bus
+NETREF=tests/p4suites/net.log; [ "$MODE" = quick ] && NETREF=tests/p4suites/net-quick.log   # v1.3's net step takes $Q
+step net       1 "network, packets, director" $NETREF -- $S/suite_net -1 $Q
+step net-shuf  1 "shuffled child order (seed 5)" tests/p4suites/net-shuf.log -- $S/suite_net 5 quick
+step net-shuf2 1 "shuffled child order (seed 11)" tests/p4suites/net-shuf2.log -- $S/suite_net 11 quick
+step mem 1 "big SRAM, read and write queues" tests/p4suites/mem.log -- $S/suite_mem -1
+step mem-shuf 1 "shuffled child order (seed 3)" tests/p4suites/mem-shuf.log -- $S/suite_mem 3
+step mem-shuf2 1 "shuffled child order (seed 8)" tests/p4suites/mem-shuf2.log -- $S/suite_mem 8
+step engine 1 "address generator, write engine, all-to-all (small)" tests/p4suites/engine.log -- $S/suite_engine -1
+step eng-shuf 1 "shuffled child order (seed 4)" tests/p4suites/eng-shuf.log -- $S/suite_engine 4
+step ctrl      1 "control and the controller (from C)" tests/ctlsuites/ctrl.log -- $S/suite_ctrl -1
+step ctrl-shuf 1 "shuffled child order (seed 4)" tests/ctlsuites/ctrl-shuf.log -- $S/suite_ctrl 4
+equiv riscv           "riscv-tests rv32ui/rv32um on the controller" "test_golden (every program's retire trace equal to ref's)" -- $S/test_golden
+step rdport 1 "read port, GATHER (with fw/tests/rdport.c and gather.c on the machine)" tests/p4suites/rdport.log -- $S/suite_rdport -1
+step accounting 1 "per-phase accounting (from C)" tests/ctlsuites/accounting.log -- bash -c "$S/suite_accounting -1 && { cmp -s results/phases-a2a.csv tests/ctlsuites/phases-a2a.csv || echo 'FAIL results/phases-a2a.csv differs from v1.3s'; }"
+step searchbench 3 "search steps through the read port (microbenchmark, from C)" tests/p4suites/searchbench.log -- $S/suite_search
+step rdport-shuf 1 "shuffled child order (seed 4)" tests/p4suites/rdport-shuf.log -- $S/suite_rdport 4
+step agtest 1 "address generator read-ahead, figure 12's PTR/HIST ports" tests/p4suites/agtest.log -- $S/suite_ag -1
+step agtest-shuf 1 "shuffled child order (seed 4)" tests/p4suites/agtest-shuf.log -- $S/suite_ag 4
+step cc-build      2 "building the controllers' firmware (fw/build.sh's cc part: fw/cc/cc1.c, cc23.c)" - -- fw_part cc
+step recipes-build 1 "building the v1.2 recipes (fw/build.sh's recipes part: fw/recipes/, unedited)" - -- fw_part recipes
+step recipes      1 "the v1.2 recipes as suites, and the book's code blocks against their sources" tests/ctlsuites/recipes.log -- $S/suite_recipes -1
+step recipes-shuf 1 "shuffled child order (seed 4)" tests/ctlsuites/recipes-shuf.log -- $S/suite_recipes 4
+step cond      1 "the errors end to end: ERRORS, the handler's reports, the error lines, the toast pin, the reset" tests/ctlsuites/cond.log -- $S/suite_cond -1
+step cond-shuf 1 "shuffled child order (seed 4)" tests/ctlsuites/cond-shuf.log -- $S/suite_cond 4
+step regdoc 1 "REGISTERS.md and mesh.h against their generators, the draft header and the simulator" tests/ctlsuites/regdoc.log -- $S/suite_regdoc
+step hooks      1 "the register map, the send port, the pulses (from Java)" tests/ctlsuites/hooks.log -- $S/suite_hooks -1
+step hooks-shuf 1 "shuffled child order (seed 4)" tests/ctlsuites/hooks-shuf.log -- $S/suite_hooks 4
+equiv periph          "the peripheral framework: the standard window, events, region writes, the DMA" "test_tileslotconf (TileSlotConf: PeripheralSlotTest's groups on a real tile, against ref)" -- $S/test_tileslotconf
+# periph-shuf: test_tileslotconf's shuffled run alone (seed 4, v1.3's), against the same observations of ref; its
+# output must be the plain run's (results/periph.out) byte for byte. (Our shuffle seeds don't map to ref's.)
+periph_shuf() { TILESLOTCONF_SEED=4 "$S/test_tileslotconf" > results/periph-shuf.raw 2>&1; cat results/periph-shuf.raw; cmp -s results/periph-shuf.raw results/periph.out; }
+equiv periph-shuf     "shuffled child order (seed 4)" "test_tileslotconf shuffled (seed 4), its output the plain run's" -- periph_shuf
+step reqbus 2 "the request port, the request bus and the receive queues in the tree" tests/p4suites/reqbus.log -- $S/suite_reqbus -1
+step reqbus-shuf 1 "shuffled child order (seed 4)" tests/p4suites/reqbus-shuf.log -- $S/suite_reqbus 4
+MASK_EXTRA=$D44_MASK step cccores      1 "C&C 1-3 as cores (Config.ccCores): the boot ROM's controller branch, the link, the request tree" tests/ctlsuites/cccores.log -- $S/suite_cccores -1
+MASK_EXTRA=$D44_MASK step cccores-shuf 1 "shuffled child order (seed 4)" tests/ctlsuites/cccores-shuf.log -- $S/suite_cccores 4
+step replay-build 1 "the replay controller (tests/stageb/replay_build.sh)" tests/stageb/replay-build.log -- tests/stageb/replay_build.sh
+step stageb 1 "Stage B: replay_ctl.c on a tile against Stage A, synthetic windows" tests/stageb/stageb.log -- $S/stageb synthetic
+if [ -n "${DELIVERY:-}" ]; then   # Stage B on a tracer delivery's guest windows: DELIVERY=<replay-inputs dir> (v1.3's; no such delivery on the runner: unrun, as in v1.3)
+  for g in lrd_x0 scd_x0 nop_hint jalr_self jalr_zero; do step stageb-$g 1 "Stage B on the tile: $g" - -- $S/stageb "$DELIVERY" state $g; done
+fi
+step replayer 1 "the replayer model (v1.25): the opcode table, the ALU against vec.tsv at 821e1bd, the unit tests" tests/replayer/replayer.log -- $S/suite_replayer
+step memsys 1 "the Tracer's memory system (v1.3, B1): FileStore's trees and statuses, the shared cache's timing" tests/tracersuites/memsys.log -- $S/suite_memsys
+step rvc    1 "the Tracer's RVC decompressor against gold's, every 16-bit encoding (v1.3, B1)" tests/tracersuites/rvc.log -- $S/suite_rvc
+step tracer 1 "the Tracer (v1.3, B1): execution, memory, the map, errors, cuts, controller-fed expansions, the output path" tests/tracersuites/tracer.log -- $S/suite_tracer
+step sort-p1 1 "the sort's local sorts (L1, L2)" tests/sort/ref/sort-p1.log -- $S/sort_test -1 p1
+step sort      1 "the sort, every built-in set at 64 x <= 2,000 (several minutes)" tests/sort/ref/sort.log -- $S/sort_test -1 sort
+step sort-shuf 1 "shuffled child order (seed 4)" tests/sort/ref/sort-shuf.log -- $S/sort_test 4 sort
+if [ "$MODE" != quick ]; then
+  # the key set prebuilt and checked by hash, made with pipeline/keys only where a JDK is present (tests/sort/keys.sh)
+  sort_bt() { local d; d=$(tests/sort/keys.sh 16384 trace10-10) || return 1; $S/sort_test -1 run label=bt16k-$1 keys=$d/trace10-10.keys fmt=$1 ready=8 force=bt; }
+  step sort-bt-kv32 2 "BT, forced, trace hot 10 / 10 % at 64 x 16,384, 32-bit values (a few minutes)" tests/sort/ref/sort-bt-kv32.log -- sort_bt kv32
+  step sort-bt-k128 2 "the same, 128-bit values" tests/sort/ref/sort-bt-k128.log -- sort_bt k128
+  step rdport-full 1 "gather 1 at full size" tests/p4suites/rdport-full.log -- $S/suite_rdport -1 full
+  step accounting-full 1 "per-phase accounting, full-size all-to-all from C" tests/ctlsuites/accounting-full.log -- bash -c "$S/suite_accounting -1 full && { cmp -s results/phases-a2a-full.csv tests/ctlsuites/phases-a2a-full.csv || echo 'FAIL results/phases-a2a-full.csv differs from v1.3s'; }"
+  step agbench 3 "read-ahead measurements: ag_lookahead, zero-length groups, start to first request (a few minutes)" tests/p4suites/agbench.log -- $S/suite_agbench
+  step s1bench 8 "item S1: K's margin over the write path, L = 1-4, and the table-window case (a few minutes)" tests/ctlsuites/s1bench.log -- $S/suite_s1bench
+  step ccbench 16 "C&C 1-3 as cores: the boot and a phase against the Java model" tests/ctlsuites/ccbench.log -- $S/suite_ccbench
+  # the sweep's CSV checked too (with --check): a difference prints a FAIL line into the step's log
+  sweep_quick() { $S/sweep quick || return 1; [ "$CHECK" = 0 ] || cmp -s results/sweep-quick.csv tests/sort/ref/sweep-quick.csv || echo "FAIL: results/sweep-quick.csv differs from tests/sort/ref/sweep-quick.csv"; }
+  step sweep-quick 4 "parameter sweep, quick (about 1 minute; 'java Sweep full' takes about 25)" tests/sort/ref/sweep-quick.log -- sweep_quick
+  step ctrl-full 1 "the all-to-all from C on the four data sets" tests/ctlsuites/ctrl-full.log -- $S/suite_ctrl -1 full
+  step engine-full 1 "full-size all-to-alls (4 data sets) and radix sort (about 1.5 minutes)" tests/p4suites/engine-full.log -- $S/suite_engine -1 full
+  step skewtable 1 "fan-in under 0/+1 skew, 40 skew patterns (several minutes)" tests/p4suites/skewtable.log -- $S/suite_net -1 skewtable 40
+fi
+# ---- v1.3's summary ------------------------------------------------------------------------------------------------
+grep -h "PENDING" results/*.log | sort | uniq -c
+FAILED=0
+grep -h "FAIL" results/*.log | grep -v "(CL4: must fail)" && FAILED=1   # D46: Stage B's must-fail window (v1.3's runner fails on it too)
+[ -s results/.differs ] && { cat results/.differs; FAILED=1; }
+[ "$FAILED" = 1 ] && { echo "== FAILURES"; exit 1; } || echo "== all passed (PENDING suites aside); logs in results/"

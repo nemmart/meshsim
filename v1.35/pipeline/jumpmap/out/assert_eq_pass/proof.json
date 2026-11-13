@@ -1,0 +1,18 @@
+{
+  "name": "assert_eq_pass",
+  "log2_k": 4,
+  "lowest_address": "0x7fffffe0",
+  "hash_k": 0,
+  "hash_p1": "0x9e3779b1",
+  "hash_p3": 10368899,
+  "map_entries": 0,
+  "program_elf_sha256": "f6b1315a2320f651a88e1757c5fc08e14078f49335abb7beeb5f3ec1e326fd30",
+  "input": "empty",
+  "gold_commit": "fixture",
+  "segment_file_sha256": "8bc4ec5352bb9eb1da1dace124c37c86624e5f7bcb646a98ba86945dd6a278b8",
+  "segment_rows": 8,
+  "segments": 4,
+  "sha256": {"map.lines": "e9175db65a9789096ca9cb5524d3abc2107df03e3c9ba3af1aca628f9c5d3bd2", "frame6.bin": "82996f454649e05aed5eba318c2bcea2bdc6e34d561fbc280bfaacdd291fdf2d", "initial.pages": "a7c542ce47159f36d783132ca0a452af45ad9b11f22d15619050cc00c664ff75"},
+  "initial_pages": 1,
+  "seg_written_sha256": ["e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"]
+}

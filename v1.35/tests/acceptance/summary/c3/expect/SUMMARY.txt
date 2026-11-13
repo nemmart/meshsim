@@ -1,0 +1,6 @@
+program syn, windows 2..4 (3, all the manifest lists), stages AF, 16 JVMs, wall 5 s
+stage A: 3 windows OK, 196608 rows, 22.9 JVM-s, 8587 rows per JVM-second, 7.63 s per window
+stage F: 2 windows OK, 131072 rows, 12.6 JVM-s, 10427 rows per JVM-second, 6.29 s per window
+stage F stalls, cycles per window over 2 windows (log queues 256 entries): image 2247.0 (max 3978), code 2541.0 (max 2913), newexp 3609.5 (max 4812), exp 1533.0 (max 2785), rlog 1983.5 (max 2504), wlog 3866.5 (max 4756), outq 2337.5 (max 4581)
+stage F log waits: read log 1983.5, write log 3866.5 cycles per window; windows with any: read 2, write 2
+throughput: 1800 windows per hour (all stages)

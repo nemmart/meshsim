@@ -1,0 +1,4 @@
+# A small v1.25 delivery (WORKER19, D42): v1.25's SyntheticDelivery --windows 2 --rows 1024 --seed 3 --w9-layout
+# --program evm-zone-29, committed as made (v1.25's generator isn't reproducible run to run). Converted by v1.3's
+# ConvertDelivery (sim/ref, 2026-11-11), the manifest's sha256:
+b9e8ec4bd884023f6fbc1f068e99ff7123688988e17228d0dcf7556ad51f05a1  evm-zone-29.manifest.json

@@ -1,0 +1,5 @@
+program syn, windows 0..7 (8), stages AB, 2 JVMs, wall 0 s
+stage A: 6 windows OK, 393216 rows, 27.1 JVM-s, 14509 rows per JVM-second, 4.52 s per window
+stage B: 5 windows OK, 327680 rows, 27.9 JVM-s, 11763 rows per JVM-second, 5.57 s per window
+stage B stalls, cycles per window over 5 windows (log queues 256 entries): image 2849.2 (max 3924), code 997.8 (max 2244), newexp 1938.0 (max 3712), exp 3540.6 (max 4865), rlog 3238.4 (max 4277), wlog 1976.4 (max 3715), outq 2040.4 (max 3998)
+stage B log waits: read log 3238.4, write log 1976.4 cycles per window; windows with any: read 5, write 5

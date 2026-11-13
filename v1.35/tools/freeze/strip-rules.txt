@@ -1,0 +1,79 @@
+# The comment strip's rules (tools/freeze/strip.sh; cstrip's format, see cstrip.cpp's header). Applied in order to each
+# line of each comment of strip_files.sh's files.
+#   @untag                      the built-in pass: worker names and planning codes out (cstrip.cpp, "@untag")
+#   =FILE<TAB>old<TAB>new       a hand-reviewed edit, in FILE's comments only; the run fails if one is no longer found
+# References to ref's classes stay.
+@untag
+# Hand-reviewed: what @untag leaves (a tag as a sentence's subject, a citation of a session's notes)
+=fw/build.sh	(cc_ping: W16; cc_req, tile_req)	(cc_ping, cc_req, tile_req)
+=pipeline/gold/check.sh	segment_writer writes them (wip/planning/sessions/WORKER18-NOTES.md, "Stage 2"); the hard-cut lists are meshsim's wip/planning/sessions/WORKER16-data/w3/*.cuts (closed), copied to test/cuts/.	segment_writer writes them; the hard-cut lists are v1.3's, copied to test/cuts/.
+=pipeline/gold/check.sh	v1.3 read ../planning/sessions/WORKER16-data/w3	v1.3 read them from its planning folder
+=src/barrier.h	 (Quest; WORKER4/NOTES.md).	.
+=src/base/arena.h	measured ~10% in WORKER29)	measured ~10%)
+=src/base/bucket.h	W6 measures two words	a benchmark measured two words
+=src/config.h	 (sim/planning/sessions/WORKER10/NOTES.md, "Partitioning")	
+=src/units/chip.h	 (sessions/WORKER14-NOTES.md section 14)	
+=src/units/cnc.h	 (asked of W10, 2026-11-07)	
+=src/units/cnc.h	 (W9 NOTES, stage 3).	.
+=src/units/cnc1_periph.h	OWN PORTS; W15 for W16)	OWN PORTS)
+=src/units/director.h	interface (sessions/WORKER8/NOTES.md); the step	interface; the step
+=src/units/host_port.h	W14-02; AUDIT-M3 3.4)	AUDIT-M3 3.4)
+=src/units/mem.h	inputs; W12 ORs them)	inputs, ORed)
+=src/units/periph_slot.h	are the agreed interface (sessions/	are the agreed interface;
+=src/units/periph_slot.h	WORKER15-NOTES.md); the step comes	the step comes
+=src/units/peripheral.h	slot; agreed (the Tracer, type 3) and W16 (C&C 1's peripheral, type 1; C&C 2's stub, type 2)).	slot; agreed for the Tracer (type 3), C&C 1's peripheral (type 1) and C&C 2's stub (type 2)).
+=src/units/regmap.h	registers since W8)	registers)
+=src/units/reqbus.h	WORKER14. A 16-bit	A 16-bit
+=src/units/router.h	W16, M3's labelling	M3's labelling
+=src/units/tile_ctl.cpp	periph_slot; W14: a controller	periph_slot; a controller
+=src/units/tile_ctl.h	interface (sessions/WORKER8/NOTES.md);	interface;
+=src/units/event_counts.h	(spec 4.17.3; owner W15, W14 reads it)	(spec 4.17.3)
+=src/units/replayer_alu.h	 (owner W15, W14 reads it)	
+=src/units/row_core.h	 (owner W15, W14 reads it)	
+=tests/acceptance/calibrate.sh	acceptance/calibrate.sh (meshsim	acceptance/calibrate.sh
+=tests/acceptance/calibrate.sh	WORKER11) on the C++ meshsim):	on the C++ meshsim):
+=tests/acceptance/make_acceptance_task.sh	(v1.35, v1.3's, meshsim WORKER11)	(v1.35, as v1.3's)
+=tests/acceptance/make_acceptance_task.sh	v1.25's W9 deliveries	v1.25's deliveries
+=tests/acceptance/make_kit.sh	acceptance/make_kit.sh, meshsim WORKER11)	acceptance/make_kit.sh)
+=tests/acceptance/make_task.sh	acceptance/make_task.sh, meshsim WORKER11)	acceptance/make_task.sh)
+=tests/acceptance/run_shard.sh	acceptance/run_shard.sh (meshsim WORKER11; v1.26,	acceptance/run_shard.sh
+=tests/acceptance/run_shard.sh	WORKER20; v1.26.1, WORKER25) on the C++ meshsim)	on the C++ meshsim)
+=tests/chain.h	; sim/planning/sessions/WORKER17-NOTES.md)	)
+=tests/chain_main.cpp	 (sim/planning/sessions/WORKER17-NOTES.md).	.
+=tests/ctl/ctl.h	operations W20 hasn't added yet	operations the harness hasn't added yet
+=tests/ctl/ctl.h	with the W20 request it waits for	with the request it waits for
+=tests/m3-images/cc_ping.c	the missed wake W16 fixed in TileCtl	the missed wake fixed in TileCtl
+=tests/mach.cpp	 (W22-21 (b))	
+=tests/mach.cpp	 (W22-21 (c))	
+=tests/mach.cpp	 W22-21 (a).	
+=tests/mach.h	 (sessions/WORKER20/NOTES.md). Ask W20 for anything a suite	. Anything a suite
+=tests/mach.h	, or asked of W20.	.
+=tests/mem_stand.h	fatal. W12: also	fatal. Also
+=tests/p4_debug.h	instance_major, W22-8)	instance_major)
+=tests/sort_input.h	M2Sort's; W24 added `shaped`	M2Sort's; `shaped` added
+=tests/statefp_g1.h	configuration parts W8 built of G3's	configuration parts built of G3's
+=tests/statefp_m3.h	 (asked of W14: an out_start overlay)	 (an out_start overlay)
+=tests/suite_replayer.cpp	groups W15 left out	groups left out
+=tests/t2_harness.h	inputs W13 dumped on the runner	inputs dumped on the runner
+=tests/test_bucket.cpp	forms W6 measures	forms a benchmark measured
+=tests/test_chain.cpp	A small WORKER26 set:	A small input set:
+=tests/test_chip.cpp	a2a (W11 with the AG)	a2a (with the AG)
+=tests/test_tracer_slot.cpp	(the case W16 met)	(a case met in practice)
+=tools/delivery/convert_delivery.cpp	W25: found when suite_replayer	found when suite_replayer
+=tools/delivery/synthetic_delivery.cpp	 (WORKER19 NOTES, D42);	 (D42);
+# Hand-reviewed: citations of a session's NOTES.md (left out of the frozen copy)
+=src/threads.h	 Determinism: NOTES.md, "Determinism".	
+=src/units/chip.h	(the ports agreed, 2026-11-07, NOTES.md)	(the ports agreed, 2026-11-07)
+=src/units/chip.h	; NOTES.md section 14)	)
+=src/units/tile_ctl.h	; NOTES.md section 14).	).
+=src/units/tile_ctl.h	(the ports agreed in NOTES.md, plus	(the ports agreed, plus
+=tests/ctl/suite_hooks.cpp	ONE ADAPTATION (NOTES.md):	ONE ADAPTATION:
+=tests/ctl/suite_recipes.cpp	IN PROGRESS (NOTES.md):	IN PROGRESS:
+=tests/test_memconf.cpp	(NOTES.md's coverage)	(its coverage)
+=tests/suite_net.cpp	Waiting on W20 (sessions/WORKER22/NOTES.md, W22-1 to W22-6):	Waiting on the harness:
+# Hand-reviewed: sentences a tag ran across lines in (the line count kept)
+=src/config_impl.h	apart from config.cpp so W4 can split a	apart from config.cpp so the threads' code can split a
+=src/units/stream_word.h	; offered to W15 read-only).	).
+=tests/tracer_rig.h	WORKER22): a hand-built guest	test): a hand-built guest
+# Hand-reviewed: a stale status in a header
+=tests/t2_main.cpp	So far the boot (the first milestone), up to where C&C 1's peripheral is needed in its slot:	The boot, then with --segment the segment to its end (M3Seg's conditions):

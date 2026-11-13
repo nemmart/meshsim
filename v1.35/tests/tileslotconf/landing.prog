@@ -1,0 +1,9 @@
+# tileslotconf program v1: landing (PeripheralSlotTest's group), oracle/ref/tileslotconf_progs.py
+tile 7
+periph test
+cycles 500
+rom 80000393 a0000093 0003af83 014fdf93 07ffff93 00700f13 01ef8663 10500073 ffdff06f 05000a13 fffa0a13 fe0a1ee3 0040a503 10a02023 10500073 ffdff06f
+inject 100 3 4000400 1 2
+inject 130 9 4123450 3 4
+inject 160 9 5000000 5 6
+dump 100 8

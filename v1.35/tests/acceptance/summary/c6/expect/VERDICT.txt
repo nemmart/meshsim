@@ -1,0 +1,4 @@
+ok   stage A: 3 of 3 windows matched
+ok   stage B: 3 of 3 windows matched
+ok   stage F: 2 of 2 windows matched
+PASS: syn windows 0..2

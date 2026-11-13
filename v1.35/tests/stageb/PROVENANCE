@@ -1,0 +1,5 @@
+stageb.log: v1.3's `java StageB synthetic` (run_tests.sh's `stageb` step, stdout and stderr), made by
+oracle/ref/stageb.sh --fixtures from sim/ref at main 67d42fb (JDK 21.0.12), with the C++ tree's committed replay_ctl
+images (tests/m3-images/replay_ctl, fw/images/oldmap/replay_ctl). `--check` regenerates it identically (the CL4 line's
+seconds masked). ref's own committed results/stageb.log (2026-11-07) is stale: 18 windows, no CL4 case, other cycle
+counts (WORKER25 NOTES, F1); it is not used.

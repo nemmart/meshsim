@@ -1,0 +1,3 @@
+FAIL stage A: 0 of 4 windows matched; first missing [0, 1, 2, 3]
+FAIL stage B: 0 of 4 windows matched; first missing [0, 1, 2, 3]
+FAIL: syn windows 0..3

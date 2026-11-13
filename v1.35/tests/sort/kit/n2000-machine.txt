@@ -1,0 +1,8 @@
+kit: meshsim sim-w24 50bb537; host godspeed; 16 CPUs
+Model name:                              Intel(R) Core(TM) i5-14400F
+Thread(s) per core:                      2
+Core(s) per socket:                      10
+Socket(s):                               1
+CPU max MHz:                             4700.0000
+MemTotal:       65671464 kB
+openjdk version "21.0.13.0.3" 2026-10-24

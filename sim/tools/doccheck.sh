@@ -6,7 +6,8 @@
 #                that is a path (it has a folder and a known extension, or its first folder is one of the tree's), or
 #                a document's bare name (README.md, PORTS.md: found anywhere in the tree)
 #   OUTSIDE      a document cites a sim/, ref/, oracle/ or wip/ path (paths are relative to the version's root)
-#   NO-README    a folder has no README.md, and isn't named in its parent's ("name/" or `name`: rule 2 as amended)
+#   NO-README    a folder down to two levels below the root has no README.md and isn't named in its parent's
+#                ("name/" or `name`); deeper, the nearest README above speaks for it; planning/ needs none
 #   DOC-MISSING  a source file's comment names a document (*.md) that isn't in the tree (by its name: documents keep their
 #                names when they move, rule 7)
 # The history (planning/ and spec/history/, but their own README.md) is kept whole and not checked for paths. A path in
@@ -94,11 +95,18 @@ awk -F'\t' -v FILES="$LIST" -v DIRS="$LIST.dirs" -v V=$V -v EXF="$LIST.ex" '
   }
   END { exit bad > 0 }' "$LIST.cites" > "$LIST.out1" || true
 
-# ---- every folder has a README.md
+# ---- every folder has a README.md: down to two levels below the root, a folder has one or is named in its parent's
+# ("name/" or `name`); deeper, the nearest README above speaks for it; folders under planning/ need none
+has() { [ "$1" = . ] && grep -qxF README.md "$LIST" || grep -qxF "$1/README.md" "$LIST"; }
 { echo .; cat "$LIST.dirs"; } | while IFS= read -r d; do
-  [ "$d" = . ] && r=README.md || r=$d/README.md
-  grep -qxF "$r" "$LIST" && continue
-  if [ "$d" != . ]; then   # rule 2 as amended: a subfolder its parent's README names needs none ("name/" or `name`)
+  case $d in planning|planning/*) continue;; esac
+  has "$d" && continue
+  depth=$(awk -F/ '{ print ($0 == "." ? 0 : NF) }' <<< "$d")
+  if [ "$depth" -gt 2 ]; then
+    a=$(dirname "$d"); ok=0
+    while :; do has "$a" && { ok=1; break; }; [ "$a" = . ] && break; a=$(dirname "$a"); done
+    [ $ok = 1 ] && continue
+  elif [ "$d" != . ]; then
     pd=$(dirname "$d"); [ "$pd" = . ] && pr=README.md || pr=$pd/README.md
     n=$(basename "$d" | sed 's/[][\.*^$]/\\&/g')
     grep -qxF "$pr" "$LIST" && grep -qE "(^|[^A-Za-z0-9_.-])$n(/|\`)" "$pr" && continue

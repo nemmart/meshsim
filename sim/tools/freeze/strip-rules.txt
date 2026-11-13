@@ -77,3 +77,5 @@
 =src/config_impl.h	apart from config.cpp so W4 can split a	apart from config.cpp so the threads' code can split a
 =src/units/stream_word.h	; offered to W15 read-only).	).
 =tests/tracer_rig.h	WORKER22): a hand-built guest	test): a hand-built guest
+# Hand-reviewed: a stale status in a header
+=tests/t2_main.cpp	So far the boot (the first milestone), up to where C&C 1's peripheral is needed in its slot:	The boot, then with --segment the segment to its end (M3Seg's conditions):

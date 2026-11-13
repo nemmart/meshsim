@@ -51,6 +51,12 @@ namespace reqbus {
 
 constexpr int BEATS = 8, BUF_BEATS = 8, ROWS = 8, ROOT_INPUTS = 11, TARGETS = 3, SENDERS = 67;
 
+// Harness-only (the test's receives, ref's RequestBus.receive called several times in one cycle): the pops of one
+// cycle beyond the first, which the harness's host carries over its Link one a cycle. {the pops' cycle, how many}, set
+// between cycles by the harness, applied with that cycle's first pop (its Link word); unused (n 0) otherwise.
+struct HostExtra { int64_t at = -1; uint32_t n = 0; };
+constexpr unsigned HOST_EXTRA = 8;
+
 struct ReqBusConfig {
     unsigned credit_latency = 3;            // D34: 0 exact as ref (one domain), 3 the spec (splittable); set explicitly
     unsigned hop_latency = 3;               // reqHopLatency
@@ -236,6 +242,7 @@ struct ReqNode {
     uint64_t beats_at_root = 0, violations = 0, dropped = 0, delivered = 0;
     LagTracker lag;                   // a row node toward the root
     LagTracker qlag[TARGETS];         // the root: a target skipped for credit while a pop's credit was on its way
+    HostExtra host_extra[TARGETS][HOST_EXTRA];   // the root: the harness's further pops' credits (harness-only)
     bool forwarded_now = false;
 
     // A row node r (inputs: bit c of `present`) or the root (row = 8: inputs 0-7 the row nodes, 8-10 the controllers).
@@ -300,9 +307,15 @@ struct ReqNode {
             for (int k = 0; k < TARGETS; k++)
                 if (qpresent >> k & 1)
                     while (c.ready(qcredit[k])) {
-                        if (!exact) qlag[k].credit(int64_t(c.peek(qcredit[k])[0]));
+                        const int64_t pop = int64_t(c.peek(qcredit[k])[0]);
+                        if (!exact) qlag[k].credit(pop);
                         credits[k]++;
                         c.take(qcredit[k]);
+                        for (HostExtra& h : host_extra[k])        // the same cycle's further pops (harness-only)
+                            if (h.n && h.at == pop) {
+                                for (uint32_t j = 0; j < h.n; j++) { if (!exact) qlag[k].credit(pop); credits[k]++; }
+                                h.n = 0; h.at = -1;
+                            }
                     }
         // a row node, mode 3: the root's credits
         if (!root && !exact)
@@ -433,6 +446,7 @@ struct ReqRecv {
     unsigned qh = 0, qn = 0;
     uint32_t pub[REGS] = {};
     uint64_t received = 0, violations = 0;
+    HostExtra host_extra[HOST_EXTRA];  // the harness's further pops of one cycle (harness-only)
     std::vector<std::array<int64_t, 6>>* dlog = nullptr;   // W20 (harness-only): the deliveries, into the harness's vector
                                                           //   (reserved at configuration: no allocation in the run)
 
@@ -450,6 +464,7 @@ struct ReqRecv {
             deliver = o.deliver; pop = o.pop; head = o.head; target = o.target; depth = o.depth;
             delete[] q; q = o.q; o.q = nullptr;
             qh = o.qh; qn = o.qn; received = o.received; violations = o.violations; dlog = o.dlog;
+            for (unsigned i = 0; i < HOST_EXTRA; i++) host_extra[i] = o.host_extra[i];
             for (unsigned i = 0; i < REGS; i++) pub[i] = o.pub[i];
         }
         return *this;
@@ -463,6 +478,14 @@ struct ReqRecv {
             if (qn == 0 || q[qh].delivered_t >= t - 1) violations++;   // the core pops only a visible head
             else { qh = (qh + 1) % depth; qn--; received++; }
             c.take(pop);
+            for (HostExtra& h : host_extra)                   // the same cycle's further pops (harness-only)
+                if (h.n && h.at == t - 1) {
+                    for (uint32_t j = 0; j < h.n; j++) {
+                        if (qn == 0 || q[qh].delivered_t >= t - 1) violations++;
+                        else { qh = (qh + 1) % depth; qn--; received++; }
+                    }
+                    h.n = 0; h.at = -1;
+                }
         }
         // deliveries arriving at t (ref's toReceiver drained at the start of runCycle(t)): visible from t + 1
         while (c.ready(deliver)) {
@@ -660,6 +683,7 @@ struct ReqBusUnits {
     ReqNode* row[ROWS] = {};
     ReqNode* root = nullptr;
     ReqRecv* recv[TARGETS] = {};
+    ReqHost* host = nullptr;          // the harness's host (the test's receives and controller sends), if built
     bool exact = false;
 };
 inline ReqBusUnits resolve(sim::Sim& m, uint64_t tiles, unsigned ccs, const ReqBusConfig& rc) {

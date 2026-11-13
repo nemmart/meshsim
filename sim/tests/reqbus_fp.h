@@ -9,6 +9,7 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
 #include "config.h"
 #include "units/reqbus.h"
@@ -71,8 +72,7 @@ void reqbus(Out& o, const sim::Sim& m, const ReqBusUnits& u, uint64_t c) {
     constexpr uint32_t kMax = 64;
     sim::PortEntry e[kMax];
     int64_t cred[8] = {};
-    uint64_t pending_t[3][kMax];
-    uint32_t pending_n[3] = {};
+    std::vector<uint64_t> pending_t[3];
     for (int k = 0; k < 3; k++) {
         cred[k] = u.root->credits[k];
         if (!(u.root->qpresent >> k & 1)) continue;
@@ -80,15 +80,27 @@ void reqbus(Out& o, const sim::Sim& m, const ReqBusUnits& u, uint64_t c) {
         for (uint32_t j = 0; j < n; j++) {
             const uint64_t pop = e[j].w[0];
             if (pop + 1 <= c) cred[k]++;                // ref applied it at pop + 1
-            else pending_t[k][pending_n[k]++] = pop + 1;
+            else pending_t[k].push_back(pop + 1);
         }
+        if (u.host && u.host->pop_at[k] >= 0) {          // the test's pop of c + 1, made in ref already: not yet on its Link
+            const uint64_t pop = uint64_t(u.host->pop_at[k]);
+            if (pop + 1 <= c) cred[k]++;
+            else pending_t[k].push_back(pop + 1);
+        }
+        for (const units::reqbus::HostExtra& h : u.root->host_extra[k])   // the harness's further pops of a cycle
+            for (uint32_t j = 0; j < h.n; j++) {
+                if (uint64_t(h.at) + 1 <= c) cred[k]++;
+                else pending_t[k].push_back(uint64_t(h.at) + 1);
+            }
     }
     for (int k = 0; k < 8; k++) o.w("credits", uint64_t(cred[k]));
     // the queues: as delivered, less the heads popped at c (their pop still on its way here)
     for (int k = 0; k < 3; k++) {
         const units::reqbus::ReqRecv* q = u.recv[k];
         if (!q) { o.w("queue.n", 0); continue; }
-        const uint32_t popped = m.observe(q->pop, e, kMax).n;
+        uint32_t popped = m.observe(q->pop, e, kMax).n;
+        for (const units::reqbus::HostExtra& h : q->host_extra) popped += h.n;
+        if (u.host && u.host->pop_at[k] >= 0) popped++;
         if (popped > q->qn) FATAL("reqfp: more pops in flight than requests queued");
         o.w("queue.n", q->qn - popped);
         for (unsigned j = popped; j < q->qn; j++) {
@@ -99,10 +111,10 @@ void reqbus(Out& o, const sim::Sim& m, const ReqBusUnits& u, uint64_t c) {
         }
     }
     // the credit returns ref holds: the pops of c (in target order: a cycle's pops are made in that order)
-    uint32_t nret = pending_n[0] + pending_n[1] + pending_n[2];
+    const uint64_t nret = pending_t[0].size() + pending_t[1].size() + pending_t[2].size();
     o.w("creditReturns.n", nret);
     for (int k = 0; k < 3; k++)
-        for (uint32_t j = 0; j < pending_n[k]; j++) { o.w("creditReturns", pending_t[k][j]); o.w("creditReturns", uint64_t(k)); }
+        for (uint64_t at : pending_t[k]) { o.w("creditReturns", at); o.w("creditReturns", uint64_t(k)); }
     // the deliveries on their way (ref's toReceiver), in arrival order
     struct D { uint64_t at; Req q; } d[8];
     uint32_t nd = 0;

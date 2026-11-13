@@ -14,6 +14,7 @@
 # Toolchain: riscv64-unknown-elf-gcc 13.2 (Ubuntu 24.04's gcc-riscv64-unknown-elf 13.2.0-11ubuntu1+12), the one v1.3's
 # images were built with; patch(1). The runner has none: the images stay committed.
 set -eu
+export LC_ALL=C   # byte order for sort, ls and globs, and nm's symbol order: the outputs are the same in any locale
 FW=$(cd "$(dirname "$0")" && pwd); SIM=$(cd "$FW/.." && pwd)
 # PARTS="boot tests m1 m3 cc recipes replay tracer sort riscv" (W23): build (and check) only those parts; empty: all.
 # run_tests.sh's steps cc-build and recipes-build are PARTS=cc and PARTS=recipes with --check (v1.3's build_cc.sh and

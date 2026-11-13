@@ -6,6 +6,7 @@
 # (it records run times). w9-selected-windows.tgz and the root manifest.json are left out: both depend on which
 # programs share the directory.
 set -eu
+export LC_ALL=C   # byte order for sort, ls and globs, and nm's symbol order: the outputs are the same in any locale
 HERE=$(cd "$(dirname "$0")" && pwd); . "$HERE/pins.sh"
 RUN=$1; NOTE=${2:-first build}; run_info "$RUN"
 OUT=${OUT:-$HOME/meshsim-inputs}; cd "$OUT"

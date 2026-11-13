@@ -3,6 +3,7 @@
 # tile 5), built by sim/fw/build.sh as sw/tests' programs are (crt0.S, app.ld, -Os). Writes cc_req.* and tile_req.*
 # (code.bin, data.bin, sym) and REQ_MANIFEST, or with --check compares a fresh build with them.
 set -eu
+export LC_ALL=C   # byte order for sort, ls and globs, and nm's symbol order: the outputs are the same in any locale
 HERE=$(cd "$(dirname "$0")" && pwd); SIM=$(cd "$HERE/../.." && pwd)
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 OUT=$T/fw bash "$SIM/fw/build.sh" --build-only > "$T/build.log" 2>&1 || { tail "$T/build.log"; exit 1; }

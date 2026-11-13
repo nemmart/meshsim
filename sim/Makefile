@@ -16,7 +16,7 @@ CXX_gcc   := g++
 CXX_clang := clang++
 COMPILERS := gcc clang
 ifeq ($(shell command -v clang++ 2>/dev/null),)
-$(error clang++ not found: D18 needs clang for the release build and make check (apt install clang lld))
+$(error clang++ not found: D18 needs clang for the release build and make check (apt install clang))
 endif
 
 COMMON  := -std=c++20 -fno-exceptions -fno-rtti -Wall -Wextra -Werror -Isrc -MMD -MP -pthread
@@ -105,3 +105,4 @@ include tools/delivery/delivery.mk
 include tests/p7b.mk
 include tests/sort.mk
 include tests/bus.mk
+include tools/doccheck.mk

@@ -24,7 +24,7 @@
 #define SRAM_ADDR(chunk)   (REGION_SRAM | ((uint32_t)(chunk) << 2))
 
 /* data-memory layout (4.12): the ROM reads COMMAND_BASE, so it is a silicon constant */
-#define DMEM_RESERVED      0x00000000   /* bytes 0x00-0x0F: never placed; meshsim flags any write */
+#define DMEM_RESERVED      0x00000000   /* bytes 0x00-0x0F: never placed; meshsim flags any write (W4-02) */
 #define DMEM_FIRST         0x00000010   /* the first byte an image may use; overlays start here */
 #define COMMAND_BASE       0x00007FC0   /* the command block: 16 slots; slot 0 the command word */
 #define REPLY_BASE         0x00007BC0   /* the reply block: two words per source, 128 sources; 8-byte aligned */

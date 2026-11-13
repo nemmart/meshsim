@@ -589,7 +589,36 @@ units::reqbus::ReqRecv& recv_of(Chip& c, unsigned target) {
     if (target > 2) FATAL("mach: reqbus: target %u has no receive queue (0-2)", target);
     return c.unit<units::reqbus::ReqRecv>(kRecv[target]);
 }
+bool link_empty(sim::Sim& s, const sim::LinkIn& p) { sim::PortEntry e[64]; return s.observe(p, e, 64).n == 0; }
 }  // namespace
+// ref's RequestBus.idle: no node input holds a request or a beat, or has one on its way (Buf.occ, Buf.reqs), and no
+// request is on its way to a receive queue (toReceiver). The request ports' FIFOs are not part of it (TileRef::req_idle).
+bool ReqBus::idle() const {
+    sim::Sim& s = c_->sim();
+    auto node_idle = [&](const units::reqbus::ReqNode& n) {
+        for (unsigned i = 0; i < n.n_in; i++)
+            if ((n.present >> i & 1) && (n.buf[i].n || !link_empty(s, n.in[i]))) return false;
+        return true;
+    };
+    if (!node_idle(c_->unit<units::reqbus::ReqRoot>("reqbus.root"))) return false;
+    for (unsigned r = 0; r < 8; r++) if (!node_idle(c_->unit<units::reqbus::ReqNode>("reqbus.row" + std::to_string(r)))) return false;
+    static const char* kRecv[3] = {"cc1.reqrecv", "cc2.reqrecv", "cc3.reqrecv"};
+    for (unsigned q = 0; q < 3; q++)
+        if (s.has_unit(kRecv[q]) && !link_empty(s, c_->unit<units::reqbus::ReqRecv>(kRecv[q]).deliver)) return false;
+    if (s.has_unit("reqbus.host")) {                      // a controller's request not yet all sent (ref's controllerSend)
+        const units::reqbus::ReqHost& h = c_->unit<units::reqbus::ReqHost>("reqbus.host");
+        for (unsigned k = 0; k < 3; k++) if (h.send[k].on) return false;
+    }
+    return true;
+}
+bool Chip::toast() const {
+    if (cfg_.cc_cores) FATAL("mach: toast(): the machine with C&C's model only (with C&C 1-3 as cores, read cc1p's own)");
+    return const_cast<Chip*>(this)->unit<units::Cnc>("cnc").toast;
+}
+int64_t Chip::toast_at() const {
+    if (cfg_.cc_cores) FATAL("mach: toast_at(): the machine with C&C's model only");
+    return const_cast<Chip*>(this)->unit<units::Cnc>("cnc").toast_at;
+}
 bool ReqBus::head(unsigned target, int64_t t, uint32_t w[4]) const {   // ref's head(target, t): delivered before t
     const units::reqbus::ReqRecv& r = recv_of(*c_, target);
     const uint64_t skip = popped_[target] - r.received;                 // the test's pops not yet made
@@ -956,6 +985,7 @@ void Chip::reset(bool hard) {
     cn.reply_n = 0; cn.reply_h = 0; cn.pending_retry = 0;
     // C&C 1's peripheral (Cnc1Peripheral.reset; its READY side lives in the model here): READY_EXPECT 0, no READY seen
     cn.expect = 0; cn.cleared_at = INT64_MIN;
+    cn.toast = false; cn.toast_at = -1;
     for (auto& r : cn.ready_at) r = INT64_MIN;
     // 4. the checker (ref's errSeen), the log, a wake
     m.checker->on_reset();
@@ -1268,6 +1298,13 @@ bool TileRef::req_can_push(int64_t t) const {               // fifo.size() < dep
     uint32_t pending = 0;
     for (uint32_t i = 0; i < n; i++) if (e[i].at <= uint64_t(t)) pending++;
     return l.n + pending < l.depth;
+}
+bool TileRef::req_idle() const {                            // fifo.isEmpty(), a core's push of the cycle just run included
+    const std::string leaf = "t" + std::to_string(k_) + ".reqleaf";
+    if (!c_->sim().has_unit(leaf)) FATAL("mach: tile %u: req_idle(): no request port on this machine", k_);
+    const units::reqbus::ReqLeaf& l = c_->unit<units::reqbus::ReqLeaf>(leaf);
+    sim::PortEntry e[4];
+    return l.n == 0 && c_->sim().observe(l.push, e, 4).n == 0;
 }
 
 // ---- the read port's host queue (W22-18) ----

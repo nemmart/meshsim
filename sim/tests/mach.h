@@ -199,6 +199,8 @@ public:
     uint64_t underflows() const { return underflows_; }              // ref's underflows (the test's receives)
     uint64_t dropped() const;                                        // ref's dropped.size()
     uint64_t delivered() const;                                      // ref's delivered.size()
+    bool idle() const;                                               // ref's idle(): no beat in a node's input or on its
+                                                                     //   way to one, no request on its way to a queue
     // ref's delivered list (W22-19): every request delivered to a receive queue, {deliveredAt, srcTile, w0, w1, w2, w3},
     // in delivery order (all targets)
     std::vector<std::array<int64_t, 6>> delivered_log() const;
@@ -276,6 +278,8 @@ public:
     void req_set_w(unsigned i, uint32_t v);                 // ref's req.setW(i, v): REQUEST_SET_W<i> without a store
     void req_send(int64_t t, uint32_t w3);                  // ref's req.send(t, w3), t the cycle just run: pushed as of t
     bool req_can_push(int64_t t) const;                     // ref's req.canPush(t), t = cycle() + 1
+    bool req_idle() const;                                  // ref's req.idle(): the request port's FIFO empty (a push of
+                                                            //   the cycle just run included), as of the cycle just run
     uint32_t req_w(unsigned i) const;                       // ref's req.setW[i]
     // ---- the read port's host queue (W22-18; ref's ReadPort.hostQueue, idle, allAccepted) ----
     void rp_host_queue(uint32_t addr, uint32_t dest);       // a 32-bit read on counter 2 to dest, one a cycle from the next
@@ -375,6 +379,8 @@ public:
     Cc& cc();                                               // C&C 1's model (not with cc_cores)
     PhaseLog& phases();                                     // ref's Chip.phases, attached at the first call (phase_log.h)
     ReqBus& reqbus();                                       // ref's Chip.reqBus from a test (MachConfig::reqbus_host)
+    bool toast() const;                                     // ref's cc1p.toast: C&C 1's toast latch (C&C's model only)
+    int64_t toast_at() const;                               // ref's cc1p.toastAt (-1: not latched)
     bool all_stopped() const;                               // no tile's core in RUN
     bool all_exited() const;                                // every tile ended through SIM_EXIT
     bool all_in_wfi() const;

@@ -170,7 +170,7 @@ struct Rv32 {
     template <class Env>
     UNITS_NOINLINE uint64_t step(Env& e, uint64_t t) {
         ck_t = t;                                                              // W20: the cycle of this step's facts
-        if (stop != Stop::running) return kNever;                     // the run ended: nothing more (mcycle frozen)
+        if (stop != Stop::running && stop != Stop::parked) return kNever;   // the run ended: nothing more (mcycle frozen)
         catch_up(t);
         mcycle++;                                                       // 1.
         // 2. halted: a halt ends the run (below), so never here.
@@ -210,7 +210,10 @@ struct Rv32 {
         stall -= uint32_t(gap); cycles_stalled += gap;
     }
     uint64_t after(uint64_t t) {
-        if (halt != RUN || ub || parked) { stop = halt != RUN ? Stop::halt : ub ? Stop::ub : Stop::parked; stop_cycle = t; return kNever; }
+        if (halt != RUN || ub) { stop = halt != RUN ? Stop::halt : Stop::ub; stop_cycle = t; return kNever; }
+        // parked (the handler's park loop): the run's end as recorded (stop, stop_cycle), but the core goes on running
+        // its loop every cycle, as ref's runCycle does (only a halt stops it)
+        if (parked && stop == Stop::running) { stop = Stop::parked; stop_cycle = t; }
         if (in_wfi) return kNever;
         return t + 1 + stall;
     }

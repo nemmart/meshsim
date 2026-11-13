@@ -3,7 +3,7 @@ reset seed -1: at 5201 fp 486a8801b15d983c; next fp 2515f8d58c14a16d; queue done
 reset seed 4: at 5201 fp 486a8801b15d983c; next fp 2515f8d58c14a16d; queue done at 5204 fp f906437726fdb936; rerun NOT stopped at 25204 fp a4f457b6e9c8cd25 violations 0
   cycle 5201: reset (soft): every unit to the boot ROM
 faults reads: drained at 5000; bus idle 4098 cycles (3 changes, last at 1047), ports idle 4610 cycles (last change at 534), port busy 9578 tile-cycles; toast true at 140
-  received 112; bus fp b0ccec09d0f98e7b; next b0ccec09d0f98e7b; next 05b65a8452b108b9; credits 128
+  received 112; fp 33b70a6161c4a0c4; next cd08416daae7860b; next b1c86e187a7ebfe2; credits 128
   the reset: made at 5003; toast false at -1
 flood reset seed -1: parked at 967 reports 2 tile 9 overflows 143 ERRORS 0x1 fp 6fbb7adf93e53352; reset at 968 overflows 146 fp(D49) fcf57fe96ea4568a; next ERRORS 0x0 fp(D49) 2dabc3819e03ee55; booted true at 1079 ERRORS 0x0 unit-error 0 toast false line 9 0 overflows 146 fp(D49) 0715faae71f0f357; violations 5
   cycle 920 tile 9: FIFO overflow t9.eject<from-left (invariant 1)

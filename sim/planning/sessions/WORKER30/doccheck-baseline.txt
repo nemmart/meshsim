@@ -63,9 +63,6 @@ MISSING spec/jolt/replayer.md:325: isa/riscv.inc (code)
 MISSING spec/jolt/replayer.md:336: isa/virtual.cpp (code)
 MISSING spec/jolt/tracer.md:204: crates/jolt-riscv/src/uncompress.rs (code)
 MISSING spec/jolt/tracer.md:276: tracer/src/emulator/mmu.rs (code)
-OUTSIDE src/PORTS.md:3: sim/ref/meshsim
-OUTSIDE src/PORTS.md:5: wip/planning/sessions/WORKER29-DESIGN.md
-OUTSIDE src/PORTS.md:6: sim/ref/meshsim/src/
 OUTSIDE tests/AUDIT-M1.md:7: sim/fw
 OUTSIDE tests/AUDIT-M1.md:9: sim/ref/meshsim/src
 OUTSIDE tests/AUDIT-M1.md:9: sim/tests/TRACE-FORMAT.md
@@ -88,21 +85,11 @@ OUTSIDE tests/AUDIT-M3.md:69: sim/tests/golden-m3/cover/
 OUTSIDE tests/AUDIT-M3.md:108: sim/oracle/ref/baseline.sh
 OUTSIDE tests/AUDIT-M3.md:529: sim/tests/golden-m3/
 OUTSIDE tests/AUDIT-M3.md:539: oracle/regen/golden-m3.sh
-MISSING tests/README.md:27: RUNNING.md (code)
-OUTSIDE tests/TRACE-FORMAT.md:3: sim/ref
-OUTSIDE tests/TRACE-FORMAT.md:3: sim/ref/meshsim/src/Observer.java
+MISSING tests/README.md:28: RUNNING.md (code)
 OUTSIDE tests/TRACE-FORMAT.md:74: sim/tests/TRACE-FORMAT.md
-OUTSIDE tests/golden-m2/README.md:6: sim/ref
-OUTSIDE tests/golden-m2/README.md:7: sim/ref/meshsim
-OUTSIDE tests/golden-m2/images/MANIFEST.md:3: sim/ref
-OUTSIDE tests/golden-m2/images/MANIFEST.md:6: sim/ref/meshsim
-OUTSIDE tests/golden-m2/images/MANIFEST.md:7: sim/ref
-OUTSIDE tests/golden-m3/README.md:3: sim/ref
-OUTSIDE tests/golden-m3/README.md:17: sim/planning/sessions/WORKER13-tasks/IMAGES
 OUTSIDE tests/golden/images/MANIFEST.md:6: sim/fw/build.sh
 MISSING tests/golden/images/MANIFEST.md:13: sw/build.sh (code)
 OUTSIDE tests/golden/images/MANIFEST.md:56: sim/fw/riscv-tests/bin
-OUTSIDE tests/sort/kit/README.md:7: sim/
 MISSING tests/sort/kit/README.md:9: OUTDIR/run.sh (code)
 MISSING tests/sort/kit/README.md:13: SUMMARY.md (code)
 NO-README bench/w10/
@@ -205,6 +192,7 @@ NO-README planning/sessions/WORKER19/
 NO-README planning/sessions/WORKER20/
 NO-README planning/sessions/WORKER22/
 NO-README planning/sessions/WORKER26/
+NO-README planning/sessions/WORKER27/
 NO-README planning/sessions/WORKER30/
 NO-README tests/acceptance/summary/
 NO-README tests/acceptance/summary/c1/
@@ -237,7 +225,8 @@ DOC-MISSING tests/chain.h:2: sim/planning/sessions/WORKER17-NOTES.md
 DOC-MISSING tests/chain_main.cpp:2: sim/planning/sessions/WORKER17-NOTES.md
 DOC-MISSING tests/ctl/suite_hooks.cpp:8: NOTES.md
 DOC-MISSING tests/ctl/suite_recipes.cpp:10: NOTES.md
+DOC-MISSING tests/freeze/body.sh:4: RUNNING.md
 DOC-MISSING tests/mach.h:20: sessions/WORKER20/NOTES.md
 DOC-MISSING tests/suite_net.cpp:15: sessions/WORKER22/NOTES.md
 DOC-MISSING tests/test_memconf.cpp:230: NOTES.md
-doccheck: 54 documents, 1802 cited paths: 70 MISSING, 37 OUTSIDE; 206 folders: 116 NO-README; 199 documents named in source: 19 DOC-MISSING
+doccheck: 54 documents, 1793 cited paths: 70 MISSING, 24 OUTSIDE; 207 folders: 117 NO-README; 202 documents named in source: 20 DOC-MISSING

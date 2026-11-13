@@ -36,3 +36,6 @@ meshsim WORKER20), v1.25
 # v1.3's own paths, in the spec's move proof
 WORKER11/REPORT.md
 WORKER20/REPORT.md
+`REQUEST_SET_W0`-`W2`
+`REQUEST_GET_W0`-`W2`
+W26 w;

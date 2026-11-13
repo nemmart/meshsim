@@ -26,3 +26,4 @@ tests/sort_compare_main.cpp	out.md	output	a file the tool writes
 tests/sort_summary_main.cpp	SUMMARY.md	output	a file the tool writes
 tests/sort_summary_main.cpp	OUT.md	output	a file the tool writes
 tests/test_sort_kit.cpp	SUMMARY.md	output	a file the tool writes
+tests/freeze/body.sh	SUMMARY.md	output	the kit's summary the task writes

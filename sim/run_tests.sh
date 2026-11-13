@@ -46,6 +46,7 @@ SUITES="$SUITES suite_ccbench suite_cccores suite_hooks suite_regdoc suite_accou
 SUITES="$SUITES suite_replayer stageb"               # W25 (P7b)
 SUITES="$SUITES suite_net suite_search suite_agbench suite_engine suite_reqbus suite_mem suite_rdport"   # W22 (P4)
 SUITES="$SUITES sort_test sweep"                     # W24 (P6)
+SUITES="$SUITES suite_cond"                           # CondTest (P5)
 
 if [ "$BUILD" = 1 ]; then
   echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"

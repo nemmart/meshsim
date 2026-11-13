@@ -10,7 +10,7 @@ Built by `fw/build.sh` (v1.3's flags, start-up files and linker script):
       riscv64-unknown-elf-gcc -march=rv32i_zicsr_zmmul -mabi=ilp32 -nostdlib -nostartfiles -static -Wl,--no-relax \
           -Iinclude -T app.ld m1/<n>.S -o <n>.elf
 
-- `hello`, `faults`, `misalign_ld`, `misalign_st`, from `fw/tests/<n>.c` (as v1.3's `sw/build.sh` built them):
+- `hello`, `faults`, `misalign_ld`, `misalign_st`, from `fw/tests/<n>.c` (as v1.3's sw/build.sh built them):
 
       riscv64-unknown-elf-gcc -march=rv32i_zicsr_zmmul -mabi=ilp32 -std=gnu11 -ffreestanding -nostdlib -nostartfiles \
           -static -fno-builtin -Wall -Wno-array-bounds -Wl,--no-relax -Iinclude -Os -T app.ld crt0.S tests/<n>.c -o <n>.elf

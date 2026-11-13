@@ -27,7 +27,6 @@ OUTSIDE tests/AUDIT-M3.md:108: sim/oracle/ref/baseline.sh
 OUTSIDE tests/AUDIT-M3.md:529: sim/tests/golden-m3/
 OUTSIDE tests/AUDIT-M3.md:539: oracle/regen/golden-m3.sh
 MISSING tests/README.md:28: RUNNING.md (code)
-MISSING tests/golden/images/MANIFEST.md:13: sw/build.sh (code)
 NO-README bench/w10/
 NO-README bench/w14/
 DOC-MISSING pipeline/gold/check.sh:6: wip/planning/sessions/WORKER18-NOTES.md
@@ -50,4 +49,4 @@ DOC-MISSING tests/freeze/body.sh:4: RUNNING.md
 DOC-MISSING tests/mach.h:20: sessions/WORKER20/NOTES.md
 DOC-MISSING tests/suite_net.cpp:15: sessions/WORKER22/NOTES.md
 DOC-MISSING tests/test_memconf.cpp:230: NOTES.md
-doccheck: 56 documents, 1817 cited paths: 9 MISSING, 21 OUTSIDE; 209 folders: 2 NO-README; 203 documents named in source: 20 DOC-MISSING
+doccheck: 56 documents, 1816 cited paths: 8 MISSING, 21 OUTSIDE; 209 folders: 2 NO-README; 203 documents named in source: 20 DOC-MISSING

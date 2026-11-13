@@ -10,8 +10,8 @@
 // 6, which a program can't provoke in the model, are injected into ERRORS from the test.
 //
 // C&C 1 here is the Java model (Cnc): ref's cc1p on that machine is read from it: ERROR_LINES from its error lines
-// (`err_line`), the unit-error bit (ERRORS [0]) and the toast pin from its sticky error bit (`error_bit`; ref's toast
-// latches on the same condition, the unit's errors non-zero, and the reset clears both).
+// (`err_line`), the unit-error bit (ERRORS [0]) from its sticky error bit (`error_bit`), the toast pin from the harness's
+// toast latch (Chip::toast, ref's cc1p.toast; the reset clears both).
 #include <array>
 #include <cstdio>
 #include <cstdlib>
@@ -29,7 +29,7 @@ int64_t shuffle = -1;
 units::Cnc& cnc(Mach& m) { return m.c.unit<units::Cnc>("cnc"); }
 bool error_line(Mach& m, unsigned k) { return (cnc(m).err_line >> k) & 1; }
 bool unit_error(Mach& m) { return cnc(m).error_bit; }
-bool toast(Mach& m) { return cnc(m).error_bit; }
+bool toast(Mach& m) { return m.c.toast(); }
 
 // C&C 1's model drains target 0's receive queue (its handler would, 6.1) until tile p has parked and the ROM's two
 // reports are in (v1.25: sequence 24 and 25, spec 4.13)

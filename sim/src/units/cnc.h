@@ -164,6 +164,10 @@ struct Cnc {
     // the error bit (6.6): the tiles' OR'd error line as visible, the sticky bit
     bool error_bit = false, err_line_seen = false;
     int64_t error_set_at = -1;
+    // C&C 1's toast pin as ref's Cnc1Peripheral latches it on this machine: any error line visible (6.1). Only the reset
+    // clears it (ref's clearError leaves it); read by the harness, not in the digest or the fingerprint.
+    bool toast = false;
+    int64_t toast_at = -1;
     // ---- C&C 1's peripheral (Cnc1Peripheral): READY, READY_EXPECT, the error lines ----
     int64_t ready_at[64];             // the latest READY arrival (INT64_MIN: none)
     int64_t cleared_at = INT64_MIN;

@@ -97,19 +97,18 @@ equiv() {
   [ -z "${STEP_TIMES:-}" ] || echo "$log $((SECONDS - t0)) s" >> results/.step-times
 }
 # W23: one part of fw/build.sh, checked against the committed images (v1.3's build_cc.sh and build_recipes.sh steps).
-# Without the RISC-V toolchain (the runner has none) the step says so: the committed images are what the suites run.
+# Without the RISC-V toolchain (the runner has none), the committed images are checked against the hash lists committed
+# beside them instead (fw/check_images.sh); with it, after the build, that check's image names against the build's.
 fw_part() {
-  if command -v riscv64-unknown-elf-gcc > /dev/null; then PARTS=$1 bash fw/build.sh --check
-  else echo "fw/build.sh ($1): skipped, no riscv64-unknown-elf-gcc (the committed images are used)"; fi
+  if command -v riscv64-unknown-elf-gcc > /dev/null; then PARTS="$*" bash fw/build.sh --check && bash fw/check_images.sh --built fw/build/out "$@"
+  else echo "fw/build.sh ($*): no riscv64-unknown-elf-gcc, so the committed images against their hash lists"; bash fw/check_images.sh "$@"; fi
 }
-
-V13=ref/meshsim/results                    # v1.3's committed logs (some stale: the oracle regenerates those)
 
 # ---- v1.3's steps, in v1.3's order -------------------------------------------------------------------------------
 echo "== the layout (v1.3: tools/check_layout.sh; v1.35: tools/check_copies.sh)"; sh tools/check_copies.sh > results/layout.log 2>&1 && tail -1 results/layout.log || { cat results/layout.log; echo "FAIL the layout"; }
-pending sw-build      "building the tile programs (sw/build.sh; regenerates sw/mesh.h)" "v1.35: fw/build.sh (W19)"
-pending sort-build    "building the sort program (sw/ext/sort/build.sh: one image, the split, the planner)" "v1.35: fw/build.sh (W19)"
-step bus 1 "bus primitives (W26: on the framework's port kinds; the debug build, its throws checks being debug assertions)" $V13/bus.log -- build/$CC_NAME-debug/suite_bus
+step sw-build   2 "building the tile programs (sw/build.sh: the boot ROM, sw/tests; with the M1, M3, replay and Tracer programs)" - -- fw_part boot tests m1 m3 replay tracer
+step sort-build 2 "building the sort program (sw/ext/sort/build.sh: one image, the split, the planner)" - -- fw_part sort
+step bus 1 "bus primitives (W26: on the framework's port kinds; the debug build, its throws checks being debug assertions)" tests/p2suites/bus.log -- build/$CC_NAME-debug/suite_bus
 NETREF=tests/p4suites/net.log; [ "$MODE" = quick ] && NETREF=tests/p4suites/net-quick.log   # W22: v1.3's net step takes $Q
 step net       1 "network, packets, director" $NETREF -- $S/suite_net -1 $Q
 step net-shuf  1 "shuffled child order (seed 5)" tests/p4suites/net-shuf.log -- $S/suite_net 5 quick

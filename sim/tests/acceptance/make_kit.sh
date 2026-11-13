@@ -6,6 +6,7 @@
 # scripts (run_shard.sh, calibrate.sh, build.sh, README.md) at the top. No jar: the runner builds it (./build.sh).
 #   tests/acceptance/make_kit.sh OUT.tgz
 set -eu
+export LC_ALL=C   # byte order for sort, ls and globs, and nm's symbol order: the outputs are the same in any locale
 cd "$(dirname "$0")/../.."
 OUTF=$(realpath -m "${1:?usage: make_kit.sh OUT.tgz}")
 TOP=$(git rev-parse --show-toplevel); REV=$(git rev-parse --short HEAD)

@@ -28,3 +28,18 @@ make check: only my own lines. gcc debug and clang release before every push; th
   seven other tests and test_checkself's one print exactly what the eight printed before.
   gcc debug 75 of 75 (test_p4suites and test_sort_suites case by case with the filter; suite_bus 154 passed) and clang
   release 75 of 75.
+- **Invariants** (`suite_ctrl.cpp`): ref's group, 152 checks; every line in ref's ctrl.log and ctrl-shuf.log (gcc suite).
+  Its hard reset with a packet in flight passes (not the soft-reset bug). **CheckSelf**: kinds 4, 5, 8 strict, 9 and
+  the stream/packet sides of 20 and 21 were reached already (W26's inv cases); appended: the `regs` program's 384
+  violations (the counter wraps, ROUTER_HDR's and WRITE_COUNTER_2's reserved bits, the odd DMA_RECORD_BASE_ADDRESS), the
+  overlay after a command and invariant 25, both from C&C 1's model; checkself.out regenerated from ref (389 lines
+  added, the rest unchanged), test_checkself line for line.
+- **The all-to-all**: quick and full equal to ref's logs, plain and shuffled (full: 74 s here, gcc suite). The output
+  is ref's but for the faults line and the totals (6,468 of 6,954; faults has 486).
+- **Faults** waits for W28 (after its reset fix): the request bus's idle, a tile's request-port idle, C&C 1's toast
+  latch on the model machine. What exists: the core's parked/halt/trap_cause, Cnc's error_bit, ReqBus with
+  reqbus_host, Cc::reset, resets, last_reset_at, clear_violations. ctrl, ctrl-shuf, ctrl-full stay PENDING until the
+  log is whole; in make check they will run in the debug builds only (the registers and invariants groups need the
+  checker).
+- Builds before the push: gcc debug and clang release, every test binary (test_p4suites and test_sort_suites case by
+  case), all passing; suite_bus 154 passed.

@@ -2,67 +2,8 @@ MISSING BUILDING.md:4: RUNNING.md (code)
 MISSING CHANGES-v1.35.md:18: RUNNING.md (code)
 MISSING README.md:18: RUNNING.md (code)
 MISSING README.md:37: RUNNING.md (code)
-MISSING bench/README.md:10: DIR/uniform.keys (code)
 MISSING bench/README.md:12: bench/sort/trace.sh (code)
 MISSING bench/README.md:16: sort/w10.mk (code)
-MISSING data/tables/README.md:48: tracer/tables/build.sh (code)
-MISSING fw/RECIPES.md:3: WORKER6/FINDINGS.md (code)
-MISSING fw/RECIPES.md:301: schedule-4.md (code)
-MISSING fw/RECIPES.md:381: schedule-4.md (code)
-MISSING fw/RECIPES.md:753: WORKER6/FINDINGS.md (code)
-MISSING fw/recipes/RECIPES.tmpl.md:3: WORKER6/FINDINGS.md (code)
-MISSING fw/recipes/RECIPES.tmpl.md:160: schedule-4.md (code)
-MISSING fw/recipes/RECIPES.tmpl.md:193: schedule-4.md (code)
-MISSING fw/recipes/RECIPES.tmpl.md:369: WORKER6/FINDINGS.md (code)
-MISSING fw/regdoc/README.md:8: ../../Reference.pdf (code)
-MISSING fw/sort/skew/RESULTS.md:3: design_v1/python/split-point-model/data.py (code)
-MISSING fw/sort/skew/RESULTS.md:28: model/export_mats.py (code)
-MISSING fw/sort/skew/RESULTS.md:309: ../harness (code)
-MISSING fw/sort/skew/RESULTS.md:323: model/model-results.json (code)
-MISSING pipeline/inputs/README.md:86: seg/NNN.pages (code)
-MISSING pipeline/inputs/README.md:86: seg/NNN.json (code)
-MISSING pipeline/inputs/README.md:90: seg/NNN.pages (code)
-MISSING pipeline/inputs/README.md:90: seg/NNN.written (code)
-MISSING pipeline/inputs/README.md:99: sw/build.sh (code)
-MISSING pipeline/inputs/README.md:99: sw/replay/build.sh (code)
-MISSING pipeline/inputs/README.md:99: acceptance/make_kit.sh (code)
-MISSING pipeline/inputs/README.md:117: seg/NNN.pages (code)
-MISSING pipeline/inputs/README.md:124: manifest/RUN.sha256 (code)
-MISSING pipeline/jumpmap/README.md:13: ../gold/build (code)
-MISSING pipeline/jumpmap/README.md:45: seg/NNN.pages (code)
-MISSING pipeline/jumpmap/README.md:46: seg/NNN.json (code)
-MISSING pipeline/keys/README.md:4: pipeline/build/keys/ (code)
-MISSING pipeline/keys/README.md:8: pipeline/build/keys (code)
-MISSING pipeline/keys/README.md:9: pipeline/build/keys (code)
-MISSING spec/jolt/replayer-opcodes.md:17: isa/virtual.cpp (code)
-MISSING spec/jolt/replayer-opcodes.md:26: utils/math.hpp (code)
-MISSING spec/jolt/replayer-opcodes.md:34: isa/virtual.hpp (code)
-MISSING spec/jolt/replayer-opcodes.md:34: isa/decoder.cpp (code)
-MISSING spec/jolt/replayer-opcodes.md:43: isa/decoder.cpp (code)
-MISSING spec/jolt/replayer-opcodes.md:46: isa/riscv.hpp (code)
-MISSING spec/jolt/replayer-opcodes.md:564: isa/virtual.cpp (code)
-MISSING spec/jolt/replayer.md:11: src/tracer/isa (code)
-MISSING spec/jolt/replayer.md:37: isa/virtual.cpp (code)
-MISSING spec/jolt/replayer.md:127: inlines/blake3.inc (code)
-MISSING spec/jolt/replayer.md:129: isa/virtual.cpp (code)
-MISSING spec/jolt/replayer.md:137: isa/riscv.inc (code)
-MISSING spec/jolt/replayer.md:141: isa/virtual.cpp (code)
-MISSING spec/jolt/replayer.md:156: isa/virtual.cpp (code)
-MISSING spec/jolt/replayer.md:160: isa/riscv.hpp (code)
-MISSING spec/jolt/replayer.md:172: ../utils/math.hpp (code)
-MISSING spec/jolt/replayer.md:180: isa/decoder.cpp (code)
-MISSING spec/jolt/replayer.md:189: isa/virtual.cpp (code)
-MISSING spec/jolt/replayer.md:191: isa/virtual.cpp (code)
-MISSING spec/jolt/replayer.md:201: isa/virtual.cpp (code)
-MISSING spec/jolt/replayer.md:210: isa/virtual.cpp (code)
-MISSING spec/jolt/replayer.md:228: isa/decoder.cpp (code)
-MISSING spec/jolt/replayer.md:264: isa/decoder.cpp (code)
-MISSING spec/jolt/replayer.md:276: replayer/decode_table.bin (code)
-MISSING spec/jolt/replayer.md:322: isa/riscv.hpp (code)
-MISSING spec/jolt/replayer.md:325: isa/riscv.inc (code)
-MISSING spec/jolt/replayer.md:336: isa/virtual.cpp (code)
-MISSING spec/jolt/tracer.md:204: crates/jolt-riscv/src/uncompress.rs (code)
-MISSING spec/jolt/tracer.md:276: tracer/src/emulator/mmu.rs (code)
 OUTSIDE tests/AUDIT-M1.md:7: sim/fw
 OUTSIDE tests/AUDIT-M1.md:9: sim/ref/meshsim/src
 OUTSIDE tests/AUDIT-M1.md:9: sim/tests/TRACE-FORMAT.md
@@ -86,12 +27,7 @@ OUTSIDE tests/AUDIT-M3.md:108: sim/oracle/ref/baseline.sh
 OUTSIDE tests/AUDIT-M3.md:529: sim/tests/golden-m3/
 OUTSIDE tests/AUDIT-M3.md:539: oracle/regen/golden-m3.sh
 MISSING tests/README.md:28: RUNNING.md (code)
-OUTSIDE tests/TRACE-FORMAT.md:74: sim/tests/TRACE-FORMAT.md
-OUTSIDE tests/golden/images/MANIFEST.md:6: sim/fw/build.sh
 MISSING tests/golden/images/MANIFEST.md:13: sw/build.sh (code)
-OUTSIDE tests/golden/images/MANIFEST.md:56: sim/fw/riscv-tests/bin
-MISSING tests/sort/kit/README.md:9: OUTDIR/run.sh (code)
-MISSING tests/sort/kit/README.md:13: SUMMARY.md (code)
 NO-README bench/w10/
 NO-README bench/w14/
 DOC-MISSING pipeline/gold/check.sh:6: wip/planning/sessions/WORKER18-NOTES.md
@@ -114,4 +50,4 @@ DOC-MISSING tests/freeze/body.sh:4: RUNNING.md
 DOC-MISSING tests/mach.h:20: sessions/WORKER20/NOTES.md
 DOC-MISSING tests/suite_net.cpp:15: sessions/WORKER22/NOTES.md
 DOC-MISSING tests/test_memconf.cpp:230: NOTES.md
-doccheck: 54 documents, 1793 cited paths: 70 MISSING, 24 OUTSIDE; 208 folders: 2 NO-README; 202 documents named in source: 20 DOC-MISSING
+doccheck: 56 documents, 1817 cited paths: 9 MISSING, 21 OUTSIDE; 209 folders: 2 NO-README; 203 documents named in source: 20 DOC-MISSING

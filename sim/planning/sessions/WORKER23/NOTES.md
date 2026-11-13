@@ -323,3 +323,16 @@ What I do test-side or add myself: C&C 1's model's `expect` (Cnc's field, set be
   docs session's): "L = 4, K = 12, rcp_bucket: S1: accept -> complete, the largest: big SRAM 12 (128000 writes; in its
   area's queue by 11), PTR 7 (64000 updates), HIST 7 (51200 updates); K = 12: margin 0 before the controller's reaction
   (+4); the table-window case: 2048 HIST loads ..." (every L: margin 2 at L = 1, 0 at L = 2-4; no write LATE).
+- **Pushed 1c9243f9** (cccores on, S1Bench): gcc debug test_ctl_suites 8 of 8, clang release 74 of 74.
+- **CondTest ported** (`tests/ctl/suite_cond.cpp`, on W20's reset, `Cc::reset`, `reqbus()`): suite build, 152 of 153;
+  its one FAIL is a **difference across the reset, for W20**:
+  `FAIL [error 0] the reset cleared every ERRORS, line and the toast pin, and the tiles booted again` (ref: 153 passed).
+  Case 0 (router overflow, ERRORS [0]: tiles 8, 10, 1 and 17 flood tile 9). After the soft reset (`cc.reset(false)`,
+  the 9th reset, at cycle 6137) and the boot again, **tile 9's ERRORS [0] rises again at cycle 6198** (61 cycles after
+  the reset): at the check (cycle 6247) tile 9 ERRORS = 0x1, its error line set (C&C's err_line bit 9), C&C's error
+  bit set; every other tile clear, tile 9 back in RUN, not in the handler. Every other case's reset clears everything
+  (resets 1-8 and 10-12). Looks like the router overflow (an event, D29, or the FIFO's overflow count) surviving the
+  reset and re-raising ERRORS [0]; ref's reset empties the router's FIFOs and their overflow state.
+  ref's cc1p on the Java model's machine is read from C&C's model: ERROR_LINES from `err_line`, the unit-error bit and
+  the toast pin from `error_bit` (ref's toast latches on the same condition; both cleared by the reset).
+  Not yet in the runner or make check (until the case passes).

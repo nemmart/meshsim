@@ -1,8 +1,8 @@
-# wip/tables: universal expansion tables from jolt-cpp 821e1bd
+# data/tables: universal expansion tables from jolt-cpp 821e1bd
 
 Built once per jolt-cpp version, good for any guest (DECISIONS-v1.25 s5), by `build_tables` (jolt-asic-planning PR #2,
 `tracer/tables/`) from **snarkify/jolt-cpp@821e1bd**, using jolt-cpp's own `expand_virt_seq`. Formats: meshsim
-`wip/meshsim/REPLAY-INPUT-REQUIREMENTS.md` section 2 and spec 4.19.3-4.19.6, with the changes below. `manifest.json`
+`data/REPLAY-INPUT-REQUIREMENTS.md` section 2 and spec 4.19.3-4.19.6, with the changes below. `manifest.json`
 has every file's size and SHA-256.
 
 | path | content |

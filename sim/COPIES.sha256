@@ -3,12 +3,13 @@
 # fw/include/mesh.h and fw/REGISTERS.md left this list at P8: they are generated (tools/regs/gen_regs.cpp) and their banners
 # now describe v1.35, so their bytes differ from v1.3's in the opening paragraph only; test_regs (make check) and the
 # regdoc step check them against the generator.
+# Removed 2026-11-13: fw/CONVENTIONS.md, data/tables/README.md: now v1.35's own documents (D38), their banners and paths corrected.
+# Removed 2026-11-13: fw/RECIPES.md, fw/recipes/RECIPES.tmpl.md: now v1.35's own documents (D38), their banners and paths corrected (RECIPES.md regenerated from the template by gen_book).
 a3b90f3c2fbc64f1a93c8c0ff916cfbaf40823aae38c4540811482873741d3da  data/hops.txt  meshsim/hops.txt
 3d76b556f111764ac36d8ba6a3e7492c3399e15c8371efba19d06894934827ad  data/one99.txt  meshsim/data/one99.txt
 f2d00f78de18eb04d7530baab68234748951208ce4eb023de35d0136a50af8e9  data/trace.txt  meshsim/data/trace.txt
 d36d1c4c44ed22ccc162c40eec7ca0b9669d31875f3a60886b0c8ed926037cef  data/vec-821e1bd.tsv  meshsim/data/vec-821e1bd.tsv
 b2c00a748f36e2fa0ac017e37537f641a6ac5ac10b227606b0b70fc707b30512  data/zipfraw.txt  meshsim/data/zipfraw.txt
-570835b31a8271a9108036a4392e1787b0943df33fed394d013826aaaebc1af0  data/tables/README.md  tables/README.md
 0e64fe0035675229e8f6f1c29e994b7b70f0877f01d01ee98ce5107aaac28bfc  data/tables/manifest.json  tables/manifest.json
 09d5f9cdcc3c85b8f0c6c7205e963d8b775a6f2c29ce19ab3724a21bd2e38003  data/tables/opcode_table.txt  tables/opcode_table.txt
 5a84b1e68cac2c7679a102c2f7f3b5e8d8b0ed0c5c332c5f5d7f1e8f47f6a364  data/tables/replayer/check.txt  tables/replayer/check.txt
@@ -210,7 +211,6 @@ ff3e49081063008b250a2145de5e8b52f8d5c603f1179800231b7b7cac47b38b  fw/replay/READ
 e6fb2016a4668df431a8490b3896f1288662691fa1c4e0fad566f2e38d9ee74e  fw/tracer/tracer_layout.h  meshsim/sw/tracer/tracer_layout.h
 744a1502c1d7ad664e0677975e40beb6cf6abfe3f49da5311af22b109a50af68  fw/recipes/.gitignore  sw/recipes/.gitignore
 8068e353230c0106e4226d51de0506729a0b90cf08c4b9f9acb58d36b17d07f5  fw/recipes/README.md  sw/recipes/README.md
-42dcc2e64e6d8394b25c2f021ec188ffccf4109e2cd89e4b6feea222af54e2d8  fw/recipes/RECIPES.tmpl.md  sw/recipes/RECIPES.tmpl.md
 30d29a47824d7dfc312b41c8a2c0da52a5ed459eb5d7a6a264a5165153964e97  fw/recipes/bootrom.S  sw/recipes/bootrom.S
 9f55b598996ae74f5622526a0f3d4448d78fd94377ada3577bc92eebe8fb83ab  fw/recipes/build.sh  sw/recipes/build.sh
 07a4775a618279d4febce50bc1f0ed174262505459b01d3cf5d5a0322acc0f68  fw/recipes/crt0.S  sw/recipes/crt0.S
@@ -239,8 +239,6 @@ eaa30c364d72c37b02810924cab64092a57aaa5f6c25e5a93f5989945a477c42  fw/recipes/rcp
 8f45a885829166dd35805fa2864049155fe19f78414087078387e9e0d6ad6e0d  fw/recipes/selftest.h  sw/recipes/selftest.h
 4a682bf2c7ec5c0ef7fe22eb6a45d66dc9bbb0bd95060fd10f390562e78ad6c1  fw/recipes/recipes.ld  meshsim/sw/recipes.ld
 642f7aff13785e3bbcab8c431d90c0c041810c3c03ed9f14815e97ec0390ddfd  fw/recipes/recipes_support.c  meshsim/sw/recipes_support.c
-b90b8800ed87502443774ef4671f622e30abc8559753994cb383ea68fe1371d5  fw/CONVENTIONS.md  sw/CONVENTIONS.md
-a14c3649cb8af2caf8077de862b8c943dc98684b006462741407fc70aa6c3ee0  fw/RECIPES.md  sw/RECIPES.md
 853f5b586c99753c8681471701918ad0bc9d5e60ad0b3ce56bfa20df96572525  fw/mesh-v1.2-draft.h  sw/mesh-v1.2-draft.h
 a0d7e80ec6cbd6563f04105c547b3a427cbee86cca2f87df5570ff4bb80b1081  fw/regdoc/README.md  sw/regdoc/README.md
 f6f7942a436f70d522b92fbed96513523dfb2f081e831f34c77702ffbaa17d3d  fw/regdoc/src/build_pdf.sh  sw/regdoc/src/build_pdf.sh

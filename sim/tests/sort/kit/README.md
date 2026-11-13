@@ -4,7 +4,7 @@ v1.3's kit (`v1.3/meshsim/kit`, WORKER24's port, V135-INVENTORY D8) on the C++ s
 (`jobs.txt`: 92 runs, the 20-set catalogue in both formats, three shuffled-order identity runs, a 46-point sweep), the
 same options, outputs and summary; **no Java to run it** (D40).
 
-- `./assemble.sh OUTDIR [KEYDIR]` (from `sim/`, in `tests/sort/kit/`): the kit, with `sort_test` (v1.3's SortTest),
+- `./assemble.sh OUTDIR [KEYDIR]` (from the version's root folder, in `tests/sort/kit/`): the kit, with `sort_test` (v1.3's SortTest),
   `sort_summary` (SortSummary), the sort's image, the boot ROM, hops.txt and `HASHES`; with KEYDIR, its key sets.
 - `OUTDIR/run.sh [-j JOBS] [-o OUTDIR] [-n KEYS_PER_TILE] [-g p4,shuffle,sweep] [-f FILTER] [-J JOBFILE] [-s]`
   (v1.3's options; `-m` accepted and unused). A smoke test: `./run.sh -n 2000 -j 4`.

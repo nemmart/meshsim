@@ -43,3 +43,8 @@ make check: only my own lines. gcc debug and clang release before every push; th
   checker).
 - Builds before the push: gcc debug and clang release, every test binary (test_p4suites and test_sort_suites case by
   case), all passing; suite_bus 154 passed.
+- **periph-shuf live**: `TILESLOTCONF_SEED=<n>` (unset by default; the test harness's argv[1] is its filter) runs only
+  test_tileslotconf's shuffled run with that seed against the same observations; the step runs seed 4 and requires its
+  output byte-identical to the plain run's (`results/periph.out`); checked that it fails when they differ.
+- Main merged (9f7f3cd5: W28's reset, W27's AgTest); the four builds on the merged tree: 93 of 93 test runs each (the
+  two long tests case by case), suite_bus 154 passed in both debug builds.

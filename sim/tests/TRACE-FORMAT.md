@@ -1,6 +1,6 @@
 # The retire trace (M1)
 
-The format both sides write for one tile's controller: `sim/ref` through its observer (`sim/ref/meshsim/src/Observer.java`,
+The format both sides write for one tile's controller: `ref` (v1.3's simulator with the trace hooks, outside the frozen copy) through its observer (`Observer`,
 driven by the oracle's `TraceRun`, outside the frozen copy) and the C++ controller with its test bench. M1 is accepted when the two traces of a
 program are equal, line for line, from reset to the end (DECISIONS D3). The golden traces are in `tests/golden/`
 (the oracle's golden script makes and checks them).

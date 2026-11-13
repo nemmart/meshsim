@@ -66,3 +66,4 @@ spec/jolt/tracer.md	crates/jolt-riscv/src/uncompress.rs	other-repo	a16z's jolt
 spec/jolt/tracer.md	tracer/src/emulator/mmu.rs	other-repo	a16z's jolt
 tests/sort/kit/README.md	OUTDIR/run.sh	output	a file the kit writes
 tests/sort/kit/README.md	SUMMARY.md	output	a file the kit writes
+bench/README.md	DIR/uniform.keys	output	a usage line's placeholder

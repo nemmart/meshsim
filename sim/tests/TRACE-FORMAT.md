@@ -1,9 +1,9 @@
 # The retire trace (M1)
 
 The format both sides write for one tile's controller: `sim/ref` through its observer (`sim/ref/meshsim/src/Observer.java`,
-driven by `sim/oracle/ref/TraceRun.java`) and the C++ controller with its test bench. M1 is accepted when the two traces of a
-program are equal, line for line, from reset to the end (DECISIONS D3). The golden traces are in `sim/tests/golden/`
-(`oracle/regen/golden.sh` makes and checks them).
+driven by the oracle's `TraceRun`, outside the frozen copy) and the C++ controller with its test bench. M1 is accepted when the two traces of a
+program are equal, line for line, from reset to the end (DECISIONS D3). The golden traces are in `tests/golden/`
+(the oracle's golden script makes and checks them).
 
 Plain text, one line per event, fields separated by one space. Numbers are hexadecimal, lowercase, 8 digits
 (`%08x`), except cycles, register numbers and access sizes, which are decimal. A trace has three parts: the header (`#`
@@ -82,7 +82,7 @@ any difference. Lines in this order:
 
 - `image`: the sha256 of the program-memory image (`.code.bin`, loaded from `0x01000000`) and the data-memory image
   (`.data.bin`, loaded at `data_at`); `entry` is the boot command's jump target (its slot 1).
-- `bootrom`: the sha256 of the boot ROM's words (`sim/fw/boot/bootrom.hex`, little-endian bytes).
+- `bootrom`: the sha256 of the boot ROM's words (`fw/boot/bootrom.hex`, little-endian bytes).
 - `config`: the values the controller's behaviour, or the cycles of what the test bench replays, depend on
   (`AUDIT-M1.md` says which matters how):
 
@@ -115,7 +115,7 @@ any difference. Lines in this order:
 | `shuffle_seed` | `shuffleSeed` | -1 |
 
 `idle_skip` and `shuffle_seed` don't change a correct trace (every golden trace's body is the same with `idle_skip`
-false; `oracle/regen/golden.sh` with `JOPTS=-Dmeshsim.skip=false`); they are recorded so that a difference can be told apart.
+false; the oracle's golden script with `JOPTS=-Dmeshsim.skip=false`); they are recorded so that a difference can be told apart.
 
 ## The closing block
 

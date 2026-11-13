@@ -43,7 +43,7 @@ except for the deliberate differences (D30; `spec/CHANGES-v1.3-to-v1.35.md`). Ea
 | `reqconf/` | the request bus under five loads (calm, drop, fan-in, full, mix) |
 | `tracerconf/`, `tracerparts/` | the Tracer's cases and its parts (the LRU coder, the memory system) |
 | `replayer/` | the replayer's suites: row cases, the ALU sweep and reports |
-| `ctlsuites/`, `p4suites/`, `tracersuites/`, `stageb/` | v1.3's suite logs, the references of `run_tests.sh --check`; `PROVENANCE` in each says how they were made |
+| `ctlsuites/`, `p2suites/`, `p4suites/`, `tracersuites/`, `stageb/` | v1.3's suite logs, the references of `run_tests.sh --check`; `PROVENANCE` in each says how they were made |
 | `ctl/` | the control suites' sources (code, not fixtures) |
 | `sort/` | the sort's fingerprints and its kit's references (its `README.md`) |
 | `acceptance/` | the acceptance kit: build, calibration and its task (its `README.md`) |

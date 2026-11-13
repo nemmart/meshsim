@@ -12,17 +12,17 @@
 | `RECIPES.md` | the recipe book: short C for the common operations, each compiled from `recipes/` |
 
 `include/mesh.h` and `REGISTERS.md` are generated from the register table (`tools/regs/`); edit the table, never the
-files (`tools/README.md`). Both must match spec section 8. The registers' meaning is the spec's.
+files (`tools/README.md`). The spec is their source of truth (sections 2.2, 3.1, 4.11–4.13 and 8, and `spec/jolt/` for
+the replayer's and the Tracer's windows): where they differ, the files are wrong.
 
 ## Building an image
 
 The images are committed, so nothing here needs building to run the simulator. To rebuild them you need the RISC-V
-toolchain (`BUILDING.md`). **The build must run under `LC_ALL=C`**: the symbol files list symbols in the locale's
-collation order.
+toolchain (`BUILDING.md`); without it, `fw/check_images.sh` checks the committed images against their hash lists.
 
-- `LC_ALL=C fw/build.sh --check` rebuilds every image into `fw/build/out/` and checks each against its committed copy,
+- `fw/build.sh --check` rebuilds every image into `fw/build/out/` and checks each against its committed copy,
   byte for byte;
-- `LC_ALL=C fw/build.sh` rewrites `fw/images/` (with its `MANIFEST`) and compares the images that live in a test's
+- `fw/build.sh` rewrites `fw/images/` (with its `MANIFEST`) and compares the images that live in a test's
   fixture folder, never overwriting them;
 - `PARTS="cc recipes"` (any of `boot tests m1 m3 cc recipes replay tracer sort riscv`) limits the build to those parts;
   `RISCV_TESTS=DIR` (a riscv-tests checkout at 3df703c) also rebuilds the riscv-tests images.
@@ -42,14 +42,14 @@ A program ends the run by storing to the exit word (spec 8.15).
 |---|---|
 | `boot/` | the boot ROM: source, linker script and `bootrom.hex` |
 | `cc/` | the controllers' programs: C&C 1 (`cc1.c`), C&C 2 and 3 (`cc23.c`), and two test variants |
-| `images/` | the committed images not kept in a test fixture folder, and their `MANIFEST` (sha256) |
+| `images/` | the committed images not kept in a test fixture folder, and their `MANIFEST` (sha256); `log8k/` and `oldmap/` hold the replay controller's two variants, for the 8 KB log and (tests only) the old queue map |
 | `include/` | `mesh.h` |
 | `m1/` | M1's assembly programs and their test-bench schedules (`*.tb`) |
 | `recipes/` | the recipes as compiled code, the source of `RECIPES.md` |
 | `regdoc/` | `REGISTERS.md`'s worked-example diagrams |
 | `replay/` | the replay controller (its `README.md`) |
 | `riscv-tests/` | the riscv-tests images (`bin/`) and their build |
-| `sort/` | the sort: the program (`program/`), the split (`split/`) and the skew planner (`skew/`), each with its README |
+| `sort/` | the sort: the program (`program/`, its README), the split (`split/`: its sources and `BINDING.md`, the split's binding to the sort) and the skew planner (`skew/`, its README) |
 | `tests/` | the tile test programs (`hello`, `faults`, `a2a`, `gather` and others) |
 | `tracer/` | the Tracer's controller |
 

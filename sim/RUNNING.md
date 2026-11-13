@@ -6,7 +6,8 @@ checked against.* Building is `BUILDING.md`; the commands run from this folder.
 ## The suites: `./run_tests.sh`
 
 `./run_tests.sh [all|quick] [--check] [--no-build]` builds the suites (the suite build, `build/clang-suite/`; `bus` uses
-the debug build), runs every step in order and prints v1.3's summary; each step writes `results/<step>.log`. `quick`
+the debug build), runs every step in order and prints v1.3's summary; each step writes `results/<step>.log`. The runner also writes `results/.build.log` and `results/.build-bus.log` (the
+builds), `results/.differs` (`--check`'s differences) and, with `STEP_TIMES=1`, `results/.step-times`. `quick`
 leaves out the steps marked *all* below. `--check` compares each log with its reference, its timings masked; a
 difference fails the run. An *equivalent* step runs the `make check` test that stands for a v1.3 suite and logs its
 verdict. `CC_NAME=gcc` uses gcc. With `DELIVERY=DIR` (a tracer delivery's replay inputs), five more Stage B steps run
@@ -14,6 +15,7 @@ on its guest windows (`stageb-lrd_x0`, `scd_x0`, `nop_hint`, `jalr_self`, `jalr_
 
 | step | in | command | time | writes | checked against |
 |---|---|---|---|---|---|
+| `layout` | both | `sh tools/check_copies.sh` | TIME | `results/layout.log` | `COPIES.sha256`: every file copied from v1.3 still has v1.3's bytes (v1.3's own layout check, `tools/check_layout.sh`, became this one) |
 | `sw-build` | both | `fw/build.sh --check` for boot tests m1 m3 replay tracer, or `fw/check_images.sh` without the toolchain | TIME | `results/sw-build.log` | none (a build step) |
 | `sort-build` | both | `fw/build.sh --check` for sort, or `fw/check_images.sh` without the toolchain | TIME | `results/sort-build.log` | none (a build step) |
 | `bus` | both | `build/clang-debug/suite_bus` | TIME | `results/bus.log` | `tests/p2suites/bus.log` |

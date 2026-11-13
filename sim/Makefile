@@ -105,3 +105,4 @@ include tools/delivery/delivery.mk
 include tests/p7b.mk
 include tests/sort.mk
 include tests/bus.mk
+include tools/doccheck.mk

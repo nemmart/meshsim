@@ -7,6 +7,7 @@
 #     segments.seg.json without their path fields.
 # Prints one line per check and PASS or FAIL.
 set -u
+export LC_ALL=C   # byte order for sort, ls and globs, and nm's symbol order: the outputs are the same in any locale
 HERE=$(cd "$(dirname "$0")" && pwd); . "$HERE/pins.sh"
 RUN=$1; DATA=$2; run_info "$RUN" || exit 2
 OUT=${OUT:-$HOME/meshsim-inputs}; PY="python3 $HERE/lib/inputs.py"

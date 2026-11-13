@@ -1,0 +1,22 @@
+# The paths under sim/ that the frozen copy (v1.35/) leaves out: one extended regular expression per line, matched
+# against each tracked file's path relative to sim/. A line starting with "!" keeps paths an earlier line left out.
+# Read by tools/freeze/frozen.sh (and through it by copy.sh and tools/doccheck.sh).
+
+# The oracle and v1.3's Java (D38, D41 Q8)
+^ref/
+^oracle/
+# Stage 1's API sketches, compiled but never run (J2)
+^src/sketch/
+# Leftover benches (G4, J2): the first synthetic benchmarks with their own make (the files at bench/'s top), and the
+# runner task bodies that measured the benches. The benches the build makes stay (bench_sort and bench_chip with their
+# footprint tools, bench_threads, tracer_play).
+^bench/[^/]+$
+^bench/quest/
+^bench/threads/quest/
+^bench/w10/(common\.inc|mk_task\.sh|[^/]*-body\.sh)$
+# The workers' session material (D45): notes, prompts, questions, parked messages, scripts and task folders. The
+# reports and the index stay.
+^planning/sessions/
+!^planning/sessions/README\.md$
+!^planning/sessions/WORKER[0-9]+-REPORT\.md$
+!^planning/sessions/WORKER[0-9]+/REPORT\.md$

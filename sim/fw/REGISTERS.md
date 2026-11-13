@@ -1,11 +1,12 @@
-# Unit registers: the programmer's reference (v1.2)
+# Unit registers: the programmer's reference
 
-**v1.2 (`mesh.h` 1.2, meshsim v1.2).** Everything a controller program reaches with loads and stores: the address map,
-the register block, the peripheral windows, the table window, and the packets and command words programs build.
-`spec/machine-spec.md` v1.2 is the source of truth (2.2, 3.1, 4.11-4.13, 8); where the two differ, this document is
-wrong. **This file is generated** by meshsim (`src/RegDoc.java`, from the register table in `src/Registers.java`,
-which also generates `sw/mesh.h`); edit the generator, not the file. `test/RegDocTest.java` checks the simulator
-behaves as every row says.
+**v1.35 (`mesh.h` 1.2).** Everything a controller program reaches with loads and stores: the address map, the register
+block, the peripheral windows, the table window, and the packets and command words programs build.
+`spec/machine-spec.md` is the source of truth (2.2, 3.1, 4.11-4.13, 8; and `spec/jolt/` for the replayer's and the
+Tracer's windows); where the two differ, this document is wrong. **This file is generated** by `tools/regs/gen_regs.cpp`,
+from the register table in `tools/regs/regtable.h`, which also generates `fw/include/mesh.h`; edit the generator, not
+the file. `run_tests.sh`'s `regdoc` step checks both files against the generator, and that the simulator behaves as
+every row says.
 
 ## 1. The address map
 

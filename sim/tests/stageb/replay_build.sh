@@ -7,6 +7,7 @@
 # Either way the step prints v1.3's line ("replay_ctl: code N B, data N B, data+bss end 0x... (stack below 0x7BC0)")
 # from the committed image, and exits 1 on any difference.
 set -u
+export LC_ALL=C   # byte order for sort, ls and globs, and nm's symbol order: the outputs are the same in any locale
 cd "$(dirname "$0")/../.."
 FW=$PWD/fw; IMG=tests/m3-images; FAIL=0
 if command -v riscv64-unknown-elf-gcc > /dev/null; then

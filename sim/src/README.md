@@ -49,7 +49,8 @@ t + L exactly as in one domain. A Wire across domains is fatal at build. One chi
 
 **Determinism and its checks.** A run is deterministic, whatever the thread count. The machine's digest (`digest.h`)
 hashes every unit's state and every port's contents, independently of how the build numbered them, so one domain and
-several give the same digest; tests and `bench/check.sh` compare them. Against v1.3, results are exact and cycle counts
+several give the same digest; `make check`'s thread tests compare them (`tests/test_matrix.cpp` splits machines 2, 4
+and 8 ways on 1 to 8 threads, the digest at every checkpoint equal to one domain's). Against v1.3, results are exact and cycle counts
 exact except for the deliberate differences (D30; `spec/CHANGES-v1.3-to-v1.35.md`); `tests/README.md` says how that is
 established.
 

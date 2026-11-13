@@ -1,17 +1,27 @@
 # body.sh -- the v1.35 freeze check's body (WORKER22; PLAN-V135 step 4), inlined into the task tests/freeze/make_task.sh
-# writes (KIT, KS = the kit's sim/, RES, W, DATA set by the task's head). From the existing task bodies: W12's sort (Quest 154), W16's T2
-# checked runs (Quest 171), W17's chains (Quest 174), W25's calibration (tests/acceptance). The items overlap to fit the
-# runner's limit (run_tests.sh and the chains in the background, the sort and T2 meanwhile, the calibration last):
-# nothing here is timing; each item's time is recorded (TIMES) to plan.
-#   1 run_tests    ./run_tests.sh all --check: PASS when it passes (its PENDING steps listed, not failures)
+# writes (KIT, KS = the kit's sim/, RES, W, DATA, ITEMS set by the task's head). From the existing task bodies: W12's sort (Quest 154), W16's T2
+# checked runs (Quest 171), W17's chains (Quest 174), W25's calibration (tests/acceptance). run_tests.sh, the
+# calibration, the sort's measurement kit and make check each run alone, so their times are unloaded (for RUNNING.md
+# and BUILDING.md); the chains run in the background while the sort and T2 run. Not a timing task otherwise: each
+# item's time is recorded (TIMES), and run_tests.sh's per step (run_tests/.step-times, STEP_TIMES=1).
+# ITEMS (the task's head; default "main kit check"): which groups run. The machine and the toolchain always.
+#   main:
+#   1 run_tests    ./run_tests.sh all --check, alone: PASS when it passes (its PENDING steps listed, not failures)
 #   2 sort         test_sort's full-size run (SORT_SIZE=64k) on one thread: every sort64k-fp point, the result, the
 #                  phases, TOTAL 1,229,687; and bench/w10's bench_sort on the same keys, one thread and 6 threads by
 #                  tiles (each tile a domain, grouped in order, as Quests 157/158): the digests at L2's all-READY equal,
 #                  the span 1,229,687 at both
-#   3 t2           T2 on evm-zone-29 and cyclone-29 segment 10: every point against golden-m3's unit lines, the rows,
-#                  the exits, lag_cycles 0; one domain and 6
+#   3 t2           T2 on evm-zone-29 and cyclone-29 segment 10: every point against golden-m3's unit lines, the rows
+#                  (tests/freeze/t2-rows.txt), the exits, lag_cycles 0; one domain and 6
 #   4 chains       segments 0-127 of both workloads: every start against golden-chain, every TracerT2 check, the ends
-#   5 calibration  the acceptance kit's calibrate.sh (128 synthetic windows, seed 11; 1, 4, 8, 16 processes)
+#   5 calibration  the acceptance kit's calibrate.sh (128 synthetic windows, seed 11; 1, 4, 8, 16 processes), alone
+#   kit:
+#   7 sort-kit     the sort's measurement kit (tests/sort/kit) at full size, alone: every run exits 0 or is refused as
+#                  recorded (F3's six ts-latency-3, ts-latency-4 and corner points, D47's two ready-1 points: no
+#                  CSV), SUMMARY.md written, p4/uniform-k128's TOTAL 1,229,687
+#   check:
+#   8 make-check   make check from a clean copy of the kit's sim/ (copied before anything is built), alone
+#   always:
 #   6 machine      tools/machine.sh's record, and the firmware toolchain's versions (riscv64-unknown-elf-gcc, binutils,
 #                  picolibc) and the locale the image builds run under (run_tests.sh runs under LC_ALL=C), in
 #                  toolchain.txt and appended to machine.txt
@@ -19,7 +29,10 @@ FAIL=0; T0=$(date +%s)
 sec() { echo; echo "==== $* ($(date -u +%T), +$(( $(date +%s) - T0 )) s)"; }
 verdict() { echo "VERDICT $1: $2"; echo "$1 $2" >> "$RES/VERDICTS"; case $2 in PASS|PENDING*) ;; *) FAIL=1;; esac; }
 took() { echo "$1 $(( $(date +%s) - $2 )) s" >> "$RES/TIMES"; }
+want() { [[ " ${ITEMS:-main kit check} " == *" $1 "* ]]; }
 : > "$RES/VERDICTS"; : > "$RES/TIMES"
+want check && cp -a "$KS" "$W/clean-sim"   # make check's clean tree, before anything is built
+echo "items: ${ITEMS:-main kit check}"
 echo "kit: $(cat "$KIT/VERSION"); host $(hostname); $(nproc) CPUs; $(clang++ --version | head -1); $(java -version 2>&1 | head -1)"
 
 sec "6. the machine (D21)"
@@ -37,6 +50,7 @@ sec "6. the machine (D21)"
 grep -q '^riscv64-unknown-elf-gcc: .' "$RES/toolchain.txt" && grep -q '^binutils: .' "$RES/toolchain.txt" \
   && ! grep -q '^picolibc: not found' "$RES/toolchain.txt" && verdict toolchain PASS || verdict toolchain FAIL
 
+if want main; then
 sec "build: clang release (test_sort, bench_sort, t2, chain, test_chain); the acceptance kit's programs (clang suite)"
 t=$(date +%s)
 if ( cd "$KS" && make -j"$(nproc)" CC_NAME=clang MODE=release build/clang-release/test_sort build/clang-release/bench_sort build/clang-release/t2 \
@@ -45,9 +59,18 @@ if ( cd "$KS" && make -j"$(nproc)" CC_NAME=clang MODE=release build/clang-releas
 else tail -20 "$RES/build-release.log" "$RES/build-acceptance.log"; verdict build FAIL; FREEZE_RC=1; return 0 2>/dev/null || exit 1; fi
 took build $t
 
-sec "1. ./run_tests.sh all --check (in the background; LC_ALL=C, the image builds' locale)"
+sec "1. ./run_tests.sh all --check, alone (LC_ALL=C, the image builds' locale; STEP_TIMES=1)"
 T1=$(date +%s)
-( cd "$KS" && LC_ALL=C JOBS=8 ./run_tests.sh all --check ) > "$RES/run_tests.log" 2>&1 & P_RT=$!
+( cd "$KS" && LC_ALL=C STEP_TIMES=1 JOBS=8 ./run_tests.sh all --check ) > "$RES/run_tests.log" 2>&1; RC=$?
+cp -r "$KS/results" "$RES/run_tests" 2>/dev/null
+tail -25 "$RES/run_tests.log"
+NP=$(grep -c "^PENDING" "$RES/run_tests.log"); ND=$(grep -c "^LOG DIFFERS" "$RES/run_tests.log")
+echo "run_tests.sh: exit $RC; $NP steps PENDING; $ND logs differing"
+grep "^LOG DIFFERS\|^FAIL" "$RES/run_tests.log" | head -20
+echo "the slowest steps (all: run_tests/.step-times):"; sort -k2 -n -r "$RES/run_tests/.step-times" 2>/dev/null | head -12
+[ $RC = 0 ] && verdict run_tests PASS || verdict run_tests FAIL
+[ "$NP" -gt 0 ] && verdict "run_tests-pending-$NP-steps" PENDING
+took run_tests $T1
 
 sec "4. the chains, segments 0-127 of both workloads (in the background)"
 D9=$DATA/w9-deliveries; D26=$DATA/w26-jumpmap
@@ -57,8 +80,8 @@ checkin() {   # W17's: the inputs against their COMPLETE markers and hashes
   local P=$1 A B
   A=$(sha256sum "$D9/$P.manifest.json" 2>/dev/null | cut -d' ' -f1); B=$(sha256sum "$D26/$P/manifest.sha256" 2>/dev/null | cut -d' ' -f1)
   [ "$A" = "${S9[$P]}" ] && [ "$(cat "$D9/$P.COMPLETE" 2>/dev/null)" = "$A" ] || { echo "$P: the delivery isn't complete or differs"; return 1; }
-  [ "$B" = "${S26[$P]}" ] && [ "$(cat "$D26/$P.COMPLETE" 2>/dev/null)" = "$B" ] || { echo "$P: WORKER26's inputs aren't complete or differ"; return 1; }
-  (cd "$D26/$P" && sha256sum -c --quiet manifest.sha256) || { echo "$P: WORKER26's files differ from their manifest"; return 1; }
+  [ "$B" = "${S26[$P]}" ] && [ "$(cat "$D26/$P.COMPLETE" 2>/dev/null)" = "$B" ] || { echo "$P: the jumpmap inputs aren't complete or differ"; return 1; }
+  (cd "$D26/$P" && sha256sum -c --quiet manifest.sha256) || { echo "$P: the jumpmap files differ from their manifest"; return 1; }
   echo "$P: inputs checked"
 }
 declare -A PROG=([evm]=evm-zone-29 [cyclone]=cyclone-29)
@@ -111,7 +134,7 @@ if (cd "$G" && sha256sum -c --quiet "$W/h3"); then
   PIDS=""
   for S in evm cyclone; do for N in 1 6; do
     ( cd "$KS" && ./build/clang-release/t2 --sram "$G/$S.sram.gz" --files "$G/$S.files.gz" --segment --parts $N --fp-points "$G/$S.fpchip.gz" \
-        --rows-ref "$KIT/run/rows.txt" --program "${PROG[$S]}" --hint-exit ${EXIT[$S]} --hint-end ${END[$S]} ) > "$RES/t2-$S-$N.log" 2>&1 & PIDS="$PIDS $!:$S-$N"
+        --rows-ref "$KS/tests/freeze/t2-rows.txt" --program "${PROG[$S]}" --hint-exit ${EXIT[$S]} --hint-end ${END[$S]} ) > "$RES/t2-$S-$N.log" 2>&1 & PIDS="$PIDS $!:$S-$N"
   done; done
   for X in $PIDS; do wait ${X%%:*}; R=$?; L=$RES/t2-${X#*:}.log
     grep -E "^boot-end|^end:|^points:|^tr_results|^exits" "$L" | sed "s/^/${X#*:}: /"
@@ -120,17 +143,6 @@ if (cd "$G" && sha256sum -c --quiet "$W/h3"); then
   done
 else verdict t2-inputs FAIL; fi
 took t2 $T3
-
-sec "1. run_tests.sh: waiting"
-wait $P_RT; RC=$?
-cp -r "$KS/results" "$RES/run_tests" 2>/dev/null
-tail -25 "$RES/run_tests.log"
-NP=$(grep -c "^PENDING" "$RES/run_tests.log"); ND=$(grep -c "^LOG DIFFERS" "$RES/run_tests.log")
-echo "run_tests.sh: exit $RC; $NP steps PENDING; $ND logs differing"
-grep "^LOG DIFFERS\|^FAIL" "$RES/run_tests.log" | head -20
-[ $RC = 0 ] && verdict run_tests PASS || verdict run_tests FAIL
-[ "$NP" -gt 0 ] && verdict "run_tests-pending-$NP-steps" PENDING
-took run_tests $T1
 
 sec "4. the chains: waiting"
 for X in $P_CH; do wait ${X%%:*}; R=$?; S=${X#*:}; L=$RES/chain-$S.log
@@ -146,6 +158,40 @@ t=$(date +%s)
 ( cd "$KIT" && ./calibrate.sh "$RES/calib" "$W" ) > "$RES/calibrate.log" 2>&1 && verdict calibration PASS || verdict calibration FAIL
 tail -30 "$RES/calibrate.log"
 took calibration $t
+fi
+
+if want kit; then
+sec "7. the sort's measurement kit at full size (tests/sort/kit, 92 runs), alone"
+t=$(date +%s); SK=$W/sortkit; KO=$SK/results
+KD=$(cd "$KS" && tests/sort/keys.sh 65536 uniform 2>> "$RES/keys.log")   # the uniform set checked; the kit makes the rest
+if ( cd "$KS" && tests/sort/kit/assemble.sh "$SK" "$KS/build" ) > "$RES/sortkit-assemble.log" 2>&1; then
+  ( cd "$SK" && ./run.sh -j 10 -o results ) > "$RES/sortkit-run.log" 2>&1; R=$?
+  tail -4 "$RES/sortkit-run.log"
+  REFUSED=" sweep/trace100-30-k128/ts-latency-3 sweep/trace100-30-k128/ts-latency-4 sweep/trace100-30-k128/corner sweep/trace100-30-k128/ready-1 sweep/uniform-k128/ts-latency-3 sweep/uniform-k128/ts-latency-4 sweep/uniform-k128/corner sweep/uniform-k128/ready-1 "
+  NRUN=0; NOK=0; NREF=0; BAD=""
+  while read -r id rc; do NRUN=$((NRUN + 1)); f=$KO/$(echo "$id" | tr / _).csv
+    if [[ $REFUSED == *" $id "* ]]; then [ "$rc" != 0 ] && [ ! -f "$f" ] && NREF=$((NREF + 1)) || BAD="$BAD $id(exit $rc, expected refused)"
+    else [ "$rc" = 0 ] && [ -f "$f" ] && NOK=$((NOK + 1)) || BAD="$BAD $id(exit $rc)"; fi
+  done < <(sed -nE 's/^[0-9:]+ ([^ ]+): exit ([0-9]+),.*/\1 \2/p' "$RES/sortkit-run.log")
+  TU=$(awk -F, '$10 == "TOTAL" { print $11 }' "$KO/p4_uniform-k128.csv" 2>/dev/null)
+  for id in $REFUSED; do echo "refused $id: $(grep -m1 FATAL "$KO/$(echo "$id" | tr / _).log" 2>/dev/null)"; done
+  echo "sort kit: $NRUN runs; $NOK with a result, $NREF refused as recorded; p4/uniform-k128 TOTAL ${TU:-missing}${BAD:+; unexpected:$BAD}"
+  mkdir -p "$RES/sortkit"; cp "$KO/SUMMARY.md" "$KO/all.csv" "$RES/sortkit/" 2>/dev/null
+  tar -czf "$RES/sortkit/results.tgz" -C "$SK" results 2>/dev/null
+  [ $R = 0 ] && [ "$NRUN" = 92 ] && [ "$NOK" = 84 ] && [ "$NREF" = 8 ] && [ -z "$BAD" ] && [ -s "$KO/SUMMARY.md" ] && [ "$TU" = 1229687 ] \
+    && verdict sort-kit PASS || verdict sort-kit FAIL
+else tail -10 "$RES/sortkit-assemble.log"; verdict sort-kit FAIL; fi
+took sort-kit $t
+fi
+
+if want check; then
+sec "8. make check from a clean copy of the kit's sim/, alone"
+t=$(date +%s)
+( cd "$W/clean-sim" && make -j"$(nproc)" check ) > "$RES/make-check.log" 2>&1; R=$?
+grep "^====" "$RES/make-check.log"; tail -3 "$RES/make-check.log"
+[ $R = 0 ] && tail -1 "$RES/make-check.log" | grep -q "make check: all passed" && verdict make-check PASS || verdict make-check FAIL
+took make-check $t
+fi
 
 sec "verdicts"
 cat "$RES/VERDICTS"; echo; cat "$RES/TIMES"

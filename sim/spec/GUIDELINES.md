@@ -98,7 +98,7 @@ current answer, not a proof: anyone may reopen one with a reason [owner].*
 
 ## 8. Versions
 
-- **Each version is a folder; a frozen folder is never edited,** except for an `ERRATA.md` and point releases in
+- **Each version is a folder; a frozen folder is never edited,** except for an errata file and point releases in
   their own folder (README).
 - **The RTL moves from one frozen version to the next by a guide,** unit by unit, each item marked whether it
   affects the RTL (the `CHANGES-…-to-…` files).

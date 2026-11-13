@@ -22,9 +22,9 @@ java -cp build gold.Main compare <program dir> <input dir> <ref prefix> [--max-r
 
 `segments` writes section 16's file, by default **v1.3** (frame 7 the proof parameters, frame 1 the per-segment 4 KB
 pages, frame 6 the proof's jump-target table, then per segment frame 2 as the 68-word record, frames 3 and 4 or 5;
-`wip/planning/sessions/WORKER18-NOTES.md`, "The v1.3 segment file"), or with `--format=v1.2` the earlier file (no frames 6 and 7), with
+`v1.3/planning/sessions/WORKER18-NOTES.md`, "The v1.3 segment file"), or with `--format=v1.2` the earlier file (no frames 6 and 7), with
 `<out>.cuts` and `<out>.json`; with `--compare` it checks it byte for byte and names the first differing frame. The
-format and every encoder choice it shares with WORKER16's tool are in `wip/planning/sessions/WORKER18-NOTES.md` ("Stage 2").
+format and every encoder choice it shares with WORKER16's tool are in `v1.3/planning/sessions/WORKER18-NOTES.md` ("Stage 2").
 
 `<program dir>` holds `program.elf` and `program.json`; `<input dir>` holds `input.bin` and, if present,
 `trusted_advice.bin` and `untrusted_advice.bin` (as jolt-cpp's tools take them). `<ref prefix>` is the output of
@@ -76,4 +76,4 @@ over the ten words, folded per 2^16-row window, the windows folded into a run ha
 | `test/gold/InlineEmitTest.java` | each inline vs jolt-cpp's `.inc` emit list, as data |
 
 Every rule cites jolt-cpp (file:line at `821e1bd`) or, for the inlines, upstream Jolt's builder (`f8fc214`, the
-commit jolt-cpp pins); `wip/planning/sessions/WORKER18-NOTES.md` lists them.
+commit jolt-cpp pins); `v1.3/planning/sessions/WORKER18-NOTES.md` lists them.

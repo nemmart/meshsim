@@ -130,7 +130,7 @@ awk -F'\t' -v FILES="$LIST" -v EXF="$LIST.ex" '
     if (p ~ /^(\.\.\/)*v1\.[0-9.]+\// || b in B) next          # in the tree under that name, or another version'"'"'s
     print "DOC-MISSING " f ":" $2 ": " p }' "$LIST.named" > "$LIST.out3"
 
-cat "$LIST.out1" "$LIST.out2" "$LIST.out3" | { if [ $V = 1 ]; then cat; else grep -v '^checked '; fi; }
+cat "$LIST.out1" "$LIST.out2" "$LIST.out3" | { if [ $V = 1 ]; then cat; else grep -v '^checked ' || true; fi; }
 n1=$(grep -c '^MISSING' "$LIST.out1" || true); n0=$(grep -c '^OUTSIDE' "$LIST.out1" || true)
 n2=$(wc -l < "$LIST.out2"); n3=$(wc -l < "$LIST.out3")
 echo "doccheck: $(wc -l < "$LIST.docs") documents, $(wc -l < "$LIST.cites") cited paths: $n1 MISSING, $n0 OUTSIDE; $((1 + $(wc -l < "$LIST.dirs"))) folders: $n2 NO-README; $(wc -l < "$LIST.named") documents named in source: $n3 DOC-MISSING"

@@ -42,14 +42,14 @@ A program ends the run by storing to the exit word (spec 8.15).
 |---|---|
 | `boot/` | the boot ROM: source, linker script and `bootrom.hex` |
 | `cc/` | the controllers' programs: C&C 1 (`cc1.c`), C&C 2 and 3 (`cc23.c`), and two test variants |
-| `images/` | the committed images not kept in a test fixture folder, and their `MANIFEST` (sha256) |
+| `images/` | the committed images not kept in a test fixture folder, and their `MANIFEST` (sha256); `log8k/` and `oldmap/` hold the replay controller's two variants, for the 8 KB log and (tests only) the old queue map |
 | `include/` | `mesh.h` |
 | `m1/` | M1's assembly programs and their test-bench schedules (`*.tb`) |
 | `recipes/` | the recipes as compiled code, the source of `RECIPES.md` |
 | `regdoc/` | `REGISTERS.md`'s worked-example diagrams |
 | `replay/` | the replay controller (its `README.md`) |
 | `riscv-tests/` | the riscv-tests images (`bin/`) and their build |
-| `sort/` | the sort: the program (`program/`), the split (`split/`) and the skew planner (`skew/`), each with its README |
+| `sort/` | the sort: the program (`program/`, its README), the split (`split/`: its sources and `BINDING.md`, the split's binding to the sort) and the skew planner (`skew/`, its README) |
 | `tests/` | the tile test programs (`hello`, `faults`, `a2a`, `gather` and others) |
 | `tracer/` | the Tracer's controller |
 

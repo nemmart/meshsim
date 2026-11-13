@@ -1,7 +1,7 @@
 // test_regs (WORKER19, P1): the register table behind mesh.h (tools/regs/regtable.h) against the committed files and
 // against the simulator's own decode table (src/units/regmap.h), so header, document and simulator can't drift.
-//   - fw/include/mesh.h and fw/REGISTERS.md are the generator's output byte for byte (v1.3's, from Registers.java,
-//     MeshHeader.java and RegDoc.java; tools/regs/gen_regs rewrites them);
+//   - fw/include/mesh.h and fw/REGISTERS.md are the generator's output byte for byte (tools/regs/gen_regs rewrites
+//     them; after their opening paragraphs, v1.3's from Registers.java, MeshHeader.java and RegDoc.java);
 //   - every block word's load and store side, every name, the address map's constants and the event, status and error
 //     bits agree between regtable.h and regmap.h.
 #include <cstdio>

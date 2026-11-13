@@ -34,4 +34,6 @@ tar -cf - --no-recursion -T "$LIST" | tar -xf - -C "$DST"
 (xargs -d '\n' sha256sum < "$LIST") > "$LIST.a"; (cd "$DST" && xargs -d '\n' sha256sum < "$LIST") > "$LIST.b"
 cmp -s "$LIST.a" "$LIST.b" || { echo "copy.sh: some file's bytes differ in $DST"; rm -f "$LIST.a" "$LIST.b"; exit 1; }
 rm -f "$LIST.a" "$LIST.b"
+[ -f "$DST/README.md" ] || { echo "copy.sh: $DST has no README.md (the freeze commit adds it: tests/README.md finds that commit by it)"; exit 1; }
 echo "copy.sh: $kept files copied to $DST, each byte-identical ($((all - kept)) left out); at commit $(git rev-parse --short HEAD)"
+echo "next: commit $DST as one commit (it adds $DST/README.md, by which tests/README.md finds the freeze commit)"

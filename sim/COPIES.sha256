@@ -1,11 +1,11 @@
 # Files copied from v1.3 (sim/ref) into the stand-alone tree (WORKER19, P1): the data files, the firmware sources and docs. sha256, the path in sim/, the path in sim/ref.
 # tools/check_copies.sh checks the sim/ side; oracle/ checks the same hashes against sim/ref.
+# Removed 2026-11-13: fw/CONVENTIONS.md, data/tables/README.md: now v1.35's own documents (D38), their banners and paths corrected.
 a3b90f3c2fbc64f1a93c8c0ff916cfbaf40823aae38c4540811482873741d3da  data/hops.txt  meshsim/hops.txt
 3d76b556f111764ac36d8ba6a3e7492c3399e15c8371efba19d06894934827ad  data/one99.txt  meshsim/data/one99.txt
 f2d00f78de18eb04d7530baab68234748951208ce4eb023de35d0136a50af8e9  data/trace.txt  meshsim/data/trace.txt
 d36d1c4c44ed22ccc162c40eec7ca0b9669d31875f3a60886b0c8ed926037cef  data/vec-821e1bd.tsv  meshsim/data/vec-821e1bd.tsv
 b2c00a748f36e2fa0ac017e37537f641a6ac5ac10b227606b0b70fc707b30512  data/zipfraw.txt  meshsim/data/zipfraw.txt
-570835b31a8271a9108036a4392e1787b0943df33fed394d013826aaaebc1af0  data/tables/README.md  tables/README.md
 0e64fe0035675229e8f6f1c29e994b7b70f0877f01d01ee98ce5107aaac28bfc  data/tables/manifest.json  tables/manifest.json
 09d5f9cdcc3c85b8f0c6c7205e963d8b775a6f2c29ce19ab3724a21bd2e38003  data/tables/opcode_table.txt  tables/opcode_table.txt
 5a84b1e68cac2c7679a102c2f7f3b5e8d8b0ed0c5c332c5f5d7f1e8f47f6a364  data/tables/replayer/check.txt  tables/replayer/check.txt
@@ -237,7 +237,6 @@ eaa30c364d72c37b02810924cab64092a57aaa5f6c25e5a93f5989945a477c42  fw/recipes/rcp
 8f45a885829166dd35805fa2864049155fe19f78414087078387e9e0d6ad6e0d  fw/recipes/selftest.h  sw/recipes/selftest.h
 4a682bf2c7ec5c0ef7fe22eb6a45d66dc9bbb0bd95060fd10f390562e78ad6c1  fw/recipes/recipes.ld  meshsim/sw/recipes.ld
 642f7aff13785e3bbcab8c431d90c0c041810c3c03ed9f14815e97ec0390ddfd  fw/recipes/recipes_support.c  meshsim/sw/recipes_support.c
-b90b8800ed87502443774ef4671f622e30abc8559753994cb383ea68fe1371d5  fw/CONVENTIONS.md  sw/CONVENTIONS.md
 a14c3649cb8af2caf8077de862b8c943dc98684b006462741407fc70aa6c3ee0  fw/RECIPES.md  sw/RECIPES.md
 d4a705fbb5a3c3ca96583d35e5ec8aefaebcd13a3ffb635e9037f59709110662  fw/REGISTERS.md  sw/REGISTERS.md
 853f5b586c99753c8681471701918ad0bc9d5e60ad0b3ce56bfa20df96572525  fw/mesh-v1.2-draft.h  sw/mesh-v1.2-draft.h

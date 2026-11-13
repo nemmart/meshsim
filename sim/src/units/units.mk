@@ -35,7 +35,6 @@ tsan-units-one: $(UTB)/test_controllers
 	TSAN_OPTIONS="halt_on_error=1 second_deadlock_stack=1" ./$(UTB)/test_controllers
 tsan-units:
 	@set -e; for c in $(COMPILERS); do echo "==== $$c tsan (controllers)"; $(MAKE) --no-print-directory CC_NAME=$$c tsan-units-one; done
-check: tsan-units
 
 # the canonical state fingerprint's C++ side (tests/statefp.*), and its test.
 FP_OBJ := $(B)/tests/statefp.o

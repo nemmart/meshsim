@@ -38,4 +38,9 @@ tsan-one: $(TB_TESTS)
 tsan:
 	@set -e; for c in $(COMPILERS); do echo "==== $$c tsan"; $(MAKE) --no-print-directory CC_NAME=$$c tsan-one; done
 
-check: tsan
+# make check runs the three TSan groups one after another: each builds build/<cc>-tsan/'s shared objects, so under -j
+# they mustn't run at once (they'd write the same objects together)
+.PHONY: tsan-all
+tsan-all:
+	@$(MAKE) --no-print-directory tsan && $(MAKE) --no-print-directory tsan-chip && $(MAKE) --no-print-directory tsan-units
+check: tsan-all

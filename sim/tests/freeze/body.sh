@@ -187,7 +187,8 @@ fi
 if want check; then
 sec "8. make check from a clean copy of the kit's sim/, alone"
 t=$(date +%s)
-( cd "$W/clean-sim" && make -j"$(nproc)" check ) > "$RES/make-check.log" 2>&1; R=$?
+# setarch -R: ThreadSanitizer refuses the address randomisation of newer kernels (vm.mmap_rnd_bits above 28)
+( cd "$W/clean-sim" && setarch "$(uname -m)" -R make -j"$(nproc)" check ) > "$RES/make-check.log" 2>&1; R=$?
 grep "^====" "$RES/make-check.log"; tail -3 "$RES/make-check.log"
 [ $R = 0 ] && tail -1 "$RES/make-check.log" | grep -q "make check: all passed" && verdict make-check PASS || verdict make-check FAIL
 took make-check $t

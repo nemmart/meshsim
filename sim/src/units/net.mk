@@ -21,4 +21,3 @@ tsan-chip-one: $(NTB)/test_chip
 	TSAN_OPTIONS="halt_on_error=1 second_deadlock_stack=1" ./$(NTB)/test_chip form2
 tsan-chip:
 	@set -e; for c in $(COMPILERS); do echo "==== $$c tsan (chip)"; $(MAKE) --no-print-directory CC_NAME=$$c tsan-chip-one; done
-check: tsan-chip

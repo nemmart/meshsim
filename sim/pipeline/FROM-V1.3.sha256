@@ -2,8 +2,8 @@
 # Not listed (edited): gold/check.sh (CUTS=test/cuts), inputs/lib/classes.sh, inputs/build.sh, inputs/pins.sh and inputs/README.md (the gold and jumpmap sources from inputs/src/, not git archive; D42: convert_delivery and data/tables, not v1.26.1). Moved out: inputs/quest/make_task.sh (to sim/oracle/quest/). New: gold/test/cuts/ (listed, from v1.3/planning), inputs/src/ (SNAPSHOTS.sha256), inputs/test/v125-small/.
 # Removed 2026-11-13: inputs/record.sh and inputs/compare_runner.sh: "export LC_ALL=C" added at P8, since the runner's
 # locale (en_US.UTF-8) orders sort and nm output differently (Quests 187, 188); otherwise as v1.3's.
+# Removed 2026-11-13: gold/README.md, jumpmap/README.md: now v1.35's own documents (D38), their paths corrected.
 c7cd0fc55d4b88bc4ed87b1cdc33670d9046174ab762188a0f2ce10290bb56e0  gold/.gitignore  v1.3/gold/.gitignore
-9c10896fae21c5693616be80491708634a9b6aac11593c752f67d714bbe7007e  gold/README.md  v1.3/gold/README.md
 b6ee444ae8b33776e8904e25d7c6eb86ed5b53ba504a5ac69df61b13c19a2ae3  gold/build.sh  v1.3/gold/build.sh
 b9bb00e5314b1b22826b0a0d31d2182dc46615f43764117f34828fc8b61059d5  gold/src/gold/AdviceFile.java  v1.3/gold/src/gold/AdviceFile.java
 7d2440b31542b2d0804a5a0614687975bb6049bc4eb80b045bbaa8d5e7f89e7c  gold/src/gold/BigintInline.java  v1.3/gold/src/gold/BigintInline.java
@@ -136,7 +136,6 @@ f6b9c9758a9d6c95f13366e74fbc50085ec78e2323849b2ecdcda58aae3d62e0  gold/test/inli
 51892e9d5362a1cddd1bd4aa5d22fb4a33b028af311d0ec02f08488858187be5  gold/test/inline-vectors.jsonl.gz  v1.3/gold/test/inline-vectors.jsonl.gz
 aeb16a2c7c2365a585d06ff7b3d165a9da326655501bde9ed4382963974e47ab  gold/test/v13/read_v13.py  v1.3/gold/test/v13/read_v13.py
 181314065df2f2fdaf920b1a8b5311daa216a2d6489a06ada5b49cc514d89417  jumpmap/.gitignore  v1.3/jumpmap/.gitignore
-8c36fc5c02ecbd37f5758c28879bd60f7bda61aaac10c253df3d9d1150f5bbea  jumpmap/README.md  v1.3/jumpmap/README.md
 5268645639165cf33cabb2e3afa25fcac2ba0aeedf137d7f997a94fd05b6534c  jumpmap/build.sh  v1.3/jumpmap/build.sh
 e702c664472718c103da3e5f66d8354a653eafe46f07ba7b02902d225dab1ead  jumpmap/out/assert_eq_pass.log  v1.3/jumpmap/out/assert_eq_pass.log
 82996f454649e05aed5eba318c2bcea2bdc6e34d561fbc280bfaacdd291fdf2d  jumpmap/out/assert_eq_pass/frame6.bin  v1.3/jumpmap/out/assert_eq_pass/frame6.bin

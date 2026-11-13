@@ -15,10 +15,10 @@ in `build/<cc>-<mode>/`. The offline input tools stay Java, in `pipeline/` (D40)
 
 | v1.3 | v1.35 |
 |---|---|
-| `meshsim/run_tests.sh [all\|quick]` | `./run_tests.sh [all\|quick]`: the same steps, step names and logs; `--check` compares each log with its reference (`RUNNING.md`) |
+| `v1.3/meshsim/run_tests.sh [all\|quick]` | `./run_tests.sh [all\|quick]`: the same steps, step names and logs; `--check` compares each log with its reference (`RUNNING.md`) |
 | `SortTest p1`, `sort`, `run …` (with `cfg.<field>=value`) | `sort_test`, the same modes and arguments |
 | `SortCompare` | `sort_compare NEW_DIR REF_DIR [out.md]` |
-| `tools/logdiff.py` | dropped: it mapped one rename between two versions' logs (M10 to M11), not a generic tool; comparing two logs with their timings masked is `./run_tests.sh --check` |
+| `logdiff.py` (`v1.26.1/meshsim/tools/logdiff.py`) | dropped: it mapped one rename between two versions' logs (M10 to M11), not a generic tool; comparing two logs with their timings masked is `./run_tests.sh --check` |
 | `Sweep quick\|full` | `sweep quick\|full` |
 | `TracerT2` | `t2` |
 | `TracerT1` | `chain`, every segment of both workloads on the full chip (D41) |
@@ -26,7 +26,7 @@ in `build/<cc>-<mode>/`. The offline input tools stay Java, in `pipeline/` (D40)
 | the acceptance kit (`ReplayShard`, `acceptance/*.sh`) | `replay_shard`, `shard_summary` and `tests/acceptance/` |
 | `ConvertDelivery`, `SyntheticDelivery` | `convert_delivery`, `synthetic_delivery` (D42; below) |
 | `Registers`, `MeshHeader`, `RegDoc` (writing `mesh.h`, `REGISTERS.md`) | `gen_regs` (`tools/regs/`) |
-| the firmware's build scripts (`sw/build.sh` and the others) | `fw/build.sh` |
+| the firmware's build scripts (`v1.3/meshsim/sw/build.sh` and the others) | `fw/build.sh` |
 | `gold`, jumpmap, `KeyGen`, `SplitSets`, `inputs/` | unchanged, in Java: `pipeline/` |
 | `-Dmeshsim.digest=FILE` (`Chip.digest`) | the canonical state fingerprint (D41) |
 | `-Dmeshsim.skip` (idle-skip) | always on: the simulator is event-driven; the debug option `step_all` steps every unit |

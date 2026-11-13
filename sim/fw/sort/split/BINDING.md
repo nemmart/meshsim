@@ -63,6 +63,6 @@ The split's data is free again once it returns: nothing in it is needed after XA
 
 - `split.h`, `split.c`, `split_regs.h`: the split.
 - The sort links a patched copy (`../program/patches/split-barrier.patch`, applied in `meshsim/sw/ext/split-bisect/`): the barrier is the sort's `wait_for_command()`.
-- **Its test:** meshsim's `SplitRun` on the 25 sets of `SplitSets` (`meshsim/test/`), through `meshsim/sw/ext/split-bisect/splitdrv.c`; the sort's own runs exercise it on every data set.
+- **Its test:** meshsim's `SplitRun` on the 25 sets of `SplitSets` (`meshsim/test/`), through `v1.3/meshsim/sw/ext/split-bisect/splitdrv.c`; the sort's own runs exercise it on every data set.
 
 `SPLIT_TRACE` adds trace marks for a host simulator; leave it undefined in the sort.

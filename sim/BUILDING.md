@@ -13,14 +13,13 @@ Checked on Ubuntu 24.04.
 | `pipeline/`, the offline input tools | a JDK, Java 21 (`pipeline/README.md`) | `apt install openjdk-21-jdk-headless` |
 | the firmware images (`fw/build.sh`) | gcc-riscv64-unknown-elf 13.2.0-11ubuntu1+12 and binutils-riscv64-unknown-elf 2.42-1ubuntu1+6, the toolchain v1.3's images were built with, and `patch` | `apt install gcc-riscv64-unknown-elf binutils-riscv64-unknown-elf patch` |
 
-**The firmware build must run under `LC_ALL=C`**: the symbol files (`*.sym`) list symbols in the locale's collation
-order, so under another locale they differ from the committed ones.
-
 **Without the RISC-V toolchain, everything else builds and runs.** The firmware images are committed (`fw/images/`,
 `fw/boot/bootrom.hex` and the test fixture folders), and the simulator, its tests and the suites use them as they are.
-`fw/build.sh --check` rebuilds them all and proves each equal to its committed copy, byte for byte. Of the suite
-runner's steps, `cc-build` and `recipes-build` are that check for their parts and say they are skipped without the
-toolchain; `replay-build` then checks the committed images against their manifests instead.
+`fw/build.sh --check` rebuilds them all and proves each equal to its committed copy, byte for byte; without the
+toolchain, `fw/check_images.sh` checks the committed images against the hash lists committed beside them. The suite
+runner's four firmware steps (`sw-build`, `sort-build`, `cc-build`, `recipes-build`) do the first for their parts when
+the toolchain is there, and the second when it isn't; `replay-build` likewise rebuilds the replay controller, or checks
+its committed images against their manifests.
 
 ## The three builds
 
@@ -51,8 +50,9 @@ can't share a process with ASan.
 | everything, and check it: v1.3's copied files unchanged, the TSan thread tests, then every test in the debug and release builds with gcc and clang | `make check` |
 | every test of one build, run | `make run CC_NAME=gcc MODE=debug` |
 | the thread tests under TSan, gcc and clang | `make tsan` |
-| the firmware images, checked against the committed copies | `LC_ALL=C fw/build.sh --check` |
-| the firmware images, rewritten into `fw/images/` | `LC_ALL=C fw/build.sh` |
+| the firmware images, rebuilt and checked against the committed copies | `fw/build.sh --check` |
+| the firmware images, rewritten into `fw/images/` | `fw/build.sh` |
+| the committed images against their hash lists, without the toolchain | `fw/check_images.sh` |
 | the offline input tools (Java) | `sh pipeline/build.sh` |
 | the speed benchmarks | `bench/README.md` |
 

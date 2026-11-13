@@ -4,9 +4,8 @@
 //
 // Control and the controller (spec 4.10-4.13, 6, 8). Programs are C (fw/tests/), prebuilt images.
 //
-// IN PROGRESS (NOTES.md, step 2): ported so far: fields, boot, registers, commands, wfi, misaligned, romSize, blockCopy. The groups that need W20's pieces (phase_log, reset,
-// the request bus, the checker's kinds, mid-run switches) come as those land; until then main() stops after the
-// groups ported, so the output is a prefix of ref's log.
+// IN PROGRESS: ported so far: fields, boot, registers, commands, wfi, misaligned, romSize, invariants, blockCopy. Left:
+// faults and allToAll; until then main() leaves them out, so the output is ref's log without their lines.
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -356,6 +355,80 @@ void misaligned() {
               {"tile 12", "controller", "misaligned 2-byte store"}, "a misaligned store");
 }
 
+// ================================================================ programming errors the simulator catches (spec 9)
+bool has(const std::string& v, const char* w) { return v.find(w) != std::string::npos; }
+void invariants() {
+    suite::group("invariants");
+    MachConfig k = Mach::cfg(shuffle);
+    k.check_errors = false;                               // deliberate bugs, flagged by their own invariants
+    k.max_violation_messages = 1000;
+    k.strict_replies = true;                              // invariant 8 strict for this test
+    Mach m(k);
+    const Mach::Image im = m.boot("inv");
+    m.run([&] { return m.all_stopped(); }, 10000);
+    suite::check(m.all_exited(), "every tile ran inv: %s", m.halt_summary().c_str());
+    const char* want[] = {"invariant 4", "invariant 8", "address generator is running", "invariant 9", "reserved register-block word"};
+    const std::vector<std::string>& msgs = m.c.violation_messages();
+    for (unsigned t = 0; t < 64; t++) {
+        const std::string key = "tile " + std::to_string(t) + ": ";
+        int64_t n = 0;
+        for (const std::string& v : msgs) if (has(v, key.c_str()) && has(v, want[t & 3])) n++;
+        suite::check(n >= 1, "tile %u: %s reported", t, want[t & 3]);
+        if ((t & 3) == 0)
+            suite::eq(1 << 8, int64_t(m.c.tile(t).block().conditions), "%sdone with WRITE_COUNTER_1 non-zero: done early, and only it", key.c_str());
+        if ((t & 3) == 3) {
+            suite::eq(1 << 2, m.word(t, im, "r", 0), "%sthe unexpected-arrival error set, and only it", key.c_str());
+            suite::eq(0, m.word(t, im, "r", 1), "%sa reserved register-block word reads 0", key.c_str());
+            suite::eq(m.word(t, im, "r", 0), m.word(t, im, "r", 2), "%sand its load changes nothing", key.c_str());
+            bool flagged = false;
+            for (const std::string& v : msgs) if (has(v, key.c_str()) && has(v, want[4])) flagged = true;
+            suite::check(flagged, "%sand meshsim flags the access", key.c_str());
+        }
+    }
+    int64_t other = 0;
+    for (const std::string& v : msgs) { bool known = false; for (const char* w : want) if (has(v, w)) known = true; if (!known) other++; }
+    suite::eq(0, other, "no other violations: %s", m.c.violation_report().c_str());
+    // invariant 8 by default: counted, not a violation
+    {
+        MachConfig dk = Mach::cfg(shuffle);
+        dk.max_violation_messages = 1000;
+        Mach d(dk);
+        d.boot("inv");
+        d.run([&] { return d.all_stopped(); }, 10000);
+        int64_t ow = 0;
+        for (unsigned t = 0; t < 64; t++) ow += int64_t(d.c.unit<units::TileCore>(unit_name(t, "core")).track.overwritten_unread);
+        suite::eq(16, ow, "invariant 8 by default: the 16 overwritten-unread replies (tiles 1, 5, ...) are counted");
+        suite::check(!any_message(d.c, "invariant 8"), "invariant 8 by default: no violation");
+    }
+    // a misaligned mode-0 packet is undefined behavior: meshsim stops at its director
+    suite::ub([] { Mach u(Mach::cfg(shuffle)); u.c.cc().send(5, units::lw::M_WRITE, 0, 0x104, units::lw::SIZE_64, 0x800); u.c.run(60); },
+              {"tile 5", "traffic director"}, "a misaligned mode-0 packet from C&C 1");
+    // the reset empties a packet in flight (6.1)
+    {
+        Mach h(Mach::cfg(shuffle));
+        h.c.cc().wait_cycles(30).send(60, units::lw::M_WRITE, 0, 0x400, units::lw::SIZE_64, 0x800).reset(true);
+        h.c.run(60);
+        suite::check(h.c.quiescent() && h.c.tile(60).peek_local(0x400) == 0, "a hard reset with a packet in flight: it is gone, the mesh empty (6.1)");
+    }
+    // an overlay landing after a unit's first command and before its start (6.2): flagged
+    {
+        Mach o(Mach::cfg(shuffle));
+        o.c.run(40);
+        o.c.cc().command(9, CMD_JUMP << 24, {PMEM_BASE}).wait_cycles(60).send(9, units::lw::M_WRITE, 0, 0x400, units::lw::SIZE_64, 0x5);
+        o.c.run(200);
+        suite::check(any_message(o.c, "overlay write landed after"), "an overlay after the first command is flagged (6.2)");
+    }
+    // invariant 25: unicast overlays, then a broadcast command
+    {
+        Mach q(Mach::cfg(shuffle));
+        q.c.run(40);
+        q.c.cc().load_words(9, PMEM_BASE, {1, 2, 3, 4}).command(BROADCAST, CMD_JUMP << 24, {PMEM_BASE});
+        q.c.run(300);
+        suite::check(any_message(q.c, "invariant 25"), "overlays and a command of different kinds are flagged (6.2, invariant 25)");
+    }
+    out("invariants [meas: CtrlTest invariants]: 4 (done before arrivals), 5 (a bad packet sent), a packet in flight at a reset (gone), 8 (reply overwritten unread), 9 (unexpected arrival: its error set), a reserved register-block word (reads 0, flagged) and the table-window check each fire on a bad program");
+}
+
 // ================================================================ block copy into controller memory (6.5)
 void block_copy() {
     suite::group("block copy");
@@ -402,7 +475,7 @@ int main(int argc, char** argv) {
     // faults(): W20 (reset, the request bus, check_errors mid-run)
     misaligned();
     rom_size();
-    // invariants(): W20 (the checker's kinds, reset, mid-run switches)
+    invariants();
     block_copy();
     // allToAll(): W20 (Cc::phase_log, the AG report)
     return suite::done(shuffle >= 0 ? "CtrlTest (shuffled, seed " + std::to_string(shuffle) + ")" : "CtrlTest");

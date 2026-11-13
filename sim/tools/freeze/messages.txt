@@ -24,3 +24,5 @@ run_tests.sh	(sw/build_recipes.sh: wip/sw/recipes/, unedited)	(fw/build.sh's rec
 run_tests.sh	"the replay controller (sw/replay/build.sh)"	"the replay controller (tests/stageb/replay_build.sh)"
 pipeline/inputs/compare_runner.sh	(= WORKER18's and WORKER16's)	(= the recorded v1.3 file's)
 pipeline/inputs/compare_runner.sh	$v, WORKER18's $(ref gold-v13)	$v, recorded $(ref gold-v13)
+run_tests.sh	"read port, GATHER (Java; the C parts PENDING (phase 2))"	"read port, GATHER (with fw/tests/rdport.c and gather.c on the machine)"
+run_tests.sh	"gather 1 at full size (Java; the C parts PENDING (phase 2))"	"gather 1 at full size"

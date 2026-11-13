@@ -42,8 +42,6 @@
 =tests/chain_main.cpp	 (sim/planning/sessions/WORKER17-NOTES.md).	.
 =tests/ctl/ctl.h	operations W20 hasn't added yet	operations the harness hasn't added yet
 =tests/ctl/ctl.h	with the W20 request it waits for	with the request it waits for
-=tests/ctl/suite_ctrl.cpp	faults(): W20 (	faults(): waits on the harness (
-=tests/ctl/suite_recipes.cpp	boot(): W20 (	boot(): waits on the harness (
 =tests/m3-images/cc_ping.c	the missed wake W16 fixed in TileCtl	the missed wake fixed in TileCtl
 =tests/mach.cpp	 (W22-21 (b))	
 =tests/mach.cpp	 (W22-21 (c))	
@@ -77,3 +75,5 @@
 =src/config_impl.h	apart from config.cpp so W4 can split a	apart from config.cpp so the threads' code can split a
 =src/units/stream_word.h	; offered to W15 read-only).	).
 =tests/tracer_rig.h	WORKER22): a hand-built guest	test): a hand-built guest
+# Hand-reviewed: a stale status in a header
+=tests/t2_main.cpp	So far the boot (the first milestone), up to where C&C 1's peripheral is needed in its slot:	The boot, then with --segment the segment to its end (M3Seg's conditions):

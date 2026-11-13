@@ -51,6 +51,8 @@ SUITES="$SUITES suite_net suite_search suite_agbench suite_engine suite_reqbus s
 SUITES="$SUITES suite_ag"                            # P4: AgTest
 SUITES="$SUITES sort_test sweep"                     # W24 (P6)
 SUITES="$SUITES suite_cond"                           # CondTest (P5)
+SUITES="$SUITES suite_ctrl"                           # CtrlTest (P5)
+SUITES="$SUITES suite_recipes"                        # RecipeTest (P5)
 
 if [ "$BUILD" = 1 ]; then
   echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
@@ -118,8 +120,8 @@ step mem-shuf 1 "shuffled child order (seed 3)" tests/p4suites/mem-shuf.log -- $
 step mem-shuf2 1 "shuffled child order (seed 8)" tests/p4suites/mem-shuf2.log -- $S/suite_mem 8
 step engine 1 "address generator, write engine, all-to-all (small)" tests/p4suites/engine.log -- $S/suite_engine -1
 step eng-shuf 1 "shuffled child order (seed 4)" tests/p4suites/eng-shuf.log -- $S/suite_engine 4
-pending ctrl          "control and the controller (from C)" "P5"
-pending ctrl-shuf     "shuffled child order (seed 4)" "P5"
+step ctrl      1 "control and the controller (from C)" tests/ctlsuites/ctrl.log -- $S/suite_ctrl -1
+step ctrl-shuf 1 "shuffled child order (seed 4)" tests/ctlsuites/ctrl-shuf.log -- $S/suite_ctrl 4
 equiv riscv           "riscv-tests rv32ui/rv32um on the controller" "test_golden (every program's retire trace equal to ref's)" -- $S/test_golden
 step rdport 1 "read port, GATHER (Java; the C parts PENDING (phase 2))" tests/p4suites/rdport.log -- $S/suite_rdport -1
 step accounting 1 "per-phase accounting (from C)" tests/ctlsuites/accounting.log -- bash -c "$S/suite_accounting -1 && { cmp -s results/phases-a2a.csv tests/ctlsuites/phases-a2a.csv || echo 'FAIL results/phases-a2a.csv differs from v1.3s'; }"
@@ -129,8 +131,8 @@ step agtest 1 "address generator read-ahead, figure 12's PTR/HIST ports" tests/p
 step agtest-shuf 1 "shuffled child order (seed 4)" tests/p4suites/agtest-shuf.log -- $S/suite_ag 4
 step cc-build      2 "building the controllers' firmware (sw/build_cc.sh: sw/cc/cc1.c, cc23.c; WORKER14)" - -- fw_part cc
 step recipes-build 1 "building the v1.2 recipes (sw/build_recipes.sh: wip/sw/recipes/, unedited)" - -- fw_part recipes
-pending recipes       "the v1.2 recipes as suites, and the book's code blocks against their sources" "P5"
-pending recipes-shuf  "shuffled child order (seed 4)" "P5"
+step recipes      1 "the v1.2 recipes as suites, and the book's code blocks against their sources" tests/ctlsuites/recipes.log -- $S/suite_recipes -1
+step recipes-shuf 1 "shuffled child order (seed 4)" tests/ctlsuites/recipes-shuf.log -- $S/suite_recipes 4
 step cond      1 "the errors end to end: ERRORS, the handler's reports, the error lines, the toast pin, the reset" tests/ctlsuites/cond.log -- $S/suite_cond -1
 step cond-shuf 1 "shuffled child order (seed 4)" tests/ctlsuites/cond-shuf.log -- $S/suite_cond 4
 step regdoc 1 "REGISTERS.md and mesh.h against their generators, the draft header and the simulator" tests/ctlsuites/regdoc.log -- $S/suite_regdoc
@@ -170,7 +172,7 @@ if [ "$MODE" != quick ]; then
   # the sweep's CSV checked too (with --check): a difference prints a FAIL line into the step's log
   sweep_quick() { $S/sweep quick || return 1; [ "$CHECK" = 0 ] || cmp -s results/sweep-quick.csv tests/sort/ref/sweep-quick.csv || echo "FAIL: results/sweep-quick.csv differs from tests/sort/ref/sweep-quick.csv"; }
   step sweep-quick 4 "parameter sweep, quick (about 1 minute; 'java Sweep full' takes about 25)" tests/sort/ref/sweep-quick.log -- sweep_quick
-  pending ctrl-full       "the all-to-all from C on the four data sets" "P5"
+  step ctrl-full 1 "the all-to-all from C on the four data sets" tests/ctlsuites/ctrl-full.log -- $S/suite_ctrl -1 full
   step engine-full 1 "full-size all-to-alls (4 data sets) and radix sort (about 1.5 minutes)" tests/p4suites/engine-full.log -- $S/suite_engine -1 full
   step skewtable 1 "fan-in under 0/+1 skew, 40 skew patterns (several minutes)" tests/p4suites/skewtable.log -- $S/suite_net -1 skewtable 40
 fi

@@ -4,8 +4,8 @@
 # call them with v1.3's arguments.
 #   suite_cccores   CcCoresTest (steps cccores, cccores-shuf)
 #   suite_ccbench   CcBench (step ccbench)
-#   suite_ctrl      CtrlTest (steps ctrl, ctrl-shuf, ctrl-full; in progress)
-#   suite_recipes   RecipeTest (steps recipes, recipes-shuf; in progress)
+#   suite_ctrl      CtrlTest (steps ctrl, ctrl-shuf, ctrl-full)
+#   suite_recipes   RecipeTest (steps recipes, recipes-shuf)
 #   suite_hooks     HooksTest (steps hooks, hooks-shuf)
 #   suite_regdoc    RegDocTest (step regdoc)
 #   suite_accounting AccountingTest (steps accounting, accounting-full; the suite or debug build)

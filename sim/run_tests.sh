@@ -45,6 +45,7 @@ EQUIVS="test_golden test_tileslotconf"
 SUITES="$SUITES suite_ccbench suite_cccores suite_hooks suite_regdoc suite_accounting suite_s1bench"                       # W23 (P5)
 SUITES="$SUITES suite_replayer stageb"               # W25 (P7b)
 SUITES="$SUITES suite_net suite_search suite_agbench suite_engine suite_reqbus suite_mem suite_rdport"   # W22 (P4)
+SUITES="$SUITES suite_ag"                            # P4: AgTest
 SUITES="$SUITES sort_test sweep"                     # W24 (P6)
 SUITES="$SUITES suite_cond"                           # CondTest (P5)
 
@@ -116,8 +117,8 @@ step rdport 1 "read port, GATHER (Java; the C parts PENDING (phase 2))" tests/p4
 step accounting 1 "per-phase accounting (from C)" tests/ctlsuites/accounting.log -- bash -c "$S/suite_accounting -1 && { cmp -s results/phases-a2a.csv tests/ctlsuites/phases-a2a.csv || echo 'FAIL results/phases-a2a.csv differs from v1.3s'; }"
 step searchbench 3 "search steps through the read port (microbenchmark, from C)" tests/p4suites/searchbench.log -- $S/suite_search
 step rdport-shuf 1 "shuffled child order (seed 4)" tests/p4suites/rdport-shuf.log -- $S/suite_rdport 4
-pending agtest        "address generator read-ahead, figure 12's PTR/HIST ports" "P4: W22-16 (figure 12)"
-pending agtest-shuf   "shuffled child order (seed 4)" "P4: W22-16 (figure 12)"
+step agtest 1 "address generator read-ahead, figure 12's PTR/HIST ports" tests/p4suites/agtest.log -- $S/suite_ag -1
+step agtest-shuf 1 "shuffled child order (seed 4)" tests/p4suites/agtest-shuf.log -- $S/suite_ag 4
 step cc-build      2 "building the controllers' firmware (sw/build_cc.sh: sw/cc/cc1.c, cc23.c; WORKER14)" - -- fw_part cc
 step recipes-build 1 "building the v1.2 recipes (sw/build_recipes.sh: wip/sw/recipes/, unedited)" - -- fw_part recipes
 pending recipes       "the v1.2 recipes as suites, and the book's code blocks against their sources" "P5"

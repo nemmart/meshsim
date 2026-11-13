@@ -40,7 +40,7 @@ except for the deliberate differences (D30; `spec/CHANGES-v1.3-to-v1.35.md`). Ea
 | `m3-images/` | M3's controller images (C&C 1-3, the replayer's and Tracer's controls) and their boot references |
 | `portconf/`, `routerconf/`, `memconf/`, `engconf/`, `slotconf/`, `cncconf/`, `cnc1conf/` | conformance scripts and observations: the port kinds, the router, the memory path, the engines, the peripheral slot, C&C's model, C&C 1's peripheral |
 | `tileslotconf/` | a tile's controller with its slot: programs and observations |
-| `reqconf/` | the request bus under four loads |
+| `reqconf/` | the request bus under five loads (calm, drop, fan-in, full, mix) |
 | `tracerconf/`, `tracerparts/` | the Tracer's cases and its parts (the LRU coder, the memory system) |
 | `replayer/` | the replayer's suites: row cases, the ALU sweep and reports |
 | `ctlsuites/`, `p4suites/`, `tracersuites/`, `stageb/` | v1.3's suite logs, the references of `run_tests.sh --check`; `PROVENANCE` in each says how they were made |

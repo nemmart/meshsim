@@ -90,10 +90,10 @@ builds. The checks neither simulator has are `spec/CHANGES-v1.3-to-v1.35.md`'s l
 |---|---|---|
 | 1 no FIFO overflow | `FIFO_OVERFLOW` | C, R |
 | 2 one access per area per cycle | (by construction: the area queues) | |
-| 3 the timetable holds | (`ag.h`'s `rotations_late`) | C |
+| 3 the timetable holds | `ROTATION_LATE` | C, R |
 | 4 expected arrivals land first | `CTL_DONE_EARLY` | C, R |
 | 5 no bad packets | `DIR_BAD_PACKET`, `INJ_BAD_PACKET`, `DIR_SIZE_UNDEF`, `INJ_SIZE_UNDEF`; a misaligned packet | C, R; F |
-| 6 no `HIST` count past 17 bits | (the overflow link, `tile_ctl.h`) | C |
+| 6 no `HIST` count past 17 bits | `HIST_OVERFLOW` | C, R |
 | 8 overwritten-unread results | `CMEM_REPLY_OVERWRITE` (under `strict_replies`), `CMEM_COMMAND_UNREAD` | C, R |
 | 9 no unexpected arrival | `DIR_UNEXPECTED` | C, R |
 | 10 gathers are local | `INJ_GATHER_ELSEWHERE` | C, R |

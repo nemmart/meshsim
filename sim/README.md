@@ -53,3 +53,4 @@ calibration. The checks the spec promises that neither v1.3's simulator nor v1.3
 | Quest *n* | task *n* on the project's measurement machine, where the long runs and timings were made |
 | `[meas: …]` | in the spec, a figure measured on a simulator (`spec/machine-spec.md`'s preamble) |
 | the RTL | the hardware design the spec is for |
+| M1, M2, M3 | the stages the simulator was built in: M1 the framework and one RV32 controller, matching `ref` instruction for instruction; M2 the sort, multithreaded; M3 v1.3 as it runs, with the Tracer and the replayers. Fixture folders are named after them |

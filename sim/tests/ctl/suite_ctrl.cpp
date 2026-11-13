@@ -4,8 +4,8 @@
 //
 // Control and the controller (spec 4.10-4.13, 6, 8). Programs are C (fw/tests/), prebuilt images.
 //
-// IN PROGRESS: ported so far: fields, boot, registers, commands, wfi, misaligned, romSize, invariants, blockCopy. Left:
-// faults and allToAll; until then main() leaves them out, so the output is ref's log without their lines.
+// IN PROGRESS: ported so far: fields, boot, registers, commands, wfi, misaligned, romSize, invariants, blockCopy, allToAll. Left:
+// faults; until then main() leaves it out, so the output is ref's log without its lines.
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -461,6 +461,53 @@ void block_copy() {
                    (long long)cyc));
 }
 
+// ================================================================ the all-to-all from C (6.3)
+void all_to_all() {
+    suite::group("all-to-all from C");
+    std::string sb = "16-group all-to-all programmed from C as a two-command phase, gap 0 [meas: CtrlTest all-to-all]: cycles from C&C's start GO store to all 64 READY at C&C\n";
+    sb += "  data set                   GO -> all READY     bound   over  | M4 start->last wake (Java-driven, M3 harness)  | v3.10 GO -> all DONE (gap 8)\n";
+    struct Set { std::string name; mach::A2A* a; const char* v310; };
+    std::vector<Set> sets;
+    sets.push_back({"uniform (Data(7, " + std::to_string(full ? 65536 : 2000) + "))", new mach::A2A(7, full ? 65536 : 2000), full ? "71,345" : ""});
+    if (full) {
+        const char* f[3][2] = {{"zipfraw", "294,580"}, {"trace", "706,470"}, {"one99", "434,712"}};
+        for (auto& x : f) sets.push_back({x[0], new mach::A2A(std::string("data/") + x[0] + ".txt"), x[1]});
+    }
+    for (Set& set : sets) {
+        const mach::A2A& a = *set.a;
+        const int gap = 0;
+        Mach m(Mach::cfg(shuffle));
+        for (unsigned s = 0; s < 64; s++) {
+            mach::TileRef p = m.c.tile(s);
+            for (size_t k = 0; k < a.rec[s].size(); k++) p.sram_poke64(mach::A2A::SRC + 2 * uint32_t(k), uint64_t(a.rec[s][k]));
+            const uint32_t base = 0xF0000;
+            for (unsigned d = 0; d < 64; d++) p.sram_poke(base + d, uint32_t(a.cnt[s][d]));
+            for (unsigned src = 0; src < 64; src++) p.sram_poke(base + 64 + src, uint32_t(a.cnt[src][s]));
+            for (unsigned g = 0; g < 16; g++) p.sram_poke(base + 128 + g, uint32_t(a.R[g]));
+            p.sram_poke(base + 144, uint32_t(gap));
+        }
+        m.boot("a2a");
+        m.c.cc().command(BROADCAST, 1u << 24).go().command(BROADCAST, 2u << 24).go().command(BROADCAST, 3u << 24).go();
+        const bool ok = m.run([&] { return m.all_stopped(); }, 2000000);
+        suite::check(ok && m.all_exited(), "%s: every tile ran a2a to its exit: %s", set.name.c_str(), m.halt_summary().c_str());
+        suite::eq(0, a.verify(m.c), "%s: every record landed where it belongs", set.name.c_str());
+        no_violations(m.c, set.name.c_str());
+        const auto ph = m.c.cc().phase_log();              // GO 0 configure, 1 start, 2 exit
+        const int64_t go_to_ready = ph[2][0] - ph[1][1];
+        MachConfig jk = MachConfig::defaults(); jk.shuffle_seed = shuffle;
+        Chip j(jk); a.load(j, gap); const int64_t java_run = mach::A2A::run(j, 3000000);
+        sb += suite::str("  %-24s %10lld %12lld %6lld  | %10lld %36s | %s\n", set.name.c_str(), (long long)go_to_ready, (long long)a.bound(gap),
+                         (long long)(go_to_ready - a.bound(gap)), (long long)java_run, "", set.v310);
+        std::string rep = m.c.ag_report();
+        while (!rep.empty() && (rep.back() == '\n' || rep.back() == ' ')) rep.pop_back();
+        size_t b = 0; while (b < rep.size() && (rep[b] == ' ' || rep[b] == '\n')) b++;
+        out("    " + set.name + ": " + rep.substr(b));
+    }
+    while (!sb.empty() && (sb.back() == '\n' || sb.back() == ' ' || sb.back() == '\t')) sb.pop_back();
+    out(sb);
+    for (Set& set : sets) delete set.a;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -477,6 +524,6 @@ int main(int argc, char** argv) {
     rom_size();
     invariants();
     block_copy();
-    // allToAll(): W20 (Cc::phase_log, the AG report)
+    all_to_all();
     return suite::done(shuffle >= 0 ? "CtrlTest (shuffled, seed " + std::to_string(shuffle) + ")" : "CtrlTest");
 }

@@ -17,33 +17,41 @@
 # --make-check: also make check and run_tests.sh quick --check in the result.
 #   DIR       (the default, /tmp/strip-dry) a dry run: sim/'s tracked files (less ref/) copied into DIR and changed there
 #   --apply   the real run, in sim/ itself (git mv for the renames); commit it as one change with the freeze task's update
+#   --resume  go on with the proof of an earlier run (the same DIR or --apply) that STRIP_BUDGET=seconds stopped
 set -eu
 export LC_ALL=C   # byte order for sort, ls and globs, and nm's symbol order: the outputs are the same in any locale
 SIM=$(cd "$(dirname "$0")/../.." && pwd); F=$SIM/tools/freeze
 DIR=/tmp/strip-dry; APPLY=0; MC=0
-for a in "$@"; do case $a in --apply) APPLY=1;; --make-check) MC=1;; *) DIR=$a;; esac; done
+RES=0; START=$(date +%s); BUDGET=${STRIP_BUDGET:-0}
+for a in "$@"; do case $a in --apply) APPLY=1;; --make-check) MC=1;; --resume) RES=1;; *) DIR=$a;; esac; done
 cd "$SIM"
 mkdir -p build/strip
 g++ -std=c++20 -O2 -Wall -Wextra -Werror "$F/cstrip.cpp" -o build/strip/cstrip
 CS=$SIM/build/strip/cstrip
 BEFORE=$SIM   # the tree before, for the proof
 if [ $APPLY = 1 ]; then
-  [ -z "$(git status --porcelain -- .)" ] || { echo "strip.sh --apply: sim/ has uncommitted changes"; exit 1; }
-  W=$SIM; BEFORE=$(mktemp -d); trap 'rm -rf "$BEFORE"' EXIT
-  git ls-files -- . | grep -v '^ref/' | tar -cf - --no-recursion -T - | tar -xf - -C "$BEFORE"
-else
+  W=$SIM; BEFORE=$SIM/build/strip-before
+  if [ $RES = 0 ]; then
+    [ -z "$(git status --porcelain -- .)" ] || { echo "strip.sh --apply: sim/ has uncommitted changes"; exit 1; }
+    rm -rf "$BEFORE"; mkdir -p "$BEFORE"
+    git ls-files -- . | grep -v '^ref/' | tar -cf - --no-recursion -T - | tar -xf - -C "$BEFORE"
+  fi
+elif [ $RES = 0 ]; then
   rm -rf "$DIR"; mkdir -p "$DIR"
   git ls-files -- . | grep -v '^ref/' | tar -cf - --no-recursion -T - | tar -xf - -C "$DIR"
   W=$(cd "$DIR" && pwd)
-fi
-R=$W/build/strip-report; mkdir -p "$R"; : > "$R/summary"
+else W=$(cd "$DIR" && pwd); fi
+R=$W/build/strip-report; mkdir -p "$R"
 say() { echo "$*" | tee -a "$R/summary"; }
-
-# ---- 1. the bench renames
+over() { [ "$BUDGET" -gt 0 ] && [ $(( $(date +%s) - START )) -gt "$BUDGET" ]; }   # STRIP_BUDGET=s: stop, to go on with --resume
 MOVES="bench/w10/bench_sort.cpp:bench/sort/bench_sort.cpp bench/w10/bench_chip.cpp:bench/sort/bench_chip.cpp
 bench/w10/trace_filter.cpp:bench/sort/trace_filter.cpp bench/w10/trace.sh:bench/sort/trace.sh bench/w10/w10.mk:bench/sort/sort.mk
 bench/w14/tracer_play.cpp:bench/tracer/tracer_play.cpp bench/w14/w14.mk:bench/tracer/tracer.mk
 tests/AUDIT-M1.md:planning/audits/AUDIT-M1.md tests/AUDIT-M2.md:planning/audits/AUDIT-M2.md tests/AUDIT-M3.md:planning/audits/AUDIT-M3.md"
+if [ $RES = 0 ]; then
+: > "$R/summary"; : > "$R/pp-differ"; : > "$R/pp-done"; : > "$R/messages-files"; : > "$R/changed"
+
+# ---- 1. the moves
 cd "$W"
 for m in $MOVES; do
   a=${m%%:*}; b=${m#*:}; mkdir -p "$(dirname "$b")"
@@ -87,19 +95,24 @@ done < "$F/messages.txt"
 sort -u -o "$R/messages-files" "$R/messages-files" 2>/dev/null || : > "$R/messages-files"
 say "3. messages: $m edits in $(wc -l < "$R/messages-files") files"
 
-# ---- the proof: preprocessed output
+fi   # steps 1-3
+
+# ---- the proof: preprocessed output (each translation unit recorded in pp-done; --resume goes on from there)
 COMMON="-std=c++20 -fno-exceptions -fno-rtti -Isrc -pthread"
-: > "$R/pp-differ"; tu=0
+cd "$W"; tu=0
 for f in $(cd "$W" && git -C "$SIM" ls-files -- 'src/*.cpp' 'src/**/*.cpp' 'tests/*.cpp' 'tests/**/*.cpp' 'tools/*.cpp' 'tools/**/*.cpp' 'bench/*.cpp' 'bench/**/*.cpp' | grep -v '^src/sketch/\|^tools/freeze/' | sort -u); do
   g=$f; for mv in $MOVES; do [ "$f" = "${mv%%:*}" ] && g=${mv#*:}; done
   [ -f "$W/$g" ] || continue
   tu=$((tu + 1))
+  grep -qxF "$g" "$R/pp-done" && continue
+  over && { echo "strip.sh: out of time after $(wc -l < "$R/pp-done") translation units: rerun with $W --resume"; exit 3; }
   for defs in "-O1 -DSIM_DEBUG" "-O2 -DNDEBUG" "-O2 -DNDEBUG -DSIM_CHECKS"; do
     (cd "$BEFORE" && g++ $COMMON $defs -E -P "$f" 2>/dev/null | sed "s#$f#$g#g") > "$R/a.i" || true
     (cd "$W" && g++ $COMMON $defs -E -P "$g" 2>/dev/null) > "$R/b.i" || true
     [ -s "$R/a.i" ] || { echo "$f [$defs]: does not preprocess"; exit 1; }
     cmp -s "$R/a.i" "$R/b.i" || { echo "$g [$defs]: $(diff "$R/a.i" "$R/b.i" | grep -c '^[<>]') lines" >> "$R/pp-differ"; }
   done
+  echo "$g" >> "$R/pp-done"
 done
 # a difference is expected only in a translation unit including a file messages.txt edits
 unexp=$(cut -d' ' -f1 "$R/pp-differ" | sort -u | while read -r t; do
@@ -111,7 +124,8 @@ if command -v riscv64-unknown-elf-gcc > /dev/null; then (cd "$W" && bash fw/buil
 else say "proof: no riscv64-unknown-elf-gcc: the firmware sources' images not rebuilt"; fi
 # the pipeline: its pinned files untouched and its own check passing (a JDK is needed: apt install openjdk-21-jdk-headless)
 command -v javac > /dev/null || { echo "strip.sh: no JDK, so pipeline/check.sh can't run (apt install openjdk-21-jdk-headless)"; exit 1; }
-(cd "$W" && bash pipeline/check.sh > "$R/pipeline-check.log" 2>&1) && say "proof: pipeline/check.sh: $(tail -1 "$R/pipeline-check.log")" ||
+(cd "$W" && make -s CC_NAME=clang MODE=release build/clang-release/convert_delivery > "$R/convert-build.log" 2>&1 &&
+  bash pipeline/check.sh > "$R/pipeline-check.log" 2>&1) && say "proof: pipeline/check.sh: $(tail -1 "$R/pipeline-check.log")" ||
   { tail -5 "$R/pipeline-check.log"; say "proof: pipeline/check.sh FAILED"; exit 1; }
 bad=0; for f in $(grep '\.sh$' "$R/changed" 2>/dev/null || true); do bash -n "$f" || { echo "bash -n: $f"; bad=1; }; done
 [ $bad = 0 ] && say "proof: every changed shell script parses (bash -n)"

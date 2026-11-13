@@ -37,6 +37,9 @@ S=build/$CC_NAME-suite
 Q=; [ "$MODE" = quick ] && Q=quick
 mkdir -p results
 : > results/.differs
+# STEP_TIMES=1 (off by default): each step's, each equivalent's and the build's wall time, "LOG N s", in
+# results/.step-times (no step's log changes)
+[ -z "${STEP_TIMES:-}" ] || : > results/.step-times
 
 # The suite programs the steps run (each worker adds its own; targets of sim/Makefile).
 SUITES="suite_memsys suite_rvc suite_tracer"
@@ -51,16 +54,18 @@ SUITES="$SUITES suite_cond"                           # CondTest (P5)
 
 if [ "$BUILD" = 1 ]; then
   echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
+  t_build=$SECONDS
   make -s -j"${JOBS:-4}" MODE=suite CC_NAME="$CC_NAME" $(for x in $SUITES $EQUIVS; do echo "$S/$x"; done) > results/.build.log 2>&1 \
     || { cat results/.build.log; echo "== the build failed"; exit 1; }
   # W26: BusTest's throws checks are the framework's debug assertions, so its step runs suite_bus's debug build (tiny)
   make -s -j"${JOBS:-4}" MODE=debug CC_NAME="$CC_NAME" "build/$CC_NAME-debug/suite_bus" > results/.build-bus.log 2>&1 \
     || { cat results/.build-bus.log; echo "== the build failed (suite_bus, MODE=debug)"; exit 1; }
+  [ -z "${STEP_TIMES:-}" ] || echo "(build) $((SECONDS - t_build)) s" >> results/.step-times
 fi
 
 # Timing masked for --check: wall-clock figures (seconds, ms, rates) vary by machine; cycles never do.
 # W24 (approved): an `inputs:` line's first field names the simulator (v1.3's meshsim.jar=(classes)): metadata, masked.
-mask() { sed -E 's/[0-9]+(\.[0-9]+)? ?(ms|s|sec|seconds|us|µs|ns)\b/<time>/g; s/[0-9.]+ ?[kKMG]?(cycles|instructions|packets|steps)\/s/<rate>/g; s/^(inputs: )[^ ]+/\1<simulator>/'${MASK_EXTRA:+; $MASK_EXTRA}; }
+mask() { sed -E 's/[0-9]+(\.[0-9]+)? ?(ms|s|sec|seconds|us|µs|ns)\b/<time>/g; s/[0-9.]+ ?[kKMG]?(cycles|instructions|packets|steps)\/s/<rate>/g; s/^(inputs: )[^ ]+/\1<simulator>/'"${MASK_EXTRA:+; $MASK_EXTRA}"; }
 # A step's own approved mask (MASK_EXTRA, a sed expression, set for that step only): a recorded deliberate difference.
 # D44 (D33 reached): CcCoresTest's error path prints C&C 1's UART dump end, one cycle later here (C&C 1's peripheral
 # applies stores at t + 1); that one figure is masked.
@@ -70,7 +75,9 @@ step() {
   local log=$1 tail=$2 what=$3 ref=$4; shift 4
   [ "$1" = -- ] && shift
   echo "== $what"
+  local t0=$SECONDS
   "$@" > "results/$log.log" 2>&1
+  [ -z "${STEP_TIMES:-}" ] || echo "$log $((SECONDS - t0)) s" >> results/.step-times
   tail -"$tail" "results/$log.log"
   if [ "$CHECK" = 1 ] && [ "$ref" != - ]; then
     if [ ! -f "$ref" ]; then echo "LOG DIFFERS ($log): no reference log $ref" | tee -a results/.differs
@@ -84,8 +91,10 @@ equiv() {
   local log=$1 what=$2 eq=$3; shift 3
   [ "$1" = -- ] && shift
   echo "== $what"
+  local t0=$SECONDS
   if "$@" > "results/$log.out" 2>&1; then echo "$log: equal to v1.3's by its C++ equivalent, $eq: $(tail -1 "results/$log.out" | sed 's|.*/||')" | tee "results/$log.log"
   else { cat "results/$log.out"; echo "FAIL $log: its C++ equivalent, $eq, failed"; } | tee "results/$log.log" | tail -3; fi
+  [ -z "${STEP_TIMES:-}" ] || echo "$log $((SECONDS - t0)) s" >> results/.step-times
 }
 # W23: one part of fw/build.sh, checked against the committed images (v1.3's build_cc.sh and build_recipes.sh steps).
 # Without the RISC-V toolchain (the runner has none), the committed images are checked against the hash lists committed

@@ -87,3 +87,5 @@ TEST(cond_shuf_equals_ref_log) { if (sim::check::kOn) run_step("cond-shuf", "sui
 // ctrl, ctrl-shuf: the checker's builds only (registers' violation count, invariants' messages need its facts)
 TEST(ctrl_equals_ref_log) { if (sim::check::kOn) run_step("ctrl", "suite_ctrl", "-1"); }
 TEST(ctrl_shuf_equals_ref_log) { if (sim::check::kOn) run_step("ctrl-shuf", "suite_ctrl", "4"); }
+TEST(recipes_equals_ref_log) { run_step("recipes", "suite_recipes", "-1"); }
+TEST(recipes_shuf_equals_ref_log) { run_step("recipes-shuf", "suite_recipes", "4"); }

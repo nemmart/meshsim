@@ -1,11 +1,11 @@
-# Programming a tile: the recipe book (v1.2 draft)
+# Programming a tile: the recipe book (v1.2)
 
-**v1.2 draft, written from `planning/DECISIONS-v1.2.md` (sections 1-44, cited as D*n*).** Short, careful C for the common operations of a tile program, one recipe per operation, against the draft header `sw/mesh-v1.2-draft.h`. Each recipe gives what it does, what it relies on, the code, and a **walk**: what each tile and C&C 1 do, in order, and what can arrive when, checked against the counters' rules (arming, done early, unexpected arrival), the `done` gate, the GO-to-arming window, alignment and the events' consume rules. Where a walk showed a protocol problem the recipe is marked **[F*n*]**, a finding in `WORKER6/FINDINGS.md`; sections 37, 38 and 40-44 of the log answer all seventeen, and the recipes follow those answers.
+**Written for v1.2 as a draft, from `spec/history/DECISIONS-v1.2.md` (sections 1-44, cited as D*n*), and carried into v1.35 with its content unchanged (D38).** Short, careful C for the common operations of a tile program, one recipe per operation, against the draft header `fw/mesh-v1.2-draft.h`. Each recipe gives what it does, what it relies on, the code, and a **walk**: what each tile and C&C 1 do, in order, and what can arrive when, checked against the counters' rules (arming, done early, unexpected arrival), the `done` gate, the GO-to-arming window, alignment and the events' consume rules. Where a walk showed a protocol problem the recipe is marked **[F*n*]**, a finding in `WORKER6/FINDINGS.md`; sections 37, 38 and 40-44 of the log answer all seventeen, and the recipes follow those answers.
 
-**The code is compiled, not run.** There is no v1.2 simulator yet. Every code block is a region of a file in `wip/sw/recipes/`, marked `/* RECIPE name */` … `/* END */` and named in an HTML comment before the block. `build.sh` compiles them all against the draft header (`riscv64-unknown-elf-gcc -march=rv32i_zicsr_zmmul -mabi=ilp32 -std=gnu11 -O2 -Wall -Wextra -Werror`), and `check_book.py` confirms that each block equals its region. When meshsim v1.2 exists, those files become the `rcp_*.c` tests, as in v1.1.
+**The code is compiled, not run.** The recipes were written before a v1.2 simulator existed, and measured on it afterwards (section 14). Every code block is a region of a file in `fw/recipes/`, marked `/* RECIPE name */` … `/* END */` and named in an HTML comment before the block. `build.sh` compiles them all against the draft header (`riscv64-unknown-elf-gcc -march=rv32i_zicsr_zmmul -mabi=ilp32 -std=gnu11 -O2 -Wall -Wextra -Werror`), and `check_book.py` confirms that each block equals its region. When meshsim v1.2 exists, those files become the `rcp_*.c` tests, as in v1.1.
 
 **Conventions.**
-- **Names** are the draft header's: one struct per block, reached through a pointer (D14): `tile->EVENTS`, `tables->PTR[i]`, `replayer->EVENTS_MASK`, `cc1->PULSE_GO`. WORKER4 generates the real `mesh.h` and reconciles it with the draft. Tile programs follow `sw/CONVENTIONS.md`, and section 15 collects the rules that bite.
+- **Names** are the draft header's: one struct per block, reached through a pointer (D14): `tile->EVENTS`, `tables->PTR[i]`, `replayer->EVENTS_MASK`, `cc1->PULSE_GO`. WORKER4 generates the real `mesh.h` and reconciles it with the draft. Tile programs follow `fw/CONVENTIONS.md`, and section 15 collects the rules that bite.
 - **Counters:** the packet names one of seven (D3, D40). These recipes use them by convention (CONVENTIONS 5): **1 big SRAM, 2 controller memory (read-port results included), 3 tile-to-tile replies, 4 peripheral writes, 5-7 one per outstanding request** (`CTR_SRAM`, `CTR_CM`, `CTR_REPLY`, `CTR_PERIPH`, `CTR_REQ(k)`). Every send names its counter: the header's macros take it as a required argument, so no send is uncounted by default.
 - **Addresses** are bytes in the 32-bit map (D5). Big SRAM's engine pointers (`PTR`, `STREAM_SRC`, `SRAM_RD_ADDR_QUEUE`, `DMA_RECORD_BASE_ADDRESS`) stay in 32-bit chunks; `SRAM_ADDR(chunk)` is the packet address of a chunk.
 - **Cycles:** every v1.1 measurement is void until meshsim v1.2 measures it again; section 14 marks each figure "to measure".
@@ -287,7 +287,7 @@ static inline uint32_t wait_all(uint32_t ev) {
 
 ## 14. Cycles
 
-**Measured on meshsim v1.2** (RecipeTest, `wip/meshsim/results/recipes.log`; tile 0 unless stated, cycles at 1 GHz). v1.1's measurements (`v1.1/sw/RECIPES.md` section 14) don't carry over: the address map, the counter path (*K* after the director), the header, the alignment rules and the register map have all changed. The lead-ins, which follow from a formula, are marked [derived] and measured the same.
+**Measured on meshsim v1.2** (RecipeTest, `v1.2.1/meshsim/results/recipes.log`; tile 0 unless stated, cycles at 1 GHz). v1.1's measurements (`v1.1/sw/RECIPES.md` section 14) don't carry over: the address map, the counter path (*K* after the director), the header, the alignment rules and the register map have all changed. The lead-ins, which follow from a formula, are marked [derived] and measured the same.
 
 | recipe | what | v1.2 |
 |---|---|---:|
@@ -309,7 +309,7 @@ static inline uint32_t wait_all(uint32_t ev) {
 | selftest | fill, configure, start (timetable 1,024), hash, signatures to C&C 1: GO → all READY | 23,747; 2,065; 1,127; 37,369; 585 (the signatures over the request bus, answered: 504 from first to last at C&C 1) |
 | boot | reset release → all tiles running their image (overlays streamed at a packet per cycle, D41) | 120 (`rcp_boot`: 62 broadcast packets) |
 | handler | trap → last of 24 reports in C&C 1's receive queue | 263 |
-| replay | refill latency: credit consumed → run started → counter 4 done | not measured: `rcp_replay`'s `state[]` is zero, so its pass is empty; `sw/replay/replay_ctl.c` (Stage B) runs 3.1–5.7 cycles a row on meshsim's synthetic windows |
+| replay | refill latency: credit consumed → run started → counter 4 done | not measured: `rcp_replay`'s `state[]` is zero, so its pass is empty; `fw/replay/replay_ctl.c` (Stage B) runs 3.1–5.7 cycles a row on meshsim's synthetic windows |
 | *K* | counter decrement after acceptance | 8 by default; meshsim errors if set below its reference max(2·*L* + 4, *L* + 4, `cm_latency`, `rp_latency`) [D49; the hardware's *K* is implementation-defined] |
 
 ## 15. The rules that bite
@@ -582,7 +582,7 @@ kept in x1 until report 25, so the handler builds report 24 in x2-x5.
   combination: `template_key` normalizes the presented word first. An inline has its register fields cleared, and
   CSRRW/CSRRS has rd and rs1 renamed by first appearance. The template still resolves its operands (codes 129–131)
   against the presented word, which the replayer holds, so the key only finds the template. `template_lookup` is the
-  program's (the test's `recipes_support.c`; `sw/replay/replay_ctl.c` hashes the sorted index).
+  program's (the test's `recipes_support.c`; `fw/replay/replay_ctl.c` hashes the sorted index).
 - **Resident streams only.** Data staged from LPDDR is fetched into big SRAM on counter 1 and refilled from there (spec 4.19.13); a refill waits on counter 4 alone, so an outstanding fetch doesn't hold it up.
 
 **Walk.**

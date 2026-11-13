@@ -1,4 +1,4 @@
-// test_ctl_suites.cpp (WORKER23; P5): v1.3's control suites in make check. Each suite program (suite_*, built beside
+// test_ctl_suites.cpp: v1.3's control suites in make check. Each suite program (suite_*, built beside
 // this binary) runs as run_tests.sh runs its step (v1.3's arguments; stdout and stderr together); its output must equal
 // ref's log of the same step byte for byte (tests/ctlsuites/<step>.log, from oracle/ref/ctlsuites.sh), and it must exit
 // 0. Run from sim/.

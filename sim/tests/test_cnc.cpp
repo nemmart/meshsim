@@ -1,4 +1,4 @@
-// C&C's model (WORKER9, stage 3) against ref's CnC, Cnc1Peripheral and C&C 1's endpoint, cycle by cycle:
+// C&C's model against ref's CnC, Cnc1Peripheral and C&C 1's endpoint, cycle by cycle:
 // oracle/ref/CncConf.java runs them in a Chip whose tiles it plays (READY at boot and in answer to every GO, extra
 // pulses, error lines up and down, packets into C&C's receive FIFO, tile 0's router stalling on C&C's send register);
 // here the same script drives the Cnc unit, the 8 row collectors and 64 stand-in tiles on the engine, and every cycle's
@@ -92,7 +92,7 @@ void parse(const std::string& text, Script& s) {
 
 // ---- the stand-ins -------------------------------------------------------------------------------------------------
 // A tile as C&C sees it: its register block's GO input and its line output (READY rises, error-line changes). Its
-// line word for the end of cycle e is put at e + 1, as W8's block does at its shifted end of cycle.
+// line word for the end of cycle e is put at e + 1, as the block does at its shifted end of cycle.
 struct TileStub {
     sim::LinkIn go;
     sim::LinkOut line;

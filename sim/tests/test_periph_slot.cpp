@@ -1,4 +1,4 @@
-// test_periph_slot: the slot as a framework unit (WORKER15; AUDIT-M3 3.1): a stand-in for the core and the director puts
+// test_periph_slot: the slot as a framework unit (AUDIT-M3 3.1): a stand-in for the core and the director puts
 // window stores and consuming loads on S2/S3 (Link(1)) and mode-0 region writes on S1 (Link(3)), reads the window
 // RegFile at chosen cycles (its loads' sample points), and takes the DMA's packets from the credit Fifo. The values and
 // cycles checked are ref's (PeripheralSlot under Tile: an input at t acts from the end of t, a load at t reads the end

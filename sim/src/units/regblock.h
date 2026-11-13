@@ -1,6 +1,6 @@
 // regblock.h: the register block as plain code: TileControl.endCycle(t) and its view, with RequestPort's count of the
-// request FIFO (sim/tests/AUDIT-M1.md sections 2-4; sim/ref/meshsim/src/TileControl.java, RequestPort.java). M1's subset
-// by W5; M2's registers by W8 (AUDIT-M2 3.3, 3.7): the send port's registers, the write counters (with the director's
+// request FIFO (planning/audits/AUDIT-M1.md sections 2-4; sim/ref/meshsim/src/TileControl.java, RequestPort.java). M1's subset
+//; M2's registers (AUDIT-M2 3.3, 3.7): the send port's registers, the write counters (with the director's
 // due decrements, judged without the same cycle's store: D27), their events and qualifiers, DMA_CONFIG and the record
 // base, the read port's setup, the condition counts, STATUS's M2 bits, the READY edge and the error line.
 //
@@ -26,20 +26,20 @@ struct RegBlockState {
     bool done = false, landed = false, gate = false, ready_level = false, request_busy_prev = false;
     uint32_t events = 0, mask = EVENTS_MASK_RESET, required = 0, conditions = 0, status = 0;
     uint32_t req_n = 0, set_w[3] = {};          // the request port's FIFO count and REQUEST_SET_W0-W2
-    // ---- M2 (W8): TileControl's registers and qualifiers ----
+    // ---- M2: TileControl's registers and qualifiers ----
     uint32_t router_hdr = 0, router_addr = 0, router_w[3] = {}, dma_config = 0, record_base = 0, rd_setup = 0;
-    // W20 (B20): the engines' copies (ref's Tile.setMasterConfig, setRecordBase: set with the registers, but a reset
+    // the engines' copies (ref's Tile.setMasterConfig, setRecordBase: set with the registers, but a reset
     // clears only the registers, so they differ only after one); published to the engines through `dma`
     uint32_t dma_master = 0, record_master = 0;
-    uint64_t rp_errors = 0;            // W11: read-port stores dropped (ReadPort.errors: ERRORS [7], READ_PORT)
-    // W15 (M3): the peripheral slot's live bits at t (its window RegFile's Win::R_LIVE, set by TileCtl before end_cycle):
+    uint64_t rp_errors = 0;            // read-port stores dropped (ReadPort.errors: ERRORS [7], READ_PORT)
+    // (M3): the peripheral slot's live bits at t (its window RegFile's Win::R_LIVE, set by TileCtl before end_cycle):
     // [2:0] EVENTS [15:13] ((events | DMA done) & EVENTS_MASK != 0 per peripheral), [5:3] ERRORS [13:11] (ERRORS != 0)
     uint32_t slot_live = 0;
     uint32_t live_events() const { return (slot_live & 7) << EV_PERIPH_1; }
     uint32_t live_errors() const { return (slot_live >> 3 & 7) << 11; }
     bool q_all = false, q_one[8] = {}, cond_all_prev = true, cond_one_prev[8] = {true, true, true, true, true, true, true, true};
     bool rd_done_prev = false;
-    uint32_t dma_starts = 0;                    // G4 (W12): PULSE_DMA starts so far (the AG's `start` Wire: a change = a start)
+    uint32_t dma_starts = 0;                    // G4: PULSE_DMA starts so far (the AG's `start` Wire: a change = a start)
     bool dma_pulse = false;                     // PULSE_DMA's start applied at this endCycle (the AG's pStart until its step)
     uint32_t remaining[8] = {};                 // the write counters (20 bits), 1-7: the director's in ref
     uint64_t ev_prev[15] = {};                  // the condition counts as endCycle last saw them (Conditions.N)
@@ -49,18 +49,18 @@ struct RegBlockState {
     enum : unsigned { COND_ROUTER_OVF = 0, COND_BAD = 1, COND_DRIFT = 3, COND_WE_IN_OVF = 4, COND_TABLE_OVF = 5, COND_GATHER_OVF = 6 };
     // ---- statistics, and ref's violations (counted) ----
     uint64_t gos = 0, dones = 0, readies = 0, sends = 0, trace_stores = 0, violations = 0, sim_exit_at = 0;
-    // W23 (P5): TileControl's statistics the control suites read (not in the digest): counters-done edges with no
+    // TileControl's statistics the control suites read (not in the digest): counters-done edges with no
     // qualifying arrival (spuriousEdges), and the cycles of the last done, the last landed command and the last READY
     // pulse (lastDoneAt, lastLandedAt: -1 before any; readyPulseAt: INT64_MIN before any)
     uint64_t spurious_edges = 0;
-    // W26 (invariant 2; not in the digest): the disjoint-buffer phases this endCycle starts (ref's sram.newPhase at a GO and
+    // (invariant 2; not in the digest): the disjoint-buffer phases this endCycle starts (ref's sram.newPhase at a GO and
     // at the counters-done latch, TileControl.java:234, :280; 0-2), for big SRAM through TileCtl's `phase_out` Wire
     uint8_t new_phases = 0;
     int64_t last_done_at = -1, last_landed_at = -1, ready_pulse_at = INT64_MIN;
     int64_t counter_write_at[8] = {-1, -1, -1, -1, -1, -1, -1, -1};   // each write counter's last store (counterWriteAt)
     uint64_t sends_by_size[3] = {};             // send stores by size: 32, 64, 128 bits (sendsBySize)
-    int ck_tile = -1;                  // W20: the checker's facts (src/check.h) under this tile; -1 none (a preview's copy)
-    int64_t (*tlog)[2] = nullptr;      // W20 (harness-only; H6): every TRACE store {t, value}, into the harness's array
+    int ck_tile = -1;                  // the checker's facts (src/check.h) under this tile; -1 none (a preview's copy)
+    int64_t (*tlog)[2] = nullptr;      // (harness-only; H6): every TRACE store {t, value}, into the harness's array
     uint32_t tlog_cap = 0, tlog_n = 0; //   (null otherwise, and in a preview's copy)
     uint32_t sim_exit_value = 0;
 
@@ -70,16 +70,16 @@ struct RegBlockState {
         uint32_t op = 0, arg = 0, v = 0;   // op: 0 none, BUS_STORE (register, value), BUS_CONSUME (-, bits), BUS_ERROR (cond, -)
         // M2
         uint32_t kline = 0;                // a decrement of this counter (1-7) fell due at t (the director's K-stage line)
-        bool send_busy = false;            // the send hold occupied at the end of t (W9's Reg), or the core's put at t
+        bool send_busy = false;            // the send hold occupied at the end of t (the Reg), or the core's put at t
         bool bad = false;                  // the director dropped a bad packet at t (an event: ERRORS [1] at endCycle(t))
         bool router_ovf_ev = false;        // the router counted an overflow at t (an event, D29: ERRORS [0] at endCycle(t))
         uint64_t router_ovf = 0, we_in_ovf = 0, gather_ovf = 0;   // FIFO overflow counts through t (D28: Counts)
-        // G4 (W12)
+        // G4
         bool gather_busy = false;          // GatherEngine.busy(t): the OR of its three inputs (gather.h)
         bool gather_ovf_ev = false;        // the gather queue overflowed, judged at t (an event, D29: ERRORS [6])
         bool ag_running = false, ag_done = false;   // the AG's running and done at the end of t (its status Reg)
         bool drift_ev = false;             // a refusal in a group run at t (an event, D29: ERRORS [3], Conditions.DRIFT)
-        // W11 (G3), D29: overflows judged at t, as events: ERRORS [4] (the write engine's input), [5] (the table
+        // D29: overflows judged at t, as events: ERRORS [4] (the write engine's input), [5] (the table
         // store's and HIST's request FIFOs) at endCycle(t)
         bool we_in_ovf_ev = false, table_ovf_ev = false;
     };
@@ -94,7 +94,7 @@ struct RegBlockState {
             else remaining[in.kline]--;
         }
         if (in.freed) { if (req_n == 0) violations++; else req_n--; }   // the bus freed the head at t, before the tile ran
-        new_phases = 0;                                                  // W26
+        new_phases = 0;
         if (in.go) { done = landed = gate = false; gos++; events |= 1u << EV_GO; new_phases++; }      // 1.
         uint32_t clears = 0;
         dma_pulse = false;
@@ -150,8 +150,8 @@ struct RegBlockState {
         bool cond = counters_zero();
         if (cond && !cond_all_prev && q_all) {
             q_all = false;
-            if (!gated && !(clears >> EV_COUNTERS_DONE & 1)) { events |= 1u << EV_COUNTERS_DONE; new_phases++; }   // (W26: ref's newPhase)
-        } else if (cond && !cond_all_prev) spurious_edges++;                                   // W23: statistics
+            if (!gated && !(clears >> EV_COUNTERS_DONE & 1)) { events |= 1u << EV_COUNTERS_DONE; new_phases++; }   // (ref's newPhase)
+        } else if (cond && !cond_all_prev) spurious_edges++;                                   // statistics
         cond_all_prev = cond;
     }
 
@@ -163,7 +163,7 @@ struct RegBlockState {
             if (v & 1) {
                 if (!counters_zero()) {                                   // done early (4.13): ERRORS [8]
                     done_early++;
-                    if (ck_tile >= 0) {                                   // W20: invariant 4's fact (the counts, 20 bits each)
+                    if (ck_tile >= 0) {                                   // invariant 4's fact (the counts, 20 bits each)
                         uint64_t m = 0, w[3] = {};
                         for (unsigned c = 1; c <= 7; c++) if (remaining[c]) { m |= 1u << c; w[(c - 1) / 3] |= uint64_t(remaining[c]) << (20 * ((c - 1) % 3)); }
                         sim::check::record(t, ck_tile, sim::check::Kind::CTL_DONE_EARLY, m, w[0], w[1], w[2]);
@@ -180,7 +180,7 @@ struct RegBlockState {
                 for (bool& q : q_one) q = false;
             }
             break;
-        case PULSE_DMA:                                                   // TileControl.apply (W12, G4)
+        case PULSE_DMA:                                                   // TileControl.apply
             if (v & 1) {
                 if (!ag_running) { clears |= 1u << EV_RUN_DONE; events &= ~clears; }   // running: the AG stops (UB, 8.6)
                 dma_starts++; dma_pulse = true;
@@ -196,12 +196,12 @@ struct RegBlockState {
         case ROUTER_ADDR: router_addr = v; break;
         case ROUTER_SET_W0: case ROUTER_SET_W1: case ROUTER_SET_W2: router_w[r - ROUTER_SET_W0] = v; break;
         case ROUTER_SEND_32: case ROUTER_SEND_64: case ROUTER_SEND_128:  // captured at t (8.4) by the core
-            router_sends++; sends_by_size[r - ROUTER_SEND_32]++;     // W23: statistics (sendsBySize)
+            router_sends++; sends_by_size[r - ROUTER_SEND_32]++;     // statistics (sendsBySize)
             if ((router_hdr >> 22 & 7) == 0 && !(router_hdr & 1)) router_addr += 4u << (r - ROUTER_SEND_32);
             router_w[0] = router_w[1] = router_w[2] = 0;
             break;
         case SRAM_RD_DEST_ADDR: rd_setup = v & 0x3FFFFF; break;
-        case SRAM_RD_ADDR_QUEUE: {                                       // W11: the destination advances, queued or not
+        case SRAM_RD_ADDR_QUEUE: {                                       // the destination advances, queued or not
             const unsigned size = rd_setup >> 17 & 3, n = size == 3 ? 0 : 4u << size;
             rd_setup = (rd_setup & ~0x1FFFFu) | ((rd_setup + n) & 0x1FFFFu);
             if (v >> 31) rp_errors++;                                    // dropped: no free entry (the core's bit 31)
@@ -217,7 +217,7 @@ struct RegBlockState {
         case SIM_EXIT: sim_exit_at = t; sim_exit_value = v; break;
         case TRACE:
             trace_stores++;
-            if (tlog) {                                                  // W20 (harness-only): ref's traceHook / logTrace
+            if (tlog) {                                                  // (harness-only): ref's traceHook / logTrace
                 if (tlog_n == tlog_cap) FATAL("register block: the harness's TRACE log is full (%u stores)", tlog_cap);
                 tlog[tlog_n][0] = int64_t(t); tlog[tlog_n][1] = int64_t(v); tlog_n++;
             }
@@ -225,13 +225,13 @@ struct RegBlockState {
         default:
             if (r >= WRITE_COUNTER_1 && r <= WRITE_COUNTER_7) {           // 4.12: a write adds; N > 0 arms; 0 does nothing
                 unsigned k = r - WRITE_COUNTER_1 + 1;
-                counter_write_at[k] = int64_t(t);                        // W23: statistics (counterWriteAt)
+                counter_write_at[k] = int64_t(t);                        // statistics (counterWriteAt)
                 uint32_t n = v & 0xFFFFF;
                 if (n) {
                     uint64_t sum = uint64_t(remaining[k]) + n;
                     if (sum > 0xFFFFF) {
                         counter_wraps++; violations++;
-                        if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::CTL_COUNTER_WRAP, k);   // W20
+                        if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::CTL_COUNTER_WRAP, k);
                     }
                     remaining[k] = uint32_t(sum & 0xFFFFF);
                     clears = 1u << (k - 1) | 1u << EV_COUNTERS_DONE;
@@ -283,7 +283,7 @@ struct RegBlockState {
         }
     }
     // The registers whose value differs from `pub` (the register file as its owner last wrote it, zero at power-on), as a
-    // mask of register numbers; `pub` is brought up to date. The values are reg()'s, straight-line (W12, D31: the block
+    // mask of register numbers; `pub` is brought up to date. The values are reg()'s, straight-line (D31: the block
     // writes only these; the engine ignores a write of an unchanged value, so the register file is the same). A register
     // added to reg() must be added here: TileCtl's debug check compares every one with reg() after each publish.
     uint64_t publish(uint32_t* pub) const {

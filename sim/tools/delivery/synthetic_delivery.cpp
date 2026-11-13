@@ -1,8 +1,8 @@
-// synthetic_delivery (WORKER19, P1, D42): v1.3's SyntheticDelivery (sim/ref/meshsim/test/SyntheticDelivery.java) in C++,
+// synthetic_delivery (D42): v1.3's SyntheticDelivery (sim/ref/meshsim/test/SyntheticDelivery.java) in C++,
 // its files byte for byte, with one deliberate difference that makes it reproducible per seed (D42; DECISIONS):
 //   - the inlines' advice (Func.advice()'s value for every advice word that isn't a division's) comes from
 //     SplittableRandom(seed ^ K), K = 0xD42. v1.3's came from an unseeded SplittableRandom, so every window from the
-//     first inline's advice on differed run to run (WORKER19 NOTES, D42);
+//     first inline's advice on differed run to run (D42);
 //   - the manifest's small maps (each file's bytes and sha256; a window's counts) are written in the source's order:
 //     bytes, sha256; instructions, read_log_words, write_log_words, padding_rows. v1.3's Map.of iterated in an order
 //     salted per JVM run.

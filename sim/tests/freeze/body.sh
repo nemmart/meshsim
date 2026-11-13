@@ -1,6 +1,6 @@
-# body.sh -- the v1.35 freeze check's body (WORKER22; PLAN-V135 step 4), inlined into the task tests/freeze/make_task.sh
-# writes (KIT, KS = the kit's sim/, RES, W, DATA, ITEMS set by the task's head). From the existing task bodies: W12's sort (Quest 154), W16's T2
-# checked runs (Quest 171), W17's chains (Quest 174), W25's calibration (tests/acceptance). run_tests.sh, the
+# body.sh -- the v1.35 freeze check's body (PLAN-V135 step 4), inlined into the task tests/freeze/make_task.sh
+# writes (KIT, KS = the kit's sim/, RES, W, DATA, ITEMS set by the task's head). From the existing task bodies: the sort (Quest 154), the T2
+# checked runs (Quest 171), the chains (Quest 174), the calibration (tests/acceptance). run_tests.sh, the
 # calibration, the sort's measurement kit and make check each run alone, so their times are unloaded (for RUNNING.md
 # and BUILDING.md); the chains run in the background while the sort and T2 run. Not a timing task otherwise: each
 # item's time is recorded (TIMES), and run_tests.sh's per step (run_tests/.step-times, STEP_TIMES=1).
@@ -8,7 +8,7 @@
 #   main:
 #   1 run_tests    ./run_tests.sh all --check, alone: PASS when it passes (its PENDING steps listed, not failures)
 #   2 sort         test_sort's full-size run (SORT_SIZE=64k) on one thread: every sort64k-fp point, the result, the
-#                  phases, TOTAL 1,229,687; and bench/w10's bench_sort on the same keys, one thread and 6 threads by
+#                  phases, TOTAL 1,229,687; and bench/sort's bench_sort on the same keys, one thread and 6 threads by
 #                  tiles (each tile a domain, grouped in order, as Quests 157/158): the digests at L2's all-READY equal,
 #                  the span 1,229,687 at both
 #   3 t2           T2 on evm-zone-29 and cyclone-29 segment 10: every point against golden-m3's unit lines, the rows
@@ -76,7 +76,7 @@ sec "4. the chains, segments 0-127 of both workloads (in the background)"
 D9=$DATA/w9-deliveries; D26=$DATA/w26-jumpmap
 declare -A S9=([evm-zone-29]=7142e894c80a0c9d491f21c852a942885e0abd97cfe6aefd0101d716824e138f [cyclone-29]=f8a0622e144a944c51386b5b36f81101dcdeb16e5a8d950c1e9ca0e3097f8982)
 declare -A S26=([evm-zone-29]=57dc0ffe7574ab3e11f79f8414501bd1ceb2fd75faab0b03f3b4a6c2c61cad2d [cyclone-29]=ace78f61efbb9c0e418a0b1d7f54a79f6e299b7ff45ad7f09537b11961b95fba)
-checkin() {   # W17's: the inputs against their COMPLETE markers and hashes
+checkin() {   # the: the inputs against their COMPLETE markers and hashes
   local P=$1 A B
   A=$(sha256sum "$D9/$P.manifest.json" 2>/dev/null | cut -d' ' -f1); B=$(sha256sum "$D26/$P/manifest.sha256" 2>/dev/null | cut -d' ' -f1)
   [ "$A" = "${S9[$P]}" ] && [ "$(cat "$D9/$P.COMPLETE" 2>/dev/null)" = "$A" ] || { echo "$P: the delivery isn't complete or differs"; return 1; }

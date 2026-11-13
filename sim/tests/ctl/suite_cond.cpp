@@ -1,4 +1,4 @@
-// suite_cond.cpp (WORKER23, P5, inventory C13): v1.3's CondTest (sim/ref/meshsim/test/CondTest.java) on W20's harness
+// suite_cond.cpp: v1.3's CondTest (sim/ref/meshsim/test/CondTest.java) on the harness
 // and whole-chip reset, check for check. run_tests.sh's steps `cond` (-1) and `cond-shuf` (4); its output equals ref's
 // log (tests/ctlsuites/cond*.log). The checker's messages are part of it: the debug and suite builds.
 //

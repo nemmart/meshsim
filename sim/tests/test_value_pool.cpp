@@ -163,7 +163,7 @@ DEBUG_DEATH_TEST(pool_storage_misaligned, "value pool 'vals': storage 0x[0-9a-f]
     p.init(b.words() + 4, 8, "vals");
 }
 
-// ---- SlotPool: N-word slots (W3: payloads by reference, a size class per pool) ----
+// ---- SlotPool: N-word slots (payloads by reference, a size class per pool) ----
 using sim::SlotPool;
 
 TEST(slot_pool_wide_class_sizes_allocates_and_frees) {

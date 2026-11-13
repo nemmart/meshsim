@@ -1,7 +1,7 @@
-// net.h (WORKER9, G2): the link word as ref lays it out, the network's configuration, the hops table. Constants and
-// pure functions only; shared read-only with the other groups (W8's director reads the header's fields from here).
+// net.h: the link word as ref lays it out, the network's configuration, the hops table. Constants and
+// pure functions only; shared read-only with the other groups (the director reads the header's fields from here).
 //
-// THE LINK WORD (D17; ref's LinkWord.java, agreed with W8 2026-11-07): three untyped words on every bus that carries a
+// THE LINK WORD (D17; ref's LinkWord.java, agreed 2026-11-07): three untyped words on every bus that carries a
 // packet, in ref's order:
 //     w[0] payload [63:0]
 //     w[1] the header: src [6:0], dst [13:7], mode [16:14], counter [19:17], size [21:20], address [53:22];

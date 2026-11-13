@@ -1,5 +1,5 @@
-// suite_mem.cpp (WORKER22, P4, inventory C4): v1.3's MemTest (sim/ref/meshsim/test/MemTest.java): the big SRAM, the
-// SRAM read and write queues, mem_idle and the disjoint-buffer check, on W20's harness (tests/mach.h's Net, the coreless
+// suite_mem.cpp: v1.3's MemTest (sim/ref/meshsim/test/MemTest.java): the big SRAM, the
+// SRAM read and write queues, mem_idle and the disjoint-buffer check, on the harness (tests/mach.h's Net, the coreless
 // machine with the harness's read clients) and, for the unit level, the big SRAM alone at its holds (ref's `U`, here
 // `U` too: a sim of BigSram and a driver). Every assertion and printed line is Java's, in Java's order, so the output
 // equals run_tests.sh's logs mem (-1), mem-shuf (3), mem-shuf2 (8); fixtures tests/p4suites/.
@@ -464,7 +464,7 @@ void disjoint() {
     const auto& vm = n.c.violation_messages();
     const std::string m0 = vm.empty() ? std::string("null") : vm[0];
     check(m0.find("invariant 2") != std::string::npos, "it is invariant 2: %s", m0.c_str());
-    const int64_t dv = int64_t(sram(p).disjoint_violations);   // ref's sram.disjointViolations (W26; check builds)
+    const int64_t dv = int64_t(sram(p).disjoint_violations);   // ref's sram.disjointViolations (check builds)
     check(dv > 1, "every offending chunk access is counted (%lld)", (long long)dv);
     std::string shown = m0;
     if (shown.rfind("cycle ", 0) == 0) { const size_t sp = shown.find(' ', 6); if (sp != std::string::npos) shown = shown.substr(sp + 1); }   // replaceAll("^cycle \\d+ ", "")

@@ -1,4 +1,4 @@
-// Independent chips on independent threads (WORKER4, form 1): N machines on N threads give the digests they give one at
+// Independent chips on independent threads (form 1): N machines on N threads give the digests they give one at
 // a time; built concurrently; nothing allocated in their loops. Run under TSan by `make tsan` (src/threads.mk).
 #include <string>
 #include <vector>
@@ -36,7 +36,7 @@ std::vector<uint64_t> alone(unsigned k) {
     return d;
 }
 
-// Until each Config has its own registry (W3's E1), the unit types are registered here, on one thread, before any
+// Until each Config has its own registry, the unit types are registered here, on one thread, before any
 // concurrent build: concurrent builds then only read the registry.
 void register_types() { (void)make(0); }
 

@@ -1,5 +1,5 @@
-// mem.h (WORKER11, G3): the memory path's ports that other groups meet. DECLARATIONS ONLY: the agreed crossing between
-// G3 (the SRAM read queue in the injection unit, the big SRAM, the write engine, the table store and HIST) and G4 (W12:
+// mem.h: the memory path's ports that other groups meet. DECLARATIONS ONLY: the agreed crossing between
+// G3 (the SRAM read queue in the injection unit, the big SRAM, the write engine, the table store and HIST) and G4
 // the address generator, the GATHER engine), and the words they carry (AUDIT-M2 3.2, 3.5, 3.6; ref's SRAMReadQueue,
 // TableStore, AddressGenerator, GatherEngine).
 //
@@ -10,8 +10,8 @@
 //   AG read           Hold  AG `rd`       -> srq client 1            2: reqA, reqB                  (Hold) refused, retried t + 1
 //   gather srq busy   Reg   srq `gather_srq_busy` -> register block   1: the gather's Hold occupied at the end of t, OR
 //                                                                       SRAMReadQueue.inFlightOf(GATHER) > 0 (one of
-//                                                                       STATUS's three gather-busy inputs; W12 ORs them)
-//   PTR view          RegFile  table store `ptr` -> W12's AG             256 registers: PTR as committed at the end of
+//                                                                       STATUS's three gather-busy inputs, ORed)
+//   PTR view          RegFile  table store `ptr` -> the AG             256 registers: PTR as committed at the end of
 //                                                                       t - 1 (ref's AG peeks before the store's
 //                                                                       write-back of t; with_ag only)
 //   STREAM request    Link  AG `stream_req` -> table store           3: op, index, addend (below)   ts_engine_latency
@@ -24,8 +24,8 @@
 // is still held at the end of the cycle it puts again: PORTS.md 5). Returns are packets through the injection point (no
 // return port between G3 and G4). The read port (client 2) is the core's Fifo(read_port_depth), G3's own.
 //
-// Wiring: the units of both groups are added by the control builder (W8's add_g1); the crossing inside a tile is wired
-// there, and the read queue's ports (in the injection unit, W9's) through `MemIO` below, which tile_cycle connects.
+// Wiring: the units of both groups are added by the control builder (the add_g1); the crossing inside a tile is wired
+// there, and the read queue's ports (in the injection unit, the) through `MemIO` below, which tile_cycle connects.
 #pragma once
 
 #include <cstdint>
@@ -64,15 +64,15 @@ constexpr unsigned kTsWidth = 3;
 
 }  // namespace mem
 
-// The read queue's ports as the control builder hands them to tile_cycle (it lives in the injection unit, W9's
+// The read queue's ports as the control builder hands them to tile_cycle (it lives in the injection unit, the
 // Injection::rs): the clients' outputs and the big SRAM's ends.
 struct MemIO {
     bool present = false;              // false: a network-only tile (no read side)
-    bool gather = false, ag = false;   // W12's clients present (their `rd` Holds declared and given below)
+    bool gather = false, ag = false;   // the clients present (their `rd` Holds declared and given below)
     unsigned read_port_depth = 64, sram_read_latency = 2;
     uint32_t mem_chunks = 1u << 20;
-    sim::HoldOut rd_gather;            // W12's gather `rd` (client 0), width 2
-    sim::HoldOut rd_ag;                // W12's AG `rd` (client 1), width 2
+    sim::HoldOut rd_gather;            // the gather `rd` (client 0), width 2
+    sim::HoldOut rd_ag;                // the AG `rd` (client 1), width 2
     sim::FifoOut rd_port;              // the core's read port (client 2), width 2, Fifo(read_port_depth)
     sim::HoldIn sram_rd;               // the big SRAM's read holding register, width 1 (BigSRAM.readReq)
     sim::LinkOut sram_ret[16];         // the big SRAM's area returns, width 3, Link(sram_read_latency)

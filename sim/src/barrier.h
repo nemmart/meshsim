@@ -1,8 +1,8 @@
-// barrier.h: the threads' barrier (WORKER4). Between cycles only: nothing in a cycle waits.
+// barrier.h: the threads' barrier. Between cycles only: nothing in a cycle waits.
 //
 // A barrier on one atomic counter and a round number. It waits with the CPU's pause hint for `spins` rounds, then yields
 // (so a thread sharing the CPU still runs) or, with `block`, sleeps on a futex; ~0u spins only (for a partition whose intervals are long, or threads that share a core). The choice is
-// Options::barrier, made by measurement (Quest; WORKER4/NOTES.md).
+// Options::barrier, made by measurement.
 #pragma once
 
 #include <atomic>
@@ -23,7 +23,7 @@ public:
     // Every thread calls it once per round; all return after the last has arrived. Release/acquire: what a thread wrote
     // before arriving is visible to every thread after it returns.
     void wait();
-    // W10: thread t's arrival (t < n). With `flags` (Options::barrier): no shared counter; each thread bumps its own
+    // thread t's arrival (t < n). With `flags` (Options::barrier): no shared counter; each thread bumps its own
     // epoch (its own line) and waits until every other thread's has reached it: no contended read-modify-write, and the
     // last arrival is seen by each waiter in one line transfer. Otherwise the counter barrier above.
     void wait(unsigned t);

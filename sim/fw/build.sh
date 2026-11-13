@@ -1,5 +1,5 @@
 #!/bin/bash
-# fw/build.sh [--check | --build-only] (WORKER19, P1): builds every firmware image v1.35 runs, from fw/'s sources, exactly as v1.3's
+# fw/build.sh [--check | --build-only]: builds every firmware image v1.35 runs, from fw/'s sources, exactly as v1.3's
 # scripts built them (the same flags, start-up files, linker scripts; each step names the v1.3 script it reproduces),
 # into fw/build/out/ (OUT=DIR to change). Then:
 #   --check   every image equal, byte for byte, to its committed copy; exit 1 on any difference or missing copy.
@@ -16,7 +16,7 @@
 set -eu
 export LC_ALL=C   # byte order for sort, ls and globs, and nm's symbol order: the outputs are the same in any locale
 FW=$(cd "$(dirname "$0")" && pwd); SIM=$(cd "$FW/.." && pwd)
-# PARTS="boot tests m1 m3 cc recipes replay tracer sort riscv" (W23): build (and check) only those parts; empty: all.
+# PARTS="boot tests m1 m3 cc recipes replay tracer sort riscv": build (and check) only those parts; empty: all.
 # run_tests.sh's steps cc-build and recipes-build are PARTS=cc and PARTS=recipes with --check (v1.3's build_cc.sh and
 # build_recipes.sh steps).
 part() { [ -z "${PARTS:-}" ] || [[ " $PARTS " == *" $1 "* ]]; }
@@ -66,7 +66,7 @@ done
 fi  # tests
 cd "$FW"
 
-# ---- the M1 programs (m1/*.S; W2's former fw/build.sh)
+# ---- the M1 programs (m1/*.S; the former fw/build.sh)
 if part m1; then
 for src in m1/*.S; do
   n=$(basename "$src" .S)
@@ -76,7 +76,7 @@ done
 fi  # m1
 cd "$FW"
 
-# ---- the test programs kept beside their fixtures in tests/m3-images (cc_ping: W16; cc_req, tile_req: W14), built
+# ---- the test programs kept beside their fixtures in tests/m3-images (cc_ping, cc_req, tile_req), built
 # as sw/tests' programs are (crt0.S, app.ld, -Os)
 if part m3; then
 for n in cc_ping cc_req tile_req; do

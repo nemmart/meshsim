@@ -1,9 +1,9 @@
-// SlotPool: a thread's pool of fixed-size slots of N words, with its free indices (W3, generalising W1's ValuePool for
+// SlotPool: a thread's pool of fixed-size slots of N words, with its free indices (generalising the ValuePool for
 // payloads passed by reference: sim.h, PAYLOADS AND WIDTHS). A payload too wide to travel inline travels as an index into
 // the pool of its size class. The capacity and the slot size are set at init and never change: alloc when none is free
 // is fatal in every build (naming the pool); freeing an index out of range or not allocated is DCHECK.
 //
-// ValuePool: the 2-word (128-bit) view of a SlotPool, W1's original interface (values as `u128`), kept for its users and
+// ValuePool: the 2-word (128-bit) view of a SlotPool, the original interface (values as `u128`), kept for its users and
 // tests.
 //
 // Free slots are a Bitmap (1 = free). alloc returns the lowest free index, so allocation is deterministic; a hint (the

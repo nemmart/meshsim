@@ -1,5 +1,5 @@
 #!/bin/bash
-# p4_lines.sh (WORKER22, P4): a partial run's printed lines against a fixture, while a suite is ported group by group.
+# p4_lines.sh: a partial run's printed lines against a fixture, while a suite is ported group by group.
 #   p4_lines.sh FIXTURE CMD...    runs CMD; its output, the final "<suite>: N passed, M failed" line aside, must appear
 #                                 as one contiguous block of FIXTURE's lines; and no FAIL line. Prints the block's place.
 #   P4_ALLOW_FAIL=1 p4_lines.sh   the same, the FAIL lines (and a violation report continuing them: "violations: N", its

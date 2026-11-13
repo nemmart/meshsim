@@ -1,6 +1,6 @@
-// engine.h: the framework's internals (WORKER3, stage 2). Not for unit authors: sim.h includes it at its end so that
+// engine.h: the framework's internals. Not for unit authors: sim.h includes it at its end so that
 // Ctx's operations inline into each unit's step. Everything here is the cycle loop's: plain arrays carved from one block
-// per thread, W1's structures, no STL, no allocation, no virtual calls.
+// per thread, the structures, no STL, no allocation, no virtual calls.
 //
 // Every port kind of PORTS.md: Link, Fifo (and the credit Fifo), Hold, Reg, Wire, RegFile, Count. The reserved Link
 // (WordBackpressureDelayLine) is M2's (PORTS.md 2a).
@@ -17,7 +17,7 @@
 #include "base/value_pool.h"
 
 #if defined(SIM_DEBUG) && !defined(SIM_CHECKS)
-#define SIM_CHECKS 1          // as src/check.h: the checks (and W22's Fifo peaks) are on in the debug and suite builds
+#define SIM_CHECKS 1          // as src/check.h: the checks (and the Fifo peaks) are on in the debug and suite builds
 #endif
 
 namespace sim {
@@ -29,7 +29,7 @@ inline constexpr Cycle kNoCycle = ~Cycle(0);
 // size limits (a put that grew past them became a call, costing the mesh 7% more instructions: the performance pass).
 #define SIM_HOT [[gnu::always_inline]] inline
 inline constexpr uint32_t kNone = ~0u;
-// W10: calibration's clock: the time stamp counter where there is one, else the monotonic clock in nanoseconds.
+// calibration's clock: the time stamp counter where there is one, else the monotonic clock in nanoseconds.
 inline uint64_t sim_ticks() {
 #if defined(__x86_64__) || defined(__i386__)
     return __builtin_ia32_rdtsc();
@@ -42,12 +42,12 @@ inline uint64_t sim_ticks() {
 inline constexpr uint16_t kNoClass = 0xFFFF;   // a port carrying its payload by value
 
 // A port's ring of visible entries, slim (the performance pass): its storage packed in the thread's block (base/words.h),
-// its depth and width the port's own; W1's Ring keeps a name and full-width fields a port doesn't need. Width 0 (an
+// its depth and width the port's own; the Ring keeps a name and full-width fields a port doesn't need. Width 0 (an
 // event Link) keeps only the count. Full is a framework bug here (the ports check capacity before), so a DCHECK.
 inline constexpr Word kZeroWords[3] = {0, 0, 0};
 struct SlimRing {
     Word* w = nullptr;
-    uint32_t head = 0, n = 0, depth = 0, wid = 0;   // 32-bit, as W1's Ring: with 16-bit fields clang compiled the wraps
+    uint32_t head = 0, n = 0, depth = 0, wid = 0;   // 32-bit, as the Ring: with 16-bit fields clang compiled the wraps
                                                     // below to branches, which the predictor misses (+13% mispredicts on
                                                     // the mesh, measured in the performance pass); 32-bit gives cmovs
     // Width 0: the storage is the shared zero words (index x 0 is always 0), so peek needs no branch on the width.
@@ -103,9 +103,9 @@ struct FifoPort {
     uint32_t credits, producer;
     uint16_t depth, cls;
     uint8_t bit, width, pbit;
-    uint8_t ovf_step;         // W10: an overflow steps the owner in the cycle it is judged (Ports::overflow_steps)
+    uint8_t ovf_step;         // an overflow steps the owner in the cycle it is judged (Ports::overflow_steps)
 #ifdef SIM_CHECKS
-    uint32_t peak;            // W22 (approved 2026-11-11; SIM_CHECKS only, so the timing builds are unchanged): the most
+    uint32_t peak;            // (approved 2026-11-11; SIM_CHECKS only, so the timing builds are unchanged): the most
                               // entries held, after a delivery (ref's WordFIFO.highWater: count after the commit at t + 1);
                               // a statistic, not state (Sim::fifo_peak, fifo_restart_peak)
 #endif
@@ -243,17 +243,17 @@ struct Engine {
     char diag[1024] = {};
     uint32_t cur_level = 0;            // the level running (checks)
     uint64_t pending = 0;         // entries in the wheels (fast-forward when 0 and nothing is ready)
-    // W10: the stop request (Ctx::stop): the earliest cycle a unit asked the run to stop at the end of, kNoCycle if none;
+    // the stop request (Ctx::stop): the earliest cycle a unit asked the run to stop at the end of, kNoCycle if none;
     // one domain breaks the run there (stop_breaks), a split domain runs on to its interval's barrier (threads.cpp)
     Cycle stop_at = kNoCycle;
     bool stop_breaks = true;
-    // W10: the port observer's arrival cycles (Options::observe_arrivals): per Link input, one per ring slot, at
+    // the port observer's arrival cycles (Options::observe_arrivals): per Link input, one per ring slot, at
     // link_at + link_at_off[port]; null when off (nothing recorded)
-    uint64_t* link_words = nullptr; // W10: Options::calibrate: words delivered per Link input (each entry: width + 1)
-    uint64_t* inst_ticks = nullptr; // W10: Options::calibrate: time stamp ticks per instance's steps, summed (the runs'
+    uint64_t* link_words = nullptr; // Options::calibrate: words delivered per Link input (each entry: width + 1)
+    uint64_t* inst_ticks = nullptr; // Options::calibrate: time stamp ticks per instance's steps, summed (the runs'
                                     // calibrating loops, config.h run_form_cal; null: not timed)
     Cycle* link_at = nullptr;
-    // W10, direct delivery (threads.cpp): a split machine's Link outboxes into this domain are delivered from the source's
+    // direct delivery (threads.cpp): a split machine's Link outboxes into this domain are delivered from the source's
     // buckets at their cycle, not copied at the barrier. xdue: a bit per cycle (& 63) with entries due, set by the drain;
     // xdue_all: check every cycle (some latency + interval over 64). Empty in one domain (nxin 0: one branch a cycle).
     struct XIn { Bucket* buckets; const uint32_t* xdst; uint32_t mask; uint8_t width; };
@@ -604,7 +604,7 @@ namespace detail {
 template <unsigned W>
 void deliver_link(Engine& e, const Bucket& b) {
     const Word* p = b.begin();
-    if (__builtin_expect(e.link_at != nullptr || e.link_words != nullptr, 0)) {   // W10: the observer, calibration
+    if (__builtin_expect(e.link_at != nullptr || e.link_words != nullptr, 0)) {   // the observer, calibration
         if (e.link_at) for (uint32_t n = b.count(); n; n--, p += W + 1) e.link_at[e.link_at_off[p[0]] + e.links[p[0]].ring.tail()] = e.now;
         p = b.begin();
         if (e.link_words) for (uint32_t n = b.count(); n; n--, p += W + 1) e.link_words[p[0]] += W + 1;
@@ -618,7 +618,7 @@ void deliver_link(Engine& e, const Bucket& b) {
         e.mark_bit(l.owner, l.bit);
     }
 }
-// W10: a Link outbox's bucket, delivered from the source's memory by the destination (direct delivery): the entry's
+// a Link outbox's bucket, delivered from the source's memory by the destination (direct delivery): the entry's
 // first word is the source's index, translated by xdst. In flight isn't counted here in a release build (the drain does
 // it only in debug, with the exact capacity check); a release build checks the visible words against the capacity.
 template <unsigned W>
@@ -651,13 +651,13 @@ void deliver_fifo(Engine& e, const Bucket& b) {
             if (f.first_overflow == kNoCycle) f.first_overflow = put_at;
             if (f.count_idx != kNone) e.count_inc(f.count_idx, 1);       // counted at t + 1 (PORTS.md 3, 8)
             if (f.cls != kNoClass) e.pools[f.cls].free(uint32_t(p[1]));   // a dropped by-reference payload: its slot back
-            if (f.ovf_step) e.mark(f.owner);                              // W10: the owner steps now (D29)
+            if (f.ovf_step) e.mark(f.owner);                              // the owner steps now (D29)
             continue;
         }
         Word* d = f.ring.push();
         for (unsigned k = 0; k < W; k++) d[k] = p[1 + k];
 #ifdef SIM_CHECKS
-        if (f.ring.count() > f.peak) f.peak = f.ring.count();           // W22: the peak (SIM_CHECKS only)
+        if (f.ring.count() > f.peak) f.peak = f.ring.count();           // the peak (SIM_CHECKS only)
 #endif
         e.mark_bit(f.owner, f.bit);
     }
@@ -686,7 +686,7 @@ void deliver_credit(Engine& e, const Bucket& b) {                       // a cre
         Word* d = f.ring.push();                                         // full is a bug: the producer had a credit
         for (unsigned k = 0; k < W; k++) d[k] = p[1 + k];
 #ifdef SIM_CHECKS
-        if (f.ring.count() > f.peak) f.peak = f.ring.count();           // W22: the peak (SIM_CHECKS only)
+        if (f.ring.count() > f.peak) f.peak = f.ring.count();           // the peak (SIM_CHECKS only)
 #endif
         e.mark_bit(f.owner, f.bit);
     }

@@ -1,4 +1,4 @@
-// statefp_m3.h (WORKER16, G7): the canonical fingerprint of the M3 chip (C&C 1-3 as cores; AUDIT-M3 6.6-6.9; ref's side
+// statefp_m3.h: the canonical fingerprint of the M3 chip (C&C 1-3 as cores; AUDIT-M3 6.6-6.9; ref's side
 // oracle/ref/StateFpM3.java). Every unit's stream at the end of a point, then the chip line, in StateFpM3.write's order:
 // tiles 0-63 (M2's 16 units, `slot`, `rp`), C&C 1-3 (M2's 16 as cc1.* .. cc3.*, `slot`), the Tracer's five (`tr`,
 // `tr.ic`, `tr.dc`, `tr.mem`, `tr.files`, when C&C 3's peripheral 1 is the Tracer), then `cc1p`, `cc.host`, `reqbus`,
@@ -7,11 +7,11 @@
 // The writers:
 //   - M2's 16 (statefp_g1, statefp_g2): the controllers' names by units::unit_prefix; the router's controller variant
 //     (link0 the C&C link, link1 the host Fifo, link2 C&C 3's DMA Fifo, link3 none, no fromCnc) and tiles 0-2's
-//     fromCnc as the C&C link (statefp_g2's w_router); `req` and `reqbus` W14's (reqbus_fp.h);
+//     fromCnc as the C&C link (statefp_g2's w_router); `req` and `reqbus` the (reqbus_fp.h);
 //   - `slot` (6.7): mask, the DMA (peripherals with output queues), the consume and EVENTS_MASK store of c (the core's
 //     ops on the slot's S2/S3 Link, put at c);
-//   - `rp` (6.8): W15's PeriphSlot::fingerprint_replayer;
-//   - the Tracer's five: W14's Tracer::fingerprint;
+//   - `rp` (6.8): the PeriphSlot::fingerprint_replayer;
+//   - the Tracer's five: the Tracer::fingerprint;
 //   - `cc1p` (6.9): C&C 1's peripheral, its READY and error lines rebuilt from the Links on their way (statefp_g2's
 //     pending_lines through C&C 1's own ports; the controllers' line words; the blocks' endCycle(c) previews);
 //   - `cc.host`: the three host queues;
@@ -65,7 +65,7 @@ void m3_point(const FpRegistry& r, const M3Chip& c, const FpCtx& x, std::vector<
 bool m3_own_writer(const std::string& name);   // M3's writers (cycle t), not M2's
 // Set by the slot's writer when a PULSE_DMA stored at the point's cycle is in flight to the slot (ref applied it at t,
 // including the peripheral's out_start): the slot's stream is written as applied, the peripheral's (the Tracer's) isn't
-// (asked of W14: an out_start overlay). The caller clears it before a point and reads it after.
+// (an out_start overlay). The caller clears it before a point and reads it after.
 extern thread_local bool g_dma_pulse_at_point;
 
 }  // namespace fp

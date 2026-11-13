@@ -1,4 +1,4 @@
-// replay_report.h (WORKER25, P7b): ref's Replayer lists as ref's harnesses print them, from the C++ replayer's lists
+// replay_report.h: ref's Replayer lists as ref's harnesses print them, from the C++ replayer's lists
 // (units::Replayer::list_*: ref's text per entry, the first list_capacity() kept, every entry counted). Test-side,
 // configuration-regime code (strings), used after a run.
 //   list_string(r, l)   List.toString of ref's list: "[a, b, c]"

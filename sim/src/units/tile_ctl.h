@@ -1,24 +1,24 @@
-// tile_ctl.h: the tile's control in an M2 tile (WORKER8, G1): the register block as a unit with the M2 ports
+// tile_ctl.h: the tile's control in an M2 tile: the register block as a unit with the M2 ports
 // (TileControl.java; AUDIT-M2 3.7), the core's M2 ports, and the fragment of the tile builder that adds G1's units and
-// returns the handles W9's builder wires. DECLARATIONS: the ports are the agreed interface (sessions/WORKER8/NOTES.md);
-// the steps come with the implementation. W5's M1 units (controller.h: Core, RegBlock, TestBench) stay for M1's goldens.
+// returns the handles the builder wires. DECLARATIONS: the ports are the agreed interface;
+// the steps come with the implementation. the M1 units (controller.h: Core, RegBlock, TestBench) stay for M1's goldens.
 //
 // Levels (from the wires): 0 the block (TileControl.endCycle(t - 1) from what reached it at t, then the view for t);
 // 1 the core (Controller.runCycle(t)). The director has no wire: it runs at any level.
 //
 // The register block's inputs, each registered (so endCycle(t) runs at level 0 of t + 1 from inputs delivered at t + 1):
-//   bus         Link(1), width 2   the core's store, consuming load or bus error of t (W5's encoding)
-//   go          Link(go_latency + skew[k] + 1), width 0, from W9's C&C model
+//   bus         Link(1), width 2   the core's store, consuming load or bus error of t (the encoding)
+//   go          Link(go_latency + skew[k] + 1), width 0, from the C&C model
 //   landed      Link(cm_latency + 1), width 0, from the director: a port-B write covering command slot 0 landed at t
 //   kline       Link(K + 1), width 1, from the director: counter id, a decrement due at t (judged without the same
 //               cycle's store, D27; then the store's add)
-//   send_busy   Reg, width 1, from W9's injection unit: the send hold occupied at the end of t; STATUS [3] is that OR
+//   send_busy   Reg, width 1, from the injection unit: the send hold occupied at the end of t; STATUS [3] is that OR
 //               the core's own put at t (a send store or a retry: ref's `!sendHold.isEmpty(t)`, WordHold.isEmpty =
 //               !occ && !pendPut), which the block sees on `bus`; none landed yet reads as not busy
 //   bad         Link(1), width 0, from the director: a bad packet dropped at t (ERRORS [1] at endCycle(t)). A condition
 //               that sets ERRORS in ref's cycle reaches the block as an event (PORTS.md 8): it steps the block. UNEXPECTED
 //               and DONE_EARLY arise in the block itself (the K-line's event, a store); BUS_ERROR and ILLEGAL on `bus`.
-//   ovf         Link(1), width 0, from W9's router (when the tile builder offers it, `ControlIO::router_ovf_ev`): an
+//   ovf         Link(1), width 0, from the router (when the tile builder offers it, `ControlIO::router_ovf_ev`): an
 //               overflow counted at t (D28's timing) as an event that steps the block (D29): ERRORS [0] at endCycle(t)
 //   router_ovf, we_in_ovf, gather_ovf: the overflow Counts (statistics; ROUTER_OVF read only while the router offers no
 //               event). The write engine's and the gather queue's overflows become events when G3/G4 build those units.
@@ -27,7 +27,7 @@
 //   wake, irq   Wires to the core
 //   dma         RegFile (2: DMA_CONFIG, the record base), read by the write engine, the AG and the gather engine
 //               (write_engine.h): their configuration, from t + 1
-//   line        Link(ready_latency - 2), width 1, to W9's row collector: bit 0 READY rose at the end of t, bit 1 the
+//   line        Link(ready_latency - 2), width 1, to the row collector: bit 0 READY rose at the end of t, bit 1 the
 //               error line's level after endCycle(t); put only in a cycle where READY rises or the error line changes
 // Added with G3/G4: the AG's start pulse (a Wire written at level 0 of t + 1), the AG's and the gather's status (Regs),
 // the read port (a Fifo(64) from the core, its free count), and the condition Counts of the table FIFOs, AG drift, the
@@ -61,17 +61,17 @@ namespace units {
 struct TileCtl {
     // ---- inputs ----
     sim::LinkIn bus, go, landed, kline, bad, ovf;
-    sim::LinkIn we_ovf, ts_ovf, hist_ovf;   // W11 (D29): width 0, Link(1): an overflow judged at t (ERRORS [4], [5])
+    sim::LinkIn we_ovf, ts_ovf, hist_ovf;   // (D29): width 0, Link(1): an overflow judged at t (ERRORS [4], [5])
     sim::RegIn send_busy;
     sim::CountIn router_ovf, we_in_ovf, gather_ovf;
-    // G4 (W12), declared when `g4`: STATUS's gather_busy as the OR of three inputs (gather.h), the queue's overflow event
-    sim::RegIn gather_busy, gather_srq_busy;   // the gather's own half; the read queue's (W11, through MemIO)
+    // G4, declared when `g4`: STATUS's gather_busy as the OR of three inputs (gather.h), the queue's overflow event
+    sim::RegIn gather_busy, gather_srq_busy;   // the gather's own half; the read queue's (through MemIO)
     sim::LinkIn gather_put, gather_ovf_ev;     // width 0, Link(1): the director's mode-4 put; the gather queue's overflow
     sim::RegIn ag_status;                      // the AG's running | done << 1 at the end of t (ag.h)
-    sim::LinkIn req_freed_ev;                  // W14: width 0, Link(1): the request bus freed the FIFO's head at t
+    sim::LinkIn req_freed_ev;                  // width 0, Link(1): the request bus freed the FIFO's head at t
     sim::LinkIn drift;                         // width 0, Link(1): the AG's drift (ERRORS [3])
     sim::WireOut ag_start;                     // PULSE_DMA's starts so far, driven at level 0 of t + 1 (endCycle(t))
-    sim::RegFileIn slot_win;                   // W15 (M3): the peripheral slot's window RegFile (its live bits), when `slot`
+    sim::RegFileIn slot_win;                   // (M3): the peripheral slot's window RegFile (its live bits), when `slot`
     // ---- outputs ----
     sim::RegFileOut regs, dma;
     sim::WireOut wake, irq;
@@ -89,8 +89,8 @@ struct TileCtl {
     bool error_out = false;            // the error line's level as last put on `line`
     bool ovf_event = false;            // `ovf` declared: ROUTER_OVF arrives as an event (D29)
     bool g4 = false;                   // G4's inputs declared (the tile has the read side and G4's engines)
-    bool slot = false;                 // W15: the peripheral slot's RegFile declared
-    // W20 (harness-only; P2): ref's Tile.set* and pulse from the harness, between cycles (sim/tests/mach.h). They take
+    bool slot = false;                 // the peripheral slot's RegFile declared
+    // (harness-only; P2): ref's Tile.set* and pulse from the harness, between cycles (sim/tests/mach.h). They take
     // effect at the block's next step, after its endCycle of the cycle just run (ref's pokes follow that cycle's end),
     // then publish as any change does. `host_on` is set by the harness only; `host.mask` says which fields are pending.
     struct HostWrites {
@@ -99,16 +99,16 @@ struct TileCtl {
     };
     bool host_on = false;
     HostWrites host;
-    // ref's `ctl.conditions |= bits` from a test (W23's request 9): state from the next cycle on, so ORed in after this
+    // ref's `ctl.conditions |= bits` from a test (the request 9): state from the next cycle on, so ORed in after this
     // step's facts and line (ref's end of the cycle just run doesn't have them) and before the view for the next cycle
     uint32_t host_cond = 0;
-    uint32_t host_events = 0;          // ref's `ctl.events |= bits` from a test (W23's (d)): the same point as host_cond
+    uint32_t host_events = 0;          // ref's `ctl.events |= bits` from a test (the (d)): the same point as host_cond
     // Harness-only (the reset): ref's STATUS as computed at the end of the reset's cycle, before the reset cleared the
     // block (TileControl.reset leaves `status` until the next endCycle); block_at_end returns it at that cycle.
     uint32_t reset_status = 0;
     int64_t reset_status_at = -1;
-    int64_t host_go_at = -1;           // ref's ctl.scheduleGo(t) (W23's (d)): GO seen at t, at this block's endCycle(t)
-    // W20 (P2): the checker's facts (src/check.h): the ERRORS value and the error line as ref has them at the end of a
+    int64_t host_go_at = -1;           // ref's ctl.scheduleGo(t) (the (d)): GO seen at t, at this block's endCycle(t)
+    // the checker's facts (src/check.h): the ERRORS value and the error line as ref has them at the end of a
     // cycle (invariant 15). `ck_tile` is set by the harness (its unit number); -1 records nothing.
     int ck_tile = -1;
     uint32_t ck_errors = 0;
@@ -121,10 +121,10 @@ struct TileCtl {
         host = HostWrites{};
     }
 
-    // W26 (the checker, SIM_CHECKS only): a GO taken at endCycle(t), as t + 1, for the core's command-slot check (ref's
+    // (the checker, SIM_CHECKS only): a GO taken at endCycle(t), as t + 1, for the core's command-slot check (ref's
     // endCycle clears cmem.slot0Unread at a GO while the core is in the boot ROM: TileCore::step)
     sim::WireOut go_out;
-    sim::WireOut phase_out;            // W26: invariant 2's phases of endCycle(t): (t + 1) << 2 | how many (big_sram.h)
+    sim::WireOut phase_out;            // invariant 2's phases of endCycle(t): (t + 1) << 2 | how many (big_sram.h)
     bool go_wire = false;
     TileCtl(sim::Ports& p, const RegBlockState& initial, bool router_ovf_event = false, bool g4_ = false, bool slot_ = false,
             bool go_wire_ = false)
@@ -158,7 +158,7 @@ struct TileCtl {
         if (c.ready(landed)) { c.take(landed); in.landed = true; }
         if (c.ready(kline)) { in.kline = uint32_t(c.peek(kline)[0]); c.take(kline); }
         if (c.ready(bad)) { c.take(bad); in.bad = true; }
-        if (c.ready(req_freed_ev)) { c.take(req_freed_ev); in.freed = true; }   // W14: RequestPort's free at t (count)
+        if (c.ready(req_freed_ev)) { c.take(req_freed_ev); in.freed = true; }   // RequestPort's free at t (count)
         if (ovf_event && c.ready(ovf)) { c.take(ovf); in.router_ovf_ev = true; }
         if (c.ready(we_ovf)) { c.take(we_ovf); in.we_in_ovf_ev = true; }
         if (c.ready(ts_ovf)) { c.take(ts_ovf); in.table_ovf_ev = true; }
@@ -183,25 +183,25 @@ struct TileCtl {
             const sim::Word st = c.valid(ag_status) ? c.read(ag_status)[0] : 0;
             in.ag_running = st & 1; in.ag_done = st >> 1 & 1;
         }
-        if (slot) s.slot_live = c.read(slot_win, Win::R_LIVE);   // W15: liveEvents(t), liveErrors(t), as ref's view at t
-        if (host_on && host_go_at >= 0 && uint64_t(host_go_at) == c.now() - 1) { in.go = true; host_go_at = -1; }   // W20
+        if (slot) s.slot_live = c.read(slot_win, Win::R_LIVE);   // liveEvents(t), liveErrors(t), as ref's view at t
+        if (host_on && host_go_at >= 0 && uint64_t(host_go_at) == c.now() - 1) { in.go = true; host_go_at = -1; }
         s.end_cycle(c.now() - 1, in);
 #ifdef SIM_CHECKS
-        if (go_wire && in.go) c.drive(go_out, c.now());       // W26: the GO of endCycle(now - 1)
-        if (go_wire && s.new_phases) c.drive(phase_out, c.now() << 2 | s.new_phases);   // W26: its new disjoint phases
+        if (go_wire && in.go) c.drive(go_out, c.now());       // the GO of endCycle(now - 1)
+        if (go_wire && s.new_phases) c.drive(phase_out, c.now() << 2 | s.new_phases);   // its new disjoint phases
 #endif
-        if (host_on && host.mask) apply_host();                // W20 (harness-only)
-        if constexpr (sim::check::kOn) {                       // W20: the checker's facts (invariant 15)
+        if (host_on && host.mask) apply_host();                // (harness-only)
+        if constexpr (sim::check::kOn) {                       // the checker's facts (invariant 15)
             if (ck_tile >= 0) {
                 const uint32_t v = s.conditions | s.live_errors();
                 if (v != ck_errors) { ck_errors = v; sim::check::record(c.now() - 1, ck_tile, sim::check::Kind::ERRORS_SET, v); }
                 if (s.error_line != ck_line) { ck_line = s.error_line; sim::check::record(c.now() - 1, ck_tile, sim::check::Kind::ERROR_LINE, ck_line); }
             }
         }
-        const bool cond_set = host_on && (host_cond || host_events);   // W20 (harness-only): request 9, W23's (d)
+        const bool cond_set = host_on && (host_cond || host_events);   // (harness-only): request 9, the (d)
         if (cond_set) { s.conditions |= host_cond; s.events |= host_events; host_cond = 0; host_events = 0; }
         if (g4) c.drive(ag_start, s.dma_starts);
-        // only the registers that changed (W12, D31): the same register file, without 33 writes a step
+        // only the registers that changed (D31): the same register file, without 33 writes a step
         for (uint64_t m = s.publish(pub); m; m &= m - 1) { const unsigned r = unsigned(__builtin_ctzll(m)); c.write(regs, r, pub[r]); }
         if constexpr (sim::kDebug)
             for (unsigned r = 0; r < kRegs; r++)
@@ -214,12 +214,12 @@ struct TileCtl {
             c.put(line, sim::Word(s.ready_pulse) | sim::Word(s.error_line) << 1);
             error_out = s.error_line;
         }
-        // W16: STATUS's send-busy from the core's own put at t is the block's alone (the injection unit's Reg only
+        // STATUS's send-busy from the core's own put at t is the block's alone (the injection unit's Reg only
         // changes if the send waits): look again next cycle, when the Reg says whether the hold is still occupied.
         // Otherwise a core polling STATUS after a send that left at once reads busy until something else steps the block
         // (C&C 1's first send in test_cc_units; M2's programs always had a landing or a K line to step it).
         if (send_put || cond_set) return c.next();             // (cond_set: the line and facts at the next end)
-        if (host_on && host_go_at >= 0) return sim::Wake::at_cycle(uint64_t(host_go_at) + 1);   // W20: the scheduled GO's end
+        if (host_on && host_go_at >= 0) return sim::Wake::at_cycle(uint64_t(host_go_at) + 1);   // the scheduled GO's end
         return sim::Wake::none();
     }
     uint64_t digest() const { return digest_mix(s.digest(), error_out); }
@@ -230,12 +230,12 @@ struct TileCtl {
 // For the fingerprint writers only, between runs (Sim::observe; the machine built with Options::observe_arrivals). The
 // block's endCycle(c) runs at level 0 of c + 1; ref's state at the end of c is endCycle(c) applied to a copy of the block,
 // from its inputs arriving at c + 1 (those its step at c + 1 applies; with none, endCycle is a no-op). `U` is the M2
-// block (TileCtl) or W5's M1 block (RegBlock: bus, GO, landed, freed).
+// block (TileCtl) or the M1 block (RegBlock: bus, GO, landed, freed).
 template <class U>
-RegBlockState block_at_end(const sim::Sim& m, const U& u, uint64_t c, bool go_also = false) {   // (W20: go_also, a test's GO)
+RegBlockState block_at_end(const sim::Sim& m, const U& u, uint64_t c, bool go_also = false) {   // (go_also, a test's GO)
     constexpr uint32_t kMax = 64;
     RegBlockState b = u.s;
-    b.ck_tile = -1; b.tlog = nullptr;                                    // W20: a preview records no facts, logs nothing
+    b.ck_tile = -1; b.tlog = nullptr;                                    // a preview records no facts, logs nothing
     RegBlockState::In in;
     sim::PortEntry e[kMax];
     bool send_put = false;
@@ -274,7 +274,7 @@ RegBlockState block_at_end(const sim::Sim& m, const U& u, uint64_t c, bool go_al
             const sim::Word st = v.put ? v.put_w[0] : (v.valid ? e[0].w[0] : 0);
             in.ag_running = st & 1; in.ag_done = st >> 1 & 1;
         }
-    } else {                                                             // M1's block (W5's bench)
+    } else {                                                             // M1's block (the bench)
         at_next(u.freed, [&](const sim::PortEntry&) { in.freed = true; });
     }
     b.end_cycle(c, in);
@@ -283,7 +283,7 @@ RegBlockState block_at_end(const sim::Sim& m, const U& u, uint64_t c, bool go_al
     return b;
 }
 // What the block's endCycle(c) puts on `line` (READY's rising edge, bit 0; the error line, bit 1), which it puts at
-// c + 1: W9's C&C fingerprint writers (G2Chip::edge) read it here as ref has it at the end of c.
+// c + 1: the C&C fingerprint writers (G2Chip::edge) read it here as ref has it at the end of c.
 struct LineEdge { bool put = false; sim::Word word = 0; };
 inline LineEdge line_edge(const sim::Sim& m, const TileCtl& u, uint64_t c) {
     RegBlockState b = block_at_end(m, u, c);
@@ -294,7 +294,7 @@ inline LineEdge line_edge(const sim::Sim& m, const TileCtl& u, uint64_t c) {
 }
 
 // ------------------------------------------------------------------------------------------------ the core, M2 tile
-// The core of an M2 tile (W5's Rv32 with M2's ports; W5's `Core` stays for M1's bench). Its memories live outside the
+// The core of an M2 tile (the Rv32 with M2's ports; the `Core` stays for M1's bench). Its memories live outside the
 // unit (`dmem`, `imem` in Rv32: a unit is moved into an arena at build); port B's link words are applied before its
 // step (ref: written at t + cm_latency, seen by a load at t + cm_latency + 1).
 struct TileCore {
@@ -302,15 +302,15 @@ struct TileCore {
     sim::WireIn wake, irq;
     sim::LinkIn port_b;                // width 3: link words from the director, Link(cm_latency + 1)
     sim::LinkOut bus;                  // width 2: the core's store, consume or bus error of t -> the block, Link(1)
-    sim::HoldOut send;                 // width 3: the send holding register -> W9's injection unit
+    sim::HoldOut send;                 // width 3: the send holding register -> the injection unit
     sim::LinkOut tables, hist_w;       // width 2: table-window stores -> the table store, HIST (Link(1))
-    sim::FifoOut rd_port;              // W11: width 2, the read port's requests -> the read queue (client 2)
-    sim::CountIn rp_injected;          // W11: read-port returns injected (free entries: injections before t)
-    sim::CountOut rp_stores;           // W11: read-port reads queued (ReadPort.stores) -> the director (results outstanding)
-    sim::RegFileIn win;                // W15 (M3): the peripheral slot's window RegFile (loads read it: AUDIT-M3 3.1 S4)
-    sim::LinkOut periph;               // W15 (M3): width 1, a window store or a consuming EVENTS load -> the slot, Link(1)
-    bool slot = false;                 // W15: the two above declared
-    // W14 (D34, the request bus): the port's send side (every tile and controller) and a controller's receive side
+    sim::FifoOut rd_port;              // width 2, the read port's requests -> the read queue (client 2)
+    sim::CountIn rp_injected;          // read-port returns injected (free entries: injections before t)
+    sim::CountOut rp_stores;           // read-port reads queued (ReadPort.stores) -> the director (results outstanding)
+    sim::RegFileIn win;                // (M3): the peripheral slot's window RegFile (loads read it: AUDIT-M3 3.1 S4)
+    sim::LinkOut periph;               // (M3): width 1, a window store or a consuming EVENTS load -> the slot, Link(1)
+    bool slot = false;                 // the two above declared
+    // (D34, the request bus): the port's send side (every tile and controller) and a controller's receive side
     sim::LinkOut req_push;             // width 2: REQUEST_SEND's request {w0 | w1 << 32, w2 | w3 << 32} -> the leaf, Link(1)
     sim::WireIn req_freed;             // the leaf freed the FIFO's head at t (canPush's freedAt == t)
     sim::RegFileIn recv;               // a controller: its target's queue head {pending, w0-w3} as a load at t sees it
@@ -319,22 +319,22 @@ struct TileCore {
     bool done_gate = true;             // the block's: with the gate closed only GO wakes (a live bit doesn't)
     uint32_t req_set_w[3] = {};        // REQUEST_SET_W0-W2 as this core stored them (the block's copy is a cycle later)
     Rv32 rv;
-    // W11: the read port (ReadPort.java). Its queue is the Fifo into the read queue; its accounting is the core's stores
+    // the read port (ReadPort.java). Its queue is the Fifo into the read queue; its accounting is the core's stores
     // and the injection unit's injections (free entries) and the director's acceptances (outstanding).
     uint8_t rp_tile = 0;
     unsigned rp_depth = 64;
     uint64_t rp_stored = 0, rp_dropped = 0, rp_violations = 0;
-    uint64_t rp_peak = 0;              // W20 (P2): entries in use after a store, counted here (a statistic; PhaseLog keeps
+    uint64_t rp_peak = 0;              // entries in use after a store, counted here (a statistic; PhaseLog keeps
                                        //   ref's own rule, the same cycle's injection counted out: phase_log.h)
-    // W20 (harness-only; P2): ref's coreless test machine (Config.coreless, `core.enabled = false`): the core never
+    // (harness-only; P2): ref's coreless test machine (Config.coreless, `core.enabled = false`): the core never
     // runs; port B's writes still land in its memories (ref's ControllerMemories does that apart from the core).
     bool coreless = false;
 
-    // W26 (the checker, SIM_CHECKS only): the table window's check (Controller.window, 4.10): HIST, PTR and the AG busy at
+    // (the checker, SIM_CHECKS only): the table window's check (Controller.window, 4.10): HIST, PTR and the AG busy at
     // t as ref's core sees them (table_store.h, ag.h: busy_hist, busy_ptr, running), same-cycle Wires
     // An instruction at t is judged on the state at t; a test's store (TileRef::store, made here at t) on ref's flags as
     // the cycle before left them (ref's harness store runs between cycles: the stores' and the AG's flags of t - 1).
-    S1Tile* s1 = nullptr;              // W26: S1 (s1.h), SIM_CHECKS only (add_g1)
+    S1Tile* s1 = nullptr;              // S1 (s1.h), SIM_CHECKS only (add_g1)
     sim::WireIn busy_hist, busy_ptr, ag_running, go_seen;   // (go_seen: TileCtl's GO, the command-slot check below)
     sim::Word go_last = 0;
     bool table_busy = false, host_now = false;
@@ -361,7 +361,7 @@ struct TileCore {
         if (table_busy) { p.in(busy_hist, "busy_hist"); p.in(busy_ptr, "busy_ptr"); p.in(ag_running, "ag_running"); p.in(go_seen, "go_seen"); }
 #endif
         if (slot) { p.in(win, "win"); p.out(periph, "periph", 1); }
-        // W14: the request port's send side (every core) and a controller's receive side
+        // the request port's send side (every core) and a controller's receive side
         p.out(req_push, "req_push", 2); p.in(req_freed, "req_freed");
         if (receiver) { p.in(recv, "recv"); p.out(recv_pop, "recv_pop", 0); p.out(recv_credit, "recv_credit", 1); }
         p.in(regs, "regs"); p.in(hist, "hist"); p.in(wake, "wake"); p.in(irq, "irq"); p.in(port_b, "port_b", 3);
@@ -371,7 +371,7 @@ struct TileCore {
     struct Env {
         sim::Ctx& c; TileCore& u;
         uint32_t reg(unsigned r) const { return c.read(u.regs, r); }
-        // W14: TileControl.wakeTerm with the live bit (request pending): the block's wake covers its sticky events; a
+        // TileControl.wakeTerm with the live bit (request pending): the block's wake covers its sticky events; a
         // pending request wakes as EVENTS [12] under the mask (and never through a closed gate)
         bool wake() const {
             if (c.read(u.wake) != 0) return true;
@@ -382,7 +382,7 @@ struct TileCore {
             return (e & m & ~q) != 0 || (q != 0 && (e & q) == q);
         }
         bool irq() const { return c.read(u.irq) != 0; }
-        bool done_gate() const { return u.done_gate; }   // W26: the WFI-woken check
+        bool done_gate() const { return u.done_gate; }   // the WFI-woken check
         // RequestPort.canPush(t): room at the end of t - 1 (STATUS [6], request busy), or the head freed at t
         bool can_push() const { return !(reg(STATUS) >> ST_REQUEST_BUSY & 1) || c.read(u.req_freed) != 0; }
         void post(uint32_t op, uint32_t arg, uint32_t v) {
@@ -409,7 +409,7 @@ struct TileCore {
         void send(uint64_t lo, uint64_t hdr, uint64_t hi) { c.put(u.send, lo, hdr, hi); }
         bool send_refused() const { return c.refused(u.send); }
         void table_store(uint32_t table, uint32_t i, uint32_t v) {
-            u.table_check(c, table, i);                  // W26: the window's check (Controller.window), before the write
+            u.table_check(c, table, i);                  // the window's check (Controller.window), before the write
             if (table == TBL_HIST) c.put(u.hist_w, sim::Word(i), sim::Word(v));
             else c.put(u.tables, sim::Word(table) << 32 | i, sim::Word(v));
         }
@@ -417,10 +417,10 @@ struct TileCore {
         uint32_t rp_free() const { return uint32_t(int64_t(u.rp_depth) - int64_t(u.rp_stored - c.through_last(u.rp_injected))); }
         // ReadPort.store at t, with SRAM_RD_DEST_ADDR as it stands at t; false: no free entry, dropped
         bool read_port(uint64_t, uint32_t chunk) { return read_port_setup(chunk, c.read(u.regs, SRAM_RD_DEST_ADDR)); }
-        // (W20: the setup given: the store's SRAM_RD_DEST_ADDR, or a test's host read's own: ReadPort.store(t, addr, dest))
+        // (the setup given: the store's SRAM_RD_DEST_ADDR, or a test's host read's own: ReadPort.store(t, addr, dest))
         bool read_port_setup(uint32_t chunk, uint32_t setup) {
             const unsigned size = setup >> 17 & 3, ctr = setup >> 19 & 7;
-            namespace ck = sim::check;                   // W26: ReadPort.store's checks as chip facts (at the store's t)
+            namespace ck = sim::check;                   // ReadPort.store's checks as chip facts (at the store's t)
             const int tile = u.rv.ck_tile;
             if (size == lw::SIZE_UNDEF) { u.rp_violations++; if (tile >= 0) ck::record(c.now(), tile, ck::Kind::RP_SIZE_UNDEF); }
             if (int32_t(rp_free()) <= 0) {
@@ -436,10 +436,10 @@ struct TileCore {
             c.put(u.rd_port, mem::req_a(chunk, size, lw::M_WRITE, ctr, u.rp_tile), mem::req_b(a));
             u.rp_stored++;
             c.inc(u.rp_stores);
-            if (const uint64_t used = u.rp_stored - c.through_last(u.rp_injected); used > u.rp_peak) u.rp_peak = used;   // W20
+            if (const uint64_t used = u.rp_stored - c.through_last(u.rp_injected); used > u.rp_peak) u.rp_peak = used;
             return true;
         }
-        // W15 (M3): PeripheralSlot.read / storeStalls / write as the core meets them (AUDIT-M3 3.1 S2-S4, S8)
+        // (M3): PeripheralSlot.read / storeStalls / write as the core meets them (AUDIT-M3 3.1 S2-S4, S8)
         int window_load(unsigned n, unsigned w, uint32_t& v) {
             if (!u.slot) FATAL("tile core: a load from peripheral %u's window: the tile has no peripheral slot", n);
             if (w == 5) {                                  // a consuming load: the value, and its consume under the mask
@@ -474,9 +474,9 @@ struct TileCore {
             return true;
         }
         uint32_t hist(uint32_t i) const {                // RmwPipe.ctrlRead: on a write-back cycle, the engine's value
-            u.table_check(c, TBL_HIST, i);               // W26: the window's check (Controller.window)
+            u.table_check(c, TBL_HIST, i);               // the window's check (Controller.window)
 #ifdef SIM_CHECKS
-            if (u.s1 && u.s1->on) {                      // W26: S1's table-window case (the last write-back; ref's -1 none)
+            if (u.s1 && u.s1->on) {                      // S1's table-window case (the last write-back; ref's -1 none)
                 const uint32_t at = c.read(u.hist, HIST_WB_AT);
                 u.s1->hist_load(int64_t(c.now()) - (at ? int64_t(at) - 1 : -1));
             }
@@ -485,43 +485,43 @@ struct TileCore {
             return c.read(u.hist, i);
         }
     };
-    // W20 (harness-only; P2): ref's Controller.store(t, ...) from a test (sim/tests/mach.h, TileRef::store): a store
+    // (harness-only; P2): ref's Controller.store(t, ...) from a test (sim/tests/mach.h, TileRef::store): a store
     // made in the core's step at t, before its own instruction, through the same path as an instruction's.
     struct HostStore { uint64_t t; uint32_t ea, v, mask; };
-    static constexpr unsigned kHostStores = 128;   // (W23's RegDocTest: every reserved word and read-only register in one cycle)
+    static constexpr unsigned kHostStores = 128;   // (the RegDocTest: every reserved word and read-only register in one cycle)
     HostStore host_st[kHostStores] = {};
     uint32_t host_n = 0;
-    // W20 (harness-only): ref's Tile.sendHold.put(t, ...) from a test for a later cycle: put on the send Hold in the
+    // (harness-only): ref's Tile.sendHold.put(t, ...) from a test for a later cycle: put on the send Hold in the
     // core's step at t (one at a time; ref's put for the cycle just run is Sim::put_late)
     uint64_t host_send_t = 0, host_send_w[3] = {};
     bool host_send = false;
-    // W20 (harness-only): a test's load's side effects, made in the core's step at t (ref's: at the load's t): a bus post
+    // (harness-only): a test's load's side effects, made in the core's step at t (ref's: at the load's t): a bus post
     // to the block (kind 0: EVENTS consumed, a receive underflow) or a consume to the peripheral slot (kind 1)
     struct HostPost { uint64_t t; uint8_t kind; uint64_t a, b; };
     static constexpr unsigned kHostPosts = 8;
     HostPost host_post[kHostPosts] = {};
     uint32_t host_post_n = 0;
-    // W20 (harness-only; W22-18): ref's ReadPort.hostQueue: 32-bit reads on counter 2 to their own destinations, one a
+    // (harness-only): ref's ReadPort.hostQueue: 32-bit reads on counter 2 to their own destinations, one a
     // step (ref's runCycle), from the cycle after they are queued
     static constexpr unsigned kHostReads = 256;
     uint32_t host_rd[kHostReads][2] = {};
     uint32_t host_rd_head = 0, host_rd_n = 0;
     sim::Wake step(sim::Ctx& c) {
-        rv.cm = &track;                                       // W26 (the unit's own tracker, wherever it lives)
+        rv.cm = &track;                                       // (the unit's own tracker, wherever it lives)
         if (c.ready(port_b)) {
-            track_port_b(c.now() - 1, c.peek(port_b));        // W26: ref's cmem marks whatever the core's state
+            track_port_b(c.now() - 1, c.peek(port_b));        // ref's cmem marks whatever the core's state
             if (rv.stop == Stop::running) apply_port_b(c.peek(port_b));
             c.take(port_b);
         }
 #ifdef SIM_CHECKS
-        // W26: TileControl.endCycle(t) at a GO: the boot ROM takes the boot command there (its own load of slot 0 is
+        // TileControl.endCycle(t) at a GO: the boot ROM takes the boot command there (its own load of slot 0 is
         // incidental), so slot 0 counts as read when the core is in the boot ROM; after cmem's write of t, as ref's order
         if (table_busy) {
             const sim::Word g = c.read(go_seen);
             if (g != go_last) { go_last = g; if (region(rv.pc) == R_BOOTROM) track.slot0_unread = false; }
         }
 #endif
-        if (host_post_n) {                                    // W20 (harness-only): a test's load's side effects
+        if (host_post_n) {                                    // (harness-only): a test's load's side effects
             uint32_t k = 0;
             for (uint32_t i = 0; i < host_post_n; i++) {
                 const HostPost& h = host_post[i];
@@ -531,24 +531,24 @@ struct TileCore {
             }
             host_post_n = k;
         }
-        if (host_rd_n) {                                      // W20 (harness-only): ReadPort.hostQueue, one a cycle
+        if (host_rd_n) {                                      // (harness-only): ReadPort.hostQueue, one a cycle
             Env e{c, *this};
             const uint32_t* r = host_rd[host_rd_head];
             if (!e.read_port_setup(r[0] & 0x1FFFFF, (r[1] & 0x1FFFF) | uint32_t(lw::SIZE_32) << 17 | 2u << 19))
                 FATAL("tile core: a test's host read with no free read-port entry (ref: ReadPort.errors; not modelled here)");
             host_rd_head = (host_rd_head + 1) % kHostReads; host_rd_n--;
         }
-        if (host_send && host_send_t == c.now()) {            // W20 (harness-only)
+        if (host_send && host_send_t == c.now()) {            // (harness-only)
             c.put(send, host_send_w[0], host_send_w[1], host_send_w[2]);
             host_send = false;
         } else if (host_send && host_send_t < c.now()) FATAL("tile core: a test's send for cycle %llu not made", (unsigned long long)host_send_t);
-        if (host_n) {                                         // W20 (harness-only)
+        if (host_n) {                                         // (harness-only)
             Env e{c, *this};
             uint32_t k = 0;
             for (uint32_t i = 0; i < host_n; i++) {
                 const HostStore& h = host_st[i];
                 if (h.t < c.now()) FATAL("tile core: a test's store for cycle %llu not made (the core wasn't stepped)", (unsigned long long)h.t);
-                if (h.t == c.now()) {                     // (W26: ck_t, the facts' cycle; host_now, the window's check)
+                if (h.t == c.now()) {                     // (ck_t, the facts' cycle; host_now, the window's check)
                     rv.ck_t = h.t; host_now = true;
                     rv.store(e, h.t, h.ea, h.v, h.mask, rv.pc);
                     host_now = false;
@@ -561,7 +561,7 @@ struct TileCore {
                 for (uint32_t i = 1; i < host_n; i++) at = host_st[i].t < at ? host_st[i].t : at;
             }
         }
-        if (coreless) {                                       // W20 (harness-only)
+        if (coreless) {                                       // (harness-only)
             uint64_t at = host_send ? host_send_t : Rv32::kNever;
             for (uint32_t i = 0; i < host_post_n; i++) if (host_post[i].t < at) at = host_post[i].t;
             for (uint32_t i = 0; i < host_n; i++) if (host_st[i].t < at) at = host_st[i].t;
@@ -570,18 +570,18 @@ struct TileCore {
         }
         Env e{c, *this};
         uint64_t next = rv.step(e, c.now());
-        for (uint32_t i = 0; i < host_n; i++) if (host_st[i].t < next) next = host_st[i].t;   // W20 (harness-only)
+        for (uint32_t i = 0; i < host_n; i++) if (host_st[i].t < next) next = host_st[i].t;   // (harness-only)
         if (host_send && host_send_t < next) next = host_send_t;
         for (uint32_t i = 0; i < host_post_n; i++) if (host_post[i].t < next) next = host_post[i].t;
         if (host_rd_n && c.now() + 1 < next) next = c.now() + 1;
         return next == Rv32::kNever ? sim::Wake::none() : sim::Wake::at_cycle(next);
     }
     uint64_t digest() const { return digest_mix(rv.digest(), rv.pending_t ^ rv.send_w[0] ^ rv.send_w[1] << 1 ^ rv.send_w[2] << 2); }
-    // W26 (invariant 8; ControllerMemories.runCycle's markReply and command-landed): port B's write of t (ref's cmem at t;
+    // (invariant 8; ControllerMemories.runCycle's markReply and command-landed): port B's write of t (ref's cmem at t;
     // it reaches this step at t + 1), its reply and result words marked unread (one already unread: overwritten, the
     // strict fact), a write covering command slot 0 while it's unread (the fact); a word the core touched at t is read.
     CmemTrack track;
-    // W20 (PhaseLog): the overwrites track_port_b will count for port B's write of t when it reaches the next step, on a
+    // (PhaseLog): the overwrites track_port_b will count for port B's write of t when it reaches the next step, on a
     // copy (ref counts them at t: a phase's counters taken right after t include them). Keep in step with track_port_b.
     static uint64_t overwrites(CmemTrack& tr, uint64_t t, const sim::Word* w) {
         const uint64_t h = w[1];
@@ -620,7 +620,7 @@ struct TileCore {
             if (track.touched_at(x, t, false)) b &= ~bit;
         }
         if (w0 <= CmemTrack::CMD_DWORD && w0 + n > CmemTrack::CMD_DWORD) {
-            track.writes_cmd++; track.landed_at = int64_t(t);         // W23: statistics (writesCmd, landedAt)
+            track.writes_cmd++; track.landed_at = int64_t(t);         // statistics (writesCmd, landedAt)
             if (track.slot0_unread) {
                 track.unread_commands++;
                 if (rv.ck_tile >= 0) sim::check::record(t, rv.ck_tile, sim::check::Kind::CMEM_COMMAND_UNREAD, 0, w[0], h, w[2]);
@@ -639,13 +639,13 @@ struct TileCore {
 };
 
 // ---------------------------------------------------------------------------------------------- the core in an M2 tile
-// W5's Core gains, in an M2 tile (TileConfig::m2): `send`, a HoldOut of width 3 to W9's injection unit (a send store at
+// the Core gains, in an M2 tile (TileConfig::m2): `send`, a HoldOut of width 3 to the injection unit (a send store at
 // t puts the packet at t; refused at t + 1: retried, the core stalls); its `memw` input becomes port B, link words from
 // the director (Link(cm_latency + 1)); `tables` and `hist_w`, Link(1)s of width 2 to the table store and HIST
 // (table_store.h: a table-window store of t, {table << 32 | index, value}); `hist`, HIST's RegFile (a HIST load is one
 // cycle, as ref's). A load of PTR, STREAM or GROUP is a bus error, as in ref.
-// W14 (D34): the request port is modelled (REQUEST_SEND pushes over `req_push` to the bus's leaf, `req_freed` gives
-// canPush's free of t; the receive side reads a controller's queue through `recv`; NOTES.md section 14).
+// (D34): the request port is modelled (REQUEST_SEND pushes over `req_push` to the bus's leaf, `req_freed` gives
+// canPush's free of t; the receive side reads a controller's queue through `recv`).
 
 // ------------------------------------------------------------------------------------- G1's part of the tile builder
 // The configuration G1's units depend on (the D12 header's keys that reach them).
@@ -655,17 +655,17 @@ struct G1Config {
     bool done_gate = true;
     uint32_t mem_chunks = 1u << 20;
     uint32_t periph_present = 1;
-    bool periph_slot = false;          // W15 (M3): the peripheral slot (the replayer as peripheral 1) and its paths
-    PeriphType periph1 = PT_REPLAYER;  // W15: a mesh tile's peripheral 1 in the slot (tests: PT_TEST)
-    bool cc3_tracer = false;           // W16 (M3): C&C 3's peripheral 1 the Tracer (ref's cc3Tracer), else the stub
-    unsigned replayer_log_entries = 256;   // the replayer's log queues (ref's -Dreplayer.logq; the kit's -q 512; W25)
-    bool stray_check = false;          // W20 (harness-only): the director reads the counters (`regs`) for ref's stray check
-    int test_periph_tile = -1;         // W20 (harness-only): >= 0: this mesh tile's peripheral 1 is the test peripheral
+    bool periph_slot = false;          // (M3): the peripheral slot (the replayer as peripheral 1) and its paths
+    PeriphType periph1 = PT_REPLAYER;  // a mesh tile's peripheral 1 in the slot (tests: PT_TEST)
+    bool cc3_tracer = false;           // (M3): C&C 3's peripheral 1 the Tracer (ref's cc3Tracer), else the stub
+    unsigned replayer_log_entries = 256;   // the replayer's log queues (ref's -Dreplayer.logq; the kit's -q 512)
+    bool stray_check = false;          // (harness-only): the director reads the counters (`regs`) for ref's stray check
+    int test_periph_tile = -1;         // (harness-only): >= 0: this mesh tile's peripheral 1 is the test peripheral
                                        //   (ref's Config.testPeripheral giving a TestPeripheral), with its slot
-    int periph_only = -1;              // W20 (harness-only): >= 0: only this mesh tile has peripheral 1 (and the slot, if
+    int periph_only = -1;              // (harness-only): >= 0: only this mesh tile has peripheral 1 (and the slot, if
                                        //   periph_slot); the other mesh tiles none (ref's periphType 0 + testPeripheral)
     unsigned K = 8, cm_latency = 2;    // the write counters' line, director -> port B
-    // G3 (W11): the memory path's keys
+    // G3: the memory path's keys
     unsigned ts_engine_latency = 1;    // tsEngineLatency: the engines' Links to and from the table store and HIST
     unsigned ag_lookahead = 0;         // agLookahead: the AG's read-ahead rings; 0: ref's default, 2 ts_engine_latency + 2
     unsigned area_queue_depth = 8, sram_read_latency = 2, read_port_depth = 64;
@@ -673,7 +673,7 @@ struct G1Config {
     bool sram_running_sum = true;      // D31: BigSram keeps its fingerprint sum per store; false in timing runs
 };
 
-// G1's part of a tile, as W9's tile builder meets it: chip.h's `ControlIO` (the ports agreed in NOTES.md, plus
+// G1's part of a tile, as the tile builder meets it: chip.h's `ControlIO` (the ports agreed, plus
 // ROUTER_OVF), returned by a `ControlBuilder`.
 // The units G1 adds for tile k (names "t<k>.core", "t<k>.ctl", "t<k>.dir", and the configuration parts of G3/G4's
 // units it owns until they extend them: "t<k>.we", "t<k>.ag", "t<k>.gather", "t<k>.ts", "t<k>.hist"), wired to each

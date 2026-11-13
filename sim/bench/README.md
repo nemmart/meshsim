@@ -13,6 +13,6 @@ digest, so a timing is only compared between runs that agree.
 | `tracer/` | `tracer_play` | the Tracer alone on a real run's calls: a TracerConf log converted, then replayed timed | `tracer_play convert LOG OUT`; `tracer_play run TRACE [REPS]` |
 | `threads/` | `bench_threads` | the framework over threads: forms 1 to 4 (independent chips, one chip split into domains, the barrier, the step cost) and the footprint by structure | `bench_threads --form 2 --threads T [--chip mesh\|synth] [--domains D] …`; `bench_threads --sizes --chip mesh\|synth` |
 
-`sort/w10.mk` holds the rules for `sort/`'s programs; `tracer_play`'s and `bench_threads`'s are in the Makefile's
+`sort/sort.mk` holds the rules for `sort/`'s programs; `tracer_play`'s and `bench_threads`'s are in the Makefile's
 includes (`bench_threads` is also built by plain `make`). `threads/mesh_fw.h` is `bench_threads`'s mesh chip. The
 Tracer's log for `tracer_play` comes from v1.3's TracerConf, which the frozen copy doesn't carry.

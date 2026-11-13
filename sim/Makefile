@@ -30,7 +30,7 @@ FLAGS := $(COMMON) $(DEBUG)
 else ifeq ($(MODE),release)
 FLAGS := $(COMMON) $(RELEASE)
 else ifeq ($(MODE),suite)
-FLAGS := $(COMMON) $(RELEASE) -DSIM_CHECKS   # W20: the suite build, release with the checker's facts (src/check.h)
+FLAGS := $(COMMON) $(RELEASE) -DSIM_CHECKS   # the suite build, release with the checker's facts (src/check.h)
 else
 $(error MODE must be debug, release or suite)
 endif
@@ -45,7 +45,7 @@ LIB_OBJ  := $(LIB_SRC:%.cpp=$(B)/%.o)
 TEST_SRC := $(wildcard tests/test_*.cpp)
 TESTS    := $(TEST_SRC:tests/%.cpp=$(B)/%)
 HARNESS  := $(B)/tests/harness.o
-# W3's stage 1 sketches: compiled in every build (they must build against the API), never linked or run.
+# the stage 1 sketches: compiled in every build (they must build against the API), never linked or run.
 SKETCH   := $(patsubst %.cpp,$(B)/%.o,$(wildcard src/sketch/*.cpp))
 
 .PHONY: all debug run check clean
@@ -62,7 +62,7 @@ $(B)/%.o: %.cpp
 $(B)/test_%: $(B)/tests/test_%.o $(HARNESS) $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 
-# W20: suite.h (Java's T for the ported suites): its own test links it.
+# suite.h (Java's T for the ported suites): its own test links it.
 $(B)/test_suite: $(B)/tests/test_suite.o $(B)/tests/suite.o $(HARNESS) $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 
@@ -76,7 +76,7 @@ check:
 	  $(MAKE) --no-print-directory CC_NAME=$$c MODE=debug build/$$c-debug/suite_bus && ./build/$$c-debug/suite_bus; done; \
 	echo "==== make check: all passed ($(COMPILERS); debug, release)"
 
-# The conformance tool (the C++ side of PORTS.md 10): the matrix against ref is oracle/conformance.sh (W19: it needs
+# The conformance tool (the C++ side of PORTS.md 10): the matrix against ref is oracle/conformance.sh (it needs
 # a JDK and sim/ref).
 $(B)/portconf: $(B)/tests/portconf_main.o $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
@@ -90,8 +90,8 @@ include src/units/net.mk
 include src/units/g4.mk
 include src/units/mem.mk
 include src/threads.mk
-include bench/w10/w10.mk
-include bench/w14/w14.mk
+include bench/sort/sort.mk
+include bench/tracer/tracer.mk
 
 -include $(shell find build -name '*.d' 2>/dev/null)
 include src/units/cc.mk

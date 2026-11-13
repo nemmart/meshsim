@@ -1,4 +1,4 @@
-// replay_delivery: Stage A on the C++ replayer (WORKER15; WORKER25: the manifest mode and ref's detail lines): ref's
+// replay_delivery: Stage A on the C++ replayer (the manifest mode and ref's detail lines): ref's
 // test/ReplayDelivery.java, window for window. For each window of a (v1.26) delivery: the program's tables, one of the
 // window's state records and the streams its stream word names, one pass through ReplayDriver (the ideal controller,
 // the peripheral interface only), every record compared with rows.bin byte for byte, every stream consumed exactly,
@@ -10,7 +10,7 @@
 //     delivered window of each program (all, or those named) in the manifest's order; stops at the first failing
 //     window unless --keep-going ("STOPPED at the first failing window", exit 1)
 //   replay_delivery LIST VARIANT [--keep-going] [--every K]
-//     W15's form: LIST is ReplayConf windows' output ("PROGRAM_DIR TABLES_DIR INDEX ROWS FIRST_ROW" per line);
+//     the form: LIST is ReplayConf windows' output ("PROGRAM_DIR TABLES_DIR INDEX ROWS FIRST_ROW" per line);
 //     --every K: every K-th window only (and ref with the same list)
 // VARIANT: state, state-lru or state-pick.
 #include <cstdio>

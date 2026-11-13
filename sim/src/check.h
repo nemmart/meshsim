@@ -1,4 +1,4 @@
-// check.h (WORKER20, P2, rows B19/B20): ref's per-cycle invariant checks (Chip.checkInvariants, scanOverflows; spec 9),
+// check.h: ref's per-cycle invariant checks (Chip.checkInvariants, scanOverflows; spec 9),
 // the units' side. A framework addition; harness-only in effect (nothing is recorded unless the harness installs a sink).
 //
 // HOW IT WORKS. ref keeps, per unit, a violation counter and the last violation's text; at the end of every cycle
@@ -108,7 +108,7 @@ enum class Kind : uint16_t {
     CTL_DONE_GO_MASKED,         // (no arguments)
     CTL_COUNTER_WRAP,           // a0 the counter
     CTL_DONE_EARLY,             // a0 a mask of counters still expecting arrivals, a1-a3 their counts (checker.cpp)
-    // the core's checks, through the block (Controller.java's ctl.violate; W26)
+    // the core's checks, through the block (Controller.java's ctl.violate)
     CTL_HALT,                   // a0 the halt (Controller.HALT_*: ecall 2, ebreak 3, fetch 6, jump 7, trap inside the
                                 //   handler 8), a1 its detail (fetch: the pc; jump: the target; trap: the cause)
     CTL_MRET,                   // (no arguments)
@@ -117,9 +117,9 @@ enum class Kind : uint16_t {
     CTL_REQ_FULL,               // (no arguments) a request pushed into a full request FIFO (RequestPort.send; harness only)
     CTL_TABLE_BUSY,             // a0 the table (table_store.h: STREAM_SRC 0, DEST 1, COUNT 2, GROUP 3, PTR 4, HIST 5), a1 the
                                 //   word index: the window accessed while its engine uses it (Controller.window, 4.10)
-    SLOT_VIOLATION,             // the peripheral slot's own (PeripheralSlot.violate, W26): a0 its code (periph_slot.h F_*),
+    SLOT_VIOLATION,             // the peripheral slot's own (PeripheralSlot.violate): a0 its code (periph_slot.h F_*),
                                 //   a1, a2 its arguments, a3 a full post's depth; F_PERIPHERAL: a1 n, a2 the peripheral's type
-    TRACER_VIOLATION,           // the Tracer's (Tracer.violate through its slot, W26): a0 its code (tracer.h V_*), a1, a2 its
+    TRACER_VIOLATION,           // the Tracer's (Tracer.violate through its slot): a0 its code (tracer.h V_*), a1, a2 its
                                 //   arguments (V_UNDEFINED: a2 the ALU's text, a static string)
     PERIPH_VIOLATION,           // a peripheral's violation through its slot to the block (ref's Peripheral.Host.violate):
                                 //   the replayer's (F2): a0 its code, a1-a3 its arguments (units/replayer.h)

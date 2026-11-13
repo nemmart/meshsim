@@ -1,4 +1,4 @@
-// cnc.cpp (WORKER9): C&C 1's model (ref's CnC and Cnc1Peripheral), its program, the row collectors and C&C 2-3's
+// cnc.cpp: C&C 1's model (ref's CnC and Cnc1Peripheral), its program, the row collectors and C&C 2-3's
 // endpoints. AUDIT-M2 section 4. C&C is one unit per chip: its step is out of line.
 #include "units/cnc.h"
 
@@ -81,7 +81,7 @@ CncProgram& CncProgram::call_step(uint32_t id) {        // harness-only
     steps.push_back({CncStep::CALL_STEP, id, 0});
     return *this;
 }
-CncProgram& CncProgram::wait_host() { steps.push_back({CncStep::WAIT_HOST, 0, 0}); return *this; }   // W20 (harness-only)
+CncProgram& CncProgram::wait_host() { steps.push_back({CncStep::WAIT_HOST, 0, 0}); return *this; }   // (harness-only)
 CncProgram& CncProgram::release() {
     releases.push_back({uint32_t(steps.size()), parity()});
     return *this;
@@ -125,7 +125,7 @@ bool Cnc::all_ready(int64_t t) const {
     return true;
 }
 
-// W26: Endpoint.send's checks (invariants 5 and 21) as chip facts, at the send's cycle
+// Endpoint.send's checks (invariants 5 and 21) as chip facts, at the send's cycle
 void endpoint_checks(uint64_t t, unsigned address, const CncPacket& p) {
     const uint64_t h = lw::hdr(address, p.dst, p.mode, p.counter, p.addr, p.size);
     if (lw::bad_packet(p.mode, p.size, p.addr, 1)) sim::check::record(t, -1, sim::check::Kind::EP_BAD_PACKET, h, address);
@@ -137,7 +137,7 @@ void endpoint_checks(uint64_t t, unsigned address, const CncPacket& p) {
 void Cnc::send_packet(sim::Ctx& c, const CncPacket& p) {
     const uint64_t h = lw::hdr(lw::CC1, p.dst, p.mode, p.counter, p.addr, p.size);
     if (p.size == lw::SIZE_UNDEF || lw::reserved_mode(p.mode)) violations++;
-    endpoint_checks(c.now(), lw::CC1, p);              // W26 (ref counts the bad packet too; this counter, as before, doesn't)
+    endpoint_checks(c.now(), lw::CC1, p);              // (ref counts the bad packet too; this counter, as before, doesn't)
     retry_w[0] = lw::mask_lo(p.lo, p.size); retry_w[1] = h; retry_w[2] = lw::mask_hi(p.hi, p.size);
     c.put(send, retry_w[0], retry_w[1], retry_w[2]);
     packets_sent++;
@@ -174,9 +174,9 @@ sim::Wake Cnc::step(sim::Ctx& c) {
     if (c.ready(rx)) {
         const sim::Word* w = c.peek(rx);
         const uint64_t d = w[0], h = w[1], hi = w[2];
-        if (hs) hs->record(uint64_t(t), w, 64);              // W20 (harness-only): Endpoint.received
+        if (hs) hs->record(uint64_t(t), w, 64);              // (harness-only): Endpoint.received
         c.take(rx);
-        if (rx_count >= rx_depth) { rx_overflow = true; rx_lost++; sim::check::record(uint64_t(t), -1, sim::check::Kind::CNC_RX_LOST); }   // (W26: the fact)
+        if (rx_count >= rx_depth) { rx_overflow = true; rx_lost++; sim::check::record(uint64_t(t), -1, sim::check::Kind::CNC_RX_LOST); }   // (the fact)
         else {
             uint64_t* e = rxq[(rx_head + rx_count) % kRx];
             e[0] = d; e[1] = lw::src(h); e[2] = uint64_t(t); e[3] = hi; e[4] = lw::size(h);
@@ -197,13 +197,13 @@ sim::Wake Cnc::sequence(sim::Ctx& c, int64_t t) {
         return c.next();
     }
     pending_retry = 0;
-    if (reply_n) {                                            // W20 (harness-only): ref's replies first (drainReports)
+    if (reply_n) {                                            // (harness-only): ref's replies first (drainReports)
         send_packet(c, reply_q[reply_h]);
         reply_h = (reply_h + 1) % 16; reply_n--;
         pending_retry = 1;
         return c.next();
     }
-    if (hs && hs->due(t)) {                                   // W20 (harness-only): ref's Net.cncSends
+    if (hs && hs->due(t)) {                                   // (harness-only): ref's Net.cncSends
         if (cur < released) FATAL("C&C 1: the harness's send (Net.cncSends) while C&C's queue runs: not modelled");
         send_packet(c, hs->pop());
         pending_retry = 1;
@@ -216,7 +216,7 @@ sim::Wake Cnc::sequence(sim::Ctx& c, int64_t t) {
         case CncStep::MARK_CMD: last_command_word = s.a; cur++; continue;
         case CncStep::CALL: call_at[s.a] = t; cur++; continue;
         case CncStep::CALL_STEP: call_at[s.a] = t; cur++; return after_step(c);   // harness-only: takes its cycle
-        case CncStep::WAIT_HOST:                              // W20 (harness-only): released between cycles by the harness
+        case CncStep::WAIT_HOST:                              // (harness-only): released between cycles by the harness
             if (host_released == host_waits) return sim::Wake::none();
             host_waits++; cur++; continue;
         case CncStep::SEND: {
@@ -236,7 +236,7 @@ sim::Wake Cnc::sequence(sim::Ctx& c, int64_t t) {
             for (unsigned k = 0; k < 64; k++) c.put(go[k]);
             gos++;
             last_go_at = t;
-            if (plog) {                                       // W20 (harness-only): ref's phaseLog.add({seen, t})
+            if (plog) {                                       // (harness-only): ref's phaseLog.add({seen, t})
                 if (plog_n == plog_cap) FATAL("C&C: the harness's phase log is full (%u GOs)", plog_cap);
                 plog[plog_n][0] = seen; plog[plog_n][1] = t; plog_n++;
             }
@@ -256,12 +256,12 @@ sim::Wake Cnc::sequence(sim::Ctx& c, int64_t t) {
             cur++;
             return after_step(c);
         case CncStep::WAIT_READY:                             // SortTest.atAllReady's waitUntil: C&C's own
-            if (!all_ready(t)) return sim::Wake::none();      //  lastAllReadyAt is go()'s alone in ref (W24, NOTES)
+            if (!all_ready(t)) return sim::Wake::none();      //  lastAllReadyAt is go()'s alone in ref (NOTES)
             cur++;
             return after_step(c);
         }
     }
-    return hs ? hs->wake(c) : sim::Wake::none();              // W20 (harness-only): the next harness send
+    return hs ? hs->wake(c) : sim::Wake::none();              // (harness-only): the next harness send
 }
 
 uint64_t Cnc::digest() const {
@@ -298,7 +298,7 @@ Endpoint::Endpoint(sim::Ports& p, unsigned addr, const NetConfig& c) : address(u
 }
 
 sim::Wake Endpoint::step(sim::Ctx& c) {
-    if (hs) {                                                 // W20 (harness-only): the harness's sends and trace
+    if (hs) {                                                 // (harness-only): the harness's sends and trace
         const int64_t t = int64_t(c.now());
         bool next = false;
         if (pending_retry && c.refused(send)) { c.put(send, retry_w[0], retry_w[1], retry_w[2]); next = true; }
@@ -306,7 +306,7 @@ sim::Wake Endpoint::step(sim::Ctx& c) {
             pending_retry = 0;
             if (hs->due(t)) {                                 // Endpoint.send: src its address, the payload masked
                 const CncPacket& p = hs->pop();
-                endpoint_checks(uint64_t(t), address, p);     // W26: Endpoint.send's checks as chip facts
+                endpoint_checks(uint64_t(t), address, p);     // Endpoint.send's checks as chip facts
                 retry_w[0] = lw::mask_lo(p.lo, p.size); retry_w[1] = lw::hdr(address, p.dst, p.mode, p.counter, p.addr, p.size);
                 retry_w[2] = lw::mask_hi(p.hi, p.size);
                 c.put(send, retry_w[0], retry_w[1], retry_w[2]);

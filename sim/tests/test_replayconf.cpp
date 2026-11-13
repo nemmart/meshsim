@@ -1,4 +1,4 @@
-// test_replayconf: the replayer against ref every cycle (WORKER15). Each fixture in tests/replayer/ is a ReplayConf script
+// test_replayconf: the replayer against ref every cycle. Each fixture in tests/replayer/ is a ReplayConf script
 // (ReplayDriver's ideal controller on a synthetic delivery's window, every call to the replayer recorded; some with
 // mutations for the error paths) and ref's observations of it; the C++ replayer, given the same calls, must observe the
 // same, character for character (tests/replayconf.h). oracle/ref/replayconf.sh --fixtures | --check (needs a JDK).

@@ -1,7 +1,7 @@
 // golden_main.cpp: `golden [--direct | --engine | --threads N [--cpus a,b,...] | --bench REPS] [names...]`: runs the golden traces (all of tests/golden/RUNS, or those
 // named) and reports each. --direct (the default): the direct driver. --engine: the units on the framework, ready-driven
 // and under every debug check (shuffle seeds 1-3, instance-major, step-all), each trace equal to the golden and each
-// digest to the ready-driven run's. --threads N: the runs in rounds of N controllers on N threads (W4's run_independent),
+// digest to the ready-driven run's. --threads N: the runs in rounds of N controllers on N threads (the run_independent),
 // each a different golden, pinned with --cpus. Run from sim/. Exit status 1 if any differs or is refused.
 #include <chrono>
 #include <cstdio>

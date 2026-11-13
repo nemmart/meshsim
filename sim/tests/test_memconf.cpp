@@ -1,4 +1,4 @@
-// test_memconf.cpp (WORKER11, P2d): the memory path against ref, cycle by cycle (oracle/ref/MemConf.java). G3's units
+// test_memconf.cpp (P2d): the memory path against ref, cycle by cycle (oracle/ref/MemConf.java). G3's units
 // (the injection unit with its read queue, the big SRAM, the write engine, the table store, HIST) driven by the same
 // seeded script as ref's, with a stand playing the GATHER engine's and the AG's read holds, the read port's queue, the
 // director's we-in FIFO, the controller's window stores, the AG's STREAM/GROUP requests, the core's send hold and the
@@ -227,7 +227,7 @@ std::string run(const Script& s, sim::Options opt) {
         u[c] = x;
     }
     m.run(L > 1 ? L : 1);                                       // the last cycle's outputs reach the stand
-    if (std::getenv("MEMCONF_STATS")) {                         // what the script reached (NOTES.md's coverage)
+    if (std::getenv("MEMCONF_STATS")) {                         // what the script reached (its coverage)
         const Injection& j = m.unit<Injection>(t + "inj");
         const WriteEngine& w = m.unit<WriteEngine>(t + "we");
         const HistStore& hh = m.unit<HistStore>(t + "hist");

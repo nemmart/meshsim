@@ -1,4 +1,4 @@
-// stageb (WORKER25, P7b; inventory E3): v1.3's `java StageB`, its output line for line (tests/stageb.h).
+// stageb: v1.3's `java StageB`, its output line for line (tests/stageb.h).
 //   stageb synthetic [--image DIR] [--oldmap DIR] [--shuffle S]
 //       run_tests.sh's step stageb: Stage A's synthetic windows on the tile, against Stage A's ideal controller
 //   stageb DELIVERY VARIANT PROGRAM [WINDOW ...] [--lone] [--norow N] [--profile] [--image DIR] [--shuffle S]

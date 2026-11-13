@@ -1,11 +1,11 @@
-// p4_java.h (WORKER22, P4): the bits of the Java library v1.3's network, memory and engine suites lean on, so their
+// p4_java.h: the bits of the Java library v1.3's network, memory and engine suites lean on, so their
 // ported output and their random choices are Java's exactly. Test-side code (the configuration regime, D6).
 //
 //   java.util.Random          JRandom: next(bits), nextInt(), nextInt(bound), nextLong(), nextDouble(), nextBoolean()
 //   Collections.shuffle(l, r) jshuffle(v, r): for i = size .. 2, swap(i - 1, r.nextInt(i)) (ArrayList is RandomAccess)
 //   List<Integer>.toString()  jlist_int(v): "[1, 2, 3]"
 //
-// (tests/java_random.h is W20's start-skew draw, nextInt for a power of two only; this one is the whole generator.)
+// (tests/java_random.h is the start-skew draw, nextInt for a power of two only; this one is the whole generator.)
 #pragma once
 
 #include <cstdint>
@@ -50,7 +50,7 @@ inline std::string jlist_int(const std::vector<int>& v) {
 
 namespace p4 {
 // Java's Formatter for %.Nf: the double's shortest decimal digits (Double.toString's), rounded HALF_UP at N places
-// (W21's java_2f generalised); width as %W.Nf (right-aligned, spaces).
+// (the java_2f generalised); width as %W.Nf (right-aligned, spaces).
 std::string jfixed(double x, int prec, int width = 0);
 // Java's %,d: groups of three with commas
 std::string jgroup(int64_t v, int width = 0);

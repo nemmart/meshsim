@@ -1,4 +1,4 @@
-// p4_drift.cpp (WORKER22; for the docs session, spec items 62 and 70, with the owner's agreement): EngineTest full's
+// p4_drift.cpp (for the docs session, spec items 62 and 70, with the owner's agreement): EngineTest full's
 // data sets (sim/ref/meshsim/test/EngineTest.java: the 16-group all-to-alls on uniform Data(7, 65536), zipfraw, trace
 // and one99 at gaps 4, 0, 8; the local radix sort at 64 x 16,384 keys, 0/+1 skew) run as the suite runs them
 // (tests/suite_engine.cpp, the same machine and loads), measuring per run:

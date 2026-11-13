@@ -1,12 +1,12 @@
 // tracer.h: the Tracer, C&C 3's peripheral 1, type 3 (spec 4.21; 8.16; DECISIONS-v1.3 sections 1-25), ported from
-// `ref`'s Tracer.java (WORKER14). The RV64 row machine that executes the guest as the rows of Jolt's expanded trace and
+// `ref`'s Tracer.java. The RV64 row machine that executes the guest as the rows of Jolt's expanded trace and
 // writes each window's run log: the region and the record, control (word 0, PULSE_RUN, RUN_CONFIG, words 32-51, the
 // events and the two input credits), execution (fetch through the instruction cache, RVC, the decode table, ROM and
 // controller-fed templates, the rows of 4.21.4), the jump LRU and the map probe, the two 128-line caches and the fill bus
 // to a MemSystem, the code and log FIFOs and set 1's sizing, every ERRORS bit with item 152's stopping rule, 4.21.9's
 // timing, and the output path of 4.21.6 (set 2, the packers, output queues 0-3 with their credits, the drain, done).
 //
-// THE INTERFACE (owner, 2026-11-09; W15's peripheral method list): a member object of W15's slot, which calls these
+// THE INTERFACE (owner, 2026-11-09; the peripheral method list): a member object of the slot, which calls these
 // methods through a switch on the peripheral's type (no virtual calls). They are `ref`'s Peripheral methods with `ref`'s
 // timing, unchanged: inputs (accept, run, write_word) take effect at the end of their cycle, a region packet lands at
 // t + RP_LATENCY; level reads (running, errors, word, events' value) return the end of t - 1. `ref` settles lazily, on
@@ -81,7 +81,7 @@ public:
     };
     // ref's meshsim flags (violate).
     enum : int { V_ADVICE_UNCONSUMED = 1, V_UNDEFINED, V_END_NO_NFV, V_XFER_NO_NFV, V_INLINE_NO_TEMPLATE };
-    static void violation_text(int code, uint64_t a, uint64_t b, char* o, size_t n);   // W26: ref's text (the checker)
+    static void violation_text(int code, uint64_t a, uint64_t b, char* o, size_t n);   // ref's text (the checker)
     struct Fact {
         int64_t t = 0;
         int code = 0, bits = 0;
@@ -101,7 +101,7 @@ public:
     Tracer& operator=(const Tracer&) = delete;
     ~Tracer();
 
-    // The memory. In the chip (W15's slot creates the Tracer bare, as `ref`'s Config does) the harness hands it its
+    // The memory. In the chip (the slot creates the Tracer bare, as `ref`'s Config does) the harness hands it its
     // memory: own_memory(store) keeps the store and a memory system over it, and makes the memory cold at every
     // state-word landing (T2's onStateWrite). Tests and tools may instead point `mem` at their own.
     void own_memory(std::unique_ptr<FileStore> store) {
@@ -116,15 +116,15 @@ public:
     MemSystem* map_mem = nullptr;  // the map probe's, if a harness separates them (B1); else mem
     bool cold_mem_on_state_write = false;  // ref's onStateWrite = ms::cold: the word-0 write makes the memory cold
 
-    // ================================================================ the peripheral interface (W15's list)
+    // ================================================================ the peripheral interface (the list)
     static_assert(TYPE == PT_TRACER, "the Tracer's type tag");
-    static constexpr int DIGEST_N = STAT_N;  // W15's peripheral.h: digest_words' length
+    static constexpr int DIGEST_N = STAT_N;  // the peripheral.h: digest_words' length
     int params() const { return TYPE; }
     int type() const { return TYPE; }
-    uint64_t violation_count() const { return uint64_t(n_violations); }  // the slot forwards new ones (W15)
+    uint64_t violation_count() const { return uint64_t(n_violations); }  // the slot forwards new ones
     EventCounts& events() { return ev; }
     uint32_t consume_events(uint32_t bits) { return ev.consume(bits); }   // ref's onConsume: the Tracer has none
-    // accept(t) lands at the end of t + 2. On the framework the slot calls it at level 0 of t + 3 (W15's peripheral.h),
+    // accept(t) lands at the end of t + 2. On the framework the slot calls it at level 0 of t + 3 (the peripheral.h),
     // so the Tracer may already be settled through t + 2 (settled_ = t + 2: inputs before t + 2 applied): still in
     // time. Settled past that (a read or step of t + 3 already made) is a simulator bug: FATAL. run and write_word for a
     // store at t come at level 0 of t + 1, before any read of t + 1: settled_ <= t + 1 is in time.
@@ -136,7 +136,7 @@ public:
     uint32_t status_bits(int64_t) const { return 0; }
     bool word(int64_t t, int w, uint32_t& v);           // false: an undefined word
     int write_word(int64_t t, int w, uint32_t v);       // 1 written, 0 read-only (a bus error), -1 undefined
-    // W15's peripheral.h (static map): a defined own word a store writes (write_word's 1), so the core raises the bus
+    // the peripheral.h (static map): a defined own word a store writes (write_word's 1), so the core raises the bus
     // error of a store to a read-only word at once, as ref does
     bool writable(int w) const {
         return w == W_RUN_CONFIG || w == W_HASH_MUL || w == W_HASH_STEP || w == W_HASH_LINES || w == W_EXP_TEMPLATE;
@@ -182,7 +182,7 @@ public:
     static constexpr int FP_UNITS = 5;
     static constexpr const char* FP_NAMES[FP_UNITS] = {"tr", "tr.ic", "tr.dc", "tr.mem", "tr.files"};
     // In a chip, ref's Tracer at the end of cycle c already holds what here is still in the slot's links (AUDIT-M3 6.6
-    // part 11, as W15's Replayer::FpPending): the region packets the director accepted at c - 2 .. c (landings, e =
+    // part 11, as the Replayer::FpPending): the region packets the director accepted at c - 2 .. c (landings, e =
     // accept + 2), the core's PULSE_RUN or window store of c (inputs, e = c), and a PULSE_DMA of c (ref's slot starts
     // the transfer at once: out_start(c, q, words)). PeriphSlot::fingerprint_tracer builds it; null for a Tracer driven
     // directly (its lists are ref's).

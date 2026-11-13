@@ -1,4 +1,4 @@
-// test_suite_replayer: run_tests.sh's step replayer in make check (WORKER25, P7b): suite_replayer (v1.3's ReplayerTest)
+// test_suite_replayer: run_tests.sh's step replayer in make check: suite_replayer (v1.3's ReplayerTest)
 // run as the runner runs it (stdout and stderr), equal to v1.3's log (tests/replayer/replayer.log, from
 // oracle/ref/replayertest.sh), exit 0.
 #include <cstdio>

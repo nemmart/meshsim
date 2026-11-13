@@ -1,4 +1,4 @@
-// test_mem.cpp (WORKER11, G3): the memory path's units alone, hand-derived cases the M2 programs don't reach. Exactness
+// test_mem.cpp: the memory path's units alone, hand-derived cases the M2 programs don't reach. Exactness
 // against ref is MemConf's (oracle/ref/MemConf.java); these pin the rules: the overflow events (D29), the request FIFO's
 // judgment (PORTS.md 3), the big SRAM's room by the count before the pop (13a), write combining, the write engine's
 // stage and the SRAM Hold's refusal.
@@ -74,7 +74,7 @@ struct WeRig {
 }  // namespace
 
 // Cycles start at 1. No PTR ever returns: the stage (2L + 2 = 4) takes the puts of 1-4 (at 2-5), we-in (4) holds the
-// puts of 5-8; the put of 9 meets a full FIFO, judged at 10 (the write engine stepped then, W10's hook), its event at
+// puts of 5-8; the put of 9 meets a full FIFO, judged at 10 (the write engine stepped then, the hook), its event at
 // 11. One event per overflow: the puts of 9-12.
 TEST(write_engine_input_overflow_is_an_event) {
     sim::Sim m = WeRig::build(12, false, true);
@@ -205,7 +205,7 @@ TEST(big_sram_room_by_count_before_pop) {
 
 namespace {
 // The table store with the AG's ports: a driver puts PTR RMWs and window stores at given cycles; a reader (a later
-// level, as W12's AG) records PTR[i] from the view every cycle.
+// level, as the AG) records PTR[i] from the view every cycle.
 struct TsDriver {
     sim::LinkOut req_we, window, req_stream, req_group;
     sim::LinkIn ret_we, ret_stream, ret_group, ovf;

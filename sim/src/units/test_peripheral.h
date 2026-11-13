@@ -1,4 +1,4 @@
-// test_peripheral.h: the suites' test peripheral, type 15 (sim/ref/meshsim/test/TestPeripheral.java; WORKER15).
+// test_peripheral.h: the suites' test peripheral, type 15 (sim/ref/meshsim/test/TestPeripheral.java).
 //  - events: [0] run done (depth 1), [1] DMA done (the slot's), [2] an ordinary event (depth 1, post), [3] a credit
 //    (depth 2, credit; a post to a full count is flagged), [4] live (level);
 //  - a run lasts run_length cycles; STATUS [0] while it runs; ERRORS [0] when a test calls fault;

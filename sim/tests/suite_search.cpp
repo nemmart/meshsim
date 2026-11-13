@@ -1,11 +1,11 @@
-// suite_search.cpp (WORKER22, P4, inventory C11): v1.3's SearchBench (sim/ref/meshsim/test/SearchBench.java): search
+// suite_search.cpp: v1.3's SearchBench (sim/ref/meshsim/test/SearchBench.java): search
 // steps through the controller read port (fw/tests/search.c on every tile of the machine as specified), cycles per step
 // against the number of active searches, the lower bounds checked. Every assertion and printed line is Java's, so the
 // output equals run_tests.sh's log searchbench (fixture tests/p4suites/searchbench.log).
 //
 //   suite_search [seed]
 //
-// search.c's mark() is a TRACE store (8.15): the step marks come from W20's TRACE log (TileRef::record_trace, H6).
+// search.c's mark() is a TRACE store (8.15): the step marks come from the TRACE log (TileRef::record_trace, H6).
 // Java's %.1f, %.2f (HALF_UP on the shortest digits) and %,d: p4_java.h.
 //
 // Test-side code (the configuration regime, D6).

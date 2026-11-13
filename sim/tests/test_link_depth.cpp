@@ -1,6 +1,6 @@
-// A Link whose consumer may hold up to a declared depth (WORKER10; PORTS.md 2b). Conformance against ref's
+// A Link whose consumer may hold up to a declared depth (PORTS.md 2b). Conformance against ref's
 // WordDelayLine(name, L, C) is test_portconf (link-L-C fixtures); these test what the scripts can't: peek(k) and size,
-// the capacity's death in one domain and across domains, the credit protocol of W4's mesh across partitions, and no
+// the capacity's death in one domain and across domains, the credit protocol of the mesh across partitions, and no
 // allocation in the loop.
 #include <string>
 
@@ -132,7 +132,7 @@ TEST(a_link_with_depth_holds_across_domains_as_in_one) {
 }
 
 namespace {
-// The mesh's protocol on a Link that holds (W4's words held twice, undone): the producer has `depth` credits; each take
+// The mesh's protocol on a Link that holds (the words held twice, undone): the producer has `depth` credits; each take
 // returns one on a width-0 credit line of the same latency. The consumer takes at a seeded random pace, the producer puts
 // whenever it has a credit and words left. The words arrive in order, none lost, and the Link never overflows.
 struct CreditProducer {

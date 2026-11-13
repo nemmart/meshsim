@@ -1,5 +1,5 @@
-// test_java_format.cpp (WORKER20): java_format.h against Java's outputs: W24's values (tests/test_sort_kit.cpp), W23's
-// and W25's examples (tests/ctl/ctl.h, tests/stageb.h), and the shapes PhaseLog prints (%.0f, %.1f).
+// test_java_format.cpp: java_format.h against Java's outputs: the values (tests/test_sort_kit.cpp), the
+// and the examples (tests/ctl/ctl.h, tests/stageb.h), and the shapes PhaseLog prints (%.0f, %.1f).
 #include <cstdint>
 
 #include "harness.h"
@@ -32,8 +32,8 @@ TEST(java_format_fixed) {
     CHECK(fixed(100.0 * -7 / 250338, 2, true) == "-0.00");
     CHECK(fixed(100.0 * 36 / 5697, 2, true) == "+0.63");
     CHECK(fixed(12345.678, 2) == "12345.68");
-    CHECK(fixed(129.25, 1) == "129.3");             // W23's example (C: 129.2)
-    CHECK(fixed(0.0005, 3) == "0.001");             // W25's %.3f (C: 0.000 or 0.001 by the binary value)
+    CHECK(fixed(129.25, 1) == "129.3");             // the example (C: 129.2)
+    CHECK(fixed(0.0005, 3) == "0.001");             // the %.3f (C: 0.000 or 0.001 by the binary value)
     CHECK(fixed(2.5, 0) == "3");                    // PhaseLog's %.0f (C: 2)
     CHECK(fixed(0.5, 0) == "1");
     CHECK(fixed(1234.0 / 64.0, 0) == "19");         // 19.28125

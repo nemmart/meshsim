@@ -1,4 +1,4 @@
-// inject.h (WORKER9, G2; the read side is G3's): the injection point and the loopback tokens (spec 4.5; ref's
+// inject.h (the read side is G3's): the injection point and the loopback tokens (spec 4.5; ref's
 // InjectionPath.java and the token part of SRAMReadQueue.java; AUDIT-M2 3.2). Declarations: the ports and the state;
 // the step comes with stage 2.
 //
@@ -14,13 +14,13 @@
 //               the send-hold status Reg (below)
 //
 // PORTS
-//   in   send        HoldIn, 3 words: W8's core's send holding register (a refused put is retried by the core at t + 1).
+//   in   send        HoldIn, 3 words: the core's send holding register (a refused put is retried by the core at t + 1).
 //        loop_left   LinkIn, width 0: from the router, a token freed (free from the cycle it arrives).
 //   out  to_router   LinkOut, 3 words, latency intra_tile_latency: into the router's loopback route block (src unset).
-//        send_busy   RegOut, 1 word, to W8's register block: the send hold OCCUPIED at the end of t (after t's take).
+//        send_busy   RegOut, 1 word, to the register block: the send hold OCCUPIED at the end of t (after t's take).
 //                    ref's STATUS bit is `!sendHold.isEmpty(t)` at endCycle(t) = occupied at the end of t OR a put
 //                    made at t (WordHold.isEmpty: `!occ && !pendPut`). The put of t is the core's (a send store or a
-//                    retry), which only the core knows at t: W8's block ORs it in (it reaches the block with the store).
+//                    retry), which only the core knows at t: the block ORs it in (it reaches the block with the store).
 //                    The Reg is put only when the value changes, so it costs nothing on a quiet tile.
 #pragma once
 
@@ -46,10 +46,10 @@ struct Tokens {
     uint64_t digest() const { return uint64_t(reads) | uint64_t(loop_held) << 32; }
 };
 
-// G3's part (W11): the SRAM read queue (SRAMReadQueue.java), its clients and the read side of the injection.
+// G3's part: the SRAM read queue (SRAMReadQueue.java), its clients and the read side of the injection.
 //
 // Configuration: present only in a tile with G3's units (ControlIO::mem); clients 0 (the gather engine) and 1 (the
-// address generator) only when their units have their read Holds (W12), client 2 (the read port: the core's
+// address generator) only when their units have their read Holds, client 2 (the read port: the core's
 // Fifo(read_port_depth)) with the read side.
 //
 // The step at t (after the frees of t - 1 and the start-of-cycle count, Injection::step):
@@ -65,13 +65,13 @@ struct Tokens {
 // a loopback token if the packet loops; a read-port return counts on `rp_injected` (ReadPort.injectedAt).
 struct ReadSideConfig {
     bool present = false;
-    bool gather = false, ag = false;   // W12's clients
+    bool gather = false, ag = false;   // the clients
     unsigned read_port_depth = 64;
     unsigned sram_read_latency = 2;
     uint32_t mem_chunks = 1u << 20;
 };
 
-// W20 (harness-only; P2): ref's Net harness feeding a tile (sim/tests/mach.h, Net::at and Net::rd). Null on every machine
+// (harness-only; P2): ref's Net harness feeding a tile (sim/tests/mach.h, Net::at and Net::rd). Null on every machine
 // but the harness's coreless Net machine, so nothing here runs otherwise. The rings are the harness's (allocated at
 // configuration, fixed size: a push past them is fatal in the harness, between cycles). Entries are {T, w0, w1, w2}.
 //   ret     packets for the read-return holding register (Net.at): at the read side's step at u, the head with T <= u
@@ -125,14 +125,14 @@ struct InjReadSide {
     bool cur_v = false, nxt_v = false;
     uint64_t cur_w[3] = {}, nxt_w[3] = {}, nxt_at = 0;
     uint8_t busy_out = 0;              // the last gather_srq_busy put
-    HarnessFeed* feed = nullptr;       // W20 (harness-only): ref's Net harness's feed; null otherwise
+    HarnessFeed* feed = nullptr;       // (harness-only): ref's Net harness's feed; null otherwise
 
     // ---- statistics, ref's checks ----
     uint64_t issued[3] = {}, stall_cycles = 0, window_full_cycles = 0, packets = 0, out_of_range = 0, violations = 0;
     uint64_t rp_injected_n = 0;        // read-port returns injected (ReadPort.injected; the "rdport" fingerprint)
-    uint64_t rp_inj_t = ~0ull, rp_inj_now = 0;   // W20: the cycle of the last read-port injection and how many then (statistics)
+    uint64_t rp_inj_t = ~0ull, rp_inj_now = 0;   // the cycle of the last read-port injection and how many then (statistics)
     uint64_t rp_ties = 0;              // a read-port entry ready in the same cycle as one already waiting (by token order)
-    // W22 (finding F1, owner 2026-11-12: v1.3 parity, every build): ref counts window_full_cycles in every cycle the issue
+    // (finding F1, owner 2026-11-12: v1.3 parity, every build): ref counts window_full_cycles in every cycle the issue
     // finds no token free while a client has a request; this unit sleeps then (nothing wakes it until a token frees or
     // something arrives), so the cycles asleep are added when it next steps, as Injection's token_wait_cycles: `wf_from`
     // is the first cycle of such a sleep (0: none). A statistic only: no wake, no timing.
@@ -143,10 +143,10 @@ struct InjReadSide {
         return (cfg.gather && c.ready(client_hold[GATHER])) || (cfg.ag && c.ready(client_hold[AG])) || c.ready(rp_q);
     }
 #ifdef SIM_CHECKS
-    // W22 (P4; approved 2026-11-12; SIM_CHECKS only, the timing builds unchanged): ref's per-client latMax (issue to
+    // (P4; approved 2026-11-12; SIM_CHECKS only, the timing builds unchanged): ref's per-client latMax (issue to
     // injection, updated at the injection) and firstIssueT / lastIssueT (at the issue), for MemTest. Statistics.
     uint64_t lat_max[3] = {};
-    uint64_t lat_sum[3] = {}, lat_n[3] = {};   // W20 (P2): ref's SRAMReadQueue.latSum, latN (statistics only)
+    uint64_t lat_sum[3] = {}, lat_n[3] = {};   // ref's SRAMReadQueue.latSum, latN (statistics only)
     int64_t first_issue_t[3] = {-1, -1, -1}, last_issue_t[3] = {-1, -1, -1};
 #endif
 
@@ -170,8 +170,8 @@ struct InjReadSide {
     static unsigned chunks_of(unsigned size) { return size == lw::SIZE_UNDEF ? 0 : 1u << size; }
 
     void step(sim::Ctx& c, Tokens& tok);
-    void harness_feed(uint64_t t);                         // W20 (harness-only): the feed (above)
-    void harness_issue(sim::Ctx& c, Tokens& tok);          // W20 (harness-only): the issue from the harness's clients
+    void harness_feed(uint64_t t);                         // (harness-only): the feed (above)
+    void harness_issue(sim::Ctx& c, Tokens& tok);          // (harness-only): the issue from the harness's clients
     bool has_return(sim::Ctx&) const { return cur_v; }
     const uint64_t* peek_return(sim::Ctx&) const { return cur_w; }
     void injected(sim::Ctx& c, uint64_t h, Tokens& tok);
@@ -229,7 +229,7 @@ struct Injection {
     sim::Wake step(sim::Ctx& c);
     uint64_t digest() const;
 
-    // ref's SRAMReadQueue.loops: a controller's broadcast never reaches itself (W14-01; M3, C&C 1-3 as units 64-66)
+    // ref's SRAMReadQueue.loops: a controller's broadcast never reaches itself (M3, C&C 1-3 as units 64-66)
     bool loops(unsigned dst) const { return dst == me || (dst == lw::BROADCAST && me < 64); }
     void check(uint64_t t, uint64_t d, uint64_t h, uint64_t hi);   // InjectionPath's invariants (meshsim's checks; injected anyway)
 };
@@ -259,7 +259,7 @@ inline sim::Wake Injection::step(sim::Ctx& c) {
             // a cycle the send isn't judged (a read return goes first) or goes ends its wait
             if (wait_from) { token_wait_cycles += c.now() - wait_from; wait_from = 0; }
             if (r) {
-                if (rs.feed && !(h & lw::TAG_FROM_SRQ)) rs.cur_v = false;   // W20 (harness-only): a fed packet, no token
+                if (rs.feed && !(h & lw::TAG_FROM_SRQ)) rs.cur_v = false;   // (harness-only): a fed packet, no token
                 else rs.injected(c, h, tok);
                 from_read++;
             }
@@ -269,7 +269,7 @@ inline sim::Wake Injection::step(sim::Ctx& c) {
             injected++;
         }
     }
-    // STATUS's send-busy (the occupied half; W8's block ORs in the core's put of t)
+    // STATUS's send-busy (the occupied half; the block ORs in the core's put of t)
     const uint8_t busy = c.ready(send) ? 1 : 0;
     if (busy != busy_out) { busy_out = busy; c.put(send_busy, busy); }
     // A send that lost to a read return is judged again next cycle.
@@ -278,19 +278,19 @@ inline sim::Wake Injection::step(sim::Ctx& c) {
     // The wait may outlast a cycle with no free on its way (the loopback FIFO drains when the eject selector reaches
     // it): the tile builder gives this unit its own missed-wake threshold.
     if (!rs.cfg.present) return sim::Wake::none();
-    if (rs.window_waiting(c, tok)) rs.wf_from = c.now() + 1;     // W22 (F1): counted from t + 1 if the unit sleeps
+    if (rs.window_waiting(c, tok)) rs.wf_from = c.now() + 1;     // counted from t + 1 if the unit sleeps
     return rs.wake(c, tok);
 }
 
-// ---- the read side's step (W11) -------------------------------------------------------------------------------------
+// ---- the read side's step -------------------------------------------------------------------------------------
 inline void InjReadSide::step(sim::Ctx& c, Tokens& tok) {
     if (!cfg.present) return;
     const uint64_t t = c.now();
-    if (wf_from) { window_full_cycles += t - wf_from; wf_from = 0; }   // W22 (F1): the window-full cycles asleep
+    if (wf_from) { window_full_cycles += t - wf_from; wf_from = 0; }   // the window-full cycles asleep
     // the read-return hold: the put of t - 1 is visible now (the previous one was injected when it was)
     if (cur_v) FATAL("read queue: tile %u, cycle %llu: a read return not injected the cycle it was visible", me, (unsigned long long)t);
     if (nxt_v && nxt_at < t) { cur_v = true; cur_w[0] = nxt_w[0]; cur_w[1] = nxt_w[1]; cur_w[2] = nxt_w[2]; nxt_v = false; }
-    if (feed) harness_feed(t);                                // W20 (harness-only): ref's Net.feed() before cycle t
+    if (feed) harness_feed(t);                                // (harness-only): ref's Net.feed() before cycle t
     // 1. returns from the areas
     for (unsigned a = 0; a < AREAS; a++) {
         if (!c.ready(ret[a])) continue;
@@ -315,7 +315,7 @@ inline void InjReadSide::step(sim::Ctx& c, Tokens& tok) {
     }
     if (pick >= 0) emit(t, uint32_t(pick));
     // 3. issue
-    if (feed && feed->clients) { harness_issue(c, tok); publish_busy(c); return; }   // W20 (harness-only)
+    if (feed && feed->clients) { harness_issue(c, tok); publish_busy(c); return; }   // (harness-only)
     if (c.refused(sram_rd)) { c.put(sram_rd, last_rd); stall_cycles++; }
     else if (!tok.free()) {
         if ((cfg.gather && c.ready(client_hold[GATHER])) || (cfg.ag && c.ready(client_hold[AG])) || c.ready(rp_q)) window_full_cycles++;
@@ -343,7 +343,7 @@ inline void InjReadSide::issue(sim::Ctx& c, Tokens& tok, unsigned client, uint64
     if (client != READPORT) { ord[client][(ord_head[client] + ord_n[client]) % MAX] = uint8_t(t_); ord_n[client]++; }
     issued[client]++; in_flight[client]++;
 #ifdef SIM_CHECKS
-    if (first_issue_t[client] < 0) first_issue_t[client] = int64_t(t);   // W22: SRAMReadQueue.firstIssueT, lastIssueT
+    if (first_issue_t[client] < 0) first_issue_t[client] = int64_t(t);   // SRAMReadQueue.firstIssueT, lastIssueT
     last_issue_t[client] = int64_t(t);
 #endif
     const unsigned width = unsigned(a >> 21 & 3);
@@ -381,14 +381,14 @@ inline void InjReadSide::injected(sim::Ctx& c, uint64_t h, Tokens& tok) {
     held_slot[t_] = 0;
     tok.reads--; in_flight[cl[t_]]--;
 #ifdef SIM_CHECKS
-    if (c.now() - issueT[t_] > lat_max[cl[t_]]) lat_max[cl[t_]] = c.now() - issueT[t_];   // W22: SRAMReadQueue.latMax
-    lat_sum[cl[t_]] += c.now() - issueT[t_]; lat_n[cl[t_]]++;                             // W20: latSum, latN (PhaseLog)
+    if (c.now() - issueT[t_] > lat_max[cl[t_]]) lat_max[cl[t_]] = c.now() - issueT[t_];   // SRAMReadQueue.latMax
+    lat_sum[cl[t_]] += c.now() - issueT[t_]; lat_n[cl[t_]]++;                             // latSum, latN (PhaseLog)
 #endif
     if (tokens_on && loops(lw::dst(h))) tok.loop_held++;   // the token moves to the loopback packet: still held
     free_q[(free_head + free_n) % MAX] = uint8_t(t_); free_n++;
     if (h & lw::TAG_READPORT) {
         c.inc(rp_injected); rp_injected_n++;
-        if (c.now() != rp_inj_t) { rp_inj_t = c.now(); rp_inj_now = 0; }   // W20: ref's ReadPort.injNow (its entry free from t + 1)
+        if (c.now() != rp_inj_t) { rp_inj_t = c.now(); rp_inj_now = 0; }   // ref's ReadPort.injNow (its entry free from t + 1)
         rp_inj_now++;
     }
     publish_busy(c);
@@ -405,7 +405,7 @@ inline void InjReadSide::publish_busy(sim::Ctx& c) {
 inline sim::Wake InjReadSide::wake(sim::Ctx& c, const Tokens& tok) const {
     const uint64_t t = c.now();
     if (nxt_v) return c.next();
-    uint64_t hat = ~0ull;                                      // W20 (harness-only): the harness's next feed or issue
+    uint64_t hat = ~0ull;                                      // (harness-only): the harness's next feed or issue
     if (feed && feed->pending()) {                             // (off: only the client FIFOs' visible entries, which
         if (feed->on && feed->ret.n) hat = feed->ret.at(0)[0];   //  the read queue takes under any run, as ref's)
         for (unsigned k = 0; k < 3; k++) {
@@ -426,7 +426,7 @@ inline sim::Wake InjReadSide::wake(sim::Ctx& c, const Tokens& tok) const {
 }
 
 
-// ---- W20 (harness-only; P2): ref's Net harness's feed, on the coreless Net machine only (feed != null) --------------
+// ---- (harness-only; P2): ref's Net harness's feed, on the coreless Net machine only (feed != null) --------------
 inline void InjReadSide::harness_feed(uint64_t t) {
     HarnessFeed& f = *feed;
     if (!f.on) return;                                         // a cycle run outside Net's step: nothing fed (ref)

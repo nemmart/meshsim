@@ -1,4 +1,4 @@
-// suite_bus.cpp (WORKER26, P2, inventory C2): v1.3's BusTest, "bus primitives, generic and primitive variants against the
+// suite_bus.cpp: v1.3's BusTest, "bus primitives, generic and primitive variants against the
 // same rules", on the framework's port kinds (src/PORTS.md), log-equal to v1.3's ("BusTest: 154 passed, 0 failed").
 //
 // THE MAPPING (agreed with the integrator, 2026-11-12):

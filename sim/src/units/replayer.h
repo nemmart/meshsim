@@ -1,4 +1,4 @@
-// replayer.h: the replayer, peripheral type 4 (spec 4.19; 4.17.1), cycle by cycle (WORKER15).
+// replayer.h: the replayer, peripheral type 4 (spec 4.19; 4.17.1), cycle by cycle.
 //
 // sim/ref/meshsim/src/Replayer.java as it runs in v1.3 (v1.26.1: RUN_CONFIG, the 68-word record, the flush at the state
 // word's write, part 0 as the working state, the underflow and leftover errors), with REPLAYER-NOTES' model choices
@@ -41,7 +41,7 @@ class Replayer;
 // A code or log queue and its decompressor (4.19.15): Replayer.Stream.
 struct ReplayerStream {
     enum : int { AVAIL = 0, WAIT = 1, END = 2, OVER = 3 };
-    static constexpr unsigned MAX_CAP = 512;   // W25: the log queues' depth is a configuration value (256, or 512 for ref's -Dreplayer.logq=512)
+    static constexpr unsigned MAX_CAP = 512;   // the log queues' depth is a configuration value (256, or 512 for ref's -Dreplayer.logq=512)
     unsigned id = 0;               // 0 code, 1 read log, 2 write log (names, errors)
     unsigned cap = 0, half = 0, value_bits = 0;
     bool is_write = false;
@@ -171,7 +171,7 @@ public:
     static constexpr uint32_t RC_ROWS = 0xFFFFFF, RC_STORE_LOG = 1u << 24, RC_RD_PREV = 1u << 25, RC_TRACER_COMP = 7u << 26, RC_DEFINED = 0x1FFFFFFF;
     static constexpr unsigned W_RUN_CONFIG = 32, W_ROWS_RUN = 33, W_EXP_OFFSET = 34, W_EXP_OPCODE = 35;
     static constexpr unsigned LOG_QUEUE_ENTRIES = 256;   // v1.26 (V3-12): the default; the constructor's log_entries is ref's
-                                                         // -Dreplayer.logq (512: v1.25's 8 KB logs, the kit's -q 512 control; W25)
+                                                         // -Dreplayer.logq (512: v1.25's 8 KB logs, the kit's -q 512 control)
     static constexpr unsigned EXP_CAP = 256, EXP_HALF = 128;
     // events (4.19.9)
     static constexpr unsigned EV_RUN_DONE = 0, EV_CODE = 2, EV_RLOG = 3, EV_WLOG = 4, EV_EXP = 5, EV_NEWEXP = 6;
@@ -200,9 +200,9 @@ public:
     };
     enum : uint64_t { INV_CLASS3 = 1, INV_ROM_END = 2, INV_WORD = 3 };   // b: the instruction / start<<16|row / rowcore cause
     enum : uint64_t { UF_CODE_OVER_DECODE = 1, UF_CODE_PAST_VALUES = 2, UF_LOG_END = 3, UF_LOG_OVER = 4, UF_NFV_OVER = 5,
-                      UF_TRANSFER = 6, UF_TRANSFER_END = 7 };   // 6: past the read log's words, 7: past its values (W25)
+                      UF_TRANSFER = 6, UF_TRANSFER_END = 7 };   // 6: past the read log's words, 7: past its values
     static constexpr unsigned FACT_RING = 64;
-    // ref's error lists (W25): Replayer.violations, invalids, overruns, underflows, leftovers, each entry ref's text. The
+    // ref's error lists: Replayer.violations, invalids, overruns, underflows, leftovers, each entry ref's text. The
     // first `list_capacity` entries of each are kept, formatted when recorded (snprintf into a buffer allocated at
     // construction; D24), and every entry is counted; nothing is allocated in the run. ref's badWrites is always empty
     // (a bad write is FATAL here, UndefinedBehavior in ref).
@@ -263,7 +263,7 @@ public:
     const ReplayerFact& fact(unsigned i) const { return facts_[(fact_n_ - fact_shown_ + i) % FACT_RING]; }
     unsigned fact_shown() const { return fact_shown_; }
     static void fact_text(const ReplayerFact& f, char* buf, size_t n);
-    static void violation_text(unsigned me, int64_t t, uint16_t c, uint64_t a, uint64_t b, uint64_t x, char* o, size_t n);   // W20 (F2)
+    static void violation_text(unsigned me, int64_t t, uint16_t c, uint64_t a, uint64_t b, uint64_t x, char* o, size_t n);
     // ref's lists (above): how many entries list l has had, how many are kept, and kept entry i's text.
     uint64_t list_count(unsigned l) const { return list_n_[l]; }
     uint32_t list_capacity() const { return list_cap_; }
@@ -274,7 +274,7 @@ public:
     void set_row_buffer(uint64_t* buf, uint64_t capacity_rows) { row_buf_ = buf; row_cap_ = capacity_rows; }
     uint64_t* row_buffer() const { return row_buf_; }
     uint64_t rows_sunk() const { return rows_sunk_; }
-    // W20 (harness-only; P2): the harness's row hook (sim/tests/mach.h) drains the buffer between cycles: the rows from
+    // (harness-only; P2): the harness's row hook (sim/tests/mach.h) drains the buffer between cycles: the rows from
     // row_base() on are in it, from its start; drained() moves the base to rows_sunk() (0 and unused otherwise).
     uint64_t row_base() const { return row_base_; }
     void drained() { row_base_ = rows_sunk_; }
@@ -344,7 +344,7 @@ private:
 
     void violate(int64_t t, uint16_t code, uint64_t a = 0, uint64_t b = 0, uint64_t c = 0);
     void record(int64_t t, uint16_t code, uint64_t a, uint64_t b, uint64_t c = 0);
-    void list_add(int64_t t, uint16_t code, uint64_t a, uint64_t b, uint64_t c);   // ref's text into its list (W25)
+    void list_add(int64_t t, uint16_t code, uint64_t a, uint64_t b, uint64_t c);   // ref's text into its list
     void note_input(int64_t t);
     void settle(int64_t T);
     unsigned next_offset() const;
@@ -411,7 +411,7 @@ private:
 
     // facts
     ReplayerFact facts_[FACT_RING] = {};
-    std::unique_ptr<char[]> list_text_;   // N_LISTS x list_cap_ entries of LIST_TEXT bytes (W25)
+    std::unique_ptr<char[]> list_text_;   // N_LISTS x list_cap_ entries of LIST_TEXT bytes
     uint32_t list_cap_ = 0;
     uint64_t list_n_[N_LISTS] = {};
     unsigned fact_n_ = 0, fact_shown_ = 0;

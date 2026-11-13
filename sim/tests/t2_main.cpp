@@ -1,5 +1,5 @@
-// t2 (WORKER16; build/<cc>-<mode>/t2): T2 on the framework's chip, as W13's M3Seg runs ref's (AUDIT-M3 sections 0, 7).
-// So far the boot (the first milestone), up to where C&C 1's peripheral is needed in its slot:
+// t2 (build/<cc>-<mode>/t2): T2 on the framework's chip, as the M3Seg runs ref's (AUDIT-M3 sections 0, 7).
+// The boot, then with --segment the segment to its end (M3Seg's conditions):
 //
 //   t2 [--sram FILE] [--files FILE] [--parts N] [--boot-cycles N]
 //
@@ -31,7 +31,7 @@ namespace {
 
 // The golden's unit lines by point: label -> name -> hash (fpchip.gz: "c name hash" lines, `#` lines skipped).
 using Points = std::map<uint64_t, std::map<std::string, std::string>>;
-unsigned g_dma_points = 0;      // points with a PULSE_DMA of t in flight (all units compared: W14's overlay)
+unsigned g_dma_points = 0;      // points with a PULSE_DMA of t in flight (all units compared: the overlay)
 bool load_points(const std::string& path, Points& p, std::string& err) {
     std::vector<uint8_t> raw;
     if (!t2::read_gz(path, raw, err)) return false;
@@ -173,7 +173,7 @@ int run_segment(t2::Machine& mach, sim::Sim& s, const std::string& fp_points, co
 }  // namespace
 
 // The timing (--time REPS --end T): per repetition a fresh machine (the setup: the build, the Tracer's memory, the
-// landings; timed apart, as W13's baseline), the boot to coresBooted (timed apart), then the segment: CC_SEGMENT and
+// landings; timed apart, as the baseline), the boot to coresBooted (timed apart), then the segment: CC_SEGMENT and
 // one run to T + 1, the framework cycle after M3Seg's end point T (found by a checked run: --segment). Checked after
 // each: C&C 3 and every tile exited, tr_results status 1. With --units, the repetitions run with Options::calibrate
 // (each unit's step timed: the load by unit kind, C&C 3's domain (tile 2 and C&C 3) alone, the framework's share);

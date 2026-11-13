@@ -1,4 +1,4 @@
-// The digest unit by unit (WORKER4, E5): order-free of the build's numbering, by-reference payloads by their contents.
+// The digest unit by unit: order-free of the build's numbering, by-reference payloads by their contents.
 #include "config.h"
 #include "harness.h"
 #include "synth.h"

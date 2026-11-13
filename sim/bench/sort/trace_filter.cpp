@@ -1,4 +1,4 @@
-// trace_filter (WORKER10): footprints from a memory trace. Reads bench_chip --trace-map's region map (argv[1]) and
+// trace_filter: footprints from a memory trace. Reads bench_chip --trace-map's region map (argv[1]) and
 // valgrind --tool=lackey --trace-mem=yes's trace (stdin), windows marked by stores to the map's marker; reports, per
 // structure (the map's names), what is allocated against the cache lines touched over all windows, and per domain
 // (thread) the lines touched per window (one barrier interval when the window is the interval).

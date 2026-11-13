@@ -1,4 +1,4 @@
-// book.h (WORKER23, P5; D40): the recipe book's region extractor and generator in C++, in place of v1.3's regions.py
+// book.h (D40): the recipe book's region extractor and generator in C++, in place of v1.3's regions.py
 // and gen_book.py (removed; the owner's ruling 2026-11-12). Shared by `gen_book` (fw/recipes/gen_book.cpp, which
 // writes fw/RECIPES.md from RECIPES.tmpl.md) and RecipeTest's snippet check (tests/ctl/suite_recipes.cpp).
 //

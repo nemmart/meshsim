@@ -1,4 +1,4 @@
-// tracer_play (WORKER14): the Tracer's speed alone, on the calls a real run makes.
+// tracer_play: the Tracer's speed alone, on the calls a real run makes.
 //
 //   tracer_play convert LOG OUT     a TracerConf log (oracle/ref/TracerConf.java; a file, .gz or a FIFO) to a compact call
 //                                   trace: the store as the run starts, then the calls grouped by cycle as the log

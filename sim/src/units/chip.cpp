@@ -1,4 +1,4 @@
-// chip.cpp (WORKER9): the chip's assembly (chip.h). Configuration only.
+// chip.cpp: the chip's assembly (chip.h). Configuration only.
 #include "units/chip.h"
 
 #include "base/fatal.h"
@@ -95,7 +95,7 @@ void wire_unit(sim::Config& cfg, const NetConfig& nc, unsigned k, const ControlI
     cfg.link(r.eject, io.eject, nc.intra_tile_latency);
     cfg.connect(r.ovf, io.router_ovf);
     cfg.link(r.ovf_ev, io.router_ovf_ev, 1);              // D29: the overflow steps the block (counted at t + 1, D28)
-    if (io.mem.present) {                                 // W11: the read queue's clients, the big SRAM's ends
+    if (io.mem.present) {                                 // the read queue's clients, the big SRAM's ends
         if (io.mem.gather) cfg.connect(io.mem.rd_gather, in.rs.client_hold[InjReadSide::GATHER]);
         if (io.mem.ag) cfg.connect(io.mem.rd_ag, in.rs.client_hold[InjReadSide::AG]);
         if (io.mem.gather) cfg.connect(in.rs.gather_srq_busy, io.mem.gather_srq_busy);
@@ -124,7 +124,7 @@ TileIO tile_cycle(sim::Config& cfg, const ChipSpec& spec, unsigned k) {
     t.attached = k < 3;
     if (t.attached && !spec.cc_cores) { t.from_cnc = r.from_cnc; t.to_cnc = r.to_cnc; }
     if (t.attached && spec.cc_cores) { t.from_cc = r.from_cc; t.to_cc = r.to_cc; }
-    t.req = io.req;                                       // W14: wired to the request bus by build_chip
+    t.req = io.req;                                       // wired to the request bus by build_chip
     return t;
 }
 
@@ -138,7 +138,7 @@ CcIO cc_cycle(sim::Config& cfg, const ChipSpec& spec, unsigned c) {
     auto& r = cfg.add<Router>(tile_unit(k, "router"), k, nc, spec.hops, true, Router::FIFTH_HOLD, dma);
     wire_unit(cfg, nc, k, io, r);
     // the slot's DMA (AUDIT-M3 3.1 S6): C&C 3's into CC_DMA_IN; C&C 1's and C&C 2's lead nowhere in ref (their slots'
-    // dmaPort is null: nothing of theirs starts a DMA in v1.3), wired when the slot's builder offers them (W15)
+    // dmaPort is null: nothing of theirs starts a DMA in v1.3), wired when the slot's builder offers them
     if (dma) cfg.connect(io.dma, r.dma);
     else if (io.has_dma) cfg.connect(io.dma, cfg.add<NoDma>(tile_unit(k, "nodma"), c).in);
     auto& h = cfg.add<HostPort>(tile_unit(k, "host"), c, spec.host_capacity);
@@ -147,11 +147,11 @@ CcIO cc_cycle(sim::Config& cfg, const ChipSpec& spec, unsigned c) {
     o.link_in = r.in[Router::CC_LINK_IN]; o.link_out = r.out[Router::CC_LINK_OUT];
     o.has_dma = dma; if (dma) o.dma = r.dma;
     o.go = io.go; o.line = io.line; o.slot = io.slot;
-    o.req = io.req;                                       // W14: its request port, both sides
+    o.req = io.req;                                       // its request port, both sides
     return o;
 }
 
-// W14 (D34): the request bus for the senders whose control has a request port (the tiles; with `cc`, the controllers,
+// (D34): the request bus for the senders whose control has a request port (the tiles; with `cc`, the controllers,
 // which also get their receive queues): each leaf in its unit's domain, each queue in its controller's, the nodes with
 // tile 0's. The mode is spec.reqbus.credit_latency, set explicitly (D34); mode 0 split is refused at build.
 void add_request_bus(sim::Config& cfg, const ChipSpec& spec, TileIO* io, CcIO* cc) {
@@ -193,7 +193,7 @@ void build_chip(sim::Config& cfg, const ChipSpec& spec) {
             cfg.link(io[c].to_cc, u[c].link_in, nc.cc_link_latency);
             cfg.link(u[c].link_out, io[c].from_cc, nc.cc_link_latency);
         }
-        add_request_bus(cfg, spec, io, u);                // W14 (D34): the tiles' and the controllers' ports
+        add_request_bus(cfg, spec, io, u);                // (D34): the tiles' and the controllers' ports
         // The chip lines (AUDIT-M3 3.4, section 4): the tiles' line words through M2's row collectors, the controllers'
         // directly, all into C&C 1's peripheral (READY, ERROR_LINES, the toast pin) through its slot's own ports, GO
         // out of them; with C&C 1, the collectors in tile 0's domain. Without C&C 1's slot, a stand-in takes its place.
@@ -219,7 +219,7 @@ void build_chip(sim::Config& cfg, const ChipSpec& spec) {
         }
         return;
     }
-    if (spec.reqbus_host) {                               // W20 (harness-only): the queues and controller inputs, ReqHost
+    if (spec.reqbus_host) {                               // (harness-only): the queues and controller inputs, ReqHost
         uint64_t tiles = 0;
         for (unsigned k = 0; k < 64; k++) if (io[k].req.present) tiles |= uint64_t(1) << k;
         if (spec.domain) FATAL("build_chip: the request bus's harness host on a split machine");
@@ -233,7 +233,7 @@ void build_chip(sim::Config& cfg, const ChipSpec& spec) {
             cfg.connect(rb.recv[c]->head, h.head[c]);
             cfg.link(h.qcredit[c], rb.root->qcredit[c], rb.queue_credit_latency());
         }
-    } else add_request_bus(cfg, spec, io, nullptr);       // W14 (D34): the tiles' ports (M2's chip: no controllers)
+    } else add_request_bus(cfg, spec, io, nullptr);       // (D34): the tiles' ports (M2's chip: no controllers)
     // C&C and the collectors with tile 0 (C&C's send is a Hold into tile 0's router), C&C 2 and 3 with tiles 1 and 2
     if (spec.domain) cfg.domain(spec.domain[0]);
     auto& cc = cfg.add<Cnc>("cnc", nc, *spec.program);

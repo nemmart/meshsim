@@ -12,12 +12,12 @@
 //   void post(op, arg, v)       what the block applies at the end of t (one a cycle): BUS_STORE (register, value),
 //                               BUS_CONSUME (-, the EVENTS bits returned), BUS_ERROR (condition, -)
 //
-// M2 (W8), each optional (an environment without it, M1's benches, stops with a FATAL naming what it lacks):
-//   void send(lo, hdr, hi)      a ROUTER_SEND_* store's packet on the send holding register (W9's injection unit)
+// M2, each optional (an environment without it, M1's benches, stops with a FATAL naming what it lacks):
+//   void send(lo, hdr, hi)      a ROUTER_SEND_* store's packet on the send holding register (the injection unit)
 //   bool send_refused()         the send put of t - 1 was refused: the core puts the same packet again and stalls
 //   void table_store(table, i, v)  a table-window store (table_store.h), applied before t + 1's readers
 //   uint32_t hist(i)            HIST[i] for a one-cycle table-window load
-// M3 (W15), the peripheral slot (AUDIT-M3 3.1), each optional (without them a present window is FATAL):
+// M3, the peripheral slot (AUDIT-M3 3.1), each optional (without them a present window is FATAL):
 //   int window_load(n, w, v)    a load of peripheral n's window word w at t (the slot's RegFile; a consuming EVENTS
 //                               load also puts its consume): 1 read, 2 a reserved or undefined word (reads 0, flagged)
 //   bool window_stalls(n, w)    a store to w must retry at t (S8)
@@ -56,7 +56,7 @@ inline uint64_t digest_mix(uint64_t h, uint64_t v) {
     return z ^ (z >> 31);
 }
 
-// W23 (P5): Controller.checkBootRom (v1.25, DECISIONS-v1.25 s8d): the boot ROM is 256 bytes, 64 words; a larger image
+// Controller.checkBootRom (v1.25, DECISIONS-v1.25 s8d): the boot ROM is 256 bytes, 64 words; a larger image
 // is refused (FATAL, at configuration: ref's IllegalStateException), naming where it came from.
 inline void check_bootrom(size_t words, const char* from) {
     if (words > BOOTROM_MAX_WORDS)
@@ -70,7 +70,7 @@ struct Rv32Timing {
 // How a core's run ended (TRACE-FORMAT's END): it runs until one of these, then nothing (TraceRun's chip stops there).
 enum class Stop : uint8_t { running, halt, parked, ub };
 
-// W26 (invariant 8, ControllerMemories' read tracking; a statistic in every build, out of the digests): the data words
+// (invariant 8, ControllerMemories' read tracking; a statistic in every build, out of the digests): the data words
 // holding a reply or a read-port result the core hasn't loaded or stored yet, and command slot 0 not yet loaded. The
 // port-B side (marking) is the tile core's (tile_ctl.h, TileCore::track_port_b); the core's side is `loaded`/`stored`
 // (ref's cm.loaded, cm.stored), which also remember the last few accesses with their cycle: a port-B write reaches the
@@ -80,7 +80,7 @@ struct CmemTrack {
     uint64_t unread[MEM_WORDS / 64] = {};
     bool slot0_unread = false;
     uint64_t overwritten_unread = 0, unread_commands = 0;   // ref's cmem.overwrittenUnread, unreadCommands
-    uint64_t writes_cmd = 0; int64_t landed_at = -1;        // W23: ref's cmem.writesCmd, landedAt (statistics)
+    uint64_t writes_cmd = 0; int64_t landed_at = -1;        // ref's cmem.writesCmd, landedAt (statistics)
     struct Touch { uint64_t t = ~0ull; uint32_t w = 0; bool load = false; };
     Touch touch[4] = {};
     uint8_t touch_n = 0;
@@ -114,9 +114,9 @@ struct Rv32 {
     uint32_t stall = 0;
     uint64_t load_wait_t = kNever; uint32_t load_wait_pc = 0;
     uint64_t pending_t = kNever; uint64_t send_w[3] = {};   // M2: a send store's packet awaiting acceptance (ref's pendingT)
-    int ck_tile = -1; uint64_t ck_t = 0;   // W20: the checker's facts (src/check.h) under this tile, -1 none; the step's cycle
-    CmemTrack* cm = nullptr;               // W26: invariant 8's read tracking (the tile core's; null: none)
-    // W24 (diagnostic only; owner's Q3, 2026-11-11): the lowest nonzero stack pointer, SortTest's "stack headroom"
+    int ck_tile = -1; uint64_t ck_t = 0;   // the checker's facts (src/check.h) under this tile, -1 none; the step's cycle
+    CmemTrack* cm = nullptr;               // invariant 8's read tracking (the tile core's; null: none)
+    // (diagnostic only; owner's Q3, 2026-11-11): the lowest nonzero stack pointer, SortTest's "stack headroom"
     // (ref's monitor reads every core's x[2] after every cycle; here taken at the writes to x2, the only place it
     // changes, so idle-skipped cycles need nothing). Off by default: the harness arms it (min_sp_watch) with the current
     // x2. Off, it costs one predictable branch on a retire that writes a register; nothing else reads it.
@@ -135,12 +135,12 @@ struct Rv32 {
     uint64_t instructions = 0, cycles_stalled = 0, stall_branch = 0, stall_mul = 0, stall_reg_load = 0,
              stall_request = 0, cycles_wfi = 0, traps = 0, bus_errors = 0, illegals = 0, violations = 0,
              alias_accesses = 0, reserved_accesses = 0, trace_stores = 0, stall_send = 0, sends = 0;
-    // W23 (P5; statistics the control suites read, ref's Controller fields; not in the digest, not in the trace):
+    // (P5; statistics the control suites read, ref's Controller fields; not in the digest, not in the trace):
     // the last trap's cycle and cause (trapAt, trapCause: -1 before any), the first fetch from program memory since
-    // the reset (firstImageAt: the image running; -1 before). A reset (W20) sets them back to -1, as ref's reset.
+    // the reset (firstImageAt: the image running; -1 before). A reset sets them back to -1, as ref's reset.
     int64_t trap_at = -1, first_image_at = -1;
     int32_t trap_cause = -1;
-    // W23 (P5): the WFI wakes (TileControl.takeWake's goWakes, eventWakes; ref counts them in the block, here where the
+    // the WFI wakes (TileControl.takeWake's goWakes, eventWakes; ref counts them in the block, here where the
     // core takes the wake) and the program's WFIs (Controller.wfiLog: {entered, woke, cause 1 GO / 2 event} per WFI
     // outside the boot ROM; the first kWfiLog kept, wfi_n counts all, D24: a fixed array). Statistics only.
     static constexpr unsigned kWfiLog = 16;
@@ -148,7 +148,7 @@ struct Rv32 {
     uint32_t wfi_n = 0;
     uint64_t go_wakes = 0, event_wakes = 0;
     int64_t wfi_at = 0; bool wfi_in_rom = false;
-    // W26: TileControl.takeWake's check: a wake by an event other than GO while done is set, the done gate off (Config.
+    // TileControl.takeWake's check: a wake by an event other than GO while done is set, the done gate off (Config.
     // doneGate; with the gate only GO wakes): the fact only (ref's ctl.violate)
     template <class Env>
     void woken_in_done(Env& e, uint64_t t) {
@@ -169,7 +169,7 @@ struct Rv32 {
     // core stepped every cycle and one stepped only when it asks end in the same state.
     template <class Env>
     UNITS_NOINLINE uint64_t step(Env& e, uint64_t t) {
-        ck_t = t;                                                              // W20: the cycle of this step's facts
+        ck_t = t;                                                              // the cycle of this step's facts
         if (stop != Stop::running && stop != Stop::parked) return kNever;   // the run ended: nothing more (mcycle frozen)
         catch_up(t);
         mcycle++;                                                       // 1.
@@ -188,8 +188,8 @@ struct Rv32 {
         if (in_wfi) {                                                   // 5.
             if (!e.wake()) { cycles_wfi++; return kNever; }
             in_wfi = false;
-            took_wake(e.reg(EVENTS) >> EV_GO & 1, wfi_at, t, wfi_in_rom);   // W23: statistics
-            woken_in_done(e, t);                                       // W26
+            took_wake(e.reg(EVENTS) >> EV_GO & 1, wfi_at, t, wfi_in_rom);   // statistics
+            woken_in_done(e, t);
             if (log) log->add(t, T_WAKE, (e.reg(EVENTS) >> EV_GO & 1) ? 1 : 2);
         }
         if (stall > 0) { stall--; cycles_stalled++; return t + 1 + stall; }   // 6.
@@ -251,7 +251,7 @@ struct Rv32 {
     // (`detail`: the checker's text, as ref's stopLoudly message: the fetch's pc, the jump's target, the trap's cause)
     void stop_loudly(uint64_t t, int why, uint32_t at, uint32_t detail = 0) {
         violations++;
-        if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::CTL_HALT, uint64_t(why), detail);   // W26
+        if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::CTL_HALT, uint64_t(why), detail);
         halt_with(t, why, at);
     }
     void halt_with(uint64_t t, int why, uint32_t at) {
@@ -272,12 +272,12 @@ struct Rv32 {
     void undefined(uint64_t t, bool store, uint32_t width, uint32_t ea, uint32_t ipc) {
         ub = true;
         if (log) log->add(t, T_UB, store, ea, ipc, width);
-        if (ub_fatal_tile >= 0)                                // W20 (harness-only; W23's request 11): ref's UndefinedBehavior
+        if (ub_fatal_tile >= 0)                                // (harness-only; the request 11): ref's UndefinedBehavior
             FATAL("undefined behavior at cycle %llu, tile %d, controller: a misaligned %u-byte %s 0x%x at pc 0x%x "
                   "(DECISIONS-v1.25 s8: meshsim stops; the hardware does nothing special)", (unsigned long long)t, ub_fatal_tile,
                   width, store ? "store to" : "load from", ea, ipc);
     }
-    int ub_fatal_tile = -1;                // W20 (harness-only): >= 0, the run stops at undefined behaviour, naming this tile
+    int ub_fatal_tile = -1;                // (harness-only): >= 0, the run stops at undefined behaviour, naming this tile
 
     // ================================================================ fetch and execute
     template <class Env>
@@ -425,12 +425,12 @@ struct Rv32 {
             if (ins == 0x00100073) { stop_loudly(t, HALT_EBREAK, ipc); return; }
             if (ins == WFI) {
                 if (in_handler && !interrupt_pending(e)) parked = true;
-                wfi_at = int64_t(t);                          // W23: statistics (wfiLog)
+                wfi_at = int64_t(t);                          // statistics (wfiLog)
                 if (!e.wake()) { in_wfi = true; wfi_in_rom = region(ipc) == R_BOOTROM; }
-                else { took_wake(e.reg(EVENTS) >> EV_GO & 1, int64_t(t), t, region(ipc) == R_BOOTROM); woken_in_done(e, t); }   // falls through (W26)
+                else { took_wake(e.reg(EVENTS) >> EV_GO & 1, int64_t(t), t, region(ipc) == R_BOOTROM); woken_in_done(e, t); }   // falls through
             } else if (ins == 0x30200073) {                   // mret: legal, flagged (every trap is terminal)
                 violations++;
-                if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::CTL_MRET);   // W26
+                if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::CTL_MRET);
                 next = mepc;
                 mstatus = (mstatus & ~MSTATUS_MIE) | ((mstatus & MSTATUS_MPIE) ? uint32_t(MSTATUS_MIE) : 0u) | MSTATUS_MPIE;
             } else if (f3 != 0 && f3 != 4) {                  // the CSR instructions
@@ -451,7 +451,7 @@ struct Rv32 {
         if (log) log->add(t, T_RETIRE, w, ipc, ins, a, b, res);
         if (w) {
             x[rd] = res;
-            if (min_sp_watch && rd == 2 && res != 0 && int32_t(res) < min_sp) min_sp = int32_t(res);   // W24 (above)
+            if (min_sp_watch && rd == 2 && res != 0 && int32_t(res) < min_sp) min_sp = int32_t(res);   // (above)
         }
         pc = next;
     }
@@ -499,7 +499,7 @@ struct Rv32 {
         uint32_t off = offset(a);
         if (off >= MEM_BYTES) {
             alias_accesses++; violations++;
-            if (ck_tile >= 0) sim::check::record(ck_t, ck_tile, sim::check::Kind::CTL_ALIAS, a);   // W26 (ck_t: this step's)
+            if (ck_tile >= 0) sim::check::record(ck_t, ck_tile, sim::check::Kind::CTL_ALIAS, a);   // (ck_t: this step's)
         }
         return (off & (MEM_BYTES - 1)) >> 2;
     }
@@ -509,7 +509,7 @@ struct Rv32 {
     template <class Env>
     bool load(Env& e, uint32_t ea, uint32_t width, uint32_t& v) {   // (ck_t: the load's cycle for the checker's facts)
         uint32_t a = ea & ~3u;
-        if (region(a) == R_DMEM) { const uint32_t w = mem_word(a); if (cm) cm->loaded(w, ck_t); v = dmem[w]; return true; }   // (W26: cm)
+        if (region(a) == R_DMEM) { const uint32_t w = mem_word(a); if (cm) cm->loaded(w, ck_t); v = dmem[w]; return true; }   // (cm)
         if (region(a) == R_PMEM) { v = imem[mem_word(a)]; return true; }
         if (region(a) == R_BOOTROM) {
             if (offset(a) >> 2 >= bootrom_words) return false;
@@ -531,10 +531,10 @@ struct Rv32 {
         if (unsigned n = window_of(a)) {
             if (!window_present(n)) return false;                              // an absent peripheral: bus error
             if constexpr (requires { e.window_load(0u, 0u, v); }) {
-                /* W15: the slot's window RegFile (PeripheralSlot.read); 2: a reserved or undefined word, read 0, flagged */
+                /* the slot's window RegFile (PeripheralSlot.read); 2: a reserved or undefined word, read 0, flagged */
                 if (e.window_load(n, (a & 0x1FF) >> 2, v) == 2) {
                     reserved_accesses++; violations++;
-                    // W26: ref's PeripheralSlot.reserved (load): the slot's own check through the block (code 1, F_RESERVED)
+                    // ref's PeripheralSlot.reserved (load): the slot's own check through the block (code 1, F_RESERVED)
                     if (ck_tile >= 0) sim::check::record(ck_t, ck_tile, sim::check::Kind::SLOT_VIOLATION, 1, n << 8 | ((a & 0x1FF) >> 2), 0);
                 }
                 return true;
@@ -542,7 +542,7 @@ struct Rv32 {
         }
         unsigned i = (a - REG_BASE) >> 2;
         const RegInfo& r = reg_info(i);
-        // W14 (the request port's receive side, 4.18): where the Env has it. A tile's reads 0 and REQUEST_RECEIVE sets
+        // (the request port's receive side, 4.18): where the Env has it. A tile's reads 0 and REQUEST_RECEIVE sets
         // receive underflow (ERRORS [14]); a controller's reads its target's queue (RequestPort.get / receive).
         if constexpr (requires { e.req_get(0u); }) {
             if (i >= REQUEST_GET_W0 && i <= REQUEST_RECEIVE) {
@@ -560,14 +560,14 @@ struct Rv32 {
         if (r.load == A_NONE) {                                                // write-only or reserved: reads 0
             if (r.store == A_NONE) {
                 reserved_accesses++; violations++;
-                if (ck_tile >= 0) sim::check::record(ck_t, ck_tile, sim::check::Kind::CTL_RESERVED_ACCESS, 0, 0x800 + 4 * i);   // W20
+                if (ck_tile >= 0) sim::check::record(ck_t, ck_tile, sim::check::Kind::CTL_RESERVED_ACCESS, 0, 0x800 + 4 * i);
             }
             v = 0; return true;
         }
         switch (i) {
         case EVENTS: {                                                         // consumes what it returned under the mask
             v = e.reg(EVENTS);
-            if constexpr (requires { e.live_events(); }) v |= e.live_events();   // W14: request pending (EVENTS [12])
+            if constexpr (requires { e.live_events(); }) v |= e.live_events();   // request pending (EVENTS [12])
             uint32_t c = v & e.reg(EVENTS_MASK) & ~EVENTS_LIVE;
             if (c) e.post(BUS_CONSUME, 0, c);
             return true;
@@ -616,10 +616,10 @@ struct Rv32 {
         uint32_t a = ea & ~3u;
         if (region(a) == R_DMEM) {
             uint32_t w = mem_word(a);
-            if (cm) cm->stored(w, t);                                 // W26: invariant 8's read tracking
+            if (cm) cm->stored(w, t);                                 // invariant 8's read tracking
             if (offset(a) < DMEM_FIRST) {
                 violations++;
-                if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::CTL_DMEM_RESERVED, ea);   // W26
+                if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::CTL_DMEM_RESERVED, ea);
             }
             dmem[w] = (dmem[w] & ~mask) | (v & mask);
             return true;
@@ -638,7 +638,7 @@ struct Rv32 {
             if (unsigned n = window_of(a)) {
                 if (!window_present(n)) return false;
                 if constexpr (requires { e.window_store(uint64_t(0), 0u, 0u, 0u); }) {
-                    return e.window_store(t, n, (a & 0x1FF) >> 2, v);           /* W15: false: a bus error */
+                    return e.window_store(t, n, (a & 0x1FF) >> 2, v);           /* false: a bus error */
                 } else FATAL("tile core: a store to peripheral %u's window at 0x%x: this bench has no peripheral slot", n, a);
             }
             unsigned i = (a - REG_BASE) >> 2;
@@ -647,14 +647,14 @@ struct Rv32 {
             if (r.store == A_NONE) {
                 if (r.load != A_NONE) return false;                            // a read-only register: bus error
                 reserved_accesses++; violations++;                             // reserved: ignored
-                if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::CTL_RESERVED_ACCESS, 1, 0x800 + 4 * i);   // W20
+                if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::CTL_RESERVED_ACCESS, 1, 0x800 + 4 * i);
                 return true;
             }
             if (v & ~defined_bits(i)) {                                        // reserved bits set: ignored (invariant 21)
                 violations++;
                 if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::CTL_RESERVED_BITS, i, v & ~defined_bits(i));
             }
-            if (ck_tile >= 0 && i == DMA_RECORD_BASE_ADDRESS && (v & 1))       // W20: TileControl.write's checks (facts only)
+            if (ck_tile >= 0 && i == DMA_RECORD_BASE_ADDRESS && (v & 1))       // TileControl.write's checks (facts only)
                 sim::check::record(t, ck_tile, sim::check::Kind::CTL_RECORD_BASE_ODD, v);
             if (ck_tile >= 0 && i == SRAM_RD_DEST_ADDR && (v >> 17 & 3) == lw::SIZE_UNDEF)
                 sim::check::record(t, ck_tile, sim::check::Kind::CTL_RD_DEST_SIZE);

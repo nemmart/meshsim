@@ -1,4 +1,4 @@
-// barrier.cpp (WORKER4): see barrier.h.
+// barrier.cpp: see barrier.h.
 #include "barrier.h"
 
 #include <linux/futex.h>

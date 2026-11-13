@@ -1,11 +1,11 @@
-// suite_hooks.cpp (WORKER23, P5, inventory C15): v1.3's HooksTest (sim/ref/meshsim/test/HooksTest.java) on W20's
+// suite_hooks.cpp: v1.3's HooksTest (sim/ref/meshsim/test/HooksTest.java) on the
 // harness, in Java's order and words. run_tests.sh's steps `hooks` (-1) and `hooks-shuf` (4); its output equals ref's
 // log (tests/ctlsuites/hooks*.log). Usage: suite_hooks [shuffleSeed]
 //
 // The v1.2 register map and the hooks a test can drive without a tile image (the C side is CtrlTest's): the map (8.1),
 // the pulses (8.6), the send port (8.4), a tile with no peripheral, the load latencies (4.11) and the sampling rule.
 //
-// ONE ADAPTATION (NOTES.md): ref's `core.store(t, ...)` from Java applies the store at once; the harness's
+// ONE ADAPTATION: ref's `core.store(t, ...)` from Java applies the store at once; the harness's
 // TileRef::store applies it in the core's step at t. Where ref counts a store's effect before its next cycle (the
 // reserved words' "both flagged"), the suite steps that cycle first.
 #include <cstdio>

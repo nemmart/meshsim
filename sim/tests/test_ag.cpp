@@ -1,4 +1,4 @@
-// The address generator (W12, G4; AddressGenerator.java): a bench of stand-ins around the unit. The block (the `dma`
+// The address generator (AddressGenerator.java): a bench of stand-ins around the unit. The block (the `dma`
 // RegFile, the `start` Wire), the table store's STREAM and GROUP paths (TableStore.java:121-137: a request Link(L) into a
 // FIFO read the cycle after, one read a cycle per path, the return on a Link(L)) with the PTR view, the read queue's
 // client-1 Hold (taking on a schedule), and the block's inputs (status, drift). Exactness against ref is EngConf's (P4);

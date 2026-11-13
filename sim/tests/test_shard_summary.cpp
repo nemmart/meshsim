@@ -1,4 +1,4 @@
-// test_shard_summary: the acceptance kit's summary step (tests/acceptance/shard_summary.cpp) against v1.3's (WORKER25,
+// test_shard_summary: the acceptance kit's summary step (tests/acceptance/shard_summary.cpp) against v1.3's
 // P7b). Each case in tests/acceptance/summary/ (a results.csv and run_shard.sh's arguments: OK lines of stages A, B and
 // F with stall counts, a B/F cycle disagreement, FAIL, CORRUPT, tables and malformed lines, a blank line, a range, "all"
 // from the manifest, -x adding stage F, an empty file, a passing shard) is summarised by shard_summary in a scratch

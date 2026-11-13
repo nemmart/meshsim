@@ -1,6 +1,6 @@
 // table_store.h: the table memories (sim/ref/meshsim/src/TableStore.java: TableStore and HistStore; AUDIT-M2 3.5).
-// Configuration part by W8 (G1): the memories with their incremental fingerprint sums (memsum.h), written by the
-// controller through the table window (Controller.window). Behaviour by W11 (G3): the engines' request Links into
+// Configuration part: the memories with their incremental fingerprint sums (memsum.h), written by the
+// controller through the table window (Controller.window). Behaviour: the engines' request Links into
 // 16-entry request FIFOs (ReqFifo), one STREAM read, one GROUP read and one PTR read-modify-write a cycle (TableStore),
 // HIST's count-on-arrival (HistStore), the RMW pipe with its bypass (Rmw), and the window's figure-12 rule: a
 // controller store on a write-back cycle is lost, a HIST load on one returns the engine's value.
@@ -70,7 +70,7 @@ struct ReqFifo {
     uint64_t put_at = 0, pw[3] = {};
     uint64_t last_take = ~0ull;
     uint64_t overflows = 0, first_overflow = 0;
-    uint32_t peak = 0;                 // W20 (P2): ref's highWater (PhaseLog's ptrReq/histReq/agTable; statistics only)
+    uint32_t peak = 0;                 // ref's highWater (PhaseLog's ptrReq/histReq/agTable; statistics only)
     // Judge a put made before t; true if it overflowed (dropped).
     bool commit(uint64_t t) {
         if (!pend || put_at >= t) return false;
@@ -131,7 +131,7 @@ struct TableStore {
     ReqFifo q_stream, q_group, q_we;
     Rmw pipe;
     uint64_t table_reads = 0, rmws = 0;
-    // W20 (harness-only; P2): a harness poke of PTR (ref's TableStore.poke, between cycles) reaches `ptr_view` at the
+    // (harness-only; P2): a harness poke of PTR (ref's TableStore.poke, between cycles) reaches `ptr_view` at the
     // store's next step, as committed before it. `host_poke` is set by the harness only; `host_ptr` marks the indices.
     bool host_poke = false;
     uint64_t host_ptr[4] = {};
@@ -146,13 +146,13 @@ struct TableStore {
                sim::hash_fields(pub, pub_idx, pub_val) * 13;
     }
 
-    // W26 (the checker, SIM_CHECKS only): ref's ts.ptrBusy as the core's table-window check reads it (tile_ctl.h,
+    // (the checker, SIM_CHECKS only): ref's ts.ptrBusy as the core's table-window check reads it (tile_ctl.h,
     // TileCore::table_check): driven at the store's step at t when PTR is busy at t (a write-engine request arriving at
     // t, one queued at the start of t, an RMW scheduled at t or t - 1; the store steps at every such cycle), t + 1, with
     // bit 63 set when it was busy at t - 1 too (a test's store at t sees ref's flag as left by t - 1).
     sim::WireOut busy_ptr;
     bool busy_wire = false;
-    S1Tile* s1 = nullptr;              // W26: S1 (s1.h), SIM_CHECKS only (add_g1)
+    S1Tile* s1 = nullptr;              // S1 (s1.h), SIM_CHECKS only (add_g1)
     uint64_t busy_last = ~0ull;
     explicit TableStore(sim::Ports& p, bool ag = false, bool busy_wire_ = false) : with_ag(ag), busy_wire(busy_wire_) {
 #ifdef SIM_CHECKS
@@ -170,9 +170,9 @@ struct TableStore {
     }
     sim::Wake step(sim::Ctx& c) {
         const uint64_t t = c.now();
-        [[maybe_unused]] const bool wb_pending = pipe.valid;   // W26: an RMW scheduled at t - 1
+        [[maybe_unused]] const bool wb_pending = pipe.valid;   // an RMW scheduled at t - 1
         if (pub) { c.write(ptr_view, pub_idx, pub_val); pub = false; }   // the write-back of t - 1 (with_ag)
-        if (host_poke) {                                       // W20 (harness-only): the harness's pokes
+        if (host_poke) {                                       // (harness-only): the harness's pokes
             for (unsigned w = 0; w < 4; w++)
                 for (uint64_t b = host_ptr[w]; b; b &= b - 1) {
                     const unsigned i = 64 * w + unsigned(__builtin_ctzll(b));
@@ -195,7 +195,7 @@ struct TableStore {
             m.write(TBL_PTR, pipe.idx, pipe.val);
             pipe.valid = false; pipe.last_wb = t;
 #ifdef SIM_CHECKS
-            if (s1 && s1->on) s1->written_back(0, t, pipe.idx);   // W26: S1 (TableStore.java:116)
+            if (s1 && s1->on) s1->written_back(0, t, pipe.idx);   // S1 (TableStore.java:116)
 #endif
             if (with_ag) { pub = true; pub_idx = pipe.idx; pub_val = pipe.val; }
         }
@@ -206,7 +206,7 @@ struct TableStore {
             if (c.ready(req_group)) { q_group.put(t, c.peek(req_group)); c.take(req_group); }
         }
 #ifdef SIM_CHECKS
-        if (busy_wire && (c.ready(req_we) || q_we.n || wb_pending)) {                          // W26: ptrBusy at t
+        if (busy_wire && (c.ready(req_we) || q_we.n || wb_pending)) {                          // ptrBusy at t
             c.drive(busy_ptr, (t + 1) | (busy_last + 1 == t ? (uint64_t(1) << 63) : 0));
             busy_last = t;
         }
@@ -263,19 +263,19 @@ struct HistStore {
     Rmw pipe;
     uint64_t rmws = 0;
     bool hist_overflow = false;        // a count past 17 bits (invariant 6)
-    int ck_tile = -1;                  // W26: the checker's tile (add_g1); -1 records nothing
-    // W20 (harness-only; P2): a harness poke of HIST reaches `out` (the core's loads) at the store's next step.
+    int ck_tile = -1;                  // the checker's tile (add_g1); -1 records nothing
+    // (harness-only; P2): a harness poke of HIST reaches `out` (the core's loads) at the store's next step.
     bool host_poke = false;
     uint64_t host_hist[4] = {};
     void poke_host(uint32_t i, uint32_t v) { m.write(i, v); host_hist[(i & 255) >> 6] |= 1ull << (i & 63); }
     uint64_t digest() const { return m.s_hist.sum ^ q.digest() * 3 ^ pipe.digest() * 5 ^ uint64_t(hist_overflow); }
 
-    // W26 (the checker, SIM_CHECKS only): ref's hist.busy as the core's table-window check reads it, as TableStore's
+    // (the checker, SIM_CHECKS only): ref's hist.busy as the core's table-window check reads it, as TableStore's
     // busy_ptr: t + 1 driven at the store's step at t when HIST is busy at t (a request arriving at t, one queued at the
     // start of t, an RMW scheduled at t or t - 1), bit 63 set when it was busy at t - 1 too.
     sim::WireOut busy_hist;
     bool busy_wire = false;
-    S1Tile* s1 = nullptr;              // W26: S1 (s1.h), SIM_CHECKS only (add_g1)
+    S1Tile* s1 = nullptr;              // S1 (s1.h), SIM_CHECKS only (add_g1)
     uint64_t busy_last = ~0ull;
     explicit HistStore(sim::Ports& p, bool busy_wire_ = false) : busy_wire(busy_wire_) {
         p.in(window, "window", 2); p.in(req, "req", 3); p.out(out, "hist", HIST_REGS); p.out(ovf_ev, "ovf_ev", 0);
@@ -285,8 +285,8 @@ struct HistStore {
     }
     sim::Wake step(sim::Ctx& c) {
         const uint64_t t = c.now();
-        [[maybe_unused]] const bool wb_pending = pipe.valid;   // W26: an RMW scheduled at t - 1
-        if (host_poke) {                                       // W20 (harness-only): the harness's pokes
+        [[maybe_unused]] const bool wb_pending = pipe.valid;   // an RMW scheduled at t - 1
+        if (host_poke) {                                       // (harness-only): the harness's pokes
             for (unsigned w = 0; w < 4; w++)
                 for (uint64_t b = host_hist[w]; b; b &= b - 1) { const unsigned i = 64 * w + unsigned(__builtin_ctzll(b)); c.write(out, i, m.hist[i]); }
             host_hist[0] = host_hist[1] = host_hist[2] = host_hist[3] = 0;
@@ -306,12 +306,12 @@ struct HistStore {
             c.write(out, HIST_WB_VAL, pipe.val);
             pipe.valid = false; pipe.last_wb = t;
 #ifdef SIM_CHECKS
-            if (s1 && s1->on) s1->written_back(1, t, pipe.idx);   // W26: S1 (TableStore.java:181)
+            if (s1 && s1->on) s1->written_back(1, t, pipe.idx);   // S1 (TableStore.java:181)
 #endif
         }
         if (q.commit(t)) c.put(ovf_ev);                        // judged at t (D29)
 #ifdef SIM_CHECKS
-        if (busy_wire && (c.ready(req) || q.n || wb_pending)) {                        // W26: hist.busy at t
+        if (busy_wire && (c.ready(req) || q.n || wb_pending)) {                        // hist.busy at t
             c.drive(busy_hist, (t + 1) | (busy_last + 1 == t ? (uint64_t(1) << 63) : 0));
             busy_last = t;
         }
@@ -324,7 +324,7 @@ struct HistStore {
             const uint32_t nv = m.hist[idx] + add;
             if (nv & ~0x1FFFFu) {
                 hist_overflow = true;
-                if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::HIST_OVERFLOW);   // W26: invariant 6 (once a tile)
+                if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::HIST_OVERFLOW);   // invariant 6 (once a tile)
             }
             pipe.schedule(t, idx, nv & 0x1FFFF);
         }

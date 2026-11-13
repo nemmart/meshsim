@@ -1,4 +1,4 @@
-// The GATHER engine (W12, G4; GatherEngine.java): a bench of stand-ins around the unit. The director's queue puts, the
+// The GATHER engine (GatherEngine.java): a bench of stand-ins around the unit. The director's queue puts, the
 // block's `dma` RegFile, the read queue's client-0 Hold (taking on a schedule, so puts are refused and retried), and
 // the block's two inputs (the busy half, the overflow event). Exactness against ref is EngConf's (P4); these check
 // the rules one at a time.

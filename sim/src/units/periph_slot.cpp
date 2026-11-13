@@ -1,4 +1,4 @@
-// periph_slot.cpp: the peripheral slot (WORKER15): SlotCore is sim/ref/meshsim/src/PeripheralSlot.java method for method;
+// periph_slot.cpp: the peripheral slot: SlotCore is sim/ref/meshsim/src/PeripheralSlot.java method for method;
 // PeriphSlot puts it behind AUDIT-M3 3.1's ports.
 #include "units/periph_slot.h"
 
@@ -19,9 +19,9 @@ decltype(auto) SlotCore::visit(unsigned n, F&& f) {
     switch (per[n].type) {
         case PT_REPLAYER: return f(*static_cast<Replayer*>(per[n].p));
         case PT_TEST: return f(*static_cast<TestPeripheral*>(per[n].p));
-        case PT_TRACER: return f(*static_cast<tracer::Tracer*>(per[n].p));   // W14
-        case PT_CNC1: return f(*static_cast<Cnc1Peripheral*>(per[n].p));     // W16
-        case PT_CC_STUB: return f(*static_cast<CcStub*>(per[n].p));          // W16
+        case PT_TRACER: return f(*static_cast<tracer::Tracer*>(per[n].p));
+        case PT_CNC1: return f(*static_cast<Cnc1Peripheral*>(per[n].p));
+        case PT_CC_STUB: return f(*static_cast<CcStub*>(per[n].p));
         default: FATAL("slot %u: peripheral %u of type %u has no dispatch case", tile, n, unsigned(per[n].type));
     }
 }
@@ -30,14 +30,14 @@ SlotCore::Ref::~Ref() {
     if (!p) return;
     switch (type) {
         case PT_REPLAYER: {
-            delete[] rows;                                      // W20 (F6): the slot's own buffer, not the replayer's now
+            delete[] rows;                                      // the slot's own buffer, not the replayer's now
             delete static_cast<Replayer*>(p);
             break;
         }
         case PT_TEST: delete static_cast<TestPeripheral*>(p); break;
-        case PT_TRACER: delete static_cast<tracer::Tracer*>(p); break;   // W14: its memory with it
-        case PT_CNC1: delete static_cast<Cnc1Peripheral*>(p); break;         // W16
-        case PT_CC_STUB: delete static_cast<CcStub*>(p); break;              // W16
+        case PT_TRACER: delete static_cast<tracer::Tracer*>(p); break;   // its memory with it
+        case PT_CNC1: delete static_cast<Cnc1Peripheral*>(p); break;
+        case PT_CC_STUB: delete static_cast<CcStub*>(p); break;
         default: break;
     }
 }
@@ -55,7 +55,7 @@ uint64_t SlotCore::digest() {
             Replayer& r = replayer(n);
             mixin(r.pc()); mixin(r.instr_idx()); mixin(r.rows_done()); mixin(r.is_running()); mixin(r.row_hash()); mixin(r.rows_sunk());
             mixin(r.code.occ); mixin(r.rlog.occ); mixin(r.wlog.occ); mixin(r.exp.occ);
-        } else if (per[n].type == PT_TRACER) {   // W14: the Tracer's progress
+        } else if (per[n].type == PT_TRACER) {   // the Tracer's progress
             tracer::Tracer& x = tracer(n);
             mixin(x.rec[0]); mixin(x.rec[2]); mixin(uint64_t(x.rows)); mixin(uint64_t(x.code_n)); mixin(uint64_t(x.log_n));
             mixin(uint64_t(x.stat[0])); mixin(uint64_t(x.n_violations)); mixin(uint64_t(x.n_errors_logged));
@@ -83,10 +83,10 @@ void SlotCore::install(unsigned n, PeriphType type, const PeriphSlotConfig& c) {
             break;
         }
         case PT_TEST: per[n].p = new TestPeripheral(); break;
-        // W14: the Tracer, bare (ref's Config.cc3Tracer: new Tracer(me)); its tables come by region packets (tracer_ctl),
+        // the Tracer, bare (ref's Config.cc3Tracer: new Tracer(me)); its tables come by region packets (tracer_ctl),
         // its memory from the harness after the build (tracer(n).own_memory(store)): a run without one is FATAL
         case PT_TRACER: per[n].p = new tracer::Tracer(int(tile)); break;
-        // W16: C&C 1's Ingress/Egress and UART (its own ports: READY, the error lines, GO; ref_cycle set by the chip
+        // C&C 1's Ingress/Egress and UART (its own ports: READY, the error lines, GO; ref_cycle set by the chip
         // through cnc1(n)), and the stub engine of C&C 2 (and of C&C 3 without the Tracer: CcCores.Stub(2 + c - 1))
         case PT_CNC1: per[n].p = new Cnc1Peripheral(); break;
         case PT_CC_STUB: per[n].p = new CcStub(tile == lw::CC3 ? 3 : 2); break;
@@ -120,7 +120,7 @@ void SlotCore::violate(int64_t t, uint16_t code, uint32_t a, uint32_t b) {
     violations++;
     facts[n_facts % FACTS] = Fact{t, code, a, b};
     n_facts++;
-    // W26: ref's slot.violate goes to the register block's (tile.ctl.violate): a chip fact (the full post's depth with it)
+    // ref's slot.violate goes to the register block's (tile.ctl.violate): a chip fact (the full post's depth with it)
     uint32_t depth = 0;
     if (code == F_FULL_POST) visit(a, [&](auto& p) { depth = p.events().depth[b]; });
     sim::check::record(uint64_t(t), int(tile), sim::check::Kind::SLOT_VIOLATION, code, a, b, depth);
@@ -137,7 +137,7 @@ void SlotCore::accept(int64_t t, unsigned n, uint64_t lo, uint64_t h, uint64_t h
     accepted++;
     if (per[n].type == PT_ABSENT) return;
     visit(n, [&](auto& p) { p.accept(t, int(lw::src(h)), lw::offset(lw::addr(h)), int(lw::size(h)), lo, hi); });
-    // W26: C&C 1's peripheral and the stub engines flag a write into their region (ref's host.violate): a chip fact
+    // C&C 1's peripheral and the stub engines flag a write into their region (ref's host.violate): a chip fact
     if (per[n].type == PT_CNC1 || per[n].type == PT_CC_STUB)
         sim::check::record(uint64_t(t), int(tile), sim::check::Kind::SLOT_VIOLATION, F_PERIPHERAL, n,
                            uint32_t(visit(n, [&](auto& p) { return p.type(); })));
@@ -145,7 +145,7 @@ void SlotCore::accept(int64_t t, unsigned n, uint64_t lo, uint64_t h, uint64_t h
 
 // ---------------------------------------------------------------- the window (4.17.4)
 uint32_t SlotCore::reserved(int64_t t, unsigned n, unsigned w, bool store) {
-    // W4-06 (D48): a peripheral without a DMA reads 0 at words 8 and 9, unflagged; only a store is flagged
+    // (D48): a peripheral without a DMA reads 0 at words 8 and 9, unflagged; only a store is flagged
     if (!store && (w == 8 || w == 9)) return 0;
     reserved_accesses++;
     violate(t, F_RESERVED, n << 8 | w, store);

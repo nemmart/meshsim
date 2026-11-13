@@ -1,4 +1,4 @@
-// mach.cpp (WORKER20, P2): the machine harness (mach.h). Configuration and between-cycle code only (D6 doesn't apply).
+// mach.cpp: the machine harness (mach.h). Configuration and between-cycle code only (D6 doesn't apply).
 #include "mach.h"
 
 #include <sys/stat.h>
@@ -40,7 +40,7 @@ namespace {
 
 bool exists(const std::string& p) { struct stat st; return ::stat(p.c_str(), &st) == 0; }
 
-// A data file by its path in v1.35 (W19's tree; nothing here reads sim/ref).
+// A data file by its path in v1.35 (the tree; nothing here reads sim/ref).
 std::string data_path(std::initializer_list<const char*> candidates) {
     for (const char* c : candidates) if (exists(c)) return c;
     std::string all;
@@ -287,7 +287,7 @@ struct Chip::Impl {
 
 Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     Impl& m = *impl_;
-    if (!c.start_skew.empty()) FATAL("mach: a per-tile start_skew comes with W20's step 3");
+    if (!c.start_skew.empty()) FATAL("mach: a per-tile start_skew is not modelled");
     // ref's fields no unit of ref reads (runLatency, stageDelay, counterStoreClearsLatch; rpLatency only in kMin) are
     // inert here as there. Two the C++ machine doesn't model: refused unless at ref's default.
     if (c.error_latency >= 0 && unsigned(c.error_latency) != c.ready_latency)
@@ -365,7 +365,7 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     if (!c.cc_cores) spec.program = &m.prog;
     units::build_chip(sc, spec);
     m.sim.emplace(sc.build());
-    // The harness's machine (W20, harness-only flags in the units): the coreless core (ref's Config.coreless), ref's Drain
+    // The harness's machine (harness-only flags in the units): the coreless core (ref's Config.coreless), ref's Drain
     // in the GATHER engine's place (realResponder off), and the table stores' republish of a harness poke.
     for (unsigned k = 0; k < 64; k++) {
         if (c.coreless) m.sim->unit<units::TileCore>(units::tile_unit(k, "core")).coreless = true;
@@ -374,7 +374,7 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         m.sim->unit<units::HistStore>(units::tile_unit(k, "hist")).host_poke = true;
         m.sim->unit<units::TileCtl>(units::tile_unit(k, "ctl")).host_on = true;
     }
-    for (unsigned k = 64; k < m.nunits; k++)              // C&C 1-3 as cores: their blocks take the test's writes too (W23)
+    for (unsigned k = 64; k < m.nunits; k++)              // C&C 1-3 as cores: their blocks take the test's writes too
         m.sim->unit<units::TileCtl>(units::unit_prefix(k) + "ctl").host_on = true;
     m.shifted = {m.sim->type_of(units::tile_unit(0, "ctl")), m.sim->type_of(units::tile_unit(0, "core"))};
     if (!c.cc_cores) m.lines = {m.sim->type_of("row0"), m.sim->type_of("cnc")};
@@ -385,7 +385,7 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     CheckSwitches sw;
     sw.errors = c.check_errors; sw.unexpected = c.check_unexpected; sw.read_port_overlap = c.check_read_port_overlap;
     sw.command_read = c.check_command_read; sw.strict_replies = c.strict_replies; sw.K = c.K;
-    sw.disjoint = c.check_disjoint;                       // W26's switch (ref's checkDisjoint)
+    sw.disjoint = c.check_disjoint;                       // the switch (ref's checkDisjoint)
     m.checker = std::make_unique<Checker>(sim::check::kOn ? c.check_capacity : 0, c.max_violation_messages, sw);
     for (unsigned k = 0; k < m.nunits; k++) {             // the units that record facts under their tile (src/check.h)
         units::TileCtl& b = m.sim->unit<units::TileCtl>(units::unit_prefix(k) + "ctl");
@@ -393,7 +393,7 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         m.sim->unit<units::TileCore>(units::unit_prefix(k) + "core").rv.ck_tile = int(k);
         m.sim->unit<units::TileCore>(units::unit_prefix(k) + "core").rv.ub_fatal_tile = int(k);   // ref's UndefinedBehavior stop
         if (k < 64) m.sim->unit<units::WriteEngine>(units::tile_unit(k, "we")).ck_tile = int(k);
-        if (k < 64)                                       // ref's measureS1 (W26's S1; the check builds only)
+        if (k < 64)                                       // ref's measureS1 (the check builds only)
             if (auto& s1 = m.sim->unit<units::Director>(units::tile_unit(k, "dir")).s1) s1->on = c.measure_s1;
     }
     if (sim::check::kOn) {                                // ref's FIFO names (Router, Tile, Endpoint)
@@ -859,7 +859,7 @@ std::string Chip::violation_report() {
 // list, the request bus, C&C 1's peripheral, C&C's model), then the checker's error lines, and every unit woken.
 // Memories, the tables and HIST are kept, as ref's. Hard and soft are the same here, as in ref (its log line says which).
 void Chip::reset(bool hard) {
-    if (cfg_.cc_cores) FATAL("mach: reset on the machine with C&C 1-3 as cores: comes later (W20)");
+    if (cfg_.cc_cores) FATAL("mach: reset on the machine with C&C 1-3 as cores: not modelled");
     sim::Sim& s = sim();
     const int64_t t = cycle();
     Impl& m = *impl_;
@@ -1036,7 +1036,7 @@ void Chip::reset_stats() {
         we.taken = we.written = we.stall_cycles = 0;
         units::TableStore& ts = p.unit<units::TableStore>("ts");
         ts.table_reads = ts.rmws = 0;
-        if (sim::check::kOn) {                            // the framework FIFOs' peaks (kept under SIM_CHECKS: W22's)
+        if (sim::check::kOn) {                            // the framework FIFOs' peaks (kept under SIM_CHECKS: the)
             impl_->sim->fifo_restart_peak(we.in);
             impl_->sim->fifo_restart_peak(p.unit<units::Gather>("gather").in);
         }
@@ -1230,7 +1230,7 @@ struct LoadEnv {
     uint64_t t;
     unsigned k;
     uint32_t reg(unsigned r) const { return b.reg(r); }
-    // ref's ctrlRead: on the write-back cycle the port's read returns the engine's written value (W22-21 (b))
+    // ref's ctrlRead: on the write-back cycle the port's read returns the engine's written value
     uint32_t hist(uint32_t i) const { return h.pipe.valid && h.pipe.due == t ? h.pipe.val : h.m.hist[i & 255]; }
     void post(uint32_t op, uint32_t arg, uint32_t v) const {          // made by the core at t (ref: the load's side effect)
         if (u.host_post_n == units::TileCore::kHostPosts) FATAL("mach: too many test loads' side effects pending");
@@ -1242,7 +1242,7 @@ struct LoadEnv {
     }
     uint32_t req_get(unsigned i) const { return u.receiver ? s.regfile_value(u.recv, units::reqbus::ReqRecv::R_W0 + i) : 0; }
     uint32_t req_receive(bool& ok) const {
-        if (u.receiver) FATAL("mach: a test's REQUEST_RECEIVE on a controller: not modelled yet (ask W20)");
+        if (u.receiver) FATAL("mach: a test's REQUEST_RECEIVE on a controller: not modelled");
         ok = false;
         return 0;
     }
@@ -1286,7 +1286,7 @@ std::optional<uint32_t> TileRef::load(int64_t t, uint32_t ea, unsigned width) co
     return v;
 }
 
-// ---- the request port from a test (W22-11) ----
+// ---- the request port from a test ----
 void TileRef::req_set_w(unsigned i, uint32_t v) {
     if (i > 2) FATAL("mach: req_set_w(%u): W0-W2", i);
     unit<units::TileCore>("core").req_set_w[i] = v;          // the core's copy (what a REQUEST_SEND pushes)
@@ -1296,8 +1296,8 @@ uint32_t TileRef::req_w(unsigned i) const { return unit<units::TileCore>("core")
 void TileRef::req_send(int64_t t, uint32_t w3) {           // RequestPort.send(t, w3) at the cycle just run
     if (t != c_->cycle()) FATAL("mach: tile %u: req_send at cycle %lld: the cycle just run only (%lld)", k_, (long long)t, (long long)c_->cycle());
     units::TileCore& core = unit<units::TileCore>("core");
-    // ref's RequestPort.send appends to the FIFO at once, any number between cycles (W22-20): straight into the leaf's
-    // FIFO, as a push of t is there at the start of t + 1; a push into a full FIFO is flagged (W26's fact) and dropped
+    // ref's RequestPort.send appends to the FIFO at once, any number between cycles: straight into the leaf's
+    // FIFO, as a push of t is there at the start of t + 1; a push into a full FIFO is flagged (the fact) and dropped
     const std::string leaf = "t" + std::to_string(k_) + ".reqleaf";
     units::reqbus::ReqLeaf& l = c_->unit<units::reqbus::ReqLeaf>(leaf);
     if (l.n >= l.depth) {
@@ -1332,7 +1332,7 @@ bool TileRef::req_idle() const {                            // fifo.isEmpty(), a
     return l.n == 0 && c_->sim().observe(l.push, e, 4).n == 0;
 }
 
-// ---- the read port's host queue (W22-18) ----
+// ---- the read port's host queue ----
 void TileRef::rp_host_queue(uint32_t addr, uint32_t dest) {
     units::TileCore& core = unit<units::TileCore>("core");
     if (core.host_rd_n == units::TileCore::kHostReads) FATAL("mach: tile %u: more than %u host reads queued", k_, units::TileCore::kHostReads);
@@ -1352,7 +1352,7 @@ bool TileRef::rp_all_accepted() const {
     return core.host_rd_n == 0 && core.rp_stored == unit<units::Director>("dir").rp_accepted;
 }
 
-// ---- the write engine's request lines from a test (W22-16) ----
+// ---- the write engine's request lines from a test ----
 namespace {
 void we_req(TileRef& p, Chip& c, unsigned k, unsigned line, int64_t t, uint32_t op, uint32_t idx, uint32_t add) {
     if (t != c.cycle() + 1) FATAL("mach: tile %u: a write-engine request at cycle %lld: the next cycle only", k, (long long)t);
@@ -1365,7 +1365,7 @@ void we_req(TileRef& p, Chip& c, unsigned k, unsigned line, int64_t t, uint32_t 
 void TileRef::we_ts_req(int64_t t, uint32_t op, uint32_t idx, uint32_t add) { we_req(*this, *c_, k_, 0, t, op, idx, add); }
 void TileRef::we_hist_req(int64_t t, uint32_t op, uint32_t idx, uint32_t add) { we_req(*this, *c_, k_, 1, t, op, idx, add); }
 
-// ---- the register block from a test (W23's (d)) ----
+// ---- the register block from a test (the (d)) ----
 void TileRef::set_events(uint32_t bits) { unit<units::TileCtl>("ctl").host_events |= bits; c_->touched(un(k_, "ctl")); }
 void TileRef::schedule_go(int64_t t) {
     units::TileCtl& b = unit<units::TileCtl>("ctl");
@@ -1378,7 +1378,7 @@ std::string TileRef::store(int64_t t, uint32_t ea, uint32_t v, uint32_t mask) {
     namespace lw = units::lw;
     if (t < c_->cycle()) FATAL("mach: tile %u: a test's store at cycle %lld, already run", k_, (long long)t);
     units::TileCore& core = unit<units::TileCore>("core");
-    if (t == c_->cycle()) {                                // ref's core.store(tr, ...) at the cycle just run (W22-21 (c))
+    if (t == c_->cycle()) {                                // ref's core.store(tr, ...) at the cycle just run
         if (!units::in_tables(ea & ~3u) || mask != 0xFFFFFFFFu)
             FATAL("mach: tile %u: a test's store at the cycle just run: the table window only (a full word)", k_);
         const units::TableAddr ta = units::table_addr(ea & ~3u);
@@ -1440,7 +1440,7 @@ void TileRef::ts_poke(uint32_t idx, uint32_t v) {
     c_->touched(un(k_, "ts"));
 }
 // A table-window store of the cycle just run (the core's, on `window`, applied by the table store at t + 1) is in
-// ref's table at t, unless a write-back took the port at t (figure 12: then it's lost). W22-21 (a).
+// ref's table at t, unless a write-back took the port at t (figure 12: then it's lost).
 uint32_t TileRef::ts_peek(uint32_t idx) const {
     uint32_t table, i;
     table_of(idx, table, i);
@@ -1532,7 +1532,7 @@ bool TileRef::mem_idle() const {
     const units::BigSram& m = unit<units::BigSram>("sram");
     if (!port_empty(s, m.wr)) return false;
     for (unsigned a = 0; a < units::BigSram::AREAS; a++)
-        for (unsigned j = 0; j < m.count[a]; j++) if (m.at(a, j).write) return false;   // (the queue wraps at its depth: W22's F2)
+        for (unsigned j = 0; j < m.count[a]; j++) if (m.at(a, j).write) return false;   // (the queue wraps at its depth: the F2)
     return true;
 }
 // ts_busy (4.15): either store's pipeline or request FIFOs busy; requests and returns on their way are in the ports
@@ -1979,7 +1979,7 @@ MachConfig Net::cfg(int64_t shuffle) {
     k.shuffle_seed = shuffle; k.check_unexpected = false; k.check_errors = false;
     return k;
 }
-Net::Net(const MachConfig& cfg) : c(cfg) { c.impl().enable_net(cfg); }   // any machine, as ref's (W22-9: Config.machine())
+Net::Net(const MachConfig& cfg) : c(cfg) { c.impl().enable_net(cfg); }   // any machine, as ref's (Config.machine())
 void Net::at(unsigned tile, int64_t T, unsigned dst, unsigned mode, uint32_t addr, uint64_t payload) {
     at(tile, T, dst, mode, 1, addr, units::lw::SIZE_64, payload, 0);
 }
@@ -2004,9 +2004,9 @@ void Net::send(unsigned cc, unsigned dst, unsigned mode, unsigned counter, uint3
     if (cc > 2) FATAL("Net::send: C&C %u (0-2)", cc + 1);
     namespace lw = units::lw;
     const sim::Word w[3] = {lw::mask_lo(lo, size), lw::hdr(lw::CC1 + cc, dst, mode, counter, addr, size), lw::mask_hi(hi, size)};
-    units::CncPacket p{};                                   // ref's Endpoint.send checks it (W26's facts)
+    units::CncPacket p{};                                   // ref's Endpoint.send checks it (the facts)
     p.dst = uint8_t(dst); p.mode = uint8_t(mode); p.counter = uint8_t(counter); p.size = uint8_t(size); p.addr = addr; p.lo = lo; p.hi = hi;
-    // W26: ref counts it at the send, between cycles, and its checkInvariants reports it at the next cycle run
+    // ref counts it at the send, between cycles, and its checkInvariants reports it at the next cycle run
     units::endpoint_checks(uint64_t(c.cycle()) + 1, lw::CC1 + cc, p);
     if (cc == 0) c.sim().put_late("cnc", c.unit<units::Cnc>("cnc").send, w, 3);
     else {
@@ -2031,7 +2031,7 @@ bool Net::pending() const {
     return false;
 }
 // ref's Net.step: feed() then the cycle. Only here (and in run_all) are Net's schedules fed: Chip::run and step leave
-// them alone, as ref's Chip.run does (W26). The units with something to feed are woken for this cycle.
+// them alone, as ref's Chip.run does. The units with something to feed are woken for this cycle.
 void Net::step() {
     Chip::Impl& m = c.impl();
     for (unsigned k = 0; k < 64; k++) {
@@ -2047,7 +2047,7 @@ void Net::step() {
         if (!v.valid && !v.put && v.n == 0) {
             namespace lw = units::lw;
             const units::CncPacket& p = h.pop();
-            units::endpoint_checks(uint64_t(c.cycle()) + 1, lw::CC1, p);   // ref's Endpoint.send checks it, reported at the next cycle (W26)
+            units::endpoint_checks(uint64_t(c.cycle()) + 1, lw::CC1, p);   // ref's Endpoint.send checks it, reported at the next cycle
             const sim::Word w[3] = {lw::mask_lo(p.lo, p.size), lw::hdr(lw::CC1, p.dst, p.mode, p.counter, p.addr, p.size), lw::mask_hi(p.hi, p.size)};
             m.sim->put_late("cnc", c.unit<units::Cnc>("cnc").send, w, 3);
         }

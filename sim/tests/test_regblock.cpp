@@ -114,7 +114,7 @@ TEST(regblock_request_fifo) {
     CHECK_EQ(b.set_w[1], 0u);                          // cleared by the push
 }
 
-// D29 (W8): an overflow the router counted at t reaches the block as an event: ERRORS [0] at endCycle(t), the error line
+// D29: an overflow the router counted at t reaches the block as an event: ERRORS [0] at endCycle(t), the error line
 // raised, with nothing else arriving; the Count alone is not read while the event is offered.
 TEST(router_overflow_event_sets_errors_at_its_end_of_cycle) {
     RegBlockState b;

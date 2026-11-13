@@ -1,5 +1,5 @@
 // file_store.h: the memory as files (spec 4.21.5, 7; DECISIONS-v1.3 sections 12, 20, 22), ported from `ref`'s
-// FileStore.java (WORKER14). A simulated LPDDR of 4 KB pages addressed in 128 B units, holding files as trees of
+// FileStore.java. A simulated LPDDR of 4 KB pages addressed in 128 B units, holding files as trees of
 // 1,024-entry index pages whose depth follows the length (0: the data page itself; 1: an index page of data pages; 2 and
 // 3 more levels). An index entry is 32 bits: [30:0] the page's address in 128 B units, [31] the owned bit; 0xFFFFFFFF is
 // no page (a hole), at every level. The storage only: the shared cache's timing is MemSystem's (mem_system.h).
@@ -83,7 +83,7 @@ public:
 
     // ---- the fingerprint (AUDIT-M3 6.6, tr.files): Σ fmix64(fmix64(11 << 56 ^ index) ^ v) over the non-zero words,
     // index (page address / 32) × 512 + i. `track_sum` keeps it at every write (a write-back changes 16 words); else
-    // `files_sum` scans. Only when fingerprints are wanted (as W11's BigSram).
+    // `files_sum` scans. Only when fingerprints are wanted (as the BigSram).
     static uint64_t term64(uint32_t region, uint64_t index, uint64_t v) {
         return units::fmix64(units::fmix64(uint64_t(region) << 56 ^ index) ^ v);
     }

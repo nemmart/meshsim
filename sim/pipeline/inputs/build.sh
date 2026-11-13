@@ -11,7 +11,7 @@
 #   CONVERT_DELIVERY=FILE  v1.35's convert_delivery (default: its clang release build, ../../build/clang-release/)
 #   GOLD_COMMIT=H    recorded in proof.json (default: gold's last commit at GOLD_SRC, pins.sh; src/SNAPSHOTS.sh)
 #   GOLD_FORMAT=...  the segment files to write: v1.2 (default: what jumpmap, T1 and the runner's data use), v1.3 (also
-#                    gold-v1.3/RUN/: WORKER18's v1.3 file, frames 7, 1 and 6 added), or "v1.2 v1.3"
+#                    gold-v1.3/RUN/: the v1.3 file, frames 7, 1 and 6 added), or "v1.2 v1.3"
 #   LIBELF_PREFIX=D  a libelf installed under D/usr (no libelf-dev on the machine)
 #   JOBS=N           compile jobs (default nproc);  JAVA_HEAP=4g
 # Every step writes into a staging directory beside its target and moves it into place only when complete and checked,
@@ -31,7 +31,7 @@ PREBUILT=${CLASSES:+1}; CLASSES=${CLASSES:-$OUT/build/classes}
 TAB=${TABLES:-$(cd "$HERE/../../data/tables/replayer" 2>/dev/null && pwd)}   # v1.35 (D42): v1.35's tables
 CONVERT=${CONVERT_DELIVERY:-$HERE/../../build/clang-release/convert_delivery}   # v1.35 (D42): the C++ ConvertDelivery
 GOLD_FORMAT=${GOLD_FORMAT:-v1.2}
-. "$HERE/src/SNAPSHOTS.sh"; GOLD_COMMIT=${GOLD_COMMIT:-${GOLD_LAST:0:7}}   # v1.35 (W19): from the snapshot, not git log
+. "$HERE/src/SNAPSHOTS.sh"; GOLD_COMMIT=${GOLD_COMMIT:-${GOLD_LAST:0:7}}   # v1.35: from the snapshot, not git log
 JOBS=${JOBS:-$(nproc)}; HEAP=${JAVA_HEAP:-4g}
 PY="python3 $HERE/lib/inputs.py"
 if [ -n "${LIBELF_PREFIX:-}" ]; then
@@ -44,7 +44,7 @@ die() { say "FAILED: $*"; exit 1; }
 complete() { [ -z "${FORCE:-}" ] && [ -f "$1.COMPLETE" ] && [ -e "$2" ] && [ "$(cat "$1.COMPLETE")" = "$(sha256sum "$2" | cut -d' ' -f1)" ]; }
 mark() { sha256sum "$2" | cut -d' ' -f1 > "$1.COMPLETE"; }
 
-# ---- tools: jolt-cpp's tracer and WORKER9's delivery_writer (at the pin), gold, jumpmap; v1.35's convert_delivery ----
+# ---- tools: jolt-cpp's tracer and the delivery_writer (at the pin), gold, jumpmap; v1.35's convert_delivery ----
 step_tools() {
   [ -d "$JAP/.git" ] || [ -n "${JAP_DIR:-}" ] || OUT=$OUT "$HERE/fetch.sh" "$JAP" || die "fetch"
   [ -f "$T/delivery/delivery_writer.cpp" ] || die "no tracer at $T"
@@ -74,7 +74,7 @@ step_tools() {
   say "classes $CLASSES; gold $GOLD_COMMIT"
 }
 
-# ---- deliveries: WORKER9's delivery_writer, every window kept and self-proved (tasks 079/080, 103/104) ----
+# ---- deliveries: the delivery_writer, every window kept and self-proved (tasks 079/080, 103/104) ----
 write_delivery() {  # ROOT WINDOWS LOG
   local R=$1 ST=$1/.staging-$RUN T0; T0=$(date +%s); rm -rf "$ST"; mkdir -p "$ST"
   ( cd "$T" && "$DW" "$PD" "$IN" "$TAB" "$ST" "$RUN" --windows="$2" --keep=all ) > "$OUT/logs/$RUN-$3" 2>&1 || { grep -v INFO "$OUT/logs/$RUN-$3" | tail -5; return 1; }

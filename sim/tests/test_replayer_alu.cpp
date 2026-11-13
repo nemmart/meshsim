@@ -1,4 +1,4 @@
-// test_replayer_alu: the replayer's ALU and row rules (WORKER15), against ref.
+// test_replayer_alu: the replayer's ALU and row rules, against ref.
 //
 // 1. ReplayerTest.opcodeTable and .vectors, ported: the model's opcode set against sim/data/tables/opcode_table.txt, and
 //    the 252 rows of sim/data/vec-821e1bd.tsv (the tracer's vectors, jolt-cpp 821e1bd), read in place. The
@@ -70,7 +70,7 @@ constexpr uint64_t PC = 0x80000100ull;
 constexpr int64_t SHIFT_OFFSETS[] = {0, 7, -2, 0, 2, -4, 0, 4, -4};
 
 // ReplayerTest.opcodeTable and .vectors; appends the report lines; returns the number of failed checks (and, if
-// `passed` is given, adds the passing ones to it: W25's suite_replayer counts as ref's T does).
+// `passed` is given, adds the passing ones to it: the suite_replayer counts as ref's T does).
 int alu_report(std::vector<std::string>& report, int* passed = nullptr) {
     int failed = 0;
     auto check = [&](bool ok, const std::string& what) {
@@ -151,7 +151,7 @@ int alu_report(std::vector<std::string>& report, int* passed = nullptr) {
     }
     // ref meant this check (ReplayerTest.java line 105; its append is lost in a comment): every executed opcode but NOP
     // (the padding row, unit-tested) has a matching vector
-    // As ref counts it (W25: suite_replayer's total equals ref's): ref's lost append makes its T.check the loop's body,
+    // As ref counts it (suite_replayer's total equals ref's): ref's lost append makes its T.check the loop's body,
     // run once per uncovered opcode, so a passing run counts no check here; this one fails for each uncovered opcode.
     for (unsigned i = 1; i < 256; i++)
         if (alu::executes(i) && !covered[i]) check(false, std::string("no matching vector for ") + alu::name_or_null(i));

@@ -1,4 +1,4 @@
-// check.cpp (WORKER20, P2): the checker's sink (check.h).
+// check.cpp: the checker's sink (check.h).
 #include "check.h"
 
 #include "base/fatal.h"

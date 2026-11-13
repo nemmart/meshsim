@@ -1,5 +1,5 @@
-// suite_rvc.cpp (WORKER21; P7a, inventory C22): v1.3's RvcTest (sim/ref/meshsim/test/RvcTest.java) on the C++ RVC
-// decompressor (src/units/rvc.h), on W20's suite.h. Its output must equal v1.3's log of run_tests.sh's step `rvc`
+// suite_rvc.cpp: v1.3's RvcTest (sim/ref/meshsim/test/RvcTest.java) on the C++ RVC
+// decompressor (src/units/rvc.h), on the suite.h. Its output must equal v1.3's log of run_tests.sh's step `rvc`
 // (tests/tracersuites/rvc.log, from oracle/ref/tracersuites.sh).
 //
 // The Tracer's RVC decompressor (spec 4.21.4 step 2) against gold's (gold.Decoder.uncompress, a16z's rules with D12) on

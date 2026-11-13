@@ -3,8 +3,8 @@
 # toolchain, how they are built, each file's sha256). The golden traces are only meaningful against these exact bytes:
 # oracle/regen/golden.sh checks them against the manifest before it runs anything.
 #   - the M1 programs, fw/m1/*.S, and sw/tests' hello, faults, misalign_ld, misalign_st (fw/tests/), as
-#     fw/build.sh builds them (W19: v1.3's flags, crt0.S, app.ld and mesh.h; byte-identical to the images first
-#     built here from sim/ref by W2's scripts).
+#     fw/build.sh builds them (v1.3's flags, crt0.S, app.ld and mesh.h; byte-identical to the images first
+#     built here from sim/ref by the scripts).
 # The riscv-tests images are fw/riscv-tests/bin (riscv-tests 3df703c, v1.3's): not rebuilt, their sha256 recorded
 # here too. Paths are relative to the version's root.
 #   --check   build into a scratch folder and compare: every image and MANIFEST.md equal to the committed ones; exit 1 if not

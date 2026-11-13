@@ -1,5 +1,5 @@
 // write_engine.h: the write engine (sim/ref/meshsim/src/WriteEngine.java; AUDIT-M2 3.5).
-// Configuration part by W8 (G1); the behaviour by W11 (G3): the pointer stage (2 * ts_engine_latency + 2 entries, in
+// Configuration part; the behaviour: the pointer stage (2 * ts_engine_latency + 2 entries, in
 // order), PTR's read-modify-writes and their in-order returns, count-on-arrival into HIST, the SRAM write Hold with its
 // refusal and retry (the stage stops, the input fills), modes 0 (region 0x03, at its address), 1 (PTR[src]), 2
 // (PTR[bucket digit]) and 3 (the 64-bit augmented record at PTR[src]). A misaligned PTR is undefined (fatal, named); a
@@ -60,20 +60,20 @@ struct WriteEngine {
     uint64_t ovf_seen = 0;               // we-in's overflows reported so far
 
     // ---- statistics and ref's checks ----
-    // W20 (harness-only; W22-16, AgTest's figure 12): ref's weTsReq.put / weHistReq.put from a test, made in this
+    // (harness-only; AgTest's figure 12): ref's weTsReq.put / weHistReq.put from a test, made in this
     // step at t: [0] PTR's line, [1] HIST's; {t, op, idx, add}, valid when t != 0
     uint64_t host_req[2][4] = {};
     uint32_t host_rets = 0;         //   PTR returns of the test's requests still to come (dropped: ref's writer awaits none)
-    int ck_tile = -1;               // W20: the checker's facts under this tile (src/check.h); -1 none
-    uint64_t (*log)[4] = nullptr;   // W20 (harness-only): ref's writer.record()/log: {t, payload lo, header, payload hi}
+    int ck_tile = -1;               // the checker's facts under this tile (src/check.h); -1 none
+    uint64_t (*log)[4] = nullptr;   // (harness-only): ref's writer.record()/log: {t, payload lo, header, payload hi}
     uint32_t log_cap = 0, log_n = 0;
     uint64_t taken = 0, written = 0, stall_cycles = 0, augmented = 0, explicit_writes = 0, out_of_range = 0;
 #ifdef SIM_CHECKS
-    uint64_t written_by_size[3] = {};   // W22 (P4; approved 2026-11-12; SIM_CHECKS only): ref's writtenBySize[log2 chunks], a
+    uint64_t written_by_size[3] = {};   // (P4; approved 2026-11-12; SIM_CHECKS only): ref's writtenBySize[log2 chunks], a
                                         // write put to big SRAM (WriteEngine.java:81), for ReadPortGatherTest. A statistic.
-    uint32_t stage_peak = 0;        // W22 (P4; approved 2026-11-12; SIM_CHECKS only): ref's stageHighWater, the stage's count
+    uint32_t stage_peak = 0;        // (P4; approved 2026-11-12; SIM_CHECKS only): ref's stageHighWater, the stage's count
                                     // after a take (WriteEngine.java:109), for EngineTest. A statistic.
-    S1Tile* s1 = nullptr;           // W26: S1 (s1.h): each stage entry's acceptance (ref's stAcc), -1 none
+    S1Tile* s1 = nullptr;           // S1 (s1.h): each stage entry's acceptance (ref's stAcc), -1 none
     int64_t st_acc[MAX_STAGE] = {};
 #endif
 
@@ -87,7 +87,7 @@ struct WriteEngine {
         p.out(hist_req, "hist_req", 3);
         p.out(to_sram, "to_sram", 3);
         p.out(ovf_ev, "ovf_ev", 0);
-        p.overflow_steps(in);                                  // W10: stepped in the cycle an overflow is judged
+        p.overflow_steps(in);                                  // stepped in the cycle an overflow is judged
     }
 
     // The configuration as the engine uses it (WriteEngine's fields), from the block's registers.
@@ -112,7 +112,7 @@ struct WriteEngine {
 // WriteEngine.runCycle(t): a PTR return; the write side (a refusal retried, else the stage's head if its PTR is in);
 // one packet in while the stage has room.
 inline sim::Wake WriteEngine::step(sim::Ctx& c) {
-    for (unsigned l = 0; l < 2; l++)                           // W20 (harness-only): a test's request on a line at t
+    for (unsigned l = 0; l < 2; l++)                           // (harness-only): a test's request on a line at t
         if (host_req[l][0] && host_req[l][0] == c.now()) {
             c.put(l == 0 ? ts_req : hist_req, host_req[l][1], host_req[l][2], host_req[l][3]);
             host_req[l][0] = 0;
@@ -123,7 +123,7 @@ inline sim::Wake WriteEngine::step(sim::Ctx& c) {
     if (c.ready(ts_ret)) {                                     // pointer returns, in order
         const uint32_t old = uint32_t(c.peek(ts_ret)[1]);
         c.take(ts_ret);
-        if (aw_n == 0 && host_rets) host_rets--;               // W20 (harness-only): a test's request's return, dropped
+        if (aw_n == 0 && host_rets) host_rets--;               // (harness-only): a test's request's return, dropped
         else {
             if (aw_n == 0) FATAL("write engine: a PTR return at cycle %llu with nothing awaiting it", (unsigned long long)t);
             const unsigned i = aw[aw_head];
@@ -142,7 +142,7 @@ inline sim::Wake WriteEngine::step(sim::Ctx& c) {
             const uint32_t base = augment_base(c.read(dma, DMA_R_RECORD_BASE));
             lo = (lo & 0xFFFFFFFFull) | uint64_t(((a - base) & 0x1FFFFF) >> 1) << 32; hi = 0; n = 2; augmented++;
         } else n = 1u << lw::size(h);
-        if (a & (n - 1)) {   // W22 (F3, approved 2026-11-12): the PTR named as ref names it (PTR[digit] for mode 2, PTR[src N] otherwise)
+        if (a & (n - 1)) {   // (F3, approved 2026-11-12): the PTR named as ref names it (PTR[digit] for mode 2, PTR[src N] otherwise)
             char which[24];
             if (mode == lw::M_BUCKET) std::snprintf(which, sizeof which, "digit");
             else std::snprintf(which, sizeof which, "src %u", lw::src(h));
@@ -151,15 +151,15 @@ inline sim::Wake WriteEngine::step(sim::Ctx& c) {
         }
         if (a + n > mem_chunks) {                               // undefined (4.1, invariant 19): dropped
             out_of_range++;
-            if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::WE_PAST_SRAM, a, st_d[head], h, st_c[head]);   // W20
+            if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::WE_PAST_SRAM, a, st_d[head], h, st_c[head]);
         }
         else {
             last_put[0] = uint64_t(a & 0x1FFFFF) | uint64_t(n) << 21; last_put[1] = lo; last_put[2] = hi;
             c.put(to_sram, last_put[0], lo, hi);
             written++;
 #ifdef SIM_CHECKS
-            if (s1 && s1->on && st_acc[head] >= 0) for (unsigned k = 0; k < n; k++) s1->sram_put(t, a + k, uint64_t(st_acc[head]));   // W26: S1
-            written_by_size[__builtin_ctz(n)]++;                   // W22: WriteEngine.writtenBySize
+            if (s1 && s1->on && st_acc[head] >= 0) for (unsigned k = 0; k < n; k++) s1->sram_put(t, a + k, uint64_t(st_acc[head]));   // S1
+            written_by_size[__builtin_ctz(n)]++;                   // WriteEngine.writtenBySize
 #endif
         }
         st_have[head] = 0; head = uint8_t((head + 1) % cap); count--;
@@ -169,7 +169,7 @@ inline sim::Wake WriteEngine::step(sim::Ctx& c) {
         const uint64_t d = w[0], h = w[1], cw = w[2];
         c.take(in);
         taken++;
-        if (log) {                                             // W20 (harness-only): ref's writer.log
+        if (log) {                                             // (harness-only): ref's writer.log
             if (log_n == log_cap) FATAL("write engine: the harness's log is full (%u entries)", log_cap);
             uint64_t* e = log[log_n++];
             e[0] = c.now(); e[1] = d; e[2] = h; e[3] = cw;
@@ -177,7 +177,7 @@ inline sim::Wake WriteEngine::step(sim::Ctx& c) {
         const unsigned i = (head + count) % cap, mode = lw::mode(h);
         st_d[i] = d; st_h[i] = h; st_c[i] = cw; count++;
 #ifdef SIM_CHECKS
-        const int64_t acc = s1 && s1->on ? s1->take_accept() : -1;   // W26: S1 (ref's acceptQ.poll)
+        const int64_t acc = s1 && s1->on ? s1->take_accept() : -1;   // S1 (ref's acceptQ.poll)
         st_acc[i] = acc;
 #endif
         if (mode == lw::M_WRITE) { st_ptr[i] = lw::offset(lw::addr(h)) >> 2; st_have[i] = 1; explicit_writes++; }
@@ -187,24 +187,24 @@ inline sim::Wake WriteEngine::step(sim::Ctx& c) {
             const uint32_t stp = mode == lw::M_AUG ? 2 : 1u << lw::size(h);
             c.put(ts_req, mem::OP_ADD_RET, mem::IDX_PTR + idx, stp);
 #ifdef SIM_CHECKS
-            if (acc >= 0) s1->push(0, idx, uint64_t(acc));      // W26: S1 (ref's ptrAcc)
+            if (acc >= 0) s1->push(0, idx, uint64_t(acc));      // S1 (ref's ptrAcc)
 #endif
             st_have[i] = 0; aw[(aw_head + aw_n) % cap] = uint8_t(i); aw_n++;
             if (const uint32_t hd = hist_digit(cfgw)) {
                 c.put(hist_req, mem::OP_ADD_RET, digit(d, hd), 1);
 #ifdef SIM_CHECKS
-                if (acc >= 0) s1->push(1, digit(d, hd), uint64_t(acc));   // W26: S1 (ref's histAcc)
+                if (acc >= 0) s1->push(1, digit(d, hd), uint64_t(acc));   // S1 (ref's histAcc)
 #endif
             }
         }
 #ifdef SIM_CHECKS
-        if (count > stage_peak) stage_peak = count;         // W22: WriteEngine.stageHighWater
+        if (count > stage_peak) stage_peak = count;         // WriteEngine.stageHighWater
 #endif
     }
     // Stepped again while the head can be written or more input can be taken; a head awaiting its PTR is woken by the
     // return, a refusal by its edge.
     if ((count > 0 && st_have[head]) || (count < cap && c.ready(in))) return c.next();
-    if (host_req[0][0] || host_req[1][0])                     // W20 (harness-only): a test's request still to make
+    if (host_req[0][0] || host_req[1][0])                     // (harness-only): a test's request still to make
         return sim::Wake::at_cycle(host_req[0][0] && (!host_req[1][0] || host_req[0][0] < host_req[1][0]) ? host_req[0][0] : host_req[1][0]);
     return sim::Wake::none();
 }

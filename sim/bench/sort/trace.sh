@@ -1,5 +1,5 @@
 #!/bin/bash
-# trace.sh OUT args... (WORKER10): footprints of a bench_chip run (BENCH=bench_sort: of the sort) --trace-map: the map is
+# trace.sh OUT args...: footprints of a bench_chip run (BENCH=bench_sort: of the sort) --trace-map: the map is
 # written by a first run under valgrind (--tool=none: valgrind's layout, the same as lackey's for the same arguments),
 # then lackey's trace of a second, identical run is filtered against it as it streams; the second run's own map must
 # equal the first's, else the result is refused. Run from sim/; needs valgrind, build/clang-release/{bench_chip,trace_filter}.

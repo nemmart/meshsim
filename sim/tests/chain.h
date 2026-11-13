@@ -1,14 +1,14 @@
-// chain.h (WORKER17, v1.35): T2's segments back to back on the framework's chip, the memory carried from each segment
-// to the next as `ref`'s T1 carries it (TracerT2.main, M3Seg's loop; sim/planning/sessions/WORKER17-NOTES.md). The
-// inputs come from WORKER26's files and the delivery directly, not from `ref`'s dumps. Configuration and between-cycle
+// chain.h (v1.35): T2's segments back to back on the framework's chip, the memory carried from each segment
+// to the next as `ref`'s T1 carries it (TracerT2.main, M3Seg's loop). The
+// inputs come from the files and the delivery directly, not from `ref`'s dumps. Configuration and between-cycle
 // code only (D6 doesn't apply here).
 //
-//   - WORKER26's inputs (TracerT1.loadW26): proof.json, initial.pages, frame6.bin and map.lines, seg/NNN.pages, into
+//   - the inputs (TracerT1.loadW26): proof.json, initial.pages, frame6.bin and map.lines, seg/NNN.pages, into
 //     one FileStore in `ref`'s allocation order (the image a depth-2 file, then the map);
 //   - the segment file (TracerT1.readSegments: frames 2-5; frame 5's 32-entry LRU coding);
 //   - the harness's landings before the boot (TracerT2.chip): C&C 3's tracer_layout.h and every tile's
 //     replay_layout.h, as the (unit, chunk, value) list M3Inputs.sram writes;
-//   - W13's dump forms (M3Inputs: "M3FILES1", "M3SRAM01"), written gzipped or hashed uncompressed (the oracle,
+//   - the dump forms (M3Inputs: "M3FILES1", "M3SRAM01"), written gzipped or hashed uncompressed (the oracle,
 //     tests/golden-chain, is the sha256 of the uncompressed stream);
 //   - the delivery's manifest (the windows with files: TracerT2's byIndex) and a minimal JSON reader for it.
 #pragma once
@@ -42,7 +42,7 @@ struct Json {
 };
 bool parse_json(const std::string& text, Json& out, std::string& err);
 
-// ---- WORKER26's inputs
+// ---- the inputs
 struct W26 {
     int log2k = 0, hash_k = 0, hash_p3 = 0, segments = 0;
     int32_t hash_p1 = 0;
@@ -91,7 +91,7 @@ private:
 void landings(const units::tracer::ReplayTables& tb, const W26& w, const Seg& sg, const Seg* next, unsigned windows,
               std::vector<t2::SramLanding>& out);
 
-// ---- W13's dump forms
+// ---- the dump forms
 std::vector<uint8_t> files_stream(const FileStore& fs);                        // "M3FILES1"
 std::vector<uint8_t> sram_stream(const std::vector<t2::SramLanding>& l);      // "M3SRAM01"
 bool write_gz(const std::string& path, const std::vector<uint8_t>& bytes, std::string& err);

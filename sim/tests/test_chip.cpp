@@ -1,5 +1,5 @@
-// The chip (WORKER9, stage 4): build_chip with W8's G1 units in every tile (add_g1), the network and C&C's model, running
-// M2Prog's regs (to its end since G3's mode-1 path, W11) and wfi exactly as CtrlTest runs them
+// The chip: build_chip with the G1 units in every tile (add_g1), the network and C&C's model, running
+// M2Prog's regs (to its end since G3's mode-1 path) and wfi exactly as CtrlTest runs them
 // (Mach.boot's C&C sequence, then the program's), checked against golden-m2 every cycle: every unit of tile 0 and the
 // chip-level units (the golden's 21 lines a point, `chip` included), from cycle 0 to the cycle every core has stopped.
 // One thread, the debug options, and form 2 (the tiles in 2, 4 and 8 domains by bands of rows, on several threads).
@@ -23,7 +23,7 @@ using namespace units;
 
 namespace {
 
-// ---- the register block's line at the end of c (G2Chip::edge): W8's preview (tile_ctl.h, units::line_edge) -----------
+// ---- the register block's line at the end of c (G2Chip::edge): the preview (tile_ctl.h, units::line_edge) -----------
 fp::LineEdge line_edge(const void* ctx, unsigned k, uint64_t c) {
     const fp::G1Tile& g = static_cast<const fp::G1Tile*>(ctx)[k];
     const units::LineEdge e = units::line_edge(*g.sim, *g.uctl, c);
@@ -103,7 +103,7 @@ std::string check(const char* name, uint64_t through, const Setup& su, const std
         prog.command(lw::BROADCAST, 1u << 24).go().command(lw::BROADCAST, 2u << 24).go().wait_cycles(700)
             .command(lw::BROADCAST, 3u << 24).go();
     prog.release();
-    // G1's context (as W8's tests build it)
+    // G1's context (as the tests build it)
     TileConfig tc = test::tile_config(0);
     std::vector<uint32_t> mem(64 * 2 * MEM_WORDS, 0);
     G1Ctx gx;
@@ -138,7 +138,7 @@ std::string check(const char* name, uint64_t through, const Setup& su, const std
     gc.ep[0] = &m.unit<Endpoint>("ep2"); gc.ep[1] = &m.unit<Endpoint>("ep3");
     gc.ready_latency = nc.ready_latency;
     gc.edge = line_edge; gc.edge_ctx = g1.data();
-    units::reqbus::ReqBusUnits rbu;                                       // W14: the request bus's streams
+    units::reqbus::ReqBusUnits rbu;                                       // the request bus's streams
     fp::attach_reqbus(m, g1.data(), 64, gc, rbu, spec.reqbus);
     fp::FpRegistry reg;
     std::vector<unsigned> tiles;
@@ -201,9 +201,9 @@ TEST(chip_sram_sum_by_scan_keeps_the_goldens) {
     }
 }
 
-// a2a (W11 with W12's AG): every unit of tile 0 every 10 cycles (golden-m2/a2a.fp) to its end, one thread and split.
+// a2a (with the AG): every unit of tile 0 every 10 cycles (golden-m2/a2a.fp) to its end, one thread and split.
 TEST(chip_a2a_every_10_cycles) {
-    if (units::reg_info(units::PULSE_DMA).store == units::A_OUT) {   // W12's DMA start (sim-w12 83fb888): not on this branch
+    if (units::reg_info(units::PULSE_DMA).store == units::A_OUT) {   // the DMA start (sim-w12 83fb888): not on this branch
         std::fprintf(stderr, "a2a: skipped (PULSE_DMA not modelled on this branch yet)\n");
         return;
     }
@@ -286,7 +286,7 @@ TEST(tile_router_overflow_steps_the_register_block) {
     const unsigned k = 3;
     sim::Config cfg;
     TileIO io = tile_cycle(cfg, spec, k);
-    units::reqbus::tie_off(cfg, "t" + std::to_string(k) + ".reqtie", io.req);   // W14: no request bus in a lone tile
+    units::reqbus::tie_off(cfg, "t" + std::to_string(k) + ".reqtie", io.req);   // no request bus in a lone tile
     auto& f = cfg.add<Flood>("flood", k, 60u);
     for (unsigned d = 0; d < 4; d++) { cfg.link(f.out[d], io.link_in[d], 1); cfg.link(io.link_out[d], f.in[d], 1); }
     cfg.link(f.go, io.go, 1);
@@ -324,7 +324,7 @@ struct Quiet {
     }
     uint64_t digest() const { return 0; }
 };
-// The read port end to end in one tile (W11, P2b): the core's boot ROM sets SRAM_RD_DEST_ADDR to 0x200 (32 bits,
+// The read port end to end in one tile: the core's boot ROM sets SRAM_RD_DEST_ADDR to 0x200 (32 bits,
 // uncounted), queues reads of chunks 0x40 and 0x44, loads SRAM_RD_ADDR_QUEUE (free entries) into x4 and
 // SRAM_RD_DEST_ADDR into x5, then waits. The results go through the read queue, the injection unit, the router's
 // loopback and the director to data memory at 0x200 and 0x204.
@@ -345,7 +345,7 @@ RpRun read_port_run(unsigned depth) {
     const unsigned k = 3;
     sim::Config cfg;
     TileIO io = tile_cycle(cfg, spec, k);
-    units::reqbus::tie_off(cfg, "t" + std::to_string(k) + ".reqtie", io.req);   // W14: no request bus in a lone tile
+    units::reqbus::tie_off(cfg, "t" + std::to_string(k) + ".reqtie", io.req);   // no request bus in a lone tile
     auto& q = cfg.add<Quiet>("quiet");
     for (unsigned d = 0; d < 4; d++) { cfg.link(q.out[d], io.link_in[d], 1); cfg.link(io.link_out[d], q.in[d], 1); }
     cfg.link(q.go, io.go, 1);

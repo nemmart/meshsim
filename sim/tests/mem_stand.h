@@ -1,5 +1,5 @@
-// mem_stand.h (WORKER11): the read queue's ends for tests that build add_g1 without W9's chip (in a chip they are the
-// injection unit's): idle, no read is made; a read-port request is fatal. W12: also the G4 clients' ends (the gather's
+// mem_stand.h: the read queue's ends for tests that build add_g1 without the chip (in a chip they are the
+// injection unit's): idle, no read is made; a read-port request is fatal. Also the G4 clients' ends (the gather's
 // and the AG's read Holds, never taken: a request is fatal; gather_srq_busy, never put).
 #pragma once
 
@@ -13,7 +13,7 @@ struct MemStand {
     sim::HoldOut sram_rd;
     sim::LinkIn ret[16];
     sim::CountOut rp_injected;
-    sim::HoldIn rd_gather, rd_ag;      // W12 (G4)
+    sim::HoldIn rd_gather, rd_ag;
     sim::RegOut gather_srq_busy;
     explicit MemStand(sim::Ports& p, bool g4_ = false) : g4(g4_) {
         if (g4) { p.in(rd_gather, "rd_gather", 2); p.in(rd_ag, "rd_ag", 2); p.out(gather_srq_busy, "gather_srq_busy", 1); }

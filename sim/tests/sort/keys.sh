@@ -1,5 +1,5 @@
 #!/bin/bash
-# keys.sh N SET... -- the sort's key sets for a step or the kit (WORKER24, P6; owner's Q4): build/keys-N/<set>.keys,
+# keys.sh N SET... -- the sort's key sets for a step or the kit (owner's Q4): build/keys-N/<set>.keys,
 # prebuilt and checked by hash (tests/sort/ref/KEYS.sha256, pipeline/keys/EXPECTED.sha256) by default; made with
 # pipeline/keys' KeyGen only when a set is missing and a JDK is present (the testing runs need no Java, D40).
 # Run from sim/. Prints the sets' directory; exits 1 if a set is missing or differs from its recorded hash.

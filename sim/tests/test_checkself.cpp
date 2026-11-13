@@ -73,14 +73,14 @@ void checkself() {
     }
     {
         mach::MachConfig k = Net::cfg(-1);
-        k.queue_depth = 2; k.we_in_depth = 1;   // W26: S1 on again
+        k.queue_depth = 2; k.we_in_depth = 1;   // S1 on again
         Net n(k);
         for (unsigned s = 20; s < 40; s++) for (unsigned i = 0; i < 4; i++)
             n.at(s, 10 + i, 9, lw::M_WRITE, 1, uint32_t(lw::R_SRAM) << 24 | (s * 16 + 2 * i) << 2, lw::SIZE_64, s * 100 + i, 0);
         n.run_all(2000);
         say("%s", n.c.violation_report().c_str());
 #ifdef SIM_CHECKS
-        {   // W26: S1.report (s1.h)
+        {   // S1.report (s1.h)
             const units::S1Tile* t[64];
             for (unsigned x = 0; x < 64; x++) t[x] = n.c.tile(x).unit<units::Director>("dir").s1.get();
             say("%s\n", units::s1_report(t, 64, k.K).c_str());
@@ -109,7 +109,7 @@ void checkself() {
         n.run_all(2000);
         say("%s", n.c.violation_report().c_str());
     }
-    {   // W26 (1a): the core's checks through the block: terminal traps without an ERRORS bit, mret, aliasing, reserved bytes
+    {   // the core's checks through the block: terminal traps without an ERRORS bit, mret, aliasing, reserved bytes
         mach::MachConfig k = Mach::cfg(-1);
         k.check_errors = false; k.max_violation_messages = 200;
         Mach m(k);
@@ -147,7 +147,7 @@ void checkself() {
         n.c.step();
         say("%s", n.c.violation_report().c_str());
     }
-    {   // W26 (1a): CtrlTest's inv program: invariants 4, 9, the reserved word, the table window while the AG runs
+    {   // CtrlTest's inv program: invariants 4, 9, the reserved word, the table window while the AG runs
         mach::MachConfig k = Mach::cfg(-1);
         k.check_errors = false; k.max_violation_messages = 1000;
         Mach m(k);
@@ -161,7 +161,7 @@ void checkself() {
         }
         say("overwritten unread %llu, unread commands %llu\n", (unsigned long long)ow, (unsigned long long)uc);
     }
-    {   // W26 (1a): inv with invariant 8 strict
+    {   // inv with invariant 8 strict
         mach::MachConfig k = Mach::cfg(-1);
         k.check_errors = false; k.max_violation_messages = 1000; k.strict_replies = true;
         Mach m(k);
@@ -169,7 +169,7 @@ void checkself() {
         m.c.run_until([&] { return m.c.all_stopped(); }, 10000);
         say("%s", m.c.violation_report().c_str());
     }
-    {   // W26 (1a): the table window while count-on-arrival uses HIST and the write engine uses PTR (a test's stores)
+    {   // the table window while count-on-arrival uses HIST and the write engine uses PTR (a test's stores)
         mach::MachConfig k = Net::cfg(-1);
         Net n(k);
         n.c.tile(9).set_master_config(master_config(0, 0, 0, 0, 1, 1));
@@ -184,14 +184,14 @@ void checkself() {
         n.run_all(1000);
         say("%s", n.c.violation_report().c_str());
 #ifdef SIM_CHECKS
-        {   // W26: S1's PTR and HIST paths
+        {   // S1's PTR and HIST paths
             const units::S1Tile* s1t[64];
             for (unsigned x = 0; x < 64; x++) s1t[x] = n.c.tile(x).unit<units::Director>("dir").s1.get();
             say("%s\n", units::s1_report(s1t, 64, k.K).c_str());
         }
 #endif
     }
-    {   // W26 (1a): the peripheral slot's own checks (window 1: word 8 stored, word 10 loaded, word 22 stored)
+    {   // the peripheral slot's own checks (window 1: word 8 stored, word 10 loaded, word 22 stored)
         mach::MachConfig k = Mach::cfg(-1);
         k.check_errors = false; k.max_violation_messages = 200;
         Mach m(k);
@@ -206,7 +206,7 @@ void checkself() {
         m.c.run(300);
         say("%s", m.c.violation_report().c_str());
     }
-    {   // W26 (1a): a WFI woken by another event than GO with done set, the done gate off
+    {   // a WFI woken by another event than GO with done set, the done gate off
         mach::MachConfig k = Mach::cfg(-1);
         k.check_errors = false; k.max_violation_messages = 200; k.done_gate = false;
         Mach m(k);
@@ -221,7 +221,7 @@ void checkself() {
         m.c.run(300);
         say("%s", m.c.violation_report().c_str());
     }
-    {   // W26 (1b): the request bus's root drops requests for targets 3, 5, 7 (W22-13)
+    {   // the request bus's root drops requests for targets 3, 5, 7
         mach::MachConfig k = Mach::cfg(-1);
         k.check_errors = false; k.max_violation_messages = 200;
         Mach m(k);
@@ -237,7 +237,7 @@ void checkself() {
         m.c.run(800);
         say("%s", m.c.violation_report().c_str());
     }
-    {   // W26 (1b): C&C's receive FIFO full
+    {   // C&C's receive FIFO full
         mach::MachConfig k = Net::cfg(-1);
         k.cnc_rx_depth = 4;
         Net n(k);
@@ -245,7 +245,7 @@ void checkself() {
         n.run_all(2000);
         say("%s", n.c.violation_report().c_str());
     }
-    {   // W26 (W22's F4): the command slot after the boot (the boot ROM takes the boot command at GO)
+    {   // the command slot after the boot (the boot ROM takes the boot command at GO)
         mach::MachConfig k = Mach::cfg(-1);
         k.max_violation_messages = 200;
         Mach m(k);
@@ -254,7 +254,7 @@ void checkself() {
         m.c.run_until([&] { return m.c.all_stopped(); }, 20000);
         say("%s", m.c.violation_report().c_str());
     }
-    {   // W26: the read port: stores into a full queue (invariant 8)
+    {   // the read port: stores into a full queue (invariant 8)
         mach::MachConfig k = Net::cfg(-1);
         k.read_port_depth = 2;
         Net n(k);
@@ -267,7 +267,7 @@ void checkself() {
         n.run_all(1000);
         say("%s", n.c.violation_report().c_str());
     }
-    {   // W26: the AG's stream-entry checks (checkEntry): eight streams of count 0 on tile 9
+    {   // the AG's stream-entry checks (checkEntry): eight streams of count 0 on tile 9
         Net n(Net::cfg(-1));
         n.c.tile(9).set_stream(0, stream_src(0x100), 0x0, stream_count(0, 3, 1, 0, 9));
         n.c.tile(9).set_stream(1, stream_src(0x100), 0x0, stream_count(0, 2, 1, 3, 9));
@@ -282,7 +282,7 @@ void checkself() {
         n.c.run(200);
         say("%s", n.c.violation_report().c_str());
     }
-    {   // W26: invariant 6: HIST counts past 17 bits, reported once a tile
+    {   // invariant 6: HIST counts past 17 bits, reported once a tile
         Net n(Net::cfg(-1));
         n.c.tile(9).set_master_config(master_config(0, 0, 0, 0, 1, 1));
         for (unsigned i = 0; i < 256; i++) n.c.tile(9).hist_poke(i, 0x1FFFF);
@@ -291,7 +291,7 @@ void checkself() {
         n.run_all(1000);
         say("%s", n.c.violation_report().c_str());
     }
-    {   // W26 (1d): invariant 2, the disjoint buffers: written then read (phase 0), new_phase, read then written (phase 1)
+    {   // invariant 2, the disjoint buffers: written then read (phase 0), new_phase, read then written (phase 1)
         Net n(Net::cfg(-1));
         const uint32_t SR = uint32_t(lw::R_SRAM) << 24;
         n.c.tile(9).set_remaining(1, 2); n.c.tile(9).set_remaining(2, 4);
@@ -310,7 +310,7 @@ void checkself() {
         n.run_all(500);
         say("%s", n.c.violation_report().c_str());
     }
-    {   // W26 (1d): invariant 2 across GOs: the a2a
+    {   // invariant 2 across GOs: the a2a
         Mach m(Mach::cfg(-1));
         mach::A2A data(7, 2000);
         for (unsigned s = 0; s < 64; s++) {
@@ -326,7 +326,7 @@ void checkself() {
         m.run([&] { return m.all_stopped(); }, 2000000);
         say("%s", m.c.violation_report().c_str());
     }
-    {   // W26 (1d): invariant 2's phases at GO: tile 5 reads chunk 0x40, GO, C&C writes it (another phase)
+    {   // invariant 2's phases at GO: tile 5 reads chunk 0x40, GO, C&C writes it (another phase)
         mach::MachConfig k = Mach::cfg(-1);
         k.check_errors = false;
         Mach m(k);
@@ -346,7 +346,7 @@ void checkself() {
         m.c.run(200);
         say("%s", m.c.violation_report().c_str());
     }
-    {   // W26: the slot's DMA_HDR and DMA_ADDR changed mid-transfer (ref's test peripheral on tile 7)
+    {   // the slot's DMA_HDR and DMA_ADDR changed mid-transfer (ref's test peripheral on tile 7)
         mach::MachConfig k = mach::MachConfig::machine();
         k.periph_type = 0; k.test_peripheral_tile = 7;
         Net n(k);
@@ -357,7 +357,7 @@ void checkself() {
         for (int i = 0; i < 40; i++) n.step();
         say("%s", n.c.violation_report().c_str());
     }
-    {   // W26 (W22's F6): invariant 2's phases at the counters-done latch: A -> B, latch, B -> A; then one run on one buffer
+    {   // invariant 2's phases at the counters-done latch: A -> B, latch, B -> A; then one run on one buffer
         Net n(Net::cfg(-1));
         mach::TileRef p = n.c.tile(12);
         const uint32_t A = 0x20000, B = 0x40000, N = 64;
@@ -375,7 +375,7 @@ void checkself() {
         say("disjoint-buffer accesses counted: %llu\n", (unsigned long long)p.unit<units::BigSram>("sram").disjoint_violations);
 #endif
     }
-    {   // W26: the endpoints' send checks (C&C 1's cncSends; C&C 2's and C&C 3's direct sends; ref's text rule)
+    {   // the endpoints' send checks (C&C 1's cncSends; C&C 2's and C&C 3's direct sends; ref's text rule)
         Net n(Net::cfg(-1));
         n.cnc_send({20, 9, lw::M_WRITE, 0xFF000000u, 1, lw::SIZE_32, 0, 0});
         n.cnc_send({22, 9, lw::M_WRITE, 0x900, 2, lw::SIZE_UNDEF, 0, 0});

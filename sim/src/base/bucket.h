@@ -1,8 +1,8 @@
 // Bucket: one delivery bucket, an append-only array of fixed-width entries of 64-bit words. The entry width and the
-// capacity are set at init (the width is a parameter: W6 measures two words against three for a link word). Cleared by
+// capacity are set at init (the width is a parameter: a benchmark measured two words against three for a link word). Cleared by
 // resetting the count. Appending to a full bucket is fatal in every build; reading past the count is DCHECK.
 //
-// The wheel of buckets is W3's. Cycle-loop code: no allocation, no STL, header-only. A later fixed-width form would keep
+// The wheel of buckets is the. Cycle-loop code: no allocation, no STL, header-only. A later fixed-width form would keep
 // this exact set of methods, so callers don't change.
 #pragma once
 

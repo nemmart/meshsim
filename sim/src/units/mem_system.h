@@ -1,5 +1,5 @@
 // mem_system.h: the memory system as the Tracer sees it (spec 4.21.5, 7; DECISIONS-v1.3 sections 12, 20, 21; the
-// owner's model for B1), ported from `ref`'s MemorySystem.java (WORKER14). A black box behind the fill bus, reading and
+// owner's model for B1), ported from `ref`'s MemorySystem.java. A black box behind the fill bus, reading and
 // writing one 128 B line of a file named by (root, depth, line); its storage is FileStore's trees, this is the timing.
 //
 // THE MODEL (`ref`'s, unchanged): no TLB, a walk's every index line an access, then the data line; the shared cache of

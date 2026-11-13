@@ -1,4 +1,4 @@
-// replayer.cpp: the replayer's cycle (WORKER15): sim/ref/meshsim/src/Replayer.java, method for method.
+// replayer.cpp: the replayer's cycle: sim/ref/meshsim/src/Replayer.java, method for method.
 #include "units/replayer.h"
 
 #include "check.h"
@@ -41,7 +41,7 @@ void Replayer::record(int64_t t, uint16_t c, uint64_t a, uint64_t b, uint64_t x)
 }
 void Replayer::violate(int64_t t, uint16_t c, uint64_t a, uint64_t b, uint64_t x) {
     record(t, c, a, b, x);
-    // W20 (F2): ref's host.violate; reported at t + 1 (W25's F8: ref's slot passes it to the block, whose counter the
+    // ref's host.violate; reported at t + 1 (the F8: ref's slot passes it to the block, whose counter the
     // checker sees at the end of the next cycle: v1.3 reports 23808 for a violation at 23807)
     sim::check::record(uint64_t(t) + 1, int(me), sim::check::Kind::PERIPH_VIOLATION, c, a, b, x);
 }
@@ -68,7 +68,7 @@ void Replayer::fact_text(const ReplayerFact& f, char* buf, size_t n) {
     }
 }
 
-// ================================================================ ref's error lists (W25)
+// ================================================================ ref's error lists
 // Each entry is ref's text exactly (Replayer.violate, invalid, underflow, checkLeftover, the overrun), formatted when
 // recorded into the buffer allocated at construction (D24: snprintf, no allocation); beyond the kept entries only the
 // count grows. Error paths only: nothing here runs in a clean pass.
@@ -82,7 +82,7 @@ const char* op_name(uint64_t op, char* tmp, size_t n) {   // ReplayerAlu.name: t
 const char* stream_name(unsigned s) { return s == 0 ? "code" : s == 1 ? "read log" : "write log"; }
 }  // namespace
 
-// W20 (F2): ref's text of a violation (`violate(t, m)`'s list entry, "t<me> @<t>: <m>"), for the replayer's list and the
+// ref's text of a violation (`violate(t, m)`'s list entry, "t<me> @<t>: <m>"), for the replayer's list and the
 // checker (ref's slot passes m to the tile's register block: a chip violation). Codes below N_VIOLATION only.
 void Replayer::violation_text(unsigned me, int64_t t, uint16_t c, uint64_t a, uint64_t b, uint64_t x, char* o, size_t n) {
     const long long T = t;
@@ -93,7 +93,7 @@ void Replayer::violation_text(unsigned me, int64_t t, uint16_t c, uint64_t a, ui
         case V_TWO_SOURCES: std::snprintf(o, n, "t%u @%lld: two sources feed one queue port in a pass (invariant 18): %d and %d", me, T, int(a), int(b)); break;
         case V_FOREIGN_SRC: std::snprintf(o, n, "t%u @%lld: unit %d wrote the replayer's queue %d during a pass: only the tile itself refills it (4.19.13; invariant 16)", me, T, int(a), int(b)); break;
         case V_CREDIT: std::snprintf(o, n, "t%u @%lld: queue %d pushed past the credits taken for it: %d entries, %d credits (4.19.8; invariant 16)", me, T, int(a), int(b), int(x)); break;
-        case V_OFFSET_IMM: std::snprintf(o, n, "t%u @%lld: offset_imm set on a %s row (only ShiftData reads shift_offset; WORKER11 Q3)", me, T, op_name(a, nb, sizeof nb)); break;
+        case V_OFFSET_IMM: std::snprintf(o, n, "t%u @%lld: offset_imm set on a %s row (only ShiftData reads shift_offset)", me, T, op_name(a, nb, sizeof nb)); break;
         case V_LOG_AND_NFV: std::snprintf(o, n, "t%u @%lld: a row with both from_log and next_from_value (two read-log words)", me, T); break;
         case V_UNDEFINED: std::snprintf(o, n, "t%u @%lld: undefined result (invariant 16): %s in %s", me, T, reinterpret_cast<const char*>(uintptr_t(b)), op_name(a, nb, sizeof nb)); break;
         case V_END_WORD: std::snprintf(o, n, "t%u @%lld: the program-end row's log word is %lld, not 0", me, T, (long long)a); break;
@@ -292,7 +292,7 @@ void Replayer::flush(int64_t t) {
 }
 void Replayer::latch_sizes() {
     streamword::Size sz[3];
-    streamword::parse(region0[2], region0[3], sz);   // W14's stream_word.h: the layout's one definition
+    streamword::parse(region0[2], region0[3], sz);   // the stream_word.h: the layout's one definition
     ReplayerStream* s[3] = {&code, &rlog, &wlog};
     for (unsigned i = 0; i < 3; i++) s[i]->latch(sz[i].words, sz[i].values, sz[i].compressed);
 }
@@ -367,7 +367,7 @@ void Replayer::drain(int64_t T) {
     outq_h_ = (outq_h_ + 1) % OUTQ_ROWS; outq_n_--;
     last_sink_ = T;
     for (unsigned i = 0; i < REC_LONGS; i++) row_hash_ = mix(row_hash_ ^ r[i]);
-    if (row_buf_) {                                       // W20: from row_base_ (0 unless the harness drains it)
+    if (row_buf_) {                                       // from row_base_ (0 unless the harness drains it)
         if (rows_sunk_ - row_base_ >= row_cap_) FATAL("replayer %u: the row buffer is full: %llu rows", me, (unsigned long long)row_cap_);
         for (unsigned i = 0; i < REC_LONGS; i++) row_buf_[(rows_sunk_ - row_base_) * REC_LONGS + i] = r[i];
     }

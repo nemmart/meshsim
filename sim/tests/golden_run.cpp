@@ -363,7 +363,7 @@ std::vector<RunSpec> mixed_order(const std::vector<RunSpec>& runs) {
 std::string check_parallel(const std::vector<RunSpec>& runs, unsigned n, const std::vector<int>& cpus,
                            const std::vector<sim::Options>& opts) {
     // Everything read-only is prepared here, on the calling thread; each chip's tile and machine are built, run and
-    // compared on its own thread (W4's run_independent), touching only its own slot.
+    // compared on its own thread (the run_independent), touching only its own slot.
     struct Prep { Golden g; Images im; TileConfig c; std::vector<std::string> header; uint64_t digest = 0; };
     std::vector<Prep> prep(runs.size());
     for (size_t i = 0; i < runs.size(); i++) {

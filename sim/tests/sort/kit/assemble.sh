@@ -1,5 +1,5 @@
 #!/bin/bash
-# assemble.sh OUTDIR [KEYDIR] -- the sort's measurement kit on meshsim v1.35 (WORKER24, P6, row D8): v1.3's kit
+# assemble.sh OUTDIR [KEYDIR] -- the sort's measurement kit on meshsim v1.35: v1.3's kit
 # (meshsim/kit) on the C++ binaries, no Java to run it (D40). Run from sim/ after a release build, or it builds one.
 #   OUTDIR/sort_test, sort_summary     the simulator's sort driver (v1.3's SortTest) and SortSummary (clang, MODE=suite)
 #   OUTDIR/image/sort.{code.bin,data.bin,sym}, fw/boot/bootrom.hex, data/hops.txt   what sort_test reads

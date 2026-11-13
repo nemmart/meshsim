@@ -1,4 +1,4 @@
-// row_core.h: what the replayer (4.19) and the Tracer (4.21) share as rules (WORKER15; owner W15, W14 reads it).
+// row_core.h: what the replayer (4.19) and the Tracer (4.21) share as rules.
 //
 // sim/ref/meshsim/src/RowCore.java, function for function: the decode table's index (4.19.5), the source instruction's
 // immediate, the expansion word's fields and checks (4.19.3, 4.19.11), the operand codes (4.19.3, 4.19.4) and the decode

@@ -1,6 +1,6 @@
 // controller.h: one tile's controller on the framework (sim.h, config.h): sketch 2's three units, wrapping the plain
 // logic of rv32.h and regblock.h, and the bench that replays a golden trace's MEMW, GO, CMD and REQ-FREED lines
-// (sim/tests/AUDIT-M1.md section 5). Everything else in the trace comes out of the core and the block.
+// (planning/audits/AUDIT-M1.md section 5). Everything else in the trace comes out of the core and the block.
 //
 //   level 0  TestBench  acts at the cycles the golden's lines imply (MEMW, GO, CMD at C - 1; REQ-FREED at C)
 //   level 0  RegBlock   TileControl.endCycle(t - 1) from what reached it at t (the shifted end of cycle), then the view

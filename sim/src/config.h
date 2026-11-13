@@ -1,4 +1,4 @@
-// config.h: building a machine (WORKER3, stage 1: for review; declarations and the dispatch template, no implementation).
+// config.h: building a machine (stage 1: for review; declarations and the dispatch template, no implementation).
 //
 // The configuration regime (D6): any C++ that makes it clear. A machine is built in four steps, each once:
 //   1. add units  `cfg.add<T>(name, args...)` (the name unique, copied) constructs a T (its constructor declares its ports, sim.h) and returns it
@@ -7,7 +7,7 @@
 //                 Link, Fifo, Hold and credit are one to one; Reg, Wire and RegFile fan out; a Count may have several
 //                 producers (`connect(CountOut, CountIn)` and `count_overflows(FifoIn, CountIn)`) and several readers.
 //   3. build      the sizing pass and the rest (below); returns the Sim. Every structure is allocated once, at its exact
-//                 maximum, per thread, carved from W1's blocks; units are moved into one TypeArena per type.
+//                 maximum, per thread, carved from the blocks; units are moved into one TypeArena per type.
 //   4. run        `sim.run(n)`; observers read units and ports between cycles.
 //
 // build():
@@ -21,7 +21,7 @@
 //     carries at most L + 2 (Link), depth + 1 (Fifo: the visible ones and one in flight), depth (credit Fifo), 2 (Hold:
 //     the held one and one in flight), plus what either end declares it holds;
 //   - routes: each output's route resolved once to a data value (the wheel of its kind and width in its own thread, or the
-//     outbox wheel for the destination's thread: W4), so a put runs the same code either way;
+//     outbox wheel for the destination's thread), so a put runs the same code either way;
 //   - levels: from the Wires and RegFiles; a loop is fatal with its units named; a (type, form) runs at the largest level
 //     of its instances, re-checked after that (Count `now` reads are checked at the read, debug);
 //   - checks: every declared port wired (an unwired input or output is fatal, named), widths equal, at most 64 mask bits per
@@ -30,7 +30,7 @@
 // THE WHEEL'S SIZING RULE, and its cost. One wheel per (kind, width) per thread, of W buckets, W the next power of two
 // above the largest latency on that wheel; each bucket's capacity is the number of outputs that put into that wheel (each
 // puts at most once a cycle), so nothing can overflow: W x outputs x (width + 1) words. That is the worst case (every
-// output putting every cycle), and it is not small: W6's mesh (F) spent 32 KB of its 127 KB on the link wheel, a quarter,
+// output putting every cycle), and it is not small: the mesh (F) spent 32 KB of its 127 KB on the link wheel, a quarter,
 // holding ~142 of its 256 entries at a busy 0.35. Flagged for M2, not changed now: (i) a wheel per (kind, width,
 // latency), L buckets each, which costs sum over outputs of L x (width + 1) words (a latency-1 output on a 4-bucket wheel
 // pays 4 slots for 1); (ii) capacities from a declared peak rate, fatal when exceeded. (i) keeps "nothing can overflow";
@@ -70,12 +70,12 @@ namespace sim {
 
 // The resolved route of an output (engine.h's Route) is a data value: `wheel` is the first bucket of the wheel it lands in
 // (its (kind, width) wheel in its own thread, or an outbox), `dest` the destination's pool index (an entry's first word:
-// W6's E1, Bucket unchanged), `latency` the delay (1 for Fifo, Hold, Reg). A put of width w is
+// the E1, Bucket unchanged), `latency` the delay (1 for Fifo, Hold, Reg). A put of width w is
 //     Bucket& b = r.wheel[(now + r.latency) & r.mask]; Word* e = b.append(); e[0] = r.dest; e[1..w] = words;
 // with w a compile-time constant of the put's arity (sim.h's put overloads are fixed-arity), so the copy is fixed-size
 // (D16), and the same instructions whether the destination is local or across a domain.
 
-struct LoadProfile;   // W10: below
+struct LoadProfile;   // below
 
 // Every option is implemented or refused at build() ("option X not implemented"): never silently ignored.
 struct Options {
@@ -87,21 +87,21 @@ struct Options {
                                       // waiting and nothing on its way, 0 = off
     bool missed_wake_fatal = true;    // else report and go on
     unsigned leak_check_every = 0;    // debug builds: check the slot pools every N cycles too (always at the end of a run)
-    unsigned threads = 1;        // W4: OS threads for a machine split over domains (Config::domain), at most one per
+    unsigned threads = 1;        // OS threads for a machine split over domains (Config::domain), at most one per
                                  // domain; domains are spread over them in order. Independent chips: run_independent
-    std::vector<int> cpus;       // W4 (A2, D21): thread k pinned to cpus[k % size]; empty: the detected default placement
+    std::vector<int> cpus;       // (A2, D21): thread k pinned to cpus[k % size]; empty: the detected default placement
                                  // (topology.h); a CPU of -1: that thread not pinned ({-1}: leave placement to the OS)
-    bool barrier_block = false;  // W4: the barrier sleeps (futex) after its spin, instead of yielding (barrier.h)
-    unsigned barrier_spins = 2000;   // W4: pauses before the barrier yields (or sleeps); 0: yield at once; ~0u: spin only
-    // W10: the barrier's kind. automatic: the flags barrier from 3 threads (Quests 145-146 on the i5-14400F: -11% on the
+    bool barrier_block = false;  // the barrier sleeps (futex) after its spin, instead of yielding (barrier.h)
+    unsigned barrier_spins = 2000;   // pauses before the barrier yields (or sleeps); 0: yield at once; ~0u: spin only
+    // the barrier's kind. automatic: the flags barrier from 3 threads (Quests 145-146 on the i5-14400F: -11% on the
     // chip's boot at 6 threads, worse at 2; D21: re-check the crossover on other machines), the counter below 3 or with
-    // barrier_block (the flags barrier yields, never sleeps). counter: W4's (one shared line). flags: per-thread epochs.
+    // barrier_block (the flags barrier yields, never sleeps). counter: the (one shared line). flags: per-thread epochs.
     enum class Barrier : uint8_t { automatic, counter, flags } barrier = Barrier::automatic;
-    unsigned engines = 0;        // W10, A MEASUREMENT OPTION ONLY: leave it 0. A machine split over domains is built as
+    unsigned engines = 0;        // A MEASUREMENT OPTION ONLY: leave it 0. A machine split over domains is built as
                                  // one engine per thread (its domains grouped in order, min(threads, domains) groups);
                                  // engines > threads instead builds that many and runs several on a thread in turn
-                                 // (W4's layout), only to measure a split's own cost (bench_threads --engines)
-    // W10, placement: how a machine is split over threads (sim/planning/sessions/WORKER10/NOTES.md, "Partitioning")
+                                 // (the layout), only to measure a split's own cost (bench_threads --engines)
+    // placement: how a machine is split over threads
     enum class Placement : uint8_t { declared, by_load } placement = Placement::declared;
                                  // declared: Config::domain's domains, grouped in order, one group per thread;
                                  // by_load: the framework forms granules (units that must stay together: joined by a
@@ -114,13 +114,13 @@ struct Options {
                                  // on the chip at 20 or 60 ns, a loss on the mesh; ~20 ns is a crossing's cost (Quest 141)
     unsigned min_interval = 0;   // by_load: the smallest barrier interval allowed; 0: the largest Link latency that still
                                  // leaves at least 4 granules per thread
-    bool calibrate = false;      // W10: time each unit's steps (for Sim::load_profile): two clock reads per step
-    bool time_threads = false;   // W10, A MEASUREMENT OPTION: a split run times its phases per thread (Sim::thread_times)
-    bool observe_arrivals = false;   // W10: keep each visible Link word's arrival cycle for Sim::observe (a store per
+    bool calibrate = false;      // time each unit's steps (for Sim::load_profile): two clock reads per step
+    bool time_threads = false;   // A MEASUREMENT OPTION: a split run times its phases per thread (Sim::thread_times)
+    bool observe_arrivals = false;   // keep each visible Link word's arrival cycle for Sim::observe (a store per
                                      // delivered Link word; off: observe(LinkIn) is fatal while a word is visible)
 };
 
-// W10: a calibration run's load per unit (Options::calibrate, Sim::load_profile), for Placement::by_load. A plain value:
+// a calibration run's load per unit (Options::calibrate, Sim::load_profile), for Placement::by_load. A plain value:
 // keep it, write it out (to_text) and read it back (from_text) for later runs of the same machine.
 struct LoadProfile {
     std::vector<std::string> unit;   // unit names
@@ -134,7 +134,7 @@ struct LoadProfile {
     static LoadProfile from_text(const std::string& text);   // fatal on a malformed text, naming the line
 };
 
-// W10, the port observer (W8's request): one input port's contents at the end of cycle c, the last cycle run
+// the port observer (the request): one input port's contents at the end of cycle c, the last cycle run
 // (Sim::now() == c + 1), into the caller's buffer. ref's order (oracle/ref/StateFp.java): a Link's entries in arrival
 // order, visible then in flight, each with its arrival cycle; a Fifo's visible entries; a Hold's word; a Reg's value; and
 // for a Fifo, credit Fifo, Hold or Reg the put made at c, judged at c + 1.
@@ -173,10 +173,10 @@ struct TypeInfo {
     void (*move)(void* dst, void* src);           // move-construct at dst, then destroy src
     void (*destroy)(void* obj);
     void (*run[2])(Engine&, RunSet&);             // by Form: cycle, result (null if the type has no result form)
-    void (*run_cal[2])(Engine&, RunSet&);         // W10: the same, timing each step (Options::calibrate)
+    void (*run_cal[2])(Engine&, RunSet&);         // the same, timing each step (Options::calibrate)
     void (*one[2])(Engine&, RunSet&, uint32_t);   // one instance, by Form (the debug orders)
     uint64_t (*digest)(const void* obj);          // T::digest() if it has one, else its bytes (sim.h, DEBUG CHECKS)
-    bool own_digest = false;                      // W4 (E5): T::digest() is the author's; else the machine's digest
+    bool own_digest = false;                      // T::digest() is the author's; else the machine's digest
                                                   // hashes the bytes with the port handles left out (digest.cpp)
 };
 
@@ -202,7 +202,7 @@ void run_form(Engine& e, RunSet& r) {
     r.nready = 0;
 }
 
-// W10: the same loop, timing each step into the instance's ticks (Options::calibrate only: bound in place of run_form
+// the same loop, timing each step into the instance's ticks (Options::calibrate only: bound in place of run_form
 // at build, so an ordinary run has no clock read and no branch for it).
 template <class T, bool Result>
 void run_form_cal(Engine& e, RunSet& r) {
@@ -280,7 +280,7 @@ const TypeInfo* type_ops() {
 
 class Sim;
 
-namespace detail { struct Internals; }   // W4: the digest unit by unit (digest.h, E5) and the split into domains (E3)
+namespace detail { struct Internals; }   // the digest unit by unit (digest.h, E5) and the split into domains (E3)
 
 class Config {
     friend class Ports;     // a unit's declarations land in the configuration being built
@@ -289,7 +289,7 @@ public:
     explicit Config(Options o = {});
     ~Config();
 
-    // The thread domain of the units added from now on (W4; M1 has one).
+    // The thread domain of the units added from now on (M1 has one).
     void domain(unsigned d);
     // The chip the units added from now on belong to, for footprint accounting only (Sizes::per_chip).
     void chip(unsigned c);
@@ -315,7 +315,7 @@ public:
     // legitimate wait the detector can't see (on a Wire, with data in an input) gets its own, and no one else's moves.
     void missed_wake_after(const std::string& unit, unsigned cycles);
 
-    // W10: a unit's declared load, for Placement::by_load without a measured profile (default 1).
+    // a unit's declared load, for Placement::by_load without a measured profile (default 1).
     void weight(const std::string& unit, double w);
 
     Sim build();
@@ -355,52 +355,52 @@ public:
     const Sizes& sizes() const;
     uint64_t steps(const std::string& unit_name) const;   // how many times an instance was stepped (idle-unit tests)
     uint16_t type_of(const std::string& unit_name) const; // the unit's type id in this machine (first-add order, E1)
-    bool has_unit(const std::string& unit_name) const;    // W20 (harness-only): whether the machine has a unit of that name
-    // W20 (harness-only; B20, ref's Chip.doReset: every bus flushed): between runs, every word in flight or visible on a
+    bool has_unit(const std::string& unit_name) const;    // (harness-only): whether the machine has a unit of that name
+    // (harness-only; B20, ref's Chip.doReset: every bus flushed): between runs, every word in flight or visible on a
     // Link, Fifo (and credit Fifo: its credits back to its depth; its overflow record cleared, as ref's flush) and Hold
     // is dropped, with the inputs' pending bits. Registers, Wires, RegFiles and Counts keep their values (their
     // producers republish), and so do the units' own states (the caller resets them). One domain only.
     void flush_ports();
-    // W20 (harness-only): a RegFile's register i as its readers see it now, between runs (what was last written). One domain.
+    // (harness-only): a RegFile's register i as its readers see it now, between runs (what was last written). One domain.
     uint32_t regfile_value(RegFileIn p, unsigned i) const;
     std::string sleepers() const;      // the end-of-run report: units asleep with data waiting, their ports, since when
-    std::string partition() const;     // W4: the domains, threads, crossings by kind, and the barrier interval with the
+    std::string partition() const;     // the domains, threads, crossings by kind, and the barrier interval with the
                                        // crossing that set it ("one domain" for a machine that isn't split)
-    // W10, the port observer (PortView above): between runs only (fatal during one), reads only, allocates nothing;
+    // the port observer (PortView above): between runs only (fatal during one), reads only, allocates nothing;
     // fatal if the port holds more than `max` entries. The handle is the one in the unit object (unit<T>(name).port);
     // a split machine's port is found by the handle's address, wherever its in-flight entries were drained.
     PortView observe(const LinkIn& p, PortEntry* out, uint32_t max) const;
     PortView observe(const FifoIn& p, PortEntry* out, uint32_t max) const;   // a credit Fifo too
     PortView observe(const HoldIn& p, PortEntry* out, uint32_t max) const;
     PortView observe(const RegIn& p, PortEntry* out, uint32_t max) const;
-    // W10, the stop request (Ctx::stop): the cycle a unit asked the last run to stop in, kNoCycle if none. One domain:
+    // the stop request (Ctx::stop): the cycle a unit asked the last run to stop in, kNoCycle if none. One domain:
     // the run returned right after it (now() == stop_cycle() + 1); split: at the barrier ending its interval, every
     // thread at the same cycle. A run clears it at its start.
     Cycle stop_cycle() const;
-    // W10, the between-cycles wake (W9's driver): between runs only (fatal during one), the named unit is stepped at the
+    // the between-cycles wake (the driver): between runs only (fatal during one), the named unit is stepped at the
     // next cycle run, now(), exactly, in whichever domain it sits (as a timed wake due then; its own wakes are unchanged).
     void wake(const std::string& unit);
-    // W20 (harness-only; P2): every unit stepped at the next cycle run, as ref's Chip.wakeAll before run/runUntil (the
+    // (harness-only; P2): every unit stepped at the next cycle run, as ref's Chip.wakeAll before run/runUntil (the
     // harness may have changed any unit between cycles). Safe by the step-all rule (a step nobody asked for, with nothing
     // delivered, changes nothing). Between runs only.
     void wake_all();
-    // W20 (harness-only; P2): a put on `unit`'s Hold `p` as of the cycle just run (now() - 1), as ref's harness puts
+    // (harness-only; P2): a put on `unit`'s Hold `p` as of the cycle just run (now() - 1), as ref's harness puts
     // between cycles (Endpoint.send(c.cycle, ...)): delivered at the next cycle exactly as the unit's own put of that
     // cycle would have been (refused if the Hold is occupied then, as that put would be). Between runs only; the unit
     // must not have put on `p` in the cycle just run (fatal: two puts). One domain only (fatal on a split machine).
     void put_late(const std::string& unit, HoldOut p, const Word* w, unsigned n);
-    void put_late(const std::string& unit, LinkOut p, const Word* w, unsigned n);   // the same on a Link (W20, W22-10)
-    // W20 (harness-only; P2): a Fifo's overflows so far and the put cycle of its first (kNoCycle if none), between runs
+    void put_late(const std::string& unit, LinkOut p, const Word* w, unsigned n);   // the same on a Link
+    // (harness-only; P2): a Fifo's overflows so far and the put cycle of its first (kNoCycle if none), between runs
     // (ref's WordFIFO.overflow, overflowCycle: the checker's invariant 1). One domain only (fatal on a split machine).
     uint64_t fifo_overflows(FifoIn p, Cycle* first) const;
-    // W22 (P4; approved 2026-11-11): a Fifo's peak occupancy (ref's WordFIFO.highWater), between runs, and its restart at
+    // (P4; approved 2026-11-11): a Fifo's peak occupancy (ref's WordFIFO.highWater), between runs, and its restart at
     // the occupancy now (ref's resetStats: highWater = count). Kept only under SIM_CHECKS (the debug and suite builds);
     // fatal in the timing builds, which don't keep it. One domain only.
     uint32_t fifo_peak(FifoIn p) const;
     void fifo_restart_peak(FifoIn p);
-    // W20 (harness-only; P2): a Hold's refusals so far (ref's WordHold.refusals), between runs. One domain only.
+    // (harness-only; P2): a Hold's refusals so far (ref's WordHold.refusals), between runs. One domain only.
     uint64_t hold_refusals(HoldIn p) const;
-    // W20 (harness-only; P2): data in motion anywhere, between runs: an input holding data (a Link word visible, a Fifo
+    // (harness-only; P2): data in motion anywhere, between runs: an input holding data (a Link word visible, a Fifo
     // not empty, a Hold occupied) or a put still on its way (a Link, Fifo, credit Fifo or Hold entry in a delivery
     // bucket). Regs, Wires, RegFiles, Counts and credit returns are state, not motion. For ref's Chip.quiescent.
     // `shifted`: unit types (type_of) that apply a Link word at t + 1 that ref applied at the end of t (sim.h, THE
@@ -409,13 +409,13 @@ public:
     // error lines into C&C's row collectors and C&C: wires with a delay in ref, not buses). With no types (the default)
     // every input and every Link word counts, as before the parameters were added.
     bool in_flight(const std::vector<uint16_t>& shifted = {}, const std::vector<uint16_t>& ignored = {}) const;
-    // W20 (harness-only; P2): data in motion into the units whose names start with `prefix` (in_flight's rules, no
+    // (harness-only; P2): data in motion into the units whose names start with `prefix` (in_flight's rules, no
     // types excepted): ref's parkedUntouched. One domain only.
     bool in_flight_into(const std::string& prefix) const;
-    // W10 (measurement): with Options::time_threads, a split machine's phases as shares of its threads' time over the runs
+    // (measurement): with Options::time_threads, a split machine's phases as shares of its threads' time over the runs
     // ("compute imbalance barrier drain publish clear end other"); "one domain" otherwise.
     std::string thread_times() const;
-    // W10: after runs with Options::calibrate, the time each unit's steps took over them (its load).
+    // after runs with Options::calibrate, the time each unit's steps took over them (its load).
     LoadProfile load_profile() const;
 
     Sim(Sim&& o) noexcept;

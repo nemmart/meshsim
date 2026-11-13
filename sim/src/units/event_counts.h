@@ -1,4 +1,4 @@
-// event_counts.h: a peripheral's counted events (spec 4.17.3; WORKER15; owner W15, W14 reads it).
+// event_counts.h: a peripheral's counted events (spec 4.17.3).
 //
 // sim/ref/meshsim/src/EventCounts.java exactly: every EVENTS bit is backed by a small counter of a given depth, and reads
 // 1 while its count is above 0. The peripheral adds 1 when the event happens (post; adding to a full count leaves it

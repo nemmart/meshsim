@@ -1,9 +1,9 @@
-// ctl.h (WORKER23, P5): helpers shared by the control suites (tests/ctl/suite_*.cpp), v1.3's suites ported onto W20's
+// ctl.h: helpers shared by the control suites (tests/ctl/suite_*.cpp), v1.3's suites ported onto the
 // harness (tests/mach.h) and suite.h. Test-side code (the configuration regime, D6).
 //
 // What lives here: ref's constants the suites name (Registers, Controller), the units by ref's member names (a tile's
-// core, a controller's peripheral 1, C&C 1's peripheral), and the stand-ins for harness operations W20 hasn't added yet
-// (each marked STAND-IN, with the W20 request it waits for; none edits W20's files).
+// core, a controller's peripheral 1, C&C 1's peripheral), and the stand-ins for harness operations the harness hasn't added yet
+// (each marked STAND-IN, with the request it waits for; none edits the files).
 #pragma once
 
 #include <charconv>

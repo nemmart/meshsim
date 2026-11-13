@@ -1,4 +1,4 @@
-// statefp_g2.cpp: G2's chip-level writers (WORKER9). See statefp_g2.h.
+// statefp_g2.cpp: G2's chip-level writers. See statefp_g2.h.
 #include "statefp_g2.h"
 
 #include "reqbus_fp.h"
@@ -111,7 +111,7 @@ void w_cc1p(const void* p, FpOut& o, const FpCtx& x) {
     for (const Pending& e : chg) { o.w("errChanges", e.vis); o.w("errChanges", e.k); o.w("errChanges", e.level); }
 }
 
-// StateFp "reqbus": W14's writer (reqbus_fp.h) when the chip has the bus; else the bus idle (RequestBus's reset state).
+// StateFp "reqbus": the writer (reqbus_fp.h) when the chip has the bus; else the bus idle (RequestBus's reset state).
 void w_reqbus(const void* p, FpOut& o, const FpCtx& x) {
     const G2Chip& g = *static_cast<const G2Chip*>(p);
     if (g.reqbus && x.sim) { reqfp::reqbus(o, *x.sim, *g.reqbus, x.cycle); return; }
@@ -159,9 +159,9 @@ void hold_port(FpOut& o, const char* nm, const sim::Sim* s, const sim::HoldIn& p
 void w_router(const void* p, FpOut& o, const FpCtx& x) {
     const G2Tile& g = *static_cast<const G2Tile*>(p);
     const units::Router& r = *g.router;
-    r.fp_own(o, x.cycle - x.label_shift);                             // W16: ref's cyc (M3: puts of c + 1 not yet in)
+    r.fp_own(o, x.cycle - x.label_shift);                             // ref's cyc (M3: puts of c + 1 not yet in)
     static const char* const kLink[4] = {"link0", "link1", "link2", "link3"};
-    if (r.cc) {                                                       // W16: a controller's router (FEEDERS_CC)
+    if (r.cc) {                                                       // a controller's router (FEEDERS_CC)
         link_port(o, kLink[0], x.sim, r.in[units::Router::CC_LINK_IN]);
         fifo_port(o, kLink[1], x.sim, r.host);
         if (r.has_dma) fifo_port(o, kLink[2], x.sim, r.dma); else none(o, kLink[2]);
@@ -171,11 +171,11 @@ void w_router(const void* p, FpOut& o, const FpCtx& x) {
     }
     for (unsigned d = 0; d < 4; d++) link_port(o, kLink[d], x.sim, r.in[d]);
     link_port(o, "inj", x.sim, r.inj);
-    if (r.attached && r.fifth_link) link_port(o, "fromCnc", x.sim, r.from_cc);   // W16: C&C as cores
+    if (r.attached && r.fifth_link) link_port(o, "fromCnc", x.sim, r.from_cc);   // C&C as cores
     else if (r.attached) hold_port(o, "fromCnc", x.sim, r.from_cnc);
 }
 
-// StateFp "inj": the read-return holding register (W11: the read queue's, inside the unit: empty at the end of c, the
+// StateFp "inj": the read-return holding register (the read queue's, inside the unit: empty at the end of c, the
 // injection takes it the cycle it is visible; a release of c listed as the put), then the send hold (observer).
 void w_inj(const void* p, FpOut& o, const FpCtx& x) {
     const G2Tile& g = *static_cast<const G2Tile*>(p);
@@ -189,7 +189,7 @@ void w_inj(const void* p, FpOut& o, const FpCtx& x) {
     hold_port(o, "send", x.sim, g.inj->send);
 }
 
-// StateFp "srq" (W11): the free list in order; every held token's slot in token order (reqA, reqB, issueT, readyT
+// StateFp "srq": the free list in order; every held token's slot in token order (reqA, reqB, issueT, readyT
 // (Long.MAX_VALUE until ready), partsLeft, client, lo, hi, zero); the two in-order queues; the read port's ready set;
 // held (reads and loopback tokens, less a loopback free arriving at c + 1); the clients' buses; the area returns.
 void w_srq(const void* p, FpOut& o, const FpCtx& x) {

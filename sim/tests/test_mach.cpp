@@ -1,4 +1,4 @@
-// test_mach.cpp (WORKER20): the machine harness (mach.h). With the header only: mach::fields against ref's Fields.java
+// test_mach.cpp: the machine harness (mach.h). With the header only: mach::fields against ref's Fields.java
 // (the values printed by ref's own Fields.java, 2026-11-10), and the header compiling with the units it names.
 #include <algorithm>
 #include <cstdarg>
@@ -134,7 +134,7 @@ void phases(int64_t seed) {
     say("%s", m.c.phases().report().c_str());
     say("%s", m.c.phases().csv().c_str());
 }
-void trace_case(bool rdpeak = false) {                       // H6: MachSelf.trace(); rdpeak: W24's F6 (PhaseLog's read-port peak)
+void trace_case(bool rdpeak = false) {                       // H6: MachSelf.trace(); rdpeak: the F6 (PhaseLog's read-port peak)
     const int N = 4096;
     mach::MachConfig cfg = Mach::cfg(-1);
     if (rdpeak) cfg.sram_read_latency = 4;
@@ -897,7 +897,7 @@ TEST(mach_runs_as_refs_Mach) {
     CHECK(out == want);
 }
 
-// Cc::wait_until in W23's form (approved, 2026-11-11; no ref twin: ref checks inside C&C's cycle): the harness checks the
+// Cc::wait_until in the form (approved, 2026-11-11; no ref twin: ref checks inside C&C's cycle): the harness checks the
 // condition between cycles once C&C is at the step, and C&C moves on in the next cycle.
 TEST(mach_wait_until_releases_the_next_cycle) {
     Mach m(Mach::cfg(-1));
@@ -914,7 +914,7 @@ TEST(mach_wait_until_releases_the_next_cycle) {
     CHECK_EQ(ran, first_true + 1);
 }
 
-// W25's F6: a row hook attached, the machine destroyed: the slot frees only the buffer it allocated (ASan in debug).
+// the F6: a row hook attached, the machine destroyed: the slot frees only the buffer it allocated (ASan in debug).
 TEST(mach_row_hook_destroyed_cleanly) {
     mach::MachConfig k = mach::MachConfig::machine();
     k.periph_type = 0; k.test_periph_tile = 0;
@@ -928,7 +928,7 @@ TEST(mach_row_hook_destroyed_cleanly) {
     CHECK(true);
 }
 
-// W22's F2: mem_idle reads an area queue as it wraps, at its configured depth (8), not at the array's (16): a write
+// the F2: mem_idle reads an area queue as it wraps, at its configured depth (8), not at the array's (16): a write
 // queued in the slot after the wrap holds mem_idle low; a stale write past the depth doesn't.
 TEST(mach_mem_idle_sees_a_wrapped_queue) {
     mach::Chip c(mach::MachConfig::defaults());

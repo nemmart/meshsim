@@ -1,4 +1,4 @@
-// The network's headers (WORKER9, stage 0): they compile, the unit types meet the framework's requirements, and the
+// The network's headers: they compile, the unit types meet the framework's requirements, and the
 // link word's layout is ref's (LinkWord.java).
 #include <type_traits>
 

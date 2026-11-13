@@ -1,11 +1,11 @@
-// threads.h: one machine over several threads (WORKER4; SIMULATOR-NEXT 4, the second form). Not for unit authors.
+// threads.h: one machine over several threads (SIMULATOR-NEXT 4, the second form). Not for unit authors.
 //
 // The partition is `Config::domain(d)`. A configuration with more than one domain is split, before anything is built,
 // into one closed configuration per domain: every connection that crosses domains is cut and each end wired to a
 // **boundary unit** (a placeholder with no logic that never steps after cycle 1): in the producer's domain the output
 // feeds a boundary input (the *proxy*, a real port in that domain's pools, where the producer's own view of the port
 // lives: a Link's count in flight, a credit Fifo's credits, a Hold's occupancy); in the consumer's domain the input is fed
-// by a boundary output. Each domain is then built by W3's build(), unchanged, and the builds are joined:
+// by a boundary output. Each domain is then built by the build(), unchanged, and the builds are joined:
 //
 //   - the producer's route points at an **outbox** for the destination domain (a ring of buckets indexed like a wheel,
 //     one per (source, destination, kind, width, latency)), so a put runs the same code either way;
@@ -17,7 +17,7 @@
 //
 // The interval is the smallest latency of any crossing (a Link's L; 1 for a Fifo, credit Fifo, Hold, Reg or Count), so
 // nothing put in an interval is due before its drain. A Wire or RegFile across domains is fatal at build; a Count read
-// with `now` across is caught in debug builds (A3). Determinism: NOTES.md (WORKER4), "Determinism".
+// with `now` across is caught in debug builds (A3).
 #pragma once
 
 #include <atomic>
@@ -35,9 +35,9 @@
 
 namespace sim::detail {
 
-bool split_needed(const Internals::CImpl& I);        // more than one domain declared, and more than one engine (W10)
-void check_domains(const Internals::CImpl& I);       // W10: no Wire or RegFile across declared domains (fatal)
-// W10 (partition.cpp): Placement::by_load: each unit's group in [0, groups), the interval it assumed, a report line.
+bool split_needed(const Internals::CImpl& I);        // more than one domain declared, and more than one engine
+void check_domains(const Internals::CImpl& I);       // no Wire or RegFile across declared domains (fatal)
+// (partition.cpp): Placement::by_load: each unit's group in [0, groups), the interval it assumed, a report line.
 std::vector<unsigned> place_by_load(const Internals::CImpl& G, unsigned threads, unsigned& groups, Cycle& interval,
                                     std::string& report);
 
@@ -58,7 +58,7 @@ struct Outbox {
     std::vector<uint32_t> hold_of;               // a Hold outbox: the crossing (XHold) of each source proxy, else empty
     std::vector<uint32_t> wheel;                 // by domain: the wheel it drains into there (kNone: not drained there)
     uint16_t src_wheel = 0;                      // its index in the source domain's wheel table (Route::wheel)
-    bool direct = false;                         // W10: a Link outbox by value: delivered from here by its destination at
+    bool direct = false;                         // a Link outbox by value: delivered from here by its destination at
                                                  // its cycle (Engine::deliver_xin), not copied at the barrier
     std::vector<uint32_t> xdst;                  //   its translation, by source index (xl's dst)
 };
@@ -78,7 +78,7 @@ struct alignas(64) XCount {                      // one domain's replica of a Co
 };
 
 struct Dom {
-    Internals::SImpl* S = nullptr;                      // the domain's own machine (W3's build)
+    Internals::SImpl* S = nullptr;                      // the domain's own machine (the build)
     Engine* e = nullptr;
     unsigned thread = 0;
     std::vector<uint32_t> out, in;               // outboxes it fills, outboxes it drains
@@ -87,11 +87,11 @@ struct Dom {
     std::vector<uint32_t> counts;                // its XCount replicas
     std::vector<const Word*> slot_base;          // by size class: its pool's slot storage (the drain copies from it)
     uint32_t next_slot = 0, sent_slot = 0;       // its status words: its next event when idle, the words it sent
-    uint32_t stop_slot = 0;                      // W10: the cycle a unit asked to stop in, kNoCycle if none
+    uint32_t stop_slot = 0;                      // the cycle a unit asked to stop in, kNoCycle if none
 };
 
 struct Threads {
-    std::vector<Sim> sims;                       // the domains' machines (W3's build), owned here
+    std::vector<Sim> sims;                       // the domains' machines (the build), owned here
     std::vector<Dom> doms;
     std::vector<Outbox> outboxes;
     std::vector<XHold> holds;
@@ -103,18 +103,18 @@ struct Threads {
     std::vector<std::unique_ptr<Block>> blocks;  // the outboxes' storage, per source domain
     DigestView view;
     std::unordered_map<std::string, uint32_t> dom_of;   // unit name -> domain
-    std::vector<std::string> port_names;         // outbox names (W1's buckets keep the pointer)
+    std::vector<std::string> port_names;         // outbox names (the buckets keep the pointer)
     std::vector<const TypeInfo*> types;          // the configuration's unit types, ids in its first-add order
     Sizes sz;
     std::string report;
     Cycle interval = 0;                          // kNoCycle: no crossing, no barrier until the end of a run
     unsigned nthreads = 1;
-    // W10, Options::time_threads (a measurement option): per thread, time stamp ticks summed over the runs, by phase; and
+    // Options::time_threads (a measurement option): per thread, time stamp ticks summed over the runs, by phase; and
     // per interval, the slowest and the mean of the threads' compute (thread 0 sums them after the barrier).
     struct alignas(64) PhaseTicks { uint64_t run = 0, publish = 0, wait = 0, drain = 0, clear = 0, end = 0, total = 0; uint64_t last_run[2] = {0, 0}; };
     // last_run by the interval's parity: thread 0 reads [par] after the barrier while the others may already write [par ^ 1]
     std::vector<PhaseTicks> ph;
-    std::vector<std::vector<Engine::XIn>> xins;  // W10: per domain, its incoming direct outboxes
+    std::vector<std::vector<Engine::XIn>> xins;  // per domain, its incoming direct outboxes
     uint64_t ph_intervals = 0, ph_max_run = 0, ph_sum_run = 0;
     bool timing = false;
     std::string thread_times() const;
@@ -148,9 +148,9 @@ struct Threads {
     uint16_t type_of(const std::string& name) const;
     void* unit_ptr(const std::string& name, const TypeInfo* type) const;
     uint64_t steps(const std::string& name) const;
-    void wake(const std::string& name);              // W10: Sim::wake, in the unit's domain
-    void wake_all();                                 // W20 (harness-only): Sim::wake_all, every domain
-    bool in_flight(const std::vector<uint16_t>& shifted, const std::vector<uint16_t>& ignored) const;          // W20 (harness-only): Sim::in_flight, any domain
+    void wake(const std::string& name);              // Sim::wake, in the unit's domain
+    void wake_all();                                 // (harness-only): Sim::wake_all, every domain
+    bool in_flight(const std::vector<uint16_t>& shifted, const std::vector<uint16_t>& ignored) const;          // (harness-only): Sim::in_flight, any domain
     uint64_t digest() const;
     std::string sleepers() const;
 

@@ -1,4 +1,4 @@
-/* cc_req.c (WORKER14, test_cc_req): C&C 1's program for the request bus's end-to-end test (a tile's REQUEST_SEND
+/* cc_req.c (test_cc_req): C&C 1's program for the request bus's end-to-end test (a tile's REQUEST_SEND
  * through the bus into a controller's REQUEST_RECEIVE). Booted through the host port: starts tile 5 (its program,
  * tile_req, is in its program memory; CMD_JUMP to TILE_ENTRY, then GO from C&C 1's peripheral: the boot ROM's tile branch
  * jumps on GO once a command has landed), waits WAIT cycles without draining (its queue fills, the

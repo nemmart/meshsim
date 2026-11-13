@@ -1,5 +1,5 @@
 #!/bin/bash
-# test_machine.sh: machine.sh's placement on fake /sys trees, against the lists test_topology.cpp checks (WORKER4, D21).
+# test_machine.sh: machine.sh's placement on fake /sys trees, against the lists test_topology.cpp checks (D21).
 set -u
 T=$(dirname "$0"); F=0
 check() { local got; got=$(SIM_SYSFS=/tmp/sim-fs-$$-$1 SIM_ALLOWED_CPUS=$2 "$T/machine.sh" cpus "$3")

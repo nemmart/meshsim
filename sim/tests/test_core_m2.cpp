@@ -1,4 +1,4 @@
-// test_core_m2.cpp: the core's M2 paths (WORKER8; Controller.java's store/load/window, TileControl.sendLo/Hi/Header):
+// test_core_m2.cpp: the core's M2 paths (Controller.java's store/load/window, TileControl.sendLo/Hi/Header):
 // a send store's packet on the send holding register, a refused put retried with the core stalled, the table window's
 // stores and one-cycle HIST loads, the M2 registers' loads through the block's view. A scripted environment, no framework.
 #include <cstdint>

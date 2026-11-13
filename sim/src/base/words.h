@@ -6,7 +6,7 @@
 //
 // Why whole lines: structures owned (written) by different threads must never share a cache line. Within one thread's
 // own block nothing else writes, so the sizing pass may pack small structures it alone writes (a port's ring, say)
-// without rounding each (integrator, 2026-11-07). Anything another thread writes, or that is merged at a barrier (W4's
+// without rounding each (integrator, 2026-11-07). Anything another thread writes, or that is merged at a barrier (the
 // outboxes), keeps its own lines.
 #pragma once
 

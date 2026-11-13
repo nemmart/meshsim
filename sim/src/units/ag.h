@@ -1,5 +1,5 @@
 // ag.h: the address generator (sim/ref/meshsim/src/AddressGenerator.java; AUDIT-M2 3.6).
-// Configuration part by W8 (G1); the behaviour by W12 (G4), ported line by line from AddressGenerator.java (its names
+// Configuration part; the behaviour, ported line by line from AddressGenerator.java (its names
 // kept, for StateFp.ag): the start, the two read-ahead rings, the STREAM reader, stream runs and group runs, the
 // refusal and retry, rd_done, the drift event, checkEntry's counts.
 //
@@ -10,8 +10,8 @@
 // Wakes: ref steps it every cycle; here `next()` while running (the timetable counts cycles: gaps, rotations, lead-in),
 // and otherwise only on an input (the start Wire, a table return). Timed wakes across gaps are a later speed item.
 //
-// When the tile has no read side (`wired` false), the G4 ports are not declared and the unit does nothing (W8's
-// configuration part, as before). Ports agreed with W11 (src/units/mem.h) and the integrator, 2026-11-08.
+// When the tile has no read side (`wired` false), the G4 ports are not declared and the unit does nothing (the
+// configuration part, as before). Ports agreed (src/units/mem.h) and the integrator, 2026-11-08.
 //
 //   port            kind               from -> to                          words                        latency
 //   dma             RegFile            block -> AG                         DMA_CONFIG, record base      (level: the block's
@@ -20,10 +20,10 @@
 //   start           Wire               block -> AG                         the count of PULSE_DMA       written at level 0 of
 //                                                                          starts (a change = a start)  t + 1 (endCycle(t)),
 //                                                                                                       acted on at t + 1
-//   rd              Hold, width 2      AG -> srq client 1 (W11)            mem::req_a, mem::req_b       (Hold) refused at
+//   rd              Hold, width 2      AG -> srq client 1            mem::req_a, mem::req_b       (Hold) refused at
 //                                                                                                       t + 1, retried
-//   stream_req      Link, width 3      AG -> table store (W11)             OP_READ64, IDX_STREAM + i, 0 ts_engine_latency
-//   group_req       Link, width 3      AG -> table store (W11)             OP_READ64, IDX_GROUP + 2g, 0 ts_engine_latency
+//   stream_req      Link, width 3      AG -> table store             OP_READ64, IDX_STREAM + i, 0 ts_engine_latency
+//   group_req       Link, width 3      AG -> table store             OP_READ64, IDX_GROUP + 2g, 0 ts_engine_latency
 //   stream_ret      Link, width 3      table store -> AG                   SRC | DEST << 32, COUNT, idx ts_engine_latency
 //   group_ret       Link, width 3      table store -> AG                   idx, the GROUP entry, 0      ts_engine_latency
 //   status          Reg, width 1       AG -> block                         running | done << 1, at the  (Reg)
@@ -32,12 +32,12 @@
 //                                                                          Status, doneForStatus)
 //   drift           Link(1), width 0   AG -> block                         a refusal in a group run     1 (ERRORS [3], D29)
 //                                                                          (Conditions.DRIFT)
-//   ptr             RegFile, 256       table store (W11) -> AG             PTR (mem.h's PTR view)       (level): at the AG's
+//   ptr             RegFile, 256       table store -> AG             PTR (mem.h's PTR view)       (level): at the AG's
 //                                                                                                       step at t, PTR as at
 //                                                                                                       the end of t - 1, as
 //                                                                                                       ref's AG (stepped
 //                                                                                                       before ts) reads
-//                                                                                                       ts.peek (W11's side)
+//                                                                                                       ts.peek (the side)
 //   Tile.checkGatherAlignment reads PTR[me] and the record base at a run's first mode-4 stream (UB: fatal).
 #pragma once
 
@@ -98,7 +98,7 @@ struct AddrGen {
     uint64_t violations() const { return size_violations + mode_violations + aug128_violations + dest_violations + align_violations; }
 
     AddrGen() = default;
-    // W26 (the checker, SIM_CHECKS only): ref's `!ag.idle() || ag.runningForStatus()` as the core's table-window check
+    // (the checker, SIM_CHECKS only): ref's `!ag.idle() || ag.runningForStatus()` as the core's table-window check
     // reads it (ref's core runs after the AG, whose step consumes pStart): driven at a step at t that changes `running`
     // (it changes only in a step): t << 2 | the value before << 1 | the value after (TileCore::table_check).
     sim::WireOut running_out;
@@ -175,7 +175,7 @@ struct AddrGen {
         const sim::Word st = (running ? sim::Word(ST_RUNNING) : 0) | (done ? sim::Word(ST_DONE) : 0);
         if (st != status_out) { c.put(status, st); status_out = st; }
 #ifdef SIM_CHECKS
-        if (running_wire && running != running_driven) {                 // W26
+        if (running_wire && running != running_driven) {
             c.drive(running_out, sim::Word(t) << 2 | sim::Word(running_driven) << 1 | sim::Word(running));
             running_driven = running;
         }
@@ -307,7 +307,7 @@ struct AddrGen {
             const int64_t late_by = t - rot_sched;
             if (late_by > 0) {
                 rotations_late++; max_rot_late = std::max(max_rot_late, uint64_t(late_by));
-                sim::check::record(uint64_t(t), int(me), sim::check::Kind::ROTATION_LATE, runs);   // W26: invariant 3 (reported once a run)
+                sim::check::record(uint64_t(t), int(me), sim::check::Kind::ROTATION_LATE, runs);   // invariant 3 (reported once a run)
             }
             in_rot = true; v = 0; rotations++;
         }
@@ -340,7 +340,7 @@ struct AddrGen {
         const uint32_t m = s_mode(e1), z = s_size(e1), d = s_d(e1), ctr = s_counter(e1);
         if (m == lw::M_GATHER && !gather_checked) { gather_checked = true; gather_alignment(c, t); }
         if (m >= lw::M_RSVD6) FATAL("address generator (tile %u), cycle %lld: a stream in the reserved mode %u (3.1: modes 6-7; DECISIONS-v1.25 s8e): UB", me, (long long)t, m);
-        namespace ck = sim::check;                                       // W26: each check's fact (checkEntry's texts)
+        namespace ck = sim::check;                                       // each check's fact (checkEntry's texts)
         const uint64_t T = uint64_t(t);
         if (z == lw::SIZE_UNDEF) { size_violations++; ck::record(T, int(me), ck::Kind::AG_SIZE_UNDEF); }
         if (m == lw::M_AUG && z == lw::SIZE_128) { aug128_violations++; ck::record(T, int(me), ck::Kind::AG_AUG128); }

@@ -1,4 +1,4 @@
-// The debug checks catch a broken unit (W5): the controller's tile on `hello` with its register block swapped for a broken
+// The debug checks catch a broken unit: the controller's tile on `hello` with its register block swapped for a broken
 // one, wired exactly as configure_tile wires it.
 //   CountingBlock  counts its own steps into its state: a step it didn't ask for changes it. The trace can't show it (the
 //                  count reaches no port); step-all's digest differs from the ready-driven run's. The missed-wake detector

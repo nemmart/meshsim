@@ -1,5 +1,5 @@
 // test_tileslotconf: PeripheralSlotTest's groups (the window, events, region writes, the DMA, the replayer's window) as
-// conformance against ref (WORKER15; owner 2026-11-09). Each tests/tileslotconf/<group>.prog (oracle/ref/
+// conformance against ref (owner 2026-11-09). Each tests/tileslotconf/<group>.prog (oracle/ref/
 // tileslotconf_progs.py) is a boot-ROM program doing the group's loads and stores from the core, storing its results and
 // mcycle stamps to data memory, with pokes on the test peripheral between cycles and region writes into the tile;
 // <group>.obs is ref's run of it (oracle/ref/TileSlotConf.java: its tile in Config.machine()). Here: the same program on a
@@ -73,7 +73,7 @@ Prog parse(const std::string& text) {
     return p;
 }
 
-struct Stand {   // W9's side: the region writes into the tile's eject; the rest idle
+struct Stand {   // the side: the region writes into the tile's eject; the rest idle
     sim::LinkOut eject, go;
     sim::HoldIn send;
     sim::RegOut send_busy;
@@ -113,7 +113,7 @@ std::string run(const Prog& p, const std::vector<Inject>& inj, const sim::Option
     cfg.connect(s.ovf, io.router_ovf);
     cfg.link(s.ovf_ev, io.router_ovf_ev, 1);
     wire_mem_stand(cfg, io);
-    units::reqbus::tie_off(cfg, "t" + std::to_string(p.tile) + ".reqtie", io.req);      // W14: no request bus in a lone tile
+    units::reqbus::tie_off(cfg, "t" + std::to_string(p.tile) + ".reqtie", io.req);      // no request bus in a lone tile
     sim::Sim m = cfg.build();
     const std::string t = "t" + std::to_string(p.tile) + ".";
     PeriphSlot& sl = m.unit<PeriphSlot>(t + "slot");

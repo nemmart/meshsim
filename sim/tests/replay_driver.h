@@ -1,4 +1,4 @@
-// replay_driver.h: Stage A's standalone harness (WORKER15): ref's test/ReplayDriver.java line for line, on
+// replay_driver.h: Stage A's standalone harness: ref's test/ReplayDriver.java line for line, on
 // units::Replayer. One replayer fed by an ideal controller through the peripheral interface only: it loads part 0, the
 // decode table and the ROM with mode-0 packets into region 0x04, starts a pass, then every cycle consumes every event
 // it sees and answers: a queue's credit with min(half, entries left) packets of that stream, new expansion with the
@@ -34,7 +34,7 @@ struct ReplayDriver {
     bool done = false;
     int64_t run_at = 0, done_at = 0;
     uint64_t missing_templates = 0;
-    std::vector<std::string> log;                // ref's ReplayDriver.log: one line per missing template (W25)
+    std::vector<std::string> log;                // ref's ReplayDriver.log: one line per missing template
     int64_t run_config = -1;                     // -1: the window's
     uint32_t last_config = 0;
     uint64_t config_stores = 0;

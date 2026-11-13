@@ -1,4 +1,4 @@
-// test_replay_lists: the replayer's error lists against ref's (WORKER25, P7b). Every committed ReplayConf script
+// test_replay_lists: the replayer's error lists against ref's. Every committed ReplayConf script
 // (tests/replayer/*.script.gz: clean windows and the error-path mutations) replayed on the C++ replayer as
 // test_replayconf replays it; every list (ref's Replayer.violations, invalids, overruns, underflows, leftovers,
 // badWrites), its size and every entry's text, equal to ref's (tests/replayer/lists.txt, oracle/ref/replaylists.sh).

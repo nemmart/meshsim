@@ -1,11 +1,11 @@
-// test_tracer_slot (WORKER14): the Tracer as C&C 3's peripheral 1 in W15's slot unit (AUDIT-M3 3.1, 3.3), with
+// test_tracer_slot: the Tracer as C&C 3's peripheral 1 in the slot unit (AUDIT-M3 3.1, 3.3), with
 // test_periph_slot's harness pattern: a stand-in for the core and the director puts window stores, consuming EVENTS loads
 // (S2/S3, Link(1)) and region writes (S1, Link(3)), reads the window RegFile, and takes the DMA's packets from the credit
 // Fifo. The stand is a small controller (TracerRig's, reduced): the tables, the record, the hash words, RUN_CONFIG and
 // PULSE_RUN, then the drain (queue 0 in one transfer, the streams by 128-word credits, in order 1-3) until run done.
 //
 // The reference is the same controller driving SlotCore directly with ref's timing (the slot's calls made at once, as
-// ref's PeripheralSlot under its Tile: W15's SlotConf holds SlotCore equal to ref's slot; TracerConf and Quest 163 hold
+// ref's PeripheralSlot under its Tile: the SlotConf holds SlotCore equal to ref's slot; TracerConf and Quest 163 hold
 // the Tracer equal to ref's). The two runs must make the same decisions at the same cycles, send the same DMA packets
 // (the unit's a cycle later, through the Fifo), and leave the Tracer with the same fingerprint (AUDIT-M3 6.6, all five
 // units). Plain, step-all and shuffled; the debug builds' missed-wake detector on throughout.
@@ -353,7 +353,7 @@ DEATH_TEST(tracer_in_the_slot_without_memory_is_fatal, "without a memory system"
 }
 
 // The Tracer's fingerprint in the slot unit at every cycle's end equals its twin's, driven directly at ref's timing
-// (W16's segment run: a PULSE_DMA store of the point's own cycle starts a transfer in ref at once, here a cycle later
+// (the segment run: a PULSE_DMA store of the point's own cycle starts a transfer in ref at once, here a cycle later
 // through the slot's core link): PeriphSlot::fingerprint_tracer overlays what the links still hold (landings, the core's
 // PULSE_RUN or window store, the PULSE_DMA's start), all five units. The plain Tracer::fingerprint misses them: checked.
 TEST(tracer_fingerprint_in_the_slot_equals_its_twin_every_cycle) {
@@ -390,7 +390,7 @@ TEST(tracer_fingerprint_in_the_slot_equals_its_twin_every_cycle) {
             }
             compared++;
         }
-        // the cycles whose core store is a PULSE_DMA (the case W16 met): the plain fingerprint misses it there
+        // the cycles whose core store is a PULSE_DMA (a case met in practice): the plain fingerprint misses it there
         sim::PortEntry e[8];
         const sim::PortView v = r.m.observe(slot.core, e, 8);
         for (uint32_t k = 0; k < v.n; k++)

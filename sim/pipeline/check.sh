@@ -1,5 +1,5 @@
 #!/bin/sh
-# pipeline/check.sh (WORKER19, P1): builds the pipeline (build.sh, which runs gold's own tests: the inline emit digests
+# pipeline/check.sh: builds the pipeline (build.sh, which runs gold's own tests: the inline emit digests
 # and upstream's inline vectors) and checks the tools' outputs against v1.3's:
 #   - the copies: every file in FROM-V1.3.sha256 still v1.3's;
 #   - keys: keys/EXPECTED.sha256 (the uniform key sets at 16,384 and 65,536 per tile, every key and split set at 2,000);

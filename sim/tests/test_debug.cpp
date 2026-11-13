@@ -1,4 +1,4 @@
-// The debug checks (WORKER3, increment 5; sim.h DEBUG CHECKS; D20): the seeded and instance-major orders, step-all, the
+// The debug checks (increment 5; sim.h DEBUG CHECKS; D20): the seeded and instance-major orders, step-all, the
 // missed-wake detector and its per-unit threshold, run_until's end, and options refused rather than ignored.
 #include <string>
 #include <vector>
@@ -353,7 +353,7 @@ DEATH_TEST(d24_wake_in_the_past_under_the_hook, "unit 'past' asked to be woken a
     under_hook([&] { s.run(3); });
 }
 
-// W4's finding: when the machine goes idle the engine jumps ahead; the jump must not skip the judgement of a suspect whose
+// the finding: when the machine goes idle the engine jumps ahead; the jump must not skip the judgement of a suspect whose
 // threshold is above 1. The burst ends at 17, the forgetful sink's last step leaves data at 18, and then nothing runs: the
 // sink, with a threshold of 5, must still be reported at the end of cycle 22 (18 + 5 - 1), not skipped by the jump.
 DEBUG_DEATH_TEST(an_idle_jump_does_not_skip_a_suspects_judgement, "missed wake at cycle 22: sink is asleep with data waiting in sink.in") {

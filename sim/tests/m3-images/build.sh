@@ -1,5 +1,5 @@
 #!/bin/bash
-# build.sh [--check] (WORKER16; W19: from sim/fw): M3's firmware images, prebuilt (D4), byte-identical to 110u's kit
+# build.sh [--check] (from sim/fw): M3's firmware images, prebuilt (D4), byte-identical to 110u's kit
 # (IMAGES here, the kit's list of hashes): cc1, cc23 (C&C 1-3), tracer_ctl (C&C 3), replay_ctl (the tiles), each
 # .code.bin, .data.bin and .sym, built by sim/fw/build.sh (v1.3's build_cc.sh, replay/build.sh and tracer/build.sh,
 # byte-identical: oracle/fw_crosscheck.sh); checked against IMAGES and MANIFEST. Also cc_ping (cc_ping.c here:

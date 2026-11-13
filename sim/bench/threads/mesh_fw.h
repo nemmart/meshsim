@@ -1,8 +1,8 @@
-// mesh_fw.h: W6's synthetic busy 8 x 8 mesh (sim/bench/mesh.cpp), rebuilt as units on the framework (WORKER4).
+// mesh_fw.h: the synthetic busy 8 x 8 mesh (sim/bench/mesh.cpp), rebuilt as units on the framework.
 //
 // One Router per tile. Mesh links are Links of latency 3 carrying a three-word link word (D17); each router takes a word
 // the cycle it arrives into its own input queue (depth 8; the injection queue 16), and returns the queue's credit to the
-// sender on a width-0 Link of latency 3 when the word leaves it, as W6's credit wheel. Every cycle a router injects with
+// sender on a width-0 Link of latency 3 when the word leaves it, as the credit wheel. Every cycle a router injects with
 // probability `rate` (Bernoulli, its own splitmix stream), routes XY with round-robin per output (one word per output and
 // at most one pop per input a cycle), sends with a credit, and ejects into its digest. Not exact to ref; deterministic.
 // The edges wrap (a torus of wires) only so every declared port is wired: XY routing never uses them.

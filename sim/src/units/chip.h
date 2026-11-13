@@ -1,11 +1,11 @@
-// chip.h (WORKER9, G2): the chip's assembly. A tile is built by `tile_cycle` (config.h's MIXED FIDELITY: a function that
+// chip.h: the chip's assembly. A tile is built by `tile_cycle` (config.h's MIXED FIDELITY: a function that
 // adds the tile's units, wires them inside and returns its external ports); `build_chip` adds 64 tiles, the mesh links,
-// C&C 1's model, the row collectors and C&C 2-3's endpoints, and places everything in thread domains (form 2, W4).
+// C&C 1's model, the row collectors and C&C 2-3's endpoints, and places everything in thread domains (form 2).
 // Declarations; the definitions come with stage 4.
 //
 // THE OTHER GROUPS' PARTS OF A TILE. The tile builder adds the network's units itself and asks each group's builder for
 // its part through a plain function, which adds that group's units, wires them inside, and returns the ports the network
-// meets (the ports agreed with W8, 2026-11-07, NOTES.md). G3 and G4 will add their parts the same way.
+// meets (the ports agreed, 2026-11-07). G3 and G4 will add their parts the same way.
 //
 // THE PARTITION (form 2). Every unit of tile k goes in `domain[k]`; C&C, the collectors and the request bus's stub go in
 // tile 0's domain (C&C's send is a Hold into tile 0's router: it must not cross), endpoint k + 1 in tile k's (k = 1, 2:
@@ -27,9 +27,9 @@ namespace units {
 
 struct PeriphSlot;                // periph_slot.h
 
-// W8's part of a tile (the register block, the director, port B, the core) as the network meets it.
-// W14 (D34, the request bus; NOTES.md section 14): a sender's port as its tile's control offers it. `present`: the
-// control has a request port (W8's; the network-only stand-in has none). `recv`: a controller's receive side.
+// the part of a tile (the register block, the director, port B, the core) as the network meets it.
+// (D34, the request bus): a sender's port as its tile's control offers it. `present`: the
+// control has a request port (the; the network-only stand-in has none). `recv`: a controller's receive side.
 struct ReqIO {
     bool present = false;
     sim::LinkOut push;            // the core's REQUEST_SEND: Link(1), width 2 -> the sender's leaf
@@ -49,16 +49,16 @@ struct ControlIO {
     sim::CountIn router_ovf;      // the router's FIFO overflows (ROUTER_OVF), read `through_last` at endCycle
     sim::LinkIn router_ovf_ev;    // D29: width 0, Link(1) from the router's `ovf_ev`, put in the step that counts an
                                   // overflow (t + 1, D28), so the block steps and its endCycle(t + 1) sets ERRORS [0]
-    MemIO mem;                    // W11 (G3, approved 2026-11-08): the read queue's ports, which live in the injection
-                                  // unit; tile_cycle wires them when `mem.present` (W12's clients by its flags)
-    sim::CreditOut dma;           // W15: the peripheral slot's DMA output (AUDIT-M3 3.1 S6, width 3), C&C 1-3 only ->
+    MemIO mem;                    // (G3, approved 2026-11-08): the read queue's ports, which live in the injection
+                                  // unit; tile_cycle wires them when `mem.present` (the clients by its flags)
+    sim::CreditOut dma;           // the peripheral slot's DMA output (AUDIT-M3 3.1 S6, width 3), C&C 1-3 only ->
                                   // the controller router's CC_DMA_IN, a credit Fifo of cc_dma_depth (4); set when
     bool has_dma = false;         // the builder declared it (the slot's PeriphSlotConfig::controller)
-    ReqIO req;                    // W14 (D34): the request port's send side, and a controller's receive side
-    PeriphSlot* slot = nullptr;   // W16: the slot unit as staged (configuration only: its OwnPorts for C&C 1's chip
+    ReqIO req;                    // (D34): the request port's send side, and a controller's receive side
+    PeriphSlot* slot = nullptr;   // the slot unit as staged (configuration only: its OwnPorts for C&C 1's chip
                                   // lines, wired by build_chip); null without one
 };
-// W14's ReqIO, ControlIO's request side (sessions/WORKER14-NOTES.md section 14), wired by units::reqbus::wire_sender.
+// the ReqIO, ControlIO's request side, wired by units::reqbus::wire_sender.
 // ReqIO is defined before ControlIO (above).
 // Adds tile `k`'s control units (names prefixed "t<k>."), wires them inside, returns the ports above. `ctx` is the
 // builder's own (images, configuration).
@@ -73,7 +73,7 @@ struct TileIO {
     bool attached = false;        // tiles 0-2: the fifth port
     sim::HoldIn from_cnc;         // M2: C&C's model and the endpoints
     sim::FifoOut to_cnc;
-    ReqIO req;                    // W14: the control's request side (build_chip wires it to the bus)
+    ReqIO req;                    // the control's request side (build_chip wires it to the bus)
     sim::LinkIn from_cc;          // M3 (cc_cores): the C&C links
     sim::LinkOut to_cc;
 };
@@ -86,7 +86,7 @@ struct CcIO {
     bool has_dma = false;
     sim::LinkIn go;               // the register block's GO (nothing drives a controller's GO in ref)
     sim::LinkOut line;            // the register block's line word: READY (ignored for controllers) and the error level
-    ReqIO req;                    // W14: the controller's request port, send and receive sides (build_chip wires them)
+    ReqIO req;                    // the controller's request port, send and receive sides (build_chip wires them)
     PeriphSlot* slot = nullptr;   // the controller's slot as staged (the control's `io.slot`), or null
 };
 
@@ -94,18 +94,18 @@ struct ChipSpec {
     NetConfig net;
     const Hops* hops = nullptr;               // outlives the machine
     const CncProgram* program = nullptr;      // C&C 1's program; outlives the machine
-    ControlBuilder control = nullptr;         // W8's part of each tile (null: a stand-in that sinks the eject bus and
+    ControlBuilder control = nullptr;         // the part of each tile (null: a stand-in that sinks the eject bus and
     void* control_ctx = nullptr;              //  never sends, never READY: the network-only checks)
     const uint8_t* domain = nullptr;          // 64 entries (null: one domain)
-    units::reqbus::ReqBusConfig reqbus;       // W14 (D34): the request bus; credit_latency set explicitly (3 the spec,
+    units::reqbus::ReqBusConfig reqbus;       // (D34): the request bus; credit_latency set explicitly (3 the spec,
                                               // 0 exact as ref: one domain), never from the partition
-    // M3 (WORKER16): C&C 1-3 as cores (ref's Config.ccCores; AUDIT-M3 3.4). Units 64-66 are built like tiles (`control`
+    // M3: C&C 1-3 as cores (ref's Config.ccCores; AUDIT-M3 3.4). Units 64-66 are built like tiles (`control`
     // with k = 64 + c, the controller's router), each in tile c's domain (the C&C link is a Link(1)); tiles 0-2's fifth
     // port is the C&C links; M2's Java model of C&C 1, its row collectors' consumer and the endpoints are not built.
     bool cc_cores = false;
     bool cc3_dma = false;                     // C&C 3's DMA input (ref's cc3Tracer)
     uint32_t host_capacity = 4096;            // each host port's queue (packets)
-    bool reqbus_host = false;                 // W20 (harness-only): the request bus's receive queues and controller
+    bool reqbus_host = false;                 // (harness-only): the request bus's receive queues and controller
                                               //   inputs on the machine with C&C's model, driven by ReqHost (reqbus.h)
 };
 
@@ -114,10 +114,10 @@ TileIO tile_cycle(sim::Config& cfg, const ChipSpec& spec, unsigned k);
 // the host port ("cc<c + 1>.host"), in the current domain.
 CcIO cc_cycle(sim::Config& cfg, const ChipSpec& spec, unsigned c);
 // The chip. With spec.cc_cores, the 64 tiles and C&C 1-3 as units 64-66 with their links; the chip lines (the row
-// collectors into C&C 1's peripheral, GO out of it, the controllers' lines) are the slot's, wired with it (W15, W16).
+// collectors into C&C 1's peripheral, GO out of it, the controllers' lines) are the slot's, wired with it.
 void build_chip(sim::Config& cfg, const ChipSpec& spec);
 
-// Domains by bands of rows: `parts` bands (1, 2, 4 or 8), rows split evenly. W10's partitioner may replace it.
+// Domains by bands of rows: `parts` bands (1, 2, 4 or 8), rows split evenly. the partitioner may replace it.
 void row_bands(unsigned parts, uint8_t domain[64]);
 
 // Unit names (for observers and the fingerprint): "t<k>.router", "t<k>.inj", "cnc", "row<r>", "ep2", "ep3"; units

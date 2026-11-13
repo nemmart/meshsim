@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run.sh -- the sort's measurements (P4), the shuffled-order check and the whole-sort sweep, on meshsim v1.35 (WORKER24,
+# run.sh -- the sort's measurements (P4), the shuffled-order check and the whole-sort sweep, on meshsim v1.35
 # P6, row D8): v1.3's kit/run.sh on the C++ driver (sort_test) and SortSummary (sort_summary); no Java (D40).
 #
 #   ./run.sh [-j JOBS] [-m HEAP] [-o OUTDIR] [-n KEYS_PER_TILE] [-g GROUPS] [-f FILTER] [-J JOBFILE] [-s]

@@ -1,12 +1,12 @@
-// suite_cccores.cpp (WORKER23, P5, inventory C18): v1.3's CcCoresTest (sim/ref/meshsim/test/CcCoresTest.java) on W20's
+// suite_cccores.cpp: v1.3's CcCoresTest (sim/ref/meshsim/test/CcCoresTest.java) on the
 // harness, group for group, check for check, in Java's order and words. run_tests.sh's steps `cccores` (-1) and
 // `cccores-shuf` (4); its output equals ref's log (tests/ctlsuites/cccores*.log). Usage: suite_cccores [shuffleSeed]
 //
-// WORKER14: C&C 1-3 as cores (Config.ccCores):
+// C&C 1-3 as cores (Config.ccCores):
 //  - the switch off: the Java model, no controller tiles;
 //  - the boot ROM's branch for 64-66 (6.2 step 4): each controller waits in its ROM; the harness lands a program and its
-//    first command through the host port (W14-02); the ROM jumps; the program reads PARAMS' id and exits with it;
-//  - the link (W14-01): C&C 1's send port writes into a tile's data memory through tile 0's fifth port;
+//    first command through the host port; the ROM jumps; the program reads PARAMS' id and exits with it;
+//  - the link: C&C 1's send port writes into a tile's data memory through tile 0's fifth port;
 //  - the request tree: C&C 2's request reaches target 0 stamped with requestor 65; C&C 1's request port reads it;
 //  - the controllers' boot (6.2) with the firmware (sw/cc/): C&C 1 boots C&C 2 and C&C 3, takes their "started"
 //    requests, boots the tiles with READY/GO, then runs phases on the harness's commands; against the Java model.

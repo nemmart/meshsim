@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# calibrate.sh -- the acceptance kit's speed measurement (v1.35, WORKER25: v1.3's acceptance/calibrate.sh (meshsim
-# WORKER11) on the C++ meshsim): a synthetic delivery of 65,536-row windows (synthetic_delivery, D42/D43: v1.3's
+# calibrate.sh -- the acceptance kit's speed measurement (v1.35, v1.3's acceptance/calibrate.sh
+# on the C++ meshsim): a synthetic delivery of 65,536-row windows (synthetic_delivery, D42/D43: v1.3's
 # SyntheticDelivery, 128 windows, seed 11, from the universal tables), replayed by run_shard.sh at 1, 4, 8 and 16
 # processes. Gives rows per second and the parallel scaling on this machine: the basis of the runner-hours estimate.
 # Stage B runs on tile 0 alone (B) and, for the 8-process run, also on the full chip (F): their cycle counts must agree

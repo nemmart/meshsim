@@ -1,4 +1,4 @@
-// replay_t.h: ref's test/T.java for the replayer's ported suites (WORKER15): checks counted per group, failures
+// replay_t.h: ref's test/T.java for the replayer's ported suites: checks counted per group, failures
 // printed with the group's name; `dies` for T.ub and T.throwsISE (ref's exceptions are FATAL here: a forked child must
 // abort with every given text in its stderr).
 #pragma once

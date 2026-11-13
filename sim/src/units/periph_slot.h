@@ -1,6 +1,6 @@
-// periph_slot.h: a unit's peripherals (spec 4.17; sim/ref/meshsim/src/PeripheralSlot.java; AUDIT-M3 3.1), WORKER15.
-// DECLARATIONS: the ports, the window's register layout and the dispatch are the agreed interface (W14, W16; sessions/
-// WORKER15-NOTES.md); the step comes with the implementation.
+// periph_slot.h: a unit's peripherals (spec 4.17; sim/ref/meshsim/src/PeripheralSlot.java; AUDIT-M3 3.1).
+// DECLARATIONS: the ports, the window's register layout and the dispatch are the agreed interface;
+// the step comes with the implementation.
 //
 // One framework unit per tile (mesh tile or controller): up to three peripherals at regions 0x04-0x06 and windows
 // 0xFFFFFA00 + 0x200 (n - 1), owned by the slot (created at configuration from PeriphSlotConfig) and called synchronously
@@ -43,8 +43,8 @@ namespace units {
 class Replayer;
 struct TestPeripheral;
 namespace tracer { class Tracer; }
-struct Cnc1Peripheral;   // W16
-struct CcStub;           // W16
+struct Cnc1Peripheral;
+struct CcStub;
 
 // The core's word on S2/S3 (one per cycle): a store to window word w of peripheral n, or a consuming EVENTS load.
 struct CoreOp {
@@ -89,7 +89,7 @@ struct PeriphSlotConfig {
     PeriphType type[4] = {};             // [1]-[3]; PT_ABSENT: absent
     bool controller = false;             // C&C 1-3: the DMA port is declared (a mesh tile's peripherals have none)
     uint64_t replayer_row_buffer = 0;    // rows of the replayer's optional record buffer (tests; 0: the hash only)
-    unsigned replayer_log_entries = 256; // the replayer's read-log and write-log queues (ref's -Dreplayer.logq; W25)
+    unsigned replayer_log_entries = 256; // the replayer's read-log and write-log queues (ref's -Dreplayer.logq)
 };
 
 // A packet a DMA sends (ref's dmaOut entry): the header as LinkWord.hdr builds it.
@@ -106,7 +106,7 @@ struct SlotCore {
     struct Ref {
         PeriphType type = PT_ABSENT;
         void* p = nullptr;
-        uint64_t* rows = nullptr;      // W20 (F6): the replayer's row buffer this slot allocated (freed here, whatever
+        uint64_t* rows = nullptr;      // the replayer's row buffer this slot allocated (freed here, whatever
                                        //   buffer the replayer points at by then: the harness's row hook swaps it)
         Ref() = default;
         Ref(Ref&& o) noexcept : type(o.type), p(o.p), rows(o.rows) { o.p = nullptr; o.type = PT_ABSENT; o.rows = nullptr; }
@@ -182,10 +182,10 @@ struct SlotCore {
 
     // The peripheral at n as its class (tests, the harness; FATAL if it is another type).
     Replayer& replayer(unsigned n);
-    tracer::Tracer& tracer(unsigned n);   // W14
+    tracer::Tracer& tracer(unsigned n);
     TestPeripheral& test_peripheral(unsigned n);
-    Cnc1Peripheral& cnc1(unsigned n);         // W16 (the chip sets C&C 1's ref_cycle)
-    CcStub& cc_stub(unsigned n);              // W16
+    Cnc1Peripheral& cnc1(unsigned n);         // (the chip sets C&C 1's ref_cycle)
+    CcStub& cc_stub(unsigned n);
 
 private:
     void violate(int64_t t, uint16_t code, uint32_t a = 0, uint32_t b = 0);
@@ -228,7 +228,7 @@ struct PeriphSlot {
     // c; S2: the core's PULSE_RUN or RUN_CONFIG store of c), so they are read with the port observer and written as
     // ref's. Out: FpOut or any sink with w(name, v), wi(name, i, v).
     template <class Out> void fingerprint_replayer(const sim::Sim& m, unsigned n, Out& o, int64_t c);
-    // W14: the Tracer at n's fingerprint unit `unit` (Tracer::FP_NAMES; AUDIT-M3 6.6) at the end of cycle c, between
+    // the Tracer at n's fingerprint unit `unit` (Tracer::FP_NAMES; AUDIT-M3 6.6) at the end of cycle c, between
     // runs, the same way: the landings of c - 2 .. c and the core's PULSE_RUN or window store of c read from the links,
     // a PULSE_DMA of c applied as ref's slot does at once (out_start with DMA_HDR's queue and length), and a consuming
     // EVENTS load of c as ref's slot applies it at c's end.

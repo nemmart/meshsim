@@ -1,4 +1,4 @@
-// statefp.h: the canonical state fingerprint, the C++ side (WORKER8; sim/tests/AUDIT-M2.md section 6; ref's side is
+// statefp.h: the canonical state fingerprint, the C++ side (planning/audits/AUDIT-M2.md section 6; ref's side is
 // sim/oracle/ref/StateFp.java, whose per-unit streams are normative).
 //
 // At the end of cycle c each unit writes a defined sequence of 64-bit words (its architectural state, its memories as
@@ -14,7 +14,7 @@
 //   MemSum      a memory's sum, updated at every write (two fmix64 and an add); `scan` recomputes it in full (tests)
 //   bus writers the three bus kinds' canonical encodings, from entries (the port observer's, or a unit's own)
 //   FpRegistry  name -> writer: each unit contributes through one function `void(const void* unit, FpOut&, const
-//               FpCtx&)`; W9's and later groups' units plug in the same way; stubs write a not-yet-built unit's reset
+//               FpCtx&)`; the and later groups' units plug in the same way; stubs write a not-yet-built unit's reset
 //               stream (statefp_stubs.cpp)
 //   FpGolden    a golden `.fp` file: its D12 header (checked against ours, refusing on any difference, named) and its
 //               points; `compare` finds the first differing cycle and unit
@@ -87,7 +87,7 @@ struct BusEntry { uint64_t at; uint64_t a, b, c; };
 void link(FpOut& o, const char* nm, const BusEntry* e, unsigned n);
 void fifo(FpOut& o, const char* nm, const BusEntry* e, unsigned n, const BusEntry* put);
 void hold(FpOut& o, const char* nm, const BusEntry* held, const BusEntry* put);
-// W16: under M3's labelling (StateFpM3: cyc = c.cycle - 1) a put made in the cycle that just ran (ref's lastT = cyc + 1)
+// under M3's labelling (StateFpM3: cyc = c.cycle - 1) a put made in the cycle that just ran (ref's lastT = cyc + 1)
 // is not yet in ref's lazily settled bus: fifo() and hold() leave it out while this is set (statefp_m3's m3_point sets
 // it around M2's writers; M2's labelling lists it as the put judged at c + 1).
 extern thread_local bool g_hide_last_put;
@@ -103,7 +103,7 @@ inline void hold_empty(FpOut& o, const char* nm) { hold(o, nm, nullptr, nullptr)
 struct FpCtx {
     uint64_t cycle;
     const sim::Sim* sim;
-    // W16: the label's convention. `cycle` is always the end of the framework's cycle (M2's: ref's c.cycle, between
+    // the label's convention. `cycle` is always the end of the framework's cycle (M2's: ref's c.cycle, between
     // cycles now() - 1). ref's writers compare event cycles with their `cyc`: M2's StateFp.write passes c.cycle (shift
     // 0); M3's StateFpM3.write passes c.cycle - 1 (shift 1, AUDIT-M3 7). A writer whose stream compares an event cycle
     // with cyc (a sleeping core's mcycle, sendRetry, regLoad, the director's K-line) uses cycle - label_shift there.

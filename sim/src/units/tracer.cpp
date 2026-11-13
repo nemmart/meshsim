@@ -1,4 +1,4 @@
-// tracer.cpp: the Tracer (tracer.h), ported from `ref`'s Tracer.java (WORKER14), method for method and in its order.
+// tracer.cpp: the Tracer (tracer.h), ported from `ref`'s Tracer.java, method for method and in its order.
 #include "units/tracer.h"
 
 #include "check.h"
@@ -93,10 +93,10 @@ void Tracer::violate(int64_t t, int code, uint64_t a, uint64_t b) {
         f.t = t; f.code = code; f.bits = 0; f.a = a; f.b = b;
     }
     n_violations++;
-    // W26: ref's host.violate: the slot passes it to the register block, a chip violation (the text: violation_text)
+    // ref's host.violate: the slot passes it to the register block, a chip violation (the text: violation_text)
     sim::check::record(uint64_t(t), me_, sim::check::Kind::TRACER_VIOLATION, uint64_t(code), a, b);
 }
-// W26: ref's Tracer.violate texts (W14's), for the checker: a, b as violate's (V_UNDEFINED: the op, the ALU's text)
+// ref's Tracer.violate texts (the), for the checker: a, b as violate's (V_UNDEFINED: the op, the ALU's text)
 void Tracer::violation_text(int code, uint64_t a, uint64_t b, char* o, size_t n) {
     char nb[24];
     auto op = [&](uint64_t v) -> const char* {
@@ -483,7 +483,7 @@ void Tracer::row(int64_t T) {
     const unsigned pc_inc = !last ? 0 : compressed ? 2 : 4;
     const uint64_t pcv = pc();
     alu::exec(op, v_rs1, v_rs2, v_rd, pcv, pc_inc, i0p0, log_word, so, alu_);
-    if (alu_.undefined != nullptr) violate(T, V_UNDEFINED, op, uint64_t(reinterpret_cast<uintptr_t>(alu_.undefined)));   // (W26: the text)
+    if (alu_.undefined != nullptr) violate(T, V_UNDEFINED, op, uint64_t(reinterpret_cast<uintptr_t>(alu_.undefined)));   // (the text)
     // assertions (4.21.4: evaluated, appendix 2 H)
     if (!assertion_holds(op, v_rs1, v_rs2)) { error(T, 1 << ERR_ASSERT, E_ASSERT, v_rs1, v_rs2); return; }
     // pc and instr_idx (4.19.7, 4.21.4)

@@ -1,4 +1,4 @@
-// statefp_g2.h: the canonical fingerprint's writers for G2's chip-level units (WORKER9; StateFp.java's "cnc", "cc1p",
+// statefp_g2.h: the canonical fingerprint's writers for G2's chip-level units (StateFp.java's "cnc", "cc1p"
 // "reqbus", "ep", word for word). A writer reads a G2Chip: the units as built, and the machine for the port observer
 // (Options::observe_arrivals on, for the Links' arrival cycles).
 //
@@ -7,7 +7,7 @@
 // word on its way (the register block's Link to the row collector, then the collector's Link to C&C), applied at
 // arrival. The writers rebuild ref's queues from those Links' entries. One part is not on any Link at the end of e: the
 // block's endCycle(e) runs at level 0 of e + 1 (the shifted end of cycle), so its READY rise and error level of e are
-// asked of the tile's part through `edge` (W8: the block's preview of endCycle(e); a test: its stub).
+// asked of the tile's part through `edge` (the block's preview of endCycle(e); a test: its stub).
 #pragma once
 
 #include <cstdint>
@@ -34,12 +34,12 @@ struct G2Chip {
     unsigned ready_latency = 8;
     LineEdgeFn edge = nullptr;                // null: no edge pending at the end of any cycle
     const void* edge_ctx = nullptr;
-    const units::reqbus::ReqBusUnits* reqbus = nullptr;   // W14: the request bus (null: idle, its reset stream)
-    // W16 (M3, C&C as cores): no `cnc`; the row collectors feed C&C 1's peripheral through these (its slot's own
+    const units::reqbus::ReqBusUnits* reqbus = nullptr;   // the request bus (null: idle, its reset stream)
+    // (M3, C&C as cores): no `cnc`; the row collectors feed C&C 1's peripheral through these (its slot's own
     // ports), read by pending_lines.
     const sim::LinkIn* cc_rows = nullptr;     // 8 entries
 };
-// W16: every tile's line word on its way to C&C (M2's Cnc or M3's C&C 1 peripheral) at the end of x.cycle, in ref's
+// every tile's line word on its way to C&C (M2's Cnc or M3's C&C 1 peripheral) at the end of x.cycle, in ref's
 // insertion order (visible cycle, then tile): the collectors' Links, the blocks' Links, the blocks' endCycle(c) (edge).
 struct PendingLine { uint64_t vis; unsigned k; bool ready, level; };
 std::vector<PendingLine> pending_lines(const G2Chip& g, const FpCtx& x);
@@ -58,7 +58,7 @@ void w_router(const void* g2tile, FpOut& o, const FpCtx& x);
 void w_inj(const void* g2tile, FpOut& o, const FpCtx& x);
 // StateFp "srq" with no reads (G3 replaces it): the free list 0-63, the tokens held as at the start of c + 1 (the
 // loopback's, minus a free on its way), the three clients' buses and the 16 areas' return links, empty.
-void w_srq(const void* g2tile, FpOut& o, const FpCtx& x);   // W11: the read queue
+void w_srq(const void* g2tile, FpOut& o, const FpCtx& x);   // the read queue
 // Registers "t<k>.router", "t<k>.inj", "t<k>.srq". `g` outlives the registry.
 void register_g2_tile(FpRegistry& r, const G2Tile& g);
 

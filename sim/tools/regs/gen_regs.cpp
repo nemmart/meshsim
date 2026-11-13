@@ -1,4 +1,4 @@
-// gen_regs (WORKER19, P1): writes fw/include/mesh.h and fw/REGISTERS.md from the register table (regtable.h), the
+// gen_regs: writes fw/include/mesh.h and fw/REGISTERS.md from the register table (regtable.h), the
 // output of v1.3's Registers/MeshHeader and RegDoc byte for byte. tests/test_regs.cpp checks the committed files.
 //   gen_regs mesh.h FILE | gen_regs registers FILE | gen_regs check MESH_H REGISTERS_MD (exit 1 on a difference)
 #include <cstdio>

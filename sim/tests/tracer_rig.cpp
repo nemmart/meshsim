@@ -1,4 +1,4 @@
-// tracer_rig.cpp (WORKER21): TracerRig.java, member for member. See tracer_rig.h.
+// tracer_rig.cpp: TracerRig.java, member for member. See tracer_rig.h.
 #include "tracer_rig.h"
 
 #include <algorithm>

@@ -1,4 +1,4 @@
-// engine.cpp: the cycle loop (WORKER3, stage 2; sim.h's THE CYCLE). Deliver, run by level, end. No STL, no allocation, no
+// engine.cpp: the cycle loop (sim.h's THE CYCLE). Deliver, run by level, end. No STL, no allocation, no
 // virtual calls: a switch per wheel (not per entry) picks the delivery loop of its (kind, width).
 #include "sim.h"
 
@@ -42,7 +42,7 @@ inline void deliver_wheel(Engine& e, const Wheel& wh, Bucket& b) {
 }
 }  // namespace
 
-// W10: direct delivery. The bucket of `now` of each incoming Link outbox; the destination empties it (the source won't
+// direct delivery. The bucket of `now` of each incoming Link outbox; the destination empties it (the source won't
 // write it again until after a barrier: its window is at least latency + interval, threads.cpp).
 void Engine::deliver_xin() {
     const uint64_t bit = uint64_t(1) << (now & 63);
@@ -84,7 +84,7 @@ void Engine::deliver_xin() {
             if (!b.empty()) deliver_wheel(*this, wheels[w], b);
         }
     }
-    if (__builtin_expect(nxin != 0, 0)) deliver_xin();    // W10: a split domain's incoming Link outboxes
+    if (__builtin_expect(nxin != 0, 0)) deliver_xin();    // a split domain's incoming Link outboxes
     if (near_busy >> (now & (kNear - 1)) & 1) near_slot();
     while (heap_n && wake_at[heap[0]] == now) mark(heap_pop());
     if (step_all)                                      // the missed-wake check: every instance, every cycle
@@ -175,7 +175,7 @@ bool Engine::asleep(uint32_t i) const {
 void Engine::run_until(Cycle end) {
     while (now <= end) {
         cycle();
-        if (__builtin_expect(stop_at != kNoCycle, 0) && stop_breaks) break;   // W10: a unit asked to stop after this cycle
+        if (__builtin_expect(stop_at != kNoCycle, 0) && stop_breaks) break;   // a unit asked to stop after this cycle
         if constexpr (kDebug) if (leak_every && npools && now % leak_every == 0) check_leaks();
         if (!step_all && idle()) {                     // nothing in flight, nothing ready: jump to the next wake
             Cycle t = next_wake();
@@ -276,7 +276,7 @@ void Engine::run_level_debug(uint32_t& r) {
 // holds them all, and each take returns one: a return in the wheel, or one to come; if it never takes, that is a
 // deadlock, not a missed wake), or a Hold put it made this cycle (a refusal at t + 1 wakes it). Anything else is reported once it has lasted the unit's
 // threshold. Not seen: a wait on a Wire's change (sim.h).
-// The jump of an idle machine must not skip a suspect's judgement (W4's finding): the earliest cycle at whose end a
+// The jump of an idle machine must not skip a suspect's judgement (the finding): the earliest cycle at whose end a
 // suspect would be reported. On an idle machine nothing is in flight, so only a credit output with no credit left can keep
 // a suspect fine, and it stays so until some unit steps (which ends the idleness): such suspects set no deadline.
 Cycle Engine::suspect_deadline() const {

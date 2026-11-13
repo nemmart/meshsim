@@ -1,4 +1,4 @@
-// The engine, increment 2 (WORKER3): Link, Fifo and Hold on the single-threaded loop; wakes; sizes; the fatal cases.
+// The engine, increment 2: Link, Fifo and Hold on the single-threaded loop; wakes; sizes; the fatal cases.
 #include <string>
 
 #include "base/alloc_guard.h"

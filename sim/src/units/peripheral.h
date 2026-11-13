@@ -1,6 +1,6 @@
 // peripheral.h: what every peripheral offers its slot (spec 4.17; sim/ref/meshsim/src/Peripheral.java), as a fixed set
-// of member functions the slot calls through a switch on the peripheral's type (no virtual calls; WORKER15, owner of the
-// slot; agreed with W14 (the Tracer, type 3) and W16 (C&C 1's peripheral, type 1; C&C 2's stub, type 2)).
+// of member functions the slot calls through a switch on the peripheral's type (no virtual calls; owner of the
+// slot; agreed for the Tracer (type 3), C&C 1's peripheral (type 1) and C&C 2's stub (type 2)).
 //
 // A peripheral is a class deriving from PeripheralBase<Self> (CRTP, non-virtual: the base only supplies the defaults
 // ref's interface has; a peripheral's own member of the same name hides it, and the slot's dispatch calls the concrete
@@ -68,11 +68,11 @@ namespace units {
 // The peripheral types (PARAMS [7:0]; spec 4.17.1, D46) and the slot's dispatch tags.
 enum PeriphType : uint8_t {
     PT_ABSENT = 0,
-    PT_CNC1 = 1,      // C&C 1's Ingress/Egress and UART (Cnc1Peripheral)          W16
-    PT_CC_STUB = 2,   // C&C 2's (and C&C 3's without the Tracer) stub (CcCores.Stub)  W16
-    PT_TRACER = 3,    // the Tracer, C&C 3 (Tracer.TYPE)                           W14
-    PT_REPLAYER = 4,  // the replayer, every mesh tile's peripheral 1 (Replayer)   W15
-    PT_TEST = 15,     // the suites' test peripheral (TestPeripheral)              W15
+    PT_CNC1 = 1,      // C&C 1's Ingress/Egress and UART (Cnc1Peripheral)
+    PT_CC_STUB = 2,   // C&C 2's (and C&C 3's without the Tracer) stub (CcCores.Stub)
+    PT_TRACER = 3,    // the Tracer, C&C 3 (Tracer.TYPE)
+    PT_REPLAYER = 4,  // the replayer, every mesh tile's peripheral 1 (Replayer)
+    PT_TEST = 15,     // the suites' test peripheral (TestPeripheral)
 };
 
 constexpr int RP_LATENCY = 2;   // rp_latency (4.17.5)

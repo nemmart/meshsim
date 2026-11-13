@@ -1,4 +1,4 @@
-// test_replayer: ref's test/ReplayerUnitTests.java ported group by group (WORKER15), on units::Replayer with
+// test_replayer: ref's test/ReplayerUnitTests.java ported group by group, on units::Replayer with
 // tests/replay_window.h (ReplayWindow) and tests/replay_driver.h (ReplayDriver). Each group is one TEST; its checks
 // and expected values are ref's, in ref's order, and its seeded inputs come from java.util.Random as ref's do.
 #include <algorithm>
@@ -1187,7 +1187,7 @@ void record_words() {
     T::eq(5, int64_t(rec[2 * 67]), "word 67: the bitmap");
 }
 
-// V3-12: every queue 4 KB; ref's -Dreplayer.logq=512 (the constructor's log_entries here, W25) gives v1.25's 8 KB logs
+// V3-12: every queue 4 KB; ref's -Dreplayer.logq=512 (the constructor's log_entries here) gives v1.25's 8 KB logs
 // for a control run.
 void queue_sizes() {
     T::group("v1.26: the queues are 4 KB");

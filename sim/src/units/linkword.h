@@ -1,4 +1,4 @@
-// linkword.h: the link word's helpers G1's units need beyond W9's `net.h` (WORKER8; sim/ref/meshsim/src/LinkWord.java).
+// linkword.h: the link word's helpers G1's units need beyond the `net.h` (sim/ref/meshsim/src/LinkWord.java).
 // net.h's `units::lw` is the link word's definition (agreed 2026-11-07); this file adds to the same namespace only what
 // net.h doesn't have, so a unit includes this one and sees both.
 #pragma once

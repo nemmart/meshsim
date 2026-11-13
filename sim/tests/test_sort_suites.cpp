@@ -1,4 +1,4 @@
-// test_sort_suites.cpp (WORKER24, P6): the sort's quick checks in make check. sort_test (built beside this binary) runs
+// test_sort_suites.cpp: the sort's quick checks in make check. sort_test (built beside this binary) runs
 // as run_tests.sh runs a step, from sim/:
 //   - sort-p1: its output equal to ref's log of the step (tests/sort/ref/sort-p1.log) byte for byte, the inputs line's
 //     first field (the simulator's own hash: v1.3's meshsim.jar, owner's Q2) aside, and both p1 runs' state equal to
@@ -7,7 +7,7 @@
 //     their SortFp references equal, and every check passing.
 //   - H7: SortTest's profiles (tile 0's per function, a pc range, the per-step watch) on a kv32 run: the output equal to
 //     ref's (tests/sort/ref/h7-uniform-kv32.log, first field aside).
-// sort_test needs W20's PhaseLog, which runs in the debug and suite builds only: in a release build these tests pass
+// sort_test needs the PhaseLog, which runs in the debug and suite builds only: in a release build these tests pass
 // without running (a line says so); run_tests.sh has the long steps (MODE=suite).
 #include <unistd.h>
 

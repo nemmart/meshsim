@@ -1,4 +1,4 @@
-// test_cc_req (WORKER14): the request bus end to end on the chip with C&C 1-3 as cores and C&C 1's slot (T2's machine,
+// test_cc_req: the request bus end to end on the chip with C&C 1-3 as cores and C&C 1's slot (T2's machine,
 // tests/t2_harness.h): a tile's REQUEST_SEND through its leaf, the row node and the root into C&C 1's queue and its
 // REQUEST_RECEIVE, against ref's figures.
 //   tests/m3-images/cc_req.c (C&C 1, booted through the host port): CMD_JUMP to tile 5, GO from its peripheral, 6,000
@@ -158,7 +158,7 @@ TEST(cc_req_mode3_same_words_lag_reported) {
     for (unsigned parts : {1u, 4u}) {
         const Figures o = run(3, parts);
         if (parts == 1) one = o;
-        else {   // the mode is configuration, never the partition: the split gives one domain's figures exactly (W4)
+        else {   // the mode is configuration, never the partition: the split gives one domain's figures exactly
             CHECK_EQ(o.lag, one.lag);
             CHECK_EQ(o.exit_at, one.exit_at);
             bool same = true;

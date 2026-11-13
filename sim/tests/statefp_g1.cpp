@@ -28,7 +28,7 @@ units::RegBlockState block_end(const G1Tile& g, uint64_t c) {
     if (g.sim && g.m1ctl) return units::block_at_end(*g.sim, *g.m1ctl, c);
     return g.ctl ? *g.ctl : units::RegBlockState{};
 }
-// the engines' copies (W20: equal to the registers until a reset clears only those; ref's engines keep theirs)
+// the engines' copies (equal to the registers until a reset clears only those; ref's engines keep theirs)
 uint32_t dma_config(const G1Tile& g, uint64_t c) { return block_end(g, c).dma_master; }
 uint32_t record_base(const G1Tile& g, uint64_t c) { return block_end(g, c).record_master; }
 
@@ -51,7 +51,7 @@ struct Overlay {
 }  // namespace
 
 G1Tile g1_tile(sim::Sim& s, unsigned k) {
-    const std::string t = units::unit_prefix(k);           // W16: "t<k>." or, for units 64-66, "cc1." .. "cc3."
+    const std::string t = units::unit_prefix(k);           // "t<k>." or, for units 64-66, "cc1." .. "cc3."
     G1Tile g;
     g.tile = k; g.sim = &s;
     g.ucore = &s.unit<units::TileCore>(t + "core"); g.uctl = &s.unit<units::TileCtl>(t + "ctl");
@@ -70,14 +70,14 @@ void w_core(const void* p, FpOut& o, const FpCtx& x) {
     uint64_t mcycle = k.mcycle;
     uint32_t stall = k.stall;
     if (k.stop != units::Stop::running && k.stop != units::Stop::parked) {   // ref's halted core: mcycle++ every cycle
-        // W16: as a sleeping one, under M3's cyc one less when ref's idle-skip has put it to sleep (a halted core can)
+        // as a sleeping one, under M3's cyc one less when ref's idle-skip has put it to sleep (a halted core can)
         // (ref's idleAt == t: a core halted in the cycle just run hasn't been idle for a whole cycle yet)
         const bool asleep = x.label_shift && c > k.stop_cycle + 1 && (!g.ref_asleep || g.ref_asleep(g.ref_asleep_ctx, g.tile, x));
         mcycle += c - k.stop_cycle - (asleep ? x.label_shift : 0);
     }
     else if (c > k.last) {                                              // asleep since `last`: in a WFI or a stall
         uint64_t gap = c - k.last;
-        // ref's lag: cyc - countedTo, only for a unit its idle-skip put to sleep (W16: under M3's cyc, one less)
+        // ref's lag: cyc - countedTo, only for a unit its idle-skip put to sleep (under M3's cyc, one less)
         const bool asleep = x.label_shift && k.in_wfi && (!g.ref_asleep || g.ref_asleep(g.ref_asleep_ctx, g.tile, x));
         mcycle += gap - (asleep ? x.label_shift : 0);
         if (!k.in_wfi) stall -= uint32_t(gap);
@@ -174,7 +174,7 @@ void w_dir(const void* p, FpOut& o, const FpCtx& x) {
     link(o, "in", be, nb);
 }
 
-// G3 (W11): a port's entries as BusEntries; a Link's arrival as the observer gives it (G3's Links are unshifted).
+// G3: a port's entries as BusEntries; a Link's arrival as the observer gives it (G3's Links are unshifted).
 template <class Port>
 uint32_t bus_entries(const G1Tile& g, const Port& port, BusEntry* out, BusEntry& put, bool& has_put, bool& valid) {
     sim::PortEntry e[kMax];
@@ -240,7 +240,7 @@ void w_we(const void* p, FpOut& o, const FpCtx& x) {
     w_link(o, "tsRet", g, w ? &w->ts_ret : nullptr);
 }
 
-// StateFp.ag (W12): forty fields (the configuration first, from the block's registers; pStart is the block's PULSE_DMA of
+// StateFp.ag: forty fields (the configuration first, from the block's registers; pStart is the block's PULSE_DMA of
 // endCycle(c), which the AG takes at c + 1), the read-ahead rings in queue order, the two table-return lines. Java's
 // int fields are sign-extended (a STREAM_DEST past 2^31), its longs as they are.
 void w_ag(const void* p, FpOut& o, const FpCtx& x) {
@@ -269,7 +269,7 @@ void w_ag(const void* p, FpOut& o, const FpCtx& x) {
     w_link(o, "groupRet", g, g.uag ? &a->group_ret : nullptr);
 }
 
-// StateFp.gather (W12): k, base (the block's registers), the active request (left, ord, i, ctr, wide), its input queue.
+// StateFp.gather: k, base (the block's registers), the active request (left, ord, i, ctr, wide), its input queue.
 void w_gather(const void* p, FpOut& o, const FpCtx& x) {
     const G1Tile& g = tile(p);
     static const units::Gather kIdle(units::Gather::idle());
@@ -353,7 +353,7 @@ void w_rdport(const void* p, FpOut& o, const FpCtx&) {
 // StateFp.req: the request FIFO (empty), beatsSent, W0-W2 (REQUEST_SET_W*, never stored in M2's programs).
 void w_req(const void* p, FpOut& o, const FpCtx& x) {
     const G1Tile& g = tile(p);
-    if (g.uleaf && x.sim) {   // W14: the port as the bus holds it (reqbus_fp.h); REQUEST_SET_W0-W2 as the core stored them
+    if (g.uleaf && x.sim) {   // the port as the bus holds it (reqbus_fp.h); REQUEST_SET_W0-W2 as the core stored them
         reqfp::port(o, *x.sim, g.uleaf, g.ucore ? g.ucore->req_set_w : g.ctl->set_w, x.cycle);
         return;
     }
@@ -370,7 +370,7 @@ void attach_reqbus(sim::Sim& s, G1Tile* g1, unsigned n_tiles, G2Chip& gc, units:
 }
 
 void register_g1(FpRegistry& r, const G1Tile& g) {
-    const std::string t = units::unit_prefix(g.tile);      // W16: the controllers' "cc1." .. "cc3."
+    const std::string t = units::unit_prefix(g.tile);      // the controllers' "cc1." .. "cc3."
     if (g.core) { r.add(t + "core", w_core, &g); r.add(t + "cmem", w_cmem, &g); }
     r.add(t + "ctl", w_ctl, &g);
     r.add(t + "dir", w_dir, &g);

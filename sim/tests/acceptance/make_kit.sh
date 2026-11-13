@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# make_kit.sh -- builds the acceptance kit (v1.35, WORKER25; v1.3's acceptance/make_kit.sh, meshsim WORKER11) from the
+# make_kit.sh -- builds the acceptance kit (v1.35, v1.3's acceptance/make_kit.sh) from the
 # committed sim/ at HEAD (commit first): the sources the kit's programs build from (Makefile, src/, tools/, tests/'s
 # top-level sources and makefiles, tests/acceptance/, bench/'s makefiles, which the Makefile includes), the data they read (data/tables with its manifest, data/hops.txt,
 # the boot ROM, the replay controller's images: tests/m3-images/replay_ctl, fw/images/log8k and oldmap), and the

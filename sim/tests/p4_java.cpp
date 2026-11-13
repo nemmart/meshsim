@@ -1,4 +1,4 @@
-// p4_java.cpp (WORKER22, P4): Java's %.Nf and %,d (p4_java.h).
+// p4_java.cpp: Java's %.Nf and %,d (p4_java.h).
 #include "p4_java.h"
 
 #include <charconv>

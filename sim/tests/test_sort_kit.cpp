@@ -1,4 +1,4 @@
-// The sort kit's helpers (WORKER24, P6; tests/sort_kit.h) against Java's own outputs: String.format's %,d, %+,d and
+// The sort kit's helpers (tests/sort_kit.h) against Java's own outputs: String.format's %,d, %+,d and
 // %+.2f (HALF_UP on the shortest digits; every expected value printed by JDK 21 itself), Path.of(...).toString(), Inputs' parser and
 // HASHES reader. Then the tools on v1.3's kit run at -n 2000 (Quest 178, tests/sort/kit/n2000.tgz): sort_summary's
 // SUMMARY.md and all.csv equal v1.3's SortSummary's, sort_compare's self-comparison equal v1.3's SortCompare's.

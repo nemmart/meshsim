@@ -1,5 +1,5 @@
 // rvc.h: the RISC-V C extension's decompression as the Tracer applies it (spec 4.21.4 step 2), ported from `ref`'s
-// Rvc.java line for line (WORKER14). `ref`'s is a16z's decoder at 7189216 as gold ports it, with a16z's D12 (C.SLLI with
+// Rvc.java line for line. `ref`'s is a16z's decoder at 7189216 as gold ports it, with a16z's D12 (C.SLLI with
 // rd = x0 is SLLI x0, x0, shamt); RvcTest checks it against gold's on all 2^16 encodings, test_rvc checks this against
 // `ref`'s on the same.
 //

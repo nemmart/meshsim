@@ -1,5 +1,5 @@
 #!/bin/bash
-# build_req.sh [--check] (WORKER14; W19: from sim/fw): test_cc_req's two programs (cc_req.c on C&C 1, tile_req.c on
+# build_req.sh [--check] (from sim/fw): test_cc_req's two programs (cc_req.c on C&C 1, tile_req.c on
 # tile 5), built by sim/fw/build.sh as sw/tests' programs are (crt0.S, app.ld, -Os). Writes cc_req.* and tile_req.*
 # (code.bin, data.bin, sym) and REQ_MANIFEST, or with --check compares a fresh build with them.
 set -eu

@@ -1,4 +1,4 @@
-/* tile_req.c (WORKER14, test_cc_req): a tile's program for the request bus's end-to-end test. Run on tile 5, started by
+/* tile_req.c (test_cc_req): a tile's program for the request bus's end-to-end test. Run on tile 5, started by
  * C&C 1's CMD_JUMP. It sends N requests to C&C 1 (target 0) back to back: REQUEST_SET_W0-W2, then REQUEST_SEND, which
  * stalls while its port's 128-entry FIFO is full (C&C 1 doesn't drain at first, so the queue fills, the root runs out of
  * credit and the FIFO fills: canPush with a head freed the same cycle). stamp[i]: mcycle after send i completed. */

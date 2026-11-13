@@ -1,9 +1,9 @@
 // test_statefp_core.cpp: the core's fingerprint writer (statefp_g1: w_core, w_core_mem) against ref on all 67 of M1's
-// goldens, cycle by cycle (tests/fp-m1/NAME.corefp, made by oracle/ref/CoreFp.java through oracle/regen/fp-m1.sh): W5's
+// goldens, cycle by cycle (tests/fp-m1/NAME.corefp, made by oracle/ref/CoreFp.java through oracle/regen/fp-m1.sh): the
 // controller on the engine, ready-driven and step-all, after every cycle.
 //
 // The memories every cycle too: at the cycles where the bench's MEMW is in flight (put at C - 1, applied by the core at
-// C) ref's port-B write has landed; the writer overlays it, read through the port observer (W10's Sim::observe).
+// C) ref's port-B write has landed; the writer overlays it, read through the port observer (the Sim::observe).
 #include <cstdio>
 #include <fstream>
 #include <sstream>
@@ -82,7 +82,7 @@ std::string check_run(const RunSpec& r, sim::Options opt, uint64_t& overlaid) {
     return "";
 }
 
-// W5's direct driver (golden_run.cpp run_direct: the core and the block as plain code, in ref's order, endCycle(t) at the
+// the direct driver (golden_run.cpp run_direct: the core and the block as plain code, in ref's order, endCycle(t) at the
 // end of t), with the block's stream (without the GO queue) and the core's checked after every cycle.
 std::string direct_fp(const RunSpec& r) {
     Golden g; Images im; std::string err;

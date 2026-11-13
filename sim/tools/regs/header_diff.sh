@@ -1,5 +1,5 @@
 #!/bin/bash
-# header_diff.sh GENERATED DRAFT (WORKER23, P5; D40): v1.3's tools/header_diff.py in shell over the host gcc, its
+# header_diff.sh GENERATED DRAFT (D40): v1.3's tools/header_diff.py in shell over the host gcc, its
 # output byte for byte (checked by tests/test_header_diff.sh against the Python's output, tests/regdoc/header_diff.out).
 # Compares the generated mesh.h with the draft header (fw/mesh-v1.2-draft.h): every macro both define (numeric value,
 # or for function-like macros the value at sample arguments), every macro only one defines, and every struct member's

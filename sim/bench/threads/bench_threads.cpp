@@ -1,4 +1,4 @@
-// bench_threads: the threads' measurements (WORKER4). Timing builds: clang release (D18), pinned (D13).
+// bench_threads: the threads' measurements. Timing builds: clang release (D18), pinned (D13).
 //
 //   bench_threads --form 1 --chip mesh|synth --chips N --threads T --cpus LIST [--cycles C] [--warmup W] [--rate R]
 //       Independent chips: N chips split over T threads (contiguous shares), each thread pinned to the next CPU of LIST,
@@ -44,15 +44,15 @@ struct Args {
     bool sizes = false;
     unsigned domains = 0;          // form 2: 0 = as many as threads
     std::string barrier = "auto";  // form 2: spin (never yields), yield (after --spins pauses), block (futex after them):
-                                   // W4's counter barrier; flags, flags-spin: the flags barrier (W10); auto: the default
+                                   // the counter barrier; flags, flags-spin: the flags barrier; auto: the default
     unsigned spins = 2000;
     bool due_off = false;          // form 2 with one domain: the due mask off, as in a split machine's domains
-    unsigned engines = 0;          // form 2 (W10): Options::engines (0: one per thread)
-    bool time_threads = false;     // form 2 (W10): Options::time_threads, the phase shares printed as times="..."
-    bool barrier_only = false;     // form 3 (W10): the barrier alone
-    unsigned units = 64, active = 1;   // form 4 (W10): units in all, busy among them
-    double crossing_ns = -1;       // form 2 (W10): Options::crossing_ns (default: the framework's)
-    std::string partition = "rows";   // form 2 (W10): rows (mesh: bands of rows; synth: clusters in order), or tiles
+    unsigned engines = 0;          // form 2: Options::engines (0: one per thread)
+    bool time_threads = false;     // form 2: Options::time_threads, the phase shares printed as times="..."
+    bool barrier_only = false;     // form 3: the barrier alone
+    unsigned units = 64, active = 1;   // form 4: units in all, busy among them
+    double crossing_ns = -1;       // form 2: Options::crossing_ns (default: the framework's)
+    std::string partition = "rows";   // form 2: rows (mesh: bands of rows; synth: clusters in order), or tiles
                                       // (mesh: one domain per tile, 64; synth: one per cluster), spread over the threads
 };
 
@@ -133,7 +133,7 @@ int sizes(const Args& a) {
 }
 
 int form1(const Args& a) {
-    (void)make_chip(a, 0);                         // register the unit types on this thread first (until W3's E1)
+    (void)make_chip(a, 0);                         // register the unit types on this thread first (until the E1)
     std::vector<uint64_t> dig(a.chips);
     std::vector<double> busy(a.threads);
     uint64_t words = 0;
@@ -179,13 +179,13 @@ int form1(const Args& a) {
 
 // Form 2: one chip over several threads. The mesh: by rows, tile k is in domain (k / 8) * D / 8 (bands of rows); by
 // tiles, domain k (64 domains). The synthetic chip (8 clusters of 8 nodes): by rows, cluster c in domain c * D / 8; by
-// tiles, domain c. Domains are spread over the threads in order (W4). On the mesh every crossing is a Link of 3 (words and
+// tiles, domain c. Domains are spread over the threads in order. On the mesh every crossing is a Link of 3 (words and
 // credits), so the barrier is every 3 cycles. One line:
 //   threads form=2 chip=C threads=T domains=D partition=P barrier=B spins=N due=on|off cycles=C secs=S
 //   rate=<chip-cycles/s> us_per_chip_cycle=<wall> words=<Sizes> digest=<D> partition="..."
 int form2(const Args& a) {
     const bool tiles = a.partition == "tiles";
-    const bool by_load = a.partition == "load" || a.partition == "profile";   // W10: the framework places (no domains)
+    const bool by_load = a.partition == "load" || a.partition == "profile";   // the framework places (no domains)
     if (!tiles && !by_load && a.partition != "rows") FATAL("--partition %s: rows, tiles, load or profile", a.partition.c_str());
     const bool mesh_chip = a.chip == "mesh";
     if (!mesh_chip && a.chip != "synth") FATAL("--chip %s: mesh or synth", a.chip.c_str());
@@ -222,7 +222,7 @@ int form2(const Args& a) {
     if (by_load) { o.placement = Options::Placement::by_load; o.threads = a.threads; if (a.partition == "profile") o.load = &prof; }
     o.barrier_block = a.barrier == "block";
     o.barrier = a.barrier.rfind("flags", 0) == 0 ? Options::Barrier::flags
-              : a.barrier == "auto" ? Options::Barrier::automatic : Options::Barrier::counter;   // W10
+              : a.barrier == "auto" ? Options::Barrier::automatic : Options::Barrier::counter;
     o.barrier_spins = (a.barrier == "spin" || a.barrier == "flags-spin") ? ~0u : a.spins;
     Config cfg(o);
     add_chip(cfg, D, tiles);
@@ -231,7 +231,7 @@ int form2(const Args& a) {
         if (detail::Internals::impl(s)->threads) FATAL("--due-off: one engine only (a split machine's engines have it off already)");
         detail::Internals::impl(s)->e.due_ok = false;
     }
-    const bool split = detail::Internals::impl(s)->threads != nullptr;   // W10: several domains may be one engine
+    const bool split = detail::Internals::impl(s)->threads != nullptr;   // several domains may be one engine
     const bool due = split ? false : detail::Internals::impl(s)->e.due_ok;
     if (o.threads == 1 && !a.cpus.empty()) pin_to_cpu(a.cpus[0]);
     s.run(a.warmup);
@@ -248,7 +248,7 @@ int form2(const Args& a) {
     return 0;
 }
 
-// Form 3 (W10): the bare interval. T domains on T threads, each one unit that steps every cycle and does nothing but,
+// Form 3: the bare interval. T domains on T threads, each one unit that steps every cycle and does nothing but,
 // with --rate R > 0, put on a Link of latency 3 to the next domain with that probability (a ring): what a barrier
 // interval costs with no work (publish, the barrier, the drain, clear, the engine's per-interval entry and exit).
 // And --barrier-only: T threads doing nothing but Barrier::wait, rounds per second (the barrier alone).
@@ -291,7 +291,7 @@ int form3(const Args& a) {
     o.cpus = a.cpus;
     o.barrier_block = a.barrier == "block";
     o.barrier = a.barrier.rfind("flags", 0) == 0 ? Options::Barrier::flags
-              : a.barrier == "auto" ? Options::Barrier::automatic : Options::Barrier::counter;   // W10
+              : a.barrier == "auto" ? Options::Barrier::automatic : Options::Barrier::counter;
     o.barrier_spins = (a.barrier == "spin" || a.barrier == "flags-spin") ? ~0u : a.spins;
     o.time_threads = a.time_threads;
     Config cfg(o);
@@ -310,7 +310,7 @@ int form3(const Args& a) {
     return 0;
 }
 
-// Form 4 (W10): the quiet case. --units N units on one thread, --active K of them busy (each cycle: a little hashing and
+// Form 4: the quiet case. --units N units on one thread, --active K of them busy (each cycle: a little hashing and
 // a put on a Link of 1 to the next busy unit, a ring), the rest asleep after their first step (each with a Link in
 // and out, wired in a ring of their own that never carries a word). Cost per cycle against N and K: does an idle unit
 // cost anything per cycle?

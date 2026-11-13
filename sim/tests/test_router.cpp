@@ -1,4 +1,4 @@
-// The router (WORKER9, stage 1) against ref's Router.java:
+// The router against ref's Router.java:
 //   - its routing decisions for every (tile, src, dst) and (tile, port, src), hashed per tile, equal to ref's
 //     (tests/routerconf/tables.txt, from `RouterConf table`);
 //   - its behaviour cycle by cycle: oracle/ref/RouterConf.java drives one of ref's routers with a seeded script of
@@ -8,7 +8,7 @@
 //   - stage 2: the injection unit behind the router (ref's InjectionPath with SRAMReadQueue's tokens, as Tile runs them),
 //     fed by a core's send holding register that retries a refused put: the same lines plus STATUS's send-busy, the
 //     injection unit's stream (StateFp's "inj"), the tokens held, token waits, refusals and violations.
-//   - M3 (WORKER16): tiles 0-2 with the fifth port as the C&C links (Link(1) each way), and a controller's router
+//   - M3: tiles 0-2 with the fifth port as the C&C links (Link(1) each way), and a controller's router
 //     (64-66: FEEDERS_CC, ccRoute; the C&C link, the host port's Fifo(4), C&C 3's DMA Fifo(4)).
 // The fixtures are regenerated and checked against ref by oracle/ref/routerconf.sh --check.
 #include <cinttypes>

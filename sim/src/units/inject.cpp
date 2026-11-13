@@ -1,4 +1,4 @@
-// inject.cpp (WORKER9): the injection unit's configuration, InjectionPath's checks and its digest. The step is inline in
+// inject.cpp: the injection unit's configuration, InjectionPath's checks and its digest. The step is inline in
 // inject.h.
 #include "units/inject.h"
 
@@ -44,7 +44,7 @@ void Injection::check(uint64_t t, uint64_t dw, uint64_t h, uint64_t hi) {
         else if (r >= lw::R_PERIPH1 && r <= lw::R_PERIPH3) bad = ((1u >> (r - lw::R_PERIPH1)) & 1) == 0;
         else bad = true;
     }
-    // W20: each counted violation also a fact for the checker (src/check.h; nothing unless the harness installs a sink)
+    // each counted violation also a fact for the checker (src/check.h; nothing unless the harness installs a sink)
     if (bad) { violations++; ck::record(t, int(me), ck::Kind::INJ_BAD_PACKET, 0, dw, h, hi); }
     if (s == lw::SIZE_UNDEF) { violations++; ck::record(t, int(me), ck::Kind::INJ_SIZE_UNDEF, 0, dw, h, hi); }
     if ((d > lw::CC3 && d < lw::BROADCAST) || d == lw::NONE) { violations++; ck::record(t, int(me), ck::Kind::INJ_NO_ENDPOINT, 0, dw, h, hi); }

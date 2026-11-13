@@ -1,7 +1,7 @@
-// t2_harness.h (WORKER16, G7; AUDIT-M3 sections 0 and 7): the framework's T2 harness, ref's TracerT2.chip and
-// W13's M3Seg as the C++ chip runs them. Configuration and between-cycle code only (D6 doesn't apply here).
+// t2_harness.h (AUDIT-M3 sections 0 and 7): the framework's T2 harness, ref's TracerT2.chip and
+// the M3Seg as the C++ chip runs them. Configuration and between-cycle code only (D6 doesn't apply here).
 //
-//   - the inputs W13 dumped on the runner (`$DATA/w13-golden-m3`, M3Inputs.java): the memory at the segment's start
+//   - the inputs dumped on the runner (`$DATA/w13-golden-m3`, M3Inputs.java): the memory at the segment's start
 //     (`*.files.gz` into the Tracer's FileStore) and the harness's big-SRAM landings before the boot (`*.sram.gz`,
 //     C&C 3's tracer_layout.h and every tile's replay_layout.h, poked into the units' big SRAMs);
 //   - the boot (Mach.bootCores, Mach.hostBoot): C&C 1's staged images in its big SRAM (from chunk 0x10000), its boot
@@ -77,7 +77,7 @@ uint64_t rows_hash(const uint64_t* recs, size_t n, uint64_t h = 0);
 struct RowsRef { uint64_t rows = 0, hash = 0; bool present = false; };
 bool rows_ref(const std::string& delivery, unsigned segment, unsigned windows, RowsRef out[64], std::string& err);
 
-// The chip with C&C 1-3 as cores (ChipSpec::cc_cores; C&C 3's DMA), as T2 builds it: M2's tile units with W8's
+// The chip with C&C 1-3 as cores (ChipSpec::cc_cores; C&C 3's DMA), as T2 builds it: M2's tile units with the
 // builder over 67 units, ref's Config defaults, the boot ROM. Owns the memories the machine points into.
 struct Machine {
     units::Hops hops;
@@ -90,7 +90,7 @@ struct Machine {
 // C&C 3's Tracer gets its memory (M3Seg: `tr.mem = new MemorySystem(fs)`): the store, by Tracer::own_memory.
 void attach_store(Machine& m, std::unique_ptr<units::tracer::FileStore> store);
 // `domains` (64 entries, or null: one domain); `threads` for the split.
-// `reqbus` (W14): the request bus's configuration (D34: credit latency 3 the default, 0 exact on one domain).
+// `reqbus`: the request bus's configuration (D34: credit latency 3 the default, 0 exact on one domain).
 std::unique_ptr<Machine> build_machine(const uint8_t* domains, sim::Options opt, std::string& err,
                                        const units::reqbus::ReqBusConfig* reqbus = nullptr);
 

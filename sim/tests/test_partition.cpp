@@ -1,4 +1,4 @@
-// Placement by load (WORKER10; Options::Placement::by_load, partition.cpp) and calibration (Options::calibrate,
+// Placement by load (Options::Placement::by_load, partition.cpp) and calibration (Options::calibrate,
 // Sim::load_profile, LoadProfile's text). A placement can't change results: every machine's digest equals the one-thread
 // run's; what it may not split (Wires, a declared domain) stays together; the balance is reported and tight where the
 // granules allow it.
@@ -202,7 +202,7 @@ DEATH_TEST(a_malformed_profile_is_fatal_naming_its_line, "load profile line 3: '
     LoadProfile::from_text("loadprofile v1\ncycles 10\nr0 x\n");
 }
 
-// W10: the barrier on per-thread epochs (Options::Barrier::flags) gives the same machine: the synthetic chip over 2-4
+// the barrier on per-thread epochs (Options::Barrier::flags) gives the same machine: the synthetic chip over 2-4
 // threads, spinning and yielding, in several runs, against one thread.
 TEST(the_flags_barrier_gives_the_one_thread_digest) {
     synth::Params P;

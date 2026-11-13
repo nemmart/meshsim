@@ -1,4 +1,4 @@
-// mach.h (WORKER20, P2, rows C1 and B18): the machine harness the Java-driven suites of v1.3 port onto. v1.3's suites
+// mach.h (rows C1 and B18): the machine harness the Java-driven suites of v1.3 port onto. v1.3's suites
 // drive `ref`'s Chip through three harness classes, and this header gives each its C++ counterpart:
 //
 //   Java (sim/ref/meshsim)                 here
@@ -17,7 +17,7 @@
 // STATUS. The header is published before its body (owner, 2026-11-10) so P4-P6's workers can plan against it. What a
 // suite may rely on now: the names, the Java each one stands for, and the semantics stated here. Members marked
 // [step 2] (the checker, reset), [step 3] (Config's remaining fields) and [step 4] (PhaseLog, the TRACE log) are
-// declared now and come with those steps of WORKER20's plan (sessions/WORKER20/NOTES.md). Ask W20 for anything a suite
+// declared now and come with those steps of the plan. Anything a suite
 // needs that isn't here: the harness grows with the suites (V135-INVENTORY's wave 2).
 //
 // THE TWO MACHINES (ref's Config, B18).
@@ -45,14 +45,14 @@
 // "hist" HistStore (hist), "ag" AddrGen (ag), "we" WriteEngine (writer), "gather" Gather (gather), "inj" Injection (inj
 // and srq: one unit here), "router" Router (router), "dir" Director (dir), "ctl" TileCtl (ctl), "core" TileCore (core),
 // "slot" PeriphSlot (slot); the chip's "cnc" Cnc (cc), "ep2", "ep3" Endpoint (ccs), "cc<c>.host" HostPort. Statistics a suite reads that a C++ unit doesn't keep yet are added to the unit (counters only:
-// no cost in the loop beyond the increment) by whoever ports the suite, or asked of W20.
+// no cost in the loop beyond the increment) by whoever ports the suite.
 //
 // IMAGES. Mach::Image is ref's Mach.Image (DIR/NAME.code.bin, .data.bin, .sym). The directories searched, in order: the
 // MachConfig's `image_dirs`, else $SIM_IMAGES (':'-separated), else
-// fw/images (W19), then tests/golden-m2/images, tests/golden/images and tests/m3-images.
+// fw/images, then tests/golden-m2/images, tests/golden/images and tests/m3-images.
 //
 // SHUFFLING (B24, C25). ref's `shuffleSeed` >= 0 shuffles every child order every cycle; here it sets the framework's
-// debug shuffle (sim.h DEBUG CHECKS) with that seed. The seeds don't map to ref's orders (W3's generator), but a suite's
+// debug shuffle (sim.h DEBUG CHECKS) with that seed. The seeds don't map to ref's orders (the generator), but a suite's
 // output is order-independent by design, so its log must equal ref's shuffled step's too.
 //
 // THE CHECKER [step 2]. ref's per-cycle invariant checks (Chip.checkInvariants, scanOverflows; spec 9) are on in the
@@ -101,7 +101,7 @@ struct MachConfig {
     unsigned area_queue_depth = 8, sram_read_latency = 2, read_tokens = 64;
     bool write_combining = false, fifo_count_before_pop = true;
     bool test_read_clients = false;    // the read queue's AG client a harness-fed FIFO (Net::rd), no AG
-    bool reqbus_host = false;          // the request bus driven from the test (Chip::reqbus(), W22-10): its receive queues and
+    bool reqbus_host = false;          // the request bus driven from the test (Chip::reqbus()): its receive queues and
                                        //   controller inputs on the machine with C&C's model (ref's RequestBus there)
     // ---- C&C, the lines (6) ----
     unsigned go_latency = 8, run_latency = 1, ready_latency = 8, cnc_reaction = 1, stage_delay = 64;
@@ -116,15 +116,15 @@ struct MachConfig {
     unsigned request_fifo_depth = 128, req_hop_latency = 3;
     std::array<unsigned, 3> receive_queue_depth = {128, 256, 128};
     int periph_type = 4;               // every mesh tile's peripheral 1: 4 the replayer, 0 none
-    int test_periph_tile = -1;         // ref's testPeripheral (StageB, W25): the replayer on this mesh tile only, the
+    int test_periph_tile = -1;         // ref's testPeripheral (StageB): the replayer on this mesh tile only, the
                                        //   others none (with periph_type 0)
-    int test_peripheral_tile = -1;     // ref's testPeripheral giving a TestPeripheral (W26): that mesh tile's peripheral 1
+    int test_peripheral_tile = -1;     // ref's testPeripheral giving a TestPeripheral: that mesh tile's peripheral 1
                                        //   is the test peripheral, the other tiles' as periph_type says
     std::vector<int> parked;           // ref's Chip.parked (StageB's -Dstageb.lone): tiles nothing must reach. Here they are
                                        //   simulated all the same (asleep, they cost little); Chip::parked_untouched is ref's check
     // ---- the simulator and its checks (spec 9) [step 2] ----
     int64_t shuffle_seed = -1;         // >= 0: the debug shuffle with this seed
-    bool step_all = false;             // the framework's debug options (sim.h DEBUG CHECKS; W22's ask 8): every unit
+    bool step_all = false;             // the framework's debug options (sim.h DEBUG CHECKS; the ask 8): every unit
     bool instance_major = false;       //   stepped every cycle; the instance-major order (else type-major)
     unsigned max_violation_messages = 50;
     bool strict_replies = false, check_read_port_overlap = true, check_command_read = true, check_disjoint = true;
@@ -202,7 +202,7 @@ public:
     uint64_t delivered() const;                                      // ref's delivered.size()
     bool idle() const;                                               // ref's idle(): no beat in a node's input or on its
                                                                      //   way to one, no request on its way to a queue
-    // ref's delivered list (W22-19): every request delivered to a receive queue, {deliveredAt, srcTile, w0, w1, w2, w3},
+    // ref's delivered list: every request delivered to a receive queue, {deliveredAt, srcTile, w0, w1, w2, w3},
     // in delivery order (all targets)
     std::vector<std::array<int64_t, 6>> delivered_log() const;
     void on_reset();                                                 // Chip::reset: the test's pops on their way go with
@@ -254,7 +254,7 @@ public:
     std::vector<std::array<int64_t, 2>> trace_log() const;
     void record_gather();
     std::vector<std::array<uint64_t, 4>> gather_log() const;
-    // ref's `ctl.conditions |= bits` from a test (W23's request 9): ERRORS from the next cycle on (its view, its error
+    // ref's `ctl.conditions |= bits` from a test (the request 9): ERRORS from the next cycle on (its view, its error
     // line and the checker at that cycle's end), as ref's set between cycles
     void set_errors(uint32_t bits);
     uint32_t remaining(unsigned ctr) const;                 // the director's write counters (dir.remaining[ctr])
@@ -262,7 +262,7 @@ public:
     bool mem_idle() const;                                  // mem_idle (4.1)
     bool ts_busy() const;                                   // ts_busy (4.15)
     bool quiescent() const;                                 // Tile.quiescent
-    // ref's EngineTest.phaseDone (W22-15; AgTest's and EngineTest's runLocal stop on it): the AG's run over, every counter
+    // ref's EngineTest.phaseDone (AgTest's and EngineTest's runLocal stop on it): the AG's run over, every counter
     // 0, nothing on the delay line (dir.inFlight), mem_idle, port B idle (dir.cmIdle), the table stores quiet; as ref
     // has them at the end of the cycle just run (the delay line's and port B's words not yet landed by then)
     bool phase_done() const;
@@ -277,22 +277,22 @@ public:
     // step at t (t >= cycle() + 1), through the instruction's path. `mask` as ref's (-1 a whole word).
     std::string store(int64_t t, uint32_t ea, uint32_t v, uint32_t mask = 0xFFFFFFFFu);
 
-    // ---- the request port from a test (W22-11; ref's req.setW, req.send, req.canPush, req.setW[]) ----
+    // ---- the request port from a test (ref's req.setW, req.send, req.canPush, req.setW[]) ----
     void req_set_w(unsigned i, uint32_t v);                 // ref's req.setW(i, v): REQUEST_SET_W<i> without a store
     void req_send(int64_t t, uint32_t w3);                  // ref's req.send(t, w3), t the cycle just run: pushed as of t
     bool req_can_push(int64_t t) const;                     // ref's req.canPush(t), t = cycle() + 1
     bool req_idle() const;                                  // ref's req.idle(): the request port's FIFO empty (a push of
                                                             //   the cycle just run included), as of the cycle just run
     uint32_t req_w(unsigned i) const;                       // ref's req.setW[i]
-    // ---- the read port's host queue (W22-18; ref's ReadPort.hostQueue, idle, allAccepted) ----
+    // ---- the read port's host queue (ref's ReadPort.hostQueue, idle, allAccepted) ----
     void rp_host_queue(uint32_t addr, uint32_t dest);       // a 32-bit read on counter 2 to dest, one a cycle from the next
     bool rp_idle() const;                                   // every entry free and nothing queued from the host
     bool rp_all_accepted() const;                           // every result issued accepted by the director, none queued
-    // ---- the write engine's request lines from a test (W22-16; ref's weTsReq.put, weHistReq.put: AgTest's figure 12) ----
+    // ---- the write engine's request lines from a test (ref's weTsReq.put, weHistReq.put: AgTest's figure 12) ----
     // put(t, op, idx, add) at t = cycle() + 1: on the line to PTR (idx: mem::IDX_PTR + i) or to HIST, arriving L later
     void we_ts_req(int64_t t, uint32_t op, uint32_t idx, uint32_t add);
     void we_hist_req(int64_t t, uint32_t op, uint32_t idx, uint32_t add);
-    // ---- the register block from a test (W23's (d)) ----
+    // ---- the register block from a test (the (d)) ----
     void set_events(uint32_t bits);                         // ref's ctl.events |= bits (sticky; from the next cycle on)
     void schedule_go(int64_t t);                            // ref's ctl.scheduleGo(t): GO seen at t (this tile only)
 
@@ -327,7 +327,7 @@ public:
     Cc& wait_cycles(uint32_t n);                            // CnC.waitCycles
     Cc& call(std::function<void(int64_t)> fn);              // CnC.call: fn(the cycle it ran), run between cycles right
                                                             //  after that cycle (ref's lambdas record cycles and state)
-    // CnC.waitUntil(cond) in W23's form (approved): C&C waits at this step; the harness checks cond between cycles once
+    // CnC.waitUntil(cond) in the form (approved): C&C waits at this step; the harness checks cond between cycles once
     // C&C has reached it, and C&C moves on in the next cycle. Runs go cycle by cycle while one is pending.
     Cc& wait_until(std::function<bool()> cond);
     // ref's CnC.reset(hard) (B20): a step taking its cycle whose end resets the chip (Chip::reset), two waiting cycles,
@@ -400,7 +400,7 @@ public:
     uint64_t violations() const;                            // ref's Chip.violations
     const std::vector<std::string>& violation_messages() const;   // the first max_violation_messages, ref's text
     void clear_violation_messages();
-    // ref's Config switches changed mid-run (W23's request 10, CtrlTest): from the next cycle on, as ref reads them each
+    // ref's Config switches changed mid-run (the request 10, CtrlTest): from the next cycle on, as ref reads them each
     // cycle (the report through the cycle just run is made first); and ref's `violations = 0` with the messages cleared
     void set_check_errors(bool on);
     void set_strict_replies(bool on);
@@ -409,7 +409,7 @@ public:
     std::string violation_report();                         // ref's violationReport() (scans the overflows first)
     void scan_overflows();
     // ref's Chip.newPhase (the agreed form): between cycles, a new disjoint-buffer phase on every tile (BigSram::new_phase,
-    // W26's), each woken. (Every GO starts one too, inside the tile: W26's.)
+    // the), each woken. (Every GO starts one too, inside the tile: the.)
     void new_phase();                                  // ref's scanOverflows
     void finalize_checks() const;                           // the checker's report through the cycle just run
     // ---- the fingerprint (B25; D41 Q5: in place of ref's -Dmeshsim.digest=FILE) ----
@@ -466,7 +466,7 @@ public:
     // ---- the boot through C&C's model (6.2): the image broadcast, CMD_JUMP, READY, GO ----
     Image boot(const std::string& name);
     Image boot(const Image& im);
-    // ---- the boot with C&C 1-3 as cores (cores_cfg; W14's bootCores and hostBoot) ----
+    // ---- the boot with C&C 1-3 as cores (cores_cfg; the bootCores and hostBoot) ----
     static constexpr uint32_t CC_PHASE = 0x50, CC_GO = 0x47, CC_EXPECT = 0x45, CC_EXIT = 0x58, CC_WATCHDOG = 0x57,
                               CC_UART = 0x55, CC_SEGMENT = 0x54;
     static constexpr uint32_t STAGE_CHUNK = 0x10000;

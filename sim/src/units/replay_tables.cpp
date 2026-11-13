@@ -1,4 +1,4 @@
-// replay_tables.cpp: ReplayTables (replay_tables.h), ported from `ref`'s test/ReplayTables.java (WORKER14).
+// replay_tables.cpp: ReplayTables (replay_tables.h), ported from `ref`'s test/ReplayTables.java.
 #include "units/replay_tables.h"
 
 #include <cstdio>

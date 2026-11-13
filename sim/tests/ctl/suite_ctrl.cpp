@@ -1,4 +1,4 @@
-// suite_ctrl.cpp (WORKER23, P5, inventory C8): v1.3's CtrlTest (sim/ref/meshsim/test/CtrlTest.java) on W20's harness,
+// suite_ctrl.cpp: v1.3's CtrlTest (sim/ref/meshsim/test/CtrlTest.java) on the harness,
 // group for group, in Java's order and words. run_tests.sh's steps `ctrl` (-1), `ctrl-shuf` (4) and `ctrl-full`
 // (-1 full); its output equals ref's log (tests/ctlsuites/ctrl*.log). Usage: suite_ctrl [shuffleSeed] [full]
 //

@@ -1,4 +1,4 @@
-// phase_log.h (WORKER20, P2, row H3): ref's PhaseLog (sim/ref/meshsim/src/PhaseLog.java), per-phase accounting for a
+// phase_log.h: ref's PhaseLog (sim/ref/meshsim/src/PhaseLog.java), per-phase accounting for a
 // whole run: each C&C GO store opens a phase named from the command word C&C last queued for slot 0 (`namer`); it ends
 // when C&C sees all READY for the next GO, or at close(). Its counters, peaks and report() and csv() are ref's, field
 // for field (the CSV byte for byte).
@@ -7,7 +7,7 @@
 // accounts). With one attached, runs go cycle by cycle: ref takes its counters and restarts its peaks inside C&C's
 // cycle of the GO, after the tiles; the harness takes them after that cycle. The write-engine input's and the GATHER
 // queue's peaks exist in the debug and suite builds only (Sim::fifo_peak): make the CSV in the suite build.
-// `unreadOverwrites` (invariant 8 as a statistic) is 0 until W26's tracking lands.
+// `unreadOverwrites` (invariant 8 as a statistic) is 0 until the tracking lands.
 #pragma once
 
 #include <array>
@@ -60,7 +60,7 @@ private:
     int64_t base_instr_[64] = {}, base_busy_[64] = {};
     int64_t last_all_ready_seen_ = -1;
     // ref's ReadPort.peak: the entries in use right after a store, the same cycle's injection already counted out (ref's
-    // injection runs before the core in a cycle; W24's F6). Kept here, cycle by cycle, from the core's stores and the
+    // injection runs before the core in a cycle; the F6). Kept here, cycle by cycle, from the core's stores and the
     // read side's injections as they stand after each cycle.
     uint64_t rp_seen_[64] = {};
     int64_t rp_peak_[64] = {};

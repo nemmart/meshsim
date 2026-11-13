@@ -1,4 +1,4 @@
-// file_store.cpp: FileStore (file_store.h), ported from `ref`'s FileStore.java (WORKER14).
+// file_store.cpp: FileStore (file_store.h), ported from `ref`'s FileStore.java.
 #include "units/file_store.h"
 
 #include <cstring>

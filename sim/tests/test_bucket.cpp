@@ -17,7 +17,7 @@ TEST(bucket_words_needed_rounds_to_lines) {
 }
 
 TEST(bucket_append_read_clear) {
-    for (unsigned width : {2u, 3u}) {  // the two link-word forms W6 measures
+    for (unsigned width : {2u, 3u}) {  // the two link-word forms a benchmark measured
         Block b(Bucket::words_needed(width, 5), "t");
         Bucket k;
         k.init(b.words(), width, 5, "t+3");

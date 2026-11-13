@@ -1,4 +1,4 @@
-// topology.cpp (WORKER4): see topology.h.
+// topology.cpp: see topology.h.
 #include "topology.h"
 
 #include <sched.h>

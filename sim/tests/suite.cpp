@@ -1,4 +1,4 @@
-// suite.cpp (WORKER20): Java's T in C++ (suite.h).
+// suite.cpp: Java's T in C++ (suite.h).
 #include "suite.h"
 
 #include <sys/wait.h>

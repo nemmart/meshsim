@@ -1,8 +1,8 @@
-// parallel.h: independent chips on independent threads (WORKER4; SIMULATOR-NEXT 4, the first form of threads).
+// parallel.h: independent chips on independent threads (SIMULATOR-NEXT 4, the first form of threads).
 //
 // A proof's segments are independent ASICs, so most runs are many chips at once with nothing shared: each chip is its
 // own `Sim`, built and run by one thread, with no synchronisation until they are joined. Nothing in the framework is
-// shared between Sims (the allocation hook is per thread; the type registry is per Config, W3's E1).
+// shared between Sims (the allocation hook is per thread; the type registry is per Config).
 //
 // Configuration regime (D6): these functions start and join threads; the cycle loop inside each `Sim::run` is the
 // ordinary single-threaded one.

@@ -1,4 +1,4 @@
-// parallel.cpp: independent chips on independent threads (WORKER4). The configuration regime: std::thread, any C++.
+// parallel.cpp: independent chips on independent threads. The configuration regime: std::thread, any C++.
 #include "parallel.h"
 
 #include <pthread.h>

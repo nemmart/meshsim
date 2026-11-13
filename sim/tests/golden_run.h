@@ -5,7 +5,7 @@
 // Two drivers produce the trace:
 //   direct  a small loop over the plain logic (rv32.h, regblock.h) in ref's order, no framework: a test tool, kept as a
 //           regression check (it tells a unit bug from an engine bug), not a second simulator;
-//   engine  the three units of units/controller.h on the framework (once W3's engine lands).
+//   engine  the three units of units/controller.h on the framework (once the engine lands).
 // Paths are relative to sim/ (make runs there).
 #pragma once
 
@@ -89,7 +89,7 @@ struct EngineRun {
 EngineRun run_engine(Tile& t, const Golden& g, const std::vector<std::string>& header, const sim::Options& opt);
 // Its two halves: build the tile's machine; run a built machine to the golden's last cycle and collect the trace.
 sim::Sim build_engine(Tile& t, const Golden& g, const sim::Options& opt);
-// `alloc_guard`: run under W1's allocation hook (always, except to show the missed-wake detector's message: its report
+// `alloc_guard`: run under the allocation hook (always, except to show the missed-wake detector's message: its report
 // allocates in the loop, NOTES "For the owner: the missed-wake report allocates").
 EngineRun run_built(sim::Sim& s, Tile& t, const Golden& g, const std::vector<std::string>& header, bool alloc_guard = true);
 
@@ -99,7 +99,7 @@ std::vector<sim::Options> debug_check_options();
 // The runs in a mixed order (k * 7 mod the count: a prime count of 67 visits every run), so each round of a threads test
 // mixes riscv-tests and the M1 programs.
 std::vector<RunSpec> mixed_order(const std::vector<RunSpec>& runs);
-// M1's threads test: the runs in rounds of n, each round n controllers on n threads (W4's run_independent, thread k pinned
+// M1's threads test: the runs in rounds of n, each round n controllers on n threads (the run_independent, thread k pinned
 // to cpus[k % size] when cpus is given), each running a different golden, under each option set of `opts` (default: the
 // six of debug_check_options()); every trace must equal its golden and every digest the same golden's run alone,
 // ready-driven. Empty if all is well, else the differences.

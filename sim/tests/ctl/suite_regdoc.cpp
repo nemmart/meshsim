@@ -1,8 +1,8 @@
-// suite_regdoc.cpp (WORKER23, P5, inventory C14): v1.3's RegDocTest (sim/ref/meshsim/test/RegDocTest.java), check for
+// suite_regdoc.cpp: v1.3's RegDocTest (sim/ref/meshsim/test/RegDocTest.java), check for
 // check. run_tests.sh's step `regdoc`; its output equals ref's log (tests/ctlsuites/regdoc.log). Run from sim/.
 //
 // REGISTERS.md and mesh.h against their generators, the draft header and the simulator (v1.2):
-//  1. fw/REGISTERS.md is the generator's output (W19's tools/regs, in place of RegDoc.java);
+//  1. fw/REGISTERS.md is the generator's output (the tools/regs, in place of RegDoc.java);
 //  2. fw/include/mesh.h is the generator's output (MeshHeader.java's), and the programmer's copy is the same file (v1.35
 //     keeps one copy: the check is on it);
 //  3. tools/regs/header_diff.sh (v1.3's header_diff.py, D40): every macro and struct offset the generated header shares

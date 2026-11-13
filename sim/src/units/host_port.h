@@ -1,5 +1,5 @@
-// host_port.h (WORKER16, G7): the outside world's writes into a controller (C&C as cores, M3; ref's CcCores host port,
-// W14-02; AUDIT-M3 3.4): the host's queue (`CcCores.hostQ[c]`) as a harness stand-in, feeding the controller router's
+// host_port.h: the outside world's writes into a controller (C&C as cores, M3; ref's CcCores host port,
+// AUDIT-M3 3.4): the host's queue (`CcCores.hostQ[c]`) as a harness stand-in, feeding the controller router's
 // CC_HOST_IN Fifo(4) one packet a cycle, in order, as uncounted mode-0 writes from src 64 (ref's hostWrite, hostLoad,
 // hostCommand). D23: stepped only while its queue holds packets; the harness queues packets between cycles and wakes it
 // (Sim::wake), as ref's harness adds to hostQ between cycles.

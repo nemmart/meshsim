@@ -1,4 +1,4 @@
-// test_tracer.cpp (WORKER14): the C++ Tracer against `ref`'s, cycle by cycle.
+// test_tracer.cpp: the C++ Tracer against `ref`'s, cycle by cycle.
 //
 // tests/tracerconf/*.log.gz come from oracle/ref/TracerConf.java (oracle/ref/tracerconf.sh --fixtures): `ref`'s Tracer
 // driven through its Peripheral interface, every call and its result recorded, and its state observed after every cycle.
@@ -507,7 +507,7 @@ TEST(long_runs_from_tracerconf_long) {
     CHECK(n > 0);
 }
 
-// The slot's timing (W15's peripheral.h): accept(t) is called at level 0 of t + 3, possibly after the Tracer was settled
+// The slot's timing (the peripheral.h): accept(t) is called at level 0 of t + 3, possibly after the Tracer was settled
 // through t + 2; the packet still lands at the end of t + 2. Settled through t + 3, it is a simulator bug.
 TEST(late_accept_lands_at_t_plus_2) {
     Tracer early(66), late(66);
@@ -532,7 +532,7 @@ DEATH_TEST(accept_after_its_landing_was_settled_is_fatal, "was settled") {
     tr.accept(10, 74, 0x50, 2, 1, 2);
 }
 
-// writable(w) (W15's static map) agrees with write_word on every own word 32-127: 1 exactly where writable.
+// writable(w) (the static map) agrees with write_word on every own word 32-127: 1 exactly where writable.
 TEST(writable_agrees_with_write_word) {
     Tracer tr(66);
     unsigned n = 0;

@@ -1,5 +1,5 @@
-// suite_accounting.cpp (WORKER23, P5, inventory C10): v1.3's AccountingTest (sim/ref/meshsim/test/AccountingTest.java)
-// on W20's harness and PhaseLog (tests/phase_log.h), check for check. run_tests.sh's steps `accounting` (-1) and
+// suite_accounting.cpp: v1.3's AccountingTest (sim/ref/meshsim/test/AccountingTest.java)
+// on the harness and PhaseLog (tests/phase_log.h), check for check. run_tests.sh's steps `accounting` (-1) and
 // `accounting-full` (-1 full); its output equals ref's log (tests/ctlsuites/accounting*.log) and the CSV it writes,
 // results/phases-a2a[-full].csv, ref's (tests/ctlsuites/phases-a2a[-full].csv), byte for byte. The write-engine input's
 // and the GATHER queue's peaks exist in the debug and suite builds only (phase_log.h): run it there. Run from sim/.

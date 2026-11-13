@@ -1,4 +1,4 @@
-// regs_gen.h (WORKER19, P1): the generators of fw/include/mesh.h and fw/REGISTERS.md, from regtable.h: a port of v1.3's
+// regs_gen.h: the generators of fw/include/mesh.h and fw/REGISTERS.md, from regtable.h: a port of v1.3's
 // src/MeshHeader.java and src/RegDoc.java, producing their output byte for byte (tests/test_regs.cpp checks it against
 // the committed files; tools/regs/gen_regs writes them). Configuration-time code (D6): std::string is fine here.
 #pragma once
@@ -464,7 +464,7 @@ inline std::string field_row(const char* word, const Field& f) {
 }  // namespace rd
 
 namespace rd {
-// RegDoc.ROWS: the register table's rows (moved to namespace scope by W23 for RegDocTest; the output is unchanged)
+// RegDoc.ROWS: the register table's rows (moved to namespace scope for RegDocTest; the output is unchanged)
 inline constexpr Row ROWS[] = {
         {"PARAMS", "the unit's constant", "the constant", "peripherals present [2:0], endpoint id [26:20], big-SRAM size [31:27]"},
         {"STATUS", "0 (the idle machine)", "the live bits", "diagnostic: rd_running, rd_done, GATHER busy, send_busy, done, command landed, request_busy"},

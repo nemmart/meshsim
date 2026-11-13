@@ -1,4 +1,4 @@
-// The full matrix (WORKER4, form 2): each port kind crossing on its own, 16 units of that kind wired at random, split
+// The full matrix (form 2): each port kind crossing on its own, 16 units of that kind wired at random, split
 // 2, 4 and 8 ways over two seeded partitions each, on 1, 2, 4 and 8 threads: the digest at every checkpoint equal to the
 // same machine in one domain. Every unit is busy (stepped every cycle) and its state a hash of everything it saw.
 #include <string>
@@ -139,7 +139,7 @@ constexpr unsigned kUnits = 16;
 Sim machine(K kind, const std::vector<unsigned>& dom, unsigned threads, unsigned engines = 0) {
     Options o;
     o.threads = threads;
-    o.engines = engines;   // W10: 0, one engine per thread; else several engines per thread (W4's layout)
+    o.engines = engines;   // 0, one engine per thread; else several engines per thread (the layout)
     Config cfg(o);
     test::Rng r(77);
     std::vector<unsigned> perm(kUnits);
@@ -199,7 +199,7 @@ void matrix(K kind) {
             std::vector<unsigned> dom(kUnits);
             for (unsigned i = 0; i < kUnits; i++) dom[i] = i < D ? i : unsigned(r.below(D));   // every domain used
             for (unsigned threads : {1u, 2u, 4u, 8u})
-                for (unsigned engines : {0u, D}) {      // W10: one engine per thread (domains grouped), and one per domain
+                for (unsigned engines : {0u, D}) {      // one engine per thread (domains grouped), and one per domain
                     if (threads > D || (engines && threads == D)) continue;
                     const auto got = digests(kind, dom, threads, engines);
                     for (size_t k = 0; k < want.size(); k++)

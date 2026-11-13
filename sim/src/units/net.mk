@@ -1,4 +1,4 @@
-# net.mk: WORKER9's rules (the network's units and the chip's assembly in src/units/), included by sim/Makefile.
+# net.mk: the rules (the network's units and the chip's assembly in src/units/), included by sim/Makefile.
 #
 #   oracle/ref/routerconf.sh --check   the router's conformance fixtures regenerated from ref and compared (needs a JDK)
 #   oracle/ref/cncconf.sh --check      C&C's likewise
@@ -9,7 +9,7 @@ $(B)/test_router $(B)/test_net_headers: $(NET_LINK)
 $(B)/test_cnc: $(NET_LINK) $(B)/tests/statefp.o $(B)/tests/statefp_g2.o
 $(B)/test_chip: $(NET_LINK) $(B)/tests/statefp.o $(B)/tests/statefp_g1.o $(B)/tests/statefp_g2.o $(UNITS_LINK) $(GOLDEN_OBJ)
 
-# The chip on several threads under ThreadSanitizer (W4's build/<cc>-tsan/, its rules in threads.mk): make tsan-chip;
+# The chip on several threads under ThreadSanitizer (the build/<cc>-tsan/, its rules in threads.mk): make tsan-chip;
 # in make check. Only form 2's test (the others are one thread).
 NTB := build/$(CC_NAME)-tsan
 NTB_LINK := $(addprefix $(NTB)/src/units/,net.o router.o inject.o cnc.o chip.o trace_log.o controller.o tile_ctl.o \

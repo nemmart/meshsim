@@ -1,4 +1,4 @@
-// internals.h: the framework's internal access (WORKER4). config.h names `detail::Internals` a friend of Config and Sim,
+// internals.h: the framework's internal access. config.h names `detail::Internals` a friend of Config and Sim,
 // for the digest unit by unit (digest.h, E5) and the split of a configuration into domains (threads.h, E3).
 #pragma once
 
@@ -11,7 +11,7 @@
 namespace sim::detail {
 
 struct Internals {
-    using CImpl = Config::Impl;    // for W4's code outside this struct (both are private to their classes)
+    using CImpl = Config::Impl;    // for the code outside this struct (both are private to their classes)
     using SImpl = Sim::Impl;
     // digest.cpp: the view of a single-domain build (recorded at the end of build(), engine 0), and the digest over one
     // engine or several (sims[eng]); `now` is the machine's cycle.
@@ -22,7 +22,7 @@ struct Internals {
     // access
     static Config::Impl& impl(Config& c) { return *c.impl_; }
     static Sim::Impl* impl(const Sim& s) { return s.impl_; }
-    // W10 (regions.cpp): the machine's memory, structure by structure, with the domain (thread) that owns each: every
+    // (regions.cpp): the machine's memory, structure by structure, with the domain (thread) that owns each: every
     // engine block's carved structures, every unit type's arena, the outboxes' storage (owned by their source), the
     // observer's and calibration's arrays. For footprint measurements (bench_chip --trace); unit-owned heap memory
     // (a unit's own allocations) is the unit's to report.

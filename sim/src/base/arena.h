@@ -1,7 +1,7 @@
 // Permanent state, allocated once at configuration time (sim/README.md, "Memory"). Not for the cycle loop.
 //
 // alloc_big(bytes, name): one zeroed, 64-byte aligned allocation of its own; 2 MB aligned with madvise(MADV_HUGEPAGE) from
-//   2 MB up (huge pages measured ~10% in WORKER29). For big arrays (memories, tables), so they never sit between a type's
+//   2 MB up (huge pages measured ~10%). For big arrays (memories, tables), so they never sit between a type's
 //   objects, and for the blocks the sizing pass carves structures from. free_big() returns it. Failure is fatal.
 // Block: a Block of n words from alloc_big, freed when it goes (the convenient owner of a structure's storage).
 // TypeArena<T>: all objects of one type, contiguous, capacity fixed at construction; make(args...) constructs the next one

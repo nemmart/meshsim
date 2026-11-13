@@ -1,4 +1,4 @@
-// test_tile_slot: the tile's paths to the peripheral slot (WORKER15; AUDIT-M3 3.1), G1Config::periph_slot on, the test
+// test_tile_slot: the tile's paths to the peripheral slot (AUDIT-M3 3.1), G1Config::periph_slot on, the test
 // peripheral as peripheral 1. A program in the boot ROM does what PeripheralSlotTest's core does through the window: a
 // PARAMS load, a store and load of a read/write word, PULSE_RUN, STATUS right after it, EVENTS_MASK (the slot's and the
 // block's EVENTS [13]) and a WFI the run's end wakes, the peek and consuming EVENTS loads, a reserved word, a DMA
@@ -25,7 +25,7 @@ uint32_t CSRR(unsigned rd, unsigned csr) { return csr << 20 | 2u << 12 | rd << 7
 constexpr uint32_t WFI = 0x10500073, JSELF = 0x0000006f;
 constexpr unsigned MCYCLE = 0xB00;
 
-struct Stand {   // W9's side: the eject at chosen cycles; the rest idle
+struct Stand {   // the side: the eject at chosen cycles; the rest idle
     sim::LinkOut eject, go;
     sim::HoldIn send;
     sim::RegOut send_busy;
@@ -97,7 +97,7 @@ TEST(tile_slot_window_paths_from_the_core) {
         cfg.connect(s.ovf, io.router_ovf);
         cfg.link(s.ovf_ev, io.router_ovf_ev, 1);
         wire_mem_stand(cfg, io);
-    units::reqbus::tie_off(cfg, "t0.reqtie", io.req);      // W14: no request bus in a lone tile
+    units::reqbus::tie_off(cfg, "t0.reqtie", io.req);      // no request bus in a lone tile
         sim::Sim m = cfg.build();
         m.run(400);
         const TileCore& core = m.unit<TileCore>("t0.core");

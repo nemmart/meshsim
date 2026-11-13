@@ -1,4 +1,4 @@
-// config_impl.h: the configuration's and the machine's internals (WORKER3), apart from config.cpp so W4 can split a
+// config_impl.h: the configuration's and the machine's internals, apart from config.cpp so the threads' code can split a
 // configuration into domains. Not for unit authors; nothing here runs in the cycle loop.
 #pragma once
 
@@ -33,14 +33,14 @@ struct Config::Impl {
         uint8_t bit = 0xFF;
         std::string name;               // "unit.port"
         unsigned width = 0, depth = 0, latency = 0, regs = 0;
-        bool ovf_step = false;          // W10: a Fifo input whose overflows step its owner (Ports::overflow_steps)
+        bool ovf_step = false;          // a Fifo input whose overflows step its owner (Ports::overflow_steps)
         unsigned slot_words = 0, held = 0;  // by reference: the size class (0: by value), and slots held beyond the port
         Word reset = 0;
         size_t offset = 0;
         std::vector<uint32_t> peers;
         uint32_t final = kNone;         // the pool index (inputs) or the route (outputs)
     };
-    // A Link's capacity, in flight and visible together (PORTS.md 2): L + its declared depth (W10), L + 2 by default.
+    // A Link's capacity, in flight and visible together (PORTS.md 2): L + its declared depth, L + 2 by default.
     static unsigned link_capacity(const Decl& d) {
         const unsigned c = d.latency + (d.depth ? d.depth : 2);
         if (c > 0xFFFF) FATAL("link '%s': latency %u + depth %u over 65535", d.name.c_str(), d.latency, d.depth);
@@ -76,8 +76,8 @@ struct Config::Impl {
     unsigned chip = 0, domain = 0;
     int cur = -1;
     std::map<std::string, unsigned> missed;   // per-unit missed-wake thresholds (D20)
-    std::map<std::string, double> weights;    // W10: declared loads (Config::weight), for Placement::by_load
-    std::string placement;                    // W10: by_load's report (Sim::partition), when it placed the units
+    std::map<std::string, double> weights;    // declared loads (Config::weight), for Placement::by_load
+    std::string placement;                    // by_load's report (Sim::partition), when it placed the units
     Ports* ports = nullptr;
     bool built = false;
 
@@ -125,7 +125,7 @@ struct Config::Impl {
 };
 
 namespace detail {
-struct Threads;                                     // threads.h (W4): a machine split over several domains
+struct Threads;                                     // threads.h: a machine split over several domains
 void destroy_threads(Threads* t);
 }  // namespace detail
 
@@ -134,7 +134,7 @@ struct Sim::Impl {
     Engine e;
     std::vector<const detail::TypeInfo*> types;        // the configuration's, by id
     std::unique_ptr<Block> block;
-    struct Carved { std::string what; size_t off, words; int type; };   // W10: the block's structures, for footprints
+    struct Carved { std::string what; size_t off, words; int type; };   // the block's structures, for footprints
     std::vector<Carved> carved;
     struct Store { uint16_t type; unsigned char* base; uint32_t count; };
     std::vector<Store> stores;
@@ -144,19 +144,19 @@ struct Sim::Impl {
     std::vector<std::string> route_name_s;
     std::vector<const char*> unit_names, route_names, link_name_ptrs;
     std::deque<std::string> port_names;                // one per declaration, by declaration id: stable addresses (rings keep them)
-    std::deque<std::string> misc_names;                // pools, wheels, run sets (W1's structures keep pointers)
+    std::deque<std::string> misc_names;                // pools, wheels, run sets (the structures keep pointers)
     std::vector<std::vector<std::pair<uint8_t, std::string>>> level_ports;   // per instance: (bit, port name) of its level inputs
     std::vector<unsigned> missed_after;               // per instance: the missed-wake detector's threshold (increment 5)
     Sizes sizes;
-    detail::DigestView view;                           // the digest, unit by unit (W4, E5: digest.h)
-    std::vector<Cycle> link_at_v;                      // W10: the observer's arrival cycles (Options::observe_arrivals)
+    detail::DigestView view;                           // the digest, unit by unit (E5: digest.h)
+    std::vector<Cycle> link_at_v;                      // the observer's arrival cycles (Options::observe_arrivals)
     std::vector<uint32_t> link_at_off_v;
-    bool running = false;                              // W10: inside Sim::run (the observer refuses)
-    std::vector<uint64_t> run_ticks_v;                 // W10: Options::calibrate: ticks per instance, summed
+    bool running = false;                              // inside Sim::run (the observer refuses)
+    std::vector<uint64_t> run_ticks_v;                 // Options::calibrate: ticks per instance, summed
     std::vector<uint64_t> link_words_v;                //   and words delivered per Link input
     uint64_t cal_ticks0 = 0;                           //   the clock at build, against steady time: ticks per ns
     double cal_ns0 = 0;
-    detail::Threads* threads = nullptr;                // W4 (E3): set when the machine is split over domains; the Sim's
+    detail::Threads* threads = nullptr;                // set when the machine is split over domains; the Sim's
                                                        // operations go to it, and the fields above are unused
     unsigned char* obj(uint32_t i) const {
         const Store& s = stores[inst[i].store];

@@ -1,5 +1,5 @@
 #!/bin/bash
-# p4_debug_checks.sh (WORKER22, P4): every P4 suite under the framework's debug options (p4_debug.h): --step-all and
+# p4_debug_checks.sh: every P4 suite under the framework's debug options (p4_debug.h): --step-all and
 # --instance-major must print exactly what the plain run prints (and, for the steps equal to v1.3's, its log), at each
 # step's seeds. B: the build directory (default build/clang-suite). Run from sim/.
 set -u

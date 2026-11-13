@@ -1,4 +1,4 @@
-// big_sram.h (WORKER11, G3): the big SRAM (sim/ref/meshsim/src/BigSRAM.java; AUDIT-M2 3.4).
+// big_sram.h: the big SRAM (sim/ref/meshsim/src/BigSRAM.java; AUDIT-M2 3.4).
 //
 // 16 areas of 32 K rows x 128 bits (chunk address: bits 20-17 the area, 16-2 the row, 1-0 the chunk in the row). Each
 // area serves the head of its own request queue (depth `area_queue_depth`) once a cycle, in arrival order: a write stores
@@ -70,7 +70,7 @@ public:
         return b_[k];
     }
     size_t allocated_bytes() const { size_t s = 0; for (unsigned k = 0; k < kUnits; k++) s += size_t(n_[k]) * 4; return s; }
-    // Resident pages (mincore), for W10's footprint: what the run touched of what is allocated.
+    // Resident pages (mincore), for the footprint: what the run touched of what is allocated.
     size_t touched_bytes() const {
         const size_t pg = size_t(sysconf(_SC_PAGESIZE));
         static unsigned char vec[(size_t(1) << 23) / 4096];       // one block (8 MB at most) at 4 KB pages; between runs only
@@ -109,12 +109,12 @@ struct BigSram {
 
     // ---- statistics ----
     uint64_t reads_served = 0, writes_served = 0, combined = 0, read_stall_cycles = 0, write_stall_cycles = 0;
-    // W20 (the harness's Chip::new_phase; the agreed form, 2026-11-12): a new disjoint-buffer phase.
-    // W26 (invariant 2; BigSRAM.newPhase, mark): every chunk read and every chunk written in a phase is marked; a chunk
+    // (the harness's Chip::new_phase; the agreed form, 2026-11-12): a new disjoint-buffer phase.
+    // (invariant 2; BigSRAM.newPhase, mark): every chunk read and every chunk written in a phase is marked; a chunk
     // both read and written in one phase is a violation, its DISJOINT fact recorded once a phase (ref reports the
     // phase's first, once a tile and phase). Phases: the harness's Chip::new_phase, every GO and every counters-done latch
     // (ref's TileControl.endCycle(t): sram.newPhase at both, so two at once when both: the block's `phase_out` Wire, here
-    // `go_seen`, read at this unit's step at t + 1 before it serves; W22's F6 added the latch).
+    // `go_seen`, read at this unit's step at t + 1 before it serves; the F6 added the latch).
     // SIM_CHECKS only (the bits, two per chunk, allocated at build); elsewhere new_phase does nothing.
     sim::WireIn go_seen;               // TileCtl's phase_out (tile_ctl.h), declared under SIM_CHECKS only (`go_wire`)
     void new_phase() {
@@ -127,7 +127,7 @@ struct BigSram {
     std::unique_ptr<uint64_t[]> rd_bits, wr_bits;
     uint32_t bit_words = 0, phase = 0;
     uint64_t disjoint_violations = 0;  // ref's BigSRAM.disjointViolations (MemTest reads it); check builds only
-    S1Tile* s1 = nullptr;              // W26: S1 (s1.h): the write's ordering point and its store
+    S1Tile* s1 = nullptr;              // S1 (s1.h): the write's ordering point and its store
     bool phase_flagged = false;
     int ck_tile = -1;                  // the checker's tile (add_g1); -1 records nothing
     sim::Word go_last = 0;
@@ -144,7 +144,7 @@ struct BigSram {
     }
 #endif
 #ifdef SIM_CHECKS
-    // W22 (P4; approved 2026-11-12; SIM_CHECKS only, the timing builds unchanged): ref's per-area reads, writes, combined
+    // (P4; approved 2026-11-12; SIM_CHECKS only, the timing builds unchanged): ref's per-area reads, writes, combined
     // and queuePeak (the count after an enqueue), updated where BigSRAM updates them, for MemTest. Statistics.
     uint64_t reads_a[AREAS] = {}, writes_a[AREAS] = {}, combined_a[AREAS] = {};
     uint32_t queue_peak[AREAS] = {};
@@ -192,7 +192,7 @@ struct BigSram {
     sim::Wake step(sim::Ctx& c) {
         const uint64_t t = c.now();
 #ifdef SIM_CHECKS
-        if (go_wire) {                                                // W26: the phases endCycle(t - 1) started
+        if (go_wire) {                                                // the phases endCycle(t - 1) started
             const sim::Word g = c.read(go_seen);
             if (g != go_last) { go_last = g; for (unsigned k = 0; k < (g & 3); k++) new_phase(); }
         }
@@ -215,7 +215,7 @@ struct BigSram {
                 if (merge) combine(a, mask, addr & 3, lo, hi);
                 else enqueue(a, true, row(addr), mask, 0, 0, lo, hi);
 #ifdef SIM_CHECKS
-                if (s1 && s1->on) for (unsigned k = 0; k < n; k++) {   // W26: S1's ordering point (BigSRAM.java:90)
+                if (s1 && s1->on) for (unsigned k = 0; k < n; k++) {   // S1's ordering point (BigSRAM.java:90)
                     uint64_t acc;
                     if (s1->sram_get(t, addr + k, acc)) s1->ordered(t, addr + k, t - acc);
                 }
@@ -245,7 +245,7 @@ struct BigSram {
         } else e.d[0] = e.d[1] = e.d[2] = e.d[3] = 0;
         count[a]++;
 #ifdef SIM_CHECKS
-        if (count[a] > queue_peak[a]) queue_peak[a] = count[a];   // W22: BigSRAM.queuePeak
+        if (count[a] > queue_peak[a]) queue_peak[a] = count[a];   // BigSRAM.queuePeak
 #endif
         busy |= 1u << a;
     }
@@ -260,7 +260,7 @@ struct BigSram {
         e.mask = uint8_t(e.mask | mask);
         combined++;
 #ifdef SIM_CHECKS
-        combined_a[a]++;                                          // W22: BigSRAM.combined[a]
+        combined_a[a]++;                                          // BigSRAM.combined[a]
 #endif
     }
     void serve(sim::Ctx& c, unsigned a, [[maybe_unused]] uint64_t t) {
@@ -269,23 +269,23 @@ struct BigSram {
         if (e.write) {
             writes_served++;
 #ifdef SIM_CHECKS
-            writes_a[a]++;                                        // W22: BigSRAM.writes[a]
+            writes_a[a]++;                                        // BigSRAM.writes[a]
 #endif
             for (unsigned j = 0; j < 4; j++) if (e.mask >> j & 1) {
 #ifdef SIM_CHECKS
-                mark(t, wr_bits.get(), rd_bits.get(), base + j, 1);   // W26: invariant 2
+                mark(t, wr_bits.get(), rd_bits.get(), base + j, 1);   // invariant 2
                 uint64_t acc;
-                if (s1 && s1->on && s1->sram_remove(t, base + j, acc)) s1->stored(t - acc);   // W26: S1 (BigSRAM.java:138)
+                if (s1 && s1->on && s1->sram_remove(t, base + j, acc)) s1->stored(t - acc);   // S1 (BigSRAM.java:138)
 #endif
                 store(base + j, e.d[j]);
             }
         } else {
             reads_served++;
 #ifdef SIM_CHECKS
-            reads_a[a]++;                                         // W22: BigSRAM.reads[a]
+            reads_a[a]++;                                         // BigSRAM.reads[a]
 #endif
 #ifdef SIM_CHECKS
-            for (unsigned j = 0; j < 4; j++) if (e.mask >> j & 1) mark(t, rd_bits.get(), wr_bits.get(), base + j, 0);   // W26
+            for (unsigned j = 0; j < 4; j++) if (e.mask >> j & 1) mark(t, rd_bits.get(), wr_bits.get(), base + j, 0);
 #endif
             const uint64_t lo = uint64_t(load(base)) | uint64_t(load(base + 1)) << 32;
             const uint64_t hi = uint64_t(load(base + 2)) | uint64_t(load(base + 3)) << 32;

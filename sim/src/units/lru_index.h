@@ -1,4 +1,4 @@
-// lru_index.h: a fixed-capacity index of 64-bit keys in access order (WORKER14): what `ref`'s
+// lru_index.h: a fixed-capacity index of 64-bit keys in access order: what `ref`'s
 // LinkedHashMap(..., accessOrder = true) does for the Tracer's two caches and its jump LRU. A key's slot (0 .. cap) is
 // stable while the key is present, so the caller keeps its values in parallel arrays indexed by slot.
 //

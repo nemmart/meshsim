@@ -1,4 +1,4 @@
-// By-reference payloads (WORKER3): a 16-word size class (a 1024-bit cache line) over a Fifo and a Link.
+// By-reference payloads: a 16-word size class (a 1024-bit cache line) over a Fifo and a Link.
 #include <string>
 
 #include "base/alloc_guard.h"

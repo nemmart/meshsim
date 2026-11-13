@@ -40,8 +40,8 @@ n=0; while read -r sha f; do
 done < "$M"
 ok "w26-jumpmap/$RUN: $n files byte for byte (segments.seg, map.lines, frame6.bin, initial.pages, seg/*, segments.csv, run_only.csv, .cuts)"
 cmp -s "$OUT/gold/$RUN/segments.seg" "$N/segments.seg" && ok "gold/$RUN/segments.seg = the jumpmap directory's" || no "gold/$RUN/segments.seg differs from w26-jumpmap's"
-if [ -f "$OUT/gold-v1.3/$RUN.COMPLETE" ]; then   # GOLD_FORMAT=v1.3: WORKER18's accepted v1.3 file
+if [ -f "$OUT/gold-v1.3/$RUN.COMPLETE" ]; then   # GOLD_FORMAT=v1.3: the accepted v1.3 file
   v=$(sha256sum "$OUT/gold-v1.3/$RUN/segments.seg" | cut -d' ' -f1)
-  [ "$v" = "$(ref gold-v13)" ] && ok "gold-v1.3/$RUN/segments.seg $v (= WORKER18's and WORKER16's)" || no "gold-v1.3/$RUN/segments.seg $v, WORKER18's $(ref gold-v13)"
+  [ "$v" = "$(ref gold-v13)" ] && ok "gold-v1.3/$RUN/segments.seg $v (= the recorded v1.3 file's)" || no "gold-v1.3/$RUN/segments.seg $v, recorded $(ref gold-v13)"
 fi
 [ $bad = 0 ] && echo "$RUN against the runner's copies: PASS" || { echo "$RUN against the runner's copies: FAIL"; exit 1; }

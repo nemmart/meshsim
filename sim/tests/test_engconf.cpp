@@ -1,4 +1,4 @@
-// The engines' conformance, the C++ side (WORKER12; ref's side is oracle/ref/EngConf.java, the fixtures tests/engconf/,
+// The engines' conformance, the C++ side (ref's side is oracle/ref/EngConf.java, the fixtures tests/engconf/
 // made by oracle/ref/engconf.sh). The same script drives the AG (ag.h) and the gather engine (gather.h) among stand-ins:
 // the block (the `dma` RegFile, the `start` Wire, endCycle's stores applied as ref's), the table store's STREAM and
 // GROUP paths (TableStore.java:121-137) with the PTR view, the read queue's two client Holds (one take a cycle, the
@@ -95,7 +95,7 @@ struct Drv {
         return c.next();
     }
 };
-// The table store is W11's (units::TableStore with the AG's ports and the PTR view). Its other ends: the core's table
+// The table store is the (units::TableStore with the AG's ports and the PTR view). Its other ends: the core's table
 // window (a store of PTR[me] at cycle 1, so the PTR view holds it from cycle 2, as ref's poke before cycle 1 does for
 // every read the AG makes), the write engine's RMW Links (idle), the overflow event (a sink).
 struct TsEnds {
@@ -112,7 +112,7 @@ struct TsEnds {
 // The read queue's clients 0 (gather) and 1 (AG): one take a cycle when the plan allows, client 0 first.
 struct Srq {
     HoldIn ga, ag; const Plan* plan;
-    bool ga_occupied = false;                     // the gather's Hold occupied at the end of t (its Reg to the block, W11's)
+    bool ga_occupied = false;                     // the gather's Hold occupied at the end of t (its Reg to the block, the)
     Srq(Ports& p, const Plan* pl) : plan(pl) { p.in(ga, "ga", mem::kReadReqWidth); p.in(ag, "ag", mem::kReadReqWidth); }
     uint64_t digest() const { return hash_fields(ga_occupied); }
     Wake step(Ctx& c) {

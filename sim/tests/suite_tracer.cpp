@@ -1,10 +1,10 @@
-// suite_tracer.cpp (WORKER21; P7a, inventory C23): v1.3's TracerTest (sim/ref/meshsim/test/TracerTest.java) on the
-// C++ Tracer through TracerRig (tests/tracer_rig.h), on W20's suite.h: every case, every assertion and printed line in
+// suite_tracer.cpp: v1.3's TracerTest (sim/ref/meshsim/test/TracerTest.java) on the
+// C++ Tracer through TracerRig (tests/tracer_rig.h), on the suite.h: every case, every assertion and printed line in
 // Java's order. Its output must equal v1.3's log of run_tests.sh's step `tracer` (tests/tracersuites/tracer.log, from
 // oracle/ref/tracersuites.sh). Rigs are made where Java makes them (probes included), so a call recorder numbers the
 // Tracers as TracerConf does.
 //
-// The Tracer's directed tests (WORKER22, B1, milestone 1; spec 4.21), on hand-built guests:
+// The Tracer's directed tests (milestone 1; spec 4.21), on hand-built guests:
 //  - a loop of stores, loads and a taken branch, ending on JAL x0, 0, then padding: registers, memory, the code FIFO
 //    (one value per native instruction, 0 per padding row), the log FIFO (tags, values, the branch's base from the map,
 //    the end's 0), the stream word, ROWS_RUN, the end state in part 0;

@@ -1,4 +1,4 @@
-// regtable.h (WORKER19, P1): the register table mesh.h and REGISTERS.md are generated from, ported from v1.3's
+// regtable.h: the register table mesh.h and REGISTERS.md are generated from, ported from v1.3's
 // src/Registers.java (with the LinkWord and Conditions constants the generators use). Configuration-time data: the
 // simulator's own decode table is src/units/regmap.h; tests/test_regs.cpp checks the two agree.
 #pragma once

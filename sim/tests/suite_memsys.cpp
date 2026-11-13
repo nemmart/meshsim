@@ -1,8 +1,8 @@
-// suite_memsys.cpp (WORKER21; P7a, inventory C21): v1.3's MemorySystemTest (sim/ref/meshsim/test/MemorySystemTest.java)
-// on the C++ FileStore and MemSystem, every assertion in Java's order, on W20's suite.h. Its output must equal v1.3's
+// suite_memsys.cpp: v1.3's MemorySystemTest (sim/ref/meshsim/test/MemorySystemTest.java)
+// on the C++ FileStore and MemSystem, every assertion in Java's order, on the suite.h. Its output must equal v1.3's
 // log of run_tests.sh's step `memsys` (tests/tracersuites/memsys.log, from oracle/ref/tracersuites.sh).
 //
-// The Tracer's black-box memory system (WORKER22, B1; spec 4.21.5, 7; DECISIONS-v1.3 sections 20-22; SPEC-QUESTIONS Q1,
+// The Tracer's black-box memory system (spec 4.21.5, 7; DECISIONS-v1.3 sections 20-22; SPEC-QUESTIONS Q1
 // Q2, Q12, Q13):
 //  - FileStore: depths, holes reading zero, cow_open and path copying, the four statuses (ok only with every entry on the
 //    path owned, Q1; beyond the depth's capacity, Q2), a dense file of depth 1;

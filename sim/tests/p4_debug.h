@@ -1,5 +1,5 @@
-// p4_debug.h (WORKER22, P4): the framework's debug options for the P4 suites (sim.h DEBUG CHECKS; W20's MachConfig
-// step_all and instance_major, W22-8), from two flags none of the Java suites have:
+// p4_debug.h: the framework's debug options for the P4 suites (sim.h DEBUG CHECKS; the MachConfig
+// step_all and instance_major), from two flags none of the Java suites have:
 //   --step-all          every unit stepped every cycle (the missed-wake check's other half: a suite's output unchanged)
 //   --instance-major    the instance-major stepping order (else type-major): both orders give the same output
 // Each suite wraps every machine it builds as p4::dbg(config), and its main lets p4::debug_flag consume the flags.

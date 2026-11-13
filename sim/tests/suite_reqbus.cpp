@@ -1,12 +1,12 @@
-// suite_reqbus.cpp (WORKER22, P4, inventory C17): v1.3's RequestBusTest (sim/ref/meshsim/test/RequestBusTest.java):
-// the request port, the request bus and the receive queues in the tree, from a test (W20's ReqBus: MachConfig::
+// suite_reqbus.cpp: v1.3's RequestBusTest (sim/ref/meshsim/test/RequestBusTest.java):
+// the request port, the request bus and the receive queues in the tree, from a test (the ReqBus: MachConfig::
 // reqbus_host, Chip::reqbus(); the machine as specified) and from C (fw/tests/req.c, C&C 2 draining its queue from the
 // test). Every assertion and printed line is Java's, printed as Java prints them (at once), so the output equals
 // run_tests.sh's logs reqbus (-1), reqbus-shuf (4); fixtures tests/p4suites/.
 //
 //   suite_reqbus [seed] [--only=GROUP,...]      groups: basics fairness credits backpressure receive drops fromc
 //
-// STATUS. Every group (W20's delivered_log, W22-19; req_send any number between cycles, W22-20).
+// STATUS. Every group (the delivered_log, req_send any number between cycles).
 //
 // Test-side code (the configuration regime, D6).
 #include <algorithm>

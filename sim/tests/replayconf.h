@@ -1,4 +1,4 @@
-// replayconf.h: the replayer's conformance, the C++ side (WORKER15): a ReplayConf script (oracle/ref/ReplayConf.java)
+// replayconf.h: the replayer's conformance, the C++ side: a ReplayConf script (oracle/ref/ReplayConf.java)
 // replayed on units::Replayer, with the observations ReplayConf.observe writes, character for character.
 #pragma once
 

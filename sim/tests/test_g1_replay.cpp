@@ -29,7 +29,7 @@ struct Stand {
     sim::RegOut send_busy;
     sim::LinkIn line;
     sim::CountOut ovf;
-    sim::LinkOut ovf_ev;   // the router's overflow event (D29; W9's merge: ControlIO::router_ovf_ev), never put here
+    sim::LinkOut ovf_ev;   // the router's overflow event (D29; the merge: ControlIO::router_ovf_ev), never put here
     const Ev* ev; unsigned n, i = 0;
     bool busy = false;
     Stand(sim::Ports& p, const Ev* e, unsigned count) : ev(e), n(count) {
@@ -46,7 +46,7 @@ struct Stand {
                 c.take(send);
             }
         }
-        bool b = c.ready(send);                                   // occupied at the end of t (W9's Reg)
+        bool b = c.ready(send);                                   // occupied at the end of t (the Reg)
         if (b != busy) { c.put(send_busy, sim::Word(b)); busy = b; }
         return i < n ? sim::Wake::at_cycle(ev[i].t) : sim::Wake::none();
     }
@@ -92,7 +92,7 @@ std::string replay(const char* name, uint64_t through, sim::Options opt) {
     sim::Config cfg(opt);
     auto& st = cfg.add<Stand>("stand", ev.data(), unsigned(ev.size()));
     ControlIO io = add_g1(cfg, 0, &gx);
-    units::reqbus::tie_off(cfg, "t0.reqtie", io.req);      // W14: no request bus in a lone tile
+    units::reqbus::tie_off(cfg, "t0.reqtie", io.req);      // no request bus in a lone tile
     cfg.link(st.eject, io.eject, 1);
     cfg.link(st.go, io.go, uint32_t(go_lat));
     cfg.connect(io.send, st.send);

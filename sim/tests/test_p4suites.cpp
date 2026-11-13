@@ -1,4 +1,4 @@
-// test_p4suites.cpp (WORKER22; P4): v1.3's network, memory and engine suites in make check. Each suite program (built
+// test_p4suites.cpp: v1.3's network, memory and engine suites in make check. Each suite program (built
 // beside this binary) runs as run_tests.sh runs a quick step, stdout and stderr together; its output must equal ref's
 // log of the same step byte for byte (tests/p4suites/<step>.log, from oracle/ref/p4suites.sh), and it must exit 0.
 // The suites read statistics kept only under SIM_CHECKS (the Fifo peaks, big SRAM's and the read queue's): in the

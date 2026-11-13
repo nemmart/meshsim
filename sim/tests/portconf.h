@@ -1,4 +1,4 @@
-// Port conformance, the C++ side (WORKER3; sim/src/PORTS.md section 10). Runs a PortConfGen script on the framework's
+// Port conformance, the C++ side (sim/src/PORTS.md section 10). Runs a PortConfGen script on the framework's
 // port of the same kind and writes the observation lines PortConfDriver writes on ref's bus class; the two must be
 // identical. One unit owns both ends of the port, so the script's ops run in their written order within each cycle, as in
 // the Java driver; the port's semantics make every observation independent of that order anyway (the debug shuffle tests
@@ -98,7 +98,7 @@ struct Conf {
 
     Conf(Ports& p, const Script* sc, char* buf, size_t bufcap) : s(sc), out(buf), cap(bufcap) {
         switch (s->kind) {
-            case LINK:   // link L [C]: C given, the input declared with depth C - L (W10; PORTS.md 2b)
+            case LINK:   // link L [C]: C given, the input declared with depth C - L (PORTS.md 2b)
                 p.out(lo, "out", 3);
                 if (s->p2) { if (s->p2 <= s->p1) FATAL("portconf: link %u %u: C must exceed L", s->p1, s->p2);
                              p.in(li, "in", 3, s->p2 - s->p1); link_cap = s->p2; }

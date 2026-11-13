@@ -1,6 +1,6 @@
-// suite_engine.cpp (WORKER22, P4, inventory C5): v1.3's EngineTest (sim/ref/meshsim/test/EngineTest.java): the address
+// suite_engine.cpp: v1.3's EngineTest (sim/ref/meshsim/test/EngineTest.java): the address
 // generator, the write engine, the table and HIST stores, augmenting and count-on-arrival, the 16-group all-to-all, on
-// W20's harness (tests/mach.h's Net, the coreless machine; A2A). Every assertion and printed line is Java's, in Java's
+// the harness (tests/mach.h's Net, the coreless machine; A2A). Every assertion and printed line is Java's, in Java's
 // order, so the output equals run_tests.sh's logs engine (-1), eng-shuf (4), engine-full (-1 full); fixtures
 // tests/p4suites/.
 //

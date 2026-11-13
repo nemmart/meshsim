@@ -1,4 +1,4 @@
-// checker.h (WORKER20, P2): the harness's side of the checker (src/check.h; checker.cpp). Used by mach::Chip.
+// checker.h: the harness's side of the checker (src/check.h; checker.cpp). Used by mach::Chip.
 #pragma once
 
 #include <cstdint>
@@ -15,7 +15,7 @@ std::string why_bad(uint64_t h);                              // ref's LinkWord.
 // ref's Config switches that decide whether a violation is reported (the units count either way)
 struct CheckSwitches {
     bool errors = true, unexpected = true, read_port_overlap = true, command_read = true, strict_replies = false;
-    bool disjoint = true;               // W26: Config.checkDisjoint (invariant 2; the harness sets it from MachConfig)
+    bool disjoint = true;               // Config.checkDisjoint (invariant 2; the harness sets it from MachConfig)
     unsigned K = 8;                     // the director's delay line (DIR_UNEXPECTED's text)
 };
 
@@ -53,7 +53,7 @@ private:
     // ref's per-tile report state (Chip.seen, s2, condSeen, refusalReported; 67 units)
     struct Unit { uint32_t errors = 0, cond_seen = 0; bool line = false, hist = false, refusal = false; int64_t disjoint_phase = -1, rotation_run = -1; };
     Unit u_[67];
-    sim::check::Fact ep_last_[3] = {};  // W26: each endpoint's last violation (Chip.checkInvariants' `el`)
+    sim::check::Fact ep_last_[3] = {};  // each endpoint's last violation (Chip.checkInvariants' `el`)
     bool ep_has_[3] = {};
     void errors_at(int64_t t);          // invariant 15 at the end of cycle t (Chip.runCycle's loop)
     bool enabled(sim::check::Kind k) const;

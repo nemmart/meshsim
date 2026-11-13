@@ -1,4 +1,4 @@
-// chain.cpp (WORKER17): see chain.h.
+// chain.cpp: see chain.h.
 #include "chain.h"
 
 #include <cstdio>
@@ -135,7 +135,7 @@ bool parse_json(const std::string& text, Json& out, std::string& err) {
     return true;
 }
 
-// ---- WORKER26's inputs
+// ---- the inputs
 bool load_w26(const std::string& dir, FileStore& fs, W26& w, std::string& err) {
     std::vector<uint8_t> b;
     if (!read_file(dir + "/proof.json", b)) { err = "cannot read " + dir + "/proof.json"; return false; }
@@ -406,7 +406,7 @@ void landings(const units::tracer::ReplayTables& tb, const W26& w, const Seg& sg
     Landings(tb, windows).build(w, sg, next, out);
 }
 
-// ---- W13's dump forms
+// ---- the dump forms
 std::vector<uint8_t> files_stream(const FileStore& fs) {
     std::vector<uint8_t> b;
     const size_t n = fs.pages_allocated();

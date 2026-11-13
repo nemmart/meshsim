@@ -1,4 +1,4 @@
-// synth.h: a seeded synthetic machine with every port kind, for the thread tests (WORKER4).
+// synth.h: a seeded synthetic machine with every port kind, for the thread tests.
 //
 // `Node`s (level 0) each have one input and one output of every registered kind (Link, Fifo, credit Fifo, Hold, Reg),
 // a second Reg input (fan-out), an event line, two Count outputs and a Count input; outputs are paired to inputs at random over the whole machine,

@@ -1,7 +1,7 @@
-// The chain's pieces (WORKER17; tests/chain.h), on what `make check` has without the runner's data:
+// The chain's pieces (tests/chain.h), on what `make check` has without the runner's data:
 //   - the JSON reader (proof.json, the delivery's manifest);
 //   - the segment file: segments written in frames 2-5 (raw runs and the LRU coding) and read back;
-//   - WORKER26's inputs: a small set written in their formats, loaded, the store's pages and the checks' refusals;
+//   - the inputs: a small set written in their formats, loaded, the store's pages and the checks' refusals;
 //   - the landings on the real replayer tables: every header word, the record, the advice, the expected end state, the
 //     tiles' headers; M3SRAM01's and M3FILES1's streams;
 //   - the oracle's files (tests/golden-chain) parsed; stream_values against packed values.
@@ -102,7 +102,7 @@ TEST(chain_segments_round_trip) {
 }
 
 namespace {
-// A small WORKER26 set: proof.json, three image pages, a 2^k-line map (k 5: one 4 KB page, depth 0), two segments'
+// A small input set: proof.json, three image pages, a 2^k-line map (k 5: one 4 KB page, depth 0), two segments'
 // pages.
 std::string make_w26(const char* name, int k, bool bad_map) {
     const std::string d = tmpdir(name);

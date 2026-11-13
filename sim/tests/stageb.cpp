@@ -1,4 +1,4 @@
-// stageb.cpp (WORKER25, P7b; inventory E3): v1.3's test/StageB.java on the C++ machine, line for line (stageb.h).
+// stageb.cpp: v1.3's test/StageB.java on the C++ machine, line for line (stageb.h).
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"   // libstdc++'s std::regex in gcc 13's debug build (as suite_replayer)
 #endif
@@ -34,7 +34,7 @@
 #include "units/row_core.h"
 #include "units/stream_word.h"
 
-// ReplayerUnitTests.programWindow and r(): W15's port, compiled in unchanged (as suite_replayer does).
+// ReplayerUnitTests.programWindow and r(): the port, compiled in unchanged (as suite_replayer does).
 #undef TEST
 #define TEST(name) [[maybe_unused]] static void name()
 namespace w15unit {
@@ -148,7 +148,7 @@ std::vector<std::pair<int32_t, int64_t>> java_int_map_order(const std::vector<st
 
 std::string java_fixed(double v, int digits) {
     // Java's Formatter rounds the shortest decimal that reads back as v (FloatingDecimal's digits), HALF_UP, not the
-    // binary value (12946 / 4000 = 3.2365 prints 3.237; printf gives 3.236): as W21's java_2f in tracer_rig.cpp.
+    // binary value (12946 / 4000 = 3.2365 prints 3.237; printf gives 3.236): as the java_2f in tracer_rig.cpp.
     char b[512];
     auto res = std::to_chars(b, b + sizeof b, v < 0 ? -v : v, std::chars_format::fixed);
     std::string s(b, res.ptr);

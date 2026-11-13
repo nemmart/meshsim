@@ -1,4 +1,4 @@
-// test_g1_tile.cpp: G1's part of a tile (add_g1, a ControlBuilder) on the engine with a stand-in for W9's side: eject
+// test_g1_tile.cpp: G1's part of a tile (add_g1, a ControlBuilder) on the engine with a stand-in for the side: eject
 // packets at chosen cycles, a GO, a send sink, the send-busy Reg. Checks port B's landing (and command landed), and the
 // K-line: a counted packet nothing armed for is judged unexpected at endCycle(t + K) (ERRORS [2]), by D27's rule.
 #include <vector>
@@ -18,7 +18,7 @@ struct Stand {
     sim::RegOut send_busy;
     sim::LinkIn line;
     sim::CountOut ovf;
-    sim::LinkOut ovf_ev;   // the router's overflow event (D29; W9's merge: ControlIO::router_ovf_ev), never put here
+    sim::LinkOut ovf_ev;   // the router's overflow event (D29; the merge: ControlIO::router_ovf_ev), never put here
     struct Ev { uint64_t t; uint64_t lo, hdr, hi; bool go; };
     uint64_t ovf_at = 0;                                        // a cycle the router counts an overflow (0: never)
     const Ev* ev; unsigned n, i = 0;
@@ -58,7 +58,7 @@ TEST(g1_tile_port_b_landing_and_the_k_line) {
     auto& s = cfg.add<Stand>("stand", ev, 4u);
     s.ovf_at = 40;
     ControlIO io = add_g1(cfg, 0, &g);
-    units::reqbus::tie_off(cfg, "t0.reqtie", io.req);      // W14: no request bus in a lone tile
+    units::reqbus::tie_off(cfg, "t0.reqtie", io.req);      // no request bus in a lone tile
     cfg.link(s.eject, io.eject, 1);
     cfg.link(s.go, io.go, 1);
     cfg.connect(io.send, s.send);

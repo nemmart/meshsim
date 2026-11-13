@@ -10,7 +10,7 @@
 //            cycles/s, ns per unit step (the run alone: not the build)
 //   core     the same program from its entry (no boot) on the plain core (rv32.h) with a constant environment, stepped
 //            when it asks: the interpreter's own cost, no engine and no register block
-//   threads  (--threads T) T controllers, each running the program on its own thread (W4's run_independent; thread k on
+//   threads  (--threads T) T controllers, each running the program on its own thread (the run_independent; thread k on
 //            cpus[k % size]): the aggregate instructions/s and each thread's ns per step
 //   --write DIR  writes the program as DIR/loop.code.bin (for ref: oracle/ref/SpeedRun.java, TraceRun) and, for N up to
 //            10^5, the engine's trace of it as DIR/loop.trace, then stops

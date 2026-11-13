@@ -1,4 +1,4 @@
-// s1.h (WORKER26, P2): item S1's measurement, invariant 24 (sim/ref/meshsim/src/S1.java; spec 4.8, 4.10). For every write
+// s1.h: item S1's measurement, invariant 24 (sim/ref/meshsim/src/S1.java; spec 4.8, 4.10). For every write
 // handed to the write engine, the cycles from the director's acceptance to the write being complete (stored in its big-SRAM
 // area, or written back by PTR's or HIST's read-modify-write), against K; a write in its area's queue, or a PTR or HIST
 // write-back, later than K + 4 (the controller's least reaction) is flagged (an S1_LATE fact, Chip's S1 slot).

@@ -1,4 +1,4 @@
-// test_slotconf: the peripheral slot against ref call for call (WORKER15). Each fixture in tests/slotconf/ is a SlotConf
+// test_slotconf: the peripheral slot against ref call for call. Each fixture in tests/slotconf/ is a SlotConf
 // script (ref's PeripheralSlot on two tiles of a Chip built as PeripheralSlotTest builds it, a test peripheral on one and
 // the replayer on the other, driven by a seeded script) and ref's observations of it; units::SlotCore, given the same
 // calls, must observe the same, character for character (tests/slotconf.h). oracle/ref/slotconf.sh --fixtures | --check.

@@ -1,5 +1,5 @@
-// suite_s1bench.cpp (WORKER23, P5, inventory G2): v1.3's S1Bench (sim/ref/meshsim/test/S1Bench.java) on W20's harness
-// and W26's S1 measurement (src/units/s1.h), check for check and line for line. run_tests.sh's step `s1bench` (full
+// suite_s1bench.cpp: v1.3's S1Bench (sim/ref/meshsim/test/S1Bench.java) on the harness
+// and the S1 measurement (src/units/s1.h), check for check and line for line. run_tests.sh's step `s1bench` (full
 // mode); its output equals ref's log (tests/ctlsuites/s1bench.log). S1 is measured in the debug and suite builds.
 //
 // Item S1, measured (DECISIONS-v1.2 S1; spec 4.8, 4.10, invariant 24): for every counted write into big SRAM, PTR and
@@ -51,7 +51,7 @@ int main() {
             const uint64_t worst = std::max(sram_max, std::max(ptr_max, hist_max));
             suite::check(m.c.violations() == 0, "L = %u, %s: no violations %s", L, w, m.c.violation_report().c_str());
             suite::check(worst <= k.K, "L = %u, %s: every write complete by its decrement (K = %u)", L, w, k.K);
-            suite::eq(2LL * L + 4, int64_t(sram_max), "L = %u, %s: the big-SRAM write path is 2L + 4 (W4-08, D49)", L, w);
+            suite::eq(2LL * L + 4, int64_t(sram_max), "L = %u, %s: the big-SRAM write path is 2L + 4 (D49)", L, w);
             std::printf("L = %u, K = %u, %-11s %s [meas: S1Bench]\n", L, k.K, (ws + ":").c_str(), m.c.s1_report().c_str());
         }
     }

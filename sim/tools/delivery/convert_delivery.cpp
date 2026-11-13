@@ -1,4 +1,4 @@
-// convert_delivery (WORKER19, P1, D42): v1.3's ConvertDelivery (sim/ref/meshsim/test/ConvertDelivery.java) in C++, its
+// convert_delivery (D42): v1.3's ConvertDelivery (sim/ref/meshsim/test/ConvertDelivery.java) in C++, its
 // output byte for byte: a v1.25 replay delivery (67-word state records) to v1.26.1 (DECISIONS-v1.26 items 1, 2, 15,
 // 16), the streams untouched. The source is only read; DST/PROGRAM/ gets the converted records (every
 // window_NNNNN.state*.bin and end.bin) and symbolic links to every other source file, and DST/PROGRAM.manifest.json is
@@ -13,7 +13,7 @@
 //
 //   convert_delivery SRC DST PROGRAM [--manifest M]   (M: default SRC/PROGRAM.manifest.json, else SRC/manifest.json)
 // gcc 13's debug build (-O1, sanitizers) warns falsely inside libstdc++'s std::regex (std::function members "may be
-// used uninitialized"; W25: found when suite_replayer brought this tool into make check's gcc debug build).
+// used uninitialized"; found when suite_replayer brought this tool into make check's gcc debug build).
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
 #endif

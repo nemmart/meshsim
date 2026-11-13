@@ -1,13 +1,13 @@
 #!/bin/sh
 # Stage 2's acceptance: writes the segment file for both workloads at 2^29 and both hard-cut tests, and checks each
-# byte for byte against WORKER16's segment_writer output (jolt-asic-planning worker16-w3 at ca30b5e).
+# byte for byte against the segment_writer output (jolt-asic-planning worker16-w3 at ca30b5e).
 #   ./check.sh <jolt-asic-planning tracer dir> <dir with the reference .seg files> [out dir]
 # The reference files are evm-zone-29.seg, cyclone-29.seg, evm-zone-23-hardcuts.seg, cyclone-22-hardcuts.seg as
-# segment_writer writes them (wip/planning/sessions/WORKER18-NOTES.md, "Stage 2"); the hard-cut lists are meshsim's wip/planning/sessions/WORKER16-data/w3/*.cuts (WORKER16, closed), copied to test/cuts/.
+# segment_writer writes them; the hard-cut lists are v1.3's, copied to test/cuts/.
 set -e
 cd "$(dirname "$0")"
 T=$1; R=$2; O=${3:-/tmp/gold-check}
-CUTS=test/cuts   # v1.35 (W19): the two .cuts files copied here; v1.3 read ../planning/sessions/WORKER16-data/w3
+CUTS=test/cuts   # v1.35: the two .cuts files copied here; v1.3 read them from its planning folder
 [ -d build ] || ./build.sh
 mkdir -p "$O"
 E=evm-zone-4e3451c1d8c5

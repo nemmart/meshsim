@@ -1,5 +1,5 @@
 // replay_tables.h: the universal expansion tables as delivered (REPLAY-INPUT-REQUIREMENTS.md section 2, v1.25), ported
-// from `ref`'s test/ReplayTables.java (WORKER14; owned by W14, used read-only by W15). The decode table, the ROM, the
+// from `ref`'s test/ReplayTables.java (owned, used read-only). The decode table, the ROM, the
 // controller-fed template words and their index, keyed by the normalized template-index key (wip/tables/README.md,
 // DECISIONS-v1.25 s5). One set per jolt-cpp version: `sim/data/tables/replayer/`, read in place.
 //

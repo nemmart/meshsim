@@ -1,7 +1,7 @@
 #!/bin/bash
-# replay_build.sh (WORKER25, P7b): run_tests.sh's step replay-build, v1.3's sw/replay/build.sh in v1.35. The replay
+# replay_build.sh: run_tests.sh's step replay-build, v1.3's sw/replay/build.sh in v1.35. The replay
 # controller's three images (replay_ctl; log8k/, the 8 KB-log control; oldmap/, CL4's test) are committed
-# (tests/m3-images/replay_ctl, fw/images/log8k, fw/images/oldmap: byte-identical to v1.3's build, W19). With the RISC-V
+# (tests/m3-images/replay_ctl, fw/images/log8k, fw/images/oldmap: byte-identical to v1.3's build). With the RISC-V
 # toolchain (fw/build.sh's: riscv64-unknown-elf-gcc 13.2), they are rebuilt from fw/replay into scratch with v1.3's
 # commands and must equal the committed ones; without it, the committed images are checked against their MANIFESTs.
 # Either way the step prints v1.3's line ("replay_ctl: code N B, data N B, data+bss end 0x... (stack below 0x7BC0)")

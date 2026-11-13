@@ -1,4 +1,4 @@
-// The engine, increment 3 (WORKER3): Reg, Wire (levels, loops), RegFile, Count, the credit Fifo.
+// The engine, increment 3: Reg, Wire (levels, loops), RegFile, Count, the credit Fifo.
 #include <string>
 
 #include "base/alloc_guard.h"

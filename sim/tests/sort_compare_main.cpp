@@ -1,4 +1,4 @@
-// sort_compare (WORKER24, P6, row D7; D41 Q3: kept as the generic run-comparison tool): v1.3's SortCompare
+// sort_compare (D41 Q3: kept as the generic run-comparison tool): v1.3's SortCompare
 // (sim/ref/meshsim/test/SortCompare.java) in C++, output for output. Two kit results directories compared run by run:
 // for every <id>.csv in both, the steps (every column), then every C&C phase of <id>.phases.csv (every column but go_at
 // and end_at, which move with any earlier difference). One table line per run, then the details. M10's column

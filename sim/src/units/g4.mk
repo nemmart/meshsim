@@ -1,4 +1,4 @@
-# g4.mk: WORKER12's rules (G4: the AG, the gather engine, the sort end to end), included by sim/Makefile.
+# g4.mk: the rules (G4: the AG, the gather engine, the sort end to end), included by sim/Makefile.
 #
 #   oracle/ref/engconf.sh --check   the engines' conformance fixtures regenerated from ref and compared (needs a JDK)
 

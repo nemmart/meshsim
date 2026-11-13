@@ -1,4 +1,4 @@
-// digest.h: the machine's digest, unit by unit (WORKER4, E5; the owner's decision 2026-11-07). Not for unit authors.
+// digest.h: the machine's digest, unit by unit (the owner's decision 2026-11-07). Not for unit authors.
 //
 // A machine's digest is a hash, in the order the units were added, of each unit's state (its `digest()`, or its bytes)
 // and then the state of its ports: each Link, Fifo, credit Fifo, Hold, Reg and Count input, and each Wire, RegFile and

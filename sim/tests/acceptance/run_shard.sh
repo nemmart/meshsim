@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# run_shard.sh -- the acceptance kit (v1.35, WORKER25: v1.3's acceptance/run_shard.sh (meshsim WORKER11; v1.26,
-# WORKER20; v1.26.1, WORKER25) on the C++ meshsim): one shard of a program's windows, read from the program's delivery
+# run_shard.sh -- the acceptance kit (v1.35, v1.3's acceptance/run_shard.sh
+# on the C++ meshsim): one shard of a program's windows, read from the program's delivery
 # where the writer task left it on the runner box, replayed in Stage A and Stage B by JOBS processes (v1.3: JVMs). The
 # delivery is only read: results go to OUTDIR. Needs the kit built (./build.sh: clang, make); no Java, no Python.
 #
 #   ./run_shard.sh -d DELIVERY -p PROGRAM -f FIRST -n COUNT [-j JOBS] [-s AB] [-m MANIFEST_SHA256] OUTDIR
 #     -d  the delivery's directory: PROGRAM/window_NNNNN.*, and the manifest as manifest.json or PROGRAM.manifest.json
-#         (WORKER9's delivery_writer: /tmp/w9-deliveries with PROGRAM.manifest.json beside PROGRAM/); tables/ optional
+#         (the delivery_writer: /tmp/w9-deliveries with PROGRAM.manifest.json beside PROGRAM/); tables/ optional
 #     -f, -n  window indices FIRST..FIRST+COUNT-1, or -n all: every window the manifest lists for PROGRAM (a sparse
 #             set, e.g. /tmp/w9-deliveries-selected)     -j  processes in parallel (default nproc)
 #     -s  stages (default AB): A the model, B the controller on tile 0 alone (the 63 idle tiles parked), F the same on
 #         the full chip; with B and F both, each window's cycles must agree
-#     -m  the manifest's SHA-256, as WORKER9's writer task reported it: checked before anything is read
+#     -m  the manifest's SHA-256, as the writer task reported it: checked before anything is read
 #     -M  the manifest file (default DELIVERY/manifest.json, else DELIVERY/PROGRAM.manifest.json). The per-program one is
 #         stable while a later writer task rewrites the combined manifest.json
 #     -x  K: also stage F (the full chip) on every window whose index is a multiple of K, its cycles checked against B

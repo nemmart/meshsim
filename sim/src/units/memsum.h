@@ -1,5 +1,5 @@
-// memsum.h: a memory's part of the canonical state fingerprint, kept by the unit that owns the memory (WORKER8;
-// sim/tests/AUDIT-M2.md 6.2, sim/tests/statefp.h). A memory is one word of its unit's stream: the sum mod 2^64 of
+// memsum.h: a memory's part of the canonical state fingerprint, kept by the unit that owns the memory
+// planning/audits/AUDIT-M2.md 6.2, sim/tests/statefp.h). A memory is one word of its unit's stream: the sum mod 2^64 of
 // fmix64(region << 56 ^ index << 32 ^ value) over its non-zero 32-bit words, order-free, so the owner updates it at
 // every write (two fmix64 and an add) and a fingerprint never scans the memory. Plain code: allowed in a step.
 #pragma once

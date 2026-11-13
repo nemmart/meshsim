@@ -1,4 +1,4 @@
-// sort_test (WORKER24, P6, rows D1-D4, H4): v1.3's SortTest (sim/ref/meshsim/test/SortTest.java) in C++, on W20's machine
+// sort_test: v1.3's SortTest (sim/ref/meshsim/test/SortTest.java) in C++, on the machine
 // harness (tests/mach.h), its arguments and its output line for line, so run_tests.sh's sort steps are log-equal:
 //
 //   sort_test [seed] p1 [full] [only=<set>]                          the local sorts L1, L2
@@ -18,7 +18,7 @@
 //     (`meshsim.jar=...`): tooling metadata, not the model (owner, Q2); run_tests.sh's --check masks it;
 //   - the ORACLE image (SortTest's simulator-only oracle split) isn't ported: no v1.3 build makes it (owner, Q5);
 //   - the stack headroom comes from the controller's diagnostic lowest stack pointer (owner, Q3), not a per-cycle scan.
-// THE PHASES are W20's PhaseLog (tests/phase_log.h, ref's line for line), attached at the machine's construction; its
+// THE PHASES are the PhaseLog (tests/phase_log.h, ref's line for line), attached at the machine's construction; its
 // write-engine input and GATHER queue peaks exist in the debug and suite builds only: run_tests.sh and the kit build
 // sort_test with MODE=suite.
 #include <algorithm>
@@ -326,7 +326,7 @@ struct Machine {
             if (sortkit::is_file(f)) { fpc = std::make_unique<FpCheck>(f, c); std::fprintf(stderr, "fp: %s against %s\n", fp_name.c_str(), f.c_str()); }
             else std::fprintf(stderr, "fp: %s: no reference %s, not checked\n", fp_name.c_str(), f.c_str());
         }
-        c.phases();                                   // ref's Chip.phases (W20's PhaseLog), there from the start
+        c.phases();                                   // ref's Chip.phases (the PhaseLog), there from the start
         im = Mach::Image::load_dir(image_dir(), "sort");
         syms.load(image_dir() + "/sort.sym");
         im.syms = syms.sym;
@@ -723,7 +723,7 @@ std::string inputs_line(const std::string& keys) {
 
 int main(int argc, char** argv) {
     if (!sim::check::kOn) {                         // PhaseLog (the measurement) is kept in these builds only
-        std::fprintf(stderr, "sort_test: build it with MODE=suite (or debug): W20's PhaseLog runs only there\n");
+        std::fprintf(stderr, "sort_test: build it with MODE=suite (or debug): PhaseLog runs only there\n");
         return 2;
     }
     std::vector<std::string> args(argv + 1, argv + argc);

@@ -1,4 +1,4 @@
-// cnc.h (WORKER9, G2): C&C 1's Java model (ref's CnC.java and Cnc1Peripheral.java: the sequencer, the endpoint's send,
+// cnc.h: C&C 1's Java model (ref's CnC.java and Cnc1Peripheral.java: the sequencer, the endpoint's send,
 // READY, GO's net, the error bit, the receive FIFO), the row collectors that bring the tiles' READY and error lines to
 // it, and C&C 2 and 3's endpoints (Endpoint.java). AUDIT-M2 sections 0 and 4. Declarations; the steps come with stage 3.
 //
@@ -7,12 +7,12 @@
 //
 // THE ROW COLLECTORS. A unit has at most 64 ready bits (sim.h), so 64 READY lines plus 64 error lines can't be one unit's
 // inputs: one collector per mesh row takes its 8 tiles' lines and forwards a word per cycle to C&C. (The mask's width
-// forces this; M3's larger fan-ins will meet the same limit.) Latencies (agreed with W8): the register block puts a line
+// forces this; M3's larger fan-ins will meet the same limit.) Latencies (agreed): the register block puts a line
 // event at level 0 of t + 1 (its endCycle(t)) with latency ready_latency - 2; the collector forwards it at once with
 // latency 1; C&C sees it at t + ready_latency, as ref's `readyAt = edge + ready_latency`. The error line uses the same
 // links, so M2 requires error_latency == ready_latency (fatal otherwise: not modelled in M2).
 //
-//   line word (register block -> collector, width 1; W8's tile_ctl.h): bit 0 READY rose at the end of t; bit 1 the error
+//   line word (register block -> collector, width 1; the tile_ctl.h): bit 0 READY rose at the end of t; bit 1 the error
 //                                                      line's level after endCycle(t). Put only in a cycle where READY
 //                                                      rises or the error line changes.
 //   row word (collector -> C&C, width 1):              [7:0] READY edges, [15:8] which tiles sent a line word, [23:16]
@@ -31,7 +31,7 @@
 // steps past it are not yet in the queue (nor in the fingerprint) until the driver releases them between cycles. ref's
 // release cycle is decided by the harness from state (SortTest's boot ends at the first cycle with C&C idle and every
 // core in WFI, which no line reports), so the driver polls that between cycles, as ref does, then releases and wakes C&C
-// for the next cycle through the framework's between-cycles wake (asked of W10, 2026-11-07). C&C never steps while it
+// for the next cycle through the framework's between-cycles wake. C&C never steps while it
 // waits for a release (D23).
 #pragma once
 
@@ -45,7 +45,7 @@ namespace units {
 
 // ---- the program (configuration) ----------------------------------------------------------------------------------
 struct CncPacket { uint8_t dst, mode, counter, size; uint32_t addr; uint64_t lo, hi; };
-// W26: Endpoint.send's checks (invariants 5 and 21) as chip facts at the send's cycle t (cnc.cpp); for every path that
+// Endpoint.send's checks (invariants 5 and 21) as chip facts at the send's cycle t (cnc.cpp); for every path that
 // puts an endpoint's packet the way ref's Endpoint.send does (C&C 1's sends, the endpoints' harness sends)
 void endpoint_checks(uint64_t t, unsigned address, const CncPacket& p);
 struct CncStep {
@@ -57,7 +57,7 @@ struct CncStep {
         WAIT,        // a cycles (waitCycles)
         WAIT_READY,  // until all READY (SortTest.atAllReady's waitUntil; records allReadyAt)
         CALL,        // instant: harness bookkeeping, id a (the driver reads the cycle it ran)
-        WAIT_HOST,   // W20 (harness-only): ref's waitUntil in W23's form: until the harness, checking its condition between
+        WAIT_HOST,   // (harness-only): ref's waitUntil in the form: until the harness, checking its condition between
                      // cycles, releases it (host_released); instant once released, so C&C moves on the next cycle
         CALL_STEP,   // harness-only: ref's register-action step queued by a test, (c, t) -> { ...; return true; }: as CALL,
                      // id a, but it takes its cycle (the next step runs the cycle after)
@@ -79,7 +79,7 @@ public:
     CncProgram& wait_cycles(uint32_t n);
     CncProgram& call(uint32_t id);
     CncProgram& call_step(uint32_t id);                   // harness-only: CALL_STEP
-    CncProgram& wait_host();                              // W20 (harness-only): WAIT_HOST
+    CncProgram& wait_host();                              // (harness-only): WAIT_HOST
     CncProgram& release();                                // the harness queues the next steps here (between cycles)
 
     CncProgram();
@@ -94,7 +94,7 @@ public:
     static constexpr uint32_t kCalls = 256;               // CALL ids 0 .. kCalls - 1
 };
 
-// W20 (harness-only; P2): ref's Net harness at a controller's endpoint (sim/tests/mach.h): its sends (Net.cncSends,
+// (harness-only; P2): ref's Net harness at a controller's endpoint (sim/tests/mach.h): its sends (Net.cncSends,
 // Endpoint.send) and its receive trace (Endpoint.received). Null on every machine but the harness's Net machine.
 //   sends   {T, packet}, in order: the endpoint puts the head on its send Hold in its step at t when T <= t + 1 (ref's
 //           feed() put it at t, between cycles t and t + 1: visible at t + 1); a refusal is presented again, as the
@@ -152,13 +152,13 @@ struct Cnc {
     uint32_t last_command_word = 0xFFFFFFFFu;
     uint8_t pending_retry = 0;        // a refused send is presented again
     uint64_t retry_w[3] = {};
-    HarnessSends* hs = nullptr;       // W20 (harness-only): ref's Net harness's sends and receive trace; null otherwise
-    uint32_t host_released = 0, host_waits = 0;   // W20 (harness-only): WAIT_HOST steps released by the harness, passed
-    // W20 (harness-only): ref's drainReports' replies (a tile's result answered with a 32-bit mode-0 write to the address
+    HarnessSends* hs = nullptr;       // (harness-only): ref's Net harness's sends and receive trace; null otherwise
+    uint32_t host_released = 0, host_waits = 0;   // (harness-only): WAIT_HOST steps released by the harness, passed
+    // (harness-only): ref's drainReports' replies (a tile's result answered with a 32-bit mode-0 write to the address
     // it named, C&C 1's answers before its own steps): queued by the harness, which drains target 0 for ref's CnC
     CncPacket reply_q[16] = {};
     uint32_t reply_h = 0, reply_n = 0;
-    int64_t (*plog)[2] = nullptr;      // W20 (harness-only): ref's CnC.phaseLog, {all READY seen, GO} per GO, into the
+    int64_t (*plog)[2] = nullptr;      // (harness-only): ref's CnC.phaseLog, {all READY seen, GO} per GO, into the
     uint32_t plog_cap = 0, plog_n = 0; //   harness's array (null otherwise; fatal when full)
     // the receive FIFO (6.6): {payload [63:0], src, arrival, payload [127:64], size}
     uint64_t rxq[kRx][5] = {};
@@ -182,7 +182,7 @@ struct Cnc {
     // READY pulses arriving while the tile's previous pulse is still visible (not cleared by a GO). ref's READY bit reads 0
     // from such a pulse's edge until its arrival (readyAt is one cycle: max(old, edge + ready_latency)); the spec's bit is
     // sticky, and this model keeps it set (it cannot know of the pulse before it arrives). Counted, so a run can show it
-    // never happened (W9 NOTES, stage 3).
+    // never happened.
     uint64_t ready_repulses = 0;
     uint64_t stepped = 0;             // cycles C&C was stepped (D23: only when something happens)
     uint32_t rx_peak = 0;
@@ -223,7 +223,7 @@ struct Endpoint {
     sim::FifoIn rx;                   // tile k's to-controller output; one packet taken per cycle
     uint8_t address = 0;              // 65, 66
     uint64_t received = 0;
-    // W20 (harness-only; P2): the harness's sends and receive trace (HarnessSends); null otherwise
+    // (harness-only; P2): the harness's sends and receive trace (HarnessSends); null otherwise
     HarnessSends* hs = nullptr;
     uint8_t pending_retry = 0;
     uint64_t retry_w[3] = {};

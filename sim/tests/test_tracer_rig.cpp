@@ -1,15 +1,15 @@
-// test_tracer_rig.cpp (WORKER21): TracerRig against ref's rig.
+// test_tracer_rig.cpp: TracerRig against ref's rig.
 //  - JavaLongHashMap, the order ref's rig hands its pages to FileStore in (which decides their addresses and so the
 //    caches' timing; tracer_rig.h), against java.util.HashMap on every case of tests/tracersuites/hashorder.txt
 //    (oracle/ref/JavaHashOrder.java: put and computeIfAbsent, growth, a filling bin, high and negative keys, repeats,
 //    TracerTest's own page sets).
 //  - THE RIG'S CALLS: suite_tracer --calls records every Tracer call the C++ rig and TracerTest's cases make, in
 //    TracerConf's format (RecTracer); it must equal ref's rig's recording of the same cases (tests/tracerconf/
-//    cases.log.gz, W14's TracerConf, made from ref's TracerRig and TracerTest), Tracer by Tracer: the same Tracers (ids,
+//    cases.log.gz, the TracerConf, made from ref's TracerRig and TracerTest), Tracer by Tracer: the same Tracers (ids,
 //    probes included), the same store dumps (every page, by address: the page order), and the same calls with the same
 //    results at the same cycles, token by token. Both logs are expanded to one stream of (cycle, call) per Tracer, so
 //    how each side runs equal cycles together doesn't matter. A "U" line (C++) stands for a UB check run in a forked
-//    child: ref's calls from there up to the one that stopped ('!') are skipped. With W14's replay (test_tracer: the
+//    child: ref's calls from there up to the one that stopped ('!') are skipped. With the replay (test_tracer: the
 //    Tracer's state after every one of these calls equals ref's), the C++ rig is ref's rig, call for call.
 // Run from sim/.
 #include <unistd.h>

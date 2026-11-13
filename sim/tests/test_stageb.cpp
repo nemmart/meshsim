@@ -1,4 +1,4 @@
-// test_stageb: run_tests.sh's step stageb in make check (WORKER25, P7b): `stageb synthetic` (v1.3's StageB synthetic:
+// test_stageb: run_tests.sh's step stageb in make check: `stageb synthetic` (v1.3's StageB synthetic:
 // 16 program windows, 2 controller-fed, the CL4 case) equal to v1.3's log (tests/stageb/stageb.log, from
 // oracle/ref/stageb.sh), the CL4 line's seconds masked, plain and shuffled (seed 3).
 // The CL4 case's "meshsim: violations: ..." line comes from the checker (src/check.h): compared in the debug and suite
@@ -37,7 +37,7 @@ void check_step(const std::string& opts) {
     if (ours != ref) std::fprintf(stderr, "  stageb synthetic %s differs from tests/stageb/stageb.log\n", opts.c_str());
     CHECK(ours == ref);
     CHECK(rc2 == 0);
-    // The CL4 case's meshsim line (the checker's): equal to v1.3's in the debug and suite builds (W20's chip facts, F8
+    // The CL4 case's meshsim line (the checker's): equal to v1.3's in the debug and suite builds (the chip facts, F8
     // fixed); the release build has no checker, so no line to compare
     std::string om = run(self_dir() + "/stageb synthetic " + opts + " 2>&1" + only, rc), rm = run("cat tests/stageb/stageb.log" + only, rc2);
 #ifdef SIM_CHECKS

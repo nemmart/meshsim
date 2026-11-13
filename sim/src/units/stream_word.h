@@ -1,4 +1,4 @@
-// stream_word.h: the record's stream word (the 128-bit record word 1), as `ref`'s Replayer.java lays it out (v1.26.1, DECISIONS-v1.26 item 16; WORKER14, offered to W15 read-only).
+// stream_word.h: the record's stream word (the 128-bit record word 1), as `ref`'s Replayer.java lays it out (v1.26.1, DECISIONS-v1.26 item 16).
 //
 // Stream s = 0 code, 1 read log, 2 write log: its 128-bit words as sent (padding included) at [16s+15:16s]; its values
 // out at [48+17s+16:48+17s]; compressed at [99+s]; the Tracer's advice values at [124:102] (a replayer ignores them);

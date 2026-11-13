@@ -1,20 +1,20 @@
-// chain (WORKER17, v1.35; build/<cc>-<mode>/chain): T2's segments back to back on the framework's chip, one workload,
-// the memory carried from each segment to the next as `ref`'s T1 carries it (sim/planning/sessions/WORKER17-NOTES.md).
+// chain (v1.35; build/<cc>-<mode>/chain): T2's segments back to back on the framework's chip, one workload,
+// the memory carried from each segment to the next as `ref`'s T1 carries it.
 // Run from sim/ (the hops, the boot ROM, the images in tests/m3-images, the replayer tables).
 //
 //   chain --w26 DIR --delivery DIR --program NAME --segments A-B [--oracle FILE] [--windows N] [--chunk N]
 //         [--dump S --dump-dir D]
 //
-//   --w26 DIR         WORKER26's inputs of the workload ($DATA/w26-jumpmap/NAME)
+//   --w26 DIR         the inputs of the workload ($DATA/w26-jumpmap/NAME)
 //   --delivery DIR    the deliveries ($DATA/w9-deliveries): NAME.manifest.json and NAME/window_NNNNN.*.bin
 //   --oracle FILE     tests/golden-chain/<run>.starts: every segment's start memory (and some landings) as ref's
 //   --chunk N         cycles run between the harness's checks (default 250,000: ref's progress rule's interval)
-//   --dump S          segment S's start memory and landings in W13's forms (D/NAME.SSS.files.gz, .sram.gz), for the
+//   --dump S          segment S's start memory and landings in the forms (D/NAME.SSS.files.gz, .sram.gz), for the
 //                     t2 tool's checked run on them (--files, --sram, --segment, --fp-points)
 //
 // Per segment (T1's harness between segments, TracerT2.chip within one):
 //   setup    the ownership set (the update list's pages; against seg/NNN.pages); the start memory against the oracle
-//            (sha256 of W13's form, nextFree, pages, the files sum); the landings (against the oracle's where given);
+//            (sha256 of the form, nextFree, pages, the files sum); the landings (against the oracle's where given);
 //            a fresh chip (one domain, D26) with C&C 3's Tracer on the carried store through a fresh memory system
 //            (cold; cold again at every state-word landing, as T2's onStateWrite); the landings poked; the boot staged;
 //   boot     to Mach.coresBooted;
@@ -26,8 +26,8 @@
 //            and the sink hash), the replayer clean; no violation; the request bus's lag_cycles 0;
 //   carry    the dirty lines written back (untimed, T1's), then every cell of the update list and every cell updated
 //            so far (the cumulative shadow) against the memory (T1's end checks).
-// The exit and end cycles are W16's labels (t2's points): the register blocks' sim_exit_at - 1 (C&C 3's; the latest of
-// C&C 3's and the tiles'), equal to t2's on segment 10 of both workloads (Quest 173). A segment's cycles are W16's
+// The exit and end cycles are the labels (t2's points): the register blocks' sim_exit_at - 1 (C&C 3's; the latest of
+// C&C 3's and the tiles'), equal to t2's on segment 10 of both workloads (Quest 173). A segment's cycles are the
 // (the end's label less the boot's end); its time is the run from CC_SEGMENT, which ends within 10,000 cycles of the end.
 #include <algorithm>
 #include <cstdarg>
@@ -160,7 +160,7 @@ int main(int argc, char** argv) {
         if (!t2::load_image("tests/m3-images", n, *im, err)) { std::fprintf(stderr, "chain: %s\n", err.c_str()); return 1; }
     const std::string pd = o.delivery + "/" + o.program;
     const chain::Landings builder(tables, o.windows);
-    std::printf("%s: W26's inputs: image %u pages (root %d, depth %d), map 2^%d lines (root %d, depth %d), log2 K %d, lowest 0x%llx; "
+    std::printf("%s: the inputs: image %u pages (root %d, depth %d), map 2^%d lines (root %d, depth %d), log2 K %d, lowest 0x%llx; "
                 "%zu segments; %zu windows with files; loaded in %.2f s\n",
                 o.program.c_str(), w.img_pages, w.img.root, w.img.depth, w.hash_k, w.map.root, w.map.depth, w.log2k,
                 (unsigned long long)w.lowest, segs.size(), with_files.size(), secs(t_load, Clock::now()));
@@ -273,11 +273,11 @@ int main(int argc, char** argv) {
         if (why) bad.push_back(fmt("STOPPED: %s (cycle %llu)", why, (unsigned long long)sm.now()));
         // ---- the checks (TracerT2.chip's)
         const units::TileCtl& ctl3 = sm.unit<units::TileCtl>("cc3.ctl");
-        // W16's labels (t2's points; ref's c.cycle - 1): a register block's sim_exit_at is the label + 1 (Quest 173)
+        // the labels (t2's points; ref's c.cycle - 1): a register block's sim_exit_at is the label + 1 (Quest 173)
         uint64_t end_at = ctl3.s.sim_exit_at;
         for (unsigned k = 0; k < 64; k++) end_at = std::max(end_at, sm.unit<units::TileCtl>(units::tile_unit(k, "ctl")).s.sim_exit_at);
         const uint64_t exit_label = ctl3.s.sim_exit_at ? ctl3.s.sim_exit_at - 1 : 0, end_label = end_at ? end_at - 1 : 0;
-        const uint64_t seg_cycles = boot_end >= 0 && end_label > uint64_t(boot_end) ? end_label - uint64_t(boot_end) : 0;   // as W16's timing
+        const uint64_t seg_cycles = boot_end >= 0 && end_label > uint64_t(boot_end) ? end_label - uint64_t(boot_end) : 0;   // as the timing
         const uint32_t* d3 = m->dmem(66);
         const uint32_t R = cc3.at("tr_results") / 4;
         const uint32_t status = d3[R], wins = d3[R + 1], transfers = d3[R + 4], terr = d3[R + 6], left = d3[R + 7], diff = d3[R + 8];

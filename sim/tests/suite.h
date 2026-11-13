@@ -1,4 +1,4 @@
-// suite.h (WORKER20, P2, row C1): v1.3's suite harness `T` (sim/ref/meshsim/test/T.java) in C++, for the suites ported
+// suite.h: v1.3's suite harness `T` (sim/ref/meshsim/test/T.java) in C++, for the suites ported
 // from Java. Every line it prints, and every count, is Java's T's, so a ported suite's log can equal v1.3's
 // (`run_tests.sh`'s results/<step>.log; V135-INVENTORY's "log-equal").
 //

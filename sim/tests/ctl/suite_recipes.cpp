@@ -1,5 +1,5 @@
-// suite_recipes.cpp (WORKER23, P5, inventory C12): v1.3's RecipeTest (sim/ref/meshsim/test/RecipeTest.java, with
-// SelfTest.java) on W20's harness, group for group, in Java's order and words. run_tests.sh's steps `recipes` (-1) and
+// suite_recipes.cpp: v1.3's RecipeTest (sim/ref/meshsim/test/RecipeTest.java, with
+// SelfTest.java) on the harness, group for group, in Java's order and words. run_tests.sh's steps `recipes` (-1) and
 // `recipes-shuf` (4); its output equals ref's log (tests/ctlsuites/recipes*.log). Usage: suite_recipes [shuffleSeed]
 //
 // The recipe book's tests (fw/RECIPES.md, the v1.2 recipes fw/recipes/rcp_*.c). Every recipe runs on all 64 tiles and is
@@ -7,8 +7,8 @@
 // snippet check makes every code block in RECIPES.md equal to the RECIPE ... END region it names, so the book can't
 // drift from the code that runs.
 //
-// IN PROGRESS (NOTES.md): ported so far: snippets, copy, cmem, status, rules, tables, replay, cc1. The groups that read C&C's phase log
-// (goToReady, goToFirstRequest: W20's Cc::phase_log) and the cores' come next; until then main() runs the groups
+// IN PROGRESS: ported so far: snippets, copy, cmem, status, rules, tables, replay, cc1. The groups that read C&C's phase log
+// (goToReady, goToFirstRequest: the Cc::phase_log) and the cores' come next; until then main() runs the groups
 // ported, so the output is ref's lines for those groups.
 #include <algorithm>
 #include <cctype>

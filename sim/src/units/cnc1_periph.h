@@ -1,6 +1,6 @@
-// cnc1_periph.h (WORKER16, G7): C&C 1's peripheral 1, Ingress/Egress with the UART and the chip lines (type 1;
+// cnc1_periph.h: C&C 1's peripheral 1, Ingress/Egress with the UART and the chip lines (type 1;
 // sim/ref/meshsim/src/Cnc1Peripheral.java), and the stub engine of C&C 2 (and C&C 3 without the Tracer) (type 2;
-// CcCores.Stub). Both are peripherals of W15's slot (units/peripheral.h's method set; AUDIT-M3 3.1, 3.4, 6.9).
+// CcCores.Stub). Both are peripherals of the slot (units/peripheral.h's method set; AUDIT-M3 3.1, 3.4, 6.9).
 //
 // TIMING. ref's Cnc1Peripheral is not lazily settled: a store's writeWord acts in the core's step at t, and runCycle(t)
 // (C&C 1's slot, after the core) applies the error lines due, decrements the watchdog, shifts the UART and sets the
@@ -51,7 +51,7 @@ struct Cnc1Peripheral : PeripheralBase<Cnc1Peripheral> {
     static constexpr int DIGEST_N = 4;
 
     // ---- the own ports (ports(); wired by the chip) ----
-    // the own ports' indices in the slot's storage (peripheral.h, OWN PORTS; W15 for W16): rows at row0 .. row0 + 7,
+    // the own ports' indices in the slot's storage (peripheral.h, OWN PORTS): rows at row0 .. row0 + 7,
     // cc_line at line0 .. line0 + 2 (OwnPorts::link_in), go at go0 .. go0 + 63 (OwnPorts::link_out)
     unsigned row0 = 0, line0 = 0, go0 = 0;
 
@@ -176,7 +176,7 @@ struct Cnc1Peripheral : PeripheralBase<Cnc1Peripheral> {
         }
     }
     bool store_stalls(int64_t, int w) const { return w == UART_TX && tx_n >= FIFO; }
-    // The static map (peripheral.h, W15): the defined words a store writes; ERROR_LINES_0-2, READY_LINES_0-1 and
+    // The static map (peripheral.h): the defined words a store writes; ERROR_LINES_0-2, READY_LINES_0-1 and
     // UART_RX are read-only (ref's writeWord returns 0: a bus error, raised by the core at once).
     bool writable(int w) const { return (w >= READY_EXPECT && w <= UART_TX) || w == UART_DIVISOR || w == UART_STATUS; }
 

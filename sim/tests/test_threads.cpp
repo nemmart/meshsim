@@ -1,4 +1,4 @@
-// One machine over several threads (WORKER4, form 2): crossings arrive exactly when they would in one domain; the same
+// One machine over several threads (form 2): crossings arrive exactly when they would in one domain; the same
 // machine on 1, 2, 4 and 8 threads over several partitions gives identical digests; the fatal kinds. Run under TSan by
 // `make tsan` (src/threads.mk).
 #include <string>
@@ -324,7 +324,7 @@ TEST(the_missed_wake_detector_sees_words_on_their_way_across_domains) {
 DEBUG_DEATH_TEST(a_real_missed_wake_across_domains_is_still_caught, "missed wake at cycle [0-9]+: b is asleep with data waiting in b.in") {
     lazy(true, 0);
 }
-// W3's idle-jump cap, across domains: the producer stops after its last put, the consumer leaves the last word and
+// the idle-jump cap, across domains: the producer stops after its last put, the consumer leaves the last word and
 // sleeps, and the whole machine goes idle; with a threshold of 5 the suspect is judged only if the agreed jump stops at
 // its deadline.
 DEBUG_DEATH_TEST(a_missed_wake_just_before_the_machine_idles_is_reported_across_domains,

@@ -101,15 +101,16 @@ fi   # steps 1-3
 COMMON="-std=c++20 -fno-exceptions -fno-rtti -Isrc -pthread"
 cd "$W"; tu=0
 for f in $(cd "$W" && git -C "$SIM" ls-files -- 'src/*.cpp' 'src/**/*.cpp' 'tests/*.cpp' 'tests/**/*.cpp' 'tools/*.cpp' 'tools/**/*.cpp' 'bench/*.cpp' 'bench/**/*.cpp' | grep -v '^src/sketch/\|^tools/freeze/' | sort -u); do
-  g=$f; for mv in $MOVES; do [ "$f" = "${mv%%:*}" ] && g=${mv#*:}; done
+  # f as listed (the old path in a dry run, the new one after --apply's git mv): o its path before, g after
+  g=$f; o=$f; for mv in $MOVES; do [ "$f" = "${mv%%:*}" ] && g=${mv#*:}; [ "$f" = "${mv#*:}" ] && o=${mv%%:*}; done
   [ -f "$W/$g" ] || continue
   tu=$((tu + 1))
   grep -qxF "$g" "$R/pp-done" && continue
   over && { echo "strip.sh: out of time after $(wc -l < "$R/pp-done") translation units: rerun with $W --resume"; exit 3; }
   for defs in "-O1 -DSIM_DEBUG" "-O2 -DNDEBUG" "-O2 -DNDEBUG -DSIM_CHECKS"; do
-    (cd "$BEFORE" && g++ $COMMON $defs -E -P "$f" 2>/dev/null | sed "s#$f#$g#g") > "$R/a.i" || true
+    (cd "$BEFORE" && g++ $COMMON $defs -E -P "$o" 2>/dev/null | sed "s#$o#$g#g") > "$R/a.i" || true
     (cd "$W" && g++ $COMMON $defs -E -P "$g" 2>/dev/null) > "$R/b.i" || true
-    [ -s "$R/a.i" ] || { echo "$f [$defs]: does not preprocess"; exit 1; }
+    [ -s "$R/a.i" ] || { echo "$o [$defs]: does not preprocess"; exit 1; }
     cmp -s "$R/a.i" "$R/b.i" || { echo "$g [$defs]: $(diff "$R/a.i" "$R/b.i" | grep -c '^[<>]') lines" >> "$R/pp-differ"; }
   done
   echo "$g" >> "$R/pp-done"

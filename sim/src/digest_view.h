@@ -1,4 +1,4 @@
-// digest_view.h: what the unit-by-unit digest walks (WORKER4, E5; digest.h). Kept apart so config_impl.h can hold one.
+// digest_view.h: what the unit-by-unit digest walks (digest.h). Kept apart so config_impl.h can hold one.
 #pragma once
 
 #include <cstdint>

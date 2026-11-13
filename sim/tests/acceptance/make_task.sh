@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# make_task.sh -- writes a Quest task (v1.35, WORKER25; v1.3's acceptance/make_task.sh, meshsim WORKER11) with the
+# make_task.sh -- writes a Quest task (v1.35, v1.3's acceptance/make_task.sh) with the
 # acceptance kit embedded as a base64 tgz, SHA-256 checked (the runner can't reach private repositories; PIPELINE.md).
 # The task unpacks the kit, checks HASHES, builds it (./build.sh, clang) and records the machine (sim/tools/machine.sh,
 # D21) before running COMMAND.
@@ -12,7 +12,7 @@ KIT=$1; NAME=$2; CMD=$3; SETUP=${4:-}
 SHA=$(sha256sum "$KIT" | cut -d' ' -f1)
 cat <<HDR
 #!/bin/bash
-# Task $NAME -- meshsim v1.35 acceptance kit (sim/ WORKER25; v1.3's: WORKER11, WORKER20, WORKER25). The kit (sim/'s
+# Task $NAME -- meshsim v1.35 acceptance kit. The kit (sim/'s
 # sources for replay_shard, shard_summary and synthetic_delivery, built here with clang; the replay controller's images;
 # the universal replayer tables; run_shard.sh, calibrate.sh) is embedded below as a base64 tgz, SHA-256 checked.
 # Runs: $CMD

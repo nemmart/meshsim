@@ -1,4 +1,4 @@
-// The sort end to end (WORKER12, P5): the 64-tile chip running M2Sort's sequence, as M2Sort runs it (sim/oracle/ref/
+// The sort end to end: the 64-tile chip running M2Sort's sequence, as M2Sort runs it (sim/oracle/ref/
 // M2Sort.java, SortTest.Machine), checked against golden-m2's sort16k. This piece goes up to the input load:
 //   1. the boot (SortTest.Machine.boot: the image, CMD_JUMP, runWhenReady, without Mach's extra call), run cycle by
 //      cycle until C&C is idle and every core waits in WFI (ref's runUntil(!cc.busy() && allWaiting())): cycle B;
@@ -213,7 +213,7 @@ struct Checked {
 struct Fps {
     std::vector<fp::G2Tile> g2;
     fp::G2Chip gc;
-    units::reqbus::ReqBusUnits rbu;            // W14: the request bus's streams
+    units::reqbus::ReqBusUnits rbu;            // the request bus's streams
     fp::FpRegistry reg;
     std::vector<unsigned> tiles;
     explicit Fps(SortChip& s) : g2(64) {

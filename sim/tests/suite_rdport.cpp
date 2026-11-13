@@ -1,5 +1,5 @@
-// suite_rdport.cpp (WORKER22, P4, inventory C7): v1.3's ReadPortGatherTest (sim/ref/meshsim/test/
-// ReadPortGatherTest.java): the controller read port (4.3) and the GATHER engine (4.4), on W20's harness: the coreless
+// suite_rdport.cpp: v1.3's ReadPortGatherTest (sim/ref/meshsim/test/
+// ReadPortGatherTest.java): the controller read port (4.3) and the GATHER engine (4.4), on the harness: the coreless
 // machine with the real GATHER engine, and fw/tests/rdport.c and gather.c booted on the machine as specified. Every
 // assertion and printed line is Java's (this suite prints as it goes, as Java's out()), so the output equals
 // run_tests.sh's logs rdport (-1), rdport-shuf (4), rdport-full (-1 full); fixtures tests/p4suites/.
@@ -107,7 +107,7 @@ void read_port_from_c() {
     out("read port from C [meas: ReadPortGatherTest read port from C]: 40 32-bit, 8 64-bit and 4 128-bit reads land at the setup register's destination + the size in bytes per read, counting on their counter; the free count reads 64, then less, then 64 after counters done; a 65th store into a full queue is dropped with the read-port error");
 }
 
-// ref's TrafficDirector.cmIdle(t): nothing on its way to port B (as W20's phase_done reads it)
+// ref's TrafficDirector.cmIdle(t): nothing on its way to port B (as the phase_done reads it)
 bool cm_idle(Chip& c, unsigned k) {
     sim::PortEntry e[64];
     const TileRef tr = c.tile(k);

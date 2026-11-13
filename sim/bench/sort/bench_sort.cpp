@@ -1,6 +1,6 @@
-// bench_sort (WORKER10): the 16K sort on W9's chip with W8's, W11's and W12's units, timed over M2Sort's counted span
-// (L1's GO to L2's all-READY, as W7's baseline: setup, the boot and the input load excluded). The machine and the
-// sequence are W12's test_sort's (tests/test_sort.cpp, SortChip): the boot run to B by polling, the input loaded and the
+// bench_sort: the 16K sort on the chip with the, the and the units, timed over M2Sort's counted span
+// (L1's GO to L2's all-READY, as the baseline: setup, the boot and the input load excluded). The machine and the
+// sequence are the test_sort's (tests/test_sort.cpp, SortChip): the boot run to B by polling, the input loaded and the
 // sequence released at B. Its span is found once by a polling run (the phases as C&C records them, PhaseLog's rule)
 // and checked in every timed machine afterwards (its last GO and all-READY at the same cycles).
 //
@@ -103,7 +103,7 @@ struct SortRun {
         mem.assign(64 * 2 * MEM_WORDS, 0);
         gx.cfg.timing = tc.timing; gx.cfg.periph_present = tc.periph_present; gx.cfg.mem_chunks = 1u << 20;
         gx.cfg.done_gate = true; gx.cfg.K = 8; gx.cfg.cm_latency = 2;
-        gx.cfg.sram_running_sum = false;                  // D31 (W11): no fingerprints here, so no running SRAM sum
+        gx.cfg.sram_running_sum = false;                  // D31: no fingerprints here, so no running SRAM sum
         gx.bootrom = im.bootrom.data(); gx.bootrom_words = uint32_t(im.bootrom.size()); gx.mem = mem.data();
         gx.sram = &sram;
         uint8_t dom[64];

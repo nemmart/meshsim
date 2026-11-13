@@ -1,7 +1,7 @@
-// suite_ccbench.cpp (WORKER23, P5, inventory G3): v1.3's CcBench (sim/ref/meshsim/test/CcBench.java) on W20's harness,
+// suite_ccbench.cpp: v1.3's CcBench (sim/ref/meshsim/test/CcBench.java) on the harness,
 // line for line. run_tests.sh's step `ccbench` (full mode); its output equals ref's log (tests/ctlsuites/ccbench.log).
 //
-// WORKER14's measurements: C&C 1-3 as cores (Config.ccCores) against the Java model (CnC).
+// the measurements: C&C 1-3 as cores (Config.ccCores) against the Java model (CnC).
 //  - the boot (6.2), reset release to all 64 tiles running their image, with rcp_boot (recipe 22's tile side: the
 //    RECIPES table's 120 cycles, 62 broadcast packets) and with cmd; the cores' boot broken down;
 //  - a phase: back-to-back broadcast commands (cmd's type 1, one argument) with READY/GO, GO to GO in the steady state.

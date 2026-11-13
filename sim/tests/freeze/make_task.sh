@@ -1,5 +1,5 @@
 #!/bin/bash
-# make_task.sh -- the v1.35 freeze check as a Quest task (WORKER22; PLAN-V135 step 4). Writes a self-contained task with
+# make_task.sh -- the v1.35 freeze check as a Quest task (PLAN-V135 step 4). Writes a self-contained task with
 # an embedded kit: sim/ at HEAD without ref/, oracle/, planning/ and pipeline/'s tools other than keys/ (the stand-alone
 # tree: sources, data, firmware images, every fixture), built on the runner with clang (T2's rows reference is
 # tests/freeze/t2-rows.txt, in it); the acceptance kit's scripts (calibrate.sh, run_shard.sh, build.sh) at the kit's top, laid out as

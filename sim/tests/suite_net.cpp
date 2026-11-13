@@ -1,4 +1,4 @@
-// suite_net.cpp (WORKER22, P4, inventory C3): v1.3's NetTest (sim/ref/meshsim/test/NetTest.java) on W20's harness
+// suite_net.cpp: v1.3's NetTest (sim/ref/meshsim/test/NetTest.java) on the harness
 // (tests/mach.h's Net, the coreless machine; tests/suite.h's T). Every assertion and printed line is Java's, in Java's
 // order, so the output equals run_tests.sh's logs: net (`-1`, and `-1 quick` in quick mode), net-shuf (`5 quick`),
 // net-shuf2 (`11 quick`), skewtable (`-1 skewtable 40`); fixtures tests/p4suites/, from oracle/ref/p4suites.sh.
@@ -12,7 +12,7 @@
 // debug builds (the release build FATALs there).
 //
 // STATUS. Ported: structure, unicast, routes, random (in-order random, the queue peaks), fullrate, fanin, skewtable.
-// Waiting on W20 (sessions/WORKER22/NOTES.md, W22-1 to W22-6): broadcast, cncport, director, injection, loopback. Until
+// Waiting on the harness: broadcast, cncport, director, injection, loopback. Until
 // they land, a full run's counts and lines are short of the fixture's.
 //
 // Test-side code (the configuration regime, D6).
@@ -339,7 +339,7 @@ std::string queue_peaks(Chip& c) {
         }
         if (best > 0) sb += suite::str("    %-22s %3lld  (t%d)\n", (std::string(OUT_NAME[o]) + "<" + PORT_NAME[port]).c_str(), (long long)best, at);
     }
-    // the write engine's input (ref's weIn.highWater): the framework Fifo's peak, kept under SIM_CHECKS (W22-7)
+    // the write engine's input (ref's weIn.highWater): the framework Fifo's peak, kept under SIM_CHECKS
     uint32_t b = 0; int at = -1;
     for (unsigned p = 0; p < 64; p++) {
         const uint32_t pk = c.sim().fifo_peak(c.tile(p).unit<units::WriteEngine>("we").in);
@@ -393,7 +393,7 @@ void in_order_full_rate() {
 enum : uint32_t { CMD = 0x7FC0, RPL = 0x7BC0, CMD_DWORD = CMD >> 2, RW = RPL >> 2 };   // ControllerMemories
 enum : unsigned { COND_BAD = 1, COND_UNEXPECTED = 2 };                               // Conditions
 // ref's TrafficDirector.cmIdle(t): nothing on its way to port B, as ref has it at the end of the cycle just run (a word
-// arriving at the next cycle landed at ref's end of this one): the port-B half of W20's TileRef::phase_done (W22-15).
+// arriving at the next cycle landed at ref's end of this one): the port-B half of the TileRef::phase_done.
 bool cm_idle(Chip& c, unsigned k) {
     sim::PortEntry e[64];
     const TileRef tr = c.tile(k);
@@ -621,7 +621,7 @@ std::array<int, 3> fan_run(int r, const std::vector<int>& senders, int W, int64_
         using RB = units::RegBlockState;
         if (cond & (1u << RB::COND_WE_IN_OVF | 1u << RB::COND_GATHER_OVF | 1u << RB::COND_TABLE_OVF)) other = true;
     }
-    if (other && first.empty()) { std::fprintf(stderr, "FATAL suite_net: a non-router FIFO overflowed (its name: W20's overflow scan)\n"); std::abort(); }
+    if (other && first.empty()) { std::fprintf(stderr, "FATAL suite_net: a non-router FIFO overflowed (its name: the overflow scan)\n"); std::abort(); }
     if (first_ovf && !first.empty()) *first_ovf += first;
     unsigned peak = 0;
     const Router& rr = router(n.c, unsigned(r));

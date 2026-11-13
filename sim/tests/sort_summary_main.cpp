@@ -1,4 +1,4 @@
-// sort_summary (WORKER24, P6, row D6): v1.3's SortSummary (sim/ref/meshsim/test/SortSummary.java) in C++, output for
+// sort_summary: v1.3's SortSummary (sim/ref/meshsim/test/SortSummary.java) in C++, output for
 // output: the per-run CSVs of a kit's results directory into SUMMARY.md (the Inputs section, P4, the shuffled identity
 // check, each sweep with its band, the runs with no result) and all.csv (every CSV row).
 //

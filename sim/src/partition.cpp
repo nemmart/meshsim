@@ -1,4 +1,4 @@
-// partition.cpp: placement by load (WORKER10; Options::Placement::by_load). The configuration regime: any C++.
+// partition.cpp: placement by load (Options::Placement::by_load). The configuration regime: any C++.
 //
 // 1. Granules: units that must share a thread. Joined by a Wire or RegFile (can't cross), a Count (its members), a Fifo,
 //    credit Fifo, Hold or Reg (each would make the barrier interval 1), a Link below the interval, and one declared

@@ -1,4 +1,4 @@
-// topology.h: which CPUs this machine has and where threads go (WORKER4; D21: nothing machine-specific is baked in).
+// topology.h: which CPUs this machine has and where threads go (D21: nothing machine-specific is baked in).
 //
 // Detected at run time from /sys and this process's affinity: the online CPUs it may use; on a hybrid chip the
 // performance and efficiency cores (/sys/devices/cpu_core/cpus, cpu_atom/cpus), elsewhere every core a "P" core; each

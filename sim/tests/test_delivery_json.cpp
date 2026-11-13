@@ -1,4 +1,4 @@
-// test_delivery_json (WORKER19, P1, D42): tools/delivery/json.h, the JSON reader and writer convert_delivery and
+// test_delivery_json (D42): tools/delivery/json.h, the JSON reader and writer convert_delivery and
 // synthetic_delivery share, against Java's: Double.toString on every value of tests/delivery/java_doubles.txt (made by
 // oracle/ref/JavaDoubles.java, JDK 21), and a manifest-shaped document read and written back as ConvertDelivery does.
 #include <cstdio>

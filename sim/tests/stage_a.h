@@ -1,5 +1,5 @@
-// stage_a.h (WORKER25, P7b; inventory E4): Stage A's window as ref's ReplayDelivery runs it, shared by
-// `replay_delivery` (W15's driver; its manifest mode) and `replay_shard` (the acceptance kit). Everything a window's
+// stage_a.h: Stage A's window as ref's ReplayDelivery runs it, shared by
+// `replay_delivery` (the driver; its manifest mode) and `replay_shard` (the acceptance kit). Everything a window's
 // result says is ref's text: the line (ReplayDelivery.Result.line), the summary (the streams, newexp, the stalls) and
 // every detail line of a failing window (the row count, the first mismatching row with its fields, ref's describe and
 // diag.bin lines and the two rows before it, the streams' consumption, the end state, the replayer's errorReport and

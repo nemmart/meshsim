@@ -1,4 +1,4 @@
-// suite_agbench.cpp (WORKER22, P4, inventory G1): v1.3's AgBench (sim/ref/meshsim/test/AgBench.java): the address
+// suite_agbench.cpp: v1.3's AgBench (sim/ref/meshsim/test/AgBench.java): the address
 // generator's read-ahead measured on the coreless machine (tests/mach.h): the smallest ag_lookahead with no cycle lost,
 // with and without read-queue stalls; runs of zero-length groups; start to the first request. Every printed line is
 // Java's (AgBench prints as it goes and has no assertions), so the output equals run_tests.sh's log agbench (fixture

@@ -1,9 +1,9 @@
-// C&C 1's peripheral (WORKER16, G7; units/cnc1_periph.h) against ref's Cnc1Peripheral, driven by the same seeded script
+// C&C 1's peripheral (units/cnc1_periph.h) against ref's Cnc1Peripheral, driven by the same seeded script
 // (oracle/ref/Cnc1Conf.java; fixtures tests/cnc1conf/, regenerated and checked by oracle/ref/cnc1conf.sh --check):
 //   - the chip lines as the chip delivers them: READY pulses and tiles' error lines as row words (Link(ready_latency)),
 //     C&C 2's and 3's error lines (Link(error_latency)), C&C 1's own (Link(2): the register block's line word, put at
 //     level 0 of t + 1, latency 1);
-//   - C&C 1's core and slot as W15's slot drives a peripheral (AUDIT-M3 3.1): at level 0 of t, begin(t), the consume of
+//   - C&C 1's core and slot as the slot drives a peripheral (AUDIT-M3 3.1): at level 0 of t, begin(t), the consume of
 //     t - 1, the store of t - 1 (write_word(t - 1, ...)), then the loads sampling at t, then step(t), end(t);
 //   - GO through the peripheral's own 64 Links (all must arrive in one cycle).
 // The observations (every load's value, every GO's store cycle, the toast pin and the UART's bytes at the end) must equal
@@ -97,7 +97,7 @@ struct Obs { int64_t t; int w; uint32_t v; };                 // w -1: GO
 // C&C 1's core and slot around the peripheral.
 struct Stand {
     Cnc1Peripheral p;
-    OwnPorts own;                                          // W15: the peripheral's own ports live in its host unit
+    OwnPorts own;                                          // the peripheral's own ports live in its host unit
     const Ev* ev; uint32_t n, i = 0;
     bool st_due = false; int64_t st_t = 0; uint32_t st_w = 0, st_v = 0;
     bool cons_due = false; uint32_t cons_bits = 0;
@@ -176,9 +176,9 @@ std::string run(const Script& s, sim::Options opt) {
     return out;
 }
 
-// The same through W15's slot (PeriphSlot on C&C 1, peripheral 1 type PT_CNC1): the core's side puts the stores and
+// The same through the slot (PeriphSlot on C&C 1, peripheral 1 type PT_CNC1): the core's side puts the stores and
 // the consuming loads on S2/S3 (CoreOp, Link(1)) and reads the window RegFile at its loads' sample cycles; C&C 1's own
-// ports (the rows, the controllers' lines, GO) are the slot's OwnPorts at the peripheral's indices (W15, 72b5da2).
+// ports (the rows, the controllers' lines, GO) are the slot's OwnPorts at the peripheral's indices (72b5da2).
 struct SlotCoreSide {
     uint64_t undefined_stores = 0;
     sim::LinkOut core, region;
@@ -194,7 +194,7 @@ struct SlotCoreSide {
         for (; i < n && ev[i].t == t; i++) {
             const Ev& e = ev[i];
             if (e.kind == 'S') {
-                // the core judges a store to a defined read-only word a bus error (W15: TileCore's window_store): not sent
+                // the core judges a store to a defined read-only word a bus error (TileCore's window_store): not sent
                 const unsigned k = e.a - Win::OWN0;
                 const bool def = c.read(window, Win::reg(1, Win::R_DEFINED + k / 32)) >> (k % 32) & 1;
                 const bool wr = c.read(window, Win::reg(1, Win::R_WRITABLE + k / 32)) >> (k % 32) & 1;
@@ -240,7 +240,7 @@ std::string run_slot(const Script& s, sim::Options opt) {
     const GoObs& g = sim.unit<GoObs>("go");
     const Cnc1Peripheral& q = *static_cast<const Cnc1Peripheral*>(sim.unit<PeriphSlot>("cc1.slot").s.per[1].p);
     if (g.split) return "GO's 64 links arrived in different cycles\n";
-    {   // W15: the slot flags a store to an undefined word, as ref's slot does (Cnc1Conf's ref side has no slot): exactly those
+    {   // the slot flags a store to an undefined word, as ref's slot does (Cnc1Conf's ref side has no slot): exactly those
         const SlotCore& S = sim.unit<PeriphSlot>("cc1.slot").s;
         if (S.reserved_accesses != sp.undefined_stores || const_cast<SlotCore&>(S).violation_total() != S.reserved_accesses)
             return "the slot flagged a violation other than the script's stores to undefined words\n";
@@ -309,7 +309,7 @@ TEST(cnc1_periph_conformance_under_debug_options) {
     sim::Options c; c.step_all = true; conformance(c);
 }
 
-// Through W15's slot unit: the same fixtures, the same lines.
+// Through the slot unit: the same fixtures, the same lines.
 TEST(cnc1_periph_through_the_slot_conformance_with_ref) {
     conformance({}, true);
     sim::Options a; a.shuffle_seed = 5; conformance(a, true);

@@ -1,4 +1,4 @@
-// config.cpp: building a machine (WORKER3, stage 2). The configuration regime (D6): any C++.
+// config.cpp: building a machine. The configuration regime (D6): any C++.
 //
 #include "config_impl.h"
 #include "digest.h"
@@ -19,7 +19,7 @@ void Ports::in(LinkIn& h, const char* name, unsigned width) {
     h.idx = IMPL.declare(&h, Kind::link, false, Shape::in, name, width, true, false);
     h.bit = IMPL.decls[h.idx].bit;
 }
-// W10: a Link whose consumer may hold up to `depth` words (capacity L + depth: ref's WordDelayLine(name, L, L + depth));
+// a Link whose consumer may hold up to `depth` words (capacity L + depth: ref's WordDelayLine(name, L, L + depth));
 // the plain declaration is depth 2 (WordDelayLine's default, L + 2).
 void Ports::in(LinkIn& h, const char* name, unsigned width, unsigned depth) {
     if (depth < 1 || depth > 0x7FFF) FATAL("link '%s': depth %u (1-32767)", name, depth);
@@ -206,9 +206,9 @@ unsigned pow2_above(unsigned x) { unsigned w = 2; while (w <= x) w <<= 1; return
 Sim Config::build() {
     Impl& I = *impl_;
     if (I.built) FATAL("build() called twice");
-    bool domains = false;                     // W10: several domains in one engine: checked as if split, then built whole
+    bool domains = false;                     // several domains in one engine: checked as if split, then built whole
     for (const auto& u : I.units) domains = domains || u.domain != I.units[0].domain;
-    bool placed_whole = false;                // W10: by_load found one group: one engine, whatever the threads
+    bool placed_whole = false;                // by_load found one group: one engine, whatever the threads
     if (I.opt.placement == Options::Placement::by_load) {
         if (domains) detail::check_domains(I);   // on the author's domains, before they are replaced by the groups
         unsigned groups = 1;
@@ -219,7 +219,7 @@ Sim Config::build() {
         }
         if (groups <= 1) { placed_whole = true; for (auto& u : I.units) u.domain = 0; domains = false; }
     }
-    if (detail::split_needed(I)) { I.built = true; return Sim(detail::Internals::split(I)); }   // W4 (E3): several engines
+    if (detail::split_needed(I)) { I.built = true; return Sim(detail::Internals::split(I)); }   // several engines
     I.built = true;
     if (domains) detail::check_domains(I);
     using Decl = Impl::Decl;
@@ -228,7 +228,7 @@ Sim Config::build() {
     // 0. every option is implemented, or refused: an option set must never be silently ignored (integrator, 2026-11-07)
     if (I.opt.threads != 1 && !domains && !placed_whole)
         FATAL("option threads = %u not implemented for one domain: split the machine with Config::domain, or run independent "
-              "chips with run_independent (W4)", I.opt.threads);
+              "chips with run_independent", I.opt.threads);
 
     // 1. every port wired (a Count may stand alone: a counter no one reads, or read but never incremented)
     for (const Decl& d : I.decls)
@@ -718,7 +718,7 @@ Sim Config::build() {
     Sizes& z = S->sizes;
     std::map<std::string, SizeLine> by_s, by_t;
     std::map<unsigned, uint64_t> by_chip;
-    for (auto& it : c.items) S->carved.push_back({it.what, it.off, it.words, it.type});   // W10 (Internals::regions)
+    for (auto& it : c.items) S->carved.push_back({it.what, it.off, it.words, it.type});   // (Internals::regions)
     for (auto& it : c.items) {
         SizeLine& l = by_s[it.what];
         l.what = it.what; l.words += it.words; l.count += it.count;
@@ -742,8 +742,8 @@ Sim Config::build() {
     z.words_per_chip = z.total_words / z.chips;
     z.wheel_buckets = 0;
     for (auto& w : wheels) z.wheel_buckets = std::max(z.wheel_buckets, w.W);
-    detail::Internals::record_view(I, inst_of, S->view);       // W4 (E5): the digest, unit by unit
-    if (I.opt.calibrate) {                                     // W10: time per instance, for Sim::load_profile
+    detail::Internals::record_view(I, inst_of, S->view);       // the digest, unit by unit
+    if (I.opt.calibrate) {                                     // time per instance, for Sim::load_profile
         S->run_ticks_v.assign(e.ninst, 0);
         e.inst_ticks = S->run_ticks_v.data();
         S->link_words_v.assign(e.nlinks, 0);
@@ -751,7 +751,7 @@ Sim Config::build() {
         S->cal_ticks0 = sim_ticks();
         S->cal_ns0 = double(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
     }
-    if (I.opt.observe_arrivals && e.nlinks) {                  // W10: one arrival cycle per Link ring slot
+    if (I.opt.observe_arrivals && e.nlinks) {                  // one arrival cycle per Link ring slot
         S->link_at_off_v.resize(e.nlinks);
         size_t tot = 0;
         for (uint32_t k = 0; k < e.nlinks; k++) { S->link_at_off_v[k] = uint32_t(tot); tot += e.links[k].ring.depth; }
@@ -773,9 +773,9 @@ Sim& Sim::operator=(Sim&& o) noexcept {
 }
 Sim::~Sim() { delete impl_; }
 
-// W4 (E3): a machine split over domains forwards each operation to its threads (threads.h; its run_until(end) runs the
-// cycles before `end`, so these keep W3's meaning: run(n) runs n cycles, run_until(t) runs through t inclusive).
-// W10: a run clears the stop request and marks itself running (the observer refuses while it is).
+// a machine split over domains forwards each operation to its threads (threads.h; its run_until(end) runs the
+// cycles before `end`, so these keep the meaning: run(n) runs n cycles, run_until(t) runs through t inclusive).
+// a run clears the stop request and marks itself running (the observer refuses while it is).
 namespace {
 struct Running {
     detail::Internals::SImpl* s;
@@ -798,7 +798,7 @@ void Sim::run_until(Cycle t) {
     if (impl_->threads) return impl_->threads->run_until(t + 1);
     impl_->e.run_until(t);
 }
-// W10: each instance's load: the time its steps took in calibrating runs.
+// each instance's load: the time its steps took in calibrating runs.
 namespace {
 void profile_of(const detail::Internals::SImpl& S, LoadProfile& p) {
     const Engine& e = S.e;
@@ -880,7 +880,7 @@ void Sim::wake(const std::string& name) {
     if (it == impl_->by_name.end()) FATAL("Sim::wake: no unit named '%s'", name.c_str());
     impl_->e.mark(it->second);       // ready for the next cycle's run phase (nothing clears it before)
 }
-// W20 (harness-only; P2): Sim::wake_all, Sim::in_flight (config.h).
+// (harness-only; P2): Sim::wake_all, Sim::in_flight (config.h).
 bool Sim::in_flight_into(const std::string& prefix) const {
     if (impl_->running) FATAL("Sim::in_flight_into during a run: between runs only");
     if (impl_->threads) FATAL("Sim::in_flight_into: one domain only (the harness's machines run one thread)");
@@ -1024,7 +1024,7 @@ Cycle Sim::now() const { return impl_->threads ? impl_->threads->now() : impl_->
 const Sizes& Sim::sizes() const { return impl_->threads ? impl_->threads->sizes() : impl_->sizes; }
 std::string Sim::partition() const { return impl_->threads ? impl_->threads->partition() : std::string("one domain"); }
 
-void Sim::flush_ports() {                                      // W20 (harness-only; B20)
+void Sim::flush_ports() {                                      // (harness-only; B20)
     if (impl_->running) FATAL("Sim::flush_ports during a run: between runs only");
     if (impl_->threads) FATAL("Sim::flush_ports: one domain only");
     Engine& e = impl_->e;
@@ -1043,14 +1043,14 @@ void Sim::flush_ports() {                                      // W20 (harness-o
     for (uint32_t i = 0; i < e.nholds; i++) e.holds[i].occ = false;
     for (uint32_t k = 0; k < e.ninst; k++) e.mask[k] = 0;   // the inputs' pending and level bits
 }
-uint32_t Sim::regfile_value(RegFileIn p, unsigned i) const {   // W20 (harness-only)
+uint32_t Sim::regfile_value(RegFileIn p, unsigned i) const {   // (harness-only)
     if (impl_->running) FATAL("Sim::regfile_value during a run: between runs only");
     if (impl_->threads) FATAL("Sim::regfile_value: one domain only");
     const RegFilePort& r = impl_->e.regfiles[p.idx];
     if (i >= r.n) FATAL("Sim::regfile_value: register %u of %u", i, r.n);
     return r.regs[i];
 }
-bool Sim::has_unit(const std::string& name) const {      // W20 (harness-only)
+bool Sim::has_unit(const std::string& name) const {      // (harness-only)
     if (impl_->threads) FATAL("Sim::has_unit: one domain only");
     return impl_->by_name.count(name) != 0;
 }
@@ -1076,7 +1076,7 @@ uint64_t Sim::steps(const std::string& name) const {
     return impl_->e.steps[it->second];
 }
 
-// W4 (E5): unit by unit in add order, wide payloads by their contents (digest.h).
+// unit by unit in add order, wide payloads by their contents (digest.h).
 uint64_t Sim::digest() const {
     if (impl_->threads) return impl_->threads->digest();
     const Sim::Impl* one = impl_;

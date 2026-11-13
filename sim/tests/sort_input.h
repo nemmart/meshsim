@@ -1,4 +1,4 @@
-// sort_input.h (WORKER12, P5): the sort's input and its expected result, ported from SortTest.java (readKeys, value32,
+// sort_input.h: the sort's input and its expected result, ported from SortTest.java (readKeys, value32,
 // valueHalf, loadInput, Oracle, mismatches) so the C++ driver checks the sort as M2Sort does.
 //
 //   read_keys(path)        KeyGen's file: "KEYS" (0x4B455953), 64 lengths, then each tile's keys (little-endian)
@@ -69,7 +69,7 @@ void load_input(const Keys& k, int fmt, uint32_t s_addr, SramPoke sram_poke, Dme
 inline constexpr unsigned G4[16][4] = {{1, 29, 35, 63}, {2, 30, 34, 62}, {3, 31, 33, 61}, {5, 23, 41, 59}, {6, 22, 42, 58},
     {7, 21, 43, 57}, {8, 28, 36, 56}, {9, 27, 37, 55}, {10, 26, 38, 54}, {11, 25, 39, 53}, {12, 24, 40, 52},
     {13, 15, 49, 51}, {14, 18, 46, 50}, {16, 20, 44, 48}, {17, 19, 45, 47}, {0, 4, 32, 60}};
-// SortTest.Oracle (shaped = false: M2Sort's; W24 added `shaped`, the targets R_q = the input's own sizes, and R, the
+// SortTest.Oracle (shaped = false: M2Sort's; `shaped` added, the targets R_q = the input's own sizes, and R, the
 // direct path's group maxima).
 struct Oracle {
     std::vector<uint64_t> expect[64], source[64];

@@ -1,4 +1,4 @@
-// The port observer (W8's request) and the stop request (W9's) (WORKER10). The observer is checked against the machine
+// The port observer (the request) and the stop request (the). The observer is checked against the machine
 // itself: what it reports at the end of cycle c must be exactly what the consumer sees at c + 1 (its visible words then
 // are the ones visible at c, plus those arriving at c + 1, plus the put judged at c + 1 if accepted), in one domain and
 // split over two threads, with run lengths that end between barriers; and against the producer's own log for a Link's
@@ -259,7 +259,7 @@ TEST(stop_ends_a_split_run_at_the_barrier_on_every_thread) {
     }
 }
 
-// ---- the between-cycles wake (W9's driver): Sim::wake(name) steps the unit at now(), exactly, in its own domain
+// ---- the between-cycles wake (the driver): Sim::wake(name) steps the unit at now(), exactly, in its own domain
 namespace {
 struct Sleeper {   // never asks to be woken; records the cycles it was stepped at
     LinkIn in; Cycle seen[8] = {}; uint32_t n = 0;
@@ -377,7 +377,7 @@ TEST(time_threads_reports_phase_shares_and_changes_nothing) {
 }
 
 // Crossing Links of different latencies into one domain: their outboxes have windows of different sizes (direct delivery,
-// W >= latency + interval); the observer reads each over its own window, so no word is found twice (W8's eject link).
+// W >= latency + interval); the observer reads each over its own window, so no word is found twice (the eject link).
 namespace {
 struct Pacer {   // puts its count every other cycle
     LinkOut out; uint32_t i = 0;
@@ -426,7 +426,7 @@ TEST(observe_links_of_different_latencies_split_as_in_one_domain) {
     }
 }
 
-// ---- Ports::overflow_steps (W11's and W12's request, D29): a Fifo overflow steps its owner in the cycle it is judged
+// ---- Ports::overflow_steps (the and the request, D29): a Fifo overflow steps its owner in the cycle it is judged
 namespace {
 struct Flood {   // puts every cycle from 1 to 10
     FifoOut out;
@@ -468,7 +468,7 @@ TEST(overflow_steps_the_owner_when_judged_in_one_domain) { ovf_case(false, true)
 TEST(overflow_steps_the_owner_when_judged_split) { ovf_case(true, true); }
 TEST(overflow_without_the_declaration_stays_hidden) { ovf_case(false, false); }
 
-// ---- Internals::regions (W10, footprints): the machine's memory by structure, each with its owning domain; no two
+// ---- Internals::regions (footprints): the machine's memory by structure, each with its owning domain; no two
 // regions overlap, and together they cover the engine blocks and arenas Sizes counts (padding aside)
 #include "internals.h"
 TEST(regions_cover_the_machine_without_overlap) {

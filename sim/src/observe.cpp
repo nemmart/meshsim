@@ -1,4 +1,4 @@
-// observe.cpp: the port observer (WORKER10; W8's request for the canonical fingerprint, AUDIT-M2 6). Between runs only:
+// observe.cpp: the port observer (the request for the canonical fingerprint, AUDIT-M2 6). Between runs only:
 // reads one input port of a built machine, with what is still in the wheels, into the caller's buffer. The configuration
 // regime by its place (outside the loop), but allocation-free: a fingerprint per cycle calls it for every bus of a tile.
 #include "config_impl.h"
@@ -68,7 +68,7 @@ PortView Sim::observe(const LinkIn& p, PortEntry* out, uint32_t max) const {
     uint32_t mask = 0;
     for (uint32_t wi = 0; wi < e.nwheels; wi++)
         if (e.wheels[wi].kind == Kind::link && e.wheels[wi].width == l.width && e.wheels[wi].mask > mask) mask = e.wheels[wi].mask;
-    // W10: a crossing Link's words may also sit in the source's outbox (direct delivery), translated by its xdst
+    // a crossing Link's words may also sit in the source's outbox (direct delivery), translated by its xdst
     for (uint32_t i = 0; i < e.nxin; i++) if (e.xin[i].width == l.width && e.xin[i].mask > mask) mask = e.xin[i].mask;
     uint32_t found = 0;
     for (Cycle t = e.now; t <= e.now + mask; t++) {

@@ -1,4 +1,4 @@
-// replay_shard (WORKER25, P7b; inventory E5): ref's test/ReplayShard.java, the acceptance kit's replayer. Every window
+// replay_shard: ref's test/ReplayShard.java, the acceptance kit's replayer. Every window
 // of a delivery's program (or every S-th of a range, from the K-th), in Stage A (the replayer model fed by the ideal
 // controller: tests/stage_a.h) and Stage B (replay_ctl.c on a tile: B tile 0 alone, F the full chip), each compared
 // row for row with the reference rows, the streams' consumption and the end state. Before a window is replayed, every

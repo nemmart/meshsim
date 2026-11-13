@@ -1,4 +1,4 @@
-// net.cpp (WORKER9): the hops table (ref's Hops.java) and the start skews (Chip's Random(skewSeed)). Configuration only.
+// net.cpp: the hops table (ref's Hops.java) and the start skews (Chip's Random(skewSeed)). Configuration only.
 #include "units/net.h"
 
 #include <cstdio>

@@ -1,5 +1,5 @@
 // gather.h: the GATHER engine (sim/ref/meshsim/src/GatherEngine.java; AUDIT-M2 3.6).
-// Configuration part by W8 (G1); the behaviour by W12 (G4).
+// Configuration part; the behaviour.
 //
 // The unit: its input from the director (`in`, the gather queue, mode 4), its configuration (k from DMA_CONFIG, base
 // from DMA_RECORD_BASE_ADDRESS: Tile.setMasterConfig / setRecordBase), derived from the register block's `dma`
@@ -12,31 +12,31 @@
 //      wide = k even, left = k or k / 2;
 //   3. one read: chunk (base + 2k * ordinal + (wide ? 4 : 2) * i) mod 2^21, 64 or 128 bits, mode 1, the request's
 //      counter, to the tile itself, address 0.
-// Wakes: a delivery to the queue, a refusal (the framework's edge bit), the queue's overflow (W10's overflow_steps),
+// Wakes: a delivery to the queue, a refusal (the framework's edge bit), the queue's overflow (the overflow_steps),
 // and `next()` after every put (to see the next cycle: the next read, a refusal, or the busy half falling).
 //
-// When the tile has no read side (`wired` false: the network-only and M1/G1 benches, until W11's read queue is in the
+// When the tile has no read side (`wired` false: the network-only and M1/G1 benches, until the read queue is in the
 // tile), the G4 ports are not declared and a request is fatal, named, as before.
 //
-// G4'S PORTS (WORKER12), agreed with W11 (src/units/mem.h) and the integrator, 2026-11-08.
+// G4'S PORTS, agreed (src/units/mem.h) and the integrator, 2026-11-08.
 //
 //   port   kind              from -> to                      words                                  latency
 //   in     Fifo, width 3     director -> gather              mode-4 link words, Fifo(gather_depth);  1
 //                                                            its overflow reaches the block as an
-//                                                            event by W10's Fifo hook (GATHER_OVF, D29)
+//                                                            event by the Fifo hook (GATHER_OVF, D29)
 //   dma    RegFile           block -> gather                 k (DMA_CONFIG), the record base         (level, as the AG)
-//   rd     Hold, width 2     gather -> srq client 0 (W11)    mem::req_a, mem::req_b                  (Hold)
+//   rd     Hold, width 2     gather -> srq client 0    mem::req_a, mem::req_b                  (Hold)
 //   busy   Reg, width 1      gather -> block                 its own half of GatherEngine.busy at    (Reg)
 //                                                            the end of t: the queue non-empty after
 //                                                            t's take, OR left > 0, OR a put on `rd`
 //                                                            at t
 //   ovf    Link(1), width 0  gather -> block                 the queue overflowed (judged at the     1
-//                                                            put's t + 1, W10's hook; ERRORS [6]
+//                                                            put's t + 1, the hook; ERRORS [6]
 //                                                            as an event, D29; D28 as the router)
 //
 // STATUS's gather_busy at the block's endCycle(t) is the OR of three inputs (owner, 2026-11-08), together ref's
 //   !gatherIn.isEmpty(t) || left > 0 || !out.isEmpty(t) || srq.inFlightOf(GATHER) > 0:
-//   `busy` above; the srq's Reg (W11): the gather Hold occupied at the end of t, OR inFlightOf(GATHER) > 0 (only the
+//   `busy` above; the srq's Reg: the gather Hold occupied at the end of t, OR inFlightOf(GATHER) > 0 (only the
 //   consumer knows whether it took the word at t); the director's `gather_put`, a width-0 Link(1) put with a mode-4
 //   packet at t (ref's isEmpty counts the queue's pending put, which reaches this unit only at t + 1).
 #pragma once
@@ -70,7 +70,7 @@ struct Gather {
     uint64_t ovf_seen = 0;     // the queue's overflows already reported
     // ---- statistics (GatherEngine: requests, reads = packets, stallCycles) ----
     uint64_t requests = 0, reads = 0, stall_cycles = 0, overflows = 0;
-    // W20 (harness-only; P2): ref's Drain in the GATHER engine's place (Config.realResponder off, the coreless test
+    // (harness-only; P2): ref's Drain in the GATHER engine's place (Config.realResponder off, the coreless test
     // machine): one entry taken a cycle, counted (Drain.taken), nothing read. Set by the harness only.
     bool drain = false;
     uint64_t drained = 0;
@@ -96,7 +96,7 @@ struct Gather {
         }
         const uint64_t o = c.overflows(in);                  // the queue's overflow: an event to the block (D29)
         if (o != ovf_seen) { overflows += o - ovf_seen; ovf_seen = o; c.put(ovf); }
-        if (drain) {                                         // W20 (harness-only): ref's Drain
+        if (drain) {                                         // (harness-only): ref's Drain
             if (c.ready(in)) {
                 if (log) {                                     // ref's gatherStub.record()/log: {t, payload, header}
                     if (log_n == log_cap) FATAL("gather drain: the harness's log is full (%u entries)", log_cap);

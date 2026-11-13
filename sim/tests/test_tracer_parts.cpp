@@ -1,4 +1,4 @@
-// test_tracer_parts.cpp (WORKER14): the Tracer's pure pieces against `ref`.
+// test_tracer_parts.cpp: the Tracer's pure pieces against `ref`.
 //   - RVC: all 2^16 encodings against `ref`'s Rvc (tests/tracerparts/rvc.txt.gz);
 //   - LruCoder and its packer: seeded streams, every coded value's bits and every packed word against `ref`'s
 //     (lru-sN.txt.gz);

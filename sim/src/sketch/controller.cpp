@@ -1,5 +1,5 @@
 // Sketch 2 (WORKER3, stage 1): the outline of the controller's surroundings against sim.h, compiled, not run. Revised
-// against W2's coupling audit (sim/tests/AUDIT-M1.md, "AUDIT" below) and sim/tests/TRACE-FORMAT.md ("TRACE"). The
+// against W2's coupling audit (planning/audits/AUDIT-M1.md, "AUDIT" below) and sim/tests/TRACE-FORMAT.md ("TRACE"). The
 // interpreter (Controller.execute) is elided; what is here is every coupling between the core and the rest of its tile in
 // M1, with the cycle each takes effect, which is what tests the phases and the Wires.
 //

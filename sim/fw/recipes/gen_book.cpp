@@ -1,4 +1,4 @@
-// gen_book (WORKER23, P5; D40): v1.3's gen_book.py in C++. Fills RECIPES.tmpl.md's "@@name file@@" lines with the
+// gen_book (D40): v1.3's gen_book.py in C++. Fills RECIPES.tmpl.md's "@@name file@@" lines with the
 // RECIPE regions of the recipes' sources (fw/recipes/), writing fw/RECIPES.md; RecipeTest's snippet check confirms
 // that every block in the book equals its region (check_book.py's check, which went with regions.py).
 //   gen_book [--check] [RECIPES_DIR]    (default fw/recipes, run from sim/)

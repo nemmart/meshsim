@@ -1,4 +1,4 @@
-// reqbus_fp.h (WORKER14): the request bus's canonical state as ref's StateFp writes it (AUDIT-M2/M3 section 6: `reqbus`
+// reqbus_fp.h: the request bus's canonical state as ref's StateFp writes it (AUDIT-M2/M3 section 6: `reqbus`
 // and each port's `req`), from the C++ units (src/units/reqbus.h) at the end of cycle c, between runs.
 //
 // ref's bus counts a beat in its node input from the cycle it is sent (`occ`, `arrivals`), a request in its input from

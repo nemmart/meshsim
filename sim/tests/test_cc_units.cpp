@@ -1,4 +1,4 @@
-// The C&C units (WORKER16, M3 step 2; AUDIT-M3 3.4): the chip with C&C 1-3 as units 64-66 (ChipSpec::cc_cores), built
+// The C&C units (M3 step 2; AUDIT-M3 3.4): the chip with C&C 1-3 as units 64-66 (ChipSpec::cc_cores), built
 // from M2's units with the controller's router, the C&C links (Link(1)) to tiles 0-2's fifth ports and the host ports.
 //   - The build: 67 units' worth of each tile unit, named t<k>.* and cc1.* .. cc3.*; C&C c in tile c's domain, so a
 //     split chip's barrier interval stays 3.
@@ -10,9 +10,9 @@
 //     under the debug options (shuffle, both orders, step-all).
 //   - ref's cycles (tests/m3-images/cc_ping.ref, from oracle/ref/ccping.sh): SIM_EXIT's cycle and cc_ping's stamps (mcycle at
 //     each send and when its STATUS poll sees send-busy clear). The first poll has nothing arriving at C&C 1: the
-//     register block must step again after the core's own send (W16's fix in TileCtl; the missed-wake detector can't
+//     register block must step again after the core's own send (the fix in TileCtl; the missed-wake detector can't
 //     see stale published state), else the poll never ends; ref's cycle is checked, not just the ending.
-// The slot and the chip lines (C&C 1's READY, GO and error lines) come with W15's slot; nothing here reaches them.
+// The slot and the chip lines (C&C 1's READY, GO and error lines) come with the slot; nothing here reaches them.
 #include <cinttypes>
 #include <cstdio>
 #include <cstdlib>

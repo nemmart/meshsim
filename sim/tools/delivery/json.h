@@ -1,4 +1,4 @@
-// json.h (WORKER19, P1, D42): the JSON reader and writer of v1.3's replay tools, as Java behaves: objects keep their
+// json.h (D42): the JSON reader and writer of v1.3's replay tools, as Java behaves: objects keep their
 // keys' order (LinkedHashMap: a repeated key keeps its first place and takes the last value), integers are 64-bit
 // (Long.parseLong), numbers with '.', 'e' or 'E' are doubles printed as Java's Double.toString prints them, \uXXXX
 // escapes become UTF-8 (a surrogate pair one code point, as Java's UTF-8 writer encodes it). Configuration-time code.

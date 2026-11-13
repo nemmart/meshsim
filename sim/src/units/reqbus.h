@@ -1,5 +1,5 @@
 // reqbus.h: the request bus (spec 3.3, 4.18; sim/ref/meshsim/src/RequestBus.java, RequestPort.java; AUDIT-M3 3.4),
-// WORKER14. A 16-bit, 8-ary tree from every tile's request port and the controllers' to the targets' receive queues:
+// A 16-bit, 8-ary tree from every tile's request port and the controllers' to the targets' receive queues:
 // 128-bit requests of 8 beats, one beat a hop a cycle, wormhole per request; eight row nodes (tiles 8r .. 8r + 7) and a
 // root (the row nodes and C&C 1-3); round-robin at each node from the input after the last served; the root skips a head
 // whose target has no credit, drops targets 3-7 (flagged), and forwards whole requests into the receive queues (target
@@ -160,7 +160,7 @@ struct ReqLeaf {
             const sim::Word* w = c.peek(push);
             if (n >= depth) {                 // a push into a full FIFO: the core checks canPush first (ref: violate)
                 overflows++;
-                sim::check::record(uint64_t(t - 1), int(src), sim::check::Kind::CTL_REQ_FULL);   // W26: ref's ctl.violate at the send
+                sim::check::record(uint64_t(t - 1), int(src), sim::check::Kind::CTL_REQ_FULL);   // ref's ctl.violate at the send
             }
             else {
                 Entry& e = fifo[(head + n) % depth];
@@ -387,7 +387,7 @@ struct ReqNode {
                 dropping = tg >= TARGETS;
                 if (dropping) {
                     violations++;
-                    sim::check::record(uint64_t(t), -1, sim::check::Kind::REQBUS_NO_RECEIVER, buf[cur].head_req()->src, tg);   // W26
+                    sim::check::record(uint64_t(t), -1, sim::check::Kind::REQBUS_NO_RECEIVER, buf[cur].head_req()->src, tg);
                 }
                 else credits[tg]--;
             }
@@ -447,7 +447,7 @@ struct ReqRecv {
     uint32_t pub[REGS] = {};
     uint64_t received = 0, violations = 0;
     HostExtra host_extra[HOST_EXTRA];  // the harness's further pops of one cycle (harness-only)
-    std::vector<std::array<int64_t, 6>>* dlog = nullptr;   // W20 (harness-only): the deliveries, into the harness's vector
+    std::vector<std::array<int64_t, 6>>* dlog = nullptr;   // (harness-only): the deliveries, into the harness's vector
                                                           //   (reserved at configuration: no allocation in the run)
 
     ReqRecv(sim::Ports& p, unsigned target_, const ReqBusConfig& rc) : target(target_), depth(rc.queue_depth[target_]) {
@@ -490,13 +490,13 @@ struct ReqRecv {
         // deliveries arriving at t (ref's toReceiver drained at the start of runCycle(t)): visible from t + 1
         while (c.ready(deliver)) {
             const sim::Word* w = c.peek(deliver);
-            if (dlog) {                      // W20 (harness-only; W22-19): ref's delivered list, {deliveredAt, srcTile, w0..w3}
+            if (dlog) {                      // (harness-only): ref's delivered list, {deliveredAt, srcTile, w0..w3}
                 if (dlog->size() == dlog->capacity()) FATAL("reqbus: the harness's delivery log is full (%zu)", dlog->size());
                 dlog->push_back({t, int64_t(beat_src(w[0])), int64_t(uint32_t(w[1])), int64_t(w[1] >> 32), int64_t(uint32_t(w[2])), int64_t(w[2] >> 32)});
             }
             if (qn >= depth) {               // ref: "the root's credits should prevent it"
                 violations++;
-                sim::check::record(uint64_t(t), -1, sim::check::Kind::REQBUS_QUEUE_OVERFLOW, target);   // W26
+                sim::check::record(uint64_t(t), -1, sim::check::Kind::REQBUS_QUEUE_OVERFLOW, target);
             }
             else {
                 Entry& e = q[(qh + qn) % depth];
@@ -537,7 +537,7 @@ inline const char* leaf_name(unsigned k, char* buf) {   // buf: 16 bytes
     else { const char* s = "cc?.reqleaf"; int n = 0; while (*s) buf[n++] = *s++; buf[n] = 0; buf[2] = char('1' + (k - 64)); }
     return buf;
 }
-// Thread domains (W4), when the machine is split: the nodes' domain, each leaf's (its tile's), each queue's (its
+// Thread domains, when the machine is split: the nodes' domain, each leaf's (its tile's), each queue's (its
 // controller's). Without one, every unit goes in the current domain. Mode 0 split is refused at build (a RegFile or Wire
 // across domains), as D34 wants; the caller sets cfg.domain again after the call if it needs to.
 struct ReqBusPlacement {
@@ -546,7 +546,7 @@ struct ReqBusPlacement {
     unsigned recv[TARGETS] = {};
 };
 inline ReqBusIO add_reqbus(sim::Config& cfg, const ReqBusConfig& rc, uint64_t tiles, unsigned ccs,
-                           const ReqBusPlacement* place = nullptr, bool cc_leaves = true) {   // (W20: false, ReqHost's)
+                           const ReqBusPlacement* place = nullptr, bool cc_leaves = true) {   // (false, ReqHost's)
     if (rc.credit_latency != 0 && rc.credit_latency != 3)
         FATAL("reqbus: credit latency %u: 0 (exact, D34) or 3 (the spec)", rc.credit_latency);
     ReqBusIO io;
@@ -600,7 +600,7 @@ void wire_sender(sim::Config& cfg, const ReqBusIO& io, unsigned k, Req& r) {
     }
 }
 
-// W20 (harness-only; P2, W22-10): ref's RequestBus driven from a test on the machine with C&C's Java model
+// (harness-only): ref's RequestBus driven from a test on the machine with C&C's Java model
 // (RequestBusTest's Net(Config.machine())): `controllerSend` (a request entering the root's controller input 8 + c, its
 // eight beats arriving one a cycle from t + hop, ref's: no request port in between) and the receive queues' pops (ref's
 // `receive`: popped at the end of t, the credit back to the root at t + 1). The harness (sim/tests/mach.cpp) puts beat 0

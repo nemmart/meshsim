@@ -1,5 +1,5 @@
 // lru_coder.h: the Tracer's LRU stream encoder and its packer (spec 4.21.6; 4.19.15; DECISIONS-v1.3 sections 3, 4; item
-// 151), ported from `ref`'s LruCoder.java (WORKER14). The exact inverse of the replayer's decoder: a 16-entry table, all
+// 151), ported from `ref`'s LruCoder.java. The exact inverse of the replayer's decoder: a 16-entry table, all
 // zeros at a window's start (reset).
 //   - code and read log: a true LRU of 16 entries; the write log: 15 LRU entries and E[15], the last load, set by every
 //     load word (tag 0) in row order (last_load), as the decoder does;

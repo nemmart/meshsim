@@ -1,4 +1,4 @@
-# ctlsuites.mk: WORKER23's rules (P5): v1.3's control suites, programs and recipes as C++ programs on W20's harness
+# ctlsuites.mk: the rules (P5): v1.3's control suites, programs and recipes as C++ programs on the harness
 # (tests/mach.h, suite.h), and the test that runs them in make check, each one's output against ref's log
 # (tests/ctlsuites/, from oracle/ref/ctlsuites.sh). The programs are named by v1.3's suites; run_tests.sh's steps
 # call them with v1.3's arguments.

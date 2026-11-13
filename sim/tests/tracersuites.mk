@@ -1,4 +1,4 @@
-# tracersuites.mk: WORKER21's rules (P7a): v1.3's Tracer suites as C++ programs on W20's suite.h, and the test that
+# tracersuites.mk: the rules (P7a): v1.3's Tracer suites as C++ programs on the suite.h, and the test that
 # runs them in make check, each one's output against ref's log (tests/tracersuites/, from oracle/ref/tracersuites.sh).
 #   suite_memsys   MemorySystemTest (run_tests.sh's step memsys)
 #   suite_rvc      RvcTest (step rvc)

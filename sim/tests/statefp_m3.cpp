@@ -1,4 +1,4 @@
-// statefp_m3.cpp (WORKER16): the M3 chip's fingerprint. See statefp_m3.h.
+// statefp_m3.cpp: the M3 chip's fingerprint. See statefp_m3.h.
 #include "statefp_m3.h"
 
 #include <algorithm>
@@ -81,13 +81,13 @@ void w_slot(const void* p, FpOut& o, const FpCtx& x) {
     }
 }
 
-// 6.8: W15's PeriphSlot::fingerprint_replayer (the replayer's stream with the inputs still in the slot's links).
+// 6.8: the PeriphSlot::fingerprint_replayer (the replayer's stream with the inputs still in the slot's links).
 void w_rp(const void* p, FpOut& o, const FpCtx& x) {
     units::PeriphSlot& sl = const_cast<units::PeriphSlot&>(*static_cast<const units::PeriphSlot*>(p));
     sl.fingerprint_replayer(*x.sim, 1, o, int64_t(x.cycle));
 }
 
-// The Tracer's five (6.6): W14's PeriphSlot::fingerprint_tracer, which adds what is still in the slot's links (the
+// The Tracer's five (6.6): the PeriphSlot::fingerprint_tracer, which adds what is still in the slot's links (the
 // PULSE_DMA start, region packets accepted at c - 2 .. c, a PULSE_RUN or window store of c, a consuming EVENTS load of c).
 struct TrRef { const units::PeriphSlot* slot; int unit; };
 TrRef g_tr[5];

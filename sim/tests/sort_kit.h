@@ -1,4 +1,4 @@
-// sort_kit.h (WORKER24, P6, rows D5-D8): what the sort's driver and the kit's tools share, as v1.3's Java does it:
+// sort_kit.h: what the sort's driver and the kit's tools share, as v1.3's Java does it:
 //   - Java's formatting where the outputs use it: %,d (grouping), %+,d, %+.2f (Formatter's HALF_UP on the shortest
 //     decimal digits), Path.of(...).toString() for a directory named in a report;
 //   - the files: a directory listed in Path order (bytewise), a file's lines (Files.readAllLines), String.split(",", -1);

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build.sh -- builds the acceptance kit's programs (v1.35, WORKER25) from the kit's sim/ sources, with clang (D18) and
+# build.sh -- builds the acceptance kit's programs (v1.35) from the kit's sim/ sources, with clang (D18) and
 # the suite build (MODE=suite: release flags with the checker on, so the machine's violations reach the verdict as in
 # v1.3): replay_shard (Stage A and B per window), shard_summary (SUMMARY.txt, VERDICT.txt) and
 # synthetic_delivery (calibrate.sh's delivery), into sim/build/clang-suite/. The v1.3 kit carried a jar instead.

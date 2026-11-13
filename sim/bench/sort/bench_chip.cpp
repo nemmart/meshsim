@@ -1,4 +1,4 @@
-// bench_chip (WORKER10): W9's chip (build_chip with W8's G1 units in every tile) running a program from cycle 0, timed,
+// bench_chip: the chip (build_chip with the G1 units in every tile) running a program from cycle 0, timed,
 // one thread or form 2, by placement. The benchmark that counts until the sort runs at 16K (owner, 2026-11-07): the
 // sort's boot (the sort image loaded over the network and port B: 14,791 cycles before any engine runs), wfi, regs.
 //
@@ -46,7 +46,7 @@ struct Args {
     uint64_t trace_from = 2000, trace_window = 3, trace_windows = 300;   // --trace-from C --trace-window W --trace-windows N
     unsigned windows = 0;              // --windows W: one thread, the run in windows of W cycles: steps and time each (quiet case)
     bool units = false;                // --units: one thread, calibrating: each unit kind's time, steps and ns a step
-    std::string barrier = "auto";      // --barrier auto (the framework's choice) | counter (W4's) | flags | flags-spin
+    std::string barrier = "auto";      // --barrier auto (the framework's choice) | counter (the) | flags | flags-spin
     unsigned reps = 5;         // --reps: machines built and run in this process, after one untimed (a run is milliseconds:
                                // the clock's ramp, first touches and the workers' start would otherwise dominate)
 };
@@ -56,7 +56,7 @@ struct World {   // what the machine reads while it runs: outlives it
     Hops hops;
     CncProgram prog;
     std::vector<uint32_t> mem;
-    SramBlocks sram;                 // G3's big-SRAM blocks (W11), as test_chip
+    SramBlocks sram;                 // G3's big-SRAM blocks, as test_chip
     G1Ctx gx;
 };
 
@@ -152,7 +152,7 @@ int main(int argc, char** argv) {
     const uint64_t cycles = a.cycles ? a.cycles : a.prog == "sort" ? 14791 : 0;   // wfi, regs: to their stop
     const std::string part = a.threads == 1 && a.part != "load" && a.part != "profile" ? std::string("one") : a.part;
 
-    if (!a.trace_map.empty()) {   // footprint: the region map, then marked windows (bench/w10/trace_filter.cpp reads both)
+    if (!a.trace_map.empty()) {   // footprint: the region map, then marked windows (bench/sort/trace_filter.cpp reads both)
         World rw;
         prepare(rw, a.prog);
         sim::Options o; o.threads = a.threads; o.cpus = a.cpus;

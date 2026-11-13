@@ -1,4 +1,4 @@
-// replayer_alu.h: what a replayer row computes (WORKER15; owner W15, W14 reads it).
+// replayer_alu.h: what a replayer row computes.
 //
 // sim/ref/meshsim/src/ReplayerAlu.java (spec 4.19.7; spec/replayer-opcodes.md 1-5, jolt-cpp 821e1bd): the opcode table
 // (88 row opcodes and their classes), and the value for rd and the new pc of one row. Pure functions, no state, no

@@ -1,6 +1,6 @@
-// suite_ag.cpp (WORKER22, P4, inventory C6): v1.3's AgTest (sim/ref/meshsim/test/AgTest.java): the address generator
+// suite_ag.cpp: v1.3's AgTest (sim/ref/meshsim/test/AgTest.java): the address generator
 // without stream working registers, its computed fields, the read-ahead queue bounds, mixed read sizes in a group,
-// figure 12's PTR and HIST ports and the v1.0 rulings, on W20's harness (tests/mach.h; ref's runLocal on
+// figure 12's PTR and HIST ports and the v1.0 rulings, on the harness (tests/mach.h; ref's runLocal on
 // TileRef::phase_done). AgTest prints no lines: its log is the summary (agtest -1, agtest-shuf 4; tests/p4suites/).
 //
 //   suite_ag [seed] [--only=GROUP,...]      groups: worked computed bounds groupsize fig12 rulings

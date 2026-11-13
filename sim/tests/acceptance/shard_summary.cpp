@@ -1,4 +1,4 @@
-// shard_summary (WORKER25, P7b; inventory E5): the acceptance kit's summary step, v1.3's run_shard.sh inline Python in
+// shard_summary: the acceptance kit's summary step, v1.3's run_shard.sh inline Python in
 // C++ (D40: no Python), line for line: OUT/results.csv read back, OUT/SUMMARY.txt (rows and time per stage, the
 // stage-B/F stall averages, the throughput) and OUT/VERDICT.txt (each stage's windows matched, the first 50 failures,
 // PASS or FAIL); exit 0 only if every window of the range matched in every stage. Python's formats kept: "{:.1f}" and

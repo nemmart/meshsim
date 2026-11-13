@@ -1,4 +1,4 @@
-// M1's threads test (PLAN-M1, W5): N controllers on N threads (W4's run_independent), each running a different golden,
+// M1's threads test (PLAN-M1): N controllers on N threads (the run_independent), each running a different golden,
 // every trace equal to its golden and every digest to the same golden's run alone, under all six debug-check option
 // sets (ready-driven, shuffle seeds 1-3, instance-major, step-all). Here N = 3, every golden in 23 rounds;
 // the runner runs N up to 12, pinned (Quest). Also run under TSan (make tsan-units). Run from sim/.

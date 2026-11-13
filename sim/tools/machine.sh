@@ -1,6 +1,6 @@
 #!/bin/bash
-# machine.sh: what this machine is, and which CPUs to use (WORKER4; D21: nothing machine-specific is baked in).
-# Replaces WORKER5's machine.inc. Works on hybrid chips (Intel P/E cores: /sys/devices/cpu_core, cpu_atom) and on
+# machine.sh: what this machine is, and which CPUs to use (D21: nothing machine-specific is baked in).
+# Replaces the machine.inc. Works on hybrid chips (Intel P/E cores: /sys/devices/cpu_core, cpu_atom) and on
 # ordinary ones (every core a "P" core), one socket or several; only CPUs this process may run on are used.
 #
 # Run it:

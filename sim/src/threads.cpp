@@ -1,4 +1,4 @@
-// threads.cpp: one machine over several threads (WORKER4): see threads.h. The configuration regime for the split and
+// threads.cpp: one machine over several threads: see threads.h. The configuration regime for the split and
 // the build; the run loop (run_thread, publish, drain, clear) is the cycle loop's: no allocation, no STL calls, no locks.
 #include "threads.h"
 
@@ -79,8 +79,8 @@ struct XCountMember {     // a domain's member of a Count read across domains, w
 unsigned pow2_at_least(unsigned x) { unsigned w = 1; while (w < x) w <<= 1; return w; }
 }  // namespace
 
-// W10: the declared domains are units of placement, not engines. They are grouped, in order, into E engines (one per
-// thread unless Options::engines says otherwise; W4's spread, domain d of D in group d * E / D); each group is built as
+// the declared domains are units of placement, not engines. They are grouped, in order, into E engines (one per
+// thread unless Options::engines says otherwise; the spread, domain d of D in group d * E / D); each group is built as
 // one engine, so a connection between two domains of a group is an ordinary local port and only connections between
 // groups are crossings. What may not cross is judged on the declared domains, so a configuration's validity doesn't
 // depend on the thread count.
@@ -119,7 +119,7 @@ Sim::Impl* Internals::split(Config::Impl& G) {
     using Decl = Config::Impl::Decl;
     const uint32_t n = uint32_t(G.units.size());
 
-    // W10: the declared domains checked, then grouped into engines (the rest of the split sees the groups as domains)
+    // the declared domains checked, then grouped into engines (the rest of the split sees the groups as domains)
     check_domains(G);
     const unsigned declared = declared_domains(G), E = engines_of(G);
     {
@@ -311,7 +311,7 @@ Sim::Impl* Internals::split(Config::Impl& G) {
             S(key.second).decls[m[0]].peers.push_back(m[k]);
         }
 
-    // ---- build each domain (W3's build, unchanged)
+    // ---- build each domain (the build, unchanged)
     auto* T = new Threads;
     T->interval = interval;
     T->doms.resize(D);
@@ -396,7 +396,7 @@ Sim::Impl* Internals::split(Config::Impl& G) {
         retarget.push_back({r.p, route, uint32_t(&ob - T->outboxes.data())});
         counts_by_kind[unsigned(Kind::reg)]++;
     }
-    // W10: direct delivery for every Link outbox carrying values (no by-reference class): its destination delivers from
+    // direct delivery for every Link outbox carrying values (no by-reference class): its destination delivers from
     // its buckets at their cycle. Its window must outlast an entry's flight and the interval it was put in (W >= L + I),
     // so the source never writes a bucket its destination may still be reading in the same interval.
     for (auto& ob : T->outboxes) {
@@ -444,7 +444,7 @@ Sim::Impl* Internals::split(Config::Impl& G) {
         if (ob.dst == kFan) { for (uint32_t d = 0; d < D; d++) if (!ob.fan[d].empty()) T->doms[d].in.push_back(id); }
         else T->doms[ob.dst].in.push_back(id);
     }
-    // Routes name their wheel by index (W3's performance pass): each source domain's wheel table is copied and its outboxes
+    // Routes name their wheel by index (the performance pass): each source domain's wheel table is copied and its outboxes
     // appended after its own wheels (index >= nwheels: never delivered by the domain's cycle), and its routes retargeted.
     // The due mask (a bit per wheel) is off in a split machine's domains: an outbox's index may pass 63, and the drain
     // appends into a destination's wheels between cycles.
@@ -466,7 +466,7 @@ Sim::Impl* Internals::split(Config::Impl& G) {
     // where each outbox lands: the destination's wheel of its kind and width
     for (auto& ob : T->outboxes) {
         ob.wheel.assign(D, kNone);
-        if (ob.direct) continue;                     // W10: delivered from the outbox itself
+        if (ob.direct) continue;                     // delivered from the outbox itself
         for (uint32_t d = 0; d < D; d++) {
             if (ob.dst != kFan ? d != ob.dst : ob.fan[d].empty()) continue;
             const Engine& e = eng(d);
@@ -475,7 +475,7 @@ Sim::Impl* Internals::split(Config::Impl& G) {
             if (ob.wheel[d] == kNone) FATAL("split: no %s wheel of width %u in domain %u", kind_name(ob.kind), ob.width, d);
         }
     }
-    // W10: each domain's incoming direct outboxes
+    // each domain's incoming direct outboxes
     T->xins.resize(D);
     for (auto& ob : T->outboxes) {
         if (!ob.direct) continue;
@@ -518,7 +518,7 @@ Sim::Impl* Internals::split(Config::Impl& G) {
     }
     for (uint32_t d = 0; d < D; d++) {
         T->doms[d].next_slot = nslots++; T->doms[d].sent_slot = nslots++; T->doms[d].stop_slot = nslots++;
-        T->doms[d].e->stop_breaks = false;       // W10: a stop runs on to the interval's barrier, where every thread ends
+        T->doms[d].e->stop_breaks = false;       // a stop runs on to the interval's barrier, where every thread ends
     }
     // the packing rule (base/words.h): each status word is written by one domain's thread and read by others, so each has
     // its own cache line; the two banks too
@@ -561,7 +561,7 @@ Sim::Impl* Internals::split(Config::Impl& G) {
     for (uint32_t d = 0; d < D; d++) T->doms[d].thread = unsigned(uint64_t(d) * T->nthreads / D);
     T->cpus = G.opt.cpus;
     const bool flags = G.opt.barrier == Options::Barrier::flags ||
-                       (G.opt.barrier == Options::Barrier::automatic && T->nthreads >= 3 && !G.opt.barrier_block);   // W10
+                       (G.opt.barrier == Options::Barrier::automatic && T->nthreads >= 3 && !G.opt.barrier_block);
     T->barrier.init(T->nthreads, G.opt.barrier_block, G.opt.barrier_spins, flags);
     T->where = std::make_unique<Threads::Where[]>(T->nthreads);
     T->barrier.watchdog(10.0, &Threads::report_where, T);
@@ -594,12 +594,12 @@ Sim::Impl* Internals::split(Config::Impl& G) {
     {
         uint64_t direct = 0;
         for (const auto& ob : T->outboxes) if (ob.direct) direct += ob.routes;
-        if (direct) rep += " (" + std::to_string(direct) + " link delivered direct)";   // W10
+        if (direct) rep += " (" + std::to_string(direct) + " link delivered direct)";
     }
     rep += interval == kNoCycle ? "; no barrier until the end of a run"
                                 : "; barrier every " + std::to_string(interval) + " cycles, set by " + why;
     T->report = rep;
-    if (T->nthreads > 1) T->report += flags ? "; the flags barrier" : "; the counter barrier";   // W10
+    if (T->nthreads > 1) T->report += flags ? "; the flags barrier" : "; the counter barrier";
 
     auto* SI = new Sim::Impl;
     SI->threads = T;
@@ -634,9 +634,9 @@ void* Threads::unit_ptr(const std::string& name, const TypeInfo* type) const {
     return Internals::unit_ptr(sims[dom_index(name)], name, type);
 }
 uint64_t Threads::steps(const std::string& name) const { return sims[dom_index(name)].steps(name); }
-void Threads::wake(const std::string& name) { sims[dom_index(name)].wake(name); }   // W10: in its own domain
-void Threads::wake_all() { for (auto& x : sims) x.wake_all(); }                                   // W20 (harness-only)
-bool Threads::in_flight(const std::vector<uint16_t>& shifted, const std::vector<uint16_t>& ignored) const { for (auto& x : sims) if (x.in_flight(shifted, ignored)) return true; return false; }   // W20
+void Threads::wake(const std::string& name) { sims[dom_index(name)].wake(name); }   // in its own domain
+void Threads::wake_all() { for (auto& x : sims) x.wake_all(); }                                   // (harness-only)
+bool Threads::in_flight(const std::vector<uint16_t>& shifted, const std::vector<uint16_t>& ignored) const { for (auto& x : sims) if (x.in_flight(shifted, ignored)) return true; return false; }
 std::string Threads::sleepers() const {
     std::string s;
     for (auto& x : sims) s += x.sleepers();
@@ -689,7 +689,7 @@ void Threads::thread_main(unsigned t) {
 }
 
 namespace {
-// A domain's cycles from its now to `stop` (exclusive): W3's run_until, with its idle jumps (nothing can arrive from
+// A domain's cycles from its now to `stop` (exclusive): the run_until, with its idle jumps (nothing can arrive from
 // another domain before the next drain, so a jump inside an interval is exact) and its debug checks.
 void run_domain(Engine& e, Cycle stop) {
     if (stop > e.now) e.run_until(stop - 1);
@@ -701,7 +701,7 @@ void Threads::run_thread(unsigned t, Cycle end) {
     for (auto& d : doms) if (d.thread == t) { now = d.e->now; break; }
     Span prev{now, 0};
     unsigned par = 0;
-    PhaseTicks* P = timing ? &ph[t] : nullptr;   // W10: Options::time_threads only
+    PhaseTicks* P = timing ? &ph[t] : nullptr;   // Options::time_threads only
     uint64_t c0 = P ? sim_ticks() : 0, c1 = 0;
     const uint64_t start = c0;
     while (now < end) {
@@ -724,7 +724,7 @@ void Threads::run_thread(unsigned t, Cycle end) {
         // the whole machine idle and nothing sent: every thread jumps to the same next event
         Cycle next = kNoCycle;
         uint64_t sent = 0;
-        Cycle stop = kNoCycle;                // W10: a stop asked in any domain ends the run at this barrier, on every thread
+        Cycle stop = kNoCycle;                // a stop asked in any domain ends the run at this barrier, on every thread
         for (auto& d : doms) {
             next = std::min<Cycle>(next, status[par][d.next_slot * kLineWords]); sent += status[par][d.sent_slot * kLineWords];
             stop = std::min<Cycle>(stop, status[par][d.stop_slot * kLineWords]);
@@ -756,7 +756,7 @@ void Threads::run_thread(unsigned t, Cycle end) {
     at(t, now, kNone, "idle");
 }
 
-// W10: the phase report (Options::time_threads): each phase as a share of the threads' time over the runs, the mean
+// the phase report (Options::time_threads): each phase as a share of the threads' time over the runs, the mean
 // over threads; "imbalance" is the slowest thread's compute less the mean, per interval, summed; "barrier_wait" is the mean
 // wait less that (the barrier's own latency, and differences in publishing).
 std::string Threads::thread_times() const {
@@ -791,7 +791,7 @@ void Threads::publish(Dom& d, Cycle t0, Cycle n, unsigned par) {
     Cycle next = t0 + n;
     if (!e.step_all && e.idle()) {
         next = e.next_wake();
-        // W3's cap (debug): a missed-wake suspect is judged at its deadline, so no jump passes it; every thread caps the
+        // the cap (debug): a missed-wake suspect is judged at its deadline, so no jump passes it; every thread caps the
         // agreed jump at the same cycle, the earliest deadline of any domain
         if constexpr (kDebug) if (e.detector && e.nsuspects) next = std::min(next, e.suspect_deadline());
     }
@@ -805,7 +805,7 @@ void Threads::drain(uint32_t di, Cycle t0, Cycle n, unsigned par, bool any) {
     Engine& e = *d.e;
     // Nothing sent anywhere: the outboxes aren't read at all (after an idle jump the next interval's buckets may alias
     // this one's, and their source may already be writing them).
-    // W10: the buckets are another thread's, just written: their lines are misses. Ask for every bucket's header first,
+    // the buckets are another thread's, just written: their lines are misses. Ask for every bucket's header first,
     // then every non-empty bucket's entries, so the misses overlap instead of following one another.
     if (any) {
         for (uint32_t o : d.in) {
@@ -826,7 +826,7 @@ void Threads::drain(uint32_t di, Cycle t0, Cycle n, unsigned par, bool any) {
     }
     if (any) for (uint32_t o : d.in) {
         const Outbox& ob = outboxes[o];
-        if (ob.direct) {                                            // W10: counted and marked due; delivered at its cycle
+        if (ob.direct) {                                            // counted and marked due; delivered at its cycle
             for (Cycle t = t0; t < t0 + n; t++) {
                 const Cycle at = t + ob.latency;
                 const Bucket& b = ob.buckets[at & ob.mask];
@@ -913,7 +913,7 @@ void Threads::clear(Dom& d, Span s) {
     Engine& e = *d.e;
     for (uint32_t o : d.out) {
         const Outbox& ob = outboxes[o];
-        if (ob.direct) continue;                     // W10: its destination empties each bucket as it delivers it
+        if (ob.direct) continue;                     // its destination empties each bucket as it delivers it
         const unsigned ew = ob.width + 1u;
         for (Cycle t = s.t0; t < s.t0 + s.n; t++) {
             Bucket& b = ob.buckets[(t + ob.latency) & ob.mask];

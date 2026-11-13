@@ -1,5 +1,5 @@
-// tracer_rig.h (WORKER21; P7a, inventory C23): TracerRig in C++, ported from `ref`'s test/TracerRig.java (v1.3's
-// WORKER22): a hand-built guest in a FileStore (an image owning every page; the Tracer's copy by cow_open with the data
+// tracer_rig.h: TracerRig in C++, ported from `ref`'s test/TracerRig.java (v1.3's
+// test): a hand-built guest in a FileStore (an image owning every page; the Tracer's copy by cow_open with the data
 // pages pre-copied, section 22), a jump-target map built by 4.21.4's hash rule, the universal tables, and an IDEAL
 // CONTROLLER standing in for C&C 3's firmware: it lands every packet through the region port (one a cycle, expansion
 // words first), answers new expansion (EXPANSION_TEMPLATE for an inline, then the template from EXPANSION_OFFSET, the N3
@@ -279,7 +279,7 @@ public:
     uint64_t reg(int r) const { return tr.rec[4 + r]; }
     static std::vector<uint64_t> stream_values(const std::vector<uint64_t>& words, int values, int bits);
 
-    // MemorySystem.summary()'s line (W14's MemSystem has no summary; its counters are public).
+    // MemorySystem.summary()'s line (the MemSystem has no summary; its counters are public).
     static std::string mem_summary(const MemSystem& m);
 
 private:

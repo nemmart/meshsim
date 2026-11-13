@@ -1,4 +1,4 @@
-// sim.h: the unit author's API (WORKER3, stage 1: for review; declarations, no implementation yet).
+// sim.h: the unit author's API (stage 1: for review; declarations, no implementation yet).
 //
 // What a unit's author writes is a plain struct: its ports (handles), its own state, a constructor that declares the
 // ports, and `Wake step(Ctx&)`. The framework owns every port's storage, decides who runs when, and moves the words.
@@ -34,7 +34,7 @@
 //          for this cycle).
 //      A unit never reads or writes another unit's state; it holds no pointer to one (its ports are indices).
 //   3. End t. Each stepped unit's Wake is scheduled (none, the next cycle, a cycle t' > t); edge bits are cleared; bucket
-//      t is cleared. (W4: the barrier and the outbox merge come here, every barrier interval.)
+//      t is cleared. (the barrier and the outbox merge come here, every barrier interval.)
 //
 // `sim/README.md`'s "commit" (staged writes and pushes applied) is step 1 of t + 1: a put at t is applied when it is
 // delivered, before anything can observe it. The result is `ref`'s "a put at t is visible at t + L".
@@ -66,11 +66,11 @@
 // COST MODEL (release). `ready` tests a bit of the instance's mask (no port is read); `peek` is a load from the port's
 // ring; `take` a decrement and a bit update; a put appends one destination word and the words to a bucket of its (kind,
 // width) wheel (a route lookup, no branch on the kind or the domain); a Wire read is a load, a write a compare and a store
-// (and the readers' bits when it changes). A ready mark per delivered word costs ~2.7 ns at saturation (W6, R): 11-13% of
+// (and the readers' bits when it changes). A ready mark per delivered word costs ~2.7 ns at saturation (R): 11-13% of
 // a saturated mesh, and 1.85x faster than polling on a quiet one, which is what a chip mostly is.
 //
 // PAYLOADS AND WIDTHS (D16, D17). Everything in motion is 0 to 3 untyped 64-bit words; the link word is three words
-// inline (D17). A unit holds a 128-bit value inline as two words (W6: 2 ns per multiply cheaper than pool indices, 25%
+// inline (D17). A unit holds a 128-bit value inline as two words (2 ns per multiply cheaper than pool indices, 25%
 // more throughput at 12 threads; the `limbs` form, built with clang, D18). A payload wider than three words (a 1024-bit
 // cache line on the Tracer's fill bus, after M1) travels by reference: its port declares a size class (`Ports::by_ref`,
 // slots of N words), word 0 of its payload is a slot's index, the producer allocates the slot and fills it before the
@@ -78,7 +78,7 @@
 // at startup from the ports that carry it (config.h); allocation takes the lowest free index (deterministic); exceeding
 // the size is fatal, naming the class. A Fifo overflow frees the dropped payload's slot; a refused Hold put keeps its
 // slot (the producer retries with it). Across threads the outbox merge copies the slot into the destination's pool and
-// rewrites the index (W4; the route already knows its class). A port's width is a runtime value in its
+// rewrites the index (the route already knows its class). A port's width is a runtime value in its
 // declaration and is never visible to authors beyond that; inside the framework each (kind, width) has its own wheel
 // with fixed-size entries and its own delivery loop, templated on the word count (widths 1, 2, 3, and 0 for events,
 // which carry only the destination word): a few instantiations, each genuinely different code. Nothing is templated on
@@ -97,7 +97,7 @@
 // checked by a static_assert at `add`). A type with padding, or holding a pointer (to a memory allocated apart: its value
 // differs between two machines built side by side), must define digest(), usually one line with `hash_fields` (below);
 // so a flaky digest is a compile error, not an intermittent difference.
-// The machine's digest goes unit by unit in add order (W4, E5: digest.h), so it doesn't depend on how the build numbered
+// The machine's digest goes unit by unit in add order (E5: digest.h), so it doesn't depend on how the build numbered
 // anything, and a machine split over threads gives the same digest as in one: **a unit's own digest() leaves out its port
 // handles** (they are the build's numbering, not its state; the default, its bytes, leaves them out by itself), and
 // **a slot index is opaque** (R1): which index a by-reference payload gets changes with the partition, so neither the
@@ -107,7 +107,7 @@
 //   two orders   type-major (each run's instances together) against instance-major (each instance's units together).
 //   wires        a Wire written after a reader read it in the same cycle, or written twice in a cycle: fatal.
 //   step-all     every instance stepped every cycle, whatever its wakes. Its digest must equal the ready-driven run's
-//                (WORKER28's proof for idle-skipping): it catches a missed wake, which otherwise fails silently. The
+//                (the proof for idle-skipping): it catches a missed wake, which otherwise fails silently. The
 //                rule it checks: a step at a cycle the unit did not ask for, with nothing delivered, changes nothing
 //                but what the skipped cycles would have changed (a unit's catch-up counters count the same either way),
 //                so a correct unit pays nothing for it.
@@ -125,7 +125,7 @@
 //                whether or not the detector is on.
 //
 // THE TWO REGIMES (D6). A unit's constructor runs at configuration (any C++). `step` runs in the cycle loop: no STL, no
-// allocation (the hook in W1's alloc_guard aborts on one), no virtual calls, no exceptions, untyped 64-bit words.
+// allocation (the hook in the alloc_guard aborts on one), no virtual calls, no exceptions, untyped 64-bit words.
 // ---------------------------------------------------------------------------------------------------------------------
 #pragma once
 
@@ -212,15 +212,15 @@ public:
     Wake next() const;                               // at(now + 1)
     Wake in(Cycle n) const;                          // at(now + n), n >= 1
     uint64_t mask() const;                           // this instance's ready bits (levels and this cycle's edges)
-    void stop();                                     // W10: the run stops at the end of this cycle (one domain; split:
+    void stop();                                     // the run stops at the end of this cycle (one domain; split:
                                                      // at the barrier ending this cycle's interval); Sim::stop_cycle
 
     // Link
     bool ready(LinkIn p) const;                      // a word is visible (mask bit)
     const Word* peek(LinkIn p) const;                // the head's words
-    const Word* peek(LinkIn p, unsigned k) const;    // W10: the k-th oldest visible word (0: head; k < size)
-    unsigned size(LinkIn p) const;                   // W10: words visible, after this cycle's takes
-    uint64_t overflows(FifoIn p) const;              // W10: the Fifo's overflows so far (judged at a put's t + 1, this
+    const Word* peek(LinkIn p, unsigned k) const;    // the k-th oldest visible word (0: head; k < size)
+    unsigned size(LinkIn p) const;                   // words visible, after this cycle's takes
+    uint64_t overflows(FifoIn p) const;              // the Fifo's overflows so far (judged at a put's t + 1, this
                                                      // cycle's included); with Ports::overflow_steps, each steps the owner
     void take(LinkIn p);
     void put(LinkOut p, Word a);
@@ -306,10 +306,10 @@ private:
 class Ports {
 public:
     void in(LinkIn& h, const char* name, unsigned width);
-    void in(LinkIn& h, const char* name, unsigned width, unsigned depth);   // W10: the consumer may hold up to `depth`
+    void in(LinkIn& h, const char* name, unsigned width, unsigned depth);   // the consumer may hold up to `depth`
                                                      // words (capacity L + depth; PORTS.md 2b); the line above is depth 2
     void in(FifoIn& h, const char* name, unsigned width, unsigned depth);
-    void overflow_steps(FifoIn& h);                  // W10: an overflow of this (plain) Fifo steps its owner in the cycle
+    void overflow_steps(FifoIn& h);                  // an overflow of this (plain) Fifo steps its owner in the cycle
                                                      // it is judged, t + 1 (D29); Ctx::overflows reads the count
     void in_credit(FifoIn& h, const char* name, unsigned width, unsigned depth);
     void in(HoldIn& h, const char* name, unsigned width);

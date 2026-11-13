@@ -1,10 +1,10 @@
-// suite_replayer (WORKER25, P7b; inventory C20, P3's row, owner 2026-11-11): v1.3's ReplayerTest as run_tests.sh's step
+// suite_replayer (P3's row, owner 2026-11-11): v1.3's ReplayerTest as run_tests.sh's step
 // `replayer` runs it (`java ReplayerTest data/vec-821e1bd.tsv ../tables/opcode_table.txt`), its output v1.3's line for
-// line: ReplayerTest.opcodeTable and .vectors (W15's port, test_replayer_alu's alu_report: the report lines), then
-// ReplayerUnitTests.all (W15's port, test_replayer's groups, which print the program pass's line), then the two
-// ConvertDelivery groups W15 left out (ReplayerUnitTests lines 809-865), here on v1.35's C++ converter (D42:
+// line: ReplayerTest.opcodeTable and .vectors (the port, test_replayer_alu's alu_report: the report lines), then
+// ReplayerUnitTests.all (the port, test_replayer's groups, which print the program pass's line), then the two
+// ConvertDelivery groups left out (ReplayerUnitTests lines 809-865), here on v1.35's C++ converter (D42:
 // tools/delivery/convert_delivery.cpp), and T.done's line: "ReplayerTest: N passed, M failed", every check counted.
-// W15's two test files and W19's converter are compiled in here unchanged (each in a namespace of its own, their TEST
+// the two test files and the converter are compiled in here unchanged (each in a namespace of its own, their TEST
 // bodies kept as plain functions, the converter's main renamed): one source of truth for each check.
 //
 //   suite_replayer        (run from sim/: it reads data/vec-821e1bd.tsv and data/tables/opcode_table.txt)
@@ -190,7 +190,7 @@ int main() {
     int alu_failed = w15alu::alu_report(report, &alu_passed);
     for (const std::string& l : report) std::printf("%s\n", l.c_str());
     std::fflush(stdout);
-    // ReplayerUnitTests.all, in its order (W15's groups; `program` prints the pass's line)
+    // ReplayerUnitTests.all, in its order (the groups; `program` prints the pass's line)
     using namespace w15unit;
     void (*groups[])() = {decode_index, immediates, decompressors, program, program_compressed, store_log_off, mid_start, pext_any_mask,
                           ld_to_x0, controller_fed, controller_fed_rd0, padding, debug_length, immediate_zero, invalid, write_port, lines,

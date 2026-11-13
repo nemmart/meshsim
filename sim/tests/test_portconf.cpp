@@ -1,4 +1,4 @@
-// Port conformance against ref (WORKER3; PORTS.md 10): every committed fixture (sim/tests/portconf, seed 1 of each
+// Port conformance against ref (PORTS.md 10): every committed fixture (sim/tests/portconf, seed 1 of each
 // configuration at 2,000 cycles, ref's observations made by PortConfDriver) run on the framework's port of the same kind;
 // the observation lines must be identical. The full matrix (10^5 cycles, three seeds) is `oracle/conformance.sh`.
 #include <string>
@@ -30,7 +30,7 @@ CONFORM(link_1, "link-1")
 CONFORM(link_2, "link-2")
 CONFORM(link_3, "link-3")
 CONFORM(link_8, "link-8")
-CONFORM(link_1_2, "link-1-2")      // W10: a Link that holds (depth C - L), ref's WordDelayLine(name, L, C)
+CONFORM(link_1_2, "link-1-2")      // a Link that holds (depth C - L), ref's WordDelayLine(name, L, C)
 CONFORM(link_3_4, "link-3-4")
 CONFORM(link_3_11, "link-3-11")
 CONFORM(link_3_35, "link-3-35")

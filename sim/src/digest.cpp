@@ -1,4 +1,4 @@
-// digest.cpp: the machine's digest, unit by unit (WORKER4, E5). The configuration regime: called between cycles.
+// digest.cpp: the machine's digest, unit by unit. The configuration regime: called between cycles.
 #include "digest.h"
 
 #include <cstring>
@@ -68,7 +68,7 @@ uint64_t Internals::digest(const DigestView& v, const Sim::Impl* const* sims, Cy
             switch (p.kind) {
                 case Kind::link: {
                     const LinkPort& l = e.links[p.idx];
-                    ring(h, e, l.cls, l.ring, l.width); h.add(e.link_inflight(p.idx));   // W10: direct delivery's too
+                    ring(h, e, l.cls, l.ring, l.width); h.add(e.link_inflight(p.idx));   // direct delivery's too
                     break;
                 }
                 case Kind::fifo:

@@ -1,4 +1,4 @@
-// t2_harness.cpp (WORKER16): the T2 harness's pieces (t2_harness.h).
+// t2_harness.cpp: the T2 harness's pieces (t2_harness.h).
 #include "t2_harness.h"
 
 #include <cstdio>
@@ -272,7 +272,7 @@ std::unique_ptr<Machine> build_machine(const uint8_t* domains, sim::Options opt,
     spec.hops = &m->hops; spec.control = units::add_g1; spec.control_ctx = &gx; spec.domain = domains;
     spec.cc_cores = true;
     spec.cc3_dma = true;                 // C&C 3's DMA into its router (the Tracer's records and streams)
-    if (reqbus) spec.reqbus = *reqbus;   // W14 (D34): the bus's mode, explicit
+    if (reqbus) spec.reqbus = *reqbus;   // (D34): the bus's mode, explicit
     units::build_chip(cfg, spec);
     m->sim.emplace(cfg.build());
     return m;

@@ -1,4 +1,4 @@
-// router.h (WORKER9, G2): one tile's router (spec 4.6, 4.7, 4.16; ref's Router.java; AUDIT-M2 3.1). Declarations:
+// router.h: one tile's router (spec 4.6, 4.7, 4.16; ref's Router.java; AUDIT-M2 3.1). Declarations:
 // the ports and the state; the step comes with stage 1.
 //
 // PORTS (link words are three words, net.h)
@@ -7,18 +7,18 @@
 //        inj         LinkIn, the injection unit's one packet per cycle (latency intra_tile_latency); src stamped here.
 //        from_cnc    HoldIn, tiles 0-2 only: the C&C endpoint's send holding register (the from-controller route block).
 //   out  out[4]      LinkOut, the mesh links, indexed by direction: TO_RIGHT 0, TO_LEFT 1, TO_DOWN 2, TO_UP 3.
-//        eject       LinkOut to W8's director (latency intra_tile_latency); the whole header kept.
+//        eject       LinkOut to the director (latency intra_tile_latency); the whole header kept.
 //        loop_left   LinkOut, width 0, latency 1, to the injection unit: a token-holding packet left the loopback FIFO
 //                    at t, its token is free from t + 1 (ref: `srq.loopbackLeft(t)`).
 //        to_cnc      FifoOut, tiles 0-2 only: the to-controller output into the endpoint's receive FIFO.
-//        ovf         CountOut, every overflow of the router's FIFOs (ROUTER_OVF, read by W8's register block).
-//        ovf_ev      LinkOut, width 0, latency 1, to W8's register block, beside the Count (D29: an overflow that feeds
+//        ovf         CountOut, every overflow of the router's FIFOs (ROUTER_OVF, read by the register block).
+//        ovf_ev      LinkOut, width 0, latency 1, to the register block, beside the Count (D29: an overflow that feeds
 //                    ERRORS steps the block): put in the step that counts (t + 1, D28), so the block's endCycle(t + 1)
 //                    runs. Declared when asked (the tile builder always asks; the router's own tests don't).
 //
 // STATE. One FIFO per (output, feeder), ref's `FEEDERS_TILE0` on every tile (every router has the fifth port's FIFOs;
 // `attached`, tiles 0-2, only decides whether the to-controller selector runs). The FIFOs are the router's own (owner,
-// 2026-11-07: as ref first; W10's Link with a declared depth may replace them later) with `WordFIFO`'s rules: a put at t
+// 2026-11-07: as ref first; the Link with a declared depth may replace them later) with `WordFIFO`'s rules: a put at t
 // is visible from t + 1; full is judged against the occupancy at the start of t; an overflowing put is dropped and
 // counted. The round-robin pointers `rr[6]`. (`maybe` is ref's hint, not state.)
 //
@@ -27,7 +27,7 @@
 // of t; then the route blocks (the four links, the injection, from C&C) push into FIFOs, visible t + 1. It asks for the
 // next cycle while any FIFO holds a word.
 //
-// M3 (WORKER16, AUDIT-M3 3.4): THE CONTROLLER VARIANT AND THE C&C LINKS.
+// M3 (AUDIT-M3 3.4): THE CONTROLLER VARIANT AND THE C&C LINKS.
 //   - A controller's router (`tile` 64-66, ref's `Router.feeders(me >= 64)`, `FEEDERS_CC`, `ccRoute`): the tile's
 //     FIFOs plus one from CC_DMA_IN (FROM_UP) feeding output 0 (the link). Its ports: `in[0]` CC_LINK_IN (the C&C link
 //     from tile c's to-controller output, Link(cc_link_latency)), `host` CC_HOST_IN (FifoIn, cc_host_depth: the host
@@ -75,7 +75,7 @@ struct Router {
         uint16_t base = 0;            // its first entry in `store`
         uint8_t cap = 0, head = 0, count = 0;
         uint8_t put_kept = 0;         // the last put was pushed (else dropped: an overflow)
-        uint8_t took_after_put = 0;   // W16: a take since the last put (M3's labelling: ref's take settles a pending put)
+        uint8_t took_after_put = 0;   // a take since the last put (M3's labelling: ref's take settles a pending put)
         uint64_t put_at = 0;          // the cycle of the last put (0: none)
         uint64_t put_w[3] = {};
         uint64_t overflows = 0, first_overflow = 0;
@@ -330,7 +330,7 @@ void Router::fp_own(Out& o, uint64_t cyc) const {
     for (unsigned k = 0; k < kOut; k++) o.w("rr", rr[k]);
     for (unsigned i = 0; i < n_fifos; i++) {
         const Fifo& f = q[i];
-        // A put of cyc is listed apart (ref's pending put, lastT == cyc). W16, M3's labelling (cyc the cycle before the
+        // A put of cyc is listed apart (ref's pending put, lastT == cyc). M3's labelling (cyc the cycle before the
         // last one run): a put after cyc (ref's lastT = cyc + 1) isn't in ref's FIFO yet; a put of cyc followed by a take
         // in the last cycle was settled by it (ref commits a pending put on an access): an entry like the others.
         const bool later = f.put_at > cyc;

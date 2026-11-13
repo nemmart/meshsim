@@ -1,4 +1,4 @@
-// test_reqbus (WORKER14): the C++ request bus (src/units/reqbus.h) against ref's, cycle by cycle (D34).
+// test_reqbus: the C++ request bus (src/units/reqbus.h) against ref's, cycle by cycle (D34).
 //
 // tests/reqconf/*.txt.gz come from oracle/ref/ReqConf.java (oracle/ref/reqconf.sh): ref's RequestBus and the 67
 // RequestPorts driven by seeded traffic (fan-in, full queues and HOL blocking, a FIFO refusing pushes, drops, calm),
@@ -387,7 +387,7 @@ Mode3Run mode3(const Script& s, unsigned threads) {
 }
 }  // namespace
 
-// Mode 3 split over five thread domains gives one domain's results exactly (W4's guarantee): on the calm script equal
+// Mode 3 split over five thread domains gives one domain's results exactly (the guarantee): on the calm script equal
 // to ref as well; on the full script (backpressure) the same differences from ref, and the same count of them.
 TEST(reqbus_mode3_split_equals_one_domain) {
     for (const char* f : {"calm-s2.txt.gz", "full-s3.txt.gz"}) {

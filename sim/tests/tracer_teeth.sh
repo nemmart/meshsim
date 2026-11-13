@@ -1,5 +1,5 @@
 #!/bin/bash
-# tracer_teeth.sh (WORKER21; P7a): planted bugs, one per area, each of which the Tracer's suites must catch. Not in
+# tracer_teeth.sh: planted bugs, one per area, each of which the Tracer's suites must catch. Not in
 # make check (a rebuild per bug). The tree is copied into a scratch directory (ref/ linked, for the tables), each bug
 # is planted there by sed, the suites rebuilt (clang release) and test_tracer_suites (the three suites against ref's
 # logs) and test_tracer_rig (the rig's calls against ref's rig's; Java's HashMap order) run. A bug is caught when

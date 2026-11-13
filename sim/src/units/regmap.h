@@ -37,7 +37,7 @@ enum Reg : unsigned {
 // What a word holds for a load or a store.
 enum Access : uint8_t {
     A_NONE = 0,       // no register (a load: write-only or reserved; a store: read-only or reserved)
-    A_M1 = 1,         // modelled (M1's subset, and M2's registers since W8)
+    A_M1 = 1,         // modelled (M1's subset, and M2's registers)
     A_OUT = 2,        // not modelled yet: fatal, named
 };
 struct RegInfo { const char* name; Access load, store; };
@@ -72,7 +72,7 @@ enum : uint32_t {
     COUNTER_EVENTS = 0x7F | 1u << EV_COUNTERS_DONE,
     ST_RD_RUNNING = 0, ST_RD_DONE = 1, ST_GATHER_BUSY = 2, ST_SEND_BUSY = 3, ST_DONE = 4, ST_LANDED = 5, ST_REQUEST_BUSY = 6,
     COND_BUS_ERROR = 9, COND_ILLEGAL = 10,                                       // ERRORS bits (Conditions.java)
-    COND_RECV_UNDERFLOW = 14,                                                    // W14: a REQUEST_RECEIVE of an empty queue
+    COND_RECV_UNDERFLOW = 14,                                                    // a REQUEST_RECEIVE of an empty queue
 };
 
 // PARAMS (TileControl.params): peripherals present [2:0], the tile [26:20], big-SRAM size [31:27].

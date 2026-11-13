@@ -1,4 +1,4 @@
-// stageb.h (WORKER25, P7b; inventory E3): v1.3's StageB on the C++ machine (W20's tests/mach.h), line for line. The
+// stageb.h: v1.3's StageB on the C++ machine (the tests/mach.h), line for line. The
 // replay controller (fw/replay/replay_ctl.c, prebuilt) on tile 0 feeding its replayer through the peripheral slot,
 // against a delivery's window (or Stage A's synthetic windows): the window loaded into tile 0's big SRAM as
 // replay_layout.h lays it out, C&C 1's model loading replay_ctl and starting it (only tile 0 expected at GO), the run

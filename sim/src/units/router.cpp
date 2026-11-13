@@ -1,4 +1,4 @@
-// router.cpp (WORKER9): the router's configuration, ref's routing functions (Router.unicast, Router.broadcast) and its
+// router.cpp: the router's configuration, ref's routing functions (Router.unicast, Router.broadcast) and its
 // digest. The step is inline in router.h.
 #include "units/router.h"
 

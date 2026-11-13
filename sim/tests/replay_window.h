@@ -1,4 +1,4 @@
-// replay_window.h: one window's replayer inputs and the builders the unit tests use (WORKER15): ref's
+// replay_window.h: one window's replayer inputs and the builders the unit tests use: ref's
 // test/ReplayWindow.java, method for method, and java.util.Random (the tests' seeded inputs must be ref's).
 // Test code: the STL is fine here (configuration-phase rules).
 #pragma once
@@ -118,7 +118,7 @@ inline uint32_t run_config(uint32_t rows, bool store_log, bool rd_prev) {
     return rows | (store_log ? units::Replayer::RC_STORE_LOG : 0) | (rd_prev ? units::Replayer::RC_RD_PREV : 0);
 }
 inline uint64_t state_hi(uint32_t instr_idx, uint32_t next_offset) { return uint64_t(instr_idx) | uint64_t(next_offset & 0xFFFF) << 32; }
-// ref's Replayer.streamWord: W14's streamword::build.
+// ref's Replayer.streamWord: the streamword::build.
 inline void stream_word(const units::streamword::Size s[3], uint32_t advice, uint64_t out[2]) { units::streamword::build(s[0], s[1], s[2], advice, out); }
 
 struct ReplayWindow {

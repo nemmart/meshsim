@@ -1,4 +1,4 @@
-# threads.mk: WORKER4's rules (threads: TSan builds of the thread tests), included by sim/Makefile.
+# threads.mk: the rules (threads: TSan builds of the thread tests), included by sim/Makefile.
 #
 #   make tsan          the thread tests under ThreadSanitizer, gcc and clang (build/<cc>-tsan/); also run by make check
 #   make tsan-one      one compiler: make tsan-one CC_NAME=gcc
@@ -18,12 +18,12 @@ $(TB)/%.o: %.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(TSAN_FLAGS) -c $< -o $@
 
-# clang links TSan's own operator new/delete statically, beside W1's hook (alloc_guard.cpp): the first definition, the
+# clang links TSan's own operator new/delete statically, beside the hook (alloc_guard.cpp): the first definition, the
 # hook's, is kept; it allocates through malloc, which TSan intercepts, so TSan still sees every allocation.
 $(TB)/test_%: $(TB)/tests/test_%.o $(TB)/tests/harness.o $(TB_LIB)
 	$(CXX) $(TSAN_FLAGS) $^ -o $@ $(WRAP) -Wl,--allow-multiple-definition
 
-# W14: test_reqbus's mode-3 split run under TSan needs the fingerprint writer's object
+# test_reqbus's mode-3 split run under TSan needs the fingerprint writer's object
 $(TB)/test_reqbus: $(TB)/tests/statefp.o
 
 # The threads' benchmark (timing: clang release, D18): make build/clang-release/bench_threads

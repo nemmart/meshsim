@@ -1,5 +1,5 @@
 #!/bin/sh
-# pipeline/build.sh (WORKER19, P1): builds v1.35's offline input tools (D40: they stay Java). Needs only a JDK
+# pipeline/build.sh: builds v1.35's offline input tools (D40: they stay Java). Needs only a JDK
 # (javac, Java 21). Nothing in the simulator's build or tests reads this folder.
 #   keys/      KeyGen and SplitSets, into build/keys/
 #   gold/      gold (Jolt's tracer in Java), into gold/build/, with its own tests (gold/build.sh)

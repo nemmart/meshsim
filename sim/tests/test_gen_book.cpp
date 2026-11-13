@@ -1,4 +1,4 @@
-// test_gen_book.cpp (WORKER23; P5, D40): gen_book (v1.3's gen_book.py in C++) reproduces the committed fw/RECIPES.md
+// test_gen_book.cpp (D40): gen_book (v1.3's gen_book.py in C++) reproduces the committed fw/RECIPES.md
 // byte for byte from RECIPES.tmpl.md and the recipes' sources; and book.h's region() on the cases regions.py's
 // patterns decide (checked against the Python before it was removed). Run from sim/.
 #include <unistd.h>

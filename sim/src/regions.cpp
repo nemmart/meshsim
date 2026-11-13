@@ -1,4 +1,4 @@
-// regions.cpp (WORKER10): the machine's memory, structure by structure, for footprint measurements (D15, D26: one
+// regions.cpp: the machine's memory, structure by structure, for footprint measurements (D15, D26: one
 // chip's state should fit the caches of the cores it is split over). Configuration regime; nothing here runs in a cycle.
 #include "config_impl.h"
 #include "internals.h"

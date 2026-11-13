@@ -1,4 +1,4 @@
-// The CPU detection and default placement (WORKER4, D21), on fake /sys trees of known layouts (as tools/fake_sysfs.sh
+// The CPU detection and default placement (D21), on fake /sys trees of known layouts (as tools/fake_sysfs.sh
 // makes them; tools/test_machine.sh checks machine.sh against the same lists).
 #include <cstdlib>
 #include <filesystem>

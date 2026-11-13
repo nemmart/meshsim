@@ -298,7 +298,7 @@ TEST(rv32_sim_exit_halts_after_its_retire_line) {
     CHECK_EQ(m.core.pc, 0x01000004u);
 }
 
-// M2 (W8): ROUTER_* and the write counters are modelled; PULSE_DMA since G4 (W12): a store reaches the block.
+// M2: ROUTER_* and the write counters are modelled; PULSE_DMA since G4: a store reaches the block.
 TEST(rv32_pulse_dma_store_reaches_the_block) {
     M m; m.core.x[1] = REG_BASE; m.core.x[2] = 1; m.prog({SW(2, 1, 0x10)});
     m.step();
@@ -314,7 +314,7 @@ DEATH_TEST(rv32_request_receive_not_modelled, "REQUEST_RECEIVE.*not modelled yet
     M m; m.core.x[1] = REG_BASE; m.prog({LW(2, 1, 0x54)});
     m.steps(2);
 }
-DEATH_TEST(rv32_peripheral_window_not_modelled, "peripheral 1's window at 0xfffffa00: this bench has no peripheral slot")   /* W15: M3's message */ {
+DEATH_TEST(rv32_peripheral_window_not_modelled, "peripheral 1's window at 0xfffffa00: this bench has no peripheral slot")   /* M3's message */ {
     M m; m.core.x[1] = REG_BASE + 0x200; m.prog({LW(2, 1, 0)});
     m.steps(2);
 }

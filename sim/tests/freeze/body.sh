@@ -4,13 +4,17 @@
 # runner's limit (run_tests.sh and the chains in the background, the sort and T2 meanwhile, the calibration last):
 # nothing here is timing; each item's time is recorded (TIMES) to plan.
 #   1 run_tests    ./run_tests.sh all --check: PASS when it passes (its PENDING steps listed, not failures)
-#   2 sort         test_sort's full-size run (SORT_SIZE=64k): every sort64k-fp point, the result, the phases, TOTAL
-#                  1,229,687; one thread and 6 domains
+#   2 sort         test_sort's full-size run (SORT_SIZE=64k) on one thread: every sort64k-fp point, the result, the
+#                  phases, TOTAL 1,229,687; and bench/w10's bench_sort on the same keys, one thread and 6 threads by
+#                  tiles (each tile a domain, grouped in order, as Quests 157/158): the digests at L2's all-READY equal,
+#                  the span 1,229,687 at both
 #   3 t2           T2 on evm-zone-29 and cyclone-29 segment 10: every point against golden-m3's unit lines, the rows,
 #                  the exits, lag_cycles 0; one domain and 6
 #   4 chains       segments 0-127 of both workloads: every start against golden-chain, every TracerT2 check, the ends
 #   5 calibration  the acceptance kit's calibrate.sh (128 synthetic windows, seed 11; 1, 4, 8, 16 processes)
-#   6 machine      tools/machine.sh's record
+#   6 machine      tools/machine.sh's record, and the firmware toolchain's versions (riscv64-unknown-elf-gcc, binutils,
+#                  picolibc) and the locale the image builds run under (run_tests.sh runs under LC_ALL=C), in
+#                  toolchain.txt and appended to machine.txt
 FAIL=0; T0=$(date +%s)
 sec() { echo; echo "==== $* ($(date -u +%T), +$(( $(date +%s) - T0 )) s)"; }
 verdict() { echo "VERDICT $1: $2"; echo "$1 $2" >> "$RES/VERDICTS"; case $2 in PASS|PENDING*) ;; *) FAIL=1;; esac; }
@@ -21,18 +25,29 @@ echo "kit: $(cat "$KIT/VERSION"); host $(hostname); $(nproc) CPUs; $(clang++ --v
 sec "6. the machine (D21)"
 . "$KS/tools/machine.sh" "${QUEST_P_CPUS:-}" "${QUEST_E_CPUS:-}"; machine_record "$RES/machine.txt"; uptime
 [ -s "$RES/machine.txt" ] && verdict machine PASS || verdict machine FAIL
+{ echo "== the firmware toolchain (the image builds: run_tests.sh's build steps, fw/build.sh)"
+  echo "riscv64-unknown-elf-gcc: $(riscv64-unknown-elf-gcc --version 2>/dev/null | head -1)"
+  echo "binutils: $(riscv64-unknown-elf-as --version 2>/dev/null | head -1)"
+  for p in gcc-riscv64-unknown-elf binutils-riscv64-unknown-elf picolibc-riscv64-unknown-elf; do
+    echo "package $p: $(dpkg-query -W -f '${Version}' $p 2>/dev/null || echo "not a dpkg package")"; done
+  PV=$(echo '#include <picolibc.h>' | riscv64-unknown-elf-gcc -specs=picolibc.specs -E -dM - 2>/dev/null | sed -n 's/^#define __PICOLIBC_VERSION__ //p')
+  echo "picolibc: ${PV:-not found}"
+  echo "locale of the image builds: LC_ALL=$(LC_ALL=C sh -c 'echo $LC_ALL'), charmap $(LC_ALL=C locale charmap 2>/dev/null)"
+} > "$RES/toolchain.txt"; cat "$RES/toolchain.txt"; cat "$RES/toolchain.txt" >> "$RES/machine.txt"
+grep -q '^riscv64-unknown-elf-gcc: .' "$RES/toolchain.txt" && grep -q '^binutils: .' "$RES/toolchain.txt" \
+  && ! grep -q '^picolibc: not found' "$RES/toolchain.txt" && verdict toolchain PASS || verdict toolchain FAIL
 
-sec "build: clang release (test_sort, t2, chain, test_chain); the acceptance kit's programs (clang suite)"
+sec "build: clang release (test_sort, bench_sort, t2, chain, test_chain); the acceptance kit's programs (clang suite)"
 t=$(date +%s)
-if ( cd "$KS" && make -j"$(nproc)" CC_NAME=clang MODE=release build/clang-release/test_sort build/clang-release/t2 \
+if ( cd "$KS" && make -j"$(nproc)" CC_NAME=clang MODE=release build/clang-release/test_sort build/clang-release/bench_sort build/clang-release/t2 \
        build/clang-release/chain build/clang-release/test_chain ) > "$RES/build-release.log" 2>&1 \
    && ( cd "$KIT" && ./build.sh ) > "$RES/build-acceptance.log" 2>&1; then verdict build PASS
 else tail -20 "$RES/build-release.log" "$RES/build-acceptance.log"; verdict build FAIL; FREEZE_RC=1; return 0 2>/dev/null || exit 1; fi
 took build $t
 
-sec "1. ./run_tests.sh all --check (in the background)"
+sec "1. ./run_tests.sh all --check (in the background; LC_ALL=C, the image builds' locale)"
 T1=$(date +%s)
-( cd "$KS" && JOBS=8 ./run_tests.sh all --check ) > "$RES/run_tests.log" 2>&1 & P_RT=$!
+( cd "$KS" && LC_ALL=C JOBS=8 ./run_tests.sh all --check ) > "$RES/run_tests.log" 2>&1 & P_RT=$!
 
 sec "4. the chains, segments 0-127 of both workloads (in the background)"
 D9=$DATA/w9-deliveries; D26=$DATA/w26-jumpmap
@@ -50,25 +65,34 @@ declare -A PROG=([evm]=evm-zone-29 [cyclone]=cyclone-29)
 T4=$(date +%s); P_CH=""
 if ( cd "$KS" && ./build/clang-release/test_chain ) > "$RES/test_chain.log" 2>&1 && checkin evm-zone-29 && checkin cyclone-29; then
   for S in evm cyclone; do
-    ( cd "$KS" && ./build/clang-release/chain --w26 "$D26/${PROG[$S]}" --delivery "$D9" --program "${PROG[$S]}" --segments 0-127 \
-        --oracle "tests/golden-chain/$S.starts" ) > "$RES/chain-$S.log" 2>&1 & P_CH="$P_CH $!:$S"
+    ( ( cd "$KS" && ./build/clang-release/chain --w26 "$D26/${PROG[$S]}" --delivery "$D9" --program "${PROG[$S]}" --segments 0-127 \
+        --oracle "tests/golden-chain/$S.starts" ) > "$RES/chain-$S.log" 2>&1; R=$?; date +%s > "$W/chain-end-$S"; exit $R ) & P_CH="$P_CH $!:$S"
   done
 else tail -5 "$RES/test_chain.log"; verdict chain-inputs FAIL; fi
 
-sec "2. the full-size sort (p4 uniform-k128), one thread and 6 domains"
+sec "2. the full-size sort (p4 uniform-k128): every fingerprint on one thread; one thread and 6 by tiles, the digests"
 T2S=$(date +%s)
 FP64=$DATA/w7-golden-m2/fb6f21e/sort64k-fp.fp
 H=$(sha256sum "$FP64" 2>/dev/null | cut -d' ' -f1)
 KD=$(cd "$KS" && tests/sort/keys.sh 65536 uniform 2> "$RES/keys.log")
 KH=$(sha256sum "$KS/$KD/uniform.keys" 2>/dev/null | cut -d' ' -f1)
 if [ "$H" = 6e923d6c9823c0d758104f81e7706cd4598a771ba89aad39609e78985c1d3846 ] && [ "$KH" = a7636b687a6db39cac8fbf63c2f16f686fd1ce858fe8a7ed5d98621e452c9b7a ]; then
-  for spec in "sort-one 1" "sort-split6 6"; do
-    set -- $spec; t=$(date +%s)
-    ( cd "$KS" && env SORT_SIZE=64k SORT_PARTS=$2 SORT_KEYS="$KS/$KD/uniform.keys" SORT_FP="$FP64" ./build/clang-release/test_sort sort_runs ) > "$RES/$1.log" 2>&1
-    rc=$?; grep -E '^sort' "$RES/$1.log"
-    [ $rc = 0 ] && grep -q '^ok   sort_runs_equal_to_refs' "$RES/$1.log" && verdict "$1" PASS || { tail -5 "$RES/$1.log"; verdict "$1" FAIL; }
-    took "$1" $t
+  t=$(date +%s)
+  ( cd "$KS" && env SORT_SIZE=64k SORT_PARTS=1 SORT_KEYS="$KS/$KD/uniform.keys" SORT_FP="$FP64" ./build/clang-release/test_sort sort_runs ) > "$RES/sort-one.log" 2>&1
+  rc=$?; grep -E '^sort' "$RES/sort-one.log"
+  [ $rc = 0 ] && grep -q '^ok   sort_runs_equal_to_refs' "$RES/sort-one.log" && verdict sort-one PASS || { tail -5 "$RES/sort-one.log"; verdict sort-one FAIL; }
+  took sort-one $t
+  # 6 threads by tiles (test_sort splits in row bands only: 1, 2, 4 or 8), against one thread on the same keys
+  t=$(date +%s); DG=""; OK=1
+  for spec in "1 one" "6 tiles"; do set -- $spec
+    ( cd "$KS" && ./build/clang-release/bench_sort --keys "$KS/$KD/uniform.keys" --threads $1 --partition $2 --reps 1 ) > "$RES/sort-split6-t$1.log" 2>&1
+    rc=$?; L=$(grep '^sort ' "$RES/sort-split6-t$1.log" | tail -1); echo "${L%% times=*}"
+    D=$(echo "$L" | grep -o 'digest=[0-9a-f]*'); DG="$DG $D"
+    [ $rc = 0 ] && [ -n "$D" ] && echo "$L" | grep -q ' span=1229687 ' || { tail -5 "$RES/sort-split6-t$1.log"; OK=0; }
   done
+  set -- $DG; echo "digests:$DG"
+  [ $OK = 1 ] && [ $# = 2 ] && [ "$1" = "$2" ] && verdict sort-split6 PASS || verdict sort-split6 FAIL
+  took sort-split6 $t
 else echo "the sort's inputs: sort64k-fp '${H:-missing}', keys '${KH:-missing}' ($(cat "$RES/keys.log"))"; verdict sort-inputs FAIL; fi
 
 sec "3. T2 on segment 10 of both workloads, every point against golden-m3, one domain and 6 (parallel)"
@@ -114,8 +138,8 @@ for X in $P_CH; do wait ${X%%:*}; R=$?; S=${X#*:}; L=$RES/chain-$S.log
   N=$(grep -c "^${PROG[$S]} segment [0-9]*: OK  start equal" "$L")
   echo "$S: $N of 128 segments OK with the start memory equal to ref's"
   [ $R = 0 ] && [ "$N" = 128 ] && verdict "chain-$S" PASS || verdict "chain-$S" FAIL
+  echo "chain-$S $(( $(cat "$W/chain-end-$S" 2>/dev/null || date +%s) - T4 )) s" >> "$RES/TIMES"   # its own end, not the wait's
 done
-took chains $T4
 
 sec "5. the acceptance kit's calibration (alone)"
 t=$(date +%s)

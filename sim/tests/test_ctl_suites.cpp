@@ -81,3 +81,6 @@ TEST(accounting_equals_ref_log_and_csv) {
 }
 // s1bench: S1 is measured in the checker's builds only (src/units/s1.h)
 TEST(s1bench_equals_ref_log) { if (sim::check::kOn) run_step("s1bench", "suite_s1bench", ""); }
+// cond: the checker's messages are part of its log (the debug and suite builds)
+TEST(cond_equals_ref_log) { if (sim::check::kOn) run_step("cond", "suite_cond", "-1"); }
+TEST(cond_shuf_equals_ref_log) { if (sim::check::kOn) run_step("cond-shuf", "suite_cond", "4"); }

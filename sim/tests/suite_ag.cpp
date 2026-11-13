@@ -285,11 +285,6 @@ template <class Put, class Takes> int64_t rmw(Chip& c, Put put, Takes takes) {
     std::fprintf(stderr, "FATAL suite_ag: RMW never taken\n"); std::abort();
 }
 uint32_t ptr_addr(unsigned i) { return 0xFFFF2400u + 4 * i; }    // Registers.PTR_BASE
-// ref's core.store(t, PTR[i], v) at t = the cycle just run (rmw's return: the cycle port A read the entry): the store goes
-// through port B at that cycle, after the read (ref's TableStore.ctrlWrite at t, no write-back at t, so it lands). The
-// harness's store is for cycles to come (TileRef::store, t >= cycle() + 1); a store at the cycle just run is the table
-// write between cycles, TileRef::set_ptr (the increment's write-back, at t + 1, then overwrites it as in ref).
-void store_ptr_at_read(TileRef p, unsigned i, uint32_t v) { p.set_ptr(i, v); }
 uint32_t hist_addr(unsigned i) { return 0xFFFF2000u + 4 * i; }   // Registers.HIST_BASE
 
 void figure12_ptr(unsigned L) {
@@ -312,14 +307,14 @@ void figure12_ptr(unsigned L) {
     check(!p.load(tr + 1, ptr_addr(5), 4).has_value(), "a controller load from PTR is a bus error (write-only)");
     c.run(4);
     tr = rmw(c, put, takes);
-    store_ptr_at_read(p, 5, 0x3000);                           // ref: p.core.store(tr, ptrAddr(5), 0x3000)
+    p.store(tr, ptr_addr(5), 0x3000);
     c.step(); c.step();
     p.store(c.cycle() + 1, ptr_addr(5), 0x3004);
     c.step();
     eq(0x3004, p.ptr(5), "stores away from the write-back cycle land");
     eq(0x1006, p.ptr(9), "PTR[9] = + 2 three times");
     tr = rmw(c, put, takes);
-    store_ptr_at_read(p, 9, 0x5000);                           // ref: p.core.store(tr, ptrAddr(9), 0x5000)
+    p.store(tr, ptr_addr(9), 0x5000);
     c.step(); c.step();
     eq(0x1008, p.ptr(9), "a store to the entry being incremented is overwritten by the write-back");
     tr = rmw(c, put, takes);

@@ -94,121 +94,6 @@ MISSING tests/sort/kit/README.md:9: OUTDIR/run.sh (code)
 MISSING tests/sort/kit/README.md:13: SUMMARY.md (code)
 NO-README bench/w10/
 NO-README bench/w14/
-NO-README fw/images/log8k/
-NO-README fw/images/oldmap/
-NO-README fw/riscv-tests/bin/
-NO-README fw/sort/skew/harness/data/
-NO-README fw/sort/split/
-NO-README pipeline/gold/src/gold/
-NO-README pipeline/gold/test/act4/
-NO-README pipeline/gold/test/cuts/
-NO-README pipeline/gold/test/gold/
-NO-README pipeline/gold/test/guests/
-NO-README pipeline/gold/test/guests/assert_eq_fail/
-NO-README pipeline/gold/test/guests/assert_eq_pass/
-NO-README pipeline/gold/test/guests/c_unimp_executed/
-NO-README pipeline/gold/test/guests/c_unimp_jump/
-NO-README pipeline/gold/test/guests/d12_c_slli_x0/
-NO-README pipeline/gold/test/guests/d1_decodable_gap/
-NO-README pipeline/gold/test/guests/d1_rodata_in_text/
-NO-README pipeline/gold/test/guests/ebreak/
-NO-README pipeline/gold/test/guests/end_c_j_0/
-NO-README pipeline/gold/test/guests/end_jal_ra_0/
-NO-README pipeline/gold/test/guests/fence/
-NO-README pipeline/gold/test/guests/inline_bigint_rd0/
-NO-README pipeline/gold/test/guests/inline_sha256_rd0/
-NO-README pipeline/gold/test/guests/jump_into_gap/
-NO-README pipeline/gold/test/guests/keccak256/
-NO-README pipeline/gold/test/guests/legacy_raw_ecall/
-NO-README pipeline/gold/test/guests/lr_d_x0_nonzero/
-NO-README pipeline/gold/test/guests/lr_d_x0_zero/
-NO-README pipeline/gold/test/guests/lr_w_x0_nonzero/
-NO-README pipeline/gold/test/guests/misaligned_inline/
-NO-README pipeline/gold/test/guests/misaligned_ld/
-NO-README pipeline/gold/test/guests/misaligned_lw/
-NO-README pipeline/gold/test/guests/range_above_top/
-NO-README pipeline/gold/test/guests/range_below_lowest/
-NO-README pipeline/gold/test/guests/rd0_add/
-NO-README pipeline/gold/test/guests/sc_d_x0/
-NO-README pipeline/gold/test/guests/sc_w_x0/
-NO-README pipeline/gold/test/guests/stack_canary_store/
-NO-README pipeline/gold/test/guests/store_into_code/
-NO-README pipeline/gold/test/guests/unimp32_executed/
-NO-README pipeline/gold/test/guests/unimp32_unreached/
-NO-README pipeline/gold/test/guests/unimp_fence_i/
-NO-README pipeline/gold/test/guests/unimp_unreached/
-NO-README pipeline/gold/test/guests/unprovable_csr_mhartid/
-NO-README pipeline/gold/test/guests/unprovable_csrrc/
-NO-README pipeline/gold/test/guests/unprovable_csrrci/
-NO-README pipeline/gold/test/guests/unprovable_csrrsi/
-NO-README pipeline/gold/test/guests/unprovable_csrrwi/
-NO-README pipeline/gold/test/guests/unprovable_sfence_vma/
-NO-README pipeline/gold/test/guests/unprovable_sret/
-NO-README pipeline/gold/test/guests/unprovable_undecodable/
-NO-README pipeline/gold/test/guests/unprovable_wfi/
-NO-README pipeline/gold/test/v13/
-NO-README pipeline/inputs/lib/
-NO-README pipeline/inputs/src/d97ecde/
-NO-README pipeline/inputs/src/d97ecde/gold/
-NO-README pipeline/inputs/src/d97ecde/gold/src/
-NO-README pipeline/inputs/src/d97ecde/gold/src/gold/
-NO-README pipeline/inputs/src/d97ecde/jumpmap/
-NO-README pipeline/inputs/src/d97ecde/jumpmap/src/
-NO-README pipeline/inputs/src/d97ecde/jumpmap/src/jumpmap/
-NO-README pipeline/inputs/src/eeb64b5/
-NO-README pipeline/inputs/src/eeb64b5/gold/
-NO-README pipeline/inputs/src/eeb64b5/gold/src/
-NO-README pipeline/inputs/src/eeb64b5/gold/src/gold/
-NO-README pipeline/inputs/test/
-NO-README pipeline/inputs/test/v125-small/
-NO-README pipeline/inputs/test/v125-small/evm-zone-29/
-NO-README pipeline/jumpmap/out/assert_eq_pass/
-NO-README pipeline/jumpmap/out/assert_eq_pass/seg/
-NO-README pipeline/jumpmap/out/d12_c_slli_x0/
-NO-README pipeline/jumpmap/out/d12_c_slli_x0/seg/
-NO-README pipeline/jumpmap/out/d1_decodable_gap/
-NO-README pipeline/jumpmap/out/d1_decodable_gap/seg/
-NO-README pipeline/jumpmap/out/d1_rodata_in_text/
-NO-README pipeline/jumpmap/out/d1_rodata_in_text/seg/
-NO-README pipeline/jumpmap/out/ebreak/
-NO-README pipeline/jumpmap/out/ebreak/seg/
-NO-README pipeline/jumpmap/out/fence/
-NO-README pipeline/jumpmap/out/fence/seg/
-NO-README pipeline/jumpmap/out/jumps/
-NO-README pipeline/jumpmap/out/jumps/seg/
-NO-README pipeline/jumpmap/out/keccak256/
-NO-README pipeline/jumpmap/out/keccak256/seg/
-NO-README pipeline/jumpmap/out/rd0_add/
-NO-README pipeline/jumpmap/out/rd0_add/seg/
-NO-README pipeline/jumpmap/out/stack_canary_store/
-NO-README pipeline/jumpmap/out/stack_canary_store/seg/
-NO-README pipeline/jumpmap/out/unimp_unreached/
-NO-README pipeline/jumpmap/out/unimp_unreached/seg/
-NO-README pipeline/jumpmap/src/
-NO-README pipeline/jumpmap/src/jumpmap/
-NO-README pipeline/jumpmap/test/guests/
-NO-README pipeline/jumpmap/test/guests/jumps/
-NO-README planning/sessions/WORKER19/
-NO-README planning/sessions/WORKER20/
-NO-README planning/sessions/WORKER22/
-NO-README planning/sessions/WORKER26/
-NO-README planning/sessions/WORKER27/
-NO-README planning/sessions/WORKER30/
-NO-README tests/acceptance/summary/
-NO-README tests/acceptance/summary/c1/
-NO-README tests/acceptance/summary/c1/expect/
-NO-README tests/acceptance/summary/c2/
-NO-README tests/acceptance/summary/c2/expect/
-NO-README tests/acceptance/summary/c3/
-NO-README tests/acceptance/summary/c3/expect/
-NO-README tests/acceptance/summary/c4/
-NO-README tests/acceptance/summary/c4/expect/
-NO-README tests/acceptance/summary/c5/
-NO-README tests/acceptance/summary/c5/expect/
-NO-README tests/acceptance/summary/c6/
-NO-README tests/acceptance/summary/c6/expect/
-NO-README tests/golden/images/
-NO-README tests/sort/kit/tools/
 DOC-MISSING pipeline/gold/check.sh:6: wip/planning/sessions/WORKER18-NOTES.md
 DOC-MISSING src/barrier.h:5: WORKER4/NOTES.md
 DOC-MISSING src/config.h:104: sim/planning/sessions/WORKER10/NOTES.md
@@ -219,8 +104,8 @@ DOC-MISSING src/units/chip.h:61: sessions/WORKER14-NOTES.md
 DOC-MISSING src/units/director.h:3: sessions/WORKER8/NOTES.md
 DOC-MISSING src/units/periph_slot.h:3: WORKER15-NOTES.md
 DOC-MISSING src/units/tile_ctl.h:3: sessions/WORKER8/NOTES.md
-DOC-MISSING src/units/tile_ctl.h:642: NOTES.md
-DOC-MISSING src/units/tile_ctl.h:670: NOTES.md
+DOC-MISSING src/units/tile_ctl.h:648: NOTES.md
+DOC-MISSING src/units/tile_ctl.h:676: NOTES.md
 DOC-MISSING tests/chain.h:2: sim/planning/sessions/WORKER17-NOTES.md
 DOC-MISSING tests/chain_main.cpp:2: sim/planning/sessions/WORKER17-NOTES.md
 DOC-MISSING tests/ctl/suite_hooks.cpp:8: NOTES.md
@@ -229,4 +114,4 @@ DOC-MISSING tests/freeze/body.sh:4: RUNNING.md
 DOC-MISSING tests/mach.h:20: sessions/WORKER20/NOTES.md
 DOC-MISSING tests/suite_net.cpp:15: sessions/WORKER22/NOTES.md
 DOC-MISSING tests/test_memconf.cpp:230: NOTES.md
-doccheck: 54 documents, 1793 cited paths: 70 MISSING, 24 OUTSIDE; 207 folders: 117 NO-README; 202 documents named in source: 20 DOC-MISSING
+doccheck: 54 documents, 1793 cited paths: 70 MISSING, 24 OUTSIDE; 208 folders: 2 NO-README; 202 documents named in source: 20 DOC-MISSING

@@ -1,0 +1,28 @@
+# tools/doccheck.sh's exemptions: DOC<TAB>cited path<TAB>kind<TAB>why. Keyed by the document (or source file) and the
+# path as cited, not by line. Kinds:
+#   other-repo   a path in another repository (jolt-cpp, a16z's jolt, Quest)
+#   historical   a citation of a file never kept in v1.35 (in v1.3's history, or in a file held to v1.3's bytes)
+#   output       an output's name or a pattern, not a file of the tree
+#   cd           a path inside a command that begins with a cd doccheck can't follow
+# Source files (doccheck's DOC-MISSING), WORKER30's
+fw/recipes/rcp.h	schedule-4.md	historical	held to v1.3's bytes; a v1.3-era document, not kept in v1.35
+fw/recipes/rcp_a2a.c	schedule-4.md	historical	held to v1.3's bytes; a v1.3-era document, not kept in v1.35
+fw/regdoc/src/build_pdf.sh	in.md	output	a usage line's placeholder
+fw/sort/program/sw/sort.h	design_v2/sort/sort-walkthrough.md	historical	held to v1.3's bytes; a v1.3-era document, not kept in v1.35
+fw/tests/a2a.c	schedule-4.md	historical	held to v1.3's bytes; a v1.3-era document, not kept in v1.35
+fw/tests/rcp.h	design_v2/spec/schedule-4.md	historical	held to v1.3's bytes; a v1.3-era document, not kept in v1.35
+fw/tests/rcp_a2a.c	schedule-4.md	historical	held to v1.3's bytes; a v1.3-era document, not kept in v1.35
+pipeline/gold/src/gold/SegmentWriter.java	wip/planning/sessions/WORKER18-NOTES.md	historical	held to v1.3's bytes; a v1.3-era document, not kept in v1.35
+pipeline/gold/test/gold/InlineVectorTest.java	wip/planning/sessions/WORKER18-NOTES.md	historical	held to v1.3's bytes; a v1.3-era document, not kept in v1.35
+pipeline/gold/test/guests/check_guests.sh	wip/planning/sessions/WORKER18-NOTES.md	historical	held to v1.3's bytes; a v1.3-era document, not kept in v1.35
+pipeline/inputs/src/d97ecde/gold/src/gold/SegmentWriter.java	WORKER18/NOTES.md	historical	held to v1.3's bytes; a v1.3-era document, not kept in v1.35
+pipeline/inputs/src/eeb64b5/gold/src/gold/SegmentWriter.java	WORKER18/NOTES.md	historical	held to v1.3's bytes; a v1.3-era document, not kept in v1.35
+tests/acceptance/make_acceptance_task.sh	NUMBERS.md	other-repo	Quest's own document
+tests/acceptance/make_task.sh	PIPELINE.md	other-repo	Quest's own document
+tests/freeze/make_task.sh	PIPELINE.md	other-repo	Quest's own document
+tests/sort/kit/run.sh	OUTDIR/SUMMARY.md	output	a file the tool writes
+tests/sort/kit/run.sh	SUMMARY.md	output	a file the tool writes
+tests/sort_compare_main.cpp	out.md	output	a file the tool writes
+tests/sort_summary_main.cpp	SUMMARY.md	output	a file the tool writes
+tests/sort_summary_main.cpp	OUT.md	output	a file the tool writes
+tests/test_sort_kit.cpp	SUMMARY.md	output	a file the tool writes

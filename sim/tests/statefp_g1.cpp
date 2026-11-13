@@ -365,6 +365,12 @@ void w_req(const void* p, FpOut& o, const FpCtx& x) {
 void attach_reqbus(sim::Sim& s, G1Tile* g1, unsigned n_tiles, G2Chip& gc, units::reqbus::ReqBusUnits& u,
                    const units::reqbus::ReqBusConfig& rc) {
     u = units::reqbus::resolve(s, ~uint64_t(0) >> (64 - n_tiles), 0, rc);
+    if (s.has_unit("reqbus.host")) {                      // the bus driven from the test: its receive queues and host
+        static const char* kRecv[units::reqbus::TARGETS] = {"cc1.reqrecv", "cc2.reqrecv", "cc3.reqrecv"};
+        for (unsigned c = 0; c < units::reqbus::TARGETS; c++)
+            if (s.has_unit(kRecv[c])) u.recv[c] = &s.unit<units::reqbus::ReqRecv>(kRecv[c]);
+        u.host = &s.unit<units::reqbus::ReqHost>("reqbus.host");
+    }
     for (unsigned k = 0; k < n_tiles; k++) g1[k].uleaf = u.leaf[k];
     gc.reqbus = &u;
 }

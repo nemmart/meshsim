@@ -197,6 +197,7 @@ public:
     size_t queue_size(unsigned target) const;                        // ref's queue[target].size()
     int64_t credits(unsigned target) const;                          // ref's credits[target]
     uint64_t underflows() const { return underflows_; }              // ref's underflows (the test's receives)
+    uint64_t received(unsigned target) const { return received_[target % 3]; }   // ref's received[target]
     uint64_t dropped() const;                                        // ref's dropped.size()
     uint64_t delivered() const;                                      // ref's delivered.size()
     bool idle() const;                                               // ref's idle(): no beat in a node's input or on its
@@ -204,9 +205,11 @@ public:
     // ref's delivered list (W22-19): every request delivered to a receive queue, {deliveredAt, srcTile, w0, w1, w2, w3},
     // in delivery order (all targets)
     std::vector<std::array<int64_t, 6>> delivered_log() const;
+    void on_reset();                                                 // Chip::reset: the test's pops on their way go with
+                                                                     //   the queues
 private:
     Chip* c_;
-    uint64_t underflows_ = 0, popped_[3] = {};
+    uint64_t underflows_ = 0, popped_[3] = {}, received_[3] = {};
     bool head(unsigned target, int64_t t, uint32_t w[4]) const;
 };
 

@@ -628,6 +628,10 @@ bool ReqBus::head(unsigned target, int64_t t, uint32_t w[4]) const {   // ref's 
     for (unsigned i = 0; i < 4; i++) w[i] = e.w[i];
     return true;
 }
+void ReqBus::on_reset() {
+    static const char* kRecv[3] = {"cc1.reqrecv", "cc2.reqrecv", "cc3.reqrecv"};
+    for (unsigned q = 0; q < 3; q++) if (c_->sim().has_unit(kRecv[q])) popped_[q] = recv_of(*c_, q).received;
+}
 bool ReqBus::pending(unsigned target, int64_t t) const { uint32_t w[4]; return head(target, t, w); }
 uint32_t ReqBus::get(unsigned target, int64_t t, unsigned i) const { uint32_t w[4]; return head(target, t, w) ? w[i & 3] : 0; }
 bool ReqBus::peek_request(unsigned target, int64_t t, uint32_t w[4]) const { return head(target, t, w); }
@@ -636,9 +640,18 @@ uint32_t ReqBus::receive(unsigned target, int64_t t) {
     if (!head(target, t, w)) { underflows_++; return 0; }
     if (t != c_->cycle() + 1) FATAL("mach: reqbus.receive at cycle %lld: the next cycle only (%lld)", (long long)t, (long long)c_->cycle() + 1);
     units::reqbus::ReqHost& h = c_->unit<units::reqbus::ReqHost>("reqbus.host");
-    if (h.pop_at[target] >= 0) FATAL("mach: reqbus.receive: a second pop of target %u in cycle %lld", target, (long long)t);
+    popped_[target]++; received_[target]++;
+    if (h.pop_at[target] == t) {                          // a further pop in this cycle: with the first one's Link words
+        auto add = [&](units::reqbus::HostExtra* x, const char* where) {
+            for (unsigned i = 0; i < units::reqbus::HOST_EXTRA; i++) if (x[i].n && x[i].at == t) { x[i].n++; return; }
+            for (unsigned i = 0; i < units::reqbus::HOST_EXTRA; i++) if (!x[i].n) { x[i].at = t; x[i].n = 1; return; }
+            FATAL("mach: reqbus.receive: %s holds %u cycles of further pops", where, units::reqbus::HOST_EXTRA);
+        };
+        add(recv_of(*c_, target).host_extra, "the receive queue");
+        add(c_->unit<units::reqbus::ReqRoot>("reqbus.root").host_extra[target], "the root");
+        return w[3];
+    }
     h.pop_at[target] = t;
-    popped_[target]++;
     c_->touched("reqbus.host");
     return w[3];
 }
@@ -973,7 +986,12 @@ void Chip::reset(bool hard) {
         for (unsigned c = 0; c < 3; c++) root.buf[8 + c].fwd_total = root.buf[8 + c].arrived_total;
         static const char* kRecv[3] = {"cc1.reqrecv", "cc2.reqrecv", "cc3.reqrecv"};
         for (unsigned q = 0; q < 3; q++)
-            if (s.has_unit(kRecv[q])) { auto& rv = unit<units::reqbus::ReqRecv>(kRecv[q]); rv.qn = 0; rv.qh = 0; }
+            if (s.has_unit(kRecv[q])) {
+                auto& rv = unit<units::reqbus::ReqRecv>(kRecv[q]); rv.qn = 0; rv.qh = 0;
+                for (auto& x : rv.host_extra) x = units::reqbus::HostExtra{};   // the test's further pops: gone
+            }
+        for (auto& tq : root.host_extra) for (auto& x : tq) x = units::reqbus::HostExtra{};
+        if (m.reqbus) m.reqbus->on_reset();
         if (s.has_unit("reqbus.host")) {
             auto& h = unit<units::reqbus::ReqHost>("reqbus.host");
             for (unsigned q = 0; q < 3; q++) { h.send[q].on = false; h.pop_at[q] = -1; }

@@ -195,6 +195,13 @@ void reset_case(int64_t seed) {                               // B20: MachSelf.r
     say("%s\n", sb.c_str());
     for (const std::string& l : m.c.log()) if (l.find("reset") != std::string::npos) say("  %s\n", l.c_str());
 }
+std::string bus_fp(const Mach& m) {                       // the StateFp point's reqbus line
+    for (const std::string& l : m.c.fingerprint_lines()) {
+        const size_t a = l.find(" reqbus ");
+        if (a != std::string::npos) return l.substr(a + 8);
+    }
+    return "?";
+}
 bool track(Mach& m, int64_t k[6], bool was[2]) {
     bool pi = true;
     for (unsigned q = 0; q < 64; q++) if (!m.c.tile(q).req_idle()) { pi = false; k[2]++; }
@@ -217,7 +224,7 @@ void faults_reads() {
     mach::ReqBus& rb = m.c.reqbus();
     bool ok = m.run([&] {
         const int64_t now = m.c.cycle() + 1;
-        if (rb.pending(0, now)) rb.receive(0, now);   // one a cycle, as MachSelf
+        while (rb.pending(0, now)) rb.receive(0, now);
         const bool pi = track(m, k, was), bi = rb.idle();
         for (unsigned q = 0; q < 64; q++) { const units::Rv32& v = m.c.tile(q).unit<units::TileCore>("core").rv; if (!(v.parked || v.halt != units::Rv32::RUN)) return false; }
         return pi && bi && !rb.pending(0, now);
@@ -225,6 +232,10 @@ void faults_reads() {
     say("faults reads: %s at %lld; bus idle %lld cycles (%lld changes, last at %lld), ports idle %lld cycles (last change at %lld), port busy %lld tile-cycles; toast %s at %lld\n",
         ok ? "drained" : "NOT drained", (long long)m.c.cycle(), (long long)k[0], (long long)k[4], (long long)k[3], (long long)k[1],
         (long long)k[5], (long long)k[2], m.c.toast() ? "true" : "false", (long long)m.c.toast_at());
+    // the pops of one cycle and their credits on their way: the request bus's own fingerprint
+    say("  received %llu; bus fp %s", (unsigned long long)rb.received(0), bus_fp(m).c_str());
+    m.c.step(); say("; next %s", bus_fp(m).c_str());
+    m.c.step(); say("; next %s; credits %lld\n", bus_fp(m).c_str(), (long long)rb.credits(0));
     m.c.cc().reset(false).command(units::lw::BROADCAST, 0x4Au << 24, {im.sym("_start"), 0x600Du}).run_when_ready();   // CMD_JUMP
     ok = m.run([&] { return m.c.resets() == 1; }, 20000);
     say("  the reset: %s at %lld; toast %s at %lld\n", ok ? "made" : "NOT made", (long long)m.c.last_reset_at(),

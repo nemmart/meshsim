@@ -200,7 +200,6 @@ final class MachSelf {
 
     /** CtrlTest faults' reads: the request ports' and the request bus's idle(), each cycle while C&C 1's model drains
      *  the handlers' reports; C&C 1's toast latch, and the soft reset clearing it. */
-    static String busFp(Mach m) { StateFp.Out o = new StateFp.Out(); StateFp.chipUnit(o, m.c, "reqbus", m.c.cycle); return String.format("%016x", o.done()); }
     static boolean track(Mach m, long[] k, boolean[] was) {
         boolean pi = true;
         for (Tile p : m.c.tiles) if (!p.req.idle()) { pi = false; k[2]++; }
@@ -227,10 +226,10 @@ final class MachSelf {
         }, 200000);
         System.out.printf("faults reads: %s at %d; bus idle %d cycles (%d changes, last at %d), ports idle %d cycles (last change at %d), port busy %d tile-cycles; toast %b at %d%n",
                 ok ? "drained" : "NOT drained", m.c.cycle, k[0], k[4], k[3], k[1], k[5], k[2], m.c.cc1p.toast, m.c.cc1p.toastAt);
-        // the pops of one cycle and their credits on their way: the request bus's own fingerprint
-        System.out.printf("  received %d; bus fp %s", m.c.reqBus.received[0], busFp(m));
-        m.c.step(); System.out.printf("; next %s", busFp(m));
-        m.c.step(); System.out.printf("; next %s; credits %d%n", busFp(m), m.c.reqBus.credits[0]);
+        // the pops of one cycle and their credits on their way, with the parked cores' park loops
+        System.out.printf("  received %d; fp %s", m.c.reqBus.received[0], fp(m));
+        m.c.step(); System.out.printf("; next %s", fp(m));
+        m.c.step(); System.out.printf("; next %s; credits %d%n", fp(m), m.c.reqBus.credits[0]);
         m.c.cc.reset(false).command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, im.sym("_start"), 0x600D).runWhenReady();
         ok = m.run(() -> m.c.resets == 1, 20000);
         System.out.printf("  the reset: %s at %d; toast %b at %d%n", ok ? "made" : "NOT made", m.c.lastResetAt, m.c.cc1p.toast, m.c.cc1p.toastAt);

@@ -434,9 +434,13 @@ TEST(rv32_park_loop_in_the_handler) {
     m.prog({R(1, 0, 0, 4, 1)});                     // illegal: to the handler, which parks
     m.prog({J(0, 0)}, 0x40);
     m.step();
-    CHECK_EQ(m.step(), Rv32::kNever);
-    CHECK(m.core.stop == Stop::parked);
+    CHECK(m.step() != Rv32::kNever);                // the park loop goes on running (ref's runCycle: only a halt stops it)
+    CHECK(m.core.stop == Stop::parked);             // the run's end recorded at the park
     CHECK_EQ(m.core.stop_cycle, 2u);
+    const uint32_t pc = m.core.pc;
+    const uint64_t n = m.core.instructions;
+    for (int i = 0; i < 6; i++) m.step();
+    CHECK(m.core.parked && m.core.pc == pc && m.core.instructions > n && m.core.stop_cycle == 2u);
 }
 
 TEST(rv32_interrupt_waits_for_a_stall_but_not_a_block_load) {

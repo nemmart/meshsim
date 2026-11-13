@@ -1,6 +1,6 @@
-# Tile programs: the v1.2 control conventions (draft)
+# Tile programs: the control conventions (v1.2)
 
-**v1.2 draft, from `planning/DECISIONS-v1.2.md` sections 1-44 (cited as D*n*), against `sw/mesh-v1.2-draft.h`.** The worked code for every operation is `sw/RECIPES.md`, whose recipes are cited here as R*n*. The spec references are to `spec/machine-spec.md`, which WORKER5 is rewriting to v1.2; where the two disagree the log is the authority until the spec is reviewed. Anything marked *(proposed)* is this draft's choice where the log leaves a number or a name open; WORKER4 settles it in the generated `mesh.h`.
+**Written for v1.2 as a draft, from `spec/history/DECISIONS-v1.2.md` sections 1-44 (cited as D*n*), against `fw/mesh-v1.2-draft.h`, and carried into v1.35 with its content unchanged (D38).** The worked code for every operation is `fw/RECIPES.md`, whose recipes are cited here as R*n*. The spec references are to `spec/machine-spec.md`, which WORKER5 is rewriting to v1.2; where the two disagree the log is the authority until the spec is reviewed. Anything marked *(proposed)* is this draft's choice where the log leaves a number or a name open; WORKER4 settles it in the generated `mesh.h`.
 
 ## 1. Build
 

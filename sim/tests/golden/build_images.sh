@@ -8,6 +8,7 @@
 # The riscv-tests images are sim/fw/riscv-tests/bin (riscv-tests 3df703c, v1.3's): not rebuilt, their sha256 recorded
 # here too.
 set -e
+export LC_ALL=C   # byte order for sort, ls and globs, and nm's symbol order: the outputs are the same in any locale
 HERE=$(cd $(dirname $0) && pwd); SIM=$(cd $HERE/../.. && pwd); OUT=$HERE/images
 command -v riscv64-unknown-elf-gcc >/dev/null || { echo "build_images: needs riscv64-unknown-elf-gcc (apt install gcc-riscv64-unknown-elf)"; exit 1; }
 T=$(mktemp -d); trap 'rm -rf $T' EXIT

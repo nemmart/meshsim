@@ -84,5 +84,8 @@ TEST(s1bench_equals_ref_log) { if (sim::check::kOn) run_step("s1bench", "suite_s
 // cond: the checker's messages are part of its log (the debug and suite builds)
 TEST(cond_equals_ref_log) { if (sim::check::kOn) run_step("cond", "suite_cond", "-1"); }
 TEST(cond_shuf_equals_ref_log) { if (sim::check::kOn) run_step("cond-shuf", "suite_cond", "4"); }
+// ctrl, ctrl-shuf: the checker's builds only (registers' violation count, invariants' messages need its facts)
+TEST(ctrl_equals_ref_log) { if (sim::check::kOn) run_step("ctrl", "suite_ctrl", "-1"); }
+TEST(ctrl_shuf_equals_ref_log) { if (sim::check::kOn) run_step("ctrl-shuf", "suite_ctrl", "4"); }
 TEST(recipes_equals_ref_log) { run_step("recipes", "suite_recipes", "-1"); }
 TEST(recipes_shuf_equals_ref_log) { run_step("recipes-shuf", "suite_recipes", "4"); }

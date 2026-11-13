@@ -48,3 +48,10 @@ make check: only my own lines. gcc debug and clang release before every push; th
   output byte-identical to the plain run's (`results/periph.out`); checked that it fails when they differ.
 - Main merged (9f7f3cd5: W28's reset, W27's AgTest); the four builds on the merged tree: 93 of 93 test runs each (the
   two long tests case by case), suite_bus 154 passed in both debug builds.
+- **Faults** (on W28's request-bus idle, request-port idle, toast and several receives a cycle): all 486 of ref's
+  checks. Its restart group passes before W28's reset fix: its checks read the state once every tile has stopped, not
+  the reboot's cycle. **ctrl, ctrl-shuf (6,954 checks) and ctrl-full (6,963) byte-identical to ref's logs** (gcc and
+  clang suite builds; ctrl-full 74 s here). Steps live (ctrl, ctrl-shuf; ctrl-full in the all run); ctrl and ctrl-shuf
+  in make check in the debug builds (`suite_ctrl -1`: 5 s in gcc debug).
+- The four builds on main c96c541d merged: 93 of 93 test runs each (the two long tests case by case), suite_bus 154
+  passed in both debug builds, check_copies clean.

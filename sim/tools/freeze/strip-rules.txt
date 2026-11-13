@@ -43,8 +43,6 @@
 =tests/ctl/ctl.h	operations W20 hasn't added yet	operations the harness hasn't added yet
 =tests/ctl/ctl.h	with the W20 request it waits for	with the request it waits for
 =tests/ctl/suite_ctrl.cpp	faults(): W20 (	faults(): waits on the harness (
-=tests/ctl/suite_ctrl.cpp	invariants(): W20 (	invariants(): waits on the harness (
-=tests/ctl/suite_ctrl.cpp	allToAll(): W20 (	allToAll(): waits on the harness (
 =tests/ctl/suite_recipes.cpp	boot(): W20 (	boot(): waits on the harness (
 =tests/m3-images/cc_ping.c	the missed wake W16 fixed in TileCtl	the missed wake fixed in TileCtl
 =tests/mach.cpp	 (W22-21 (b))	
@@ -65,3 +63,17 @@
 =tests/test_tracer_slot.cpp	(the case W16 met)	(a case met in practice)
 =tools/delivery/convert_delivery.cpp	W25: found when suite_replayer	found when suite_replayer
 =tools/delivery/synthetic_delivery.cpp	 (WORKER19 NOTES, D42);	 (D42);
+# Hand-reviewed: citations of a session's NOTES.md (left out of the frozen copy)
+=src/threads.h	 Determinism: NOTES.md, "Determinism".	
+=src/units/chip.h	(the ports agreed, 2026-11-07, NOTES.md)	(the ports agreed, 2026-11-07)
+=src/units/chip.h	; NOTES.md section 14)	)
+=src/units/tile_ctl.h	; NOTES.md section 14).	).
+=src/units/tile_ctl.h	(the ports agreed in NOTES.md, plus	(the ports agreed, plus
+=tests/ctl/suite_hooks.cpp	ONE ADAPTATION (NOTES.md):	ONE ADAPTATION:
+=tests/ctl/suite_recipes.cpp	IN PROGRESS (NOTES.md):	IN PROGRESS:
+=tests/test_memconf.cpp	(NOTES.md's coverage)	(its coverage)
+=tests/suite_net.cpp	Waiting on W20 (sessions/WORKER22/NOTES.md, W22-1 to W22-6):	Waiting on the harness:
+# Hand-reviewed: sentences a tag ran across lines in (the line count kept)
+=src/config_impl.h	apart from config.cpp so W4 can split a	apart from config.cpp so the threads' code can split a
+=src/units/stream_word.h	; offered to W15 read-only).	).
+=tests/tracer_rig.h	WORKER22): a hand-built guest	test): a hand-built guest

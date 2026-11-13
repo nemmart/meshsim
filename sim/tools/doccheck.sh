@@ -6,10 +6,12 @@
 #                that is a path (it has a folder and a known extension, or its first folder is one of the tree's), or
 #                a document's bare name (README.md, PORTS.md: found anywhere in the tree)
 #   OUTSIDE      a document cites a sim/, ref/, oracle/ or wip/ path (paths are relative to the version's root)
-#   NO-README    a folder has no README.md
+#   NO-README    a folder has no README.md, and isn't named in its parent's ("name/" or `name`: rule 2 as amended)
 #   DOC-MISSING  a source file's comment names a document (*.md) that isn't in the tree (by its name: documents keep their
 #                names when they move, rule 7)
-# The history (planning/ and spec/history/, but their own README.md) is kept whole and not checked for paths. Generated
+# The history (planning/ and spec/history/, but their own README.md) is kept whole and not checked for paths. A path in
+# a command beginning with "cd DIR" is also tried from DIR (and skipped when DIR is not a plain path). Exemptions, by
+# document and cited path: tools/doccheck-exempt.txt (kinds: other-repo, historical, output, cd). Generated
 # paths (build/, results/, fw/build/) and other versions' (v1.x/, ../) aren't checked. Exit 1 on any failure; -v also
 # lists every path that was checked.
 set -eu
@@ -22,6 +24,11 @@ tools/freeze/frozen.sh --untracked > "$LIST"
 awk -F/ '{ p = ""; for (i = 1; i < NF; i++) { p = p (i > 1 ? "/" : "") $i; print p } }' "$LIST" | sort -u > "$LIST.dirs"
 HIST='^(planning|spec/history)/'
 EXT='md|h|hpp|cpp|c|S|s|sh|mk|py|ld|inc|txt|csv|log|json|gz|tgz|hex|bin|sym|java|patch|sha256|out|fp|dig|trace|tb|ref|cfg|html|svg|tsv'
+
+# ---- the exemptions: DOC<TAB>cited path<TAB>kind<TAB>why (tools/doccheck-exempt.txt), by document and path, not line
+EX=tools/doccheck-exempt.txt
+grep -vE '^[[:space:]]*(#|$)' "$EX" 2>/dev/null > "$LIST.ex" || true
+awk -F'\t' 'NF < 4 || $3 !~ /^(other-repo|historical|output|cd)$/ { print "doccheck: " FILENAME ": bad exemption: " $0; bad = 1 } END { exit bad }' "$LIST.ex" || exit 2
 
 # ---- the documents: the paths they cite
 grep -E '\.md$' "$LIST" | grep -Ev "$HIST" > "$LIST.docs" || true
@@ -39,21 +46,26 @@ while IFS= read -r doc; do
         if (t !~ /^[A-Za-z0-9_.+-]+(\/[A-Za-z0-9_.+-]*)*$/) return
         if (t !~ /\// && t !~ ("\\.(" EXT ")$")) return
       }
-      print FNR "\t" kind "\t" t
+      print FNR "\t" kind "\t" t "\t" cdir
     }
     function words(s, kind,   n, a, i) { n = split(s, a, /[ \t,;()"'"'"'=]+/); for (i = 1; i <= n; i++) if (a[i] != "") emit(a[i], kind) }
-    /^[ \t]*(```|~~~)/ { fence = !fence; next }
-    fence { words($0, "code"); next }
+    function cd_of(x,   t) {   # a command beginning with cd: its folder, or \001 when it is not a plain path
+      if (!match(x, /^[ \t]*(\$ )?cd[ \t]+/)) return ""
+      t = substr(x, RSTART + RLENGTH); sub(/[ \t]*(&&|;|\|\||$).*/, "", t)
+      return t ~ /^[A-Za-z0-9_.\/-]+$/ ? t : "\001"
+    }
+    /^[ \t]*(```|~~~)/ { fence = !fence; cdir = ""; next }
+    fence { c = cd_of($0); if (c != "") cdir = c; words($0, "code"); next }
     {
       s = $0
       while (match(s, /\]\([^) \t]+\)/)) { emit(substr(s, RSTART + 2, RLENGTH - 3), "link"); s = substr(s, RSTART + RLENGTH) }
       if (match($0, /^[ \t]*\[[^\]]+\]:[ \t]+[^ \t]+/)) { t = $0; sub(/^[ \t]*\[[^\]]+\]:[ \t]+/, "", t); sub(/[ \t].*/, "", t); emit(t, "link") }
       s = $0
-      while (match(s, /`[^`]+`/)) { words(substr(s, RSTART + 1, RLENGTH - 2), "code"); s = substr(s, RSTART + RLENGTH) }
-    }' "$doc" | while IFS=$'\t' read -r line kind p; do printf '%s\t%s\t%s\t%s\n' "$doc" "$line" "$kind" "$p"; done
+      while (match(s, /`[^`]+`/)) { span = substr(s, RSTART + 1, RLENGTH - 2); s = substr(s, RSTART + RLENGTH); cdir = cd_of(span); words(span, "code"); cdir = "" }
+    }' "$doc" | while IFS=$'\t' read -r line kind p cdir; do printf '%s\t%s\t%s\t%s\t%s\n' "$doc" "$line" "$kind" "$p" "$cdir"; done
 done < "$LIST.docs" > "$LIST.cites"
 
-awk -F'\t' -v FILES="$LIST" -v DIRS="$LIST.dirs" -v V=$V '
+awk -F'\t' -v FILES="$LIST" -v DIRS="$LIST.dirs" -v V=$V -v EXF="$LIST.ex" '
   function norm(p,   n, a, o, i, k) {   # resolve . and .. ; "" if it climbs out of the root
     n = split(p, a, "/"); k = 0
     for (i = 1; i <= n; i++) { if (a[i] == "" || a[i] == ".") continue; if (a[i] == "..") { if (k == 0) return "\001"; k--; continue } o[++k] = a[i] }
@@ -61,9 +73,13 @@ awk -F'\t' -v FILES="$LIST" -v DIRS="$LIST.dirs" -v V=$V '
   }
   function there(p) { return (p in F) || (p in D) }
   BEGIN { while ((getline l < FILES) > 0) { F[l] = 1; b = l; sub(/.*\//, "", b); B[b] = 1 }
-          while ((getline l < DIRS) > 0) { D[l] = 1; t = l; sub(/\/.*/, "", t); TOP[t] = 1 } }
+          while ((getline l < DIRS) > 0) { D[l] = 1; t = l; sub(/\/.*/, "", t); TOP[t] = 1 }
+          while ((getline l < EXF) > 0) { split(l, e, "\t"); EX[e[1] SUBSEP e[2]] = 1 } }
   {
-    doc = $1; line = $2; kind = $3; p = $4; dir = doc; if (dir ~ /\//) sub(/\/[^\/]*$/, "", dir); else dir = ""
+    doc = $1; line = $2; kind = $3; p = $4; cd = $5; dir = doc;
+    if ((doc SUBSEP p) in EX) next
+    if (cd == "\001") next   # after a cd to a folder that is not a plain path
+    if (dir ~ /\//) sub(/\/[^\/]*$/, "", dir); else dir = ""
     q = p; sub(/\/$/, "", q); first = q; sub(/\/.*/, "", first)
     if (first ~ /^(sim|ref|oracle|wip)$/) { print "OUTSIDE " doc ":" line ": " p; bad++; next }
     if (first ~ /^(build|results)$/ || q ~ /^fw\/build(\/|$)/ || first ~ /^v1\.[0-9.]+$/) next
@@ -72,6 +88,7 @@ awk -F'\t' -v FILES="$LIST" -v DIRS="$LIST.dirs" -v V=$V '
     if (kind == "code" && q ~ /\// && !(first in TOP) && !there(norm((dir == "" ? "" : dir "/") first)) && q !~ /\.[A-Za-z0-9]+$/) next   # prose like read/write
     if (q !~ /\// && q !~ /\.md$/) next                       # a bare file name, not a document: a name, not a path
     ok = there(rel) || there(root) || (q !~ /\// && (q in B))
+    if (!ok && cd != "") ok = there(norm(cd "/" q)) || there(norm((dir == "" ? "" : dir "/") cd "/" q))
     if (V) print "checked " (ok ? "ok " : "NO ") doc ":" line ": " p
     if (!ok) { print "MISSING " doc ":" line ": " p " (" kind ")"; bad++ }
   }
@@ -80,7 +97,13 @@ awk -F'\t' -v FILES="$LIST" -v DIRS="$LIST.dirs" -v V=$V '
 # ---- every folder has a README.md
 { echo .; cat "$LIST.dirs"; } | while IFS= read -r d; do
   [ "$d" = . ] && r=README.md || r=$d/README.md
-  grep -qxF "$r" "$LIST" || echo "NO-README $d/"
+  grep -qxF "$r" "$LIST" && continue
+  if [ "$d" != . ]; then   # rule 2 as amended: a subfolder its parent's README names needs none ("name/" or `name`)
+    pd=$(dirname "$d"); [ "$pd" = . ] && pr=README.md || pr=$pd/README.md
+    n=$(basename "$d" | sed 's/[][\.*^$]/\\&/g')
+    grep -qxF "$pr" "$LIST" && grep -qE "(^|[^A-Za-z0-9_.-])$n(/|\`)" "$pr" && continue
+  fi
+  echo "NO-README $d/"
 done > "$LIST.out2"
 
 # ---- documents named in source files' comments
@@ -91,9 +114,11 @@ while IFS= read -r f; do
       while (match(c, /[A-Za-z0-9_.\/+-]*[A-Za-z0-9_+-]\.md([^A-Za-z0-9_]|$)/)) {
         t = substr(c, RSTART, RLENGTH); sub(/[^A-Za-z0-9_]$/, "", t); printf "%s\t%s\t%s\n", F, FNR, t; c = substr(c, RSTART + RLENGTH) } }' "$f" 2>/dev/null
 done > "$LIST.named" || true
-awk -F'\t' -v FILES="$LIST" '
-  BEGIN { while ((getline l < FILES) > 0) { F[l] = 1; b = l; sub(/.*\//, "", b); B[b] = 1 } }
+awk -F'\t' -v FILES="$LIST" -v EXF="$LIST.ex" '
+  BEGIN { while ((getline l < FILES) > 0) { F[l] = 1; b = l; sub(/.*\//, "", b); B[b] = 1 }
+          while ((getline l < EXF) > 0) { split(l, e, "\t"); EX[e[1] SUBSEP e[2]] = 1 } }
   { f = $1; p = $3; b = p; sub(/.*\//, "", b)
+    if ((f SUBSEP p) in EX) next
     if (p ~ /^(\.\.\/)*v1\.[0-9.]+\// || b in B) next          # in the tree under that name, or another version'"'"'s
     print "DOC-MISSING " f ":" $2 ": " p }' "$LIST.named" > "$LIST.out3"
 

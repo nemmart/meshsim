@@ -51,6 +51,7 @@ SUITES="$SUITES suite_net suite_search suite_agbench suite_engine suite_reqbus s
 SUITES="$SUITES suite_ag"                            # P4: AgTest
 SUITES="$SUITES sort_test sweep"                     # W24 (P6)
 SUITES="$SUITES suite_cond"                           # CondTest (P5)
+SUITES="$SUITES suite_ctrl"                           # CtrlTest (P5)
 SUITES="$SUITES suite_recipes"                        # RecipeTest (P5)
 
 if [ "$BUILD" = 1 ]; then
@@ -119,8 +120,8 @@ step mem-shuf 1 "shuffled child order (seed 3)" tests/p4suites/mem-shuf.log -- $
 step mem-shuf2 1 "shuffled child order (seed 8)" tests/p4suites/mem-shuf2.log -- $S/suite_mem 8
 step engine 1 "address generator, write engine, all-to-all (small)" tests/p4suites/engine.log -- $S/suite_engine -1
 step eng-shuf 1 "shuffled child order (seed 4)" tests/p4suites/eng-shuf.log -- $S/suite_engine 4
-pending ctrl          "control and the controller (from C)" "P5"
-pending ctrl-shuf     "shuffled child order (seed 4)" "P5"
+step ctrl      1 "control and the controller (from C)" tests/ctlsuites/ctrl.log -- $S/suite_ctrl -1
+step ctrl-shuf 1 "shuffled child order (seed 4)" tests/ctlsuites/ctrl-shuf.log -- $S/suite_ctrl 4
 equiv riscv           "riscv-tests rv32ui/rv32um on the controller" "test_golden (every program's retire trace equal to ref's)" -- $S/test_golden
 step rdport 1 "read port, GATHER (Java; the C parts PENDING (phase 2))" tests/p4suites/rdport.log -- $S/suite_rdport -1
 step accounting 1 "per-phase accounting (from C)" tests/ctlsuites/accounting.log -- bash -c "$S/suite_accounting -1 && { cmp -s results/phases-a2a.csv tests/ctlsuites/phases-a2a.csv || echo 'FAIL results/phases-a2a.csv differs from v1.3s'; }"
@@ -171,7 +172,7 @@ if [ "$MODE" != quick ]; then
   # the sweep's CSV checked too (with --check): a difference prints a FAIL line into the step's log
   sweep_quick() { $S/sweep quick || return 1; [ "$CHECK" = 0 ] || cmp -s results/sweep-quick.csv tests/sort/ref/sweep-quick.csv || echo "FAIL: results/sweep-quick.csv differs from tests/sort/ref/sweep-quick.csv"; }
   step sweep-quick 4 "parameter sweep, quick (about 1 minute; 'java Sweep full' takes about 25)" tests/sort/ref/sweep-quick.log -- sweep_quick
-  pending ctrl-full       "the all-to-all from C on the four data sets" "P5"
+  step ctrl-full 1 "the all-to-all from C on the four data sets" tests/ctlsuites/ctrl-full.log -- $S/suite_ctrl -1 full
   step engine-full 1 "full-size all-to-alls (4 data sets) and radix sort (about 1.5 minutes)" tests/p4suites/engine-full.log -- $S/suite_engine -1 full
   step skewtable 1 "fan-in under 0/+1 skew, 40 skew patterns (several minutes)" tests/p4suites/skewtable.log -- $S/suite_net -1 skewtable 40
 fi

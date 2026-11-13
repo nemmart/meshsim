@@ -4,8 +4,7 @@
 //
 // Control and the controller (spec 4.10-4.13, 6, 8). Programs are C (fw/tests/), prebuilt images.
 //
-// IN PROGRESS: ported so far: fields, boot, registers, commands, wfi, misaligned, romSize, invariants, blockCopy, allToAll. Left:
-// faults; until then main() leaves it out, so the output is ref's log without its lines.
+// Every group of ref's CtrlTest is ported; the output equals ref's logs byte for byte (ctrl, ctrl-shuf, ctrl-full).
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -337,6 +336,68 @@ void wfi() {
                    (unsigned long long)spurious_sum(m.c)));
 }
 
+// ================================================================ faults: bus errors, illegal instructions, ecall; a soft reset
+void faults() {
+    suite::group("faults");
+    MachConfig k = Mach::cfg(shuffle);
+    k.check_errors = false;                               // the faults are deliberate: their ERRORS bits are checked below
+    k.reqbus_host = true;                                 // C&C 1's model drained from the test, as ref's run below
+    Mach m(k);
+    const Mach::Image im = m.boot("faults");
+    m.run([&] { return m.all_stopped(); }, 5000);
+    // a bus error or an illegal instruction sets its ERRORS bit and traps to mtvec, here the boot ROM's handler, which
+    // sends two reports to C&C 1 and parks; ecall sets no bit and meshsim stops loudly. The test drains target 0's
+    // queue as the reports come.
+    const int64_t cause[8] = {CAUSE_STORE_FAULT, CAUSE_STORE_FAULT, CAUSE_STORE_FAULT, CAUSE_ILLEGAL, CAUSE_ILLEGAL, -1,
+                              CAUSE_LOAD_FAULT, CAUSE_LOAD_FAULT};
+    int per_tile[64] = {}, seqs[64] = {};
+    mach::ReqBus& bus = m.c.reqbus();
+    m.run([&] {
+        const int64_t now = m.c.cycle() + 1;
+        while (bus.pending(0, now)) {
+            const uint32_t w0 = bus.get(0, now, 0);
+            bus.receive(0, now);
+            const unsigned u = w0 & 0x7F;
+            if (per_tile[u] < 2) seqs[u] |= int(((w0 >> 21) & 0xFF) << (8 * per_tile[u]));
+            per_tile[u]++;
+        }
+        for (unsigned t = 0; t < 64; t++) { const units::Rv32& c = core(m.c, t); if (!(c.parked || c.halt != RUN)) return false; }
+        for (unsigned t = 0; t < 64; t++) if (!m.c.tile(t).req_idle()) return false;
+        return bus.idle() && !bus.pending(0, now);
+    }, 200000);
+    for (unsigned t = 0; t < 64; t++) {
+        const unsigned f = t & 7;
+        const units::Rv32& c = core(m.c, t);
+        const int64_t st = int64_t(m.c.tile(t).block().conditions);
+        if (cause[f] < 0) {
+            suite::eq(units::Rv32::HALT_ECALL, c.halt, "tile %u (ecall): meshsim stopped it loudly", t);
+            suite::eq(0, st, "tile %u: ecall sets no ERRORS bit", t);
+            continue;
+        }
+        suite::eq(cause[f], int64_t(c.trap_cause), "tile %u (fault %u): mcause", t, f);
+        suite::check(c.parked, "tile %u: the handler reported and parked", t);
+        suite::eq(cause[f] == CAUSE_ILLEGAL ? 1 : 0, st >> 10 & 1, "tile %u: ERRORS [10]", t);
+        suite::eq(cause[f] == CAUSE_ILLEGAL ? 0 : 1, st >> 9 & 1, "tile %u: ERRORS [9]", t);
+        suite::eq(2, per_tile[t], "tile %u: the boot ROM's two reports reached C&C 1 (v1.25, DECISIONS-v1.25 s8d)", t);
+        suite::eq(24 | 25 << 8, seqs[t], "tile %u: sequence 24, then 25 (spec 4.13: a first report of 24 means the ROM's two)", t);
+    }
+    suite::eq(0, __builtin_popcountll(model_ready_bits(m.c, m.c.cycle())), "no READY from a trapped tile (the watchdog's case)");
+    suite::eq(8, int64_t(m.c.violations()), "the eight ecalls, flagged (4.13: no ERRORS bit): %s", m.c.violation_report().c_str());
+    suite::check(m.c.unit<units::Cnc>("cnc").err_line != 0 && m.c.toast(), "C&C 1's unit-error bit, and the toast pin");
+    m.c.clear_violations();
+    // the outside world resets the chip; C&C 1 reboots the tiles with a command whose slot 2 says "restart"
+    m.c.cc().reset(false).command(BROADCAST, CMD_JUMP << 24, {im.sym("_start"), 0x600D}).run_when_ready();
+    const bool ok = m.run([&] { return m.c.resets() == 1 && m.c.cycle() > m.c.last_reset_at() + 5 && m.all_stopped(); }, 20000);
+    suite::check(ok && m.all_exited(), "after the reset every tile booted again and exited: %s", m.halt_summary().c_str());
+    for (unsigned t = 0; t < 64; t++) {
+        suite::eq(0x600D0000LL + t, m.word(t, im, "ok", 0), "tile %u: restarted through the boot ROM", t);
+        suite::eq(0, m.word(t, im, "st", 0), "tile %u: the reset cleared its ERRORS", t);
+    }
+    suite::check(!m.c.toast(), "the reset cleared the toast latch");
+    no_violations(m.c, "restart");
+    out("faults [meas: CtrlTest faults]: a store to STATUS, a store to program memory, a sub-word register store, a load from PTR and a load from an unmapped region are bus errors (ERRORS [9]), div and rdcycle illegal (ERRORS [10]): each traps to the boot ROM's handler, which sends its two reports (sequence 24 and 25) to C&C 1 and parks; ecall sets no bit, and meshsim stops loudly; no READY; the unit-error bit and the toast pin rise; a soft reset clears every ERRORS and the toast pin, and the tiles boot again through the ROM");
+}
+
 // ================================================================ the boot ROM's size; misaligned accesses (UB)
 void rom_size() {
     suite::group("the 256-byte boot ROM");
@@ -519,7 +580,7 @@ int main(int argc, char** argv) {
     registers();
     commands();
     wfi();
-    // faults(): W20 (reset, the request bus, check_errors mid-run)
+    faults();
     misaligned();
     rom_size();
     invariants();

@@ -5,6 +5,7 @@
 # regdoc step check them against the generator.
 # Removed 2026-11-13: fw/CONVENTIONS.md, data/tables/README.md: now v1.35's own documents (D38), their banners and paths corrected.
 # Removed 2026-11-13: fw/RECIPES.md, fw/recipes/RECIPES.tmpl.md: now v1.35's own documents (D38), their banners and paths corrected (RECIPES.md regenerated from the template by gen_book).
+# Removed 2026-11-13: fw/regdoc/README.md, fw/replay/README.md, fw/sort/program/README.md, fw/sort/skew/skew-v2.md, fw/sort/split/BINDING.md, fw/recipes/README.md: now v1.35's own documents (D38), their paths corrected.
 a3b90f3c2fbc64f1a93c8c0ff916cfbaf40823aae38c4540811482873741d3da  data/hops.txt  meshsim/hops.txt
 3d76b556f111764ac36d8ba6a3e7492c3399e15c8371efba19d06894934827ad  data/one99.txt  meshsim/data/one99.txt
 f2d00f78de18eb04d7530baab68234748951208ce4eb023de35d0136a50af8e9  data/trace.txt  meshsim/data/trace.txt
@@ -203,14 +204,12 @@ a73b693838e3e60b782692378828bfe4cf340df750bc91b88f814a9ca572b81f  fw/tests/req.c
 e508057bd7986d7bd008a43851462f7eb2e6d63b1cf2b8e1e5a4a99bc63edb63  fw/cc/cc23.c  meshsim/sw/cc/cc23.c
 7a6efbf175319224e7b21445440159345126829a698af2a1950d2b5b5b736815  fw/cc/cc_bad.c  meshsim/sw/cc/cc_bad.c
 b3907e8463ca751e7b9bd765619f5f6af0b3702ec7c7025e8ad091a6b5d1f9c4  fw/cc/cc_rcp.c  meshsim/sw/cc/cc_rcp.c
-ff3e49081063008b250a2145de5e8b52f8d5c603f1179800231b7b7cac47b38b  fw/replay/README.md  meshsim/sw/replay/README.md
 8520c57a60fe86155806fabee2ff35101590b6368ad6cc75919986e2213759ab  fw/replay/replay_ctl.c  meshsim/sw/replay/replay_ctl.c
 4a8ea9e5a6eaa906d44fd9fa1c0c3d67e4c631f3f3aa7838174906360114a10c  fw/replay/replay_ctl_oldmap.c  meshsim/sw/replay/replay_ctl_oldmap.c
 63dfa31d6da9be1ebb8fe292e33e883c7591d0835eefdd8baf2655b4b761bd10  fw/replay/replay_layout.h  meshsim/sw/replay/replay_layout.h
 602509a83a5134eff167555872bd3f2e6a69a487e12e3187ad74c8e46fe878e1  fw/tracer/tracer_ctl.c  meshsim/sw/tracer/tracer_ctl.c
 e6fb2016a4668df431a8490b3896f1288662691fa1c4e0fad566f2e38d9ee74e  fw/tracer/tracer_layout.h  meshsim/sw/tracer/tracer_layout.h
 744a1502c1d7ad664e0677975e40beb6cf6abfe3f49da5311af22b109a50af68  fw/recipes/.gitignore  sw/recipes/.gitignore
-8068e353230c0106e4226d51de0506729a0b90cf08c4b9f9acb58d36b17d07f5  fw/recipes/README.md  sw/recipes/README.md
 30d29a47824d7dfc312b41c8a2c0da52a5ed459eb5d7a6a264a5165153964e97  fw/recipes/bootrom.S  sw/recipes/bootrom.S
 9f55b598996ae74f5622526a0f3d4448d78fd94377ada3577bc92eebe8fb83ab  fw/recipes/build.sh  sw/recipes/build.sh
 07a4775a618279d4febce50bc1f0ed174262505459b01d3cf5d5a0322acc0f68  fw/recipes/crt0.S  sw/recipes/crt0.S
@@ -240,7 +239,6 @@ eaa30c364d72c37b02810924cab64092a57aaa5f6c25e5a93f5989945a477c42  fw/recipes/rcp
 4a682bf2c7ec5c0ef7fe22eb6a45d66dc9bbb0bd95060fd10f390562e78ad6c1  fw/recipes/recipes.ld  meshsim/sw/recipes.ld
 642f7aff13785e3bbcab8c431d90c0c041810c3c03ed9f14815e97ec0390ddfd  fw/recipes/recipes_support.c  meshsim/sw/recipes_support.c
 853f5b586c99753c8681471701918ad0bc9d5e60ad0b3ce56bfa20df96572525  fw/mesh-v1.2-draft.h  sw/mesh-v1.2-draft.h
-a0d7e80ec6cbd6563f04105c547b3a427cbee86cca2f87df5570ff4bb80b1081  fw/regdoc/README.md  sw/regdoc/README.md
 f6f7942a436f70d522b92fbed96513523dfb2f081e831f34c77702ffbaa17d3d  fw/regdoc/src/build_pdf.sh  sw/regdoc/src/build_pdf.sh
 7b86a1c9c47ab696d184992fcbc4e32000cf74deafe18a717765fad8e85075ea  fw/regdoc/src/ex1_local_copy.py  sw/regdoc/src/ex1_local_copy.py
 6943103c90b832eeb3135879bf15d2658e1f053b6f0fcdbc4a4b1ac7b7228216  fw/regdoc/src/ex2_cm_copy.py  sw/regdoc/src/ex2_cm_copy.py
@@ -256,7 +254,6 @@ d19122e05e93945a8dc656e59ce29f069dba19d71baf83e1dfacc5f1c009e080  fw/regdoc/svg/
 cd04a14f58ac2edd7adf1d1a7ae19bd8d6169f79e353812929663bb6e8fdbbbc  fw/regdoc/svg/ex3_exchange.svg  sw/regdoc/svg/ex3_exchange.svg
 08a5c62234cd13e2ec7e5cf482e35d8ba50fcc3f41290774323ebf595d49a511  fw/regdoc/svg/ex4_read_port.svg  sw/regdoc/svg/ex4_read_port.svg
 cd5df7f620321a25b091953aadbaa22fb539454be4cf72850d6e8396a6b889a1  fw/regdoc/svg/ex5_bucket_pass.svg  sw/regdoc/svg/ex5_bucket_pass.svg
-cee2e358554c3deaa7e9dc9ea86fd6dc199642e52d2ba0caf67c53edaa57b67f  fw/sort/program/README.md  sort/program/README.md
 5295aa5869435287f118d7ca4364da05573254b9fc14048f53d3c7473d830c1f  fw/sort/program/sw/bt_plan.c  sort/program/sw/bt_plan.c
 017f5cfcf28b3889afdd1f4ced6919695b576ba9e6326a2d276ca7efa12437c1  fw/sort/program/sw/bt_run.c  sort/program/sw/bt_run.c
 652bedbca4c19646f24a091b93ea195ed145d47ec75bdd7dde7041d012e21d28  fw/sort/program/sw/config.c  sort/program/sw/config.c
@@ -270,7 +267,6 @@ a5e3ea92b768e6e723bdb4bbadf9082fe29fc696e4f1965f41630f33fde49cd9  fw/sort/progra
 087d350b7a8d8694c413da2cc92f338fefeabc9764aa515a7c50fd47b9c4cab8  fw/sort/program/patches/planner.patch  sort/program/patches/planner.patch
 50c3f112bc69238059f68e929fc17448d9ccdcb02e7e729017fb9277c74c0936  fw/sort/program/patches/split-barrier.patch  sort/program/patches/split-barrier.patch
 b960c38f2bb67f6497b3efce88398e650a7e69e59459919be9eb64491ce00782  fw/sort/program/tools/export_keys.py  meshsim/sw/ext/sort/tools/export_keys.py
-1e1fdaaade0b36477b473bbdc7606c8ca4c5a3813007a85840311e987067cb9c  fw/sort/split/BINDING.md  sort/split/BINDING.md
 80bdf18f70f6c47edae59421d4207bd8de44e460649ebc66e9f94d27b31e2fd0  fw/sort/split/split.c  sort/split/split.c
 406b6dfe3fd9aa729a158f46131a1a58857f9ad3fa92178b59b4aaea50eed940  fw/sort/split/split.h  sort/split/split.h
 7622041699d893000ef3098d18ab8b39848b8bf2038b5ae4f2edab4c8bcece48  fw/sort/split/split_regs.h  sort/split/split_regs.h
@@ -315,7 +311,6 @@ dfa8cdf4edaa6e60e48881568e3a0419a39ab8bfa42e612f3bbc382edc9d35f5  fw/sort/skew/h
 07d1c39b9a050f913a6ddabfe4d0265b31fe08b2ea5583a0e0ae18c51e00b243  fw/sort/skew/planner/skew_bt.c  sort/skew/planner/skew_bt.c
 13be86cb01fdf8ae68aaf595de540cdba66da30df6856892901caed89c4be9ac  fw/sort/skew/planner/skew_common.c  sort/skew/planner/skew_common.c
 9bffafe25c4a77feba81eb9ea1f59b21dfa65d7d80e3a0fb48b90c961d64de86  fw/sort/skew/planner/skew_th.c  sort/skew/planner/skew_th.c
-f520113d1c7849dfeed643327c1d3b43fbbbc2b4d1f0eb3785329530337d1128  fw/sort/skew/skew-v2.md  sort/skew/skew-v2.md
 bfa9ba2f8fc54b0fc990dd7c6b4e1e5a150130ef9d4e71799f78742999a407b8  fw/riscv-tests/build.sh  meshsim/test/riscv/build.sh
 f5c4f11923063cea48df4f012e641c574d920d296a8c824ccc6c082802585a57  fw/riscv-tests/link.ld  meshsim/test/riscv/link.ld
 170c9475acb4e91b00e1cf2eced54794eaadc85abb486e1f27815e26b1b4b894  fw/riscv-tests/riscv_test.h  meshsim/test/riscv/riscv_test.h

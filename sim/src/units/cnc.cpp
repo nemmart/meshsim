@@ -163,6 +163,7 @@ sim::Wake Cnc::step(sim::Ctx& c) {
     }
     err_line_seen = err_line != 0;
     if (err_line_seen && !error_bit) { error_bit = true; error_set_at = t; }
+    if (err_line_seen && !toast) { toast = true; toast_at = t; }
     // the receive FIFO: one packet a cycle from tile 0's to-controller output
     bool more_rx = false;
     if (c.ready(rx)) {

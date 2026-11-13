@@ -14,7 +14,9 @@
 #include "units/ag.h"
 #include "units/big_sram.h"
 #include "units/gather.h"
+#include "units/cnc.h"
 #include "units/linkword.h"
+#include "units/reqbus.h"
 #include "units/tile_ctl.h"
 
 using namespace mach::fields;
@@ -193,10 +195,46 @@ void reset_case(int64_t seed) {                               // B20: MachSelf.r
     say("%s\n", sb.c_str());
     for (const std::string& l : m.c.log()) if (l.find("reset") != std::string::npos) say("  %s\n", l.c_str());
 }
+bool track(Mach& m, int64_t k[6], bool was[2]) {
+    bool pi = true;
+    for (unsigned q = 0; q < 64; q++) if (!m.c.tile(q).req_idle()) { pi = false; k[2]++; }
+    const bool bi = m.c.reqbus().idle();
+    if (bi) k[0]++;
+    if (pi) k[1]++;
+    if (bi != was[0]) { k[3] = m.c.cycle(); k[4]++; was[0] = bi; }
+    if (pi != was[1]) { k[5] = m.c.cycle(); was[1] = pi; }
+    return pi;
+}
+// MachSelf.faultsReads: CtrlTest faults' reads (req_idle, the bus's idle, the toast latch and its reset)
+void faults_reads() {
+    mach::MachConfig k0 = Mach::cfg(-1); k0.reqbus_host = true;
+    Mach m(k0);
+    m.c.set_check_errors(false);
+    const Mach::Image im = m.boot("faults");
+    int64_t k[6] = {};
+    bool was[2] = {false, false};
+    m.run([&] { track(m, k, was); return false; }, 5000);
+    mach::ReqBus& rb = m.c.reqbus();
+    bool ok = m.run([&] {
+        const int64_t now = m.c.cycle() + 1;
+        if (rb.pending(0, now)) rb.receive(0, now);   // one a cycle, as MachSelf
+        const bool pi = track(m, k, was), bi = rb.idle();
+        for (unsigned q = 0; q < 64; q++) { const units::Rv32& v = m.c.tile(q).unit<units::TileCore>("core").rv; if (!(v.parked || v.halt != units::Rv32::RUN)) return false; }
+        return pi && bi && !rb.pending(0, now);
+    }, 200000);
+    say("faults reads: %s at %lld; bus idle %lld cycles (%lld changes, last at %lld), ports idle %lld cycles (last change at %lld), port busy %lld tile-cycles; toast %s at %lld\n",
+        ok ? "drained" : "NOT drained", (long long)m.c.cycle(), (long long)k[0], (long long)k[4], (long long)k[3], (long long)k[1],
+        (long long)k[5], (long long)k[2], m.c.toast() ? "true" : "false", (long long)m.c.toast_at());
+    m.c.cc().reset(false).command(units::lw::BROADCAST, 0x4Au << 24, {im.sym("_start"), 0x600Du}).run_when_ready();   // CMD_JUMP
+    ok = m.run([&] { return m.c.resets() == 1; }, 20000);
+    say("  the reset: %s at %lld; toast %s at %lld\n", ok ? "made" : "NOT made", (long long)m.c.last_reset_at(),
+        m.c.toast() ? "true" : "false", (long long)m.c.toast_at());
+}
 void machself() {
     out.clear();
     reset_case(-1);
     reset_case(4);
+    faults_reads();
     trace_case();
     if (sim::check::kOn) trace_case(true);                 // (PhaseLog: the debug and suite builds)
     if (sim::check::kOn) { phases(-1); phases(4); }        // (PhaseLog's FIFO peaks: the debug and suite builds)

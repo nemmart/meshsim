@@ -333,5 +333,27 @@ final class CheckSelf {
             n.runAll(1000);
             System.out.print(n.c.violationReport());
         }
+        {   // CtrlTest's regs program: the three counter wraps, ROUTER_HDR's and WRITE_COUNTER_2's reserved bits (invariant 21)
+            // and the odd DMA_RECORD_BASE_ADDRESS (invariant 20) on every tile; all 384 messages
+            Config k = Mach.cfg(-1); k.maxViolationMessages = 1000;
+            Mach m = new Mach(k);
+            m.boot("regs");
+            m.run(m::allStopped, 40000);
+            System.out.print(m.c.violationReport());
+        }
+        {   // CtrlTest's invariants: an overlay landing after a unit's first command and before its start (6.2), from C&C 1
+            Mach o = new Mach(Mach.cfg(-1));
+            o.c.run(40);
+            o.c.cc.command(9, Registers.CMD_JUMP << 24, Registers.PMEM_BASE).waitCycles(60).send(9, LinkWord.M_WRITE, 0x400, 0x5);
+            o.c.run(200);
+            System.out.print(o.c.violationReport());
+        }
+        {   // CtrlTest's invariants: unicast overlays, then a broadcast command (invariant 25), from C&C 1
+            Mach q = new Mach(Mach.cfg(-1));
+            q.c.run(40);
+            q.c.cc.loadWords(9, Registers.PMEM_BASE, new int[] { 1, 2, 3, 4 }).command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, Registers.PMEM_BASE);
+            q.c.run(300);
+            System.out.print(q.c.violationReport());
+        }
     }
 }

@@ -186,9 +186,43 @@ final class MachSelf {
         for (String l : m.c.log) if (l.contains("reset")) System.out.println("  " + l);
     }
 
+    /** CtrlTest faults' reads: the request ports' and the request bus's idle(), each cycle while C&C 1's model drains
+     *  the handlers' reports; C&C 1's toast latch, and the soft reset clearing it. */
+    static boolean track(Mach m, long[] k, boolean[] was) {
+        boolean pi = true;
+        for (Tile p : m.c.tiles) if (!p.req.idle()) { pi = false; k[2]++; }
+        boolean bi = m.c.reqBus.idle();
+        if (bi) k[0]++;
+        if (pi) k[1]++;
+        if (bi != was[0]) { k[3] = m.c.cycle; k[4]++; was[0] = bi; }
+        if (pi != was[1]) { k[5] = m.c.cycle; was[1] = pi; }
+        return pi;
+    }
+    static void faultsReads() {
+        Mach m = new Mach(Mach.cfg(-1));
+        m.c.cfg.checkErrors = false;
+        Mach.Image im = m.boot("faults");
+        long[] k = new long[6];                                           // bus idle, ports idle, port-busy tile-cycles, last changes
+        boolean[] was = { false, false };
+        m.run(() -> { track(m, k, was); return false; }, 5000);         // the faults, the handlers' reports, nothing drained
+        boolean ok = m.run(() -> {
+            long now = m.c.cycle + 1;
+            if (m.c.reqBus.pending(0, now)) m.c.reqBus.receive(0, now);   // one a cycle (the harness pops one per target per cycle)
+            boolean pi = track(m, k, was), bi = m.c.reqBus.idle();
+            for (Tile p : m.c.tiles) if (!(p.core.parked || p.core.halt != Controller.RUN)) return false;
+            return pi && bi && !m.c.reqBus.pending(0, now);
+        }, 200000);
+        System.out.printf("faults reads: %s at %d; bus idle %d cycles (%d changes, last at %d), ports idle %d cycles (last change at %d), port busy %d tile-cycles; toast %b at %d%n",
+                ok ? "drained" : "NOT drained", m.c.cycle, k[0], k[4], k[3], k[1], k[5], k[2], m.c.cc1p.toast, m.c.cc1p.toastAt);
+        m.c.cc.reset(false).command(LinkWord.BROADCAST, Registers.CMD_JUMP << 24, im.sym("_start"), 0x600D).runWhenReady();
+        ok = m.run(() -> m.c.resets == 1, 20000);
+        System.out.printf("  the reset: %s at %d; toast %b at %d%n", ok ? "made" : "NOT made", m.c.lastResetAt, m.c.cc1p.toast, m.c.cc1p.toastAt);
+    }
+
     public static void main(String[] a) throws Exception {
         resetCase(-1);
         resetCase(4);
+        faultsReads();
         trace();
         trace(true);
         phases(-1);

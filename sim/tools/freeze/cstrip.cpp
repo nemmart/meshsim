@@ -13,7 +13,7 @@
 // by the strip's residual check rather than rewritten.
 //
 // RULES: one rule per line, "regex<TAB>replacement" (ECMAScript; $1.. in the replacement), applied in order to each
-// line of each comment; lines starting with # and empty lines are ignored. A comment whose text becomes blank is
+// line of each comment; lines starting with # and empty lines are ignored. A comment whose text the rules make blank is
 // removed with the spaces before it; its line stays, so line numbers (and __LINE__) never change.
 #include <cstdio>
 #include <cstdlib>
@@ -173,7 +173,131 @@ std::string read_all(const char* p) {
     std::ostringstream o; o << f.rdbuf(); return o.str();
 }
 
-struct Rule { std::regex re; std::string with; std::string src; };
+
+// ---- @untag: worker names and planning codes out of a comment line
+// A worker's name: WORKERn, Wn (1-30) and a ticket Wn-m; never W0. W1-W3 are also a request's or a packet's words
+// ("W1 the reply address", "W2-W3", "word 1 (W1)"), so alone they count only as a possessive ("W3's"), or as one
+// item of several in a parenthetical, or before a colon there; elsewhere a W1-W3 is left for the residual list.
+const char* TAG = R"((?:WORKER[0-9]+|W(?:[4-9]|[12][0-9]|30)(?:-[0-9]+)?|W[1-3]-[0-9]+))";
+const char* TAGA = R"((?:WORKER[0-9]+|W(?:[1-9]|[12][0-9]|30)(?:-[0-9]+)?))";
+bool is_tag(const std::string& t, bool any = false) { return std::regex_match(t, std::regex(std::string("^") + (any ? TAGA : TAG) + "$")); }
+// a planning code: a piece, an inventory row, a unit group, a finding, a question, a test-plan case; never a decision (Dn)
+bool is_code(const std::string& t) {
+    static const std::regex c(R"(^(?:P[1-9][ab]?|(?:inventory )?(?:rows?|items?|row) [A-J][0-9]+[a-z]?(?:[-/,]\s?[A-J]?[0-9]+[a-z]?)*|inventory [A-J][0-9]+[a-z]?(?:[-/][A-J]?[0-9]+)*|[A-CE-J][0-9]{1,2}[a-z]?(?:/[A-CE-J]?[0-9]{1,2})?|[FQ][0-9]+|[0-9][a-z]|step [0-9]+|stage [0-9]+)$)");
+    return std::regex_match(t, c);
+}
+std::string trim(const std::string& x) { size_t a = x.find_first_not_of(" \t"), b = x.find_last_not_of(" \t"); return a == std::string::npos ? "" : x.substr(a, b - a + 1); }
+// an item of a parenthetical that is only attribution: a tag, a tag's code ("W22's F4"), a tag with its codes
+bool attribution(const std::string& item, bool any = false) {
+    static const std::regex poss(std::string("^") + TAGA + R"('s [A-Z][0-9]+[a-z]?$)");
+    static const std::regex lead(std::string("^") + TAG + R"(\s*\(([^()]*)\)$)");
+    std::smatch m;
+    if (is_tag(item, any) || std::regex_match(item, poss)) return true;
+    if (std::regex_match(item, m, lead)) {
+        std::string in = m[1]; size_t a = 0;
+        while (true) {
+            const size_t e = in.find_first_of(",;", a);
+            const std::string it = trim(in.substr(a, e == std::string::npos ? std::string::npos : e - a));
+            if (!(is_code(it) || is_tag(it))) return false;
+            if (e == std::string::npos) break;
+            a = e + 1;
+        }
+        return true;
+    }
+    return false;
+}
+// a parenthetical's text without its attribution; "" if nothing else is left, "\x02" if it holds no tag (unchanged)
+std::string strip_items(const std::string& in) {
+    std::vector<std::string> items; std::vector<char> seps;
+    int depth = 0; size_t a = 0;
+    for (size_t i = 0; i <= in.size(); i++) {
+        if (i < in.size() && in[i] == '(') depth++;
+        else if (i < in.size() && in[i] == ')') depth--;
+        else if (i == in.size() || (depth == 0 && (in[i] == ',' || in[i] == ';'))) {
+            items.push_back(in.substr(a, i - a)); seps.push_back(i < in.size() ? in[i] : 0); a = i + 1;
+        }
+    }
+    bool any_tag = false;
+    static const std::regex colon(std::string("^") + TAGA + R"(:\s*(.*)$)");
+    const bool several = items.size() > 1;
+    for (std::string& it : items) {
+        std::smatch m; const std::string t = trim(it);
+        if (attribution(t, several)) any_tag = true;
+        else if (std::regex_match(t, m, colon)) { any_tag = true; it = " " + std::string(m[1]); }
+    }
+    if (!any_tag) return "\x02";
+    std::string out; char sep = 0;
+    for (size_t k = 0; k < items.size(); k++) {
+        const std::string t = trim(items[k]);
+        if (t.empty() || attribution(t, several) || is_code(t)) { if (!sep) sep = seps[k]; continue; }
+        if (!out.empty()) out += std::string(1, sep ? sep : ',') + " ";
+        out += t; sep = seps[k];
+    }
+    return out;
+}
+std::string untag(const std::string& line) {
+    std::string l = line;
+    // 0. a tag's own codes in the parenthetical after it ("W4 (E3)", "W11 (G3)") go first, the tag staying for below
+    {
+        static const std::regex tp(std::string(TAG) + R"(\s*\(([^()]*)\))");
+        std::string out; std::smatch m; auto it = l.cbegin();
+        while (std::regex_search(it, l.cend(), m, tp)) {
+            out.append(it, m[0].first);
+            bool codes = true; const std::string in = m[1]; size_t a = 0;
+            while (true) {
+                const size_t e = in.find_first_of(",;", a);
+                const std::string t = trim(in.substr(a, e == std::string::npos ? std::string::npos : e - a));
+                if (!is_code(t)) codes = false;
+                if (e == std::string::npos) break;
+                a = e + 1;
+            }
+            const std::string whole = m[0];
+            out += codes ? whole.substr(0, whole.find_first_of(" (")) : whole;
+            it = m[0].second;
+        }
+        out.append(it, l.cend());
+        l = out;
+    }
+    // 1. each parenthetical holding a tag: the tags and the codes go
+    for (size_t i = 0; i < l.size(); i++) {
+        if (l[i] != '(') continue;
+        int depth = 0; size_t j = i;
+        for (; j < l.size(); j++) { if (l[j] == '(') depth++; else if (l[j] == ')' && --depth == 0) break; }
+        const bool closed = j < l.size();
+        const std::string in = l.substr(i + 1, (closed ? j : l.size()) - i - 1);
+        const std::string r = strip_items(in);
+        if (r == "\x02") continue;
+        if (r.empty()) {
+            size_t b = i; if (b > 0 && l[b - 1] == ' ') b--;
+            l.erase(b, (closed ? j + 1 : l.size()) - b); i = b == 0 ? 0 : b - 1;
+        } else l = l.substr(0, i + 1) + r + (closed ? l.substr(j) : "");
+    }
+    // 2. a leading tag ("W20: ...", "W20 (harness-only): ...", "---- WORKER26's inputs")
+    static const std::regex lead_colon(std::string(R"(^(\s*(?:---- )?))") + TAG + R"((?:, )" + TAG + R"()*:\s*)");
+    static const std::regex lead_paren(std::string(R"(^(\s*(?:---- )?))") + TAG + R"(\s+(?=\())");
+    l = std::regex_replace(l, lead_colon, "$1");
+    l = std::regex_replace(l, lead_paren, "$1");
+    // 3. a tag's possessive is the thing itself; "by W11", "from W20" go
+    static const std::regex poss(std::string(R"((^|[^A-Za-z0-9_\-]))") + TAGA + R"('s\b)");
+    l = std::regex_replace(l, poss, "$1the");
+    static const std::regex prep(std::string(R"( (?:by|from|with|per|after|see|ask) )") + TAG + R"(\b(?!-))");
+    l = std::regex_replace(l, prep, "");
+    // 4. what is only a tag: a whole comment ("// W10"), a tag closing a parenthetical ("...: W4)"), a tag ending a
+    // sentence (", WORKER15."), an owner column's value after two spaces
+    static const std::regex only(std::string(R"(^\s*(?:)") + TAG + R"((?:, )" + TAG + R"()*)\s*$)");
+    if (std::regex_match(l, only)) return "";
+    static const std::regex lead_comma(std::string(R"(^(\s*))") + TAG + R"(, )");
+    l = std::regex_replace(l, lead_comma, "$1");
+    static const std::regex close(std::string(R"(: )") + TAG + R"(\))");
+    l = std::regex_replace(l, close, ")");
+    static const std::regex end(std::string(R"(, )") + TAG + R"(\.(\s*)$)");
+    l = std::regex_replace(l, end, ".$1");
+    static const std::regex column(std::string(R"(\s{2,})") + TAG + R"(\s*$)");
+    l = std::regex_replace(l, column, "");
+    return l;
+}
+
+struct Rule { std::regex re; std::string with; std::string src; bool untag = false; std::string file, old; };
 
 std::vector<Rule> read_rules(const char* p) {
     std::vector<Rule> r;
@@ -183,9 +307,16 @@ std::vector<Rule> read_rules(const char* p) {
     while (std::getline(in, l)) {
         k++;
         if (l.empty() || l[0] == '#') continue;
+        if (l == "@untag") { Rule u; u.untag = true; u.src = l; r.push_back(u); continue; }
+        if (l[0] == '=') {   // =FILE<TAB>old<TAB>new: literal, in that file's comments only
+            const size_t t1 = l.find('\t'), t2 = l.find('\t', t1 + 1);
+            if (t1 == std::string::npos || t2 == std::string::npos) { std::fprintf(stderr, "cstrip: %s:%d: =FILE<TAB>old<TAB>new\n", p, k); std::exit(2); }
+            Rule h; h.file = l.substr(1, t1 - 1); h.old = l.substr(t1 + 1, t2 - t1 - 1); h.with = l.substr(t2 + 1); h.src = l; r.push_back(h); continue;
+        }
         const size_t t = l.find('\t');
         if (t == std::string::npos) { std::fprintf(stderr, "cstrip: %s:%d: no tab\n", p, k); std::exit(2); }
-        r.push_back(Rule{std::regex(l.substr(0, t), std::regex::ECMAScript), l.substr(t + 1), l.substr(0, t)});
+        Rule g; g.re = std::regex(l.substr(0, t), std::regex::ECMAScript); g.with = l.substr(t + 1); g.src = l.substr(0, t);
+        r.push_back(g);
     }
     return r;
 }
@@ -245,15 +376,23 @@ int main(int argc, char** argv) {
         while (true) {
             const size_t e = g.body.find('\n', a);
             std::string l = g.body.substr(a, e == std::string::npos ? std::string::npos : e - a);
-            for (const Rule& r : rules) l = std::regex_replace(l, r.re, r.with);
+            for (const Rule& r : rules) {
+                if (r.untag) l = untag(l);
+                else if (!r.file.empty()) {
+                    if (r.file != file) continue;
+                    const size_t at = l.find(r.old);
+                    if (at != std::string::npos) { l.replace(at, r.old.size(), r.with); std::fprintf(stderr, "USED %s\n", r.src.c_str()); }
+                } else l = std::regex_replace(l, r.re, r.with);
+            }
             if (l.find('\n') != std::string::npos) { std::fprintf(stderr, "cstrip: %s: a rule made a newline\n", file); return 1; }
             out += l;
             if (e == std::string::npos) break;
             out += '\n';
             a = e + 1;
         }
+        const bool was_blank = blank(g.body);
         g.body = out;
-        if (blank(g.body) && g.body.find('\n') == std::string::npos && g.body.find('\\') == std::string::npos) {
+        if (!was_blank && blank(g.body) && g.body.find('\n') == std::string::npos && g.body.find('\\') == std::string::npos) {
             g.open.clear(); g.close.clear(); g.body.clear();   // the comment goes; then the spaces before it
             if (k > 0 && !v[k - 1].comment) {
                 std::string& p = v[k - 1].body;

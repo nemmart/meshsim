@@ -1,10 +1,10 @@
 # golden-m2 images (WORKER7, 2026-11-07)
 
-Built from `sim/ref` (frozen) with Ubuntu 24.04's riscv64-unknown-elf-gcc 13.2: regs, wfi, a2a by
+Built from `ref` (v1.3's simulator with the trace hooks, frozen, outside the frozen copy) with Ubuntu 24.04's riscv64-unknown-elf-gcc 13.2: regs, wfi, a2a by
 `v1.3/meshsim/sw/build.sh`; the sort by `v1.3/meshsim/sw/ext/sort/build.sh` (byte-identical to Quest 118's image, the one behind
 1,229,687 cycles). Committed because the runner has no riscv toolchain (D4). the oracle's `golden-m2.sh` (outside the frozen copy) checks them against this list,
-then installs them into its scratch copy of `sim/ref/meshsim`. The boot ROM (`v1.3/meshsim/sw/bootrom.hex`) and `hops.txt` come
-from `sim/ref` itself.
+then installs them into its scratch copy of `ref`'s simulator folder. The boot ROM (`v1.3/meshsim/sw/bootrom.hex`) and `hops.txt` come
+from `ref` itself.
 
 ```
 49d234782e2c88a48d83a1a16c434c82284ab02bff540d2a2827c83737d7a5bd  a2a.code.bin

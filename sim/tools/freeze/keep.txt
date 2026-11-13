@@ -1,0 +1,38 @@
+# Tags that stay on purpose: fixed strings, each matched anywhere in strip.sh's "left" lines.
+# The packet's and the request's words W0-W3 (registers, not workers)
+W0-W2
+W1-W3
+W2-W3
+W1 the reply address
+W3 = 65
+(W1)
+(W2)
+ROUTER_SET_W
+W2, W1, W0
+W1 not sent
+store(n, s, W
+uint32_t W1 =
+{W1 +
+{{W1 +
+W1 W0 below
+address in W1
+its W3 + 0x1000
+# Names in code (rule 4 covers comments, usage lines and messages; not identifiers)
+struct W26
+W26& w
+chain::W26
+load_w26
+const int W2
+W2; i++
+, W2)
+recs(m.c, me, B_WB, W2)
+std::to_string(W2)
+i < W2
+unsigned(W2)
+# In a fixture or a v1.3 output: stays (the checker's DMEM_RESERVED text is in tests/mach/checkself.out; mesh.h's
+# DMEM_RESERVED line is a #define, unchanged; ConvertDelivery's "by" field is in v1.3's outputs, D42)
+W4-02
+meshsim WORKER20), v1.25
+# v1.3's own paths, in the spec's move proof
+WORKER11/REPORT.md
+WORKER20/REPORT.md

@@ -5,7 +5,8 @@ fixture folder is and how it was made.*
 
 ## Three kinds of evidence
 
-v1.35's meshsim reproduces v1.3's Java simulator (`ref`, `v1.3/meshsim/`): the same results, and the same cycle counts
+v1.35's meshsim reproduces v1.3's Java simulator (`ref`: v1.3's with the trace hooks, outside the frozen copy; v1.3's own is
+`v1.3/meshsim/`): the same results, and the same cycle counts
 except for the deliberate differences (D30; `spec/CHANGES-v1.3-to-v1.35.md`). Each fixture below was made by running
 `ref`; each test compares meshsim with it.
 

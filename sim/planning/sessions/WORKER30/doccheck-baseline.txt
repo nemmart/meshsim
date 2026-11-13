@@ -268,11 +268,6 @@ OUTSIDE tests/sort/README.md:14: oracle/ref/sortkit.sh
 OUTSIDE tests/sort/kit/README.md:7: sim/
 MISSING tests/sort/kit/README.md:9: OUTDIR/run.sh (code)
 MISSING tests/sort/kit/README.md:13: SUMMARY.md (code)
-OUTSIDE tools/freeze/README.md:3: sim/
-OUTSIDE tools/freeze/README.md:3: sim/
-OUTSIDE tools/freeze/README.md:7: ref/
-OUTSIDE tools/freeze/README.md:7: oracle/
-MISSING tools/freeze/README.md:7: src/sketch/ (code)
 NO-README bench/
 NO-README bench/threads/
 NO-README bench/w10/
@@ -501,4 +496,4 @@ DOC-MISSING tests/suite_net.cpp:15: sessions/WORKER22/NOTES.md
 DOC-MISSING tests/test_memconf.cpp:230: NOTES.md
 DOC-MISSING tests/test_sort_kit.cpp:4: SUMMARY.md
 DOC-MISSING tools/delivery/synthetic_delivery.cpp:13: REPLAY-INPUT-REQUIREMENTS.md
-doccheck: 46 documents, 1952 cited paths: 172 MISSING, 103 OUTSIDE; 206 folders: 184 NO-README; 201 documents named in source: 44 DOC-MISSING
+doccheck: 46 documents, 1946 cited paths: 171 MISSING, 99 OUTSIDE; 206 folders: 184 NO-README; 201 documents named in source: 44 DOC-MISSING

@@ -1,40 +1,26 @@
-OUTSIDE README.md:5: wip/planning/SIMULATOR-NEXT.md
-OUTSIDE README.md:9: ref/
-OUTSIDE README.md:9: wip/meshsim
-OUTSIDE data/tables/README.md:5: wip/meshsim/REPLAY-INPUT-REQUIREMENTS.md
+MISSING BUILDING.md:4: RUNNING.md (code)
+MISSING BUILDING.md:57: bench/README.md (code)
+MISSING CHANGES-v1.35.md:18: meshsim/run_tests.sh (code)
+MISSING CHANGES-v1.35.md:18: RUNNING.md (code)
+MISSING CHANGES-v1.35.md:21: tools/logdiff.py (code)
+MISSING CHANGES-v1.35.md:29: sw/build.sh (code)
+MISSING README.md:18: RUNNING.md (code)
+MISSING README.md:37: RUNNING.md (code)
 MISSING data/tables/README.md:48: tracer/tables/build.sh (code)
-MISSING fw/CONVENTIONS.md:3: planning/DECISIONS-v1.2.md (code)
-MISSING fw/CONVENTIONS.md:3: sw/mesh-v1.2-draft.h (code)
-MISSING fw/CONVENTIONS.md:3: sw/RECIPES.md (code)
-MISSING fw/RECIPES.md:3: planning/DECISIONS-v1.2.md (code)
-MISSING fw/RECIPES.md:3: sw/mesh-v1.2-draft.h (code)
 MISSING fw/RECIPES.md:3: WORKER6/FINDINGS.md (code)
-OUTSIDE fw/RECIPES.md:5: wip/sw/recipes/
-MISSING fw/RECIPES.md:8: sw/CONVENTIONS.md (code)
 MISSING fw/RECIPES.md:301: schedule-4.md (code)
 MISSING fw/RECIPES.md:381: schedule-4.md (code)
-OUTSIDE fw/RECIPES.md:626: wip/meshsim/results/recipes.log
-MISSING fw/RECIPES.md:648: sw/replay/replay_ctl.c (code)
 MISSING fw/RECIPES.md:753: WORKER6/FINDINGS.md (code)
-MISSING fw/RECIPES.md:1441: sw/replay/replay_ctl.c (code)
 OUTSIDE fw/recipes/README.md:3: wip/sw/RECIPES.md
 OUTSIDE fw/recipes/README.md:7: wip/sw/mesh-v1.2-draft.h
-MISSING fw/recipes/RECIPES.tmpl.md:3: planning/DECISIONS-v1.2.md (code)
-MISSING fw/recipes/RECIPES.tmpl.md:3: sw/mesh-v1.2-draft.h (code)
 MISSING fw/recipes/RECIPES.tmpl.md:3: WORKER6/FINDINGS.md (code)
-OUTSIDE fw/recipes/RECIPES.tmpl.md:5: wip/sw/recipes/
-MISSING fw/recipes/RECIPES.tmpl.md:8: sw/CONVENTIONS.md (code)
 MISSING fw/recipes/RECIPES.tmpl.md:160: schedule-4.md (code)
 MISSING fw/recipes/RECIPES.tmpl.md:193: schedule-4.md (code)
-OUTSIDE fw/recipes/RECIPES.tmpl.md:290: wip/meshsim/results/recipes.log
-MISSING fw/recipes/RECIPES.tmpl.md:312: sw/replay/replay_ctl.c (code)
 MISSING fw/recipes/RECIPES.tmpl.md:369: WORKER6/FINDINGS.md (code)
-MISSING fw/recipes/RECIPES.tmpl.md:585: sw/replay/replay_ctl.c (code)
 MISSING fw/regdoc/README.md:3: ../../diagrams/ (code)
 MISSING fw/regdoc/README.md:6: ../../diagrams/src/ (code)
 MISSING fw/regdoc/README.md:8: ../../Reference.pdf (code)
 MISSING fw/replay/README.md:14: test/StageB.java (code)
-MISSING fw/replay/README.md:31: REPLAY-INPUT-REQUIREMENTS.md (code)
 MISSING fw/sort/program/README.md:5: ../../sw/ (code)
 MISSING fw/sort/program/README.md:11: ../../meshsim (code)
 MISSING fw/sort/program/README.md:14: meshsim/tools/check_layout.sh (code)
@@ -74,99 +60,10 @@ OUTSIDE pipeline/jumpmap/README.md:9: wip/planning/sessions/WORKER16-V13-REPORT.
 MISSING pipeline/jumpmap/README.md:13: ../gold/build (code)
 MISSING pipeline/jumpmap/README.md:45: seg/NNN.pages (code)
 MISSING pipeline/jumpmap/README.md:46: seg/NNN.json (code)
+MISSING pipeline/keys/README.md:4: pipeline/build/keys/ (code)
+MISSING pipeline/keys/README.md:8: pipeline/build/keys (code)
+MISSING pipeline/keys/README.md:9: pipeline/build/keys (code)
 MISSING spec/GUIDELINES.md:101: ERRATA.md (code)
-MISSING spec/check/FINDINGS.md:8: WORKER11/REPORT.md (code)
-MISSING spec/check/FINDINGS.md:8: WORKER20/REPORT.md (code)
-MISSING spec/check/FINDINGS.md:8: WORKER20-REPORT.md (code)
-OUTSIDE spec/check/MAP.md:5: sim/spec/check/inventory.py
-OUTSIDE spec/check/MAP.md:40: oracle/
-OUTSIDE spec/check/MAP.md:58: wip/
-MISSING spec/check/MAP.md:71: history/machine-spec-v1.3-preamble.md (code)
-MISSING spec/check/MAP.md:82: history/machine-spec-v1.3-preamble.md (code)
-MISSING spec/check/MAP.md:84: history/machine-spec-v1.3-preamble.md (code)
-MISSING spec/check/MAP.md:97: spec/CHANGES-v1.3.md (code)
-MISSING spec/check/MAP.md:98: spec/CHANGES-v1.26.1.md (code)
-MISSING spec/check/MAP.md:99: spec/CHANGES-v1.26.md (code)
-MISSING spec/check/MAP.md:100: spec/CHANGES-v1.25.md (code)
-MISSING spec/check/MAP.md:101: spec/CHANGES-v1.2.md (code)
-MISSING spec/check/MAP.md:102: planning/DECISIONS-v1.2.md (code)
-MISSING spec/check/MAP.md:106: sw/mesh.h (code)
-MISSING spec/check/MAP.md:106: sw/REGISTERS.md (code)
-MISSING spec/check/MAP.md:107: sw/CONVENTIONS.md (code)
-MISSING spec/check/MAP.md:107: sw/RECIPES.md (code)
-MISSING spec/check/MAP.md:201: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:278: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:279: jolt/tracer.md (code)
-MISSING spec/check/MAP.md:350: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:351: jolt/tracer.md (code)
-MISSING spec/check/MAP.md:368: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:369: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:370: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:371: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:372: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:373: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:374: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:375: jolt/replayer.md (code)
-OUTSIDE spec/check/MAP.md:386: sim/planning/DECISIONS.md
-OUTSIDE spec/check/MAP.md:386: wip/
-MISSING spec/check/MAP.md:467: replayer/rom.bin (code)
-OUTSIDE spec/check/MAP.md:467: sim/data/
-OUTSIDE spec/check/MAP.md:467: wip/
-MISSING spec/check/MAP.md:533: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:533: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:533: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:533: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:533: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:533: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:533: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:533: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:533: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:533: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:533: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:533: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:533: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:533: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:533: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:533: jolt/tracer.md (code)
-MISSING spec/check/MAP.md:533: jolt/tracer.md (code)
-MISSING spec/check/MAP.md:533: jolt/tracer.md (code)
-MISSING spec/check/MAP.md:533: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:535: jolt/replayer.md (code)
-MISSING spec/check/MAP.md:556: jolt/tracer.md (code)
-MISSING spec/check/MAP.md:598: sw/mesh.h (code)
-MISSING spec/check/MAP.md:598: fw/mesh.h (code)
-MISSING spec/check/MAP.md:606: CHANGES-v1.1.md (code)
-OUTSIDE spec/check/MAP.md:607: wip/gold/
-OUTSIDE spec/check/MAP.md:608: wip/planning/upstream/UPSTREAM-DIFFS.md
-MISSING spec/check/MAP.md:609: spec/replayer-opcodes.md (code)
-MISSING spec/check/MAP.md:611: diagrams/README.md (code)
-MISSING spec/check/MAP.md:612: WORKER11/REPORT.md (code)
-MISSING spec/check/MAP.md:613: WORKER20/REPORT.md (code)
-MISSING spec/check/MAP.md:614: tables/opcode_table.txt (code)
-MISSING spec/check/MAP.md:615: planning/upstream/UPSTREAM-DIFFS.md (code)
-MISSING spec/check/MAP.md:617: tables/replayer/listing.txt (code)
-MISSING spec/check/MAP.md:618: sw/CONVENTIONS.md (code)
-MISSING spec/check/MAP.md:619: sw/RECIPES.md (code)
-MISSING spec/check/MAP.md:620: tables/README.md (code)
-MISSING spec/check/MAP.md:622: planning/DECISIONS-v1.3.md (code)
-MISSING spec/check/MAP.md:623: planning/sessions/WORKER22-SPEC-QUESTIONS.md (code)
-MISSING spec/check/MAP.md:624: sw/tracer/tracer_ctl.c (code)
-OUTSIDE spec/check/MAP.md:626: wip/gold/src/gold/SegmentWriter.java
-MISSING spec/check/MAP.md:627: sw/cc/cc1.c (code)
-MISSING spec/check/MAP.md:628: sw/replay/replay_ctl.c (code)
-MISSING spec/check/MAP.md:629: sw/REGISTERS.md (code)
-MISSING spec/check/MAP.md:633: sort/split/BINDING.md (code)
-MISSING spec/check/MAP.md:634: RESULTS-full-size.md (code)
-MISSING spec/check/MAP.md:635: sw/mesh.h (code)
-MISSING spec/check/MAP.md:636: tools/replayer-opcodes/ (code)
-MISSING spec/check/MAP.md:637: tools/replayer-opcodes/out-821e1bd/ (code)
-MISSING spec/check/MAP.md:660: WORKER11/REPORT.md (code)
-MISSING spec/check/MAP.md:661: WORKER20/REPORT.md (code)
-MISSING spec/check/MAP.md:661: planning/sessions/WORKER22-SPEC-QUESTIONS.md (code)
-MISSING spec/check/MAP.md:669: history/machine-spec-v1.3-preamble.md (code)
-MISSING spec/check/MAP.md:670: history/machine-spec-v1.3-section-13.md (code)
-MISSING spec/check/MAP.md:707: check/README.md (code)
-OUTSIDE spec/check/MECHANISMS.md:4: sim/
 MISSING spec/jolt/replayer-opcodes.md:17: isa/virtual.cpp (code)
 MISSING spec/jolt/replayer-opcodes.md:26: utils/math.hpp (code)
 MISSING spec/jolt/replayer-opcodes.md:34: isa/virtual.hpp (code)
@@ -203,7 +100,6 @@ MISSING src/PORTS.md:17: test/BusTest.java (code)
 OUTSIDE src/PORTS.md:274: sim/oracle/ref/PortConfGen.java
 OUTSIDE src/PORTS.md:275: sim/oracle/ref/PortConfDriver.java
 OUTSIDE src/PORTS.md:276: sim/oracle/ref/portconf.sh
-OUTSIDE src/README.md:5: wip/planning/SIMULATOR-NEXT.md
 OUTSIDE tests/AUDIT-M1.md:7: sim/fw
 OUTSIDE tests/AUDIT-M1.md:9: sim/ref/meshsim/src
 OUTSIDE tests/AUDIT-M1.md:9: sim/tests/TRACE-FORMAT.md
@@ -226,6 +122,7 @@ OUTSIDE tests/AUDIT-M3.md:69: sim/tests/golden-m3/cover/
 OUTSIDE tests/AUDIT-M3.md:108: sim/oracle/ref/baseline.sh
 OUTSIDE tests/AUDIT-M3.md:529: sim/tests/golden-m3/
 OUTSIDE tests/AUDIT-M3.md:539: oracle/regen/golden-m3.sh
+MISSING tests/README.md:27: RUNNING.md (code)
 OUTSIDE tests/TRACE-FORMAT.md:3: sim/ref
 OUTSIDE tests/TRACE-FORMAT.md:3: sim/ref/meshsim/src/Observer.java
 OUTSIDE tests/TRACE-FORMAT.md:4: sim/oracle/ref/TraceRun.java
@@ -272,9 +169,7 @@ NO-README bench/
 NO-README bench/threads/
 NO-README bench/w10/
 NO-README bench/w14/
-NO-README data/
 NO-README data/tables/replayer/
-NO-README fw/
 NO-README fw/boot/
 NO-README fw/cc/
 NO-README fw/images/
@@ -391,16 +286,12 @@ NO-README pipeline/jumpmap/src/jumpmap/
 NO-README pipeline/jumpmap/test/
 NO-README pipeline/jumpmap/test/guests/
 NO-README pipeline/jumpmap/test/guests/jumps/
-NO-README pipeline/keys/
 NO-README planning/
 NO-README planning/sessions/WORKER19/
 NO-README planning/sessions/WORKER20/
 NO-README planning/sessions/WORKER22/
 NO-README planning/sessions/WORKER26/
-NO-README spec/
-NO-README src/base/
-NO-README src/units/
-NO-README tests/
+NO-README planning/sessions/WORKER30/
 NO-README tests/acceptance/summary/
 NO-README tests/acceptance/summary/c1/
 NO-README tests/acceptance/summary/c1/expect/
@@ -449,7 +340,6 @@ NO-README tests/tileslotconf/
 NO-README tests/tracerconf/
 NO-README tests/tracerparts/
 NO-README tests/tracersuites/
-NO-README tools/
 NO-README tools/delivery/
 NO-README tools/regs/
 DOC-MISSING fw/recipes/rcp.h:21: schedule-4.md
@@ -473,7 +363,6 @@ DOC-MISSING src/units/chip.h:31: NOTES.md
 DOC-MISSING src/units/chip.h:61: sessions/WORKER14-NOTES.md
 DOC-MISSING src/units/director.h:3: sessions/WORKER8/NOTES.md
 DOC-MISSING src/units/periph_slot.h:3: WORKER15-NOTES.md
-DOC-MISSING src/units/replay_tables.h:1: REPLAY-INPUT-REQUIREMENTS.md
 DOC-MISSING src/units/tile_ctl.h:3: sessions/WORKER8/NOTES.md
 DOC-MISSING src/units/tile_ctl.h:642: NOTES.md
 DOC-MISSING src/units/tile_ctl.h:670: NOTES.md
@@ -495,5 +384,4 @@ DOC-MISSING tests/sort_summary_main.cpp:5: OUT.md
 DOC-MISSING tests/suite_net.cpp:15: sessions/WORKER22/NOTES.md
 DOC-MISSING tests/test_memconf.cpp:230: NOTES.md
 DOC-MISSING tests/test_sort_kit.cpp:4: SUMMARY.md
-DOC-MISSING tools/delivery/synthetic_delivery.cpp:13: REPLAY-INPUT-REQUIREMENTS.md
-doccheck: 46 documents, 1946 cited paths: 171 MISSING, 99 OUTSIDE; 206 folders: 184 NO-README; 201 documents named in source: 44 DOC-MISSING
+doccheck: 53 documents, 1785 cited paths: 88 MISSING, 79 OUTSIDE; 206 folders: 177 NO-README; 200 documents named in source: 42 DOC-MISSING

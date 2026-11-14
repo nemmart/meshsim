@@ -39,7 +39,7 @@ void Replayer::record(int64_t t, uint16_t c, uint64_t a, uint64_t b, uint64_t x)
 }
 void Replayer::violate(int64_t t, uint16_t c, uint64_t a, uint64_t b, uint64_t x) {
     record(t, c, a, b, x);
-    // ref's host.violate; reported at t + 1 (the F8: ref's slot passes it to the block, whose counter the
+    // reported to the checker at t + 1 (the slot passes it to the block, whose counter the
     // checker sees at the end of the next cycle: v1.3 reports 23808 for a violation at 23807)
     sim::check::record(uint64_t(t) + 1, int(me), sim::check::Kind::PERIPH_VIOLATION, c, a, b, x);
 }
@@ -68,8 +68,8 @@ void Replayer::fact_text(const ReplayerFact& f, char* buf, size_t n) {
     }
 }
 
-// ================================================================ ref's error lists
-// Each entry is ref's text exactly (Replayer.violate, invalid, underflow, checkLeftover, the overrun), formatted when
+// ================================================================ the error lists
+// Each entry is a text (a violation, an invalid expansion, an underflow, a leftover, an overrun), formatted when
 // recorded into the buffer allocated at construction (D24: snprintf, no allocation); beyond the kept entries only the
 // count grows. Error paths only: nothing here runs in a clean pass.
 namespace {
@@ -82,8 +82,8 @@ const char* op_name(uint64_t op, char* tmp, size_t n) {   // ReplayerAlu.name: t
 const char* stream_name(unsigned s) { return s == 0 ? "code" : s == 1 ? "read log" : "write log"; }
 }  // namespace
 
-// ref's text of a violation (`violate(t, m)`'s list entry, "t<me> @<t>: <m>"), for the replayer's list and the
-// checker (ref's slot passes m to the tile's register block: a chip violation). Codes below N_VIOLATION only.
+// The text of a violation ("t<me> @<t>: <m>"), for the replayer's list and the
+// checker (the slot passes it to the tile's register block: a chip violation). Codes below N_VIOLATION only.
 void Replayer::violation_text(unsigned me, int64_t t, uint16_t c, uint64_t a, uint64_t b, uint64_t x, char* o, size_t n) {
     const long long T = t;
     char nb[24];
@@ -93,8 +93,8 @@ void Replayer::violation_text(unsigned me, int64_t t, uint16_t c, uint64_t a, ui
         case V_EXP_LEFT: std::snprintf(o, n, "t%u @%lld: %d words left in the expansion queue at a new expansion (17.8.8)", me, T, int(a)); break;
         case V_CODE_MISS64: std::snprintf(o, n, "t%u @%lld: a code miss with size bit 1 (17.8.12)", me, T); break;
         case V_TWO_SOURCES: std::snprintf(o, n, "t%u @%lld: two sources feed one queue port in a pass (invariant 18): %d and %d", me, T, int(a), int(b)); break;
-        case V_FOREIGN_SRC: std::snprintf(o, n, "t%u @%lld: unit %d wrote the replayer's queue %d during a pass: only the tile itself refills it (4.19.13; invariant 16)", me, T, int(a), int(b)); break;
-        case V_CREDIT: std::snprintf(o, n, "t%u @%lld: queue %d pushed past the credits taken for it: %d entries, %d credits (4.19.8; invariant 16)", me, T, int(a), int(b), int(x)); break;
+        case V_FOREIGN_SRC: std::snprintf(o, n, "t%u @%lld: unit %d wrote the replayer's queue %d during a pass: only the tile itself refills it (17.8.13; invariant 16)", me, T, int(a), int(b)); break;
+        case V_CREDIT: std::snprintf(o, n, "t%u @%lld: queue %d pushed past the credits taken for it: %d entries, %d credits (17.8.8; invariant 16)", me, T, int(a), int(b), int(x)); break;
         case V_OFFSET_IMM: std::snprintf(o, n, "t%u @%lld: offset_imm set on a %s row (only ShiftData reads shift_offset)", me, T, op_name(a, nb, sizeof nb)); break;
         case V_LOG_AND_NFV: std::snprintf(o, n, "t%u @%lld: a row with both from_log and next_from_value (two read-log words)", me, T); break;
         case V_UNDEFINED: std::snprintf(o, n, "t%u @%lld: undefined result (invariant 16): %s in %s", me, T, reinterpret_cast<const char*>(uintptr_t(b)), op_name(a, nb, sizeof nb)); break;

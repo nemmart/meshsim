@@ -319,8 +319,8 @@ public:
     void step(int64_t T);   // cycle T
 
     // ---- for tests, the drivers and the harness ---------------------------------------------------------------------
-    unsigned landed(int64_t t) const;
-    // Register r as the rows' order leaves it: the write-back register's value while it is still to land.
+    unsigned landed(int64_t t) const;   // whether the write port presented a write in cycle t
+    // Register r as the rows' order leaves it (a write-back still to land is in it).
     uint64_t reg(unsigned r) const { return r == 0 ? 0 : regs_[r]; }
     uint64_t pc() const { return pc_; }
     uint32_t instr_idx() const { return instr_idx_; }

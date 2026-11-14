@@ -18,21 +18,24 @@ The step `rtl-sort-64k` (*all*) reads the RTL's 64K key file, which `RTL_SORT_64
 `fw/rtl/README.md`; Snarky One's `mise run sort-images` writes it as `build/sort/sort-64k.keys`); without it the step is
 printed and counted as `PENDING` too.
 
-**v1.36: most of v1.3's steps are pending.** The suites that run v1.35's firmware or drive v1.35's register map have
-not been ported to the RTL's hardware, so the runner prints and logs each such step as `PENDING (<reason>)` instead of
-running it, in v1.3's order under v1.3's name; its summary counts them by reason and ends with `N steps PENDING` (48
-in `all`, 47 with the 64K key file; 36 in `quick`), and the run exits 0 when every step that runs passed.
-`PENDING-v1.36.md` (the platform stage, section 4) lists them and what closes each; in `run_tests.sh` a pending step
-keeps its `step` line under it as a comment. The steps that run: `layout`, `bus`, `rtl-tile`, `rtl-sort` (and
-`rtl-sort-64k` in `all`), `mem`, `mem-shuf`, `mem-shuf2`, `core-programs`, `core-tile`, `replayer`, `memsys`, `rvc`,
-`tracer`, `tracer-block-synth` and `tracer-block`. Those with no v1.3 step are v1.36's own, with no reference log: a
+**v1.36: v1.3's steps run, are replaced, or are pending.** The suites that run v1.35's firmware or drive v1.35's
+register map cannot run on the RTL's hardware. The runner still prints every v1.3 step, in v1.3's order under v1.3's
+name: a step that **runs** as before (or with a test of v1.36's hardware in its suite's place: `mem`); a step
+**`REPLACED (<by what>)`**, which runs the tests of v1.36's hardware that stand for its suite, or names the step
+above that already ran them; a step **`PENDING (<reason>)`**, which nothing stands for yet. Its summary counts the
+pending steps by reason and ends with `N steps REPLACED …; M steps PENDING` (23 and 24 in `all`, 25 pending without
+the 64K key file; 20 and 16 in `quick`), and the run exits 0 when every step that runs passed. `PENDING-v1.36.md` (the
+platform stage, section 4) has both tables, and what each replacement does not cover; in `run_tests.sh` a replaced
+or pending step keeps its v1.3 `step` line under it as a comment. The steps that run: `layout`, `bus`, `rtl-images`,
+`rtl-tile`, `rtl-sort` (and `rtl-sort-64k` in `all`), `mem`, `mem-shuf`, `mem-shuf2`, `core-programs`, `core-tile`,
+`replayer`, `memsys`, `rvc`, `tracer`, `tracer-block-synth` and `tracer-block`. Those with no v1.3 step are v1.36's own, with no reference log: a
 failing test fails the run. `rtl-tile`, right after `bus`, is acceptance A: the RTL's tile programs on one compute
 tile (`build/clang-suite/test_rtl_tile`); what the test itself leaves pending is counted apart. `rtl-sort` is
 acceptance B: the RTL's sort images end to end on the chip (`build/clang-suite/test_rtl_sort`), 64 × 16 records with
 32-bit and with 128-bit values and the first split over 2 and 8 threads; `rtl-sort-64k` the same at 64 × 65,536.
 `core-programs` and `core-tile` are the RTL's core programs on the core in the RTL's cycles (`test_core_programs`) and
 the core's join to the tile's register bus (`test_core_tile`). The rows below for the pending steps, and their
-times, are v1.35's.
+times, are v1.35's; a replaced step's row is v1.36's.
 
 The times are wall times on the runner (an Intel i5-14400F: 6 P cores and 4 E cores, 16 threads), from the freeze check (Quest 195: `./run_tests.sh all --check`, 712 s in all; Quests 194 and 196 for the kit and `make check`); `planning/TIMES-V135.md` has them all.
 
@@ -44,38 +47,38 @@ The times are wall times on the runner (an Intel i5-14400F: 6 P cores and 4 E co
 | `bus` | both | `build/clang-debug/suite_bus` | 2 s | `results/bus.log` | `tests/p2suites/bus.log` |
 | `rtl-tile` | both | `build/clang-suite/test_rtl_tile` | <1 s | `results/rtl-tile.log` | the RTL's `base_tile_test.rs`'s verdicts and the boot ROM's cycles, in the test |
 | `rtl-sort` | both | `build/clang-suite/test_rtl_sort sort_oracle`, then `… sort_16` | 5 s | `results/rtl-sort.log` | the RTL's `chip_test.rs`'s checks against the oracle, in the test; the split runs' digests against one domain's |
-| `net` | both | `build/clang-suite/suite_net -1` (quick: `quick`) | 3 s | `results/net.log` | `tests/p4suites/net.log` (quick: `net-quick.log`) |
-| `net-shuf` | both | `build/clang-suite/suite_net 5 quick` | 3 s | `results/net-shuf.log` | `tests/p4suites/net-shuf.log` |
-| `net-shuf2` | both | `build/clang-suite/suite_net 11 quick` | 2 s | `results/net-shuf2.log` | `tests/p4suites/net-shuf2.log` |
+| `net` | both | `build/clang-suite/test_router`, then `…/test_special_router` | <1 s | `results/net.log` | **replaced**: v1.3's NetTest cannot run; ref's router observations with v1.36's two rules, and 16.2–16.4, in the tests |
+| `net-shuf` | both | — | <1 s | `results/net-shuf.log` | **replaced**: in the step `net` (`test_router`'s own shuffled and instance-major runs) |
+| `net-shuf2` | both | — | <1 s | `results/net-shuf2.log` | **replaced**: in the step `net` |
 | `mem` | both | `build/clang-suite/test_mem` | <1 s | `results/mem.log` | the specification's 14 and 15 and the RTL's scratchpad and inject unit, in the test (v1.3's MemTest and its logs are retired: `PENDING-v1.36.md`) |
 | `mem-shuf` | both | `MEM_SHUFFLE=3 build/clang-suite/test_mem` | <1 s | `results/mem-shuf.log` | the same, the units of a level stepped in a shuffled order |
 | `mem-shuf2` | both | `MEM_SHUFFLE=8 build/clang-suite/test_mem` | <1 s | `results/mem-shuf2.log` | the same |
-| `engine` | both | `build/clang-suite/suite_engine -1` | 2 s | `results/engine.log` | `tests/p4suites/engine.log` |
-| `eng-shuf` | both | `build/clang-suite/suite_engine 4` | 2 s | `results/eng-shuf.log` | `tests/p4suites/eng-shuf.log` |
+| `engine` | both | `build/clang-suite/test_ag`, `…/test_receive`, `…/test_gather` | <1 s | `results/engine.log` | **replaced**: v1.3's EngineTest cannot run; 8.2–8.5, 12.4, 12.5 and 13, in the tests |
+| `eng-shuf` | both | `SIM_SHUFFLE=4` `build/clang-suite/test_ag`, `…/test_receive` | <1 s | `results/eng-shuf.log` | **replaced**: the same, the units of a level stepped in a shuffled order |
 | `ctrl` | both | `build/clang-suite/suite_ctrl -1` | 1 s | `results/ctrl.log` | `tests/ctlsuites/ctrl.log` |
 | `ctrl-shuf` | both | `build/clang-suite/suite_ctrl 4` | 1 s | `results/ctrl-shuf.log` | `tests/ctlsuites/ctrl-shuf.log` |
-| `riscv` | both | `build/clang-suite/test_golden` | <1 s | `results/riscv.log`; `results/riscv.out` | equivalent: test_golden (every program's retire trace equal to ref's) |
+| `riscv` | both | — | <1 s | `results/riscv.log` | **replaced**: the step `core-programs` |
 | `rdport` | both | `build/clang-suite/suite_rdport -1` | 6 s | `results/rdport.log` | `tests/p4suites/rdport.log` |
 | `accounting` | both | `build/clang-suite/suite_accounting -1` | <1 s | `results/accounting.log`; `results/phases-a2a.csv` (compared with `tests/ctlsuites/phases-a2a.csv`) | `tests/ctlsuites/accounting.log` |
 | `searchbench` | both | `build/clang-suite/suite_search` | 4 s | `results/searchbench.log` | `tests/p4suites/searchbench.log` |
 | `rdport-shuf` | both | `build/clang-suite/suite_rdport 4` | 5 s | `results/rdport-shuf.log` | `tests/p4suites/rdport-shuf.log` |
-| `agtest` | both | `build/clang-suite/suite_ag -1` | 2 s | `results/agtest.log` | `tests/p4suites/agtest.log` |
-| `agtest-shuf` | both | `build/clang-suite/suite_ag 4` | 2 s | `results/agtest-shuf.log` | `tests/p4suites/agtest-shuf.log` |
+| `agtest` | both | — | <1 s | `results/agtest.log` | **replaced**: in the step `engine` (`test_ag`'s read-ahead, `test_receive`'s `PTR` and `HIST` ports) |
+| `agtest-shuf` | both | — | <1 s | `results/agtest-shuf.log` | **replaced**: in the step `eng-shuf` |
 | `cc-build` | both | `fw/build.sh --check` for cc, or `fw/check_images.sh` without the toolchain | <1 s | `results/cc-build.log` | none (a build step) |
 | `recipes-build` | both | `fw/build.sh --check` for recipes, or `fw/check_images.sh` without the toolchain | 3 s | `results/recipes-build.log` | none (a build step) |
 | `recipes` | both | `build/clang-suite/suite_recipes -1` | 2 s | `results/recipes.log` | `tests/ctlsuites/recipes.log` |
 | `recipes-shuf` | both | `build/clang-suite/suite_recipes 4` | 2 s | `results/recipes-shuf.log` | `tests/ctlsuites/recipes-shuf.log` |
-| `cond` | both | `build/clang-suite/suite_cond -1` | <1 s | `results/cond.log` | `tests/ctlsuites/cond.log` |
-| `cond-shuf` | both | `build/clang-suite/suite_cond 4` | <1 s | `results/cond-shuf.log` | `tests/ctlsuites/cond-shuf.log` |
-| `regdoc` | both | `build/clang-suite/suite_regdoc` | 19 s | `results/regdoc.log` | `tests/ctlsuites/regdoc.log` |
-| `hooks` | both | `build/clang-suite/suite_hooks -1` | <1 s | `results/hooks.log` | `tests/ctlsuites/hooks.log` |
-| `hooks-shuf` | both | `build/clang-suite/suite_hooks 4` | <1 s | `results/hooks-shuf.log` | `tests/ctlsuites/hooks-shuf.log` |
-| `periph` | both | `build/clang-suite/test_tileslotconf` | <1 s | `results/periph.log`; `results/periph.out` | equivalent: test_tileslotconf (W15's TileSlotConf: PeripheralSlotTest's groups on a real tile, against ref) |
-| `periph-shuf` | both | `TILESLOTCONF_SEED=4 build/clang-suite/test_tileslotconf` | <1 s | `results/periph-shuf.log`; `results/periph-shuf.raw` | equivalent: test_tileslotconf shuffled (seed 4), its output the plain run's |
-| `reqbus` | both | `build/clang-suite/suite_reqbus -1` | 1 s | `results/reqbus.log` | `tests/p4suites/reqbus.log` |
-| `reqbus-shuf` | both | `build/clang-suite/suite_reqbus 4` | <1 s | `results/reqbus-shuf.log` | `tests/p4suites/reqbus-shuf.log` |
-| `cccores` | both | `build/clang-suite/suite_cccores -1` | 2 s | `results/cccores.log` | `tests/ctlsuites/cccores.log` (D44 masked) |
-| `cccores-shuf` | both | `build/clang-suite/suite_cccores 4` | 3 s | `results/cccores-shuf.log` | `tests/ctlsuites/cccores-shuf.log` (D44 masked) |
+| `cond` | both | `build/clang-suite/test_ingress_egress`, `…/test_tile_control` | <1 s | `results/cond.log` | **replaced**: v1.3's suite cannot run; 7.4 and 17.6 in the tests, and the errors end to end in `rtl-sort` |
+| `cond-shuf` | both | — | <1 s | `results/cond-shuf.log` | **replaced**: in the steps `cond` and `rtl-sort` |
+| `regdoc` | both | `build/clang-suite/test_regs` | <1 s | `results/regdoc.log` | **replaced**: v1.3's RegDocTest cannot run; `REGISTERS.md` and `mesh.h` against the generator, the simulator's decode, the specification and the RTL firmware's definitions, in the test |
+| `hooks` | both | — | <1 s | `results/hooks.log` | **replaced**: the steps `regdoc`, `core-tile`, `rtl-tile` and `mem` |
+| `hooks-shuf` | both | — | <1 s | `results/hooks-shuf.log` | **replaced**: in those steps |
+| `periph` | both | `build/clang-suite/test_periph_slot` | <1 s | `results/periph.log` | **replaced**: v1.3's suite cannot run; 17.1–17.4 and the RTL's `peripheral_control` and `peripheral_dma`, in the test |
+| `periph-shuf` | both | — | <1 s | `results/periph-shuf.log` | **replaced**: in the step `periph` |
+| `reqbus` | both | `build/clang-suite/test_request_tree`, `…/test_reqbus` | <1 s | `results/reqbus.log` | **replaced**: v1.3's suite cannot run; chapter 11 and the RTL's request unit and tree, in the tests |
+| `reqbus-shuf` | both | — | <1 s | `results/reqbus-shuf.log` | **replaced**: in the step `reqbus` |
+| `cccores` | both | — | <1 s | `results/cccores.log` | **replaced**: the step `rtl-sort` (the special tiles boot the RTL's images) |
+| `cccores-shuf` | both | — | <1 s | `results/cccores-shuf.log` | **replaced**: in the step `rtl-sort` (its split run) |
 | `replay-build` | both | `tests/stageb/replay_build.sh` | <1 s | `results/replay-build.log` | `tests/stageb/replay-build.log` |
 | `stageb` | both | `build/clang-suite/stageb synthetic` | 1 s | `results/stageb.log` | `tests/stageb/stageb.log` |
 | `replayer` | both | `build/clang-suite/suite_replayer` | 2 s | `results/replayer.log` | `tests/replayer/replayer.log` |
@@ -84,7 +87,7 @@ The times are wall times on the runner (an Intel i5-14400F: 6 P cores and 4 E co
 | `tracer` | both | `build/clang-suite/suite_tracer` | <1 s | `results/tracer.log` | `tests/tracersuites/tracer.log` |
 | `tracer-block-synth` | both | `build/clang-suite/tracer_block --synthetic` | <1 s | `results/tracer-block-synth.log` | `tests/tracerblock/tracer-block-synth.log`; in the run itself, an interpreter of the synthetic guest (`tests/tracerblock/guest.h`) |
 | `tracer-block` | both, with the data | `build/clang-suite/tracer_block --inputs DIR --program P --segment S --compression C --fill F --quiet --ref tests/tracerblock/rtl/windows-….txt`, for EVM Zone's segments 0 and 1 and Cyclone's 0, `C` 0 and 7, `F` 1 and 55,35; then each segment with `--fill model` | 22 s (15 runs; on the development host) | `results/tracer-block.log` | `tests/tracerblock/tracer-block.log`; in the run itself, gold's files and the RTL's figures (`tests/tracerblock/rtl/`) |
-| `sort-p1` | both | `build/clang-suite/sort_test -1 p1` | 7 s | `results/sort-p1.log` | `tests/sort/ref/sort-p1.log` |
+| `sort-p1` | both | — | <1 s | `results/sort-p1.log` | **replaced**: the step `rtl-sort` (L1 and L2 of the RTL's runs) |
 | `sort` | both | `build/clang-suite/sort_test -1 sort` | 46 s | `results/sort.log` | `tests/sort/ref/sort.log` |
 | `sort-shuf` | both | `build/clang-suite/sort_test 4 sort` | 49 s | `results/sort-shuf.log` | `tests/sort/ref/sort-shuf.log` |
 | `rtl-sort-64k` | all, with the key file | `RTL_SORT_64K_KEYS=FILE build/clang-suite/test_rtl_sort sort_64k` | 44 s | `results/rtl-sort-64k.log` | as `rtl-sort`, at 64 × 65,536 records |
@@ -92,9 +95,9 @@ The times are wall times on the runner (an Intel i5-14400F: 6 P cores and 4 E co
 | `sort-bt-k128` | all | `build/clang-suite/sort_test -1 run … fmt=k128 ready=8 force=bt` on `tests/sort/keys.sh 16384 trace10-10` | 28 s | `results/sort-bt-k128.log` | `tests/sort/ref/sort-bt-k128.log` |
 | `rdport-full` | all | `build/clang-suite/suite_rdport -1 full` | 20 s | `results/rdport-full.log` | `tests/p4suites/rdport-full.log` |
 | `accounting-full` | all | `build/clang-suite/suite_accounting -1 full` | 5 s | `results/accounting-full.log`; `results/phases-a2a-full.csv` (compared with `tests/ctlsuites/phases-a2a-full.csv`) | `tests/ctlsuites/accounting-full.log` |
-| `agbench` | all | `build/clang-suite/suite_agbench` | 11 s | `results/agbench.log` | `tests/p4suites/agbench.log` |
-| `s1bench` | all | `build/clang-suite/suite_s1bench` | 1 s | `results/s1bench.log` | `tests/ctlsuites/s1bench.log` |
-| `ccbench` | all | `build/clang-suite/suite_ccbench` | <1 s | `results/ccbench.log` | `tests/ctlsuites/ccbench.log` |
+| `agbench` | all | — | <1 s | `results/agbench.log` | **replaced**: in the step `engine` (`READ_AHEAD` is not a setting; the lead-ins and waits are `test_ag`'s) |
+| `s1bench` | all | — | <1 s | `results/s1bench.log` | **replaced**: in the step `engine` (the write path's fixed 2L + 2 cycles: `test_receive`) |
+| `ccbench` | all | — | <1 s | `results/ccbench.log` | **replaced**: the step `rtl-sort` (the load's and each phase's cycles against the RTL chip's) |
 | `sweep-quick` | all | `build/clang-suite/sweep quick` | 41 s | `results/sweep-quick.log`; `results/sweep-quick.csv` | `tests/sort/ref/sweep-quick.log` |
 | `ctrl-full` | all | `build/clang-suite/suite_ctrl -1 full` | 52 s | `results/ctrl-full.log` | `tests/ctlsuites/ctrl-full.log` |
 | `engine-full` | all | `build/clang-suite/suite_engine -1 full` | 79 s | `results/engine-full.log` | `tests/p4suites/engine-full.log` |

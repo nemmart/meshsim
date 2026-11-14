@@ -18,8 +18,8 @@ PENDING_TESTS += test_g1_tile test_tile_slot test_tileslotconf
 # until the old suites are deleted (PENDING-v1.36.md, the platform stage, sections 3 and 7).
 PENDING_TESTS += test_engconf test_memconf
 # v1.35's conformance of C&C 1's peripheral against ref (READY_LINES, PULSE_GO, the row collectors' words, a toast pin on
-# any error line): v1.36's master tile has Ingress/Egress (17.6), which runs on the chip (test_rtl_sort, test_mach) and
-# has no test of its own yet.
+# any error line): SUPERSEDED by test_ingress_egress (17.6 from the specification and the RTL's unit); kept unbuilt
+# until the old suites are deleted.
 PENDING_TESTS += test_cnc1_periph
 # ref's SlotConf scripts store and load v1.35's control-block words (the run and DMA pulses at 3 and 4, EVENTS at 5-7, the
 # DMA at 8 and 9) and reserved words at random, on a slot with the replayer in it, and their observations are ref's of

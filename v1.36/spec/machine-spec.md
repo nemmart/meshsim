@@ -2227,7 +2227,7 @@ Invariants 27 to 34 are new in v1.36: rules the machine states as UB that v1.35 
       credit returned to a full counter; every write into its region landing within `PERIPHERAL_LATENCY` of its
       write port, and so by `LAND_LATENCY` (17.3, 17.5). Its region may be written from any source (17.3), with
       only the writes its section allows;
-    - the replayer's and the Tracer's: in `spec/jolt/replayer.md` (17.8.13) and `spec/jolt/tracer.md` (17.9.11);
+    - the replayer's and the Tracer's: in `spec/jolt/replayer.md` (17.8.13, 17.8.24) and `spec/jolt/tracer.md` (17.9.11, 17.9.18);
     - Ingress/Egress's and the RW engine's: invariant 34.
 17. **The request contract is kept** (11):
     - a request names its data's and its reply's counters and its reply's address, and its data and reply arrive

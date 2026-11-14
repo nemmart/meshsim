@@ -617,7 +617,7 @@ Breaking one of these rules is UB (1.3), unless it names an error:
 - **At a segment's end** the core checks, from the last run's record, that the
   advice field is 0 and the end state is the next segment's start.
 
-**The rest is software's:** the controller loop, the core-fed set and its key,
+**The rest is software's:** the core's loop, the core-fed set and its key,
 the files and the map, the advice's delivery, and the records' and streams'
 destinations (17.9.15; the firmware is `fw/tracer/tracer_ctl.c`). Every
 refill and expansion reaches the region as a `WRITE` packet, from the tracer
@@ -638,12 +638,12 @@ next state write, which a run needs (17.9.3).
 
 #### 17.9.13 Overview: the Tracer in a proof
 
-*Kept from v1.35's 4.21.1 and v1.35's 4.21.7, in v1.36's terms. It adds no rule to 17.9.1–17.9.12.*
+*Kept from v1.35's 4.21.1 and v1.35's 4.21.7, with "where the output lands" of v1.35's 4.21.6, in v1.36's terms. It adds no rule to 17.9.1–17.9.12. (Not stated by the RTL's specification; kept from v1.35.)*
 
 **What it shares with the replayer, and what it doesn't.** The Tracer is its own machine, not the replayer with a
 memory path added. The two share formats and tables, not the design: the 68-word record (17.8.2), the region's map
 (17.8.9), the decode table, the ROM and the core-fed templates (17.8.6), the core-fed expansion path with its event
-and words (17.8.8), the read queue's part, and the window's words 32–35 (17.8.1). Its rows are the replayer's rows:
+and words (17.8.6), the role of part 2's queue (both pop advice from it), and the window's words 32–35 (17.8.1). Its rows are the replayer's rows:
 it expands each instruction by the same templates under the same rules (17.8.4–17.8.7), so it knows which log
 words the replayer will pop, in which order, and where every window boundary falls, even inside an expansion. What
 it adds is everything the replayer takes from the streams: it fetches the program from memory, loads and stores the
@@ -662,9 +662,13 @@ expansion. Each segment starts from its own record: the processor's state does n
 next, and the tracer tile's core checks that it agrees (17.9.11).
 
 **The budget** is 100 ms a segment at 1 GHz, the misses and the drain included. The rows' schedules alone (17.9.7)
-make a 2²²-row segment about 17 M cycles; 17.9.17 has the measured figures.
+make a 2²²-row segment about 17 M cycles; 17.9.17 has the measured figures. The jump map's worst segment costs
+under 1 % of it [estimate: v1.3].
 
-**What is still to come.** *(Deferred, with the file system: item 119.)* Later the windows are to land in the
+**Where the output lands, and what is still to come.** In the first implementation the DMA writes each window
+straight into its compute tile's scratchpad, the record's pieces and the streams into the tile's copy of them
+(17.8.22), every write counted on a counter the tile armed for it (17.9.10), so no replayer credits pace the
+drain. *(Deferred, with the file system: item 119.)* Later the windows are to land in the
 tracer tile's memory and go to LPDDR as files, for a later replay, which removes the per-window handshake of
 17.9.10. Signed counters (item 125) would have removed the wait between a release and a tile's arming; the requests
 of 17.9.10 remove it.
@@ -672,12 +676,12 @@ of 17.9.10 remove it.
 #### 17.9.14 The memory system: the simulator's model
 
 *Kept from v1.35's 4.21.5 and v1.35's 4.21.9, corrected for the fill port's four channels (3) and the write's status
-(17.9.5).*
+(17.9.5). (Not stated by the RTL's specification; kept from v1.35.)*
 
-**The memory system is not built.** *(Deferred: item 119; chapter 23.)* It is to sit on the memory tile, behind the
+**The memory system is not built.** *(Deferred: items 60 and 119; 23.6.)* It is to sit on the memory tile, behind the
 `fill` port (2.1, 3): the files' translator and a shared cache in front of LPDDR. 17.9.5 and the `fill` interface
 (3) are the whole contract between it and the Tracer; its internals and its latencies are its own. In the RTL
-(Snarky One) the port stops at the tracer tile's boundary, and a model stands in for the memory system in its tests.
+(Snarky One) the port stops at the chip's boundary (23.6), and a model stands in for the memory system in its tests.
 The simulator has its own model, below, which is a model and no specification: the memory system's design replaces
 it.
 
@@ -701,7 +705,7 @@ it.
   simulator's change.)*
 
 **What the latencies stand for.** `ms_line_miss` is an idle LPDDR miss, about 50 ns at the DRAM plus the
-controller [estimate]. The real latencies are not known until the memory system is designed, so every cycle figure
+LPDDR controller [estimate]. The real latencies are not known until the memory system is designed, so every cycle figure
 of a run that depends on them is the model's (17.9.7).
 
 #### 17.9.15 The tracer tile's loop and the segment's sequence (software)
@@ -709,10 +713,11 @@ of a run that depends on them is the model's (17.9.7).
 *Kept from v1.35's 4.21.3 (the controller's loops) and v1.35's 4.21.10 (the sequence), rewritten for v1.36: there are no
 commands, the tracer tile is loaded by its `LOAD` (6.5), and the handshakes are requests (17.9.10). Software only,
 for orientation: the rules are 17.9.3, 17.9.6, 17.9.10 and 17.9.11. The working version is the firmware,
-`fw/tracer/tracer_ctl.c`, `fw/cc/cc1.c` and `fw/replay/replay_ctl.c`, which v1.36 brings to this section.*
+`fw/tracer/tracer_ctl.c`, `fw/cc/cc1.c` and `fw/replay/replay_ctl.c`, which v1.36 brings to this section. (Not
+stated by the RTL's specification; kept from v1.35.)*
 
 **What each compute tile receives, and on which counter.** Window *n* goes to compute tile *n*, which keeps it in
-its scratchpad as its replay region (17.8.13), every packet counted:
+its scratchpad as its replay region (17.8.22), every packet counted:
 - its record's start, 66 words (the record's words 0 and 2–66), on its **start counter**;
 - its record's totals, 2 words (words 1 and 67), on its **totals counter**;
 - its three streams, whose lengths exist only once run *n*'s rows end, on its **stream counter**.
@@ -755,7 +760,9 @@ its scratchpad as its replay region (17.8.13), every packet counted:
 - The requests wake it through the tile's `EVENTS.request_pending` (7.2, 11.1).
 - Until tile *n*'s `STREAMS_ARMED` has come, its stream queues wait full, their scans stalled (17.9.6). Nothing
   deadlocks: output queue 0's transfers never depend on them.
-- A key with no template is an error in the tracer tile's software, not the Tracer's.
+- The tracer tile's core holds every core-fed template, the 75 of the universal set (`templates.bin`), computes
+  key(*w*) as a compute tile's core does (17.8.19), and feeds the words from `EXPANSION_OFFSET` on its credits.
+  A key with no template is an error in the tracer tile's software, not the Tracer's.
 - **A mid-segment state write is UB.** The state write is made only at a segment's start: one between a segment's
   runs would empty the read queue and the caches and lose the segment's progress. The simulator cannot tell it
   from a new segment's record, so it flags a state write that finds the advice field above 0. *(Not stated by the
@@ -773,7 +780,8 @@ its scratchpad as its replay region (17.8.13), every packet counted:
    round trip a window, small against the drain.
 4. **Each compute tile arrives** when its counters have reached 0: its window has landed.
 5. **The second release.** The master tile sees every arrival and releases, and every compute tile starts its
-   pass together (17.8.10).
+   pass together (17.8.10): the replay is about 1 % of the trace (17.9.17), so starting tiles early would gain
+   nothing worth the coupling.
 6. **The third release** ends the passes.
 
 v1.35 closed the wait between the release and the arming by timing, the tracer tile sending nothing sooner than
@@ -782,18 +790,22 @@ removed, and the answers are the two requests.
 
 #### 17.9.16 Reasons, and the host's side
 
-*Kept from v1.35's 4.21.2, v1.35's 4.21.4, v1.35's 4.21.5 and v1.35's 4.21.6: why rules of 17.9.2–17.9.6 are as they are, and what the
-host does around them. No rule is added.*
+*Kept from v1.35's 4.21.2, v1.35's 4.21.4, v1.35's 4.21.5, v1.35's 4.21.6, v1.35's 4.21.7 and v1.35's 4.21.8: why rules of 17.9.2–17.9.6 and 17.9.9 are as they are, and what the
+host does around them. No rule is added. (Not stated by the RTL's specification; kept from v1.35.)*
 
 - **The tables.** The decode table and the ROM hold the replayer's tables, unchanged (`data/tables/replayer/`),
   loaded over the same path that later fills the queues. The Tracer's ROM is single-port, written only while idle,
   since nothing reloads it while tracing (item 156).
+- **The files word.** `memory_depth` is 2 for K up to 2²⁹ cells and 3 above. `io_size` is exact, whatever the
+  region's alignment: a16z puts the I/O region just below `RAM_START_ADDRESS`, 0x8000_0000, and the host rejects a
+  layout whose I/O region is 2 GiB or more (owner, 2026-11-05).
 - **The advice field** is the Tracer's input size and its live count in one: advice is never coded and always 64
   bits, so its size is a count of values, and its entries ⌈values / 2⌉. The replayer ignores the field, and a
   record carries it through.
 - **Where a16z decides.** The RVC expansion is a16z's (item 113): `C.SLLI` with rd = x0, a HINT, is `SLLI x0, x0,
   shamt`. `ECALL` and `MRET` are ordinary rows through the virtual CSRs. There is no second register bank, no
-  untraced row and no advice register: the host supplies every advice value.
+  untraced row and no advice register: the host supplies every advice value. `VirtualHostIO` does nothing: its
+  effects happened in the host's run.
 - **The program's end** is any `JAL` row with immediate 0, whatever its rd: the templates set `imm0_pc0` in every
   `JAL` word (17.8.4), so `JAL x0, 0`, `C.J 0`, `EBREAK` (whose template is one `JAL` to a virtual register) and
   `JAL ra, 0` all end the program, as a16z treats each as the pc stalling. A `JALR` or a branch to 0 is a map miss
@@ -805,11 +817,15 @@ host does around them. No rule is added.*
   sets `ERRORS.store_not_writable` (17.9.5). This is a deliberate divergence: a16z would prove such a program.
 - **The store's check is at the store,** not at the write-back: dirty lines are dropped at a segment's end, so a
   store to a hole might otherwise never be reported.
+- **Dropping the dirty lines at the state write is safe,** because the Tracer's copy of the guest's memory is
+  throwaway: the next proof's files are built separately.
+- **The caches need no coherence protocol:** during a segment nothing else writes what the Tracer sees, and the
+  two caches can hold the same line, since a store never reaches a code line.
 - **The map is the host's.** It builds the table from the ELF (every direct target, every return address, every
   code pointer found in data), at most half full, and inserts a proof's supplement by the same rule into private
   copies of the pages it lands in. The host and gold compute the key as 17.9.4 does, the target's offset in the
   memory file. The hash's constants come with the program's map, a proof at a time; they are registers and not the
-  record's because word 66 has no room.
+  record's because word 66 has no room. `HASH_STEP` is a 24-bit prime, so odd.
 - **The range** is 8·K because the RAM's checks cover exactly K cells (item 149). It is not the file's length:
   `.pages` is larger than the provable range, so an access past K inside the file would read a hole as 0. A fetch
   needs no range check: a pc outside the code misses the map.
@@ -817,7 +833,14 @@ host does around them. No rule is added.*
   150): the row's floor address, ea − (ea & *m*) with ea = rs1 + the immediate and *m* = 0, 4, 6 and 7 for the
   doubleword, word, halfword and byte rows, must be a multiple of 8. That is 17.9.5's rule, natural alignment to the
   row's width: the floor address keeps exactly the bits a misaligned access of that width sets. A check of the
-  row's doubleword address, ea & ~7, would miss a sub-word access.
+  row's doubleword address, ea & ~7, would miss a sub-word access. It is what both tracers abort on: a16z at
+  `7189216` in `tracer/src/instruction/floor_access.rs:66–75` (LD and SD through `tracer/src/emulator/mmu.rs:323,
+  431`), and jolt-cpp in `checked_memory_address` (`isa/riscv.hpp:257–268`, 821e1bd), as gold ports it
+  (`pipeline/gold/src/gold/Isa.java:60–68`).
+- **The errors** are kept for what plausibly comes from corruption somewhere, a host table or a page damaged on
+  the way or a hardware fault, where hanging or running on would hide it; the firmware's own mistakes with the
+  Tracer are UB. A failed assertion is a run the R1CS cannot prove, such as a wrong quotient in the host's advice.
+  Leftover advice at a segment's end is checked in software (17.9.11), since it depends on the run's data.
 - **One log FIFO in row order,** not three, since the write log's E[15] depends on the order of loads and stores
   (17.8.12): set 2 must update it on exactly the load rows the replayer will, which only the tag tells it once the
   rows are gone.
@@ -833,7 +856,8 @@ host does around them. No rule is added.*
 #### 17.9.17 Timing and cost
 
 *Kept from v1.35's 4.21.9, at the RTL's figures. 17.9.7 is the contract; this subsection gives what was measured,
-and on what. v1.35's own figures are marked so, and are to be measured again on v1.36's simulator.*
+and on what. v1.35's own figures are marked so, and are to be measured again on v1.36's simulator. (Not stated by
+the RTL's specification; kept from v1.35.)*
 
 **What v1.36's simulator models.** v1.35's model charged a row its schedule and its waits on the memory system,
 and nothing else. The RTL (Snarky One) has a pipeline, whose costs beyond the schedule are below; 17.9.7 makes the
@@ -892,8 +916,8 @@ counters, and three packers. Chapter 24 budgets the compute tiles, not the trace
 
 #### 17.9.18 The simulator's checks and parameters
 
-*Kept from v1.35's tracer document: the Tracer's part of invariant 16 (chapter 20) and its row of the parameter
-summary (19.1), in v1.36's terms.*
+*Kept from v1.35's sections 9 and 10, the Tracer's parts: its part of invariant 16 (chapter 20) and its row of the
+parameter summary (19.1), in v1.36's terms. (Not stated by the RTL's specification; kept from v1.35.)*
 
 **Invariant 16, the Tracer's part.** The simulator checks:
 - no write to an unmapped offset of its region or of another size than 128 bits, and no part-0 write while
@@ -932,7 +956,7 @@ The simulator's own:
 
 | Item | What is to be settled | Section | Status |
 |---|---|---|---|
-| 144 | The Tracer's `EVENTS` and `ERRORS` positions: v1.35 kept the replayer's positions, with gaps (accepted, owner, 2026-11-05); v1.36 packs both from bit 0, as the RTL does | 17.9.1 | reversed in v1.36; for the owner to confirm |
+| 144 | The Tracer's `EVENTS` and `ERRORS` positions: v1.35 kept the replayer's positions, with gaps (accepted, owner, 2026-11-05); v1.36 packs both from bit 0, as the RTL does (item 161, in chapter 26) | 17.9.1 | closed, and reversed in v1.36 (161); for the owner to rule on |
 | 147 | To measure: the caches' sizes, by gold replaying both workloads | 17.9.5 | decided, part open |
 | 148 | The fill port's statuses, to revisit with the memory system's design. v1.36 adds the write's status and `write_back_error` | 17.9.5, 17.9.9 | decided, part deferred |
 | 153 | The Tracer's timing. The RTL's values are in 17.9.7 and 17.9.17; what stays open is how exactly the simulator reproduces the pipeline's costs, and the memory system's latencies | 17.9.7, 17.9.17 | part closed by the RTL; part open |

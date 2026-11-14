@@ -38,7 +38,9 @@
 #include "units/ag.h"
 #include "units/big_sram.h"
 #include "units/gather.h"
-#include "units/cnc.h"
+#include "bench_master.h"
+#include "units/ingress_egress.h"
+#include "units/periph_slot.h"
 #include "units/linkword.h"
 #include "units/table_store.h"
 #include "units/tile_ctl.h"
@@ -352,15 +354,24 @@ TEST(mach_config_front_end) {
     CHECK(!mach::MachConfig::dropped().empty());
 }
 
-// The machine with v1.35's C&C 1-3 as cores (mach.h, THE MASTER SIDE): it builds and steps with the special tiles'
-// straps and the RTL's boot ROM, and no image. Units 64 and 65 have boot_local (6.5), so their ROM enters an empty
-// IMEM: the all-zero word is an illegal instruction, which sets ERRORS.illegal_instruction (7.4). Unit 66 and the
-// compute tiles have armed COUNTER_7 and wait for a load nobody sends. The host port's write lands in unit 64's IMEM.
-TEST(mach_cores_machine_builds_and_steps) {
-    Mach m(Mach::cores_cfg(-1));
+// The chip (mach.h, THE MASTER SIDE) with no image placed: it builds and steps with the special tiles' straps and the
+// RTL's boot ROM. Units 64 and 65 have boot_local (6.5), so their ROM enters an empty IMEM: the all-zero word is an
+// illegal instruction, which sets ERRORS.illegal_instruction (7.4). Unit 66 and the compute tiles have armed COUNTER_7
+// and wait for a load nobody sends. The master tile's own error line sets the toast pin (17.6), and the memory tile's
+// its bit of ERROR_LINES, ERROR_LINES_2 [1], alone. (The sort end to end on this chip: tests/test_rtl_sort.cpp.)
+TEST(mach_chip_builds_and_steps) {
+    Mach m(Mach::chip_cfg(-1));
     m.c.run(20);
-    m.c.host_load(0, units::IMEM_BASE + 0x100, {0x11111111u, 0x22222222u, 0x33333333u, 0x44444444u});
+    m.place(64, units::IMEM_BASE + 0x100, {0x11111111u, 0x22222222u, 0x33333333u, 0x44444444u});
     m.c.run(400);
+    CHECK(m.c.toast());
+    {
+        units::IngressEgress& ie = m.c.unit<units::PeriphSlot>("cc1.slot").s.ingress_egress(1);
+        uint32_t v = 0;
+        CHECK(ie.word(m.c.cycle() + 1, 34, v) && v == 2u);
+        CHECK(ie.word(m.c.cycle() + 1, 32, v) && v == 0u);
+        CHECK(ie.word(m.c.cycle() + 1, 33, v) && v == 0u);
+    }
     for (unsigned i = 0; i < 4; i++) CHECK_EQ(m.word(64, units::IMEM_BASE + 0x100 + 4 * i), 0x11111111u * (i + 1));
     CHECK_EQ(m.word(65, units::IMEM_BASE + 0x100), 0u);
     for (unsigned u : {64u, 65u}) {

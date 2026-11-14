@@ -5,7 +5,7 @@
 #include <type_traits>
 
 #include "check.h"
-#include "units/cnc1_periph.h"
+#include "units/ingress_egress.h"
 #include "units/linkword.h"
 #include "units/replayer.h"
 #include "units/test_peripheral.h"
@@ -20,8 +20,8 @@ decltype(auto) SlotCore::visit(unsigned n, F&& f) {
         case PT_REPLAYER: return f(*static_cast<Replayer*>(per[n].p));
         case PT_TEST: return f(*static_cast<TestPeripheral*>(per[n].p));
         case PT_TRACER: return f(*static_cast<tracer::Tracer*>(per[n].p));
-        case PT_CNC1: return f(*static_cast<Cnc1Peripheral*>(per[n].p));
-        case PT_CC_STUB: return f(*static_cast<CcStub*>(per[n].p));
+        case PT_INGRESS: return f(*static_cast<IngressEgress*>(per[n].p));
+        case PT_RW_STUB: return f(*static_cast<RwEngineStub*>(per[n].p));
         default: FATAL("slot %u: peripheral %u of type %u has no dispatch case", tile, n, unsigned(per[n].type));
     }
 }
@@ -36,8 +36,8 @@ SlotCore::Ref::~Ref() {
         }
         case PT_TEST: delete static_cast<TestPeripheral*>(p); break;
         case PT_TRACER: delete static_cast<tracer::Tracer*>(p); break;   // its memory with it
-        case PT_CNC1: delete static_cast<Cnc1Peripheral*>(p); break;
-        case PT_CC_STUB: delete static_cast<CcStub*>(p); break;
+        case PT_INGRESS: delete static_cast<IngressEgress*>(p); break;
+        case PT_RW_STUB: delete static_cast<RwEngineStub*>(p); break;
         default: break;
     }
 }
@@ -86,10 +86,10 @@ void SlotCore::install(unsigned n, PeriphType type, const PeriphSlotConfig& c) {
         // the Tracer, bare (ref's Config.cc3Tracer: new Tracer(me)); its tables come by region packets (tracer_ctl),
         // its memory from the harness after the build (tracer(n).own_memory(store)): a run without one is FATAL
         case PT_TRACER: per[n].p = new tracer::Tracer(int(tile)); break;
-        // C&C 1's Ingress/Egress and UART (its own ports: READY, the error lines, GO; ref_cycle set by the chip
-        // through cnc1(n)), and the stub engine of C&C 2 (and of C&C 3 without the Tracer: CcCores.Stub(2 + c - 1))
-        case PT_CNC1: per[n].p = new Cnc1Peripheral(); break;
-        case PT_CC_STUB: per[n].p = new CcStub(tile == lw::CC3 ? 3 : 2); break;
+        // the master tile's Ingress/Egress (its own ports: the nets, wired by the chip) and the memory tile's RW engine,
+        // a stub (ingress_egress.h)
+        case PT_INGRESS: per[n].p = new IngressEgress(); break;
+        case PT_RW_STUB: per[n].p = new RwEngineStub(); break;
         default: FATAL("slot %u: peripheral type %u can't be created here yet", tile, unsigned(type));
     }
 }
@@ -107,13 +107,13 @@ TestPeripheral& SlotCore::test_peripheral(unsigned n) {
     return *static_cast<TestPeripheral*>(per[n].p);
 }
 // (an incomplete class is enough for a static_cast from void*: these need no include)
-Cnc1Peripheral& SlotCore::cnc1(unsigned n) {
-    if (per[n].type != PT_CNC1) FATAL("slot %u: peripheral %u is not C&C 1's peripheral", tile, n);
-    return *static_cast<Cnc1Peripheral*>(per[n].p);
+IngressEgress& SlotCore::ingress_egress(unsigned n) {
+    if (per[n].type != PT_INGRESS) FATAL("slot %u: peripheral %u is not Ingress/Egress", tile, n);
+    return *static_cast<IngressEgress*>(per[n].p);
 }
-CcStub& SlotCore::cc_stub(unsigned n) {
-    if (per[n].type != PT_CC_STUB) FATAL("slot %u: peripheral %u is not the stub", tile, n);
-    return *static_cast<CcStub*>(per[n].p);
+RwEngineStub& SlotCore::rw_stub(unsigned n) {
+    if (per[n].type != PT_RW_STUB) FATAL("slot %u: peripheral %u is not the RW engine's stub", tile, n);
+    return *static_cast<RwEngineStub*>(per[n].p);
 }
 
 void SlotCore::violate(int64_t t, uint16_t code, uint32_t a, uint32_t b) {
@@ -137,16 +137,12 @@ void SlotCore::accept(int64_t t, unsigned n, uint64_t lo, uint64_t h, uint64_t h
     accepted++;
     if (per[n].type == PT_ABSENT) return;
     visit(n, [&](auto& p) { p.accept(t, int(lw::src(h)), lw::offset(lw::addr(h)), int(lw::size(h)), lo, hi); });
-    // C&C 1's peripheral and the stub engines flag a write into their region (ref's host.violate): a chip fact
-    if (per[n].type == PT_CNC1 || per[n].type == PT_CC_STUB)
-        sim::check::record(uint64_t(t), int(tile), sim::check::Kind::SLOT_VIOLATION, F_PERIPHERAL, n,
-                           uint32_t(visit(n, [&](auto& p) { return p.type(); })));
 }
 
 // ---------------------------------------------------------------- the window (4.17.4)
 uint32_t SlotCore::reserved(int64_t t, unsigned n, unsigned w, bool store) {
-    // (D48): a peripheral without a DMA reads 0 at words 8 and 9, unflagged; only a store is flagged
-    if (!store && (w == 8 || w == 9)) return 0;
+    // (17.1): a peripheral without a DMA reads 0 in its block 1, unflagged; only a store is flagged (UB: the bus faults it)
+    if (!store && block_of(w) == 1) return 0;
     reserved_accesses++;
     violate(t, F_RESERVED, n << 8 | w, store);
     return 0;
@@ -154,7 +150,7 @@ uint32_t SlotCore::reserved(int64_t t, unsigned n, unsigned w, bool store) {
 
 bool SlotCore::read(int64_t t, unsigned n, unsigned w, uint32_t& v) {
     if (per[n].type == PT_ABSENT) return false;
-    if (w == 5) {
+    if (w == P_EVENTS) {
         visit(n, [&](auto& p) { p.sync(t); v = p.events().value(t) | dma[n].done_bit(t); });
         uint32_t c = v & mask[n];
         if (c != 0) { consume_t[n] = t; consume_bits[n] = c; }
@@ -170,14 +166,15 @@ bool SlotCore::peek(int64_t t, unsigned n, unsigned w, uint32_t& v) {
     return visit(n, [&](auto& p) -> bool {
         const bool has_dma = p.out_queues() > 0;
         switch (w) {
-            case 0: v = uint32_t(p.params()); return true;
-            case 1: v = (p.running(t) ? 1u : 0u) | (dma[n].busy_at(t) ? 2u : 0u) | (p.status_bits(t) & ~3u); return true;
-            case 2: v = uint32_t(p.errors(t)); return true;
-            case 3: case 4: v = 0; return true;
-            case 5: case 6: p.sync(t); v = p.events().value(t) | dma[n].done_bit(t); return true;
-            case 7: v = mask[n]; return true;
-            case 8: v = has_dma ? dma[n].hdr : 0; return has_dma;
-            case 9: v = has_dma ? dma[n].addr : 0; return has_dma;
+            case P_PARAMS: v = uint32_t(p.params()); return true;
+            case P_STATUS: v = (p.running(t) ? 1u : 0u) | (dma[n].busy_at(t) ? 2u : 0u) | (p.status_bits(t) & ~3u); return true;
+            case P_ERRORS: v = uint32_t(p.errors(t)); return true;
+            case P_EVENTS: case P_EVENTS_PEEK: p.sync(t); v = p.events().value(t) | dma[n].done_bit(t); return true;
+            case P_EVENTS_MASK: v = mask[n]; return true;
+            case P_START: v = 0; return true;                            // W: a load reads 0 (5.4)
+            case P_DMA_HDR: v = has_dma ? dma[n].hdr : 0; return has_dma;
+            case P_DMA_DEST_ADDR: v = has_dma ? dma[n].addr : 0; return has_dma;
+            case P_DMA_START: v = 0; return has_dma;
             default:
                 if (w < Win::OWN0) { v = 0; return false; }
                 v = 0;
@@ -189,7 +186,7 @@ bool SlotCore::peek(int64_t t, unsigned n, unsigned w, uint32_t& v) {
 }
 
 bool SlotCore::defined(unsigned n, unsigned w) {
-    if (w < Win::OWN0) return w < Win::STD;
+    if (w < Win::OWN0) return w <= P_START || (w >= P_DMA_HDR && w <= P_DMA_START);
     uint32_t v;
     return visit(n, [&](auto& p) { return p.word(0, int(w), v); });
 }
@@ -203,16 +200,16 @@ bool SlotCore::write(int64_t t, unsigned n, unsigned w, uint32_t v) {
     return visit(n, [&](auto& p) -> bool {
         const bool has_dma = p.out_queues() > 0;
         switch (w) {
-            case 0: case 1: case 2: case 5: case 6: return false;
-            case 3: if (v & 1) p.run(t); return true;
-            case 4: if (!has_dma) { reserved(t, n, w, true); return true; } if (v & 1) dma_start(t, n); return true;
-            case 7: pend_mask[n] = v; pend_mask_t[n] = t; return true;
-            case 8:
+            case P_PARAMS: case P_STATUS: case P_ERRORS: case P_EVENTS: case P_EVENTS_PEEK: return false;
+            case P_START: if (v & 1) p.run(t); return true;
+            case P_DMA_START: if (!has_dma) { reserved(t, n, w, true); return true; } if (v & 1) dma_start(t, n); return true;
+            case P_EVENTS_MASK: pend_mask[n] = v; pend_mask_t[n] = t; return true;
+            case P_DMA_HDR:
                 if (!has_dma) { reserved(t, n, w, true); return true; }
                 if (dma[n].busy) violate(t, F_DMA_HDR_BUSY, n);
                 dma[n].hdr = v;
                 return true;
-            case 9:
+            case P_DMA_DEST_ADDR:
                 if (!has_dma) { reserved(t, n, w, true); return true; }
                 if (dma[n].busy) violate(t, F_DMA_ADDR_BUSY, n);
                 dma[n].addr = v;
@@ -313,12 +310,12 @@ unsigned SlotCore::digest_words(int64_t* out, unsigned cap) {
 // ---------------------------------------------------------------- the DMA (4.17.9)
 void SlotCore::dma_start(int64_t t, unsigned n) {
     Dma& d = dma[n];
-    const int qq = int((d.hdr >> 12) & 3);   // DMA_HDR.QUEUE [13:12]
-    if (d.busy) FATAL("slot %u: undefined behavior at %lld: peripheral %u's DMA: PULSE_DMA while a transfer is in progress (4.17.9)", tile, (long long)t, n);
+    const int qq = int(d.hdr >> DMA_HDR_QUEUE_LO & DMA_HDR_QUEUE_MASK);   // DMA_HDR.queue [28:27]
+    if (d.busy) FATAL("slot %u: undefined behavior at %lld: peripheral %u's DMA: DMA_START while a transfer is in progress (17.4)", tile, (long long)t, n);
     visit(n, [&](auto& p) {
         if (qq >= p.out_queues())
-            FATAL("slot %u: undefined behavior at %lld: peripheral %u's DMA: a transfer naming output queue %d, which the peripheral doesn't have (4.17.9)", tile, (long long)t, n, qq);
-        d.q = qq; d.left = d.hdr & 0xFFF; d.busy = true; d.started_at = t; d.transfers++;
+            FATAL("slot %u: undefined behavior at %lld: peripheral %u's DMA: a transfer naming output queue %d, which the peripheral doesn't have (17.4)", tile, (long long)t, n, qq);
+        d.q = qq; d.left = d.hdr >> DMA_HDR_COUNT_LO & DMA_HDR_COUNT_MASK; d.busy = true; d.started_at = t; d.transfers++;
         if (d.left > 0) p.out_start(t, d.q, d.left);
     });
 }
@@ -328,19 +325,21 @@ void SlotCore::dma_run(int64_t t, unsigned n, unsigned& room) {
     if (!d.busy || t <= d.started_at) return;
     auto finish = [&] { d.busy = false; if (d.done < 1) d.done = 1; d.done_at = t; };
     if (d.left == 0) { finish(); return; }
-    // v1.3 (4.17.9): the count in 128-bit words, every packet one queue entry of 128 bits, DMA_ADDR advancing by 16
+    // 17.4: the count in 128-bit packets, every packet one queue entry; a WRITE carries DMA_DEST_ADDR, which then
+    // advances by 16; a packet of any other mode carries 0 and leaves it; src is the tile's own id (16.4)
     bool ready = visit(n, [&](auto& p) { return p.out_ready(t, d.q); });
     if (!ready) return;
     if (dma_port && room == 0) return;
     uint64_t w[2];
     visit(n, [&](auto& p) { p.out_take(t, d.q, w); });
-    const unsigned dst = (d.hdr >> 25) & 0x7F, mode = (d.hdr >> 22) & 7, ctr = (d.hdr >> 19) & 7;
-    const unsigned src = lw::controller(tile) ? tile + 8 : 0;   // item 118: the controller's id + 8 (the Tracer's 74)
+    const unsigned dst = hdr_dst(d.hdr), mode = hdr_mode(d.hdr), ctr = hdr_counter(d.hdr);
+    const bool write = mode == lw::M_WRITE;
     if (n_out == 3) FATAL("slot %u: more than three DMA packets in a cycle", tile);
-    out[n_out++] = DmaPacket{t, w[0], lw::hdr(src, dst, mode, ctr, d.addr, lw::SIZE_128), w[1]};
+    out[n_out++] = DmaPacket{t, w[0], lw::hdr(tile, dst, mode, ctr, write ? d.addr : 0, lw::SIZE_128), w[1]};
     if (room) room--;
     d.packets++;
-    d.addr += 16; d.left--;
+    if (write) d.addr += 16;
+    d.left--;
     if (d.left == 0) finish();
 }
 
@@ -364,7 +363,10 @@ void PeriphSlot::full_values(int64_t t, uint32_t* out) {
     for (unsigned n = 1; n <= 3; n++) {
         if (s.per[n].type == PT_ABSENT) continue;
         uint32_t v;
-        for (unsigned w = 0; w < Win::STD; w++) { s.peek(t, n, w, v); out[Win::reg(n, Win::R_STD + w)] = v; }
+        for (unsigned w = 0; w <= P_DMA_START; w++) {
+            if (w > P_START && w < P_DMA_HDR) continue;
+            s.peek(t, n, w, v); out[Win::reg(n, Win::R_STD + Win::std(w))] = v;
+        }
         uint32_t def[3] = {}, stall[3] = {}, wr[3] = {};
         for (unsigned w = Win::OWN0; w < Win::WORDS; w++) {
             const unsigned k = w - Win::OWN0;
@@ -429,12 +431,12 @@ void PeriphSlot::publish(sim::Ctx& c, int64_t t) {
             const uint32_t err = uint32_t(p.errors(t));
             p.sync(t);
             const uint32_t ev = p.events().value(t) | d.done_bit(t);
-            put(base + Win::R_STD + 1, status);
-            put(base + Win::R_STD + 2, err);
-            put(base + Win::R_STD + 5, ev);
-            put(base + Win::R_STD + 6, ev);
-            put(base + Win::R_STD + 7, s.mask[n]);
-            if (p.out_queues() > 0) { put(base + Win::R_STD + 8, d.hdr); put(base + Win::R_STD + 9, d.addr); }
+            put(base + Win::R_STD + P_STATUS, status);
+            put(base + Win::R_STD + P_ERRORS, err);
+            put(base + Win::R_STD + P_EVENTS, ev);
+            put(base + Win::R_STD + P_EVENTS_PEEK, ev);
+            put(base + Win::R_STD + P_EVENTS_MASK, s.mask[n]);
+            if (p.out_queues() > 0) { put(base + Win::R_STD + Win::std(P_DMA_HDR), d.hdr); put(base + Win::R_STD + Win::std(P_DMA_DEST_ADDR), d.addr); }
             for (unsigned i = 0; i < own_words_n[n]; i++) {
                 const unsigned k = own_words[n][i];
                 uint32_t v = 0;
@@ -485,7 +487,7 @@ sim::Wake PeriphSlot::step(sim::Ctx& c) {
             s.visit(n, [&](auto& q) { q.consume_events(bits & ~2u); });
             if (bits & 2) s.dma[n].done = 0;
             have_op = false;
-        } else if (w == 7) {
+        } else if (w == P_EVENTS_MASK) {
             s.mask[n] = CoreOp::value(op);
             have_op = false;
         }

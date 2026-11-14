@@ -1,4 +1,17 @@
-// reqbus.h: the request bus (spec 3.3, 4.18; sim/ref/meshsim/src/RequestBus.java, RequestPort.java; AUDIT-M3 3.4),
+// reqbus.h: the request tree (machine-spec 11.3; the RTL's rtl/blocks/request_tree) and the request unit's queues (11.1).
+//
+// v1.36: THE RTL'S TREE is this unit at hop_latency 1 and credit_latency 1 (ChipSpec::reqbus as the chip's builder sets
+// it): a link is a wire and a node's buffer, one whole request an input, its one register stage, so a beat takes a cycle
+// a node; a sender offers a beat while its node's buffer has room as it stood at the start of the cycle (the RTL's
+// in_ready, a register): each forwarded beat returns a credit over Link(1), which is that view exactly, and crosses
+// thread domains; cut-through; round-robin from input 0 (16.3), a row node in column order and the root in row order,
+// then the master, memory and tracer tiles; the requester written by the row node for a tile and at the root's input for
+// a special tile; a request for target 3-7 dropped at the root; a credit an entry of each target's receive queue (128,
+// 256, 128), taken when the root starts to forward and returned by the pop, usable the cycle after it. The request
+// queue's depth (REQUEST_QUEUE_DEPTH, 4) is ReqBusConfig::fifo_depth. What follows is v1.35's description, whose
+// modes 0 and 3 its conformance fixtures (test_reqbus) still run.
+//
+// (v1.35:) the request bus (spec 3.3, 4.18; sim/ref/meshsim/src/RequestBus.java, RequestPort.java; AUDIT-M3 3.4),
 // A 16-bit, 8-ary tree from every tile's request port and the controllers' to the targets' receive queues:
 // 128-bit requests of 8 beats, one beat a hop a cycle, wormhole per request; eight row nodes (tiles 8r .. 8r + 7) and a
 // root (the row nodes and C&C 1-3); round-robin at each node from the input after the last served; the root skips a head
@@ -58,7 +71,7 @@ struct HostExtra { int64_t at = -1; uint32_t n = 0; };
 constexpr unsigned HOST_EXTRA = 8;
 
 struct ReqBusConfig {
-    unsigned credit_latency = 3;            // D34: 0 exact as ref (one domain), 3 the spec (splittable); set explicitly
+    unsigned credit_latency = 3;            // 1 the RTL's (above); v1.35's (D34): 0 exact as ref (one domain), 3 its spec
     unsigned hop_latency = 3;               // reqHopLatency
     unsigned fifo_depth = 128;              // the request queue (v1.36: REQUEST_QUEUE_DEPTH = 4, set by the chip's builder; 128 is
                                             //   v1.35's, which the unit's conformance fixtures were made at)
@@ -531,6 +544,7 @@ struct ReqBusIO {
     ReqRecv* recv[TARGETS] = {};
     ReqBusConfig rc;
     unsigned queue_credit_latency() const { return rc.credit_latency == 0 ? 1 : rc.credit_latency; }
+    bool exact() const { return rc.credit_latency == 0; }      // mode 0: the nodes' RegFiles (one domain)
 };
 inline const char* leaf_name(unsigned k, char* buf) {   // buf: 16 bytes
     if (k < 64) { buf[0] = 't'; int n = 1; if (k >= 10) buf[n++] = char('0' + k / 10); buf[n++] = char('0' + k % 10);
@@ -548,8 +562,8 @@ struct ReqBusPlacement {
 };
 inline ReqBusIO add_reqbus(sim::Config& cfg, const ReqBusConfig& rc, uint64_t tiles, unsigned ccs,
                            const ReqBusPlacement* place = nullptr, bool cc_leaves = true) {   // (false, ReqHost's)
-    if (rc.credit_latency != 0 && rc.credit_latency != 3)
-        FATAL("reqbus: credit latency %u: 0 (exact, D34) or 3 (the spec)", rc.credit_latency);
+    if (rc.credit_latency != 0 && rc.credit_latency != 1 && rc.credit_latency != 3)
+        FATAL("reqbus: credit latency %u: 1 (the RTL's), or v1.35's 0 (exact, D34) or 3", rc.credit_latency);
     ReqBusIO io;
     io.rc = rc;
     const unsigned hop = rc.hop_latency, cl = rc.credit_latency;

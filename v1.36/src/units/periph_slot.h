@@ -1,4 +1,8 @@
-// periph_slot.h: a unit's peripherals (spec 4.17; sim/ref/meshsim/src/PeripheralSlot.java; AUDIT-M3 3.1).
+// periph_slot.h: a tile's peripherals (machine-spec 17.1-17.5; the RTL's rtl/blocks/peripheral: peripheral_control and
+// peripheral_dma). The slot holds each peripheral's control block (block 0: PARAMS 0, STATUS 1, ERRORS 2, EVENTS 3,
+// EVENTS_PEEK 4, EVENTS_MASK 5, START 6) and, for a special tile's peripheral with a DMA, its DMA block (block 1: DMA_HDR
+// 16, DMA_DEST_ADDR 17, DMA_START 18), by v1.36's window words (regmap.h's PeriphReg); the unit's structure and timing are
+// v1.35's (spec 4.17; sim/ref/meshsim/src/PeripheralSlot.java; AUDIT-M3 3.1).
 // DECLARATIONS: the ports, the window's register layout and the dispatch are the agreed interface;
 // the step comes with the implementation.
 //
@@ -35,6 +39,7 @@
 #include "base/fatal.h"
 #include "units/linkword.h"
 #include "units/peripheral.h"
+#include "units/regmap.h"
 #include "units/replayer.h"
 #include "units/tracer.h"
 
@@ -43,15 +48,15 @@ namespace units {
 class Replayer;
 struct TestPeripheral;
 namespace tracer { class Tracer; }
-struct Cnc1Peripheral;
-struct CcStub;
+struct IngressEgress;
+struct RwEngineStub;
 
 // The core's word on S2/S3 (one per cycle): a store to window word w of peripheral n, or a consuming EVENTS load.
 struct CoreOp {
     enum : unsigned { STORE = 0, CONSUME = 1 };
     static uint64_t store(unsigned n, unsigned w, uint32_t v) { return uint64_t(STORE) | uint64_t(n) << 2 | uint64_t(w) << 4 | uint64_t(v) << 32; }
     // bits: the value the load returned, under EVENTS_MASK (ref: consumeBits = value & mask)
-    static uint64_t consume(unsigned n, uint32_t bits) { return uint64_t(CONSUME) | uint64_t(n) << 2 | uint64_t(5) << 4 | uint64_t(bits) << 32; }
+    static uint64_t consume(unsigned n, uint32_t bits) { return uint64_t(CONSUME) | uint64_t(n) << 2 | uint64_t(P_EVENTS) << 4 | uint64_t(bits) << 32; }
     static unsigned kind(uint64_t x) { return unsigned(x & 3); }
     static unsigned n(uint64_t x) { return unsigned(x >> 2) & 3; }
     static unsigned word(uint64_t x) { return unsigned(x >> 4) & 0x7F; }
@@ -62,12 +67,15 @@ struct CoreOp {
 // bits. A reader computes a window load's value from it (and flags what ref's slot flags: a reserved or undefined word).
 struct Win {
     static constexpr unsigned WORDS = 128;                 // window words 0-127
-    static constexpr unsigned STD = 10, OWN0 = 32;         // words 0-9 standard, 10-31 reserved, 32-127 the peripheral's
+    static constexpr unsigned STD = 10, OWN0 = 32;         // the standard words (below); 32-127 the peripheral's
     // per peripheral:
-    static constexpr unsigned R_STD = 0;                   // [0, 10): words 0-9 as a non-consuming load reads them:
-                                                           //   0 PARAMS, 1 STATUS, 2 ERRORS, 3 0, 4 0, 5 EVENTS (the value a
-                                                           //   consuming load returns), 6 EVENTS_PEEK, 7 EVENTS_MASK,
-                                                           //   8 DMA_HDR, 9 DMA_ADDR (0 without a DMA)
+    static constexpr unsigned R_STD = 0;                   // [0, 10): the standard words as a non-consuming load reads
+                                                           //   them, by std(w): block 0's words 0-6 (PARAMS, STATUS, ERRORS,
+                                                           //   EVENTS: the value a consuming load returns, EVENTS_PEEK,
+                                                           //   EVENTS_MASK, START: 0), then block 1's DMA_HDR, DMA_DEST_ADDR
+                                                           //   and DMA_START (0 without a DMA; DMA_START: 0)
+    // the standard word w's place (w: P_PARAMS .. P_START, P_DMA_HDR .. P_DMA_START; the bus presents no other)
+    static constexpr unsigned std(unsigned w) { return w < BLOCK_WORDS ? w : 7 + (w - P_DMA_HDR); }
     static constexpr unsigned R_OWN = 10;                  // [10, 106): words 32-127 (0 where undefined)
     static constexpr unsigned R_DEFINED = 106;             // [106, 109): words 32-127 defined, a bit each (set at
                                                            //   configuration: 0 for reserved words 10-31 and for undefined
@@ -87,7 +95,8 @@ struct Win {
 struct PeriphSlotConfig {
     unsigned tile = 0;                   // the unit's endpoint id (0-63 a tile, 64-66 C&C 1-3)
     PeriphType type[4] = {};             // [1]-[3]; PT_ABSENT: absent
-    bool controller = false;             // C&C 1-3: the DMA port is declared (a mesh tile's peripherals have none)
+    bool controller = false;             // a special tile whose peripheral has a DMA (the memory and tracer tiles: 17.4): the
+                                         //   DMA port is declared (a compute tile's peripherals have none)
     uint64_t replayer_row_buffer = 0;    // rows of the replayer's optional record buffer (tests; 0: the hash only)
     unsigned replayer_log_entries = 256; // the replayer's read-log and write-log queues (ref's -Dreplayer.logq)
 };
@@ -184,8 +193,8 @@ struct SlotCore {
     Replayer& replayer(unsigned n);
     tracer::Tracer& tracer(unsigned n);
     TestPeripheral& test_peripheral(unsigned n);
-    Cnc1Peripheral& cnc1(unsigned n);         // (the chip sets C&C 1's ref_cycle)
-    CcStub& cc_stub(unsigned n);
+    IngressEgress& ingress_egress(unsigned n);
+    RwEngineStub& rw_stub(unsigned n);
 
 private:
     void violate(int64_t t, uint16_t code, uint32_t a = 0, uint32_t b = 0);
@@ -256,7 +265,7 @@ void PeriphSlot::fingerprint_replayer(const sim::Sim& m, unsigned n, Out& o, int
         if (CoreOp::kind(x) != CoreOp::STORE || CoreOp::n(x) != n) continue;
         const unsigned w = CoreOp::word(x);
         const int64_t t = int64_t(e[k].at) - 1;
-        if (w == 3 && (CoreOp::value(x) & 1)) p.in[p.n_in++] = {t, 2, 0};
+        if (w == P_START && (CoreOp::value(x) & 1)) p.in[p.n_in++] = {t, 2, 0};
         else if (w == Replayer::W_RUN_CONFIG) p.in[p.n_in++] = {t, 3, CoreOp::value(x)};
     }
     s.replayer(n).fingerprint(o, c, &p);
@@ -285,11 +294,12 @@ void PeriphSlot::fingerprint_tracer(const sim::Sim& m, unsigned n, int unit, Out
         const unsigned w = CoreOp::word(x);
         const uint32_t v = CoreOp::value(x);
         const int64_t t = int64_t(e[k].at) - 1;   // S2, Link(1): the store's cycle
-        if (w == 3 && (v & 1)) p.in[p.n_in++] = {t, tracer::Tracer::FP_IN_RUN, 0, 0};
+        if (w == P_START && (v & 1)) p.in[p.n_in++] = {t, tracer::Tracer::FP_IN_RUN, 0, 0};
         else if (w >= 32 && tr.writable(int(w))) p.in[p.n_in++] = {t, tracer::Tracer::FP_IN_WORD, int(w), v};
-        else if (w == 4 && (v & 1) && tr.out_queues() > 0) {   // PULSE_DMA: ref's slot.dmaStart at once
+        else if (w == P_DMA_START && (v & 1) && tr.out_queues() > 0) {   // DMA_START: ref's slot.dmaStart at once
             const uint32_t hdr = s.dma[n].hdr;
-            if ((hdr & 0xFFF) > 0) { p.start = true; p.start_q = int((hdr >> 12) & 3); p.start_words = int64_t(hdr & 0xFFF); }
+            const uint32_t count = hdr >> DMA_HDR_COUNT_LO & DMA_HDR_COUNT_MASK;
+            if (count > 0) { p.start = true; p.start_q = int(hdr >> DMA_HDR_QUEUE_LO & DMA_HDR_QUEUE_MASK); p.start_words = int64_t(count); }
         }
     }
     tr.fingerprint(unit, o, c, &p);

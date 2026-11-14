@@ -138,7 +138,7 @@ struct Bench {
     sim::LinkIn out[kIn];                                  // out of its outputs
     sim::LinkOut release, freed_ev;
     sim::WireOut freed;
-    sim::LinkIn line, request;
+    sim::LinkIn arrive, error, request;
     bool attach = false;
     // ---- this cycle's inputs (the test's) ----
     bool drive[kIn] = {};
@@ -159,7 +159,7 @@ struct Bench {
         static const char* kNames[kIn] = {"west", "east", "north", "south", "attach"};
         for (unsigned i = 0; i < (attach ? kIn : 4u); i++) { p.out(in[i], (std::string("in-") + kNames[i]).c_str(), 3); p.in(out[i], (std::string("out-") + kNames[i]).c_str(), 3); }
         p.out(release, "release", 0); p.out(freed_ev, "freed_ev", 0); p.out(freed, "freed");
-        p.in(line, "line", 1); p.in(request, "request", 2);
+        p.in(arrive, "arrive", 0); p.in(error, "error", 1); p.in(request, "request", 2);
     }
     sim::Wake step(sim::Ctx& c) {
         const unsigned n = attach ? kIn : 4u;
@@ -169,8 +169,11 @@ struct Bench {
             if (out_valid[i]) { const sim::Word* w = c.peek(out[i]); out_w[i][0] = w[0]; out_w[i][1] = w[1]; out_w[i][2] = w[2]; c.take(out[i]); }
         }
         if (release_now) c.put(release);
-        line_valid = c.ready(line);
-        if (line_valid) { line_word = c.peek(line)[0]; c.take(line); }
+        // the tile's nets (18): BARRIER_ARRIVE's pulse (bit 0) and the error line's level (bit 1, kept between changes)
+        line_valid = c.ready(arrive) || c.ready(error);
+        line_word &= 2;
+        if (c.ready(arrive)) { line_word |= 1; c.take(arrive); }
+        if (c.ready(error)) { line_word = (line_word & 1) | (c.peek(error)[0] & 1) << 1; c.take(error); }
         if (freed_on) { c.drive(freed, 0); freed_on = false; }
         if (c.ready(request)) {                            // a REQUEST_SEND's request, into the tile's queue
             const sim::Word* w = c.peek(request);
@@ -234,16 +237,16 @@ struct Machine {
         g.cfg.periph_slot = true;                          // peripheral 1: the replayer (2.2)
         if (timing) g.cfg.timing = *timing;
         spec.hops = &hops; spec.control = add_g1; spec.control_ctx = &g;
-        spec.cc_cores = true;                              // the attach port as a link, not v1.35's endpoint model
         sim::Config cfg;
         const bool attach = attached_at(tile_id) >= 0;
         TileIO io = tile_cycle(cfg, spec, tile_id);
         if (io.attached != attach) FATAL("the simulator's tile %u: attach port %d, the specification's %d (2.1)", tile_id, int(io.attached), int(attach));
         auto& b = cfg.add<Bench>("bench", attach);
         for (unsigned i = 0; i < 4; i++) { cfg.link(b.in[i], io.link_in[kLinkIn[i]], 1); cfg.link(io.link_out[kLinkOut[i]], b.out[i], 1); }
-        if (attach) { cfg.link(b.in[4], io.from_cc, 1); cfg.link(io.to_cc, b.out[4], 1); }
+        if (attach) { cfg.link(b.in[4], io.attach_in, 1); cfg.link(io.attach_out, b.out[4], 1); }
         cfg.link(b.release, io.release, 1);
-        cfg.link(io.line, b.line, 1);
+        cfg.link(io.arrive, b.arrive, 1);
+        cfg.link(io.error, b.error, 1);
         cfg.link(io.req.push, b.request, 1);
         cfg.connect(b.freed, io.req.freed);
         cfg.link(b.freed_ev, io.req.freed_ev, 1);

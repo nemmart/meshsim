@@ -4,7 +4,7 @@
 
 #include "harness.h"
 #include "units/chip.h"
-#include "units/cnc.h"
+#include "bench_master.h"
 #include "units/inject.h"
 #include "units/net.h"
 #include "units/router.h"

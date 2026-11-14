@@ -16,10 +16,9 @@ Router::Router(sim::Ports& p, unsigned tile, const NetConfig& c, const Hops* h, 
     if (cc) {
         has_dma = dma;
         feed = kFeedersCc; nfeed = kNFeedersCc; first = kFirstCc; n_fifos = 28;
-        p.in(in[CC_LINK_IN], "cc-link-in", 3);
-        p.in(host, "cc-host-in", 3, c.cc_host_depth);
-        if (has_dma) p.in_credit(this->dma, "cc-dma-in", 3, c.cc_dma_depth);   // the slot's DMA: a credit Fifo (S6)
-        p.out(out[CC_LINK_OUT], "cc-link-out", 3);
+        p.in(in[CC_LINK_IN], "attach-in", 3);
+        if (has_dma) p.in_credit(this->dma, "dma-in", 3, c.cc_dma_depth);   // the slot's DMA: a credit Fifo (S6)
+        p.out(out[CC_LINK_OUT], "attach-out", 3);
     } else {
         if (dma) FATAL("router t%u: a DMA input on a mesh tile's router", tile);
         static const char* kIn[4] = {"from-left", "from-right", "from-up", "from-down"};
@@ -35,7 +34,7 @@ Router::Router(sim::Ports& p, unsigned tile, const NetConfig& c, const Hops* h, 
     p.out(ovf, "ovf");
     if (ovf_event) p.out(ovf_ev, "ovf-ev", 0);
     if (!h && !cc) FATAL("router t%u: no hops table", tile);
-    if (cc && (c.cc_host_depth < 1 || c.cc_dma_depth < 1)) FATAL("router cc%u: host depth %u, DMA depth %u", tile - 63, c.cc_host_depth, c.cc_dma_depth);
+    if (cc && c.cc_dma_depth < 1) FATAL("router cc%u: DMA depth %u", tile - 63, c.cc_dma_depth);
     if (c.queue_depth < 1 || c.queue_depth > 16) FATAL("router t%u: queue_depth %u (1-16 modelled)", tile, c.queue_depth);
     const unsigned loop_depth = c.loopback_fifo_depth();
     if (loop_depth < 1 || loop_depth > kMaxDepth) FATAL("router t%u: loopback FIFO depth %u (1-%u modelled)", tile, loop_depth, kMaxDepth);

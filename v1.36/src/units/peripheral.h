@@ -68,9 +68,9 @@ namespace units {
 // The peripheral types (PARAMS [7:0]; spec 4.17.1, D46) and the slot's dispatch tags.
 enum PeriphType : uint8_t {
     PT_ABSENT = 0,
-    PT_CNC1 = 1,      // C&C 1's Ingress/Egress and UART (Cnc1Peripheral)
-    PT_CC_STUB = 2,   // C&C 2's (and C&C 3's without the Tracer) stub (CcCores.Stub)
-    PT_TRACER = 3,    // the Tracer, C&C 3 (Tracer.TYPE)
+    PT_INGRESS = 1,   // Ingress/Egress, the master tile's (17.6; ingress_egress.h)
+    PT_RW_STUB = 2,   // the RW engine, the memory tile's (17.7), as a stub that stops the simulator if used (ingress_egress.h)
+    PT_TRACER = 3,    // the Tracer, the tracer tile's (17.9; v1.35's behind 17.1's control block)
     PT_REPLAYER = 4,  // the replayer, every mesh tile's peripheral 1 (Replayer)
     PT_TEST = 15,     // the suites' test peripheral (TestPeripheral)
 };
@@ -79,10 +79,11 @@ constexpr int RP_LATENCY = 2;   // rp_latency (4.17.5)
 
 // A slot's storage for its peripherals' own ports (a member of the slot unit; see OWN PORTS above).
 struct OwnPorts {
-    static constexpr unsigned MAX_LINK_IN = 16, MAX_LINK_OUT = 80;
+    static constexpr unsigned MAX_LINK_IN = 16, MAX_LINK_OUT = 80, MAX_WIRE_IN = 8;
     sim::LinkIn link_in[MAX_LINK_IN] = {};
     sim::LinkOut link_out[MAX_LINK_OUT] = {};
-    uint8_t n_link_in = 0, n_link_out = 0;
+    sim::WireIn wire_in[MAX_WIRE_IN] = {};
+    uint8_t n_link_in = 0, n_link_out = 0, n_wire_in = 0;
 };
 // Configuration only: a peripheral declares its own ports through it, each into the slot's storage; returns the index.
 class OwnPortsDecl {
@@ -97,6 +98,11 @@ public:
         if (o_.n_link_out == OwnPorts::MAX_LINK_OUT) FATAL("a peripheral's own ports: more than %u Link outputs", OwnPorts::MAX_LINK_OUT);
         p_.out(o_.link_out[o_.n_link_out], name, width);
         return o_.n_link_out++;
+    }
+    unsigned wire_in(const char* name) {
+        if (o_.n_wire_in == OwnPorts::MAX_WIRE_IN) FATAL("a peripheral's own ports: more than %u Wire inputs", OwnPorts::MAX_WIRE_IN);
+        p_.in(o_.wire_in[o_.n_wire_in], name);
+        return o_.n_wire_in++;
     }
 private:
     sim::Ports& p_;

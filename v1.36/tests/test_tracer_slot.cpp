@@ -131,7 +131,7 @@ struct Ctl {
         Tracer::files_word(im.copy.root, im.copy.depth, im.map.root, im.map.depth, LOG2K, int64_t(LOWEST), fw);
         packets.push_back({0x420, {fw[0], fw[1]}});
         packets.push_back({0x430, {0, 0}});
-        stores = {{40, 0x9E3779B1u}, {41, 1000003u}, {42, 5u}, {7, 0x7FFu}};
+        stores = {{40, 0x9E3779B1u}, {41, 1000003u}, {42, 5u}, {units::P_EVENTS_MASK, 0x7FFu}};
     }
 
     Act cycle(int64_t t, const View& v) {
@@ -148,13 +148,14 @@ struct Ctl {
             if (ns < stores.size()) { a.core = STORE; a.w = stores[ns].first; a.v = stores[ns].second; ns++; }
             else if (np == packets.size() && wait_until == 0) wait_until = t + 1;   // PULSE_RUN at the landing's cycle: tight
             else if (wait_until && t == wait_until) { a.core = STORE; a.w = 32; a.v = uint32_t(rows); }
-            else if (wait_until && t == wait_until + 1) { a.core = STORE; a.w = 3; a.v = 1; phase = 1; }
+            else if (wait_until && t == wait_until + 1) { a.core = STORE; a.w = units::P_START; a.v = 1; phase = 1; }
         } else if (phase == 1) {
             if (dma >= 1 && dma <= 3) {
                 a.core = STORE;
-                if (dma == 1) { a.w = 8; a.v = 1u << 25 | 1u << 22 | dq << 12 | dwords; }
-                else if (dma == 2) { a.w = 9; a.v = addr_next; addr_next += 16 * dwords; }
-                else { a.w = 4; a.v = 1; }
+                // (v1.36: 17.1's DMA block: DMA_HDR 16 with dst [14:8], count [26:15], queue [28:27]; the packets APPENDs to tile 1)
+                if (dma == 1) { a.w = units::P_DMA_HDR; a.v = 1u << units::HDR_DST_LO | 1u << units::HDR_MODE_LO | dq << units::DMA_HDR_QUEUE_LO | dwords << units::DMA_HDR_COUNT_LO; }
+                else if (dma == 2) { a.w = units::P_DMA_DEST_ADDR; a.v = addr_next; addr_next += 16 * dwords; }
+                else { a.w = units::P_DMA_START; a.v = 1; }
                 dma++;
             } else if (dma == 4 && (v.peek & 2)) {
                 a.core = CONSUME; a.v = v.peek & v.mask; dma = 0;
@@ -200,14 +201,14 @@ struct Stand {
         if (ctl->phase == 2) return c.next();
         Ctl::View v;
         v.status = uint32_t(c.read(window, Win::reg(1, Win::R_STD + 1)));
-        v.peek = uint32_t(c.read(window, Win::reg(1, Win::R_STD + 6)));
-        v.mask = uint32_t(c.read(window, Win::reg(1, Win::R_STD + 7)));
+        v.peek = uint32_t(c.read(window, Win::reg(1, Win::R_STD + units::P_EVENTS_PEEK)));
+        v.mask = uint32_t(c.read(window, Win::reg(1, Win::R_STD + units::P_EVENTS_MASK)));
         for (unsigned q = 1; q <= 3; q++) v.len[q] = uint32_t(c.read(window, Win::reg(1, Win::R_OWN + (Tracer::W_CODE_LENGTH + q - 1 - 32))));
         const Ctl::Act a = ctl->cycle(int64_t(c.now()), v);
         if (a.region) c.put(region, a.lo, lw::hdr(7, 0, 0, 0, a.addr, lw::SIZE_128), a.hi);
         if (a.core == Ctl::STORE) c.put(core, CoreOp::store(1, a.w, a.v));
         if (a.core == Ctl::CONSUME)   // a consuming load of EVENTS: its value under EVENTS_MASK (as ref's slot.read)
-            c.put(core, CoreOp::consume(1, uint32_t(c.read(window, Win::reg(1, Win::R_STD + 5))) & v.mask));
+            c.put(core, CoreOp::consume(1, uint32_t(c.read(window, Win::reg(1, Win::R_STD + units::P_EVENTS))) & v.mask));
         return sim::Wake::at_cycle(c.now() + 1);
     }
     uint64_t digest() const { return got->size() * 131 + uint64_t(ctl->np) * 7 + uint64_t(ctl->phase); }
@@ -258,13 +259,13 @@ struct DirectRun {
             if (ctl.phase != 2 && t >= 1) {   // the framework steps units from cycle 1 (the stand's first decision)
                 Ctl::View v;
                 sc.peek(t, 1, 1, v.status);
-                sc.peek(t, 1, 6, v.peek);
-                sc.peek(t, 1, 7, v.mask);
+                sc.peek(t, 1, units::P_EVENTS_PEEK, v.peek);
+                sc.peek(t, 1, units::P_EVENTS_MASK, v.mask);
                 for (unsigned q = 1; q <= 3; q++) sc.peek(t, 1, Tracer::W_CODE_LENGTH + q - 1, v.len[q]);
                 const Ctl::Act a = ctl.cycle(t, v);
                 if (a.region) sc.accept(t, 1, a.lo, lw::hdr(7, 0, 0, 0, a.addr, lw::SIZE_128), a.hi);
                 if (a.core == Ctl::STORE) sc.write(t, 1, a.w, a.v);
-                if (a.core == Ctl::CONSUME) { uint32_t x; sc.read(t, 1, 5, x); }
+                if (a.core == Ctl::CONSUME) { uint32_t x; sc.read(t, 1, units::P_EVENTS, x); }
             }
             sc.run_cycle(t);
             for (unsigned k = 0; k < sc.n_out; k++) got.push_back({uint64_t(sc.out[k].t) + 1, sc.out[k].lo, sc.out[k].h, sc.out[k].hi});
@@ -348,7 +349,7 @@ DEATH_TEST(tracer_in_the_slot_without_memory_is_fatal, "without a memory system"
     sc.tile = TILE;
     sc.dma_port = true;
     sc.install(1, PT_TRACER);
-    sc.write(1, 1, 3, 1);   // PULSE_RUN at 1
+    sc.write(1, 1, units::P_START, 1);   // START at 1
     for (int64_t t = 0; t < 4; t++) { sc.run_cycle(t); sc.end_cycle(t); }
 }
 
@@ -394,7 +395,7 @@ TEST(tracer_fingerprint_in_the_slot_equals_its_twin_every_cycle) {
         sim::PortEntry e[8];
         const sim::PortView v = r.m.observe(slot.core, e, 8);
         for (uint32_t k = 0; k < v.n; k++)
-            if (CoreOp::kind(e[k].w[0]) == CoreOp::STORE && CoreOp::word(e[k].w[0]) == 4) {
+            if (CoreOp::kind(e[k].w[0]) == CoreOp::STORE && CoreOp::word(e[k].w[0]) == units::P_DMA_START) {
                 starts++;
                 fp::FpOut a, plain;
                 d.sc.tracer(1).fingerprint(0, a, t);

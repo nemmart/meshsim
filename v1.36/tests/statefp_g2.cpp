@@ -31,8 +31,16 @@ std::vector<Pending> pending(const G2Chip& g, const FpCtx& x) {
                     p.push_back({e[i].at, 8 * r + b, bool(e[i].w[0] >> (units::RowCollector::kEdges + b) & 1),
                                  bool(e[i].w[0] >> (units::RowCollector::kLevels + b) & 1)});
         for (unsigned b = 0; b < 8; b++) {                           // block -> collector: visible one cycle after arrival
-            sim::PortView u = x.sim->observe(g.rows[r]->line[b], e, 64);
-            for (uint32_t i = 0; i < u.n; i++) p.push_back({e[i].at + 1, 8 * r + b, bool(e[i].w[0] & 1), bool(e[i].w[0] >> 1 & 1)});
+            // (v1.36: a line word is the tile control unit's two nets, put together: the level's word, and READY's edge
+            // when BARRIER_ARRIVE is on its link for the same cycle)
+            sim::PortEntry a[64];
+            const sim::PortView ua = x.sim->observe(g.rows[r]->arrive[b], a, 64);
+            sim::PortView u = x.sim->observe(g.rows[r]->error[b], e, 64);
+            for (uint32_t i = 0; i < u.n; i++) {
+                bool edge = false;
+                for (uint32_t j = 0; j < ua.n; j++) edge |= a[j].at == e[i].at;
+                p.push_back({e[i].at + 1, 8 * r + b, edge, bool(e[i].w[0] & 1)});
+            }
         }
     }
     if (g.edge)                                                       // the blocks' endCycle(c), not run yet
@@ -163,7 +171,7 @@ void w_router(const void* p, FpOut& o, const FpCtx& x) {
     static const char* const kLink[4] = {"link0", "link1", "link2", "link3"};
     if (r.cc) {                                                       // a controller's router (FEEDERS_CC)
         link_port(o, kLink[0], x.sim, r.in[units::Router::CC_LINK_IN]);
-        fifo_port(o, kLink[1], x.sim, r.host);
+        none(o, kLink[1]);                                           // (v1.36: no host port)
         if (r.has_dma) fifo_port(o, kLink[2], x.sim, r.dma); else none(o, kLink[2]);
         none(o, kLink[3]);
         link_port(o, "inj", x.sim, r.inj);                           // ref's fromCnc is null on a controller

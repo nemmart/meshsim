@@ -7,7 +7,7 @@
 #include "base/fatal.h"
 #include "units/big_sram.h"
 #include "units/chip.h"
-#include "units/host_port.h"
+#include "host_port.h"
 #include "units/net.h"
 #include "units/periph_slot.h"
 #include "units/tracer.h"

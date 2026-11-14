@@ -2,8 +2,7 @@
 #include "units/chip.h"
 
 #include "base/fatal.h"
-#include "units/host_port.h"
-#include "units/cnc1_periph.h"
+#include "units/ingress_egress.h"
 #include "units/inject.h"
 #include "units/periph_slot.h"
 #include "units/router.h"
@@ -14,58 +13,23 @@ std::string tile_unit(unsigned k, const char* unit) { return unit_prefix(k) + un
 
 namespace {
 
-// The network-only checks' stand-in for a tile's control part: sinks the eject bus and GO, never sends, never READY.
+// The network-only checks' stand-in for a tile's control part: sinks the eject bus and the release, never sends, never
+// arrives, its error line low.
 struct ControlStandIn {
     sim::HoldOut send;
     sim::RegIn send_busy;
-    sim::LinkIn eject, go;
-    sim::LinkOut line;
+    sim::LinkIn eject, release;
+    sim::LinkOut arrive, error;
     sim::CountIn router_ovf;
     sim::LinkIn router_ovf_ev;
     explicit ControlStandIn(sim::Ports& p) {
-        p.out(send, "send", 3); p.in(send_busy, "send_busy", 1); p.in(eject, "eject", 3); p.in(go, "go", 0);
-        p.out(line, "line", 1); p.in(router_ovf, "router_ovf"); p.in(router_ovf_ev, "ovf", 0);
+        p.out(send, "send", 3); p.in(send_busy, "send_busy", 1); p.in(eject, "eject", 3); p.in(release, "release", 0);
+        p.out(arrive, "arrive", 0); p.out(error, "error", 1); p.in(router_ovf, "router_ovf"); p.in(router_ovf_ev, "ovf", 0);
     }
     sim::Wake step(sim::Ctx& c) {
         if (c.ready(eject)) c.take(eject);
-        if (c.ready(go)) c.take(go);
+        if (c.ready(release)) c.take(release);
         if (c.ready(router_ovf_ev)) c.take(router_ovf_ev);
-        return sim::Wake::none();
-    }
-    uint64_t digest() const { return 0; }
-};
-
-// M3 (cc_cores): the source of the controllers' GO inputs, which nothing drives in ref (CnC.goNet reaches tiles 0-63
-// only); and, when C&C 1 has no slot (G1Config::periph_slot off), a stand-in for C&C 1's peripheral's own ports (the
-// row collectors' words, the controllers' line words) that sinks them and never drives GO.
-struct ChipLinesStandIn {
-    sim::LinkIn rows[8], cc_line[3];
-    sim::LinkOut go[64], cc_go[3];
-    bool lines;
-    ChipLinesStandIn(sim::Ports& p, bool stand_in_lines) : lines(stand_in_lines) {
-        for (unsigned c = 0; c < 3; c++) p.out(cc_go[c], "cc-go", 0);
-        if (!lines) return;
-        for (unsigned r = 0; r < 8; r++) p.in(rows[r], "row", 1);
-        for (unsigned c = 0; c < 3; c++) p.in(cc_line[c], "cc-line", 1);
-        for (unsigned k = 0; k < 64; k++) p.out(go[k], "go", 0);
-    }
-    sim::Wake step(sim::Ctx& c) {
-        if (!lines) return sim::Wake::none();
-        for (auto& r : rows) if (c.ready(r)) c.take(r);
-        for (auto& l : cc_line) if (c.ready(l)) c.take(l);
-        return sim::Wake::none();
-    }
-    uint64_t digest() const { return 0; }
-};
-
-// C&C 1's and C&C 2's slot DMA (AUDIT-M3 3.1 S6): ref's dmaPort is null on them (only C&C 3's enters its router, with
-// the Tracer), and nothing of theirs starts a DMA in v1.3; a packet arriving here is a modelling error.
-struct NoDma {
-    sim::FifoIn in;
-    uint8_t cc;
-    NoDma(sim::Ports& p, unsigned c) : cc(uint8_t(c)) { p.in_credit(in, "dma", 3, 4); }
-    sim::Wake step(sim::Ctx& c) {
-        if (c.ready(in)) FATAL("C&C %u's slot sent a DMA packet at cycle %llu: its DMA leads nowhere (ref's null dmaPort)", cc + 1u, (unsigned long long)c.now());
         return sim::Wake::none();
     }
     uint64_t digest() const { return 0; }
@@ -74,15 +38,13 @@ struct NoDma {
 ControlIO stand_in(sim::Config& cfg, unsigned k) {
     auto& s = cfg.add<ControlStandIn>(tile_unit(k, "stand"));
     ControlIO io;
-    io.send = s.send; io.send_busy = s.send_busy; io.eject = s.eject; io.release = s.go; io.line = s.line; io.router_ovf = s.router_ovf;
-    io.router_ovf_ev = s.router_ovf_ev;
+    io.send = s.send; io.send_busy = s.send_busy; io.eject = s.eject;
+    io.barrier = true; io.release = s.release; io.arrive = s.arrive; io.error = s.error;
+    io.router_ovf = s.router_ovf; io.router_ovf_ev = s.router_ovf_ev;
     return io;
 }
 
-}  // namespace
-
-namespace {
-// A unit's injection unit and its wiring to the router and the control part (tile_cycle's and cc_cycle's).
+// A unit's injection unit and its wiring to the router and the control part (tile_cycle's and special_cycle's).
 void wire_unit(sim::Config& cfg, const NetConfig& nc, unsigned k, const ControlIO& io, Router& r) {
     ReadSideConfig rc;
     rc.present = io.mem.present; rc.gather = io.mem.gather; rc.ag = io.mem.ag;
@@ -114,146 +76,99 @@ TileIO tile_cycle(sim::Config& cfg, const ChipSpec& spec, unsigned k) {
     const NetConfig& nc = spec.net;
     if (spec.domain) cfg.domain(spec.domain[k]);
     ControlIO io = spec.control ? spec.control(cfg, k, spec.control_ctx) : stand_in(cfg, k);
+    if (!io.barrier) FATAL("tile_cycle: tile %u's control has no barrier: a compute tile's nets are wired (7.1)", k);
     auto& r = cfg.add<Router>(tile_unit(k, "router"), k, nc, spec.hops, true,
-                              spec.cc_cores ? Router::FIFTH_LINK : Router::FIFTH_HOLD);
+                              spec.bench_attach ? Router::FIFTH_HOLD : Router::FIFTH_LINK);
     wire_unit(cfg, nc, k, io, r);
     TileIO t;
     for (unsigned d = 0; d < 4; d++) { t.link_in[d] = r.in[d]; t.link_out[d] = r.out[d]; }
-    t.release = io.release;
-    t.line = io.line;
+    t.release = io.release; t.arrive = io.arrive; t.error = io.error;
     t.attached = nc.attached_special(k) >= 0;
-    if (t.attached && !spec.cc_cores) { t.from_cnc = r.from_cnc; t.to_cnc = r.to_cnc; }
-    if (t.attached && spec.cc_cores) { t.from_cc = r.from_cc; t.to_cc = r.to_cc; }
-    t.req = io.req;                                       // wired to the request bus by build_chip
+    if (t.attached && spec.bench_attach) { t.from_bench = r.from_cnc; t.to_bench = r.to_cnc; }
+    if (t.attached && !spec.bench_attach) { t.attach_in = r.from_cc; t.attach_out = r.to_cc; }
+    t.req = io.req;                                       // wired to the request tree by its builder
     return t;
 }
 
-CcIO cc_cycle(sim::Config& cfg, const ChipSpec& spec, unsigned c) {
+SpecialIO special_cycle(sim::Config& cfg, const ChipSpec& spec, unsigned s) {
     const NetConfig& nc = spec.net;
-    if (c > 2) FATAL("cc_cycle: controller %u (0-2)", c);
-    const unsigned k = lw::CC1 + c;
-    ControlIO io = spec.control ? spec.control(cfg, k, spec.control_ctx) : stand_in(cfg, k);
-    const bool dma = c == 2 && spec.cc3_dma;
-    if (dma && !io.has_dma) FATAL("cc_cycle: C&C 3's DMA asked for, but the control part has no slot DMA output");
-    auto& r = cfg.add<Router>(tile_unit(k, "router"), k, nc, spec.hops, true, Router::FIFTH_HOLD, dma);
+    if (s > 2) FATAL("special_cycle: special tile %u (0-2)", s);
+    if (!spec.control) FATAL("special_cycle: a special tile needs its control part (ChipSpec::control)");
+    const unsigned k = lw::CC1 + s;
+    ControlIO io = spec.control(cfg, k, spec.control_ctx);
+    if (io.barrier) FATAL("special_cycle: unit %u's control has the barrier's nets: a special tile's are not wired (7.3)", k);
+    auto& r = cfg.add<Router>(tile_unit(k, "router"), k, nc, spec.hops, true, Router::FIFTH_LINK, io.has_dma);
     wire_unit(cfg, nc, k, io, r);
-    // the slot's DMA (AUDIT-M3 3.1 S6): C&C 3's into CC_DMA_IN; C&C 1's and C&C 2's lead nowhere in ref (their slots'
-    // dmaPort is null: nothing of theirs starts a DMA in v1.3), wired when the slot's builder offers them
-    if (dma) cfg.connect(io.dma, r.dma);
-    else if (io.has_dma) cfg.connect(io.dma, cfg.add<NoDma>(tile_unit(k, "nodma"), c).in);
-    auto& h = cfg.add<HostPort>(tile_unit(k, "host"), c, spec.host_capacity);
-    cfg.connect(h.out, r.host);
-    CcIO o;
-    o.link_in = r.in[Router::CC_LINK_IN]; o.link_out = r.out[Router::CC_LINK_OUT];
-    o.has_dma = dma; if (dma) o.dma = r.dma;
-    o.release = io.release; o.line = io.line; o.slot = io.slot;
-    o.req = io.req;                                       // its request port, both sides
+    if (io.has_dma) cfg.connect(io.dma, r.dma);           // the peripheral's DMA, on an input of its own (16.4)
+    SpecialIO o;
+    o.attach_in = r.in[Router::CC_LINK_IN]; o.attach_out = r.out[Router::CC_LINK_OUT];
+    o.error = io.error; o.slot = io.slot;
+    o.req = io.req;                                       // its request unit, both sides
     return o;
 }
 
-// (D34): the request bus for the senders whose control has a request port (the tiles; with `cc`, the controllers,
-// which also get their receive queues): each leaf in its unit's domain, each queue in its controller's, the nodes with
-// tile 0's. The mode is spec.reqbus.credit_latency, set explicitly (D34); mode 0 split is refused at build.
-void add_request_bus(sim::Config& cfg, const ChipSpec& spec, TileIO* io, CcIO* cc) {
+void add_mesh(sim::Config& cfg, const ChipSpec& spec, TileIO io[64]) {
+    const NetConfig& nc = spec.net;
+    if (!spec.hops) FATAL("add_mesh: no hops table");
+    if (nc.link_latency < 1) FATAL("add_mesh: link_latency %u", nc.link_latency);
+    for (unsigned k = 0; k < 64; k++) io[k] = tile_cycle(cfg, spec, k);
+    for (unsigned k = 0; k < 64; k++)
+        for (unsigned d = 0; d < 4; d++) cfg.link(io[k].link_out[d], io[neighbour(k, d)].link_in[arrival_port(d)], nc.link_latency);
+}
+
+// Each leaf in its unit's domain, each receive queue in its special tile's, the nodes with tile 0's.
+void add_request_tree(sim::Config& cfg, const ChipSpec& spec, TileIO* io, SpecialIO* special) {
     uint64_t tiles = 0;
-    unsigned ccs = 0;
+    unsigned specials = 0;
     units::reqbus::ReqBusPlacement pl;
     for (unsigned k = 0; k < 64; k++) {
         if (io[k].req.present) tiles |= uint64_t(1) << k;
         pl.leaf[k] = spec.domain ? spec.domain[k] : 0;
     }
-    for (unsigned c = 0; cc && c < 3; c++) {
-        if (cc[c].req.present) ccs |= 1u << c;
-        pl.leaf[64 + c] = pl.recv[c] = spec.domain ? spec.domain[spec.net.attach[c]] : 0;
+    for (unsigned s = 0; special && s < 3; s++) {
+        if (special[s].req.present) specials |= 1u << s;
+        pl.leaf[64 + s] = pl.recv[s] = spec.domain ? spec.domain[spec.net.attach[s]] : 0;
     }
     pl.bus = spec.domain ? spec.domain[0] : 0;
-    if (!tiles && !ccs) return;
-    const units::reqbus::ReqBusIO rb = units::reqbus::add_reqbus(cfg, spec.reqbus, tiles, ccs, spec.domain ? &pl : nullptr);
+    if (!tiles && !specials) return;
+    const units::reqbus::ReqBusIO rb = units::reqbus::add_reqbus(cfg, spec.reqbus, tiles, specials, spec.domain ? &pl : nullptr);
     for (unsigned k = 0; k < 64; k++) if (io[k].req.present) units::reqbus::wire_sender(cfg, rb, k, io[k].req);
-    for (unsigned c = 0; cc && c < 3; c++) if (cc[c].req.present) units::reqbus::wire_sender(cfg, rb, 64 + c, cc[c].req);
+    for (unsigned s = 0; special && s < 3; s++) if (special[s].req.present) units::reqbus::wire_sender(cfg, rb, 64 + s, special[s].req);
 }
 
 void build_chip(sim::Config& cfg, const ChipSpec& spec) {
     const NetConfig& nc = spec.net;
-    if (!spec.hops) FATAL("build_chip: no hops table");
-    if (!spec.program && !spec.cc_cores) FATAL("build_chip: no C&C program");
-    if (nc.link_latency < 1 || nc.ready_latency < 3) FATAL("build_chip: link_latency %u, ready_latency %u", nc.link_latency, nc.ready_latency);
-    uint8_t skew[64];
-    start_skews(nc, skew);
+    if (spec.bench_attach) FATAL("build_chip: the chip's attach ports are the special tiles' (ChipSpec::bench_attach is a test bench's)");
+    if (nc.release_latency < 1)
+        FATAL("build_chip: RELEASE_LATENCY 0: Ingress/Egress's flip-flop's cycle is the first of BARRIER_RELEASE's (machine-spec 17.6, 18)");
     TileIO io[64];
-    for (unsigned k = 0; k < 64; k++) io[k] = tile_cycle(cfg, spec, k);
-    for (unsigned k = 0; k < 64; k++)
-        for (unsigned d = 0; d < 4; d++) cfg.link(io[k].link_out[d], io[neighbour(k, d)].link_in[arrival_port(d)], nc.link_latency);
-    if (spec.cc_cores) {
-        // C&C c with tile c (the C&C links are Link(cc_link_latency), 1 in ref: one domain, D26)
-        CcIO u[3];
-        for (unsigned c = 0; c < 3; c++) {
-            if (spec.domain) cfg.domain(spec.domain[nc.attach[c]]);
-            u[c] = cc_cycle(cfg, spec, c);
-            cfg.link(io[nc.attach[c]].to_cc, u[c].link_in, nc.cc_link_latency);
-            cfg.link(u[c].link_out, io[nc.attach[c]].from_cc, nc.cc_link_latency);
-        }
-        add_request_bus(cfg, spec, io, u);                // (D34): the tiles' and the controllers' ports
-        // The chip lines (AUDIT-M3 3.4, section 4): the tiles' line words through M2's row collectors, the controllers'
-        // directly, all into C&C 1's peripheral (READY, ERROR_LINES, the toast pin) through its slot's own ports, GO
-        // out of them; with C&C 1, the collectors in tile 0's domain. Without C&C 1's slot, a stand-in takes its place.
-        if (spec.domain) cfg.domain(spec.domain[0]);
-        PeriphSlot* s1 = u[0].slot;
-        auto& cl = cfg.add<ChipLinesStandIn>("cc1.lines", s1 == nullptr);
-        sim::LinkIn* rows = cl.rows; sim::LinkIn* lines = cl.cc_line; sim::LinkOut* go = cl.go;
-        if (s1) {
-            // (SlotCore's own accessor, inline: the chip's object links without the slot's)
-            if (s1->s.per[1].type != PT_CNC1) FATAL("build_chip: C&C 1's slot holds no C&C 1 peripheral");
-            const Cnc1Peripheral& p = *static_cast<const Cnc1Peripheral*>(s1->s.per[1].p);
-            rows = s1->own.link_in + p.row0; lines = s1->own.link_in + p.line0; go = s1->own.link_out + p.go0;
-        }
-        for (unsigned r = 0; r < 8; r++) {
-            auto& row = cfg.add<RowCollector>("row" + std::to_string(r), r);
-            cfg.link(row.out, rows[r], 1);
-            for (unsigned i = 0; i < 8; i++) cfg.link(io[8 * r + i].line, row.line[i], nc.ready_latency - 2);
-        }
-        for (unsigned k = 0; k < 64; k++) cfg.link(go[k], io[k].release, nc.go_latency + skew[k]);
-        for (unsigned c = 0; c < 3; c++) {
-            cfg.link(u[c].line, lines[c], c == 0 ? 1 : nc.error_lat() - 1);
-            cfg.link(cl.cc_go[c], u[c].release, nc.go_latency + 1);
-        }
-        return;
+    add_mesh(cfg, spec, io);
+    // the special tiles, each with its attach tile: its attach link is a link like the others (16.1)
+    SpecialIO sp[3];
+    for (unsigned s = 0; s < 3; s++) {
+        const unsigned at = nc.attach[s];
+        if (spec.domain) cfg.domain(spec.domain[at]);
+        sp[s] = special_cycle(cfg, spec, s);
+        cfg.link(io[at].attach_out, sp[s].attach_in, nc.link_latency);
+        cfg.link(sp[s].attach_out, io[at].attach_in, nc.link_latency);
     }
-    if (spec.reqbus_host) {                               // (harness-only): the queues and controller inputs, ReqHost
-        uint64_t tiles = 0;
-        for (unsigned k = 0; k < 64; k++) if (io[k].req.present) tiles |= uint64_t(1) << k;
-        if (spec.domain) FATAL("build_chip: the request bus's harness host on a split machine");
-        const units::reqbus::ReqBusIO rb = units::reqbus::add_reqbus(cfg, spec.reqbus, tiles, 7, nullptr, false);
-        for (unsigned k = 0; k < 64; k++) if (io[k].req.present) units::reqbus::wire_sender(cfg, rb, k, io[k].req);
-        auto& h = cfg.add<units::reqbus::ReqHost>("reqbus.host", spec.reqbus);
-        for (unsigned c = 0; c < 3; c++) {
-            cfg.link(h.beat[c], rb.root->in[8 + c], spec.reqbus.hop_latency);
-            if (spec.reqbus.credit_latency != 0) cfg.link(rb.root->credit_out[8 + c], h.credit[c], spec.reqbus.credit_latency);
-            cfg.link(h.pop[c], rb.recv[c]->pop, 1);
-            cfg.connect(rb.recv[c]->head, h.head[c]);
-            cfg.link(h.qcredit[c], rb.root->qcredit[c], rb.queue_credit_latency());
-        }
-    } else add_request_bus(cfg, spec, io, nullptr);       // (D34): the tiles' ports (M2's chip: no controllers)
-    // C&C and the collectors with tile 0 (C&C's send is a Hold into tile 0's router), C&C 2 and 3 with tiles 1 and 2
-    if (spec.domain) cfg.domain(spec.domain[0]);
-    auto& cc = cfg.add<Cnc>("cnc", nc, *spec.program);
-    RowCollector* rows[8];
+    add_request_tree(cfg, spec, io, sp);
+    // the global nets (18), into and out of the master tile's Ingress/Egress through its slot's own ports
+    if (spec.domain) cfg.domain(spec.domain[nc.attach[0]]);
+    PeriphSlot* ms = sp[0].slot;
+    if (!ms || ms->s.per[1].type != PT_INGRESS) FATAL("build_chip: the master tile's slot holds no Ingress/Egress (17.6)");
+    const IngressEgress& ie = *static_cast<const IngressEgress*>(ms->s.per[1].p);
     for (unsigned r = 0; r < 8; r++) {
-        rows[r] = &cfg.add<RowCollector>("row" + std::to_string(r), r);
-        cfg.link(rows[r]->out, cc.rows[r], 1);
+        auto& row = cfg.add<NetRow>("nets.row" + std::to_string(r), r);
+        cfg.connect(row.out, ms->own.wire_in[ie.row0 + r]);
+        for (unsigned i = 0; i < 8; i++) {
+            cfg.link(io[8 * r + i].arrive, row.arrive[i], 1 + nc.arrive_latency);
+            cfg.link(io[8 * r + i].error, row.error[i], 1 + nc.error_latency);
+        }
     }
-    cfg.connect(cc.send, io[nc.attach[0]].from_cnc);
-    cfg.connect(io[nc.attach[0]].to_cnc, cc.rx);
-    for (unsigned e = 1; e < 3; e++) {
-        if (spec.domain) cfg.domain(spec.domain[nc.attach[e]]);
-        auto& ep = cfg.add<Endpoint>("ep" + std::to_string(e + 1), lw::CC1 + e, nc);
-        cfg.connect(ep.send, io[nc.attach[e]].from_cnc);
-        cfg.connect(io[nc.attach[e]].to_cnc, ep.rx);
-    }
-    for (unsigned k = 0; k < 64; k++) {
-        cfg.link(cc.go[k], io[k].release, nc.go_latency + skew[k] + 1);
-        cfg.link(io[k].line, rows[k / 8]->line[k % 8], nc.ready_latency - 2);
-    }
+    for (unsigned k = 0; k < 64; k++) cfg.link(ms->own.link_out[ie.release0 + k], io[k].release, nc.release_latency);
+    cfg.link(sp[0].error, ms->own.link_in[ie.line0], 1);  // the master tile's own line: the toast pin (17.6)
+    for (unsigned s = 1; s < 3; s++) cfg.link(sp[s].error, ms->own.link_in[ie.line0 + s], 1 + nc.error_latency);
 }
 
 void row_bands(unsigned parts, uint8_t domain[64]) {

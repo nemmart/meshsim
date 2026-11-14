@@ -1,4 +1,11 @@
-// cnc.h: C&C 1's Java model (ref's CnC.java and Cnc1Peripheral.java: the sequencer, the endpoint's send,
+// bench_master.h: A TEST BENCH'S MASTER SIDE, NOT v1.36'S HARDWARE. v1.36's chip is the tiles: the master, memory and
+// tracer tiles are base tiles with their peripherals (src/units/chip.h), and nothing of this file is in it. What is
+// here is v1.35's behavioural model of C&C 1 with its row collectors and C&C 2-3's endpoints, kept in tests/ for the
+// tests of the tile's units that drive a machine of 64 compute tiles from the harness (the coreless machine, Net:
+// tests/mach.h) and for the model's own conformance test (test_cnc); build_bench_chip (below) assembles that machine.
+// On v1.36's tiles its GO is BARRIER_RELEASE's pulse and its READY BARRIER_ARRIVE's (tests/mach.h, THE MASTER SIDE).
+//
+// (v1.35's header:) C&C 1's Java model (ref's CnC.java and Cnc1Peripheral.java: the sequencer, the endpoint's send,
 // READY, GO's net, the error bit, the receive FIFO), the row collectors that bring the tiles' READY and error lines to
 // it, and C&C 2 and 3's endpoints (Endpoint.java). AUDIT-M2 sections 0 and 4. Declarations; the steps come with stage 3.
 //
@@ -39,9 +46,18 @@
 #include <vector>
 
 #include "sim.h"
+#include "config.h"
+#include "units/chip.h"
 #include "units/net.h"
 
 namespace units {
+class CncProgram;
+// The bench machine: the 64 compute tiles and their links (chip.h's add_mesh), with C&C's model ("cnc") at tile 0's
+// attach port, the endpoints "ep2" and "ep3" at the memory and tracer tiles' attach tiles, the row collectors
+// ("row<r>"), GO's net with v1.35's start skew, and the request tree for the tiles' sending sides: its receive queues
+// driven by the harness (`reqbus_host`: reqbus.h's ReqHost, one domain) or absent.
+void build_bench_chip(sim::Config& cfg, const ChipSpec& spec, const CncProgram& program, bool reqbus_host);
+
 
 // ---- the program (configuration) ----------------------------------------------------------------------------------
 struct CncPacket { uint8_t dst, mode, counter, size; uint32_t addr; uint64_t lo, hi; };
@@ -207,14 +223,16 @@ private:
 
 // ---- a row collector -----------------------------------------------------------------------------------------------
 struct RowCollector {
-    sim::LinkIn line[8];              // the row's register blocks (width 1, latency ready_latency - 2)
+    sim::LinkIn arrive[8], error[8];  // the row's tile control units' nets: BARRIER_ARRIVE (width 0) and the error line's
+                                      //   level (width 1), each at latency ready_latency - 2
+    uint8_t levels = 0;               // the error lines' levels as last received (a row word carries a present tile's)
     // the row word's fields
     static constexpr unsigned kEdges = 0, kPresent = 8, kLevels = 16;
     sim::LinkOut out;                 // to C&C (width 1, latency 1)
     uint8_t row = 0;
     RowCollector(sim::Ports& p, unsigned row);
-    sim::Wake step(sim::Ctx& c);      // stateless: forwards what arrived this cycle as one row word
-    uint64_t digest() const { return row; }
+    sim::Wake step(sim::Ctx& c);      // forwards what arrived this cycle as one row word
+    uint64_t digest() const { return uint64_t(row) | uint64_t(levels) << 8; }
 };
 
 // ---- C&C 2 and 3's endpoints (tests drive them; idle in M2) ------------------------------------------------------

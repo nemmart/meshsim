@@ -27,6 +27,14 @@
 // of t; then the route blocks (the four links, the injection, from C&C) push into FIFOs, visible t + 1. It asks for the
 // next cycle while any FIFO holds a word.
 //
+// v1.36 (machine-spec 16; the RTL's rtl/blocks/router): the attach tiles are 0, 7 and 15; a special tile's router (below:
+// "a controller's") ejects a packet for its tile and sends every other, from its local input or its peripheral's DMA,
+// out of its attach port, a broadcast included (16.2); a DMA's packet moves only while the queue it enters has room
+// (16.4: the credit FifoIn holds it meanwhile), its src the tile's own id; a packet for a reserved tile id, or for
+// none, is dropped where it is routed, with no error (16.2: `dropped`); the attach links are links like the others
+// (three register stages: the chip's); no host port. FIFTH_HOLD (an endpoint's Hold and Fifo at the attach port) is a
+// test bench's (tests/bench_master.h), FIFTH_LINK the chip's. What is still v1.35's is in PENDING-v1.36.md.
+//
 // M3 (AUDIT-M3 3.4): THE CONTROLLER VARIANT AND THE C&C LINKS.
 //   - A controller's router (`tile` 64-66, ref's `Router.feeders(me >= 64)`, `FEEDERS_CC`, `ccRoute`): the tile's
 //     FIFOs plus one from CC_DMA_IN (FROM_UP) feeding output 0 (the link). Its ports: `in[0]` CC_LINK_IN (the C&C link
@@ -52,7 +60,8 @@ struct Router {
     enum : unsigned { FROM_LEFT = 0, FROM_RIGHT = 1, FROM_UP = 2, FROM_DOWN = 3, LOOPBACK = 4, FROM_CNC = 5 };
     enum : unsigned { TO_RIGHT = 0, TO_LEFT = 1, TO_DOWN = 2, TO_UP = 3, EJECT = 4, TO_CNC = 5 };
     enum : unsigned { M_RIGHT = 1, M_LEFT = 2, M_DOWN = 4, M_UP = 8, M_EJ = 16, M_CNC = 32 };
-    enum : unsigned { CC_LINK_IN = FROM_LEFT, CC_HOST_IN = FROM_RIGHT, CC_DMA_IN = FROM_UP, CC_LINK_OUT = TO_RIGHT };
+    enum : unsigned { CC_LINK_IN = FROM_LEFT, CC_DMA_IN = FROM_UP, CC_LINK_OUT = TO_RIGHT };   // a special tile's: its attach
+                                                                    // port in and out, its peripheral's DMA
     enum Fifth : uint8_t { FIFTH_HOLD, FIFTH_LINK };                       // tiles 0-2: M2's endpoint, or the C&C links
     static constexpr unsigned kOut = 6, kFifos = 28;                       // the most of either table
     static constexpr uint8_t kFeeders[kOut][6] = {                         // FEEDERS_TILE0, in slot order: 27 FIFOs
@@ -89,7 +98,7 @@ struct Router {
     sim::FifoOut to_cnc;              // attached, FIFTH_HOLD only
     sim::LinkIn from_cc;              // attached, FIFTH_LINK only: the C&C link from C&C c's CC_LINK_OUT
     sim::LinkOut to_cc;               // attached, FIFTH_LINK only: the C&C link into C&C c's CC_LINK_IN
-    sim::FifoIn host, dma;            // a controller's: CC_HOST_IN; CC_DMA_IN (with a DMA only)
+    sim::FifoIn dma;                  // a special tile's: CC_DMA_IN (with a DMA only)
     sim::CountOut ovf;
     sim::LinkOut ovf_ev;              // ovf_event only
 
@@ -116,6 +125,8 @@ struct Router {
 
     // ---- statistics (ref's counters; not state) ----
     uint64_t injected = 0, routed = 0, ejected = 0, eject_errors = 0, route_errors = 0, from_cnc_words = 0, to_cnc_words = 0;
+    uint64_t dropped = 0;             // packets for a reserved tile id or for none, dropped where they were routed (16.2)
+    uint64_t dma_waits = 0;           // cycles a DMA's packet waited for room in the queue it enters (16.4)
     uint64_t loop_left_at = 0;        // the last cycle a token-holding packet left the loopback FIFO (tests)
 
     // non-empty FIFOs, one bit per FIFO index (exact, unlike ref's `maybe` hint)
@@ -147,6 +158,13 @@ private:
     bool select(unsigned o, uint32_t m, Sel& s, uint32_t& taken);
     void push(sim::Ctx& c, unsigned o, unsigned port, const uint64_t* w, uint32_t taken);
     void route(sim::Ctx& c, unsigned port, uint64_t d, uint64_t a, uint64_t cw, uint32_t taken);
+    // 16.2: a tile id that is no compute tile, special tile or broadcast: reserved, or none
+    static bool no_tile(unsigned dst) { return dst > lw::CC3 && dst != lw::BROADCAST; }
+    // the queue of output o from input `port` has room for a push in this cycle (WordFIFO's rule, as push judges it)
+    bool room(unsigned o, unsigned port, uint32_t taken) const {
+        const unsigned i = first[o] + slot_of[o][port];
+        return q[i].count + (taken >> i & 1) < q[i].cap;
+    }
     void route_mask(sim::Ctx& c, unsigned mask, unsigned port, uint64_t d, uint64_t a, uint64_t cw, uint32_t taken);
     bool eject_select(sim::Ctx& c, uint32_t& taken);   // the eject selector and its put (both variants)
 };
@@ -209,6 +227,7 @@ inline void Router::push(sim::Ctx& c, unsigned o, unsigned port, const uint64_t*
 inline void Router::route(sim::Ctx& c, unsigned port, uint64_t d, uint64_t a, uint64_t cw, uint32_t taken) {
     routed++;
     const unsigned dst = lw::dst(a);
+    if (no_tile(dst)) { dropped++; return; }
     route_mask(c, dst == lw::BROADCAST ? broadcast(port, lw::src(a)) : unicast(lw::src(a), dst), port, d, a, cw, taken);
 }
 
@@ -303,28 +322,27 @@ inline sim::Wake Router::step_cc(sim::Ctx& c) {
         routed++;
         route_mask(c, M_EJ, CC_LINK_IN, d, a, cw, taken);
     }
-    if (c.ready(host)) {
-        const sim::Word* w = c.peek(host);
-        const uint64_t d = w[0], a = w[1], cw = w[2];
-        c.take(host);
-        routed++;
-        route_mask(c, M_EJ, CC_HOST_IN, d, a, cw, taken);
-    }
-    if (has_dma && c.ready(dma)) {
+    bool dma_waiting = false;
+    if (has_dma && c.ready(dma)) {                                // 16.4: src the tile's id; it moves only into room
         const sim::Word* w = c.peek(dma);
-        const uint64_t d = w[0], a = w[1], cw = w[2];
-        c.take(dma);
-        routed++;
-        route_mask(c, lw::dst(a) == me ? M_EJ : M_RIGHT, CC_DMA_IN, d, a, cw, taken);
+        const uint64_t d = w[0], a = lw::with_src(w[1], me), cw = w[2];
+        const unsigned dst = lw::dst(a), o = dst == me ? unsigned(EJECT) : unsigned(CC_LINK_OUT);
+        if (no_tile(dst)) { c.take(dma); routed++; dropped++; }
+        else if (room(o, CC_DMA_IN, taken)) {
+            c.take(dma);
+            routed++;
+            route_mask(c, dst == me ? M_EJ : M_RIGHT, CC_DMA_IN, d, a, cw, taken);
+        } else { dma_waits++; dma_waiting = true; }
     }
     if (c.ready(inj)) {
         const sim::Word* w = c.peek(inj);
         const uint64_t d = w[0], a = lw::with_src(w[1], me), cw = w[2];
         c.take(inj);
         injected++; routed++;
-        route_mask(c, lw::dst(a) == me ? M_EJ : M_RIGHT, LOOPBACK, d, a, cw, taken);
+        if (no_tile(lw::dst(a))) dropped++;
+        else route_mask(c, lw::dst(a) == me ? M_EJ : M_RIGHT, LOOPBACK, d, a, cw, taken);
     }
-    return occ || ovf_due ? c.next() : sim::Wake::none();
+    return occ || ovf_due || dma_waiting ? c.next() : sim::Wake::none();
 }
 
 template <class Out>

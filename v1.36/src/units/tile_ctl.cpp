@@ -2,7 +2,7 @@
 #include "units/tile_ctl.h"
 
 #include "units/ag.h"
-#include "units/cnc1_periph.h"
+#include "units/ingress_egress.h"
 #include "units/gather.h"
 #include "units/write_engine.h"
 
@@ -54,7 +54,9 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     block.request_queue_depth = g.cfg.request_queue_depth;
     bus::Straps bs;
     bs.peripherals = block.straps.peripherals;
-    bs.peripheral_dmas = k >= 64 ? block.straps.peripherals : 0;   // a special tile's peripherals have DMAs (17.4)
+    // the memory and tracer tiles' peripherals have DMAs (17.4, 17.7, 17.9); Ingress/Egress has none (17.6), nor a
+    // compute tile's (the RTL's PERIPHERAL_DMAS: master_tile, memory_tile, tracer_tile)
+    bs.peripheral_dmas = k > lw::CC1 ? block.straps.peripherals : 0;
     DirectorConfig dc;
     dc.tile = k; dc.periph_present = periph_present; dc.mem_chunks = g.cfg.mem_chunks;
     dc.g4 = true;
@@ -131,9 +133,10 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     cfg.link(d.gather_put, b.gather_put, 1);
     // The peripheral slot (17): the director's region writes, Link(3); the core's window stores and consuming loads,
     // Link(1); its window RegFile, read by the core (loads, stalls) and the tile control unit (EVENTS.peripheral_n,
-    // ERRORS.peripheral_n). On a special tile (k 64-66) the slot has the DMAs: the master tile's peripheral 1 is
-    // Ingress/Egress (type 1), the memory tile's v1.35's stub, the tracer tile's the Tracer (cc3_tracer) or the stub;
-    // the chip wires the master tile's own ports and the DMA through `io.slot` and `io.dma`.
+    // ERRORS.peripheral_n). A special tile's peripheral 1 (2.1): the master tile's Ingress/Egress (17.6, no DMA), the
+    // memory tile's RW engine, a stand-in that stops the simulator if it is started or written (17.7;
+    // ingress_egress.h), the tracer tile's Tracer (17.9: v1.35's behind the slot's control block); the last two have
+    // the DMA. The chip wires Ingress/Egress's own ports and the DMA through `io.slot` and `io.dma`.
     PeriphSlot* slot = nullptr;
     if (periph_slot) {
         if ((periph_present & 7) != 1) FATAL("add_g1: tile %u: the slot's tile has peripheral 1 only (PARAMS.peripherals = %u)", k, periph_present);
@@ -142,22 +145,24 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
         pc.replayer_log_entries = g.cfg.replayer_log_entries;
         if (k < 64) pc.type[1] = test_k ? PT_TEST : g.cfg.periph1;   // the replayer by default (or the test's)
         else {
-            pc.controller = true;
-            pc.type[1] = k == lw::CC1 ? PT_CNC1 : k == lw::CC3 && g.cfg.cc3_tracer ? PT_TRACER : PT_CC_STUB;
+            pc.controller = k != lw::CC1;
+            pc.type[1] = k == lw::CC1 ? PT_INGRESS : k == lw::CC2 ? PT_RW_STUB : PT_TRACER;
         }
         auto& sl = cfg.add<PeriphSlot>(t + "slot", pc);
         cfg.link(d.periph, sl.region, 3);
         cfg.link(c.periph, sl.core, 1);
         cfg.connect(sl.window, c.win);
         cfg.connect(sl.window, b.slot_win);
-        if (k == lw::CC1) sl.s.cnc1(1).ref_cycle = g.cfg.timing.ref_cycle;
         slot = &sl;
     }
 
     ControlIO io;
     if (slot && slot->cfg.controller) { io.dma = slot->dma; io.has_dma = true; }
     io.slot = slot;
-    io.send = c.send; io.send_busy = b.send_busy; io.eject = d.in; io.release = b.release; io.line = b.line;
+    io.send = c.send; io.send_busy = b.send_busy; io.eject = d.in;
+    io.barrier = block.straps.barrier;
+    if (io.barrier) { io.release = b.release; io.arrive = b.arrive; }
+    io.error = b.error;
     io.router_ovf = b.router_ovf;
     io.router_ovf_ev = b.ovf;
     // the read queue's ports (in the inject unit), wired by tile_cycle; the two clients and the tile control unit's

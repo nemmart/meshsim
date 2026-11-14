@@ -12,7 +12,7 @@
 
 #include "../mach.h"
 #include "units/chip.h"
-#include "units/cnc.h"
+#include "../bench_master.h"
 #include "units/cnc1_periph.h"
 #include "units/linkword.h"
 #include "units/periph_slot.h"

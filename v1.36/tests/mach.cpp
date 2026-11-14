@@ -25,8 +25,8 @@
 #include "units/reqbus.h"
 #include "units/router.h"
 #include "units/write_engine.h"
-#include "units/cnc.h"
-#include "units/host_port.h"
+#include "bench_master.h"
+#include "units/ingress_egress.h"
 #include "units/linkword.h"
 #include "units/net.h"
 #include "units/table_store.h"
@@ -63,6 +63,11 @@ MachConfig MachConfig::machine() {
     c.real_responder = true;
     return c;
 }
+MachConfig MachConfig::chip() {
+    MachConfig c = machine();
+    c.special_tiles = true;
+    return c;
+}
 unsigned MachConfig::k_min() const {
     const unsigned L = ts_engine_latency;
     return std::max(std::max(2 * L + 4, L + 4), std::max(cm_latency, rp_latency));
@@ -88,7 +93,8 @@ const Field kFields[] = {
     F_U("readTokens", read_tokens), F_B("loopbackLast", loopback_last), F_B("loopbackTokens", loopback_tokens),
     F_I("loopbackDepth", loopback_depth), F_U("tsEngineLatency", ts_engine_latency), F_I("agLookahead", ag_lookahead),
     F_B("testReadClients", test_read_clients), F_U("regLoadLatency", reg_load_latency),
-    F_B("ccCores", cc_cores), F_B("cc3Tracer", cc3_tracer), F_U("ccDmaDepth", cc_dma_depth), F_U("ccLinkLatency", cc_link_latency),
+    F_B("ccCores", special_tiles), F_U("ccDmaDepth", cc_dma_depth),   // (ccCores: v1.3's name of the machine with units 64-66)
+    F_U("arriveLatency", arrive_latency), F_U("releaseLatency", release_latency), F_U("errorLatency", error_latency),   // (v1.36's: 18)
     F_U("requestFifoDepth", request_queue_depth), F_U("reqHopLatency", req_hop_latency), F_I("periphType", periph_type),
     F_B("realResponder", real_responder), F_B("coreless", coreless), F_U("goLatency", go_latency),
     F_U("readyLatency", ready_latency), F_B("cncGoSettle", cnc_go_settle), F_U("cncReaction", cnc_reaction),
@@ -112,7 +118,8 @@ const std::vector<std::pair<std::string, std::string>>& MachConfig::dropped() {
         {"periphTypes", "an array; no driver sets it (testPeripheral: MachConfig::test_periph_tile)"},
         {"testPeripheral", "a Java function: MachConfig::test_periph_tile (the replayer on one tile)"},
         {"hops", "the hop table: data/hops.txt"},
-        {"errorLatency", "no v1.3 driver sets it other than readyLatency (PeripheralSlotTest only reads it); the C++ machine carries READY and the error line on one line"},
+        {"cc3Tracer", "v1.36: the tracer tile's peripheral 1 is the Tracer (2.1)"},
+        {"ccLinkLatency", "v1.36: an attach link is a link like the others (16.1: linkLatency)"},
         // v1.36: parameters of hardware, or of checks of hardware, that the RTL's tile does not have
         {"runLatency", "v1.36: no RUN state (the barrier: machine-spec 7.3)"},
         {"stageDelay", "v1.36: v1.35's boot staging is gone (the boot ROM pulls its image with LOAD: 6.5)"},
@@ -219,16 +226,15 @@ struct Chip::Impl {
 
 Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     Impl& m = *impl_;
-    if (c.error_latency >= 0 && unsigned(c.error_latency) != c.ready_latency)
-        FATAL("mach: Config.errorLatency %d: the C++ machine carries READY and the error line on one line (= readyLatency)", c.error_latency);
     if (c.K < c.k_min())                                   // TrafficDirector's constructor (ref: IllegalArgumentException)
         FATAL("K = %u is below meshsim's max(2L + 4, L + 4, cm_latency, rp_latency) = %u at L = %u (4.7, D49; invariant 24)",
               c.K, c.k_min(), c.ts_engine_latency);
-    if (c.cc3_tracer && !c.cc_cores) FATAL("mach: cc3_tracer needs cc_cores (ref's Config)");
+    if (c.special_tiles && (c.coreless || c.reqbus_host || c.test_read_clients))
+        FATAL("mach: the chip with its special tiles is the machine as specified (no coreless, reqbus_host or test_read_clients)");
     m.hops = units::load_hops(data_path({"data/hops.txt"}).c_str());
     const rtl_images::BootRom rom = rtl_images::boot_rom();   // the RTL's boot ROM (6.5)
     m.rom = rom.words;
-    m.nunits = c.cc_cores ? 67 : 64;
+    m.nunits = c.special_tiles ? 67 : 64;
     m.mem.assign(size_t(m.nunits) * 2 * units::MEM_WORDS, 0);
 
     units::G1Config& g = m.gx.cfg;
@@ -236,7 +242,7 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     g.timing.ref_cycle = c.ref_cycle;
     g.mem_chunks = c.mem_chunks;
     g.periph_present = c.periph_type != 0 ? 1 : 0;
-    g.periph_slot = c.periph_type != 0 || c.cc_cores;     // ref: every tile's slot holds its peripheral 1 (type 4)
+    g.periph_slot = c.periph_type != 0 || c.special_tiles;     // ref: every tile's slot holds its peripheral 1 (type 4)
     if (c.periph_type != 0 && c.periph_type != 4) FATAL("mach: periph_type %d (4 the replayer, or 0)", c.periph_type);
     if (c.test_periph_tile >= 64) FATAL("mach: test_periph_tile %d (a mesh tile)", c.test_periph_tile);
     if (c.test_peripheral_tile >= 64) FATAL("mach: test_peripheral_tile %d (a mesh tile)", c.test_peripheral_tile);
@@ -247,7 +253,6 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         if (c.periph_type != 0) FATAL("mach: test_periph_tile needs periph_type 0 (ref's StageB: periphType 0)");
         g.periph_present = 1; g.periph_slot = true; g.periph_only = c.test_periph_tile;
     }
-    g.cc3_tracer = c.cc3_tracer;
     g.replayer_log_entries = c.replayer_log_entries;
     g.request_queue_depth = c.request_queue_depth;
     g.K = c.K; g.cm_latency = c.cm_latency;
@@ -270,9 +275,10 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     nc.read_tokens = c.read_tokens;
     nc.go_latency = c.go_latency; nc.ready_latency = c.ready_latency; nc.cnc_reaction = c.cnc_reaction;
     nc.cnc_rx_depth = c.cnc_rx_depth; nc.skew = c.skew; nc.skew_seed = c.skew_seed;
-    nc.cc_link_latency = c.cc_link_latency; nc.cc_dma_depth = c.cc_dma_depth;
+    nc.cc_dma_depth = c.cc_dma_depth;
     nc.loopback_last = c.loopback_last; nc.loopback_tokens = c.loopback_tokens; nc.loopback_depth = c.loopback_depth;
-    nc.error_latency = c.error_latency; nc.cnc_go_settle = c.cnc_go_settle;
+    nc.cnc_go_settle = c.cnc_go_settle;
+    nc.arrive_latency = c.arrive_latency; nc.release_latency = c.release_latency; nc.error_latency = c.error_latency;
     units::start_skews(nc, m.skew);
 
     m.prog.release();                                     // C&C's queue starts empty; the harness appends (Cc)
@@ -288,16 +294,15 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     units::ChipSpec spec;
     spec.net = nc; spec.hops = &m.hops; spec.control = units::add_g1; spec.control_ctx = &m.gx;
     spec.domain = c.parts > 1 ? dom : nullptr;
-    spec.cc_cores = c.cc_cores; spec.cc3_dma = c.cc3_tracer; spec.host_capacity = c.host_capacity;
-    spec.reqbus.fifo_depth = c.request_queue_depth; spec.reqbus.hop_latency = c.req_hop_latency;
-    spec.reqbus_host = c.reqbus_host && !c.cc_cores;
-    if (c.reqbus_host) {
-        if (c.cc_cores) FATAL("mach: reqbus_host: the machine with C&C's model (units 64-66 as cores have their own receive sides)");
-        spec.reqbus.credit_latency = 0;                   // D34: exact as ref (one domain)
-    }
+    spec.bench_attach = !c.special_tiles;
+    spec.reqbus.fifo_depth = c.request_queue_depth;
+    // the request tree: the chip's is the RTL's (a cycle a node, the nodes' room as registers: reqbus.h); the bench
+    // machine's v1.35's (req_hop_latency; exact as ref with the harness's host, D34)
+    spec.reqbus.hop_latency = c.special_tiles ? 1 : c.req_hop_latency;
+    spec.reqbus.credit_latency = c.special_tiles ? 1 : c.reqbus_host ? 0 : 3;
     for (unsigned q = 0; q < 3; q++) spec.reqbus.queue_depth[q] = c.receive_queue_depth[q];
-    if (!c.cc_cores) spec.program = &m.prog;
-    units::build_chip(sc, spec);
+    if (c.special_tiles) units::build_chip(sc, spec);
+    else units::build_bench_chip(sc, spec, m.prog, c.reqbus_host);
     m.sim.emplace(sc.build());
     // The harness's machine (harness-only flags in the units): the coreless core, the drain in the gather unit's place
     // (real_responder off), and the table stores' republish of a harness poke.
@@ -308,7 +313,7 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         m.sim->unit<units::HistStore>(units::tile_unit(k, "hist")).host_poke = true;
     }
     m.shifted = {m.sim->type_of(units::tile_unit(0, "ctl")), m.sim->type_of(units::tile_unit(0, "core"))};
-    if (!c.cc_cores) m.lines = {m.sim->type_of("row0"), m.sim->type_of("cnc")};
+    if (!c.special_tiles) m.lines = {m.sim->type_of("row0"), m.sim->type_of("cnc")};
     // ref's quiescent leaves the request bus out (Tile.quiescent, Chip.quiescent: no request port, node or queue)
     if (c.threads <= 1)
         for (const char* u : {"t0.reqleaf", "reqbus.row0", "reqbus.root", "cc1.reqrecv", "reqbus.host"})
@@ -343,25 +348,25 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
             m.hw.push_back({int(k), nullptr, 0, &m.sim->unit<units::Gather>(units::tile_unit(k, "gather")).in, false});
             m.checker->fifo_names.push_back(t + "gather-q");
         }
-        if (!c.cc_cores) {
+        if (!c.special_tiles) {
             m.hw.push_back({-1, nullptr, 0, &m.sim->unit<units::Cnc>("cnc").rx, false}); m.checker->fifo_names.push_back("cc1.rx");
             m.hw.push_back({-1, nullptr, 0, &m.sim->unit<units::Endpoint>("ep2").rx, false}); m.checker->fifo_names.push_back("cc2.rx");
             m.hw.push_back({-1, nullptr, 0, &m.sim->unit<units::Endpoint>("ep3").rx, false}); m.checker->fifo_names.push_back("cc3.rx");
         }
     }
-    m.has_cnc = !c.cc_cores;
-    if (c.reqbus_host && !c.cc_cores)                     // the receive queues' delivery logs (ReqBus::delivered_log)
+    m.has_cnc = !c.special_tiles;
+    if (c.reqbus_host && !c.special_tiles)                     // the receive queues' delivery logs (ReqBus::delivered_log)
         for (unsigned q = 0; q < 3; q++) {
             static const char* kRecv[3] = {"cc1.reqrecv", "cc2.reqrecv", "cc3.reqrecv"};
             m.dlog[q].reserve(c.log_capacity);
             m.sim->unit<units::reqbus::ReqRecv>(kRecv[q]).dlog = &m.dlog[q];
         }
-    if (!c.cc_cores) {                                    // ref's CnC.phaseLog
+    if (!c.special_tiles) {                                    // ref's CnC.phaseLog
         m.plog.assign(c.phase_log_capacity, {});
         units::Cnc& cn = m.sim->unit<units::Cnc>("cnc");
         cn.plog = reinterpret_cast<int64_t(*)[2]>(m.plog.data()); cn.plog_cap = c.phase_log_capacity;
     }
-    if (!c.cc_cores)                                      // the endpoints' receive traces (ref's received), every machine
+    if (!c.special_tiles)                                      // the endpoints' receive traces (ref's received), every machine
         for (unsigned k = 0; k < 3; k++) {
             m.recv[k].assign(c.log_capacity, {});
             m.sends[k].log = reinterpret_cast<uint64_t(*)[4]>(m.recv[k].data());
@@ -369,7 +374,7 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
             if (k == 0) m.sim->unit<units::Cnc>("cnc").hs = &m.sends[0];
             else m.sim->unit<units::Endpoint>("ep" + std::to_string(k + 1)).hs = &m.sends[k];
         }
-    if (!c.cc_cores) m.cc = std::make_unique<Cc>(*this);
+    if (!c.special_tiles) m.cc = std::make_unique<Cc>(*this);
     for (uint32_t id = units::CncProgram::kCalls; id-- > 0;) m.free_ids.push_back(id);
 }
 
@@ -460,11 +465,11 @@ bool ReqBus::idle() const {
     return true;
 }
 bool Chip::toast() const {
-    if (cfg_.cc_cores) FATAL("mach: toast(): the machine with C&C's model only (with C&C 1-3 as cores, read cc1p's own)");
+    if (cfg_.special_tiles) return const_cast<Chip*>(this)->unit<units::PeriphSlot>("cc1.slot").s.ingress_egress(1).toast;
     return const_cast<Chip*>(this)->unit<units::Cnc>("cnc").toast;
 }
 int64_t Chip::toast_at() const {
-    if (cfg_.cc_cores) FATAL("mach: toast_at(): the machine with C&C's model only");
+    if (cfg_.special_tiles) return const_cast<Chip*>(this)->unit<units::PeriphSlot>("cc1.slot").s.ingress_egress(1).toast_at;
     return const_cast<Chip*>(this)->unit<units::Cnc>("cnc").toast_at;
 }
 bool ReqBus::head(unsigned target, int64_t t, uint32_t w[4]) const {   // ref's head(target, t): delivered before t
@@ -604,13 +609,6 @@ bool Chip::all_in_wfi() const {
     return true;
 }
 
-void Chip::host_load(unsigned c, uint32_t byte_addr, const std::vector<uint32_t>& words) {
-    if (c > 2) FATAL("mach: host_load: unit %u (64-66: cc 0-2)", 64 + c);
-    if (!cfg_.cc_cores) FATAL("mach: host_load needs cc_cores");
-    const std::string n = "cc" + std::to_string(c + 1) + ".host";
-    impl_->sim->unit<units::HostPort>(n).load(byte_addr, words.data(), words.size());
-    impl_->sim->wake(n);
-}
 
 // ---- the checker (checker.cpp) ----
 // Every fact recorded so far, processed. (The tile control units record their ERRORS and error lines for a cycle at their
@@ -1248,7 +1246,7 @@ void Chip::Impl::enable_net(const MachConfig& c) {
         d.log = reinterpret_cast<uint64_t(*)[4]>(logs[k].data());
         d.log_cap = c.log_capacity; d.log_n = 0;
     }
-    if (c.cc_cores) FATAL("Net: the coreless machine has C&C 1's Java model (no cc_cores)");
+    if (c.special_tiles) FATAL("Net: the coreless machine has C&C 1's Java model (no cc_cores)");
 }
 void Chip::Impl::push_send(unsigned cc, const units::HarnessSends::E& e) {   // between cycles: grow if full
     units::HarnessSends& h = sends[cc];
@@ -1321,7 +1319,7 @@ void Net::send(unsigned cc, unsigned dst, unsigned mode, unsigned counter, uint3
 }
 std::vector<std::array<uint64_t, 4>> Net::received(unsigned cc) const { return c.received(cc); }
 std::vector<std::array<uint64_t, 4>> Chip::received(unsigned cc) const {
-    if (cfg_.cc_cores || cc > 2) FATAL("mach: received(%u): C&C 1-3's endpoints of the model (no cc_cores)", cc);
+    if (cfg_.special_tiles || cc > 2) FATAL("mach: received(%u): C&C 1-3's endpoints of the model (no cc_cores)", cc);
     const Impl& m = *impl_;
     if (m.sends[cc].lost) FATAL("mach: C&C %u's receive trace overflowed (%u kept, %llu lost): raise MachConfig::log_capacity",
                                 cc + 1, m.sends[cc].log_cap, (unsigned long long)m.sends[cc].lost);
@@ -1390,7 +1388,7 @@ unsigned Net::max_router_peak() const {
 namespace mach {
 
 MachConfig Mach::cfg(int64_t shuffle) { MachConfig k = MachConfig::machine(); k.shuffle_seed = shuffle; return k; }
-MachConfig Mach::cores_cfg(int64_t shuffle) { MachConfig k = cfg(shuffle); k.cc_cores = true; return k; }
+MachConfig Mach::chip_cfg(int64_t shuffle) { MachConfig k = MachConfig::chip(); k.shuffle_seed = shuffle; return k; }
 
 Mach::Mach(const MachConfig& cfg) : c(cfg) {}
 

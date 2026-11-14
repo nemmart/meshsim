@@ -17,7 +17,7 @@
 #include "harness.h"
 #include "portconf.h"
 #include "statefp_g2.h"
-#include "units/cnc.h"
+#include "bench_master.h"
 
 using namespace units;
 using sim::Ctx;
@@ -95,7 +95,7 @@ void parse(const std::string& text, Script& s) {
 // line word for the end of cycle e is put at e + 1, as the block does at its shifted end of cycle.
 struct TileStub {
     sim::LinkIn go;
-    sim::LinkOut line;
+    sim::LinkOut arrive, error;      // a line word (fp::LineEdge) as the tile control unit's two nets: READY's edge, the level
     uint8_t k;
     uint64_t seed;
     const TileEv* ev; uint32_t n, i = 0;
@@ -103,7 +103,7 @@ struct TileStub {
     uint32_t gos = 0;
     uint8_t level = 0;
     TileStub(Ports& p, unsigned tile, uint64_t s, const TileEv* e, uint32_t count) : k(uint8_t(tile)), seed(s), ev(e), n(count) {
-        p.in(go, "go", 0); p.out(line, "line", 1);
+        p.in(go, "go", 0); p.out(arrive, "arrive", 0); p.out(error, "error", 1);
     }
     // the line word due at the end of cycle e (fp::LineEdge)
     fp::LineEdge edge(uint64_t e) const {
@@ -132,7 +132,7 @@ struct TileStub {
             uint32_t m = 0;
             for (uint32_t j = 0; j < ndyn; j++) if (dyn[j] > u - 1) dyn[m++] = dyn[j];
             ndyn = m;
-            if (le.put) c.put(line, Word(le.ready) | Word(le.level) << 1);
+            if (le.put) { if (le.ready) c.put(arrive); c.put(error, Word(le.level)); }
         }
         uint64_t nx = UINT64_MAX;
         if (i < n) nx = ev[i].e;
@@ -192,7 +192,8 @@ std::string run(const Script& s, sim::Options opt, std::string* extra = nullptr)
     for (unsigned k = 0; k < 64; k++) {
         auto& t = cfg.add<TileStub>("t" + std::to_string(k), k, s.seed, s.tile[k].data(), uint32_t(s.tile[k].size()));
         cfg.link(cc.go[k], t.go, nc.go_latency + skew[k] + 1);
-        cfg.link(t.line, rows[k / 8]->line[k % 8], nc.ready_latency - 2);
+        cfg.link(t.arrive, rows[k / 8]->arrive[k % 8], nc.ready_latency - 2);
+        cfg.link(t.error, rows[k / 8]->error[k % 8], nc.ready_latency - 2);
     }
     auto& r0 = cfg.add<Router0>("router0", s.stalls.data(), uint32_t(s.stalls.size()), s.rx.data(), uint32_t(s.rx.size()));
     cfg.connect(cc.send, r0.from_cnc);

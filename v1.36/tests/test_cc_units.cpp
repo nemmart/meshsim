@@ -23,7 +23,7 @@
 #include "golden_run.h"
 #include "harness.h"
 #include "units/chip.h"
-#include "units/host_port.h"
+#include "host_port.h"
 #include "units/inject.h"
 #include "units/router.h"
 #include "units/tile_ctl.h"

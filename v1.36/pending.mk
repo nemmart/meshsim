@@ -17,6 +17,13 @@ PENDING_TESTS += test_g1_tile test_tile_slot test_tileslotconf
 # (DMA_CONFIG.gap), so the scripts cannot be expressed. test_memconf: its observations are v1.3's fingerprint streams
 # through tests/statefp_g1.*, which does not compile (it also writes v1.35's core and register block).
 PENDING_TESTS += test_engconf test_memconf
+# v1.35's conformance of C&C 1's peripheral against ref (READY_LINES, PULSE_GO, the row collectors' words, a toast pin on
+# any error line): v1.36's master tile has Ingress/Egress (17.6), whose own test is test_ingress_egress.
+PENDING_TESTS += test_cnc1_periph
+# ref's SlotConf scripts store and load v1.35's control-block words (the run and DMA pulses at 3 and 4, EVENTS at 5-7, the
+# DMA at 8 and 9) and reserved words at random, and their observations hold v1.35's DMA: an address that advances for
+# packets that are not WRITEs. v1.36's control and DMA blocks are tested from the specification in test_periph_slot.
+PENDING_TESTS += test_slotconf
 # What v1.3's suites and goldens drive on the chip: v1.35's images under C&C's commands, C&C 1-3 as cores, v1.3's
 # fingerprints. (tests/mach.h itself is ported: test_mach.) test_checkself: ref's CheckSelf sequence, which provokes
 # the checker through v1.35's commands, replies and strays. test_p4suites, test_ctl_suites, test_sort_suites,

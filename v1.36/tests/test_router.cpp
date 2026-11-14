@@ -75,7 +75,6 @@ Script parse_script(const std::string& text) {
 struct Stim {
     sim::LinkOut link[4], inj, cc_link;
     sim::HoldOut cnc, send;
-    sim::FifoOut host;                                        // a controller's router: L1
     sim::CreditOut dma;                                       // L2 (the slot's DMA: never without a credit here)
     bool attached, core, link5, cc;
     const Ev* ev; uint32_t n, i = 0;
@@ -85,7 +84,7 @@ struct Stim {
     Stim(Ports& p, const Script& s, const Ev* e, uint32_t count)
         : attached(s.tile < 3), core(s.send), link5(s.link), cc(s.tile >= 64), ev(e), n(count) {
         if (cc) {
-            p.out(link[0], "link", 3); p.out(host, "host", 3);
+            p.out(link[0], "link", 3);
             if (s.dma) p.out(dma, "dma", 3);
         } else for (unsigned d = 0; d < 4; d++) p.out(link[d], "link", 3);
         if (core) p.out(send, "send", 3); else p.out(inj, "inj", 3);
@@ -101,8 +100,7 @@ struct Stim {
         }
         for (; i < n && ev[i].t == t; i++) {
             const Ev& e = ev[i];
-            if (cc && e.port == 1) c.put(host, e.w[0], e.w[1], e.w[2]);
-            else if (cc && e.port == 2) c.put(dma, e.w[0], e.w[1], e.w[2]);
+            if (cc && e.port == 2) c.put(dma, e.w[0], e.w[1], e.w[2]);
             else if (e.port < 4) c.put(link[e.port], e.w[0], e.w[1], e.w[2]);
             else if (e.port == 4) c.put(inj, e.w[0], e.w[1], e.w[2]);
             else if (e.port == 6) {
@@ -176,7 +174,7 @@ std::string run(const Script& s, const Hops& h, sim::Options opt) {
     auto& r = cfg.add<Router>("router", s.tile, nc, &h, false, s.link ? Router::FIFTH_LINK : Router::FIFTH_HOLD, s.dma);
     auto& ob = cfg.add<Obs>("obs", s);
     for (unsigned d = 0; d < (cc ? 1u : 4u); d++) { cfg.link(st.link[d], r.in[d], 1); cfg.link(r.out[d], ob.link[d], 1); }
-    if (cc) { cfg.connect(st.host, r.host); if (s.dma) cfg.connect(st.dma, r.dma); }
+    if (cc && s.dma) cfg.connect(st.dma, r.dma);
     cfg.link(r.eject, ob.eject, 1);
     if (s.send) {
         auto& ij = cfg.add<Injection>("inj", s.tile, nc);
@@ -191,7 +189,7 @@ std::string run(const Script& s, const Hops& h, sim::Options opt) {
     }
     cfg.connect(r.ovf, ob.ovf);
     if (att && !s.link) { cfg.connect(st.cnc, r.from_cnc); cfg.connect(r.to_cnc, ob.cnc); }
-    if (att && s.link) { cfg.link(st.cc_link, r.from_cc, nc.cc_link_latency); cfg.link(r.to_cc, ob.cc_link, nc.cc_link_latency); }
+    if (att && s.link) { cfg.link(st.cc_link, r.from_cc, 1); cfg.link(r.to_cc, ob.cc_link, 1); }
     sim::Sim sim = cfg.build();
     std::string out, snap, injsnap;
     uint64_t held_end = 0;                                    // the injection unit's loopback tokens at the end of t - 1
@@ -282,9 +280,48 @@ bool same(const std::string& name, const std::string& got, const std::string& wa
 }
 
 const char* kFixtures[] = {"t0-s1", "t1-s2", "t5-s3", "t27-s1", "t63-s2", "t0-s4-send", "t5-s5-send", "t63-s6-send",
-                           "t0-s7-link", "t2-s8-link", "t64-s1", "t65-s2", "t66-s3-dma"};
+                           "t0-s7-link", "t2-s8-link"};
+// (v1.36: ref's runs of a controller's router, t64-s1, t65-s2 and t66-s3-dma, are no longer run: they drive v1.35's host
+// port, which a special tile's router does not have, and a DMA without the flow control of 16.4, from v1.35's source id.
+// The fixtures stay in tests/routerconf/; the special tile's router has its own tests below, from the specification.)
 
-void conformance(sim::Options opt) {
+// v1.36 AND REF'S FIXTURES. Two rules of the RTL's router are not ref's: a packet for a reserved tile id, or for none, is
+// dropped where it is routed (16.2; ref routes it as tile dst mod 64 and counts it at the eject), and v1.35's DMA source
+// ids 72-74, which ref routes as their controllers, do not exist (16.4: a DMA sends with its tile's id). Ref's scripts
+// draw ids at random, so each holds such packets (some 3 % of its events), from which on ref's observations are of
+// another router. `first_divergence` is the cycle of a script's first such event; the comparison with ref covers the
+// cycles before it, and says how many. The whole run is compared with v1.36's own reference (tests/routerconf/v1.36/,
+// its README: regenerated for those two rules, with `ROUTERCONF_WRITE=1 test_router`), which keeps the router's cycles
+// under regression until the timing stage has fixtures from the RTL.
+const std::string kDir136 = "tests/routerconf/v1.36/";
+bool writing() { return std::getenv("ROUTERCONF_WRITE") != nullptr; }
+void write_file(const std::string& cmd, const std::string& text) {
+    FILE* p = popen(cmd.c_str(), "w");
+    if (!p || std::fwrite(text.data(), 1, text.size(), p) != text.size() || pclose(p) != 0) { std::fprintf(stderr, "cannot write: %s\n", cmd.c_str()); std::abort(); }
+}
+uint64_t first_divergence(const Script& s) {
+    for (const Ev& e : s.ev) {
+        const unsigned src = lw::src(e.w[1]), dst = lw::dst(e.w[1]);
+        const bool stamped = e.port == 4 || e.port == 6;               // the injection: src is the router's to stamp
+        if ((dst > lw::CC3 && dst != lw::BROADCAST) || (!stamped && src >= 72 && src <= 74)) return e.t;
+    }
+    return ~uint64_t(0);
+}
+// The lines of `text` for the cycles before `cut` (a line starts with its cycle).
+std::string before(const std::string& text, uint64_t cut, unsigned* lines = nullptr) {
+    size_t p = 0;
+    unsigned n = 0;
+    while (p < text.size()) {
+        if (std::strtoull(text.c_str() + p, nullptr, 10) >= cut) break;
+        const size_t e = text.find('\n', p);
+        p = e == std::string::npos ? text.size() : e + 1;
+        n++;
+    }
+    if (lines) *lines = n;
+    return text.substr(0, p);
+}
+
+void conformance(sim::Options opt, bool report = false) {
     const Hops h = hops();
     for (const char* name : kFixtures) {
         bool ok1 = false, ok2 = false;
@@ -292,7 +329,18 @@ void conformance(sim::Options opt) {
         std::string ref = body(portconf::read_command("gzip -dc " + kDir + name + ".obs.gz", &ok2));
         if (!ok1 || !ok2 || ref.empty()) { ::test::fail(__FILE__, __LINE__, "fixture %s missing", name); return; }
         Script s = parse_script(script);
-        if (!same(name, run(s, h, opt), ref)) { ::test::fail(__FILE__, __LINE__, "%s differs from ref", name); return; }
+        const uint64_t cut = first_divergence(s);
+        unsigned lines = 0;
+        const std::string want = before(ref, cut, &lines);
+        const std::string got = run(s, h, opt);
+        if (!same(name, before(got, cut), want)) { ::test::fail(__FILE__, __LINE__, "%s differs from ref", name); return; }
+        if (report && writing()) write_file("gzip -9n > " + kDir136 + name + ".obs.gz", "# routerconf observations: v1.36 (README)\n" + got);
+        bool ok3 = false;
+        const std::string own = body(portconf::read_command("gzip -dc " + kDir136 + name + ".obs.gz", &ok3));
+        if (!ok3 || own.empty()) { ::test::fail(__FILE__, __LINE__, "v1.36's reference of %s missing", name); return; }
+        if (!same(std::string(name) + " (v1.36)", got, own)) { ::test::fail(__FILE__, __LINE__, "%s differs from v1.36's reference", name); return; }
+        if (report) std::fprintf(stderr, "router conformance: %s: equal to ref for the %u cycles before its first packet v1.36 routes otherwise (of %llu)\n",
+                                 name, lines, (unsigned long long)s.cycles);
     }
 }
 
@@ -301,8 +349,11 @@ void conformance(sim::Options opt) {
 TEST(routing_tables_equal_refs) {
     const Hops h = hops();
     bool ok = false;
-    std::string ref = portconf::read_command("cat " + kDir + "tables.txt", &ok);
-    CHECK(ok && !ref.empty());
+    // (v1.36: ref's table, tests/routerconf/tables.txt, routes v1.35's DMA source ids 72-74 as their controllers, as
+    // sources and as destinations; 16.4 has no such ids, so the routing function's entries for them, never used, differ,
+    // and with them each tile's hash. v1.36's own table is the reference: tests/routerconf/v1.36/tables.txt, its README.)
+    std::string ref = portconf::read_command("cat " + kDir136 + "tables.txt", &ok);
+    CHECK(writing() || (ok && !ref.empty()));
     std::string got;
     for (unsigned me = 0; me < 64; me++) {
         uint64_t x = 0xcbf29ce484222325ull;
@@ -312,6 +363,7 @@ TEST(routing_tables_equal_refs) {
         std::snprintf(b, sizeof b, "%u %016" PRIx64 "\n", me, x);
         got += b;
     }
+    if (writing()) { write_file("cat > " + kDir136 + "tables.txt", "# routing tables: v1.36 (README)\n" + got); return; }
     CHECK(same("tables", got, body(ref)));
 }
 
@@ -335,7 +387,7 @@ TEST(broadcast_tree_reaches_every_tile_once) {
     }
 }
 
-TEST(router_conformance_with_ref) { conformance({}); }
+TEST(router_conformance_with_ref) { conformance({}, true); }
 
 // The long runs (oracle/ref/routerconf.sh CYCLES DIR, plain files), when ROUTERCONF_LONG=DIR is set: every configuration,
 // seeds 1-3. Not in make check (minutes); run before a merge that touches the router.
@@ -343,7 +395,7 @@ TEST(router_conformance_long_runs_when_asked) {
     const char* dir = std::getenv("ROUTERCONF_LONG");
     if (!dir) return;
     const Hops h = hops();
-    const char* confs[] = {"0", "1", "5", "27", "63", "0|-send", "5|-send", "63|-send", "0|-link", "2|-link", "64", "65", "66|-dma"};
+    const char* confs[] = {"0", "1", "5", "27", "63", "0|-send", "5|-send", "63|-send", "0|-link", "2|-link"};
     unsigned n = 0;
     for (const char* cf : confs)
         for (int seed = 1; seed <= 3; seed++) {
@@ -353,7 +405,9 @@ TEST(router_conformance_long_runs_when_asked) {
             std::string script = portconf::read_command("gzip -dc " + name + ".script.gz", &ok1);
             std::string ref = body(portconf::read_command("gzip -dc " + name + ".obs.gz", &ok2));
             CHECK(ok1 && ok2 && !ref.empty());
-            CHECK(same(name, run(parse_script(script), h, {}), ref));
+            const Script sc = parse_script(script);
+            const uint64_t cut = first_divergence(sc);
+            CHECK(same(name, before(run(sc, h, {}), cut), before(ref, cut)));
             n++;
         }
     std::fprintf(stderr, "router conformance: %u long runs equal to ref\n", n);

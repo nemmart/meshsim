@@ -14,7 +14,7 @@
 #include "harness.h"
 #include "t2_harness.h"
 #include "units/chip.h"
-#include "units/host_port.h"
+#include "host_port.h"
 
 using namespace units;
 

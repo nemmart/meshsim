@@ -21,7 +21,8 @@
 // THE TILE CONTROL UNIT'S PORTS (TileCtl):
 //   bus         Link(2), width 2   the core's window store, status pulse or canonical-wait level of t
 //   side        Link(1), width 1   a load's side effect: a consuming EVENTS load; receive_underflow's pulse
-//   release     Link, width 0      BARRIER_RELEASE's pulse (18), from the master tile's side
+//   release     Link, width 0      BARRIER_RELEASE's pulse (18), from the master tile's Ingress/Egress; only with the
+//                                  strap `barrier` (7.1: a special tile's barrier is not wired)
 //   kline       Link(LAND_LATENCY + 1), width 1, from the director: a counter's decrement due (12.3)
 //   bad, ovf, drift, gather_ovf_ev  width 0, Link(1): the errors' pulses of the receive unit, the router, the DMA unit
 //               and the gather unit (7.4)
@@ -38,8 +39,8 @@
 //   dma         RegFile (DMA_REGS: DMA_CONFIG, RECEIVE_CONFIG, GATHER_CONFIG), read by the write engine, the address
 //               generator and the gather unit (write_engine.h)
 //   ag_start    Wire: DMA_START's starts so far (a change = a start)
-//   line        Link, width 1: the tile's nets to the master tile's side (18): bit 0 BARRIER_ARRIVE's pulse, bit 1 the
-//               error line's level; put in a cycle BARRIER_ARRIVE pulses or the error line changes
+//   arrive      Link, width 0: BARRIER_ARRIVE (18), put in the cycle its flip-flop is 1; only with the strap `barrier`
+//   error       Link, width 1: the error line's level (18), put in the first cycle of each new level
 #pragma once
 
 #include <cstdint>
@@ -91,7 +92,7 @@ struct TileCtl {
     // ---- outputs ----
     sim::RegFileOut regs, dma;
     sim::WireOut wake, irq, ag_start;
-    sim::LinkOut line;
+    sim::LinkOut arrive, error;
     RegBlockState s;
 
     uint32_t pub[TILE_REGS] = {};              // the register file as last written (zero at power-on, as the engine's)
@@ -116,20 +117,21 @@ struct TileCtl {
             p.in(ag_status, "ag_status", 1); p.in(drift, "drift", 0);
             p.out(ag_start, "ag_start");
         }
-        p.in(bus, "bus", 2); p.in(side, "side", 1); p.in(release, "release", 0); p.in(kline, "kline", 1);
+        p.in(bus, "bus", 2); p.in(side, "side", 1); p.in(kline, "kline", 1);
+        if (s.straps.barrier) { p.in(release, "release", 0); p.out(arrive, "arrive", 0); }
         p.in(req_freed_ev, "req_freed_ev", 0);
         p.in(send_busy, "send_busy", 1);
         p.in(bad, "bad", 0);
         p.in(router_ovf, "router_ovf"); p.in(we_in_ovf, "we_in_ovf"); p.in(gather_ovf, "gather_ovf");
         p.out(regs, "regs", TILE_REGS); p.out(dma, "dma", DMA_REGS); p.out(wake, "wake"); p.out(irq, "irq");
-        p.out(line, "line", 1);
+        p.out(error, "error", 1);
     }
     // Stepped when something reaches it (and at the first cycle): the edge that ends t - 1, from what reached it at t,
     // then the state at the end of t - 1 for t's readers.
     sim::Wake step(sim::Ctx& c) {
         RegBlockState::In in;
         const uint64_t t = c.now();
-        if (c.ready(release)) { c.take(release); in.release = true; }
+        if (s.straps.barrier && c.ready(release)) { c.take(release); in.release = true; }
         if (c.ready(kline)) { in.decrement = uint32_t(c.peek(kline)[0]); c.take(kline); }
         if (c.ready(bad)) { c.take(bad); in.error_pulses |= 1u << ERR_BAD_PACKET; }
         if (c.ready(req_freed_ev)) { c.take(req_freed_ev); in.freed = true; }
@@ -180,10 +182,12 @@ struct TileCtl {
         for (unsigned i = 0; i < DMA_REGS; i++) if (d[i] != pub_dma[i]) { pub_dma[i] = d[i]; c.write(dma, i, d[i]); }
         c.drive(wake, s.wake());
         c.drive(irq, s.nmi());
-        if (s.arrive_pulse || s.nmi() != error_out) {          // the nets (18), in the cycle after this edge
-            c.put(line, sim::Word(s.arrive_pulse) | sim::Word(s.nmi()) << 1);
-            error_out = s.nmi();
+        // the nets (18), in the cycle after this edge, each from its flip-flop
+        if (s.arrive_pulse) {
+            if (!s.straps.barrier) FATAL("tile %u: BARRIER_ARRIVE pulsed on a tile whose barrier is not wired", s.straps.tile_id);
+            c.put(arrive);
         }
+        if (s.nmi() != error_out) { error_out = s.nmi(); c.put(error, sim::Word(error_out)); }
         // The address generator's start is the block's until the generator's step: look again in the next cycle, when its
         // status says the transfer runs (STATUS.dma_busy, and an empty transfer's end: 8.2). And BARRIER_ARRIVE's
         // flip-flop falls in the next cycle.
@@ -406,27 +410,14 @@ struct TileCore {
             return c.read(u.hist, i & 255);
         }
 
-        // ---- a peripheral's window (17.1), on the simulator's peripheral slot, whose control block is still v1.35's
-        // (periph_slot.h: 3 the start, 4 the DMA's start, 5 EVENTS, 6 EVENTS_PEEK, 7 EVENTS_MASK, 8 DMA_HDR, 9
-        // DMA_DEST_ADDR): the bus presents v1.36's words and the slot's own words 32-127 as they are ----
-        static unsigned slot_word(unsigned w) {
-            switch (w) {
-            case P_EVENTS: return 5;
-            case P_EVENTS_PEEK: return 6;
-            case P_EVENTS_MASK: return 7;
-            case P_START: return 3;
-            case P_DMA_HDR: return 8;
-            case P_DMA_DEST_ADDR: return 9;
-            case P_DMA_START: return 4;
-            default: return w;                                 // PARAMS, STATUS, ERRORS
-            }
-        }
+        // ---- a peripheral's window (17.1), the peripheral slot's (periph_slot.h): its control and DMA blocks, and
+        // the peripheral's own words 32-127 ----
         void need_slot(unsigned n) const { if (!u.slot) FATAL("tile core: peripheral %u's window: the tile has no peripheral slot", n); }
         int periph_control_load(unsigned n, unsigned w, uint32_t& v) {
             need_slot(n);
-            v = c.read(u.win, Win::reg(n, Win::R_STD + slot_word(w)));
+            v = c.read(u.win, Win::reg(n, Win::R_STD + Win::std(w)));
             if (w == P_EVENTS) {                               // a consuming load: under the peripheral's mask (17.2)
-                const uint32_t m = c.read(u.win, Win::reg(n, Win::R_STD + 7));
+                const uint32_t m = c.read(u.win, Win::reg(n, Win::R_STD + P_EVENTS_MASK));
                 if (v & m) c.put(u.periph, CoreOp::consume(n, v & m));
             }
             return 0;
@@ -446,7 +437,7 @@ struct TileCore {
             u.periph_op = CoreOp::store(n, w, v); u.periph_pending = true;
             return 0;
         }
-        int periph_control_store(unsigned n, unsigned w, uint32_t v) { need_slot(n); return periph_put(n, slot_word(w), v); }
+        int periph_control_store(unsigned n, unsigned w, uint32_t v) { need_slot(n); return periph_put(n, w, v); }
         int periph_own_store(unsigned n, unsigned w, uint32_t v) {
             need_slot(n);
             if (!own_bit(n, Win::R_DEFINED, w) || !own_bit(n, Win::R_WRITABLE, w)) return 1;   // unmapped, or an R word
@@ -500,7 +491,6 @@ struct G1Config {
     uint32_t periph_present = 1;       // PARAMS.peripherals
     bool periph_slot = false;          // the peripheral slot (the replayer as peripheral 1) and its paths
     PeriphType periph1 = PT_REPLAYER;  // a compute tile's peripheral 1 in the slot (tests: PT_TEST)
-    bool cc3_tracer = false;           // the tracer tile's peripheral 1 the Tracer, else the stub
     unsigned replayer_log_entries = 256;   // the replayer's log queues
     int test_periph_tile = -1;         // (harness-only): >= 0: this compute tile's peripheral 1 is the test peripheral
     int periph_only = -1;              // (harness-only): >= 0: only this compute tile has peripheral 1

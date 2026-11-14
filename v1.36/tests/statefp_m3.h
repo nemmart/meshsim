@@ -27,7 +27,7 @@
 #include "statefp.h"
 #include "statefp_g1.h"
 #include "statefp_g2.h"
-#include "units/host_port.h"
+#include "host_port.h"
 #include "units/periph_slot.h"
 #include "units/reqbus.h"
 

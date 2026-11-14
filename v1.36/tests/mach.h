@@ -18,18 +18,24 @@
 // THE TWO MACHINES.
 //   - The machine as specified (MachConfig::machine(): coreless off, real_responder on): every tile's core runs from
 //     the reset PC in the RTL's boot ROM (fw/rtl/boot/, read by tests/rtl_images.h). A compute tile's ROM pulls its image
-//     with a LOAD request to the master tile (6.5). NOTHING ON THIS CHIP SERVES THAT REQUEST YET (below: the master
-//     side), so such a tile waits in its ROM for ever; with MachConfig::boot_local every compute tile has the strap
-//     boot_local (7.1), and its ROM enters the image the harness placed in its IMEM (Mach::place) instead.
+//     with a LOAD request to the master tile (6.5), which the master tile's firmware serves on the chip (below); on the
+//     bench machine nothing serves it, so such a tile waits in its ROM for ever. With MachConfig::boot_local every
+//     compute tile has the strap boot_local (7.1), and its ROM enters the image the harness placed in its IMEM
+//     (Mach::place) instead.
 //   - The coreless test machine (MachConfig::defaults(): coreless, real_responder off): the tiles' cores never execute
 //     (TileCore::coreless, harness-only), the gather unit is a drain; the harness configures the units through
 //     TileRef's back doors and feeds packets (Net). Every other unit of the tile is the real one.
 //
-// THE MASTER SIDE: WHAT IT IS TODAY. The chip that units::build_chip assembles still has v1.35's master side, in one of
-// two forms; neither is the RTL's master, memory and tracer tiles, which come with the special tiles' stage
-// (PENDING-v1.36.md, P7):
-//   - C&C's behavioural model (src/units/cnc.h, "cnc"; without cc_cores), with C&C 2's and 3's endpoints ("ep2",
-//     "ep3") on the attach tiles 0, 7 and 15. What it still means on v1.36's tiles: its GO link drives every tile's
+// THE MASTER SIDE.
+//   - THE CHIP (MachConfig::chip(), special_tiles): units::build_chip's (src/units/chip.h): the master, memory and tracer
+//     tiles as units 64-66 ("cc1.*", "cc2.*", "cc3.*"), each the base tile with its straps and its peripheral 1
+//     (Ingress/Egress; the RW engine's stand-in; the Tracer), on its attach tile's attach port; the request tree; the
+//     nets at the RTL chip's latencies. The master and memory tiles start from the images placed in their IMEM and DMEM
+//     (boot_local: Mach::place_elf), the others from the boot ROM's LOAD. This is the machine every test of v1.36's chip
+//     builds (tests/test_rtl_sort.cpp).
+//   - A TEST BENCH'S (without special_tiles; tests/bench_master.h): the 64 compute tiles with v1.35's behavioural model
+//     of C&C ("cnc"), C&C 2's and 3's endpoints ("ep2", "ep3") on the attach tiles 0, 7 and 15, for the tests of the
+//     tile's units that feed a machine from the harness. What it still means on v1.36's tiles: its GO link drives every tile's
 //     `release` input, which is BARRIER_RELEASE's pulse (18); its READY input receives each tile's `line` bit 0, which is
 //     BARRIER_ARRIVE's pulse, so its "all READY, then GO" is "every expected tile arrived, then the release"; `line`
 //     bit 1 is the tile's error line; its sends are packets from id 64 through tile 0's attach port, so a WRITE of it
@@ -38,11 +44,6 @@
 //     hardware that is gone and no v1.36 image understands them; the model's sequencer keeps them (cnc.h is left as it
 //     was), this harness does not offer them. The model has no request service: a tile's REPORT or LOAD reaches the
 //     request tree's root and, without MachConfig::reqbus_host, goes nowhere.
-//   - C&C 1-3 as cores (cc_cores: units 64-66, "cc<c>.core" and the rest, with v1.35's peripherals: C&C 1's Ingress/
-//     Egress model, the stub, the Tracer). They are built with the special tiles' straps (units::default_straps: a
-//     receive side, no barrier, boot_local on 64 and 65) and run the RTL's boot ROM, but no v1.36 image exists for them
-//     here and their peripherals are v1.35's: such a machine builds and steps, and Chip::host_load writes their memories
-//     through the host port, nothing more.
 //
 // TIME. `Chip::cycle()` is the last cycle run, 0 before the first (the framework numbers cycles from 1 and `Sim::now()`
 // is the next cycle to run, so cycle() == now() - 1). `step` runs one cycle. `run`, `run_until` and `drain` first wake
@@ -103,8 +104,9 @@ struct MachConfig {
     bool real_responder = false;       // the gather unit real (machine()); false: a drain
     bool boot_local = false;           // every compute tile has the strap boot_local (7.1): its ROM enters the image placed
                                        //   in its IMEM (Mach::place) instead of pulling one with LOAD (6.5)
-    bool cc_cores = false;             // v1.35's C&C 1-3 as cores (units 64-66) in place of C&C's model (above)
-    bool cc3_tracer = false;           // unit 66's peripheral 1 the Tracer (needs cc_cores)
+    bool special_tiles = false;        // THE CHIP (units::build_chip; chip()): the master, memory and tracer tiles as units
+                                       //   64-66, the request tree, the nets. false: a test bench's machine, the 64
+                                       //   compute tiles with v1.35's model of C&C in the master's place (above)
     // ---- the network (16) ----
     unsigned link_latency = 3, queue_depth = 16, intra_tile_latency = 1;
     bool skew = true;                  // v1.35's start skew: +0 or +1 a tile on the release's link
@@ -130,9 +132,11 @@ struct MachConfig {
     unsigned go_latency = 8;           // the release's link, from the model's GO to a tile
     unsigned ready_latency = 8;        // a tile's `line` (BARRIER_ARRIVE's pulse, the error line) to the model
     unsigned cnc_reaction = 1;         // every expected tile arrived -> the release
-    unsigned cnc_rx_depth = 64, cc_dma_depth = 4, cc_link_latency = 1;
+    unsigned cnc_rx_depth = 64, cc_dma_depth = 4;
     bool cnc_go_settle = true;         // the model sends nothing until the release has reached every tile
-    int error_latency = -1;            // -1: ready_latency (the machine requires it so: one line a tile carries both)
+    // the chip's nets (18, 19): independent, each from 0 up (RELEASE_LATENCY from 1: Ingress/Egress's flip-flop's cycle
+    // is its first); the defaults are the RTL chip's, whose nets are wires
+    unsigned arrive_latency = 0, release_latency = 1, error_latency = 0;
     bool loopback_last = true, loopback_tokens = true;
     int loopback_depth = -1;           // -1: read_tokens
     unsigned replayer_log_entries = 256;   // the replayer's log queues
@@ -155,11 +159,11 @@ struct MachConfig {
     uint32_t check_capacity = 1u << 18;   // the checker's facts (src/check.h) per machine (fatal when full)
     // ---- the harness ----
     uint32_t log_capacity = 1u << 14;      // Net: director-log entries per tile (fatal when exceeded, never grows)
-    uint32_t host_capacity = 4096;         // each host port's queue (packets; cc_cores)
     uint32_t phase_log_capacity = 1u << 16;   // the model's log of its releases (Cc::phase_log; fatal when exceeded)
     unsigned threads = 1, parts = 1;       // the framework's split (row bands); a test's default is one thread
 
     static MachConfig machine();
+    static MachConfig chip();          // machine() with the special tiles: v1.36's chip
     static MachConfig defaults();
     unsigned ag_lookahead_used() const { return ag_lookahead > 0 ? unsigned(ag_lookahead) : 2 * ts_engine_latency + 2; }
     unsigned k_min() const;            // max(2L + 4, L + 4, cm_latency, rp_latency), L = ts_engine_latency
@@ -400,15 +404,13 @@ public:
     std::vector<int> start_skew() const;                    // the skew each tile's release link was given
 
     // ---- the parts ----
-    TileRef tile(unsigned k) { return TileRef(*this, k); }  // 0-63; 64-66 with cc_cores
-    Cc& cc();                                               // the master side's model (not with cc_cores)
+    TileRef tile(unsigned k) { return TileRef(*this, k); }  // 0-63; 64-66 on the chip (special_tiles)
+    Cc& cc();                                               // the bench machine's model of the master side
     ReqBus& reqbus();                                       // the request tree from a test (MachConfig::reqbus_host)
-    bool toast() const;                                     // the model's latch of the tiles' error lines (v1.35's
-    int64_t toast_at() const;                               //   toast pin; -1: not latched)
+    bool toast() const;                                     // the chip: the toast pin (17.6) and the cycle at whose end it
+    int64_t toast_at() const;                               //   was set (-1: not set); the bench: the model's latch
     bool all_in_wfi() const;                                // every compute tile's core in a WFI
     bool parked_untouched() const;                          // MachConfig::parked: each quiescent, no link into it busy
-    // v1.35's host port of unit 64 + cc (cc_cores): 128-bit WRITE packets of `words` into its memories
-    void host_load(unsigned cc, uint32_t byte_addr, const std::vector<uint32_t>& words);
 
     // ---- the checker ----
     uint64_t violations() const;
@@ -440,7 +442,7 @@ class Mach {
 public:
     explicit Mach(const MachConfig& cfg);
     static MachConfig cfg(int64_t shuffle);                 // machine() with the shuffle seed
-    static MachConfig cores_cfg(int64_t shuffle);           // cfg plus cc_cores
+    static MachConfig chip_cfg(int64_t shuffle);            // MachConfig::chip() with the shuffle seed: v1.36's chip
     Chip c;
 
     // An image placed in a unit's memories (a back door, before the unit's core needs it: 6.5's boot_local start, or a

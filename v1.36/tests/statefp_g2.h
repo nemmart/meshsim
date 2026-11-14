@@ -14,7 +14,7 @@
 #include <vector>
 
 #include "statefp.h"
-#include "units/cnc.h"
+#include "bench_master.h"
 #include "units/inject.h"
 #include "units/router.h"
 #include "units/reqbus.h"

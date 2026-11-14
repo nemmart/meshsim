@@ -16,9 +16,10 @@
 namespace units {
 
 namespace lw {
-// Endpoints (2.1): 0-63 the tiles, 64-66 C&C 1-3 (at tiles 0-2's fifth ports), 72-74 their DMAs (sources only), 126 the
-// broadcast, 127 none.
-enum : unsigned { CC1 = 64, CC2 = 65, CC3 = 66, DMA1 = 72, BROADCAST = 126, NONE = 127 };
+// Tile ids (machine-spec 2.1, 4.1): 0-63 the compute tiles, 64-66 the master, memory and tracer tiles (CC1-CC3: v1.35's
+// names for them), 126 the broadcast, 127 none; the others are reserved. A special tile's peripheral's DMA sends with
+// the tile's own id (16.4).
+enum : unsigned { CC1 = 64, CC2 = 65, CC3 = 66, BROADCAST = 126, NONE = 127 };
 enum : unsigned { M_WRITE = 0, M_SRC = 1, M_BUCKET = 2, M_AUG = 3, M_GATHER = 4, M_COUNT = 5, M_RSVD6 = 6, M_RSVD7 = 7 };
 enum : unsigned { SIZE_32 = 0, SIZE_64 = 1, SIZE_128 = 2, SIZE_UNDEF = 3 };
 enum : unsigned { R_DMEM = 0x00, R_PMEM = 0x01, R_BOOTROM = 0x02, R_SRAM = 0x03, R_PERIPH1 = 0x04, R_PERIPH3 = 0x06 };
@@ -41,15 +42,14 @@ constexpr uint32_t addr(uint64_t h) { return uint32_t(h >> 22); }
 constexpr unsigned token(uint64_t h) { return unsigned(h >> TOKEN_SHIFT & 0x3F); }
 constexpr uint64_t with_src(uint64_t h, unsigned s) { return (h & ~SRC_MASK) | (s & 0x7Fu); }
 constexpr bool controller(unsigned id) { return id >= CC1 && id <= CC3; }
-constexpr bool dma_source(unsigned id) { return id >= DMA1 && id <= DMA1 + 2; }
 // The attach tiles (machine-spec 2.1, 16.1, at 8 x 8): the master tile's is tile 0, the memory tile's MESH_SIZE - 1 = 7, the
 // tracer tile's (2 MESH_SIZE - 1) mod TILE_COUNT = 15. `attached_special`: the special tile (0-2) attached at a tile, or -1.
 constexpr unsigned attach_tile(unsigned special) { return special == 0 ? 0u : special == 1 ? 7u : 15u; }
 constexpr int attached_special(unsigned tile) { return tile == 0 ? 0 : tile == 7 ? 1 : tile == 15 ? 2 : -1; }   // the specification's
-// The tile a packet's endpoint is routed as: a special tile, and its DMA's source id, as its attach tile; `attach`, the
+// The tile a packet's endpoint is routed as: a special tile as its attach tile (16.2); `attach`, the
 // three attach tiles (NetConfig::attach), or null for the specification's.
 constexpr unsigned tile_of(unsigned id, const uint8_t* attach = nullptr) {
-    const unsigned special = controller(id) ? id - CC1 : dma_source(id) ? id - DMA1 : 3;
+    const unsigned special = controller(id) ? id - CC1 : 3;
     return special == 3 ? id : attach ? attach[special] : attach_tile(special);
 }
 constexpr bool reserved_mode(unsigned m) { return m >= M_RSVD6; }
@@ -80,17 +80,22 @@ struct NetConfig {
     int loopback_depth = -1;            // the eject output's loopback FIFO; -1: read_tokens
     bool loopback_last = true;          // the eject selector takes the loopback FIFO last (4.7)
     bool loopback_tokens = true;        // a send-port loopback packet takes a token (4.5)
-    unsigned go_latency = 8, ready_latency = 8;
-    int error_latency = -1;             // -1: ready_latency (M2: must equal it, one line per tile carries both)
+    // The global nets (machine-spec 18, 19), the chip's: BARRIER_ARRIVE reaches Ingress/Egress ARRIVE_LATENCY after the
+    // tile's flip-flop drives it; BARRIER_RELEASE is on every compute tile RELEASE_LATENCY after the RELEASE store's
+    // effect, the first of them Ingress/Egress's flip-flop's cycle (so at least 1); an error line reaches ERROR_LINES
+    // ERROR_LATENCY later. Independent, each from 0 up (the release from 1); the defaults are the RTL chip's, whose
+    // nets are wires (rtl/chip/src/chip.veryl).
+    unsigned arrive_latency = 0, release_latency = 1, error_latency = 0;
+    // ---- a test bench's master side (tests/bench_master.h: v1.35's model of C&C 1), not the chip's ----
+    unsigned go_latency = 8, ready_latency = 8;   // the model's GO net and its READY and error lines
     unsigned cnc_reaction = 1;          // all READY seen -> clear and GO
     bool cnc_go_settle = true;          // C&C sends nothing until GO has reached every tile
     unsigned cnc_rx_depth = 64;         // C&C's receive FIFO
     bool skew = true;                   // start skew: +0 or +1 per tile on GO, from Java's Random(skew_seed)
     int64_t skew_seed = 1;
-    // C&C as cores (M3, AUDIT-M3 3.4; ref's Config.ccLinkLatency, the host FIFO's 4, Config.ccDmaDepth)
-    unsigned cc_link_latency = 1, cc_host_depth = 4, cc_dma_depth = 4;
+    // a special tile's peripheral's DMA: the credit Fifo that holds its packet in front of the router's input (16.4)
+    unsigned cc_dma_depth = 4;
     unsigned loopback_fifo_depth() const { return loopback_depth > 0 ? unsigned(loopback_depth) : read_tokens; }
-    unsigned error_lat() const { return error_latency >= 0 ? unsigned(error_latency) : ready_latency; }
 };
 
 // ref's start skews (Chip: `new Random(skewSeed).nextInt(2)` per tile in order), or all 0 with skew off.

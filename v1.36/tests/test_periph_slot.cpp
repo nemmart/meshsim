@@ -4,6 +4,12 @@
 // cycles checked are ref's (PeripheralSlot under Tile: an input at t acts from the end of t, a load at t reads the end
 // of t - 1, a region write at t lands at the end of t + 2, the DMA's first packet the cycle after PULSE_DMA's).
 // Run plain, with step-all, and shuffled; the debug builds' missed-wake detector is on throughout.
+//
+// v1.36: the control block and the DMA block are 17.1's, by its window words (regmap.h's PeriphReg: EVENTS 3, EVENTS_PEEK
+// 4, EVENTS_MASK 5, START 6; DMA_HDR 16 with dst [14:8], count [26:15] and queue [28:27], DMA_DEST_ADDR 17, DMA_START
+// 18), and the DMA's packets 17.4's and 16.4's: src the tile's own id, a WRITE at DMA_DEST_ADDR, which then advances by
+// 16, a packet of any other mode at address 0 with DMA_DEST_ADDR left as it is, and a transfer of 0 packets busy for one
+// cycle with dma_done posted at its end. Those expectations are the specification's; the cycles are the slot's as before.
 #include <cstdio>
 #include <vector>
 
@@ -54,7 +60,7 @@ struct Stand {
                 case STORE: c.put(core, CoreOp::store(1, e.a, e.b)); break;
                 case CONSUME_MASKED: {
                     // a consuming load of EVENTS sampling now: the value under EVENTS_MASK, from the window
-                    const uint32_t v = c.read(window, Win::reg(1, Win::R_STD + 5)), m = c.read(window, Win::reg(1, Win::R_STD + 7));
+                    const uint32_t v = c.read(window, Win::reg(1, Win::R_STD + P_EVENTS)), m = c.read(window, Win::reg(1, Win::R_STD + P_EVENTS_MASK));
                     reads[n_reads++] = v;
                     if (v & m) c.put(core, CoreOp::consume(1, v & m));
                     break;
@@ -86,7 +92,8 @@ struct Rig {
     PeriphSlot& slot() { return m.unit<PeriphSlot>("slot"); }
 };
 
-const unsigned STATUS = Win::reg(1, Win::R_STD + 1), EVENTS_PEEK = Win::reg(1, Win::R_STD + 6), PARAMS = Win::reg(1, Win::R_STD + 0),
+const unsigned W_STATUS = Win::reg(1, Win::R_STD + P_STATUS), W_EVENTS_PEEK = Win::reg(1, Win::R_STD + P_EVENTS_PEEK),
+               W_PARAMS = Win::reg(1, Win::R_STD + P_PARAMS), W_DMA_DEST_ADDR = Win::reg(1, Win::R_STD + Win::std(P_DMA_DEST_ADDR)),
                W32 = Win::reg(1, Win::R_OWN + 0), W33 = Win::reg(1, Win::R_OWN + 1), DEF0 = Win::reg(1, Win::R_DEFINED);
 
 sim::Options opts(int variant) {
@@ -102,23 +109,23 @@ sim::Options opts(int variant) {
 // EVENTS_MASK and a consuming load of DMA done.
 TEST(slot_unit_test_peripheral_window_dma_region_and_events) {
     const Stand::Ev ev[] = {
-        {2, Stand::READ, PARAMS, 0, 0, 0},              // 0: PARAMS: type 15, version 3
+        {2, Stand::READ, W_PARAMS, 0, 0, 0},              // 0: PARAMS: type 15, version 3
         {2, Stand::READ, DEF0, 0, 0, 0},                // 1: words 32-34 defined
-        {3, Stand::STORE, 3, 1, 0, 0},                  //    PULSE_RUN at 3
-        {4, Stand::READ, STATUS, 0, 0, 0},              // 2: STATUS [0] at 4 (from the end of 3)
+        {3, Stand::STORE, P_START, 1, 0, 0},            //    START at 3
+        {4, Stand::READ, W_STATUS, 0, 0, 0},              // 2: STATUS [0] at 4 (from the end of 3)
         {4, Stand::READ, W32, 0, 0, 0},                 // 3: runs started 1
         {5, Stand::STORE, 33, 0xABC, 0, 0},             //    scratch
         {6, Stand::READ, W33, 0, 0, 0},                 // 4: 0xABC
-        {7, Stand::STORE, 8, (1u << 25) | (1u << 22) | (0u << 12) | 3u, 0, 0},   // DMA_HDR: dst 1, mode 1, queue 0, 3 words
-        {8, Stand::STORE, 9, 0x100, 0, 0},              //    DMA_ADDR
-        {9, Stand::STORE, 7, 0x3, 0, 0},                //    EVENTS_MASK: run done, DMA done
-        {10, Stand::STORE, 4, 1, 0, 0},                 //    PULSE_DMA at 10: packets at 11, 12, 13
-        {11, Stand::READ, STATUS, 0, 0, 0},             // 5: STATUS [1] DMA busy at 11
+        {7, Stand::STORE, P_DMA_HDR, 1u << HDR_DST_LO | 3u << DMA_HDR_COUNT_LO | 0u << DMA_HDR_QUEUE_LO, 0, 0},   // dst 1, WRITE, queue 0, 3 packets
+        {8, Stand::STORE, P_DMA_DEST_ADDR, 0x100, 0, 0},
+        {9, Stand::STORE, P_EVENTS_MASK, 0x3, 0, 0},    //    EVENTS_MASK: done, dma_done
+        {10, Stand::STORE, P_DMA_START, 1, 0, 0},       //    DMA_START at 10: packets at 11, 12, 13
+        {11, Stand::READ, W_STATUS, 0, 0, 0},             // 5: STATUS [1] DMA busy at 11
         {12, Stand::REGION, 0x04000040, 0, 0x55, 0x66}, //    a region write at 12: lands at the end of 14
-        {20, Stand::READ, EVENTS_PEEK, 0, 0, 0},        // 6: run done (the run ended at 13) and DMA done
+        {20, Stand::READ, W_EVENTS_PEEK, 0, 0, 0},        // 6: run done (the run ended at 13) and DMA done
         {20, Stand::READ, Win::R_LIVE, 0, 0, 0},        // 7: EVENTS [13] live (bit 0), no errors
         {21, Stand::CONSUME_MASKED, 0, 0, 0, 0},        // 8: the consuming load's value
-        {23, Stand::READ, EVENTS_PEEK, 0, 0, 0},        // 9: both consumed
+        {23, Stand::READ, W_EVENTS_PEEK, 0, 0, 0},        // 9: both consumed
         {23, Stand::READ, Win::R_LIVE, 0, 0, 0},        // 10: the live bit down
     };
     PeriphSlotConfig pc;
@@ -147,7 +154,9 @@ TEST(slot_unit_test_peripheral_window_dma_region_and_events) {
             CHECK_EQ(s.dma_hi[k], ~uint64_t(k));
             CHECK_EQ(lw::addr(s.dma_h[k]), 0x100u + 16 * k);
             CHECK_EQ(lw::dst(s.dma_h[k]), 1u);
-            CHECK_EQ(lw::src(s.dma_h[k]), 72u);       // item 118: the controller's id + 8
+            CHECK_EQ(lw::src(s.dma_h[k]), 64u);       // 16.4: the special tile's own id (not v1.35's id + 8)
+            CHECK_EQ(lw::mode(s.dma_h[k]), unsigned(lw::M_WRITE));
+            CHECK_EQ(lw::size(s.dma_h[k]), unsigned(lw::SIZE_128));
         }
         TestPeripheral& x = r.slot().s.test_peripheral(1);
         CHECK_EQ(x.n_accepts, 1u);
@@ -158,17 +167,64 @@ TEST(slot_unit_test_peripheral_window_dma_region_and_events) {
     }
 }
 
+// 17.4, from the specification: a transfer of packets that are not WRITEs carries address 0 and leaves DMA_DEST_ADDR
+// (4.1), each stamped with DMA_HDR's mode, counter and dst and the tile's own id as src (16.4); DMA_START leaves
+// dma_done as it is, and a consuming load under EVENTS_MASK takes it (17.2); a transfer of 0 packets sends nothing,
+// STATUS.dma_busy is 1 for one cycle, and dma_done is posted at its end.
+TEST(slot_dma_block_other_modes_and_an_empty_transfer) {
+    const uint32_t count_hdr = lw::M_COUNT << HDR_MODE_LO | 7u << HDR_COUNTER_LO | 5u << HDR_DST_LO;
+    const Stand::Ev ev[] = {
+        {3, Stand::STORE, P_DMA_HDR, count_hdr | 2u << DMA_HDR_COUNT_LO | 1u << DMA_HDR_QUEUE_LO, 0, 0},   // COUNT on 7 to tile 5, queue 1, 2
+        {4, Stand::STORE, P_DMA_DEST_ADDR, 0x200, 0, 0},
+        {5, Stand::STORE, P_DMA_START, 1, 0, 0},        //    DMA_START at 5: packets at 6 and 7
+        {9, Stand::STORE, P_EVENTS_MASK, 0x2, 0, 0},    //    EVENTS_MASK: dma_done
+        {12, Stand::READ, W_DMA_DEST_ADDR, 0, 0, 0},    // 0: DMA_DEST_ADDR as stored
+        {12, Stand::CONSUME_MASKED, 0, 0, 0, 0},        // 1: dma_done, consumed
+        {14, Stand::READ, W_EVENTS_PEEK, 0, 0, 0},      // 2: gone
+        {14, Stand::STORE, P_DMA_HDR, count_hdr, 0, 0}, //    count 0
+        {15, Stand::STORE, P_DMA_START, 1, 0, 0},       //    DMA_START at 15
+        {16, Stand::READ, W_STATUS, 0, 0, 0},           // 3: dma_busy in 16
+        {17, Stand::READ, W_STATUS, 0, 0, 0},           // 4: and not in 17
+        {17, Stand::READ, W_EVENTS_PEEK, 0, 0, 0},      // 5: dma_done posted at the end of 16
+    };
+    PeriphSlotConfig pc;
+    pc.tile = 66; pc.controller = true; pc.type[1] = PT_TEST;
+    for (int variant = 0; variant < 3; variant++) {
+        Rig r(ev, sizeof ev / sizeof ev[0], pc, opts(variant));
+        r.m.run(40);
+        Stand& s = r.stand();
+        CHECK_EQ(s.n_reads, 6u);
+        CHECK_EQ(s.reads[0], 0x200u);
+        CHECK_EQ(s.reads[1], 2u);
+        CHECK_EQ(s.reads[2], 0u);
+        CHECK_EQ(s.reads[3] & 2, 2u);
+        CHECK_EQ(s.reads[4] & 2, 0u);
+        CHECK_EQ(s.reads[5], 2u);
+        CHECK_EQ(s.n_dma, 2u);
+        for (unsigned k = 0; k < 2 && k < s.n_dma; k++) {
+            CHECK_EQ(s.dma_t[k], 7u + k);
+            CHECK_EQ(lw::addr(s.dma_h[k]), 0u);
+            CHECK_EQ(lw::mode(s.dma_h[k]), unsigned(lw::M_COUNT));
+            CHECK_EQ(lw::counter(s.dma_h[k]), 7u);
+            CHECK_EQ(lw::dst(s.dma_h[k]), 5u);
+            CHECK_EQ(lw::src(s.dma_h[k]), 66u);
+            CHECK_EQ(lw::size(s.dma_h[k]), unsigned(lw::SIZE_128));
+        }
+        CHECK_EQ(r.slot().s.violation_total(), 0u);
+    }
+}
+
 // The replayer on a mesh tile: PULSE_RUN with RUN_CONFIG's rows 0 (reset) ends the pass at once: STATUS [0] for one
 // cycle, run done posted; a region write to the code queue lands; the slot sleeps when nothing is in progress.
 TEST(slot_unit_replayer_pass_of_zero_rows_and_a_landing) {
     const Stand::Ev ev[] = {
-        {3, Stand::STORE, 7, 0x1, 0, 0},                // EVENTS_MASK: run done
-        {5, Stand::STORE, 3, 1, 0, 0},                  // PULSE_RUN at 5
-        {6, Stand::READ, STATUS, 0, 0, 0},              // 0: running from the end of 5
-        {7, Stand::READ, STATUS, 0, 0, 0},              // 1: and stopped at 6 (rows 0)
-        {7, Stand::READ, EVENTS_PEEK, 0, 0, 0},         // 2: run done
+        {3, Stand::STORE, P_EVENTS_MASK, 0x1, 0, 0},    // EVENTS_MASK: done
+        {5, Stand::STORE, P_START, 1, 0, 0},            // START at 5
+        {6, Stand::READ, W_STATUS, 0, 0, 0},              // 0: running from the end of 5
+        {7, Stand::READ, W_STATUS, 0, 0, 0},              // 1: and stopped at 6 (rows 0)
+        {7, Stand::READ, W_EVENTS_PEEK, 0, 0, 0},         // 2: run done
         {8, Stand::CONSUME_MASKED, 0, 0, 0, 0},         // 3: taken
-        {10, Stand::READ, EVENTS_PEEK, 0, 0, 0},        // 4: gone
+        {10, Stand::READ, W_EVENTS_PEEK, 0, 0, 0},        // 4: gone
         {12, Stand::REGION, 0x04100000, 0, 0x1234, 0x5678},   // the code queue (part 1)
         {16, Stand::READ, Win::reg(1, Win::R_OWN + 1), 0, 0, 0},   // 5: ROWS_RUN 0
     };
@@ -194,21 +250,21 @@ TEST(slot_unit_replayer_pass_of_zero_rows_and_a_landing) {
 }
 
 // PeripheralSlotTest's two undefined behaviours in the DMA (DECISIONS-v1.25 s8e): meshsim stops, naming them.
-DEATH_TEST(slot_pulse_dma_while_a_transfer_runs, "DMA: PULSE_DMA while a transfer is in progress") {
+DEATH_TEST(slot_dma_start_while_a_transfer_runs, "DMA: DMA_START while a transfer is in progress") {
     SlotCore s;
     s.tile = 10;
     s.install(1, PT_TEST);
-    s.write(1, 1, 8, (1u << 12) | 7u);   // DMA_HDR: queue 1, 7 words
-    s.write(2, 1, 4, 1);                 // PULSE_DMA
+    s.write(1, 1, P_DMA_HDR, 1u << DMA_HDR_QUEUE_LO | 7u << DMA_HDR_COUNT_LO);   // queue 1, 7 packets
+    s.write(2, 1, P_DMA_START, 1);
     s.run_cycle(2); s.end_cycle(2);
-    s.write(3, 1, 4, 1);                 // again, while it runs
+    s.write(3, 1, P_DMA_START, 1);       // again, while it runs
 }
 DEATH_TEST(slot_dma_naming_a_missing_queue, "output queue 3, which the peripheral doesn't have") {
     SlotCore s;
     s.tile = 10;
     s.install(1, PT_TEST);
-    s.write(1, 1, 8, (3u << 12) | 4u);   // DMA_HDR: queue 3 (the test peripheral has two), 4 words
-    s.write(2, 1, 4, 1);
+    s.write(1, 1, P_DMA_HDR, 3u << DMA_HDR_QUEUE_LO | 4u << DMA_HDR_COUNT_LO);   // queue 3 (the test peripheral has two), 4 packets
+    s.write(2, 1, P_DMA_START, 1);
 }
 
 // The replayer's canonical fingerprint through the slot (AUDIT-M3 6.8) equals a twin replayer's driven directly as ref's
@@ -216,8 +272,8 @@ DEATH_TEST(slot_dma_naming_a_missing_queue, "output queue 3, which the periphera
 // reads it from the link; at the end of 5 the PULSE_RUN of 5 is still in S2.
 TEST(slot_replayer_fingerprint_reads_the_links_inputs_as_refs_lists) {
     const Stand::Ev ev[] = {
-        {3, Stand::STORE, 7, 0x1, 0, 0},
-        {5, Stand::STORE, 3, 1, 0, 0},
+        {3, Stand::STORE, P_EVENTS_MASK, 0x1, 0, 0},
+        {5, Stand::STORE, P_START, 1, 0, 0},
         {8, Stand::CONSUME_MASKED, 0, 0, 0, 0},
         {12, Stand::REGION, 0x04100000, 0, 0x1234, 0x5678},
     };

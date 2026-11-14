@@ -21,7 +21,7 @@
 
 #include "harness.h"
 #include "t2_harness.h"
-#include "units/host_port.h"
+#include "host_port.h"
 #include "units/reqbus.h"
 #include "units/tile_ctl.h"
 

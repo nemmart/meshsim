@@ -1,6 +1,10 @@
 // cnc.cpp: C&C 1's model (ref's CnC and Cnc1Peripheral), its program, the row collectors and C&C 2-3's
 // endpoints. AUDIT-M2 section 4. C&C is one unit per chip: its step is out of line.
-#include "units/cnc.h"
+#include "bench_master.h"
+
+#include <string>
+
+#include "units/reqbus.h"
 
 #include <cstring>
 
@@ -91,7 +95,7 @@ CncProgram& CncProgram::release() {
 Cnc::Cnc(sim::Ports& p, const NetConfig& c, const CncProgram& program)
     : cnc_reaction(c.cnc_reaction), go_latency(c.go_latency), go_settle(c.cnc_go_settle), rx_depth(c.cnc_rx_depth) {
     if (!c.cnc_go_settle) FATAL("C&C: cnc_go_settle off is not modelled in M2");
-    if (c.error_lat() != c.ready_latency) FATAL("C&C: error_latency %u != ready_latency %u (one line carries both in M2)", c.error_lat(), c.ready_latency);
+    // (the error lines ride the READY lines: build_bench_chip links both at ready_latency - 2)
     if (c.ready_latency < 3) FATAL("C&C: ready_latency %u (the row collectors need at least 3)", c.ready_latency);
     if (c.cnc_rx_depth > kRx) FATAL("C&C: cnc_rx_depth %u (at most %u modelled)", c.cnc_rx_depth, kRx);
     if (program.releases.empty() || program.releases.back().steps != program.steps.size())
@@ -275,17 +279,18 @@ uint64_t Cnc::digest() const {
 
 // ---- a row collector --------------------------------------------------------------------------------------------------
 RowCollector::RowCollector(sim::Ports& p, unsigned r) : row(uint8_t(r)) {
-    for (unsigned i = 0; i < 8; i++) p.in(line[i], "line", 1);
+    for (unsigned i = 0; i < 8; i++) { p.in(arrive[i], "arrive", 0); p.in(error[i], "error", 1); }
     p.out(out, "out", 1);
 }
 
 sim::Wake RowCollector::step(sim::Ctx& c) {
     uint64_t w = 0;
     for (unsigned i = 0; i < 8; i++) {
-        if (!c.ready(line[i])) continue;
-        const uint64_t v = c.peek(line[i])[0];
-        c.take(line[i]);
-        w |= (v & 1) << (kEdges + i) | 1ull << (kPresent + i) | (v >> 1 & 1) << (kLevels + i);
+        const bool a = c.ready(arrive[i]), e = c.ready(error[i]);
+        if (!a && !e) continue;
+        if (a) c.take(arrive[i]);
+        if (e) { levels = uint8_t((levels & ~(1u << i)) | (c.peek(error[i])[0] & 1) << i); c.take(error[i]); }
+        w |= uint64_t(a) << (kEdges + i) | 1ull << (kPresent + i) | uint64_t(levels >> i & 1) << (kLevels + i);
     }
     if (w) c.put(out, w);
     return sim::Wake::none();
@@ -323,4 +328,53 @@ sim::Wake Endpoint::step(sim::Ctx& c) {
     return c.ready(rx) ? c.next() : sim::Wake::none();
 }
 
+}  // namespace units
+
+// ---- the bench machine -------------------------------------------------------------------------------------------------
+namespace units {
+void build_bench_chip(sim::Config& cfg, const ChipSpec& spec, const CncProgram& program, bool reqbus_host) {
+    const NetConfig& nc = spec.net;
+    if (!spec.bench_attach) FATAL("build_bench_chip: the tiles' attach ports are the bench's (ChipSpec::bench_attach)");
+    if (nc.link_latency < 1 || nc.ready_latency < 3) FATAL("build_bench_chip: link_latency %u, ready_latency %u", nc.link_latency, nc.ready_latency);
+    uint8_t skew[64];
+    start_skews(nc, skew);
+    TileIO io[64];
+    add_mesh(cfg, spec, io);
+    if (reqbus_host) {                                    // the request tree's queues and special inputs, ReqHost's
+        uint64_t tiles = 0;
+        for (unsigned k = 0; k < 64; k++) if (io[k].req.present) tiles |= uint64_t(1) << k;
+        if (spec.domain) FATAL("build_bench_chip: the request tree's harness host on a split machine");
+        const reqbus::ReqBusIO rb = reqbus::add_reqbus(cfg, spec.reqbus, tiles, 7, nullptr, false);
+        for (unsigned k = 0; k < 64; k++) if (io[k].req.present) reqbus::wire_sender(cfg, rb, k, io[k].req);
+        auto& h = cfg.add<reqbus::ReqHost>("reqbus.host", spec.reqbus);
+        for (unsigned c = 0; c < 3; c++) {
+            cfg.link(h.beat[c], rb.root->in[8 + c], spec.reqbus.hop_latency);
+            if (!rb.exact()) cfg.link(rb.root->credit_out[8 + c], h.credit[c], spec.reqbus.credit_latency);
+            cfg.link(h.pop[c], rb.recv[c]->pop, 1);
+            cfg.connect(rb.recv[c]->head, h.head[c]);
+            cfg.link(h.qcredit[c], rb.root->qcredit[c], rb.queue_credit_latency());
+        }
+    } else add_request_tree(cfg, spec, io, nullptr);     // the tiles' sending sides alone
+    // C&C and the collectors with tile 0 (C&C's send is a Hold into tile 0's router), the endpoints with their tiles
+    if (spec.domain) cfg.domain(spec.domain[0]);
+    auto& cc = cfg.add<Cnc>("cnc", nc, program);
+    RowCollector* rows[8];
+    for (unsigned r = 0; r < 8; r++) {
+        rows[r] = &cfg.add<RowCollector>("row" + std::to_string(r), r);
+        cfg.link(rows[r]->out, cc.rows[r], 1);
+    }
+    cfg.connect(cc.send, io[nc.attach[0]].from_bench);
+    cfg.connect(io[nc.attach[0]].to_bench, cc.rx);
+    for (unsigned e = 1; e < 3; e++) {
+        if (spec.domain) cfg.domain(spec.domain[nc.attach[e]]);
+        auto& ep = cfg.add<Endpoint>("ep" + std::to_string(e + 1), lw::CC1 + e, nc);
+        cfg.connect(ep.send, io[nc.attach[e]].from_bench);
+        cfg.connect(io[nc.attach[e]].to_bench, ep.rx);
+    }
+    for (unsigned k = 0; k < 64; k++) {
+        cfg.link(cc.go[k], io[k].release, nc.go_latency + skew[k] + 1);
+        cfg.link(io[k].arrive, rows[k / 8]->arrive[k % 8], nc.ready_latency - 2);
+        cfg.link(io[k].error, rows[k / 8]->error[k % 8], nc.ready_latency - 2);
+    }
+}
 }  // namespace units

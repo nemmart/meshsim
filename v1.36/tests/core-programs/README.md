@@ -18,7 +18,8 @@ is the RTL test's memory and devices with its ideal timing (`tests/core_programs
 - CoreMark's own report on the benchmark run, equal to the RTL's baseline (`BENCH`);
 - the RTL's boot ROM, on the core in the tile's map behind the register bus's timing (a window load answered two
   cycles after it is raised, a window store the next cycle, in the cycle it is made, `REQUEST_SEND`'s the cycle after
-  it is made), reaching its `LOAD` request and an image in the RTL's cycles (`BOOT`).
+  it is made), in the RTL's cycles (`BOOT`): from the reset to its `LOAD` request and to an image, and from its two
+  waits, woken by MEIP, to the `ARRIVE` and to the image.
 
 ## The files
 

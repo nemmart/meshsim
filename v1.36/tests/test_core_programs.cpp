@@ -151,18 +151,25 @@ TEST(core_programs_coremark_reports_the_rtls_baseline) {
 // with the register bus's timing as the RTL's register_bus has it (rv32.h's header): a window load answered two
 // cycles after it is raised, a window store the cycle after, in the cycle it is made, REQUEST_SEND's store, which
 // may stall, the cycle after it is made. The RTL's boot_rom_program_test measures the ROM's cycles on its block
-// `core` (rtl/blocks/core/README.md, "The boot ROM's program"; tests/core-programs/BOOT): each is the cycle in which
-// the named store is raised on the system port, cycle 0 the first after reset.
+// `core` (rtl/blocks/core/README.md, "The boot ROM's program"; tests/core-programs/BOOT), cycle 0 the first after
+// reset: each figure ends at the cycle in which the named store is raised on the system port, and starts at the
+// reset, or at the cycle of the test's stimulus (the COUNT's decrement of counter 7, the release), whose event the
+// tile sets at that cycle's end, so that MEIP, the wake of the events under EVENTS_MASK, is high from the next.
 namespace {
 
 struct TileBus {
     static constexpr uint32_t IMEM = 0x01000000, ROM = 0x02000000, ROM_BYTES = 256, WINDOW = 0xFFFFF800,
-                              PARAMS = 0xFFFFF800, REQUEST_OUT_W1 = 0xFFFFF904, REQUEST_SEND = 0xFFFFF90C;
+                              PARAMS = 0xFFFFF800, EVENTS = 0xFFFFF80C, ARRIVE = 0xFFFFF818, REQUEST_OUT_W1 = 0xFFFFF904,
+                              REQUEST_SEND = 0xFFFFF90C;
+    static constexpr uint32_t RELEASE = 1u << 0, ALL_COUNTERS_DONE = 1u << 2, MASK = RELEASE | ALL_COUNTERS_DONE;
     std::vector<uint32_t> rom = std::vector<uint32_t>(ROM_BYTES / 4, 0), imem = std::vector<uint32_t>(16, 0);
     uint32_t params = 0;
     uint64_t now = 0;
+    uint32_t events = 0;                                     // EVENTS as cycle `now` shows it (the end of now - 1)
+    uint32_t set_bits = 0, clear_bits = 0;                   // what the end of `now` sets, and a load consumes
     struct Raised { uint64_t cycle; uint32_t address; };
     std::vector<Raised> raised;                              // every data access, in the cycle it is raised
+    void next_cycle() { events = (events & ~clear_bits) | set_bits; set_bits = clear_bits = 0; now++; }
     uint32_t bus_fetch(uint32_t a, bool& err) const {
         err = false;
         if (a - ROM < ROM_BYTES) return rom[(a - ROM) >> 2];
@@ -173,45 +180,92 @@ struct TileBus {
     uint32_t bus_route(uint32_t a) { raised.push_back({now, a}); return a >= WINDOW ? 2 : a < 0x8000 ? 1 : 0; }
     bool bus_store_at_once(uint32_t a) const { return a != REQUEST_SEND; }
     bool bus_access(uint64_t, uint32_t a, bool store, uint32_t, uint32_t, uint32_t& rdata) {
-        rdata = !store && a == PARAMS ? params : 0;
+        rdata = 0;
+        if (!store && a == PARAMS) rdata = params;
+        if (!store && a == EVENTS) { rdata = events; clear_bits |= events & MASK; }   // consumed at this cycle's end
+        if (store && a == ARRIVE) clear_bits |= ALL_COUNTERS_DONE;
         return true;
     }
-    bool meip() const { return false; }
+    bool meip() const { return (events & MASK) != 0; }
     bool nmi() const { return false; }
 };
 
-// The cycle in which the store to `address` is raised, running the ROM from reset; -1: not within 200 cycles.
-int64_t boot_rom_cycle(uint32_t params, uint32_t address) {
+// The RTL's boot ROM on the core, from reset, with an image whose first instruction is a store to REQUEST_OUT_W1.
+struct BootRun {
     TileBus bus;
-    bus.params = params;
-    const std::string error = core_programs::read_elf(kDir + "elf/boot_rom.elf", [&](uint32_t a, uint8_t byte) {
-        if (a - TileBus::ROM < TileBus::ROM_BYTES) core_programs::place_byte(bus.rom, a - TileBus::ROM, byte);
-        return true;                                         // (the segment starts with the file's own header)
-    });
-    if (!error.empty()) return -1;
-    bus.imem[0] = 0x90002223;                                // the image's first instruction: sw zero, REQUEST_OUT_W1(zero)
-    bus.imem[1] = 0x0000006F;                                // j .
-    std::vector<uint32_t> dmem(units::MEM_WORDS, 0), imem(units::MEM_WORDS, 0);
     units::Rv32 core;
-    core.v135_platform = false;
-    core.pc = TileBus::ROM;
-    core.dmem = dmem.data(); core.imem = imem.data();
-    for (uint64_t c = 0; c < 200; c++) {
-        bus.now = c;
-        core.step(bus, c + 1);
-        for (const TileBus::Raised& r : bus.raised) if (r.address == address) return int64_t(r.cycle);
+    std::vector<uint32_t> dmem = std::vector<uint32_t>(units::MEM_WORDS, 0), imem = std::vector<uint32_t>(units::MEM_WORDS, 0);
+    bool asleep = false;                                     // the core asked for no further cycle: the canonical wait
+
+    bool boot(uint32_t params) {
+        bus.params = params;
+        const std::string error = core_programs::read_elf(kDir + "elf/boot_rom.elf", [&](uint32_t a, uint8_t byte) {
+            if (a - TileBus::ROM < TileBus::ROM_BYTES) core_programs::place_byte(bus.rom, a - TileBus::ROM, byte);
+            return true;                                     // (the segment starts with the file's own header)
+        });
+        bus.imem[0] = 0x90002223;                            // sw zero, REQUEST_OUT_W1(zero)
+        bus.imem[1] = 0x0000006F;                            // j .
+        core.v135_platform = false;
+        core.pc = TileBus::ROM;
+        core.dmem = dmem.data(); core.imem = imem.data();
+        return error.empty();
     }
-    return -1;
+    void step() { asleep = core.step(bus, bus.now + 1) == units::Rv32::kNever; bus.next_cycle(); }
+    // Runs until a store to `address` is raised; its cycle, or -1 after 200 cycles.
+    int64_t until_raised(uint32_t address) {
+        const size_t seen = bus.raised.size();
+        for (int i = 0; i < 200; i++) {
+            step();
+            for (size_t k = seen; k < bus.raised.size(); k++) if (bus.raised[k].address == address) return int64_t(bus.raised[k].cycle);
+        }
+        return -1;
+    }
+    // Runs into the canonical wait and three cycles on.
+    bool until_wait() {
+        for (int i = 0; i < 200 && !(asleep && core.core_status_canonical_wait); i++) step();
+        const bool waits = asleep && core.core_status_canonical_wait;
+        for (int i = 0; i < 3; i++) step();
+        return waits && asleep;
+    }
+    // The test's stimulus in this cycle: the event is set at its end. Returns the cycle.
+    int64_t stimulus(uint32_t event) { const int64_t at = int64_t(bus.now); bus.set_bits |= event; step(); return at; }
+};
+
+std::map<std::string, long long> boot_figures() {
+    std::map<std::string, long long> boot;
+    for (const auto& row : read_list("BOOT")) if (row.size() == 2) boot[row[0]] = std::stoll(row[1]);
+    return boot;
 }
 
 }  // namespace
 
-TEST(core_programs_boot_rom_takes_the_rtls_cycles) {
-    std::map<std::string, std::string> boot;
-    for (const auto& row : read_list("BOOT")) if (row.size() == 2) boot[row[0]] = row[1];
-    CHECK_EQ(boot.size(), 2u);
-    // a loaded tile (PARAMS.boot_local 0): from the reset to the LOAD request's REQUEST_SEND
-    CHECK_EQ(boot_rom_cycle(0, TileBus::REQUEST_SEND), std::stoll(boot["reset_to_load_request_send"]));
-    // PARAMS.boot_local (bit 18) 1: from the reset to the image's first instruction, a store
-    CHECK_EQ(boot_rom_cycle(1u << 18, TileBus::REQUEST_OUT_W1), std::stoll(boot["reset_to_image_boot_local"]));
+TEST(core_programs_boot_rom_takes_the_rtls_cycles_from_reset) {
+    auto boot = boot_figures();
+    CHECK_EQ(boot.size(), 5u);
+    BootRun loaded;                                          // a loaded tile (PARAMS.boot_local 0): its LOAD request
+    CHECK(loaded.boot(0));
+    CHECK_EQ(loaded.until_raised(TileBus::REQUEST_SEND), boot["reset_to_load_request_send"]);
+    BootRun local;                                           // PARAMS.boot_local (bit 18): the image's first instruction
+    CHECK(local.boot(1u << 18));
+    CHECK_EQ(local.until_raised(TileBus::REQUEST_OUT_W1), boot["reset_to_image_boot_local"]);
+}
+
+TEST(core_programs_boot_rom_takes_the_rtls_cycles_from_its_waits) {
+    auto boot = boot_figures();
+    BootRun plain;                                           // no barrier: the load's COUNT, then the image
+    CHECK(plain.boot(0));
+    CHECK(plain.until_raised(TileBus::REQUEST_SEND) >= 0);
+    CHECK(plain.until_wait());                               // asleep in its wait for the load
+    int64_t counted = plain.stimulus(TileBus::ALL_COUNTERS_DONE);
+    CHECK_EQ(plain.until_raised(TileBus::REQUEST_OUT_W1) - counted, boot["count_to_image_no_barrier"]);
+
+    BootRun barrier;                                         // PARAMS.barrier (bit 17): the COUNT, ARRIVE, the release
+    CHECK(barrier.boot(1u << 17));
+    CHECK(barrier.until_raised(TileBus::REQUEST_SEND) >= 0);
+    CHECK(barrier.until_wait());
+    counted = barrier.stimulus(TileBus::ALL_COUNTERS_DONE);
+    CHECK_EQ(barrier.until_raised(TileBus::ARRIVE) - counted, boot["count_to_arrive"]);
+    CHECK(barrier.until_wait());                             // the canonical wait for the release
+    const int64_t released = barrier.stimulus(TileBus::RELEASE);
+    CHECK_EQ(barrier.until_raised(TileBus::REQUEST_OUT_W1) - released, boot["release_to_image"]);
 }

@@ -1,0 +1,196 @@
+diff --git i/rtl/blocks/rw_engine_unit/test/src/rw_engine_unit_test.rs w/rtl/blocks/rw_engine_unit/test/src/rw_engine_unit_test.rs
+index d42569b..4891fa9 100644
+--- i/rtl/blocks/rw_engine_unit/test/src/rw_engine_unit_test.rs
++++ w/rtl/blocks/rw_engine_unit/test/src/rw_engine_unit_test.rs
+@@ -67,7 +67,7 @@ use crate::rw_engine_unit_odd_buffer::RwEngineUnitOddBuffer;
+ use crate::rw_engine_unit_shallow::RwEngineUnitShallow;
+ use crate::rw_engine_unit_small_buffer::RwEngineUnitSmallBuffer;
+ use crate::rw_engine_unit_wide_lpddr::RwEngineUnitWideLpddr;
+-use std::collections::{HashMap, VecDeque};
++use std::collections::{HashMap, HashSet, VecDeque};
+ use verif::packet::{Format, MODE_WRITE, Packet, SIZE_32, SIZE_64, SIZE_128};
+ use verif::{Clocked, Handshake, Random, Wide, bits, value};
+ 
+@@ -828,6 +828,10 @@ struct Lpddr {
+     reads: VecDeque<ReadBurst>,
+     write_bursts: VecDeque<AddressBeat>,
+     write_beats: VecDeque<(u128, u32, bool)>,
++    /// meshsim v1.36: each beat taken, whether every word of it is defined, and the rows written with one that is
++    /// not.
++    write_known: VecDeque<bool>,
++    unknown: HashSet<u64>,
+     /// The writes whose handshakes are all done: each the cycle from which its
+     /// response may come.
+     responses: VecDeque<u64>,
+@@ -844,6 +848,8 @@ impl Lpddr {
+             reads: VecDeque::new(),
+             write_bursts: VecDeque::new(),
+             write_beats: VecDeque::new(),
++            write_known: VecDeque::new(),
++            unknown: HashSet::new(),
+             responses: VecDeque::new(),
+             bursts: Vec::new(),
+         }
+@@ -908,11 +914,12 @@ impl Lpddr {
+ 
+     /// The edge: beats and responses given leave, bursts and data taken come in
+     /// flight, answered no earlier than the next cycle; the reset drops them all.
+-    fn advance(&mut self, reset: bool, axi: &Axi, outputs: &Outputs, cycle: u64, random: &mut Random) {
++    fn advance(&mut self, reset: bool, axi: &Axi, outputs: &Outputs, cycle: u64, random: &mut Random, w_known: bool) {
+         if reset {
+             self.reads.clear();
+             self.write_bursts.clear();
+             self.write_beats.clear();
++            self.write_known.clear();
+             self.responses.clear();
+             return;
+         }
+@@ -943,6 +950,7 @@ impl Lpddr {
+         }
+         if outputs.wvalid && axi.wready {
+             self.write_beats.push_back((outputs.wdata, outputs.wstrb, outputs.wlast));
++            self.write_known.push_back(w_known);
+         }
+         // A burst whose address and every beat have come is written, and answered
+         // from the next cycle at the earliest.
+@@ -957,6 +965,11 @@ impl Lpddr {
+                 assert_eq!(strobe, 0xFFFF, "WSTRB: a write's beats enable every byte");
+                 assert_eq!(last, index == beats - 1, "WLAST on beat {index} of {beats}");
+                 self.memory.insert((burst.address >> 4) + index as u64, data);
++                if self.write_known.pop_front().unwrap() {
++                    self.unknown.remove(&((burst.address >> 4) + index as u64));
++                } else {
++                    self.unknown.insert((burst.address >> 4) + index as u64);
++                }
+             }
+             let after = self.responses.back().copied().unwrap_or(0);
+             let due = due(random).max(after);
+@@ -1011,6 +1024,10 @@ struct Counts {
+ 
+ struct Bench<E: Engine> {
+     dut: E,
++    seed: u32,
++    fp: u64,
++    beat_known: VecDeque<bool>,
++    offered_known: bool,
+     reference: Reference,
+     lpddr: Lpddr,
+     random: Random,
+@@ -1031,6 +1048,10 @@ impl<E: Engine> Bench<E> {
+     fn new(dut: E, config: Config, timing: Timing, seed: u32) -> Self {
+         let mut bench = Self {
+             dut,
++            seed,
++            fp: 0xcbf2_9ce4_8422_2325,
++            beat_known: VecDeque::new(),
++            offered_known: true,
+             reference: Reference::new(config),
+             lpddr: Lpddr::new(config, timing),
+             random: Random::new(seed),
+@@ -1080,23 +1101,92 @@ impl<E: Engine> Bench<E> {
+             let context = format!("cycle {}: {inputs:x?}", self.cycle);
+             self.reference.check(&outputs, &inputs, &context);
+             self.count(&inputs, &outputs);
++            self.fingerprint(&inputs, &outputs);
+         }
+         self.monitors.ar.sample(reset, outputs.arvalid, axi.arready, outputs.ar, axi.rvalid && axi.rlast);
+         self.monitors.aw.sample(reset, outputs.awvalid, axi.awready, outputs.aw, axi.bvalid);
+         self.monitors.w.sample(reset, outputs.wvalid, axi.wready, (outputs.wdata, outputs.wlast), false);
+         self.monitors.packet.sample(reset, outputs.packet_valid, ready, outputs.packet, false);
+         verif::edge(&mut self.dut);
+-        self.lpddr.advance(reset, &axi, &outputs, self.cycle, &mut self.random);
++        // meshsim v1.36: whether the W beat, the R beat and the packet taken hold defined data alone.
++        let w_known = self.reference.w.as_ref().is_none_or(|(row, _)| row_value(row).1 == u128::MAX);
++        let r_known = self.lpddr.reads.front().is_none_or(|read| !self.lpddr.unknown.contains(&read.row));
++        let held = [self.reference.queues[0].len(), self.reference.queues[1].len()];
++        self.lpddr.advance(reset, &axi, &outputs, self.cycle, &mut self.random, w_known);
+         if let Some(packet) = self.reference.step(&inputs) {
+             self.sent.push(packet);
+         }
++        if reset {
++            self.beat_known.clear();
++        } else {
++            let reply = inputs.access.is_some_and(|a| a.block == RW && a.write && a.word == RW_REPLY_SEND) && held[1] == 0;
++            if held[0] + usize::from(axi.rvalid) > self.reference.queues[0].len() {
++                self.offered_known = self.beat_known.pop_front().unwrap();
++            }
++            if held[1] + usize::from(reply) > self.reference.queues[1].len() {
++                self.offered_known = true;
++            }
++            if axi.rvalid {
++                self.beat_known.push_back(r_known);
++            }
++        }
+         if !self.reference.busy {
+             self.owned = None;
+         }
+         self.cycle += 1;
++        if self.cycle % 16384 == 0 {
++            println!("RWFP {:08x} at {} {:016x}", self.seed, self.cycle, self.fp);
++        }
+         outputs
+     }
+ 
++    fn mix(&mut self, x: u64) {
++        self.fp = (self.fp ^ x).wrapping_mul(0x0000_0100_0000_01b3);
++        self.fp ^= self.fp >> 29;
++    }
++
++    /// A cycle's outputs into the fingerprint (meshsim v1.36, tests/rwengine).
++    fn fingerprint(&mut self, i: &Inputs, o: &Outputs) {
++        if let Some(a) = i.access.filter(|a| !a.write)
++            && self.reference.read(a.block, a.word).is_some()
++        {
++            self.mix(u64::from(o.rdata(a.block)));
++        }
++        self.mix(
++            u64::from(o.event)
++                | u64::from(o.error) << 1
++                | u64::from(o.packet_valid) << 2
++                | u64::from(o.arvalid) << 3
++                | u64::from(o.awvalid) << 4
++                | u64::from(o.wvalid) << 5,
++        );
++        if o.packet_valid {
++            let p = o.packet;
++            self.mix(u64::from(p.dst));
++            self.mix(u64::from(p.mode | p.counter << 8 | p.size << 16));
++            self.mix(u64::from(p.address));
++            if self.offered_known {
++                self.mix(p.payload as u64);
++                self.mix((p.payload >> 64) as u64);
++            }
++        }
++        if o.arvalid {
++            self.mix(o.ar.address);
++            self.mix(u64::from(o.ar.len | o.ar.size << 8 | o.ar.burst << 16));
++        }
++        if o.awvalid {
++            self.mix(o.aw.address);
++            self.mix(u64::from(o.aw.len | o.aw.size << 8 | o.aw.burst << 16));
++        }
++        if o.wvalid {
++            let mask = self.reference.w.as_ref().map_or(0, |(row, _)| row_value(row).1);
++            let data = o.wdata & mask;
++            self.mix(data as u64);
++            self.mix((data >> 64) as u64);
++            self.mix(u64::from(o.wlast) | u64::from(o.wstrb) << 1);
++        }
++    }
++
+     fn count(&mut self, i: &Inputs, o: &Outputs) {
+         let r = &self.reference;
+         if let Some(job) = &r.job
+@@ -1315,6 +1405,12 @@ impl<E: Engine> Bench<E> {
+     }
+ }
+ 
++impl<E: Engine> Drop for Bench<E> {
++    fn drop(&mut self) {
++        println!("RWFP {:08x} end {} {:016x}", self.seed, self.cycle, self.fp);
++    }
++}
++
+ // --------------------------------------------------------------------
+ // Directed tests
+ // --------------------------------------------------------------------

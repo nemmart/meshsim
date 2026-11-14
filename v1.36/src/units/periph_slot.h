@@ -61,6 +61,7 @@
 #include "units/peripheral.h"
 #include "units/regmap.h"
 #include "units/replayer.h"
+#include "units/rw_engine.h"
 #include "units/tracer.h"
 
 namespace units {
@@ -69,7 +70,7 @@ class Replayer;
 struct TestPeripheral;
 namespace tracer { class Tracer; }
 struct IngressEgress;
-struct RwEngineStub;
+struct RwEngine;
 
 // The core's word on S2/S3 (one per cycle): a store to window word w of peripheral n, or a consuming EVENTS load.
 struct CoreOp {
@@ -121,6 +122,7 @@ struct PeriphSlotConfig {
                                          //   DMA port is declared (a compute tile's peripherals have none)
     uint64_t replayer_row_buffer = 0;    // rows of the replayer's optional record buffer (tests; 0: the hash only)
     unsigned replayer_log_entries = 256; // the replayer's read-log and write-log queues (ref's -Dreplayer.logq)
+    RwEngineConfig rw;                   // the RW engine's parameters (19): LPDDR_ADDRESS_BITS, RW_BUFFER_BYTES, RW_QUEUE_BEATS
 };
 
 // A packet a DMA sends (ref's dmaOut entry): the header as LinkWord.hdr builds it.
@@ -218,7 +220,7 @@ struct SlotCore {
     tracer::Tracer& tracer(unsigned n);
     TestPeripheral& test_peripheral(unsigned n);
     IngressEgress& ingress_egress(unsigned n);
-    RwEngineStub& rw_stub(unsigned n);
+    RwEngine& rw_engine(unsigned n);
 
 private:
     void violate(int64_t t, uint16_t code, uint32_t a = 0, uint32_t b = 0);

@@ -74,3 +74,5 @@ $(B)/slotconf: $(B)/tests/slotconf_main.o $(SLOT_LINK) $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 all: $(B)/slotconf
 
+# the RW engine in the memory tile's slot (tests/test_rw_engine.cpp; tests/rw_engine_teeth.sh plants its bugs)
+$(B)/test_rw_engine: $(SLOT_LINK)

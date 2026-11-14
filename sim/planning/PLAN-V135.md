@@ -50,6 +50,8 @@ mechanisms table to confirm.
 
 (For the next integrator: `INTEGRATOR-HANDOVER-V135.md` has the full state and the messages not yet sent.)
 
+**Frozen, 2026-11-13: the repository's `v1.35/` (5dd88302, sim/ at 09283083), accepted by the freeze check, Quests 194-196 (193 found a strip edit to a generated file, fixed before the freeze). `v1.35/ERRATA.md` lists what the shortened final sequence left undone.**
+
 **Update, 2026-11-13: every port is done and every run_tests.sh step live (none PENDING); W19-W26 and W28-W30 closed (`sessions/README.md`); what remains is the freeze sequence in `tools/freeze/README.md`.**
 
 **Done (end of 2026-11-12):** P1 (the stand-alone tree), P6 (the sort and its kit), P7a and P7b (the Tracer's suites, Stage B and the

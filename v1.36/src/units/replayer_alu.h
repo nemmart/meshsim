@@ -117,6 +117,15 @@ inline uint64_t pext(uint64_t a, uint64_t m) {
 inline bool is_load(unsigned op) { return op == LD || op == LOAD_B || op == LOAD_H || op == LOAD_W; }
 inline bool is_store(unsigned op) { return op == SD || op == STORE_B || op == STORE_H || op == STORE_W; }
 inline bool is_shift_data(unsigned op) { return op == SHDATA_B || op == SHDATA_H || op == SHDATA_W; }
+// Whether a row of the opcode writes rd (17.8.7; the RTL's replayer_alu_pkg `writes_rd`): every executed opcode but NOP, the
+// branches, the stores, the assertions, VirtualHostIO and FENCE. A write to register 0 is dropped by the register file.
+inline bool writes_rd(unsigned op) {
+    switch (op) {
+        case NOP: case BEQ: case BNE: case BLT: case BGE: case BLTU: case BGEU: case FENCE: case SD: case STORE_B: case STORE_H:
+        case STORE_W: case ASSERT_EQ: case ASSERT_LTE: case ASSERT_DIV0: case ASSERT_UREM: case ASSERT_MULU: case HOSTIO: return false;
+        default: return executes(op);
+    }
+}
 // The narrow memory rows' floor (jolt-cpp floor_offset_mask): the address bits a B/H/W access drops.
 inline uint64_t floor_mask(unsigned op) {
     switch (op) {
@@ -132,6 +141,8 @@ inline uint64_t mem_addr(unsigned op, uint64_t rs1, uint64_t imm) { uint64_t a =
 // Execute one row. op must be one the replayer executes (FATAL otherwise, as ref throws). pc is the source
 // instruction's pc, pc_inc pc_increment (0, 2 or 4), imm0pc0 the word's flag, log the row's log word (the loads,
 // VirtualAdvice), so the row's shift_offset (ShiftData only).
+// v1.36 (17.8.7, A9.4): pc_inc is 0 exactly on a row that is not its expansion's last (17.8.4), and such a row's new pc
+// is its pc whatever its opcode: a branch, JAL or JALR there neither transfers nor ends the program.
 inline void exec(unsigned op, uint64_t a, uint64_t b, uint64_t c, uint64_t pc, unsigned pc_inc, bool imm0pc0, uint64_t log,
                  uint64_t so, Out& o) {
     const int64_t sa = int64_t(a), sb = int64_t(b);
@@ -218,6 +229,7 @@ inline void exec(unsigned op, uint64_t a, uint64_t b, uint64_t c, uint64_t pc, u
         case HOSTIO: o.rd = c; break;     // 821e1bd: operand-free (every slot an immediate), so nothing is written
         default: FATAL("alu::exec: opcode %u is not executed by the replayer", op);
     }
+    if (pc_inc == 0) o.new_pc = pc;   // not its expansion's last row
 }
 
 }  // namespace units::alu

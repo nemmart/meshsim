@@ -242,12 +242,12 @@ void Replayer::post(int64_t T, unsigned bit) {
     if (ev.count_of(bit) >= ev.depth[bit]) ev_full_at_[bit] = T;
     ev.post(T, bit);
 }
-uint32_t Replayer::consume_events(uint32_t bits) {
+uint32_t Replayer::consume_events_late(int64_t t, uint32_t bits) {
     uint32_t took = 0;
     for (unsigned b = 0; b < ev.n; b++) {
         if (!(bits >> b & 1) || ev.depth[b] == 0 || ev.count_of(b) == 0) continue;
         // the load takes one, then the cycle's set adds one, up to the depth; a fill sets the depth whatever they do
-        if (ev_fill_at_[b] != worked_ && ev_full_at_[b] != worked_) ev.consume(1u << b);
+        if (ev_fill_at_[b] != t && ev_full_at_[b] != t) ev.consume(1u << b);
         took |= 1u << b;
     }
     for (unsigned b = EV_CODE; b <= EV_EXP; b++)

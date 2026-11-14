@@ -290,9 +290,9 @@ struct TileCore {
                 need_slot(d.n);
                 if (!own_bit(d.n, Win::R_DEFINED, d.word)) return BusKind::fault;            // undefined: unmapped (5.3)
                 if (store && !own_bit(d.n, Win::R_WRITABLE, d.word)) return BusKind::fault;  // an R word
-                // The slot says which words stall now, not which may (17.6's UART_TX and the like): a store raised
-                // while its word stalls is one that may (PENDING-v1.36.md).
-                return store && own_bit(d.n, Win::R_STALL, d.word) ? BusKind::window_stalls : BusKind::window;
+                // the stores that may stall: the peripheral type's static list (the RTL's register_bus, own_stalling:
+                // Ingress/Egress's UART_TX, STREAM_SEND and STREAM_SEND_LAST), whether or not the word stalls now
+                return store && own_bit(d.n, Win::R_MAYSTALL, d.word) ? BusKind::window_stalls : BusKind::window;
             }
         }
         // ---- a load made in t (a fault never is): the value at the end of t - 1, the view at t ----

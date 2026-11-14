@@ -14,10 +14,19 @@
 //                 int  write_word(int64_t t, int w, uint32_t v)   w 32-127: 1 written, 0 read-only, -1 undefined
 //                 uint32_t consume_events(uint32_t bits)          a consuming load's effect: one count from each set
 //                                                                 bit; returns the bits it took (ref's onConsume)
+//                 uint32_t consume_events_late(int64_t t, uint32_t bits)   the same for the load presented in cycle t,
+//                                                                 applied after step(t): the slot's call (17.2: a set
+//                                                                 of t survives the load; a fill sets the depth);
+//                                                                 default: events().consume_late(t, bits)
 //   level reads   bool running(int64_t t); int errors(int64_t t); uint32_t status_bits(int64_t t)   ([31:2] only)
 //                 void sync(int64_t t); EventCounts& events()     the slot calls sync(t) before events().value(t)
 //                 bool word(int64_t t, int w, uint32_t& v)        w 32-127; false: undefined (reads 0, flagged)
 //                 bool store_stalls(int64_t t, int w)             a store to w must retry (C&C 1's UART_TX)
+//   static map    bool may_stall(int w) const                     (optional) a word 32-127 whose store may stall (the
+//                                                                 RTL's register_bus, own_stalling: Ingress/Egress's
+//                                                                 UART_TX, STREAM_SEND and STREAM_SEND_LAST): the bus
+//                                                                 answers such a store the cycle after its owner takes
+//                                                                 it, whether or not it waited; without it, none
 //   static map    bool writable(int w) const                      (optional) a defined word 32-127 a store writes; the
 //                                                                 others defined are read-only, a store a bus error. The
 //                                                                 core judges a window store's bus error from it at once,
@@ -50,11 +59,13 @@
 //   - accept(t, ...) is called at level 0 of t + 3 (the director's Link(3)), with t the director's cycle. The
 //     peripheral lands it at the end of t + RP_LATENCY (= t + 2), as ref does; it must accept the call though it may
 //     already have been settled through t + 2 (but not t + 3). [The replayer: its landings are checked against that.]
-//   - run(t), write_word(t, ...), consume_events(...) for a store or consuming load at t are called at level 0 of t + 1,
+//   - run(t), write_word(t, ...), consume_events_late(t, ...) for a store or consuming load at t are called at level 0 of t + 1,
 //     before any level read of t + 1. consume_events (S3) and the EVENTS_MASK store come first, then the landings,
 //     then run / write_word: ref's endCycle(t) before its settle(t + 1).
 //   - The level reads the slot publishes for t + 1 are taken after those (then step(t + 1) runs).
-//   - DMA: out_ready / out_take at t see the end of t - 1, as ref's.
+//   - DMA (17.4; the RTL's peripheral_dma.veryl): DMA_START presented in cycle p: out_start(p, q, n) at level 0 of p + 1,
+//     also for n = 0; out_ready / out_take at t >= p + 1 see the end of t - 1 and are called before step(t); the
+//     transfer ends the cycle after its last take (p + 1 for n = 0), when dma_done is set and dma_busy falls at its end.
 #pragma once
 
 #include <cstdint>
@@ -121,6 +132,8 @@ struct PeripheralBase {
     void sync(int64_t) {}
     bool word(int64_t, int, uint32_t&) { return false; }
     int write_word(int64_t t, int w, uint32_t) { uint32_t v; return static_cast<Self*>(this)->word(t, w, v) ? 0 : -1; }
+    uint32_t consume_events_late(int64_t t, uint32_t bits) { return static_cast<Self*>(this)->events().consume_late(t, bits); }
+    bool may_stall(int) const { return false; }
     bool store_stalls(int64_t, int) const { return false; }
     int out_queues() const { return 0; }
     bool out_ready(int64_t, int) const { return false; }

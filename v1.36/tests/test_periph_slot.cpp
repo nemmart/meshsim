@@ -249,6 +249,112 @@ TEST(slot_unit_replayer_pass_of_zero_rows_and_a_landing) {
     }
 }
 
+// The RTL's cycles of the DMA and of a consuming load (rtl/blocks/peripheral/src/peripheral_dma.veryl and
+// peripheral_control.veryl, their headers): DMA_START presented in p takes effect at the end of p; from p + 1 an entry a
+// cycle; the transfer ends in the cycle its last packet leaves, the cycle after its last take: dma_done is set then
+// and STATUS.dma_busy falls at its end. A counted event's count becomes one less on a consuming load, then one more,
+// at most its depth, on its set: a set in the cycle of a consuming load survives it.
+TEST(slot_dma_ends_the_cycle_after_its_last_take_and_a_set_survives_a_consuming_load) {
+    const Stand::Ev ev[] = {
+        {3, Stand::STORE, P_DMA_HDR, 1u << HDR_DST_LO | 2u << DMA_HDR_COUNT_LO, 0, 0},   // dst 1, WRITE, queue 0, 2 packets
+        {4, Stand::STORE, P_EVENTS_MASK, 0x2, 0, 0},    //    EVENTS_MASK: dma_done
+        {5, Stand::STORE, P_DMA_START, 1, 0, 0},        //    DMA_START in 5: takes in 6 and 7, the end in 8
+        {5, Stand::READ, W_STATUS, 0, 0, 0},            // 0: not busy in 5
+        {6, Stand::READ, W_STATUS, 0, 0, 0},            // 1: busy in 6
+        {7, Stand::READ, W_STATUS, 0, 0, 0},            // 2: in 7
+        {8, Stand::READ, W_STATUS, 0, 0, 0},            // 3: and in 8, the cycle the last packet leaves
+        {8, Stand::READ, W_EVENTS_PEEK, 0, 0, 0},       // 4: dma_done not yet
+        {9, Stand::READ, W_STATUS, 0, 0, 0},            // 5: busy fell at the end of 8
+        {9, Stand::READ, W_EVENTS_PEEK, 0, 0, 0},       // 6: dma_done set at the end of 8
+        {12, Stand::STORE, P_DMA_HDR, 1u << HDR_DST_LO, 0, 0},   // count 0
+        {13, Stand::STORE, P_DMA_START, 1, 0, 0},       //    DMA_START in 13: the empty transfer ends in 14
+        {14, Stand::CONSUME_MASKED, 0, 0, 0, 0},        // 7: a consuming load in 14 returns the first transfer's dma_done
+        {15, Stand::READ, W_EVENTS_PEEK, 0, 0, 0},      // 8: the set of 14 survived the load of 14
+        {16, Stand::CONSUME_MASKED, 0, 0, 0, 0},        // 9: taken now
+        {18, Stand::READ, W_EVENTS_PEEK, 0, 0, 0},      // 10: gone
+    };
+    PeriphSlotConfig pc;
+    pc.tile = 66; pc.controller = true; pc.type[1] = PT_TEST;
+    for (int variant = 0; variant < 3; variant++) {
+        Rig r(ev, sizeof ev / sizeof ev[0], pc, opts(variant));
+        r.m.run(40);
+        Stand& s = r.stand();
+        CHECK_EQ(s.n_reads, 11u);
+        CHECK_EQ(s.reads[0] & 2, 0u);
+        CHECK_EQ(s.reads[1] & 2, 2u);
+        CHECK_EQ(s.reads[2] & 2, 2u);
+        CHECK_EQ(s.reads[3] & 2, 2u);
+        CHECK_EQ(s.reads[4], 0u);
+        CHECK_EQ(s.reads[5] & 2, 0u);
+        CHECK_EQ(s.reads[6], 2u);
+        CHECK_EQ(s.reads[7], 2u);
+        CHECK_EQ(s.reads[8], 2u);
+        CHECK_EQ(s.reads[9], 2u);
+        CHECK_EQ(s.reads[10], 0u);
+        CHECK_EQ(s.n_dma, 2u);
+        for (unsigned k = 0; k < 2 && k < s.n_dma; k++) CHECK_EQ(s.dma_t[k], 7u + k);   // taken in 6 and 7
+        CHECK_EQ(r.slot().s.violation_total(), 0u);
+    }
+}
+
+// The same rule for a peripheral's own counted event, the test peripheral's done (depth 1; its work lasts 10 cycles
+// from START's): the second work's end, in the cycle of a consuming load that returned the first's done, survives it.
+TEST(slot_peripheral_event_set_in_a_consuming_loads_cycle_survives_it) {
+    const Stand::Ev ev[] = {
+        {2, Stand::STORE, P_EVENTS_MASK, 0x1, 0, 0},    //    EVENTS_MASK: done
+        {3, Stand::STORE, P_START, 1, 0, 0},            //    START in 3: the work ends in 13
+        {14, Stand::READ, W_EVENTS_PEEK, 0, 0, 0},      // 0: done
+        {14, Stand::STORE, P_START, 1, 0, 0},           //    START in 14: the work ends in 24
+        {24, Stand::CONSUME_MASKED, 0, 0, 0, 0},        // 1: a consuming load in 24: the first work's done
+        {25, Stand::READ, W_EVENTS_PEEK, 0, 0, 0},      // 2: the set of 24 survived
+        {26, Stand::CONSUME_MASKED, 0, 0, 0, 0},        // 3: taken
+        {28, Stand::READ, W_EVENTS_PEEK, 0, 0, 0},      // 4: gone
+    };
+    PeriphSlotConfig pc;
+    pc.tile = 64; pc.controller = true; pc.type[1] = PT_TEST;
+    for (int variant = 0; variant < 3; variant++) {
+        Rig r(ev, sizeof ev / sizeof ev[0], pc, opts(variant));
+        r.m.run(40);
+        Stand& s = r.stand();
+        CHECK_EQ(s.n_reads, 5u);
+        CHECK_EQ(s.reads[0], 1u);
+        CHECK_EQ(s.reads[1], 1u);
+        CHECK_EQ(s.reads[2], 1u);
+        CHECK_EQ(s.reads[3], 1u);
+        CHECK_EQ(s.reads[4], 0u);
+        CHECK_EQ(r.slot().s.test_peripheral(1).runs, 2);
+    }
+}
+
+// And for the replayer's done (17.8.1; replayer_pass.veryl: a pass of 0 rows is busy for the cycle after START's and
+// ends in it): the second pass's end in the cycle of a consuming load.
+TEST(slot_replayer_done_set_in_a_consuming_loads_cycle_survives_it) {
+    const Stand::Ev ev[] = {
+        {3, Stand::STORE, P_EVENTS_MASK, 0x1, 0, 0},    //    EVENTS_MASK: done
+        {5, Stand::STORE, P_START, 1, 0, 0},            //    START in 5: busy in 6, done set at its end
+        {7, Stand::READ, W_EVENTS_PEEK, 0, 0, 0},       // 0: done
+        {8, Stand::STORE, P_START, 1, 0, 0},            //    START in 8: done set at the end of 9
+        {9, Stand::CONSUME_MASKED, 0, 0, 0, 0},         // 1: a consuming load in 9
+        {10, Stand::READ, W_EVENTS_PEEK, 0, 0, 0},      // 2: the set of 9 survived
+        {11, Stand::CONSUME_MASKED, 0, 0, 0, 0},        // 3: taken
+        {13, Stand::READ, W_EVENTS_PEEK, 0, 0, 0},      // 4: gone
+    };
+    PeriphSlotConfig pc;
+    pc.tile = 9; pc.type[1] = PT_REPLAYER;
+    for (int variant = 0; variant < 3; variant++) {
+        Rig r(ev, sizeof ev / sizeof ev[0], pc, opts(variant));
+        r.m.run(60);
+        Stand& s = r.stand();
+        CHECK_EQ(s.n_reads, 5u);
+        CHECK_EQ(s.reads[0] & 1, 1u);
+        CHECK_EQ(s.reads[1] & 1, 1u);
+        CHECK_EQ(s.reads[2] & 1, 1u);
+        CHECK_EQ(s.reads[3] & 1, 1u);
+        CHECK_EQ(s.reads[4] & 1, 0u);
+        CHECK_EQ(r.slot().s.replayer(1).passes, 2u);
+    }
+}
+
 // PeripheralSlotTest's two undefined behaviours in the DMA (DECISIONS-v1.25 s8e): meshsim stops, naming them.
 DEATH_TEST(slot_dma_start_while_a_transfer_runs, "DMA: DMA_START while a transfer is in progress") {
     SlotCore s;

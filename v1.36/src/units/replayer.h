@@ -309,7 +309,10 @@ public:
     // A consuming load's effect, the load presented in the cycle `step` ran last: one count from each set bit, but a
     // credit filled, or set at its depth, in that cycle keeps its count (17.8.1; peripheral_control.veryl). Returns
     // the bits it took a count from.
-    uint32_t consume_events(uint32_t bits);
+    uint32_t consume_events(uint32_t bits) { return consume_events_late(worked_, bits); }
+    // The same for a load presented in cycle t, called after step(t) if step ran in t (the slot's call: it may not
+    // have stepped an idle replayer in t, when nothing was set in t either).
+    uint32_t consume_events_late(int64_t t, uint32_t bits);
     void sync(int64_t t) { settle(t); }
     bool word(int64_t t, int w, uint32_t& v);
     int write_word(int64_t t, int w, uint32_t v);

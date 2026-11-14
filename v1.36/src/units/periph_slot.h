@@ -1,35 +1,55 @@
 // periph_slot.h: a tile's peripherals (machine-spec 17.1-17.5; the RTL's rtl/blocks/peripheral: peripheral_control and
 // peripheral_dma). The slot holds each peripheral's control block (block 0: PARAMS 0, STATUS 1, ERRORS 2, EVENTS 3,
 // EVENTS_PEEK 4, EVENTS_MASK 5, START 6) and, for a special tile's peripheral with a DMA, its DMA block (block 1: DMA_HDR
-// 16, DMA_DEST_ADDR 17, DMA_START 18), by v1.36's window words (regmap.h's PeriphReg); the unit's structure and timing are
-// v1.35's (spec 4.17; sim/ref/meshsim/src/PeripheralSlot.java; AUDIT-M3 3.1).
-// DECLARATIONS: the ports, the window's register layout and the dispatch are the agreed interface;
-// the step comes with the implementation.
+// 16, DMA_DEST_ADDR 17, DMA_START 18), by v1.36's window words (regmap.h's PeriphReg). The unit's structure is v1.35's
+// (its 4.17; AUDIT-M3 3.1); its cycles are the RTL's where THE CONTRACT below says so.
 //
-// One framework unit per tile (mesh tile or controller): up to three peripherals at regions 0x04-0x06 and windows
+// One framework unit per tile (compute tile or special tile): up to three peripherals at regions 0x04-0x06 and windows
 // 0xFFFFFA00 + 0x200 (n - 1), owned by the slot (created at configuration from PeriphSlotConfig) and called synchronously
 // through `visit`, a switch on the peripheral's type (units/peripheral.h's method set; no virtual calls). The slot owns
-// EVENTS_MASK, the consuming loads, the window's access rules, the live bits and the DMAs (controllers only).
+// EVENTS_MASK, the consuming loads, the window's access rules, the live bits and the DMAs (special tiles only).
 //
 // PORTS (AUDIT-M3 3.1's table):
-//   S1 region (LinkIn, width 3: lo, header, hi)  <- the director: a mode-0 write to region 0x04-0x06 at t, Link(3);
-//                                                    applied at level 0 of t + 3 (accept(t, ...): lands at the end of t + 2)
-//   S2/S3 core (LinkIn, width 1: CoreOp)          <- the core: a window store or a consuming EVENTS load at t, Link(1);
-//                                                    applied at level 0 of t + 1 (at most one per cycle)
-//   S4/S5/S8 window (RegFileOut, WIN_REGS)        -> the core (window loads), the register block (EVENTS [15:13],
-//                                                    ERRORS [13:11], the WFI wake), the store stalls; written only at
-//                                                    level 0: what ref's reads at t return (the end of t - 1)
-//   S6 dma (CreditOut, width 3: lo, header, hi)   -> the controller router's CC_DMA_IN, Fifo(ccDmaDepth = 4): room as of
-//                                                    the start of t, one packet a cycle (controllers with a DMA only)
+//   S1 region (LinkIn, width 3: lo, header, hi)  <- the director: a WRITE to region 0x04-0x06 it accepted at t,
+//                                                    Link(WRITE_PORT_LATENCY + 1 = 3); applied at level 0 of t + 3
+//                                                    (accept(t, ...): the write port presents it in t + 2)
+//   S2/S3 core (LinkIn, width 1: CoreOp)          <- the core: a window store or a consuming EVENTS load made in t,
+//                                                    Link(1); applied at level 0 of t + 1 (at most one per cycle)
+//   S4/S5/S8 window (RegFileOut, WIN_REGS)        -> the core (window loads, the stores that stall), the tile control
+//                                                    unit (EVENTS.peripheral_n, ERRORS.peripheral_n); written only at
+//                                                    level 0: what a load made in t returns (the end of t - 1)
+//   S6 dma (CreditOut, width 3: lo, header, hi)   -> the special tile's router, its DMA input (16.4): room as of the
+//                                                    start of t, one packet a cycle (a peripheral with a DMA only)
 //   S7 rows                                       an observer, not a port: the replayer's sink (hash, optional buffer)
-//   + the peripherals' own ports, held in `own` for them (peripheral.h, OWN PORTS: C&C 1's READY, error lines, GO)
+//   + the peripherals' own ports, held in `own` for them (peripheral.h, OWN PORTS: Ingress/Egress's nets)
 //
-// THE STEP at t (AUDIT-M3 3.1's order):
-//   level 0: (1) each peripheral's begin(t) [C&C 1's READY arrivals, error lines]; (2) the core's consume of t - 1
-//   (consume_events, DMA done) and its EVENTS_MASK store; (3) the landings due (accept); (4) the core's other inputs of
-//   t - 1 (run, write_word, DMA_HDR/ADDR, PULSE_DMA); (5) publish the window (only registers that changed).
-//   then: for n = 1..3, the peripheral's step(t), its DMA's work, end(t); the flags (invariant 16, violation counts).
+// THE STEP at t:
+//   level 0: (1) each peripheral's begin(t) [Ingress/Egress's arrivals and error lines]; (2) the core's consuming load
+//   of t - 1 (consume_events_late(t - 1, ...), dma_done) and its EVENTS_MASK store; (3) the landings due (accept);
+//   (4) the core's other store of t - 1 (run, write_word, DMA_HDR, DMA_DEST_ADDR, DMA_START); (5) publish the window
+//   (only registers that changed).
+//   then: for n = 1..3, the DMA's work of t, the peripheral's step(t), end(t); the flags (violation counts).
 //   wake: t + 1 if any peripheral isn't idle or a DMA is busy; else its next_wake_at; else on S1/S2/S3 (D23: no polling).
+//
+// THE CONTRACT WITH A PERIPHERAL'S MODEL (the replayer's and the Tracer's are the RTL's units, cycle for cycle at the
+// block level: replayer.h, tracer.h; what the slot gives them is what the RTL's blocks around them do):
+//   - the write port (17.3, 12.3): a WRITE the director accepted at t is presented in t + WRITE_PORT_LATENCY (2) and
+//     lands as the peripheral lands it: the replayer and the Tracer at the end of that cycle (replayer_unit.veryl and
+//     tracer_control.veryl, "a WRITE presented in cycle t lands at the end of t"), so 0 cycles of PERIPHERAL_LATENCY's
+//     6 at most (LAND_LATENCY - WRITE_PORT_LATENCY, 19);
+//   - a store made in p (START, a word of blocks 2-7, EVENTS_MASK, the DMA's words): in effect at the end of p
+//     (run(p), write_word(p, ...), called at level 0 of p + 1, before any read of p + 1);
+//   - a load made in p reads the end of p - 1; a consuming load of EVENTS takes its counts at the end of p, under the
+//     mask as it was in p, and a set of p survives it, a fill of p sets the depth (peripheral_control.veryl): the
+//     model has stepped p by then, so the slot calls consume_events_late(p, bits), and the same rule holds for
+//     dma_done, which is the slot's;
+//   - the DMA (peripheral_dma.veryl): DMA_START made in p: out_start(p, queue, count), count 0 too; from p + 1 one
+//     out_take a cycle while the queue's head is there (out_ready) and the router's input has room, called before
+//     the model's step of that cycle; the transfer ends the cycle after its last take (p + 1 for a count of 0):
+//     dma_done is set then (not while the peripheral is stopped, if it has `stopped()`: tracer_control.veryl) and
+//     STATUS.dma_busy falls at its end;
+//   - the stores that may stall: the peripheral's static list (may_stall: Win::R_MAYSTALL) for the bus's timing, and
+//     the words that stall now (store_stalls: Win::R_STALL).
 #pragma once
 
 #include <cstdint>
@@ -84,7 +104,9 @@ struct Win {
     static constexpr unsigned R_WRITABLE = 112;            // [112, 115): words 32-127 a store writes (the rest of the
                                                            //   defined ones are read-only: a store is a bus error); static,
                                                            //   from the peripheral's writable(w) (all defined if it has none)
-    static constexpr unsigned PER = 115;
+    static constexpr unsigned R_MAYSTALL = 115;            // [115, 118): words 32-127 whose store may stall; static, from
+                                                           //   the peripheral's may_stall(w) (register_bus.veryl, own_stalling)
+    static constexpr unsigned PER = 118;
     // the tile's live bits:
     static constexpr unsigned R_LIVE = 3 * PER;            // [2:0] EVENTS [15:13] ((events | done) & mask != 0, per n);
                                                            // [5:3] ERRORS [13:11] (errors != 0, per n)
@@ -176,6 +198,7 @@ struct SlotCore {
     uint32_t live_errors(int64_t t);
     void run_cycle(int64_t t, unsigned dma_room = ~0u);                 // dma_room: packets the DMA port takes at t
     void end_cycle(int64_t t);
+    void consume(int64_t t, unsigned n, uint32_t bits);                 // the consuming load of cycle t, after t's step
     void reset(int64_t t);
     uint64_t violation_total();                                         // ref's slot.violations
     bool idle(int64_t t);

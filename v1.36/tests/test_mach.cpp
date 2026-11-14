@@ -372,6 +372,18 @@ TEST(mach_chip_builds_and_steps) {
         CHECK(ie.word(m.c.cycle() + 1, 32, v) && v == 0u);
         CHECK(ie.word(m.c.cycle() + 1, 33, v) && v == 0u);
     }
+    // The stores that may stall, as each slot gives the register bus its peripheral's list (the RTL's register_bus,
+    // own_stalling): Ingress/Egress's UART_TX (block 2, word 10) and STREAM_SEND and STREAM_SEND_LAST (block 4, words 3
+    // and 4); no word of the replayer's, the RW engine's or the Tracer's.
+    {
+        using units::Win;
+        const auto may = [&](const char* slot, unsigned k) { return m.c.unit<units::PeriphSlot>(slot).published[Win::reg(1, Win::R_MAYSTALL + k)]; };
+        CHECK_EQ(may("cc1.slot", 0), 1u << 10);                 // window word 32 + 10
+        CHECK_EQ(may("cc1.slot", 1), 1u << 3 | 1u << 4);        // window words 64 + 3, 64 + 4
+        CHECK_EQ(may("cc1.slot", 2), 0u);
+        for (const char* s : {"cc2.slot", "cc3.slot", "t0.slot", "t37.slot"})
+            for (unsigned k = 0; k < 3; k++) CHECK_EQ(may(s, k), 0u);
+    }
     for (unsigned i = 0; i < 4; i++) CHECK_EQ(m.word(64, units::IMEM_BASE + 0x100 + 4 * i), 0x11111111u * (i + 1));
     CHECK_EQ(m.word(65, units::IMEM_BASE + 0x100), 0u);
     for (unsigned u : {64u, 65u}) {

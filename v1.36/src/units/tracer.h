@@ -137,7 +137,10 @@ public:
     int type() const { return TYPE; }
     uint64_t violation_count() const { return uint64_t(n_violations); }  // the slot forwards new ones
     EventCounts& events() { return ev; }
+    // A consuming load presented in cycle t: `consume_events` when it is applied before step(t) (the block bench, the
+    // rig), `consume_events_late` when after it (the slot): a set of t then survives the load either way (17.2).
     uint32_t consume_events(uint32_t bits) { return ev.consume(bits); }
+    uint32_t consume_events_late(int64_t t, uint32_t bits) { return ev.consume_late(t, bits); }
     // accept(t): the write port presents the packet in cycle t + 2, and it lands at that cycle's end. run and write_word
     // for a store presented in cycle t: in effect at the end of t.
     void accept(int64_t t, int src, uint32_t offset, int size, uint64_t lo, uint64_t hi);

@@ -8,6 +8,11 @@
 // Timing (4.11): a post at t is visible from t + 1 (`value(t)` discounts a bit posted or set at t by one, as ref does,
 // whatever its count); a consuming load's effect is applied by the slot at the end of its cycle.
 //
+// v1.36 (the RTL's peripheral_control.veryl): in a cycle a counted event's count becomes one less on a consuming load,
+// then one more, at most its depth, on its set; or its depth on a fill, whatever the load and the set do. `consume` is
+// the load applied before the cycle's sets; `consume_late(t, bits)` the load of cycle t applied after them: a bit whose
+// post of t found the count at its depth, or that was set (filled) at t, keeps its count.
+//
 // ref's onConsume callback is replaced by consume's return value: the mask of the bits it took a count from.
 #pragma once
 
@@ -26,11 +31,13 @@ struct EventCounts {
     bool flag_full[MAX_BITS] = {};     // per bit: a post to a full counter is a violation (credits)
     uint8_t count[MAX_BITS] = {};
     int64_t last_post_at[MAX_BITS];
+    int64_t last_full_at[MAX_BITS];    // the cycle of the last post that found the count at its depth
+    int64_t last_set_at[MAX_BITS];     // the cycle of the last set (a fill)
     uint32_t live_bits = 0;
     uint64_t full_posts = 0;           // posts to a full flagged counter; the last one's bit (the slot reports it)
     unsigned last_full_bit = 0;
 
-    EventCounts() { for (unsigned b = 0; b < MAX_BITS; b++) last_post_at[b] = NEVER; }
+    EventCounts() { for (unsigned b = 0; b < MAX_BITS; b++) last_post_at[b] = last_full_at[b] = last_set_at[b] = NEVER; }
     // Configuration: n bits with their depths and full-flags.
     void init(unsigned bits, const uint8_t* depths, const bool* flags) {
         if (bits > MAX_BITS) FATAL("EventCounts: %u bits, at most %u", bits, MAX_BITS);
@@ -41,6 +48,7 @@ struct EventCounts {
     // The event on bit b happens at t (visible from t + 1).
     void post(int64_t t, unsigned b) {
         if (count[b] >= depth[b]) {
+            last_full_at[b] = t;
             if (flag_full[b]) { full_posts++; last_full_bit = b; }
             return;
         }
@@ -48,7 +56,7 @@ struct EventCounts {
         last_post_at[b] = t;
     }
     // Set bit b's count (the replayer's credits at a start).
-    void set(int64_t t, unsigned b, unsigned v) { count[b] = uint8_t(v < depth[b] ? v : depth[b]); last_post_at[b] = t; }
+    void set(int64_t t, unsigned b, unsigned v) { count[b] = uint8_t(v < depth[b] ? v : depth[b]); last_post_at[b] = t; last_set_at[b] = t; }
     void clear(unsigned b) { count[b] = 0; }
     void clear_all() { for (unsigned b = 0; b < MAX_BITS; b++) count[b] = 0; }
     // A live bit's level.
@@ -67,6 +75,17 @@ struct EventCounts {
         uint32_t took = 0;
         for (unsigned b = 0; b < n; b++)
             if ((bits >> b & 1) && depth[b] > 0 && count[b] > 0) { count[b]--; took |= 1u << b; }
+        return took;
+    }
+    // The consuming load of cycle t, applied after t's posts and sets (above). Returns the bits it was given that were
+    // counted and set.
+    uint32_t consume_late(int64_t t, uint32_t bits) {
+        uint32_t took = 0;
+        for (unsigned b = 0; b < n; b++) {
+            if (!(bits >> b & 1) || depth[b] == 0 || count[b] == 0) continue;
+            if (last_full_at[b] != t && last_set_at[b] != t) count[b]--;
+            took |= 1u << b;
+        }
         return took;
     }
     unsigned count_of(unsigned b) const { return count[b]; }

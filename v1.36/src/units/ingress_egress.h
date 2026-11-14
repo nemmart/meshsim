@@ -183,6 +183,9 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
         }
     }
     bool store_stalls(int64_t, int w) const { return w == UART_TX && tx_n >= FIFO; }
+    // The stores that may stall (the RTL's register_bus, own_stalling: block 2 word 10, block 4 words 3 and 4): UART_TX
+    // while the TX FIFO is full, the sends while the host interface's transmit FIFO is (17.6).
+    bool may_stall(int w) const { return w == UART_TX || w == STREAM_SEND || w == STREAM_SEND_LAST; }
     // The static map (peripheral.h): the defined words a store writes; the others are R: a store is an access fault.
     bool writable(int w) const {
         return (w >= ARRIVE_EXPECT_0 && w <= UART_TX) || w == UART_DIVISOR || w == UART_STATUS || (w >= STREAM_OUT_W0 && w <= STREAM_SEND_LAST);

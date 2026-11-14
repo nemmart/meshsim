@@ -1,5 +1,6 @@
-// periph_slot.cpp: the peripheral slot: SlotCore is sim/ref/meshsim/src/PeripheralSlot.java method for method;
-// PeriphSlot puts it behind AUDIT-M3 3.1's ports.
+// periph_slot.cpp: the peripheral slot (periph_slot.h): SlotCore, the slot without ports, whose calls are made at once
+// (v1.35's PeripheralSlot.java, method for method, with v1.36's control and DMA blocks and the RTL's cycles: the
+// header's contract); PeriphSlot puts it behind the ports.
 #include "units/periph_slot.h"
 
 #include <type_traits>
@@ -240,13 +241,21 @@ uint32_t SlotCore::live_errors(int64_t t) {
     return v;
 }
 
+// A consuming load of EVENTS made in cycle t (17.2; peripheral_control.veryl), applied after the peripheral's step of
+// t: one count from each bit it returned set under the mask, but a set of t survives the load and a fill of t sets the
+// depth. dma_done is the slot's (depth 1): a transfer that ended in t leaves it set.
+void SlotCore::consume(int64_t t, unsigned n, uint32_t bits) {
+    visit(n, [&](auto& p) { p.consume_events_late(t, bits & ~2u); });
+    if ((bits & 2) && dma[n].done_at != t) dma[n].done = 0;
+}
+
 // ---------------------------------------------------------------- the cycle
 void SlotCore::run_cycle(int64_t t, unsigned dma_room) {
     n_out = 0;
     for (unsigned n = 1; n <= 3; n++) {
         if (per[n].type == PT_ABSENT) continue;
+        dma_run(t, n, dma_room);                               // the DMA takes the head as it was at the start of t
         visit(n, [&](auto& p) { p.step(t); });
-        dma_run(t, n, dma_room);
         visit(n, [&](auto& p) {
             const EventCounts& e = p.events();
             if (e.full_posts != full_seen[n]) { full_seen[n] = e.full_posts; violate(t, F_FULL_POST, n, e.last_full_bit); }
@@ -257,10 +266,7 @@ void SlotCore::run_cycle(int64_t t, unsigned dma_room) {
 void SlotCore::end_cycle(int64_t t) {
     for (unsigned n = 1; n <= 3; n++) {
         if (per[n].type == PT_ABSENT) continue;
-        if (consume_t[n] == t) {
-            visit(n, [&](auto& p) { p.consume_events(consume_bits[n] & ~2u); });
-            if (consume_bits[n] & 2) dma[n].done = 0;
-        }
+        if (consume_t[n] == t) consume(t, n, consume_bits[n]);
         if (pend_mask_t[n] == t) mask[n] = pend_mask[n];
     }
 }
@@ -316,15 +322,27 @@ void SlotCore::dma_start(int64_t t, unsigned n) {
         if (qq >= p.out_queues())
             FATAL("slot %u: undefined behavior at %lld: peripheral %u's DMA: a transfer naming output queue %d, which the peripheral doesn't have (17.4)", tile, (long long)t, n, qq);
         d.q = qq; d.left = d.hdr >> DMA_HDR_COUNT_LO & DMA_HDR_COUNT_MASK; d.busy = true; d.started_at = t; d.transfers++;
-        if (d.left > 0) p.out_start(t, d.q, d.left);
+        p.out_start(t, d.q, d.left);                           // a count of 0 too: the peripheral sees every start
     });
 }
 
+// The DMA's cycle t (peripheral_dma.veryl), before the peripheral's step of t: from the cycle after DMA_START's, an
+// entry a cycle while one is to send, the queue's head is there and the router's input has room; the transfer ends
+// the cycle after its last take (the cycle the last packet leaves; with a count of 0, the cycle after the start):
+// dma_done is set then, and dma_busy falls at its end. A stopped peripheral's dma_done is withheld (the Tracer after
+// an error: tracer_control.veryl's event_dma_done_set && !stopped).
 void SlotCore::dma_run(int64_t t, unsigned n, unsigned& room) {
     Dma& d = dma[n];
     if (!d.busy || t <= d.started_at) return;
-    auto finish = [&] { d.busy = false; if (d.done < 1) d.done = 1; d.done_at = t; };
-    if (d.left == 0) { finish(); return; }
+    if (d.left == 0) {
+        d.busy = false;
+        const bool withheld = visit(n, [&](auto& p) -> bool {
+            if constexpr (requires { p.stopped(); }) return p.stopped();
+            else return false;
+        });
+        if (!withheld) { d.done = 1; d.done_at = t; }
+        return;
+    }
     // 17.4: the count in 128-bit packets, every packet one queue entry; a WRITE carries DMA_DEST_ADDR, which then
     // advances by 16; a packet of any other mode carries 0 and leaves it; src is the tile's own id (16.4)
     bool ready = visit(n, [&](auto& p) { return p.out_ready(t, d.q); });
@@ -340,7 +358,6 @@ void SlotCore::dma_run(int64_t t, unsigned n, unsigned& room) {
     d.packets++;
     if (write) d.addr += 16;
     d.left--;
-    if (d.left == 0) finish();
 }
 
 // ================================================================ the unit
@@ -367,7 +384,7 @@ void PeriphSlot::full_values(int64_t t, uint32_t* out) {
             if (w > P_START && w < P_DMA_HDR) continue;
             s.peek(t, n, w, v); out[Win::reg(n, Win::R_STD + Win::std(w))] = v;
         }
-        uint32_t def[3] = {}, stall[3] = {}, wr[3] = {};
+        uint32_t def[3] = {}, stall[3] = {}, wr[3] = {}, may[3] = {};
         for (unsigned w = Win::OWN0; w < Win::WORDS; w++) {
             const unsigned k = w - Win::OWN0;
             if (s.peek(t, n, w, v)) def[k / 32] |= 1u << (k % 32);
@@ -382,11 +399,12 @@ void PeriphSlot::full_values(int64_t t, uint32_t* out) {
                 if constexpr (requires { q.writable(0); }) yes = q.writable(int(w));
                 else yes = (def[k / 32] >> (k % 32)) & 1;
                 if (yes) wr[k / 32] |= 1u << (k % 32);
+                if (q.may_stall(int(w))) may[k / 32] |= 1u << (k % 32);
             }
         });
         for (unsigned k = 0; k < 3; k++) {
             out[Win::reg(n, Win::R_DEFINED + k)] = def[k]; out[Win::reg(n, Win::R_STALL + k)] = stall[k];
-            out[Win::reg(n, Win::R_WRITABLE + k)] = wr[k];
+            out[Win::reg(n, Win::R_WRITABLE + k)] = wr[k]; out[Win::reg(n, Win::R_MAYSTALL + k)] = may[k];
         }
     }
     out[Win::R_LIVE] = s.live_events(t) | s.live_errors(t) << 3;
@@ -463,7 +481,7 @@ void PeriphSlot::publish(sim::Ctx& c, int64_t t) {
             if (all[i] == published[i]) continue;
             const unsigned n = i / Win::PER + 1, r = i % Win::PER;
             const char* what = i == Win::R_LIVE ? "the live bits" : r < Win::R_OWN ? "standard word" : r < Win::R_DEFINED ? "own word"
-                             : r < Win::R_STALL ? "R_DEFINED" : r < Win::R_WRITABLE ? "R_STALL" : "R_WRITABLE";
+                             : r < Win::R_STALL ? "R_DEFINED" : r < Win::R_WRITABLE ? "R_STALL" : r < Win::R_MAYSTALL ? "R_WRITABLE" : "R_MAYSTALL";
             const unsigned word = r < Win::R_OWN ? r : r < Win::R_DEFINED ? Win::OWN0 + r - Win::R_OWN : r;
             FATAL("slot %u at %lld: window register %u (peripheral %u, %s %u) is 0x%x, published 0x%x (PeriphSlot::publish misses it)",
                   cfg.tile, (long long)t, i, i == Win::R_LIVE ? 0u : n, what, word, all[i], published[i]);
@@ -482,10 +500,8 @@ sim::Wake PeriphSlot::step(sim::Ctx& c) {
     if (c.ready(core)) { op = c.peek(core)[0]; c.take(core); have_op = true; active = true; }
     if (have_op) {
         const unsigned n = CoreOp::n(op), w = CoreOp::word(op);
-        if (CoreOp::kind(op) == CoreOp::CONSUME) {
-            const uint32_t bits = CoreOp::value(op);
-            s.visit(n, [&](auto& q) { q.consume_events(bits & ~2u); });
-            if (bits & 2) s.dma[n].done = 0;
+        if (CoreOp::kind(op) == CoreOp::CONSUME) {             // the load made in t - 1, after the step of t - 1
+            s.consume(t - 1, n, CoreOp::value(op));
             have_op = false;
         } else if (w == P_EVENTS_MASK) {
             s.mask[n] = CoreOp::value(op);

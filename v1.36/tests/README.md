@@ -74,5 +74,5 @@ not v1.3's Java model:
 - **`test_tracer`**: the interface to the slot, the wake rule, `observe()` and the fingerprint.
 - **`tests/tracer_teeth.sh`** plants v1.35's behaviour and timing slips in the Tracer, one at a time, and requires
   these tests to fail on each.
-The replay of the Java reference Tracer's call logs (`tests/tracerconf/`) is retired with the v1.35 hardware it
+The replay of the Java reference Tracer's call logs (the tracerconf fixtures) is retired with the v1.35 hardware it
 modelled.

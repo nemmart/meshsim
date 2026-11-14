@@ -181,7 +181,7 @@ TEST(b6_the_nop_policy_costs_two_cycles) {
 // is read and it is posted; from the post the wait is the core's, in no counter (17.9.8); its rows and its successor
 // keep the schedule (its last word is popped rows ahead). The core here is the RTL bench's: a post in cycle n is
 // seen by the EVENTS load of n + 1, answered by the loads of words 35 and 34, and its first word's WRITE is in
-// n + 4 (build-scratch/rtl-ref/HOWTO.md, "A run", steps 2 to 5): 3 cycles of wait.
+// n + 4 (tests/tracer_block.cpp, Bench::run: one access a cycle, the words released after the two loads): 3 cycles of wait.
 TEST(b6_a_core_fed_instruction_costs_a_fetch_cycle_and_the_cores_wait) {
     for (const auto& lat : LAT) {
         Prog p(CODE);

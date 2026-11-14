@@ -45,8 +45,9 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     core.imem = core.dmem + MEM_WORDS;
     core.bootrom = g.bootrom; core.bootrom_words = g.bootrom_words;
     check_bootrom(g.bootrom_words, "the machine's");
-    core.reset_mtvec = BOOTROM_BASE + g.bootrom_handler;   // mtvec resets to the ROM's handler (6.2)
-    core.reset();
+    core.reset_trap_vector = BOOTROM_BASE + g.bootrom_handler;   // mtvec resets to the ROM's handler (6.2)
+    core.hart_id = k;                                      // mhartid: the tile's id (6.2)
+    core.reset(0, BOOTROM_BASE);                           // the reset PC (6.5); cycle 1 is the first out of reset
     RegBlockState block;
     G1Config tile_cfg = g.cfg;                             // this tile's: its id and the peripherals it has
     tile_cfg.tile = k; tile_cfg.periph_present = periph_present;
@@ -84,8 +85,10 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     we.s1 = ts.s1 = hs.s1 = sr.s1 = d.s1.get();
 #endif
 
-    // the register bus (6.4): window stores and the core's status at the end of t + 1; a load's side effect likewise
-    cfg.link(c.bus, b.bus, 2);
+    // the register bus (6.4; tile_ctl.h's header): a window store, a status pulse and a load's side effect at the end of
+    // the cycle each is made in; core_status.canonical_wait's level of the next cycle
+    cfg.link(c.bus, b.bus, 1);
+    cfg.link(c.canon, b.canon, 2);
     cfg.link(c.side, b.side, 1);
     cfg.connect(b.regs, c.regs);
     cfg.connect(b.wake, c.wake);

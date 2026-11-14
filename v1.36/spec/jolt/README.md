@@ -1,3 +1,3 @@
 # spec/jolt
 
-The Jolt-specific units, plugged into the platform's peripheral slot (4.17): `replayer.md` (4.19, with its part of 8.11, its invariant and parameters), `tracer.md` (4.21, 8.16, its invariant and parameters) and the replayer's opcode appendix, `replayer-opcodes.md`. Section numbers are the machine specification's; `spec/machine-spec.md` keeps a stub under each, and its section 13 indexes the items listed here.
+The Jolt-specific peripherals of the platform (chapter 17 of `spec/machine-spec.md`): `replayer.md` (17.8: the contract, 17.8.1–17.8.14, and what v1.35's 4.19 adds to it, 17.8.15–17.8.24, with the replayer's part of invariant 16 and its parameters), `tracer.md` (17.9) and the replayer's opcode appendix, `replayer-opcodes.md`. Section numbers are the machine specification's: `spec/machine-spec.md` keeps a stub under 17.8 and 17.9, and its chapter 26 indexes the open items listed here.

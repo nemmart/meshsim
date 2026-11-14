@@ -8,8 +8,8 @@
 # ---- make check's tests (tests/test_<name>.cpp) ----
 # v1.35's M1 bench (src/units/controller.h: the core with v1.35's register block and test bench) and its goldens: retire
 # traces and fingerprints of v1.35's images on v1.35's core.
-PENDING_TESTS := test_rv32 test_regblock test_golden test_controllers test_broken_units test_statefp_core test_g1_replay \
-                 test_core_m2 test_statefp_g1
+PENDING_TESTS := test_regblock test_golden test_controllers test_broken_units test_statefp_core test_g1_replay \
+                 test_statefp_g1
 # One tile's control part driven by v1.35's stand (GO, the command block, v1.35's registers).
 PENDING_TESTS += test_g1_tile test_tile_slot test_tileslotconf
 # Unit conformance against v1.3's observations. test_engconf: its four fixtures give 60-81 of their 256 STREAM entries a

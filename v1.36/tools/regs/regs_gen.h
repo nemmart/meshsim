@@ -1,6 +1,14 @@
-// regs_gen.h: the generators of fw/include/mesh.h and fw/REGISTERS.md, from regtable.h: a port of v1.3's
-// src/MeshHeader.java and src/RegDoc.java, producing their output byte for byte (tests/test_regs.cpp checks it against
-// the committed files; tools/regs/gen_regs writes them). Configuration-time code (D6): std::string is fine here.
+// regs_gen.h: the generators of fw/include/mesh.h and fw/REGISTERS.md, from the register table (regtable.h).
+// tests/test_regs.cpp checks the committed files are their output; tools/regs/gen_regs writes them.
+// Configuration-time code (D6): std::string is fine here.
+//
+// What mesh.h makes of the table (the names' rules, which the test relies on):
+//   a register          a member of its window's struct, and OFF_<NAME>, its byte offset in its window (a peripheral's
+//                       control and DMA blocks P_OFF_<NAME>, its own words <PREFIX>_OFF_<NAME>)
+//   a field (Field)     <WORD>_<FIELD>: SET and BOTH (((uint32_t)(v) & mask) << lo); GET (((w) >> lo) & mask); BOTH also
+//                       <WORD>_<FIELD>_OF(w), the GET form; FLAG the mask, in hex
+//   a bit (Bit)         <GROUP>_<NAME> (1 << bit); n bits <GROUP>_<NAME>(n) (1 << (bit - 1 + (n)))
+//   a value (Value)     its macro, a number
 #pragma once
 
 #include <cstdarg>
@@ -21,763 +29,725 @@ inline std::string fmt(const char* f, ...) {
     return buf;
 }
 inline std::string h8(uint32_t v) { return fmt("0x%08X", v); }
-inline std::string hx(uint32_t v) { return fmt("0x%X", v); }
+inline std::string upper(const char* s) {
+    std::string u(s);
+    for (char& c : u) if (c >= 'a' && c <= 'z') c = char(c - 'a' + 'A');
+    return u;
+}
+inline std::string acc_name(int a) { return a == R ? "R" : a == W ? "W" : "R/W"; }
+inline std::string bits_of(int lo, int width) { return width == 1 ? fmt("[%d]", lo) : fmt("[%d:%d]", lo + width - 1, lo); }
+inline std::string field_macro(const Field& f) { return std::string(f.word) + "_" + upper(f.name); }
+inline std::string bit_macro(const Bit& b) { return std::string(b.group) + "_" + upper(b.name); }
+inline bool is_bytes(const Value& v) { const std::string m(v.macro); return m.size() > 6 && m.compare(m.size() - 6, 6, "_BYTES") == 0; }
+inline std::string value_text(const Value& v) { return is_bytes(v) && v.value >= 0x1000 ? fmt("0x%X", v.value) : fmt("%u", v.value); }
 
-// ================================================================ mesh.h (MeshHeader.java)
+// ================================================================ mesh.h
 namespace mh {
 inline std::string acc(int a) { return a == R ? "MESH_RO" : a == W ? "MESH_WO" : "MESH_RW"; }
 inline void def(std::string& b, const std::string& name, const std::string& v, const char* doc) {
-    b += fmt("#define %-18s %s%s\n", name.c_str(), v.c_str(), doc ? (std::string("   /* ") + doc + " */").c_str() : "");
+    b += fmt("#define %-26s %s%s\n", name.c_str(), v.c_str(), doc ? (std::string("   /* ") + doc + " */").c_str() : "");
 }
-inline void hdr_macro(std::string& b, const std::string& name, const Field& f) {
-    const std::string a = name.substr(name.find('(') + 1, name.find(')') - name.find('(') - 1);
-    b += fmt("#define %-18s (((uint32_t)(%s) & 0x%Xu) << %d)\n", name.c_str(), a.c_str(), f.mask(), f.lo);
+inline void values(std::string& b, const char* group) {
+    for (const Value& v : VALUES) if (same(v.group, group)) def(b, v.macro, value_text(v), v.doc);
 }
-inline std::string u(int v) { return std::to_string(v) + "u"; }
-inline std::string bit(int n) { return "(1 << " + std::to_string(n) + ")"; }
+// the macros of one word's fields
+inline void fields(std::string& b, const char* word) {
+    for (const Field& f : FIELDS) {
+        if (!same(f.word, word) || f.macro == DOC) continue;
+        const std::string name = field_macro(f);
+        const std::string set = fmt("(((uint32_t)(v) & 0x%Xu) << %d)", f.mask(), f.lo);
+        const std::string get = fmt("(((w) >> %d) & 0x%Xu)", f.lo, f.mask());
+        const std::string doc = bits_of(f.lo, f.width) + " " + f.doc;
+        if (f.macro == FLAG) def(b, name, h8(f.mask() << f.lo), doc.c_str());
+        else if (f.macro == GET) def(b, name + "(w)", get, doc.c_str());
+        else def(b, name + "(v)", set, doc.c_str());
+        if (f.macro == BOTH) def(b, name + "_OF(w)", get, nullptr);
+    }
+}
+// the macros of one group's bits
+inline void bits(std::string& b, const char* group) {
+    for (const Bit& x : BITS) {
+        if (!same(x.group, group)) continue;
+        const std::string doc = std::string(x.kind) + ": " + x.doc;
+        if (x.n == 1) def(b, bit_macro(x), fmt("(1 << %d)", x.bit), doc.c_str());
+        else def(b, bit_macro(x) + "(n)", fmt("(1 << (%d + (n)))", x.bit - 1), fmt("n = 1-%d, bits %d-%d; %s", x.n, x.bit, x.bit + x.n - 1, doc.c_str()).c_str());
+    }
+}
+// the register at window word i of a window: a peripheral's control block and, with a DMA, its DMA block, then its own
+inline const Reg* window_reg(const Reg* own, int n_own, bool is_peripheral, bool dma, int i) {
+    if (!is_peripheral || i >= PERIPHERAL_OWN) return reg_at(own, n_own, i);
+    return i < int(BLOCK_WORDS) || dma ? reg_at(PERIPHERAL, N_PERIPHERAL, i) : nullptr;
+}
+inline std::string pad(const std::string& s, size_t width) { return s.size() < width ? s + std::string(width - s.size(), ' ') : s + " "; }
+// one window's struct: its registers as members, in window-word order, and the words between them, unmapped.
+// `generic`: any peripheral's, its own words one member.
+inline void window_struct(std::string& b, const char* type, const Reg* own, int n_own, bool is_peripheral, bool dma, bool generic = false) {
+    b += "typedef struct {\n";
+    for (int i = 0; i < int(WINDOW_WORDS);) {
+        if (const Reg* r = window_reg(own, n_own, is_peripheral, dma, i)) {
+            b += fmt("    %s %s/* 0x%03X: %s */\n", acc(r->access).c_str(), pad(std::string(r->name) + ";", 21).c_str(), 4 * i, r->doc);
+            i++;
+        } else if (is_peripheral && !dma && i == int(BLOCK_WORDS)) {
+            b += fmt("    uint32_t %s/* 0x040-0x07C: no DMA: every word of block 1 reads 0, and a store is UB (17.1) */\n",
+                     pad(fmt("_no_dma[%u];", BLOCK_WORDS), 20).c_str());
+            i += int(BLOCK_WORDS);
+        } else if (generic && i == PERIPHERAL_OWN) {
+            b += fmt("    uint32_t %s/* 0x080-0x1FC: blocks 2-7, the peripheral's own */\n", pad(fmt("_own[%u];", WINDOW_WORDS - PERIPHERAL_OWN), 20).c_str());
+            i = int(WINDOW_WORDS);
+        } else {
+            int j = i;
+            while (j < int(WINDOW_WORDS) && !window_reg(own, n_own, is_peripheral, dma, j) && !(generic && j == PERIPHERAL_OWN) &&
+                   !(is_peripheral && !dma && j == int(BLOCK_WORDS))) j++;
+            b += fmt("    uint32_t %s/* 0x%03X-0x%03X: unmapped, an access fault (5.3) */\n", pad(fmt("_unmapped_%03X[%d];", 4 * i, j - i), 20).c_str(),
+                     4 * i, 4 * (j - 1));
+            i = j;
+        }
+    }
+    b += fmt("} %s;\n", type);
+}
+// _Static_assert: the struct's size and the offsets of each block's first and last registers
+inline void window_asserts(std::string& b, const char* type, const Reg* own, int n_own, bool is_peripheral, bool dma) {
+    b += fmt("_Static_assert(sizeof(%s) == 0x%X", type, WINDOW_BYTES);
+    for (int blk = 0; blk < int(BLOCKS); blk++) {
+        const Reg *first = nullptr, *last = nullptr;
+        for (int i = blk * int(BLOCK_WORDS); i < (blk + 1) * int(BLOCK_WORDS); i++)
+            if (const Reg* r = window_reg(own, n_own, is_peripheral, dma, i)) { if (!first) first = r; last = r; }
+        if (first) b += fmt(" &&\n               __builtin_offsetof(%s, %s) == 0x%03X", type, first->name, 4 * first->index);
+        if (last != first) b += fmt(" && __builtin_offsetof(%s, %s) == 0x%03X", type, last->name, 4 * last->index);
+    }
+    b += fmt(", \"%s\");\n", type);
+}
+inline void offsets(std::string& b, const char* prefix, const Reg* list, int n) {
+    for (int k = 0; k < n; k++) def(b, std::string(prefix) + "OFF_" + list[k].name, fmt("0x%03X", 4 * list[k].index), nullptr);
+}
 }  // namespace mh
 
 inline std::string mesh_h() {
     using namespace mh;
     std::string b;
-    b += R"TB(/* mesh.h version 1.2 -- the controller's view of the machine (spec/machine-spec.md: 2.2, 3.1, 4.11-4.13, 8).
- * GENERATED by tools/regs/gen_regs.cpp from tools/regs/regtable.h; do not edit. It follows the draft the recipes were
- * written against (fw/mesh-v1.2-draft.h). The rules of section 14 of spec/history/DECISIONS-v1.2.md: one struct per
- * block, reached through a pointer (tile->EVENTS); every member volatile uint32_t, accessed one word at a time and never
- * copied whole (some loads consume).
+    b += R"TB(/* mesh.h version 1.36 -- a tile program's view of the machine (spec/machine-spec.md: 2.1, 4, 5, 7-13, 17, 19;
+ * spec/jolt/replayer.md 17.8; spec/jolt/tracer.md 17.9). GENERATED by tools/regs/gen_regs.cpp from
+ * tools/regs/regtable.h; do not edit. Every name is the specification's: a register's is its own; a field's is its
+ * register's, or its layout's, and its own; a bit's is STATUS_, EVENT_ or ERROR_ and its own, behind P_ for the bits
+ * every peripheral has and IE_, RW_, RP_ or TR_ for Ingress/Egress's, the RW engine's, the replayer's and the Tracer's.
+ * One struct per register window, reached through a pointer (tile->EVENTS); every member volatile uint32_t, accessed
+ * one word at a time and never copied whole (some loads consume). The parameters are chapter 19's defaults, the 8 x 8
+ * mesh's. fw/REGISTERS.md is the reference.
  *
- * Build: riscv64-unknown-elf-gcc -march=rv32i_zicsr_zmmul -mabi=ilp32 -std=gnu11. Assembly sees only the #defines. */
+ * Build: riscv-none-elf-gcc -march=rv32ic_zicond_zicsr_zmmul -mabi=ilp32 -std=gnu11. Assembly sees only the #defines,
+ * and of those only the numbers, the offsets and the bits (the fields' macros cast). */
 #ifndef MESH_H
 #define MESH_H
-#define MESH_H_VERSION 0x0102   /* 1.2: major << 8 | minor */
-#ifndef MESH_V12_DRAFT_H
-#define MESH_V12_DRAFT_H        /* the draft's guard too: a recipe including both gets this one */
-#endif
+#define MESH_H_VERSION 0x0124   /* 1.36: major << 8 | minor */
 
-/* ---- the address map (2.2): an 8-bit region [31:24] and a 24-bit byte offset [23:0]; a C pointer is the packet address ---- */
+/* ---- the parameters software needs (19), at their defaults ---- */
 )TB";
-    def(b, "REGION_DMEM", h8(DMEM_BASE), "data memory, 32 KB");
-    def(b, "REGION_PMEM", h8(PMEM_BASE), "program memory, 32 KB: fetch and load; only packets write it");
-    def(b, "REGION_BOOTROM", h8(BOOTROM_BASE), "boot ROM, fetch and load; the reset vector");
-    def(b, "REGION_SRAM", h8(REGION_SRAM), "big SRAM (packets only)");
-    b += "#define REGION_PERIPH(n)   (0x03000000 + ((n) << 24))   /* peripheral n = 1-3: regions 0x04-0x06 */\n";
-    def(b, "DMEM_SIZE", hx(DMEM_SIZE), nullptr);
-    def(b, "PMEM_SIZE", hx(PMEM_SIZE), nullptr);
-    b += "/* a big-SRAM chunk address (the engines' unit, 21 bits) to a packet address: region 0x03, bytes */\n";
-    b += "#define SRAM_ADDR(chunk)   (REGION_SRAM | ((uint32_t)(chunk) << 2))\n\n";
-    b += "/* data-memory layout (4.12): the ROM reads COMMAND_BASE, so it is a silicon constant */\n";
-    def(b, "DMEM_RESERVED", h8(0), "bytes 0x00-0x0F: never placed; meshsim flags any write (W4-02)");
-    def(b, "DMEM_FIRST", h8(DMEM_FIRST), "the first byte an image may use; overlays start here");
-    def(b, "COMMAND_BASE", h8(COMMAND_BASE), "the command block: 16 slots; slot 0 the command word");
-    def(b, "REPLY_BASE", h8(REPLY_BASE), "the reply block: two words per source, 128 sources; 8-byte aligned");
-    def(b, "STACK_TOP", h8(STACK_TOP), "the stack grows down from below the reply block (a convention)");
-    b += "#define REPLY_WORD(src)    (REPLY_BASE + 8u * (src))   /* byte address of src's reply pair */\n\n";
-    b += "/* endpoints (2.1) */\n";
-    def(b, "DST_CC1", u(DST_CC1), "C&C 1");
-    def(b, "DST_CC2", u(DST_CC2), "C&C 2, the file system");
-    def(b, "DST_CC3", u(DST_CC3), "C&C 3, the pager");
-    def(b, "DST_BROADCAST", u(DST_BROADCAST), "tiles 0-63; a stream may name it as d = 126 (controllers only)");
+    values(b, "PARAM");
+
+    b += "\n/* ---- the address map (5.1): an 8-bit region [31:24] and a 24-bit byte offset [23:0]; a C pointer is the packet's address ---- */\n";
+    def(b, "DMEM_BASE", h8(DMEM_BASE), "region 0x00: DMEM; the core loads and stores, packets write");
+    def(b, "IMEM_BASE", h8(IMEM_BASE), "region 0x01: IMEM; the core fetches only, packets write");
+    def(b, "BOOT_ROM_BASE", h8(BOOT_ROM_BASE), "region 0x02: the boot ROM; the core fetches only");
+    def(b, "RESET_PC", "BOOT_ROM_BASE", "the reset PC (6.5); a loaded image ends by jumping to it");
+    def(b, "SCRATCHPAD_BASE", h8(SCRATCHPAD_BASE), "region 0x03: the scratchpad; packets and the read unit only");
+    def(b, "PERIPHERAL_BASE(n)", "((0x03 + (n)) << 24)", "regions 0x04-0x06: peripheral n = 1-3's region; packets only");
+    def(b, "DMEM_RESERVED", fmt("%u", DMEM_RESERVED), "DMEM's first 16 bytes, which no program uses (6.3)");
+    def(b, "SCRATCHPAD_ADDRESS(w)", "(SCRATCHPAD_BASE | ((uint32_t)(w) << 2))", "a word address's byte address (5.4)");
+    def(b, "WORD_ADDRESS(offset)", "((uint32_t)(offset) >> 2)", "a scratchpad byte offset's word address (5.4)");
+
+    b += "\n/* ---- tile ids (2.1, 4.1), at 8 x 8 ---- */\n";
+    values(b, "TILE");
+    b += "\n/* ---- the packet's header block (4.1): sizes and modes (4.2) ---- */\n";
+    values(b, "SIZE");
+    values(b, "MODE");
 
     b += R"TB(
-/* ---- register blocks (8.1) ---- */
-#define MESH_RO const volatile uint32_t   /* read-only: a store doesn't compile */
-#define MESH_WO volatile uint32_t         /* write-only: reads 0 */
-#define MESH_RW volatile uint32_t
+/* ---- the register windows (5.2, 5.3): region 0xFF's top 8 KiB; a window is 8 blocks of 16 words ---- */
+#define MESH_RO const volatile uint32_t   /* R: load only; a store is an access fault (and doesn't compile) */
+#define MESH_WO volatile uint32_t         /* W: store only; a load reads 0 */
+#define MESH_RW volatile uint32_t         /* R/W */
 
 #ifndef __ASSEMBLER__
 #include <stdint.h>
 
-/* words 0-31 of every peripheral's window (4.17.4): "extends PeripheralStd" is this member list at the top */
-#define PERIPHERAL_STD_MEMBERS                                                                            \
+/* the tile window, 0xFFFFF800 (5.5): block 0 tile_control_unit (7), 1 dma_unit (8), 2 write_unit (9), 3 read_unit (10),
+ * 4 request_unit (11), 5 receive_unit (12), 6 gather_unit (13); block 7 unused */
 )TB";
-    static const char* const std_doc[] = {"0: [7:0] type, [15:8] version; 0: nothing to say",
-        "1: [0] run in progress, [1] DMA in progress", "2: sticky until the reset (C&C 1's unit-error bit [0] is live)",
-        "3: store 1 to start a run; ignored while one runs", "4: store 1 to start the DMA set up in DMA_HDR/DMA_ADDR",
-        "5: a load returns the events and consumes one count from each set bit in EVENTS_MASK",
-        "6: what a load of EVENTS would return; consumes nothing",
-        "7: the events that count (wake the tile's bit, are consumed); 0 at reset",
-        "8: count [11:0], queue [13:12], counter, mode, dst", "9: the DMA's 32-bit destination, advancing per packet"};
-    for (int i = 0; i < STD_WORDS; i++)
-        b += fmt("    %s %-12s /* %s */ \\\n", acc(STD_ACCESS[i]).c_str(), (std::string(STD_WORD[i]) + ";").c_str(), std_doc[i]);
-    b += fmt("    uint32_t _reserved_std[%d]   /* %d-%d: reserved standard words (read 0; meshsim flags) */\n\n",
-             STD_RESERVED_END - STD_WORDS, STD_WORDS, STD_RESERVED_END - 1);
-    const int own = WINDOW_WORDS - STD_RESERVED_END;
-    b += "typedef struct { PERIPHERAL_STD_MEMBERS; uint32_t _defined[" + std::to_string(own) + "]; } PeripheralStd;\n\n";
-    b += R"TB(/* the replayer, peripheral type 4: words 32-35 one field each, the same as the Tracer's (v1.26.1) */
-typedef struct {
-    PERIPHERAL_STD_MEMBERS;
-    MESH_RW RUN_CONFIG;       /* 32: [23:0] rows, [24] store log, [25] rd_prev, [28:26] Tracer's (ignored); sticky, 0 at reset */
-    MESH_RO ROWS_RUN;         /* 33: rows of this pass completed, 24 bits */
-    MESH_RO EXPANSION_OFFSET; /* 34: the row within the current expansion where the next row starts */
-    MESH_RO EXPANSION_OPCODE; /* 35: the instruction awaiting a controller-fed expansion */
-)TB";
-    b += "    uint32_t _defined[" + std::to_string(own - 4) + "];\n} ReplayerRegs;\n\n";
-    b += R"TB(/* the Tracer, peripheral type 3, C&C 3's peripheral 1 (8.16; v1.3, spec 4.21.3) */
-typedef struct {
-    PERIPHERAL_STD_MEMBERS;
-    MESH_RW RUN_CONFIG;         /* 32: [23:0] rows (at most 65,536), [26] [27] [28] compress code, read log, write log */
-    MESH_RO ROWS_RUN;           /* 33: rows of this run completed, 24 bits */
-    MESH_RO EXPANSION_OFFSET;   /* 34: the row within the current expansion where the next row starts */
-    MESH_RO EXPANSION_OPCODE;   /* 35: the code-stream word awaiting a controller-fed expansion */
-    MESH_RO STATE_LENGTH;       /* 36: output queue 0's length, 68 */
-    MESH_RO CODE_LENGTH;        /* 37: output queue 1's stream in 128-bit words; 0 until the rows end */
-    MESH_RO READ_LOG_LENGTH;    /* 38: output queue 2's */
-    MESH_RO WRITE_LOG_LENGTH;   /* 39: output queue 3's */
-    MESH_RW HASH_MUL;           /* 40: the map's multiplier p1, odd */
-    MESH_RW HASH_STEP;          /* 41: [23:0] the probe's step p3 */
-    MESH_RW HASH_LINES;         /* 42: [4:0] k, the map's 2^k lines */
-    MESH_WO EXPANSION_TEMPLATE; /* 43: [31] valid, [6:0] the template being fed; a load reads 0 */
-    MESH_RO STAT_CYCLES;        /* 44: cycles running (STATUS [0] 1); words 44-51 cleared by the word-0 write (item 157) */
-    MESH_RO STAT_STALL_FETCH;   /* 45: instruction-fetch stall cycles */
-    MESH_RO STAT_STALL_DATA;    /* 46: data-miss stall cycles, the write-back buffer's wait included */
-    MESH_RO STAT_STALL_MAP;     /* 47: map-probe stall cycles */
-    MESH_RO STAT_STALL_OUTPUT;  /* 48: cycles either drain scan stalled on a full output queue */
-    MESH_RO STAT_MISS_I;        /* 49: instruction-cache misses */
-    MESH_RO STAT_MISS_D;        /* 50: data-cache misses */
-    MESH_RO STAT_PROBES;        /* 51: jump-LRU misses, each a map probe */
-)TB";
-    b += "    uint32_t _defined[" + std::to_string(own - 20) + "];\n} TracerRegs;\n\n";
-    b += R"TB(/* C&C 1's peripheral, Ingress/Egress and the UART (8.14): words 32-45 */
-typedef struct {
-    PERIPHERAL_STD_MEMBERS;
-    MESH_RO ERROR_LINES[3];   /* 32-34: live, by endpoint id; bit 64 unused */
-    MESH_RO READY_LINES[2];   /* 35-36: the tiles' sticky READY bits */
-    MESH_RW READY_EXPECT[2];  /* 37-38: the tiles C&C 1 waits for */
-    MESH_WO PULSE_GO;         /* 39: clears READY 0-63 and drives GO, in one store; restarts the watchdog */
-    MESH_RW WATCHDOG;         /* 40: 0 off (reset); N > 0 starts it; a write or PULSE_GO restarts it */
-    MESH_RW LED;              /* 41: the software pin, bit 0 */
-    MESH_WO UART_TX;          /* 42 */
-    MESH_RO UART_RX;          /* 43 */
-    MESH_RW UART_DIVISOR;     /* 44 */
-    MESH_RW UART_STATUS;      /* 45: line errors, write 1 to clear */
-)TB";
-    b += "    uint32_t _defined[" + std::to_string(own - 14) + "];    /* 46-127: the host interface's words (deferred) */\n} Cnc1Regs;\n\n";
-
-    // the controller's block, generated from the table
-    b += "/* the controller's own block, " + h8(REG_BASE) + " (8.1) */\ntypedef struct {\n";
-    for (int i = 0; i < (int)BLOCK_WORDS;) {
-        const Reg* st = store_at(i);
-        const Reg* ld = load_at(i);
-        const std::string off = hx(0x800 + 4 * i);
-        if (i == 5) {
-            b += fmt("    uint32_t _was_pulse_go;       /* %s: reserved (PULSE_GO moved to C&C 1's peripheral) */\n", off.c_str());
-            i++; continue;
-        }
-        if (!st && !ld) {
-            int j = i;
-            while (j < (int)BLOCK_WORDS && !store_at(j) && !load_at(j)) j++;
-            b += fmt("    uint32_t _reserved[%d];       /* %s-%s */\n", j - i, off.c_str(), hx(0x800 + 4 * (j - 1)).c_str());
-            i = j; continue;
-        }
-        if (st && ld && st != ld) {
-            b += fmt("    union { MESH_RO %s; MESH_WO %s; };     /* %s */\n", ld->name, st->name, off.c_str());
-            i++; continue;
-        }
-        const Reg* r = st ? st : ld;
-        const std::string name = r->name;
-        if (name.rfind("WRITE_COUNTER_", 0) == 0) {
-            b += fmt("    MESH_RW WRITE_COUNTER[7];     /* %s-%s: WRITE_COUNTER_1-7 are [0]-[6]; a store adds */\n",
-                     off.c_str(), hx(0x800 + 4 * (i + 6)).c_str());
-            i += 7; continue;
-        }
-        if (name.rfind("ROUTER_SET_W", 0) == 0 || name.rfind("ROUTER_SEND_", 0) == 0) {
-            const bool set = name.rfind("ROUTER_SET", 0) == 0;
-            b += fmt("    MESH_WO %s, %s, %s;   /* %s-%s */\n", set ? "ROUTER_SET_W0" : "ROUTER_SEND_32",
-                     set ? "ROUTER_SET_W1" : "ROUTER_SEND_64", set ? "ROUTER_SET_W2" : "ROUTER_SEND_128", off.c_str(),
-                     hx(0x800 + 4 * (i + 2)).c_str());
-            i += 3; continue;
-        }
-        b += fmt("    %s %-24s /* %s: %s */\n", acc(r->access).c_str(), (name + ";").c_str(), off.c_str(), r->doc);
-        i++;
+    window_struct(b, "TileRegs", TILE, N_TILE, false, true);
+    b += "\n/* any peripheral's window, 0xFFFFF800 + 0x200 n (17.1): the control block, the DMA block (which reads 0 on a peripheral\n"
+         " * without a DMA), and blocks 2-7, the peripheral's own */\n";
+    window_struct(b, "PeripheralRegs", nullptr, 0, true, true, true);
+    for (const Peripheral& p : PERIPHERALS) {
+        b += fmt("\n/* %s, peripheral type %d (%s): %s's peripheral 1%s */\n", p.name, p.type, p.section, p.tile, p.dma ? "" : "; it has no DMA");
+        window_struct(b, p.c_struct, p.regs, p.n_regs, true, p.dma);
     }
-    b += "} TileRegs;\n\n";
-    b += "/* the table window, " + h8(TABLE_BASE) + " (8.9; Proposed, item 120) */\ntypedef struct {\n";
-    b += "    MESH_RW HIST[256];            /* 17-bit counts */\n    MESH_WO PTR[256];             /* 21-bit chunk addresses; a load is a bus error */\n";
-    b += "    MESH_WO STREAM_SRC[256];\n    MESH_WO STREAM_DEST[256];\n    MESH_WO STREAM_COUNT[256];\n    MESH_WO GROUP[64][2];         /* [g][0] low, [g][1] high */\n} TableRegs;\n\n";
-    b += fmt(R"TB(_Static_assert(sizeof(PeripheralStd) == 0x%X && sizeof(ReplayerRegs) == 0x%X && sizeof(Cnc1Regs) == 0x%X && sizeof(TracerRegs) == 0x200, "window size");
-_Static_assert(__builtin_offsetof(TracerRegs, RUN_CONFIG) == 128 && __builtin_offsetof(TracerRegs, EXPANSION_TEMPLATE) == 172 &&
-               __builtin_offsetof(TracerRegs, STAT_PROBES) == 204, "the Tracer's window (8.16)");
-_Static_assert(sizeof(TileRegs) == 0x%X, "block size");
-_Static_assert(__builtin_offsetof(TileRegs, EVENTS) == 0x%X && __builtin_offsetof(TileRegs, ROUTER_HDR) == 0x%X &&
-               __builtin_offsetof(TileRegs, REQUEST_SEND) == 0x%X && __builtin_offsetof(TileRegs, WRITE_COUNTER) == 0x%X &&
-               __builtin_offsetof(TileRegs, SRAM_RD_DEST_ADDR) == 0x%X && __builtin_offsetof(TileRegs, SIM_EXIT) == 0x%X &&
-               __builtin_offsetof(TileRegs, TRACE) == 0x%X, "8.1 offsets");
-_Static_assert(__builtin_offsetof(PeripheralStd, DMA_ADDR) == 36 && __builtin_offsetof(ReplayerRegs, EXPANSION_OPCODE) == 140 &&
-               __builtin_offsetof(Cnc1Regs, ERROR_LINES) == 128, "window offsets");
-_Static_assert(__builtin_offsetof(TableRegs, PTR) == 0x%X && __builtin_offsetof(TableRegs, GROUP) == 0x%X &&
-               sizeof(TableRegs) == 0x%X, "table window");
-
-)TB", 4 * WINDOW_WORDS, 4 * WINDOW_WORDS, 4 * WINDOW_WORDS, 4 * BLOCK_WORDS,
-             4 * by_name("EVENTS").index, 4 * by_name("ROUTER_HDR").index, 4 * by_name("REQUEST_SEND").index,
-             4 * by_name("WRITE_COUNTER_1").index, 4 * by_name("SRAM_RD_DEST_ADDR").index, 4 * by_name("SIM_EXIT").index,
-             4 * by_name("TRACE").index, PTR_BASE - TABLE_BASE, GROUP_BASE - TABLE_BASE, TABLE_END - TABLE_BASE);
-    b += "/* the pointers: tile->EVENTS. A whole-block copy needs an explicit *tile and would consume events */\n";
-    b += fmt("#define tile          ((volatile TileRegs *)0x%Xu)\n", REG_BASE);
-    b += fmt("#define peripheral(n) ((volatile PeripheralStd *)(0x%Xu + 0x200u * (n)))   /* n = 1-3 */\n", REG_BASE);
-    b += fmt("#define replayer      ((volatile ReplayerRegs *)0x%Xu)   /* peripheral 1 on a tile that has the replayer */\n", window_base(1));
-    b += fmt("#define cc1           ((volatile Cnc1Regs *)0x%Xu)       /* peripheral 1 on C&C 1 */\n", window_base(1));
-    b += fmt("#define tracer        ((volatile TracerRegs *)0x%Xu)     /* peripheral 1 on C&C 3 (v1.3) */\n", window_base(1));
-    b += fmt("#define tables        ((volatile TableRegs *)0x%Xu)\n", TABLE_BASE);
-    b += "#define COMMAND       ((volatile uint32_t *)COMMAND_BASE)       /* COMMAND[0] the command word, [1-15] arguments */\n";
-    b += "#define REPLY         ((volatile uint32_t *)REPLY_BASE)         /* REPLY[2 src], REPLY[2 src + 1] */\n";
-    b += "#endif /* __ASSEMBLER__ */\n\n";
-
-    b += "/* register offsets for assembly (x0-relative accesses: 0xFFFFF800 + off) */\n";
-    def(b, "TILE_BASE", h8(REG_BASE), nullptr);
-    for (const Reg& r : ALL) {
-        const std::string n = r.name;
-        if (n.rfind("REQUEST_GET", 0) == 0 || n == "REQUEST_RECEIVE") continue;
-        def(b, "OFF_" + n, fmt("0x%03X", 4 * r.index), nullptr);
+    b += "\n/* the tables, 0xFFFFE000 (5.2): entry i of a table is the word at + 4 i; a table stores only its fields' bits */\n";
+    b += "typedef struct {\n";
+    for (const Table& t : TABLES) {
+        const std::string member = t.words == 1 ? fmt("%s[%d];", t.name, t.entries) : fmt("%s[%d][%d];", t.name, t.entries, t.words);
+        std::string doc = t.doc;
+        for (size_t p; (p = doc.find('`')) != std::string::npos;) doc.erase(p, 1);
+        b += fmt("    MESH_RW %s%*s/* %s: %s (%s) */\n", member.c_str(), int(24 - member.size()) > 1 ? int(24 - member.size()) : 1, "", h8(t.base).c_str(),
+                 doc.c_str(), t.section);
     }
-    b += "#define X0REL(off)         ((off) - 0x800)          /* the 12-bit signed immediate reaching TILE_BASE + off from x0 */\n";
-    def(b, "TABLE_BASE", h8(TABLE_BASE), "the table window (assembly)");
+    b += "} TableRegs;\n\n";
+    window_asserts(b, "TileRegs", TILE, N_TILE, false, true);
+    window_asserts(b, "PeripheralRegs", nullptr, 0, true, true);
+    for (const Peripheral& p : PERIPHERALS) window_asserts(b, p.c_struct, p.regs, p.n_regs, true, p.dma);
+    b += fmt("_Static_assert(sizeof(TableRegs) == 0x%X", TABLE_END - WINDOWS_BASE);
+    for (const Table& t : TABLES) b += fmt(" && __builtin_offsetof(TableRegs, %s) == 0x%04X", t.name, t.base - WINDOWS_BASE);
+    b += ", \"TableRegs\");\n";
 
-    b += "\n/* ---- PARAMS (8.2) ---- */\n";
-    b += fmt("#define PARAMS_PERIPH_PRESENT(p)   ((p) & 0x%Xu)          /* bit n-1: peripheral n present */\n", field("PARAMS", "PERIPH_PRESENT").mask());
-    b += fmt("#define PARAMS_ID(p)               (((p) >> %d) & 0x%Xu) /* endpoint id */\n", field("PARAMS", "ID").lo, field("PARAMS", "ID").mask());
-    b += fmt("#define PARAMS_SIZE(p)             ((p) >> %d)           /* big-SRAM size in 256 KB units - 1 */\n", field("PARAMS", "SIZE").lo);
-    b += "\n/* ---- STATUS (8.2): diagnostic; programs wait by events ---- */\n";
-    for (int s = 0; s < N_ST; s++) def(b, std::string("ST_") + ST_NAME[s], bit(s), nullptr);
-    b += "\n/* ---- ERRORS (8.3, 4.13): sticky until the reset; any bit raises the hard interrupt and the error line ---- */\n";
-    static const char* const en[] = {"ERR_ROUTER_OVF", "ERR_BAD_PACKET", "ERR_UNEXPECTED", "ERR_DRIFT", "ERR_WE_IN_OVF",
-        "ERR_TABLE_OVF", "ERR_GATHER_OVF", "ERR_READ_PORT", "ERR_DONE_EARLY", "ERR_BUS", "ERR_ILLEGAL"};
-    for (int e = 0; e < 11; e++) def(b, en[e], bit(e), COND_NAME[e]);
-    b += "#define ERR_PERIPH(n)      (1 << (10 + (n)))   /* n = 1-3, live: that peripheral's ERRORS non-zero */\n";
-    def(b, "ERR_RECV_UNDERFLOW", bit(COND_RECV_UNDERFLOW), nullptr);
-    b += "\n/* ---- EVENTS, EVENTS_PEEK, EVENTS_MASK, EVENTS_REQUIRED (4.12, 8.10) ---- */\n";
-    b += "#define EV_CTR(n)          (1 << ((n) - 1))   /* write counter n done, n = 1-7 (sticky) */\n";
-    def(b, "EV_CTRS_DONE", bit(EV_COUNTERS_DONE), "all seven at 0, one armed since it last fired (sticky)");
-    def(b, "EV_GO", bit(EV_GO), "sticky");
-    def(b, "EV_COMMAND", bit(EV_COMMAND), "command landed (sticky); nothing in the reset mask consumes it");
-    def(b, "EV_RUN_DONE", bit(EV_RUN_DONE), "the address generator's run done; cleared by PULSE_DMA (sticky)");
-    def(b, "EV_REQ_ROOM", bit(EV_REQUEST_ROOM), "request FIFO no longer full (sticky)");
-    def(b, "EV_REQ_PENDING", bit(EV_REQUEST_PENDING), "a received request is waiting (live; controllers only)");
-    b += "#define EV_PERIPH(n)       (1 << (" + std::to_string(EV_PERIPH_1 - 1) + " + (n)))   /* n = 1-3: that peripheral's EVENTS & EVENTS_MASK non-zero (live) */\n";
-    def(b, "EV_RESET_MASK", "(EV_GO | EV_CTRS_DONE)", nullptr);
+    b += "\n/* the pointers: tile->EVENTS. A whole-window copy needs an explicit *tile and would consume events */\n";
+    b += fmt("#define tile           ((volatile TileRegs *)0x%08Xu)\n", TILE_WINDOW_BASE);
+    b += fmt("#define peripheral(n)  ((volatile PeripheralRegs *)(0x%08Xu + 0x%Xu * (n)))   /* n = 1-3 */\n", TILE_WINDOW_BASE, WINDOW_BYTES);
+    for (const Peripheral& p : PERIPHERALS)
+        b += fmt("#define %-14s ((volatile %s *)0x%08Xu)   /* peripheral 1 on %s */\n", p.c_pointer, p.c_struct, peripheral_window_base(1),
+                 same(p.tile, "every compute tile") ? "a compute tile" : p.tile);
+    b += fmt("#define tables         ((volatile TableRegs *)0x%08Xu)\n", WINDOWS_BASE);
+    b += "#endif /* __ASSEMBLER__ */\n";
 
-    b += "\n/* ---- the common header block, bits [31:17] (8.1) ---- */\n";
-    hdr_macro(b, "HDR_SIZE(s)", field("HDR", "SIZE")); hdr_macro(b, "HDR_CTR(c)", field("HDR", "CTR"));
-    hdr_macro(b, "HDR_MODE(m)", field("HDR", "MODE")); hdr_macro(b, "HDR_DST(d)", field("HDR", "DST"));
-    b += "\n/* sizes (link word [161:160]); modes (3.1); counters */\n";
-    def(b, "SIZE_32", u(SIZE_32), nullptr); def(b, "SIZE_64", u(SIZE_64), nullptr); def(b, "SIZE_128", u(SIZE_128), nullptr);
-    def(b, "MODE_WRITE", u(M_WRITE), "write at address: any region a packet may reach; commands and replies too");
-    def(b, "MODE_SRC", u(M_SRC), "big-SRAM write by source, at PTR[src]");
-    def(b, "MODE_BUCKET", u(M_BUCKET), "bucket write, at PTR[digit]");
-    def(b, "MODE_AUGMENT", u(M_AUG), "augmented write at PTR[src]: 32 or 64 bits, never 128");
-    def(b, "MODE_GATHER", u(M_GATHER), "gather request, local only; never counted; its counter field passes to the values");
-    def(b, "MODE_COUNT", u(M_COUNT), "count only: decrements its counter at the destination, writes nothing; 6-7 reserved");
-    def(b, "CTR_NONE", "0u", "uncounted: commands, boot overlays, and nothing else");
-    b += R"TB(/* The recipes' counter convention (CONVENTIONS 5), seven counters. A convention only: the hardware treats them alike. */
-#define CTR_SRAM           1u   /* big-SRAM writes: local runs, all-to-alls, staged data */
-#define CTR_CM             2u   /* controller-memory writes: block copies, vectors, read-port results */
-#define CTR_REPLY          3u   /* tile-to-tile replies */
-#define CTR_PERIPH         4u   /* writes to this tile's peripherals: the replayer's refills and state */
-#define CTR_REQ(k)         (5u + (k))   /* k = 0-2: request slot k's reply and data (at most three outstanding) */
-#define REQ_SLOTS          3u
-#define CTR_FENCE          7u   /* a fence: any counter the phase isn't using; 7 is request slot 2's */
+    b += "\n/* ---- the windows' addresses and the registers' offsets, for assembly ---- */\n";
+    def(b, "WINDOWS_BASE", h8(WINDOWS_BASE), "region 0xFF's mapped part: 16 windows of 512 bytes (5.2)");
+    def(b, "TILE_WINDOW_BASE", h8(TILE_WINDOW_BASE), "window 12");
+    def(b, "PERIPHERAL_WINDOW_BASE(n)", fmt("(0x%08X + 0x%X * (n))", TILE_WINDOW_BASE, WINDOW_BYTES), "windows 13-15: peripheral n = 1-3's");
+    def(b, "X0REL(off)", "((off) - 0x800)", "the 12-bit immediate reaching TILE_WINDOW_BASE + off from x0: one lw or sw");
+    def(b, "P_X0REL(n, off)", "(0x200 * (n) + (off) - 0x800)", "the same for peripheral n's window");
+    for (const Table& t : TABLES) def(b, std::string(t.name) + "_BASE", h8(t.base), fmt("%d entries of %d word%s; a table needs a base register", t.entries, t.words, t.words == 1 ? "" : "s").c_str());
+    b += "/* the tile window (5.5) */\n";
+    offsets(b, "", TILE, N_TILE);
+    def(b, "OFF_COUNTER(n)", fmt("(0x%03X + 4 * (n))", 4 * reg_named(TILE, N_TILE, "RECEIVE_CONFIG")->index), "COUNTER_n, n = 1-7");
+    b += "/* a peripheral's window (17.1) */\n";
+    offsets(b, "P_", PERIPHERAL, N_PERIPHERAL);
+    for (const Peripheral& p : PERIPHERALS) {
+        b += fmt("/* %s's words (%s) */\n", p.name, p.section);
+        offsets(b, (std::string(p.prefix) + "_").c_str(), p.regs, p.n_regs);
+    }
 
-)TB";
-    b += "/* ROUTER_HDR (8.4): no counter default, on purpose */\n";
-    def(b, "ROUTER_NOINC", u(1 << field("ROUTER_HDR", "NOINC").lo), "[0]: ROUTER_ADDR stays put after a send");
-    b += "#define ROUTER_HDR_W(dst, mode, ctr)  (HDR_DST(dst) | HDR_MODE(mode) | HDR_CTR(ctr))\n\n";
-    b += "/* STREAM entries (4.2) */\n";
-    const Field &ss_chunk = field("STREAM_SRC", "CHUNK"), &ss_gap = field("STREAM_SRC", "GAP"), &sc_n = field("STREAM_COUNT", "N");
-    b += fmt("#define STREAM_SRC_W(chunk, gap)      (((uint32_t)(chunk) & 0x%Xu) | (((uint32_t)(gap) & 0x%Xu) << %d))\n",
-             ss_chunk.mask(), ss_gap.mask(), ss_gap.lo);
-    b += fmt("#define STREAM_COUNT_W(n, size, ctr, mode, d) \\\n    (((uint32_t)(n) & 0x%Xu) | HDR_SIZE(size) | HDR_CTR(ctr) | HDR_MODE(mode) | (((uint32_t)(d) & 0x7Fu) << %d))\n",
-             sc_n.mask(), field("HDR", "DST").lo);
-    def(b, "STREAM_COUNT_MAX", hx(sc_n.mask()), "131,071 elements");
-    b += fmt("#define GROUP_LO_R(r)      ((uint32_t)(r) & 0x%Xu)\n", field("GROUP_LO", "R").mask());
-    const Field &gs = field("GROUP_HI", "START"), &gt = field("GROUP_HI", "TM1"), &gg = field("GROUP_HI", "GAP");
-    b += fmt("#define GROUP_HI(start, t, gap) (((uint32_t)(start) & 0x%Xu) | ((((uint32_t)(t) - 1) & 0x%Xu) << %d) | (((uint32_t)(gap) & 0x%Xu) << %d))\n",
-             gs.mask(), gt.mask(), gt.lo, gg.mask(), gg.lo);
-    b += "/* DMA_CONFIG (8.5) */\n";
-    def(b, "RUN_STREAMS", "0u", nullptr); def(b, "RUN_GROUPS", "1u", nullptr);
-    const Field &ms = field("DMA_CFG", "START"), &mc = field("DMA_CFG", "COUNT");
-    b += fmt("#define DMA_CFG_RUN(kind, start, count) (((uint32_t)(kind) & 1u) | (((uint32_t)(start) & 0x%Xu) << %d) | (((uint32_t)(count) & 0x%Xu) << %d))\n",
-             ms.mask(), ms.lo, mc.mask(), mc.lo);
-    b += fmt("#define DMA_CFG_BUCKETDIG(d)  (((uint32_t)(d) & 0x7u) << %d)\n", field("DMA_CFG", "BUCKETDIG").lo);
-    b += fmt("#define DMA_CFG_HISTDIG(d)    (((uint32_t)(d) & 0x7u) << %d)\n", field("DMA_CFG", "HISTDIG").lo);
-    b += fmt("#define DMA_CFG_KM1(k)        (((uint32_t)(k) & 0x7u) << %d)\n", field("DMA_CFG", "KM1").lo);
-    b += "/* SRAM_RD_DEST_ADDR (8.8): data memory only; mode 0 and dst = the tile itself */\n";
-    b += fmt("#define RD_DEST(byte_off, size, ctr)  (((uint32_t)(byte_off) & 0x%Xu) | HDR_SIZE(size) | HDR_CTR(ctr))\n", field("RD", "DEST").mask());
-    def(b, "READ_PORT_DEPTH", u(READ_PORT_DEPTH), nullptr);
-    b += "/* a peripheral's DMA_HDR (4.17.9) */\n";
-    const Field &dc = field("DMA_HDR", "COUNT"), &dq = field("DMA_HDR", "QUEUE");
-    b += fmt("#define DMA_HDR_W(count, queue, dst, mode, ctr) \\\n    (((uint32_t)(count) & 0x%Xu) | (((uint32_t)(queue) & 0x%Xu) << %d) | HDR_DST(dst) | HDR_MODE(mode) | HDR_CTR(ctr))\n",
-             dc.mask(), dq.mask(), dq.lo);
+    b += "\n/* ---- the tile's PARAMS (7.1): the straps ---- */\n";
+    fields(b, "PARAMS");
+    b += "\n/* ---- the tile's STATUS (7.1): states ---- */\n";
+    bits(b, "STATUS");
+    b += "\n/* ---- the tile's EVENTS, EVENTS_PEEK and EVENTS_MASK (7.2): counted, with a depth, or live ---- */\n";
+    bits(b, "EVENT");
+    def(b, "EVENTS_MASK_RESET", "(EVENT_RELEASE | EVENT_ALL_COUNTERS_DONE)", "EVENTS_MASK's reset value (18)");
+    b += "\n/* ---- the tile's ERRORS (7.4): P a program error, H a hardware-fault detector; sticky until the reset; any bit raises\n"
+         " * the NMI and the tile's error line ---- */\n";
+    bits(b, "ERROR");
+
+    b += "\n/* ---- header registers (5.4): the header block [7:0], dst [14:8], the register's own fields [31:15] ---- */\n";
+    fields(b, "HDR");
+    def(b, "HEADER(mode, counter, size)", "(HDR_MODE(mode) | HDR_COUNTER(counter) | HDR_SIZE(size))", "the header block, as in the packet (4.1)");
+    b += "/* WRITE_HDR (9), STREAM_HDR (8.3), a peripheral's DMA_HDR (17.1) */\n";
+    fields(b, "WRITE_HDR");
+    fields(b, "STREAM_HDR");
+    fields(b, "DMA_HDR");
+    b += "\n/* ---- DMA_CONFIG (8.1), GROUP's two words (8.4), RECEIVE_CONFIG (12.1), GATHER_CONFIG (13) ---- */\n";
+    fields(b, "DMA_CONFIG");
+    values(b, "DMA_KIND");
+    fields(b, "GROUP_W0");
+    fields(b, "GROUP_W1");
+    fields(b, "RECEIVE_CONFIG");
+    fields(b, "GATHER_CONFIG");
+
+    b += "\n/* ---- requests (11.2, 11.5): word 0 is the requester [6:0] (software writes 0), the target [9:7], op [17:10] and the\n"
+         " * operation's own fields [31:18]; words 1-3 are the operation's ---- */\n";
+    fields(b, "REQUEST");
+    values(b, "TARGET");
+    values(b, "OP");
+    def(b, "REQUEST_WORD_0(target, op)", "(REQUEST_TARGET(target) | REQUEST_OP(op))", "word 0, its own fields to be or-ed in");
+    b += "/* the master tile's REPORT (word 0), the memory tile's READ and WRITE (words 0 and 3), a WRITE's reply (its word 1) */\n";
+    fields(b, "REPORT");
+    def(b, "REPORT_WORD_0(number)", "(REQUEST_WORD_0(TARGET_MASTER, OP_REPORT) | REPORT_NUMBER(number))", nullptr);
+    fields(b, "MEMORY");
+    fields(b, "MEMORY_W3");
+    fields(b, "MEMORY_REPLY_W1");
+
+    b += "\n/* ---- every peripheral (17.1, 17.2): PARAMS, the standard STATUS and EVENTS bits, the types ---- */\n";
+    fields(b, "P_PARAMS");
+    bits(b, "P_STATUS");
+    bits(b, "P_EVENT");
+    values(b, "PTYPE");
+    auto parts = [&](const char* prefix) {
+        for (const RegionPart& r : REGION_PARTS)
+            if (same(r.prefix, prefix)) def(b, r.macro, fmt("(PERIPHERAL_BASE(1) + 0x%06X)", r.offset), r.doc);
+    };
+    b += "\n/* ---- Ingress/Egress (17.6) ---- */\n";
+    bits(b, "IE_STATUS");
+    bits(b, "IE_ERROR");
+    bits(b, "IE_EVENT");
+    fields(b, "UART_RX");
+    fields(b, "UART_STATUS");
+    b += "\n/* ---- the RW engine (17.7): its bits, RW_CONFIG, its region ---- */\n";
+    bits(b, "RW_ERROR");
+    fields(b, "RW_CONFIG");
+    values(b, "RW_KIND");
+    parts("RW");
+    b += "\n/* ---- the replayer (17.8.1, 17.8.9) and the Tracer (17.9.1, 17.9.2): RUN_CONFIG and EXPANSION_TEMPLATE, their bits,\n"
+         " * their regions (128-bit WRITEs, 16-byte aligned) ---- */\n";
+    fields(b, "RUN_CONFIG");
+    fields(b, "EXPANSION_TEMPLATE");
+    bits(b, "RP_EVENT");
+    bits(b, "RP_ERROR");
+    parts("RP");
+    bits(b, "TR_EVENT");
+    bits(b, "TR_ERROR");
+    parts("TR");
+
     b += R"TB(
-/* the standard peripheral bits (4.17.4) */
-#define PST_RUN            (1 << 0)
-#define PST_DMA            (1 << 1)
-#define PEV_RUN_DONE       (1 << 0)
-#define PEV_DMA_DONE       (1 << 1)
-#define PARAMS_TYPE(p)     ((p) & 0xFFu)
-/* peripheral types (4.17.1, D46) */
-#define PTYPE_NONE         0u
-#define PTYPE_INGRESS      1u   /* Ingress/Egress with the UART and the chip lines: C&C 1's peripheral */
-#define PTYPE_RW           2u   /* Updater/Binder/RW: C&C 2's */
-#define PTYPE_TRACER       3u   /* the Tracer: C&C 3's */
-#define PTYPE_REPLAYER     4u   /* every mesh tile's peripheral 1 */
-/* the replayer's events (4.19.9): credits have depth 2, the others 1 */
-#define RP_EV_CODE         (1 << 2)
-#define RP_EV_RLOG         (1 << 3)
-#define RP_EV_WLOG         (1 << 4)
-#define RP_EV_EXP          (1 << 5)
-#define RP_EV_NEWEXP       (1 << 6)
-/* the replayer's region 0x04 in bytes (4.19.10; the part-select at byte offset [22:20]) */
-#define RP_STATE           (REGION_PERIPH(1) + 0x000000u)   /* state word, 16 bytes */
-#define RP_STREAMS         (REGION_PERIPH(1) + 0x000010u)   /* stream word */
-#define RP_IMAGE           (REGION_PERIPH(1) + 0x000020u)   /* register image, 64 x 16 bytes */
-#define RP_Q_CODE          (REGION_PERIPH(1) + 0x100000u)   /* queue ports, one 1 MB part each: 128-bit packets only */
-#define RP_Q_RLOG          (REGION_PERIPH(1) + 0x200000u)
-#define RP_Q_WLOG          (REGION_PERIPH(1) + 0x300000u)
-#define RP_Q_EXP           (REGION_PERIPH(1) + 0x400000u)
-#define RP_HALF_CODE       128u   /* entries per credit (4.19.8) */
-#define RP_HALF_LOG        128u   /* v1.26: 4 KB log queues (v1.25: 256, 8 KB) */
-#define RP_HALF_EXP        128u
-#define RP_RC_ROWS(n)      ((uint32_t)(n) & 0xFFFFFFu)   /* RUN_CONFIG [23:0]: the rows a pass runs (v1.26.1) */
-#define RP_RC_STORE_LOG    (1u << 24)                    /* RUN_CONFIG [24]: use the store log */
-#define RP_RC_RD_PREV      (1u << 25)                    /* RUN_CONFIG [25]: output rd_prev */
-
-/* the Tracer (v1.3, spec 4.21, 8.16): its events (item 144), RUN_CONFIG's compression enables, its region 0x04 */
-#define TR_EV_ADVICE       (1 << 3)    /* advice credit: half the read queue free (depth 2) */
-#define TR_EV_EXP          (1 << 5)    /* expansion credit (depth 2) */
-#define TR_EV_NEWEXP       (1 << 6)    /* new expansion (depth 1) */
-#define TR_EV_SVC_STATE    (1 << 7)    /* live: output queue 0 needs service */
-#define TR_EV_SVC_CODE     (1 << 8)    /* live: output queue 1 holds a credit */
-#define TR_EV_SVC_RLOG     (1 << 9)
-#define TR_EV_SVC_WLOG     (1 << 10)
-#define TR_RC_COMPRESS     (7u << 26)  /* RUN_CONFIG [28:26]: compress code, read log, write log */
-#define TR_TEMPLATE_VALID  (1u << 31)  /* EXPANSION_TEMPLATE [31] */
-#define TR_STATE           (REGION_PERIPH(1) + 0x000000u)   /* the record, 68 x 16 bytes; word 0 first */
-#define TR_TABLES          (REGION_PERIPH(1) + 0x001000u)   /* the decode table, then the ROM: 768 x 16 bytes */
-#define TR_Q_ADVICE        (REGION_PERIPH(1) + 0x200000u)   /* the read queue: the segment's advice, two values an entry */
-#define TR_Q_EXP           (REGION_PERIPH(1) + 0x400000u)   /* the expansion queue */
-#define TR_HALF            128u        /* entries per credit, every queue (4.21.3, 4.21.6) */
-
-/* C&C 1's peripheral events (8.14) */
-#define CC1_EV_ALL_READY   (1 << 2)    /* live: (READY & EXPECT) == EXPECT and EXPECT != 0 */
-#define CC1_EV_WATCHDOG    (1 << 3)    /* depth 1 */
-#define CC1_EV_UART_RX     (1 << 4)    /* live */
-#define CC1_EV_UART_TX     (1 << 5)    /* live */
-#define CC1_ERR_UNIT       (1 << 0)    /* its ERRORS [0]: OR(ERROR_LINES), live */
-
-/* ---- the request port (3.3, 4.18): W0 [6:0] requestor (written 0), [9:7] target, the rest the target's ---- */
-#define REQ_TARGET(t)      (((uint32_t)(t) & 0x7u) << 7)
-#define TARGET_CC1         0u   /* spec draft 3.3, proposed */
-#define TARGET_CC2         1u
-#define TARGET_CC3         2u
-/* C&C 1's request format: undefined in the log. Placeholder (the draft's): W0 op [17:10], the reply's counter [20:18],
- * an argument [31:21]; W1 the reply address; W2-W3 data. An error report has no reply: W1-W3 are data. */
-#define REQ_CC1(op, ctr, arg) (REQ_TARGET(TARGET_CC1) | (((uint32_t)(op) & 0xFFu) << 10) | (((uint32_t)(ctr) & 0x7u) << 18) | ((uint32_t)(arg) << 21))
-#define REQ_OP(w0)         (((w0) >> 10) & 0xFFu)
-#define REQ_REPLY_CTR(w0)  (((w0) >> 18) & 0x7u)
-#define REQ_ARG(w0)        ((w0) >> 21)
-#define REQ_REQUESTOR(w0)  ((w0) & 0x7Fu)
-/* outstanding requests per tile and target: the next only after the previous one's reply has come back. Error reports
- * are the exception. The targets' receive queues, in the tree: 128, 256, 128 */
-#define REQ_LIMIT_CC1      1
-#define REQ_LIMIT_CC2      3
-#define REQ_LIMIT_CC3      1
-#define REQ_OP_REPORT      1   /* the handler's reports: no reply */
-#define REQ_OP_STARTED     2   /* C&C 2's and C&C 3's start-up: a controller's request */
-#define REQ_OP_RESULT      3u   /* a tile's result for C&C 1 (the self-test's signature) */
-)TB";
-    b += R"TB(
-/* ---- the command convention (CONVENTIONS 4): [31:24] type, [23] parity, [22:0] argument ---- */
-#define ARGS_EVEN          1u
-#define ARGS_ODD           8u
-#define CMD_TYPE(w)        ((uint32_t)(w) >> 24)
-#define CMD_PARITY(w)      (((uint32_t)(w) >> 23) & 1u)
-#define CMD_ARG(w)         ((uint32_t)(w) & 0x7FFFFFu)
-#define CMD_WORD(type, parity, arg) (((uint32_t)(type) << 24) | ((uint32_t)(parity) << 23) | ((uint32_t)(arg) & 0x7FFFFFu))
-#define CMD_JUMP           0x4A   /* the boot command: slot 1 holds the entry address */
-#define CMD_STAGE          0x53   /* announced staging: arm the counter with the argument, wait, done (6.2) */
-
 #ifndef __ASSEMBLER__
-#define CMD_ARGS(w)        (COMMAND + (CMD_PARITY(w) ? ARGS_ODD : ARGS_EVEN))
-
 /* ---- helpers ---- */
-static inline unsigned tile_index(void) { return PARAMS_ID(tile->PARAMS); }
-static inline uint32_t sram_chunks(void) { return (PARAMS_SIZE(tile->PARAMS) + 1u) << 16; }   /* 256 KB = 0x10000 chunks */
-static inline void set_stream(unsigned i, uint32_t src, uint32_t dest, uint32_t count)
-    { tables->STREAM_SRC[i] = src; tables->STREAM_DEST[i] = dest; tables->STREAM_COUNT[i] = count; }
-static inline void set_group(unsigned g, uint32_t lo, uint32_t hi) { tables->GROUP[g][0] = lo; tables->GROUP[g][1] = hi; }
+static inline uint32_t tile_id(void) { return PARAMS_TILE_ID(tile->PARAMS); }
+static inline volatile uint32_t *counter(unsigned n) { return (volatile uint32_t *)tile + OFF_COUNTER(n) / 4; }   /* COUNTER_n, n = 1-7 */
+static inline void set_stream(unsigned i, uint32_t src_addr, uint32_t dest_addr, uint32_t hdr)
+    { tables->STREAM_SRC_ADDR[i] = src_addr; tables->STREAM_DEST_ADDR[i] = dest_addr; tables->STREAM_HDR[i] = hdr; }
+static inline void set_group(unsigned g, uint32_t w0, uint32_t w1) { tables->GROUP[g][0] = w0; tables->GROUP[g][1] = w1; }
 
-/* WFI, then a load of EVENTS: returns every pending event and consumes those in EVENTS_MASK (4.12). At the reset mask
- * it consumes counters done (and a GO). Software re-checks after every wake (spurious wakes are allowed). */
+/* WFI, then a load of EVENTS: returns every event and consumes one count from each counted one EVENTS_MASK selects
+ * (7.2). A wake consumes nothing, and software re-checks after every wake (17.2). mstatus.MIE stays 0 (6.2). */
 static inline uint32_t wfi(void) { __asm__ volatile ("wfi" ::: "memory"); return tile->EVENTS; }
-/* Wait until every event in ev is pending, then consume them (EVENTS_REQUIRED and WFI). GO stays in the mask; nothing
- * else wakes. Restores the reset mask and EVENTS_REQUIRED = 0. Not between WFI and a start store. */
-static inline uint32_t wait_all(uint32_t ev) {
-    tile->EVENTS_MASK = EV_GO | ev;
-    tile->EVENTS_REQUIRED = ev;
-    uint32_t e;
-    do e = wfi(); while ((e & ev) != ev);
-    tile->EVENTS_REQUIRED = 0;
-    tile->EVENTS_MASK = EV_RESET_MASK;
-    return e;
+/* the barrier (7.3): ARRIVE and the canonical wait, a WFI right after it, which the release alone ends (the arrival
+ * gate); then the load of EVENTS, which consumes the release if EVENTS_MASK selects it (its reset value does). Every
+ * counter must be at 0 (an early arrival). Only where PARAMS.barrier is 1. */
+static inline uint32_t arrive(void) {
+    __asm__ volatile ("sw %0, %1(zero)\n\twfi" :: "r"(1u), "i"(X0REL(OFF_ARRIVE)) : "memory");
+    return tile->EVENTS;
 }
-/* wait_for_command (6.3): pulse done and WFI as two back-to-back instructions; on waking (by GO alone: the done gate)
- * the load of EVENTS consumes GO (keep EV_GO in EVENTS_MASK); then read slot 0. */
-static inline uint32_t wait_for_command(void) {
-    __asm__ volatile ("sw %0, %1(zero)\n\twfi" :: "r"(1u), "i"(X0REL(OFF_PULSE_DONE)) : "memory");
-    (void)tile->EVENTS;
-    return COMMAND[0];
-}
-/* start the address generator's run in DMA_CONFIG; clears EVENTS [10] */
-static inline void start_run(void) { tile->PULSE_DMA = 1; }
-/* STATUS.rd_running: a level a helper may poll when it can't know what ran before */
-static inline void wait_rd_idle(void) { while (tile->STATUS & ST_RD_RUNNING) ; }
+/* start the transfer DMA_CONFIG describes (8.2); clears EVENTS.dma_done */
+static inline void dma_start(void) { tile->DMA_START = 1; }
 
-/* the send port (8.4): ROUTER_HDR and ROUTER_ADDR, then one store per 32 bits, the last store sending */
-static inline void send_to(uint32_t hdr, uint32_t addr) { tile->ROUTER_HDR = hdr; tile->ROUTER_ADDR = addr; }
-static inline void send32(uint32_t w0) { tile->ROUTER_SEND_32 = w0; }
-static inline void send64(uint32_t w1, uint32_t w0) { tile->ROUTER_SET_W0 = w0; tile->ROUTER_SEND_64 = w1; }
-static inline void send128(uint32_t w3, uint32_t w2, uint32_t w1, uint32_t w0)
-    { tile->ROUTER_SET_W0 = w0; tile->ROUTER_SET_W1 = w1; tile->ROUTER_SET_W2 = w2; tile->ROUTER_SEND_128 = w3; }
-/* the request port (4.18): words 0-2, then the last store pushes */
+/* the write unit (9): WRITE_HDR and WRITE_DEST_ADDR, then one store per 32 bits, in ascending order, the last sending */
+static inline void write_to(uint32_t hdr, uint32_t dest_addr) { tile->WRITE_HDR = hdr; tile->WRITE_DEST_ADDR = dest_addr; }
+static inline void write32(uint32_t w0) { tile->WRITE_SEND_32 = w0; }
+static inline void write64(uint32_t w1, uint32_t w0) { tile->WRITE_W0 = w0; tile->WRITE_SEND_64 = w1; }
+static inline void write128(uint32_t w3, uint32_t w2, uint32_t w1, uint32_t w0)
+    { tile->WRITE_W0 = w0; tile->WRITE_W1 = w1; tile->WRITE_W2 = w2; tile->WRITE_SEND_128 = w3; }
+/* the request unit (11.1): words 0-2, then REQUEST_SEND, word 3, which pushes */
 static inline void request_send(uint32_t w3, uint32_t w2, uint32_t w1, uint32_t w0)
-    { tile->REQUEST_SET_W0 = w0; tile->REQUEST_SET_W1 = w1; tile->REQUEST_SET_W2 = w2; tile->REQUEST_SEND = w3; }
+    { tile->REQUEST_OUT_W0 = w0; tile->REQUEST_OUT_W1 = w1; tile->REQUEST_OUT_W2 = w2; tile->REQUEST_SEND = w3; }
+/* a report to the master tile (11.5): no reply */
+static inline void report(uint32_t number, uint32_t w1, uint32_t w2, uint32_t w3) { request_send(w3, w2, w1, REPORT_WORD_0(number)); }
 
-/* the cycle counter (4.11: the core implements mcycle and mtime): the low 32 bits, for bounded waits */
+/* the cycle counter (the core's mcycle): its low 32 bits */
 static inline uint32_t mcycle(void) { uint32_t c; __asm__ volatile ("csrr %0, mcycle" : "=r"(c)); return c; }
-
-/* simulator only (8.15): end a meshsim test with a value; trace a value */
-static inline void sim_exit(uint32_t v) { tile->SIM_EXIT = v; for (;;) ; }
-static inline void sim_trace(uint32_t v) { tile->TRACE = v; }
 #endif /* __ASSEMBLER__ */
 #endif /* MESH_H */
 )TB";
     return b;
 }
 
-// ================================================================ REGISTERS.md (RegDoc.java)
+// ================================================================ REGISTERS.md
 namespace rd {
-struct Row { const char* reg; const char* reset; const char* load; const char* function; };
-inline std::string acc(int a) { return a == R ? "R" : a == W ? "W" : "R/W"; }
-inline std::string off(const Reg& r) { return fmt("0x%03X", 0x800 + 4 * r.index); }
-inline std::string field_row(const char* word, const Field& f) {
-    return fmt("| `%s` | [%d:%d] | %s (`%s_%s`) |\n", word, f.lo + f.width - 1, f.lo, f.doc, word, f.name);
+inline std::string code(const std::string& s) { return "`" + s + "`"; }
+inline std::string macro_cell(const Field& f) {
+    if (f.macro == DOC) return "";
+    const std::string m = field_macro(f);
+    return f.macro == FLAG ? code(m) : f.macro == GET ? code(m + "(w)") : f.macro == SET ? code(m + "(v)") : code(m + "(v)") + ", " + code(m + "_OF(w)");
+}
+inline void fields(std::string& b, const char* word, const char* title) {
+    b += fmt("| %s | field | meaning | `mesh.h` |\n|---|---|---|---|\n", title);
+    for (const Field& f : FIELDS)
+        if (same(f.word, word)) b += fmt("| %s | `%s` | %s | %s |\n", bits_of(f.lo, f.width).c_str(), f.name, f.doc, macro_cell(f).c_str());
+}
+inline void bits(std::string& b, const char* group, const char* what) {
+    b += fmt("| bit | %s | kind | %s | `mesh.h` |\n|---|---|---|---|---|\n", what, same(what, "error") ? "raised by" : same(what, "event") ? "set by" : "meaning");
+    for (const Bit& x : BITS) {
+        if (!same(x.group, group)) continue;
+        if (x.n == 1) b += fmt("| %d | `%s` | %s | %s | `%s` |\n", x.bit, x.name, x.kind, x.doc, bit_macro(x).c_str());
+        else {   // a run: peripheral_1-peripheral_3; the counters' events are counter_1_done-counter_7_done
+            const bool counters = same(x.name, "counter_done");
+            const char *stem = counters ? "counter" : x.name, *tail = counters ? "_done" : "";
+            b += fmt("| %d-%d | `%s_1%s`-`%s_%d%s` | %s | %s | `%s(n)` |\n", x.bit, x.bit + x.n - 1, stem, tail, stem, x.n, tail, x.kind, x.doc,
+                     bit_macro(x).c_str());
+        }
+    }
+}
+inline void regs(std::string& b, const Reg* list, int n, const char* off_prefix) {
+    b += "| offset | block, word | register | access | reset | function | section | `mesh.h` offset |\n|---|---|---|---|---|---|---|---|\n";
+    for (int k = 0; k < n; k++) {
+        const Reg& r = list[k];
+        b += fmt("| `0x%03X` | %d, %d | `%s` | %s | %s | %s | %s | `%sOFF_%s` |\n", 4 * r.index, r.index >> 4, r.index & 15, r.name, acc_name(r.access).c_str(),
+                 r.reset, r.doc, r.section, off_prefix, r.name);
+    }
+}
+inline void values(std::string& b, const char* group, const char* what) {
+    b += fmt("| value | `mesh.h` | %s |\n|---|---|---|\n", what);
+    for (const Value& v : VALUES) if (same(v.group, group)) b += fmt("| %s | `%s` | %s |\n", value_text(v).c_str(), v.macro, v.doc);
+}
+inline void parts(std::string& b, const char* prefix) {
+    b += "| offset | contents | `mesh.h` |\n|---|---|---|\n";
+    for (const RegionPart& r : REGION_PARTS) if (same(r.prefix, prefix)) b += fmt("| `0x%06X` | %s | `%s` |\n", r.offset, r.doc, r.macro);
 }
 }  // namespace rd
 
-namespace rd {
-// RegDoc.ROWS: the register table's rows (moved to namespace scope for RegDocTest; the output is unchanged)
-inline constexpr Row ROWS[] = {
-        {"PARAMS", "the unit's constant", "the constant", "peripherals present [2:0], endpoint id [26:20], big-SRAM size [31:27]"},
-        {"STATUS", "0 (the idle machine)", "the live bits", "diagnostic: rd_running, rd_done, GATHER busy, send_busy, done, command landed, request_busy"},
-        {"ERRORS", "0", "the errors", "sticky until the reset; [13:11] live (the peripherals')"},
-        {"PULSE_DONE", "-", "0", "store 1: the done pulse (wait_for_command())"},
-        {"PULSE_DMA", "-", "0", "store 1: start the run in DMA_CONFIG; clears EVENTS [10]; a start while a run runs is undefined behavior (meshsim stops)"},
-        {"EVENTS", "0 (sticky events)", "every pending event; consumes the sticky ones under EVENTS_MASK", "the events"},
-        {"EVENTS_PEEK", "-", "what EVENTS would return; consumes nothing", "the same, for looking"},
-        {"EVENTS_MASK", "[8] | [7] = 0x180", "the mask", "the events that wake WFI on their own and that a load of EVENTS consumes"},
-        {"EVENTS_REQUIRED", "0", "the value", "the events that wake WFI only all together"},
-        {"ROUTER_HDR", "undefined (meshsim 0)", "no-increment, counter, mode, dst; size and spare read 0", "the header of outgoing packets"},
-        {"ROUTER_ADDR", "undefined (meshsim 0)", "the address the next packet will use", "the next packet's 32-bit address; + 4, 8, 16 at each mode-0 send unless no-increment"},
-        {"ROUTER_SET_W0", "undefined", "0", "payload [31:0]; cleared by every send"},
-        {"ROUTER_SET_W1", "undefined", "0", "payload [63:32]; cleared by every send"},
-        {"ROUTER_SET_W2", "undefined", "0", "payload [95:64]; cleared by every send"},
-        {"ROUTER_SEND_32", "-", "0", "payload [31:0]; sends a 32-bit packet"},
-        {"ROUTER_SEND_64", "-", "0", "payload [63:32]; sends a 64-bit packet, ROUTER_SET_W0 below"},
-        {"ROUTER_SEND_128", "-", "0", "payload [127:96]; sends a 128-bit packet, ROUTER_SET_W0-W2 below"},
-        {"REQUEST_SET_W0", "undefined", "(the receive side: REQUEST_GET_W0)", "the request's [31:0]: target [9:7], requestor [6:0] written 0"},
-        {"REQUEST_SET_W1", "undefined", "(REQUEST_GET_W1)", "the request's [63:32]"},
-        {"REQUEST_SET_W2", "undefined", "(REQUEST_GET_W2)", "the request's [95:64]"},
-        {"REQUEST_SEND", "-", "(REQUEST_RECEIVE)", "the request's [127:96]; pushes it (stalls while the request FIFO is full)"},
-        {"REQUEST_GET_W0", "-", "the oldest received request's [31:0]; 0 when empty", "receive side; on tiles 0-63 always empty"},
-        {"REQUEST_GET_W1", "-", "its [63:32]; 0 when empty", "receive side"},
-        {"REQUEST_GET_W2", "-", "its [95:64]; 0 when empty", "receive side"},
-        {"REQUEST_RECEIVE", "-", "its [127:96], and pops it; empty: 0 and receive underflow (ERRORS [14])", "receive side"},
-        {"DMA_CONFIG", "undefined (meshsim 0)", "what was stored", "the run, the bucket and histogram digits (5-7 are undefined behavior), k; stream or group numbers past the table's end are undefined behavior"},
-        {"DMA_RECORD_BASE_ADDRESS", "undefined (meshsim 0)", "chunk address [20:0]", "the run's record buffer"},
-        {"WRITE_COUNTER_1", "0", "the count [19:0]", "write counter 1: a store adds N, N > 0 arms it"},
-        {"WRITE_COUNTER_2", "0", "the count [19:0]", "write counter 2: a store adds N, N > 0 arms it"},
-        {"WRITE_COUNTER_3", "0", "the count [19:0]", "write counter 3: a store adds N, N > 0 arms it"},
-        {"WRITE_COUNTER_4", "0", "the count [19:0]", "write counter 4: a store adds N, N > 0 arms it"},
-        {"WRITE_COUNTER_5", "0", "the count [19:0]", "write counter 5: a store adds N, N > 0 arms it"},
-        {"WRITE_COUNTER_6", "0", "the count [19:0]", "write counter 6: a store adds N, N > 0 arms it"},
-        {"WRITE_COUNTER_7", "0", "the count [19:0]", "write counter 7: a store adds N, N > 0 arms it"},
-        {"SRAM_RD_ADDR_QUEUE", "empty", "free entries (at least 64 when empty)", "store: queue a read at a chunk address [20:0], aligned to the size"},
-        {"SRAM_RD_DEST_ADDR", "undefined (meshsim 0)", "the next result's destination, as advanced, with the size and counter", "the read port's setup"},
-        {"SIM_EXIT", "-", "0", "simulator only: a store ends a meshsim test with the value"},
-        {"TRACE", "-", "0", "simulator only: a store is logged with the cycle and the unit"},
-};
-}  // namespace rd
-
 inline std::string registers_md() {
-    using namespace rd;
-    const auto& rows = ROWS;
     std::string b;
-    b += R"TB(# Unit registers: the programmer's reference
+    b += R"TB(# Registers: the programmer's reference
 
-**v1.35 (`mesh.h` 1.2).** Everything a controller program reaches with loads and stores: the address map, the register
-block, the peripheral windows, the table window, and the packets and command words programs build.
-`spec/machine-spec.md` is the source of truth (2.2, 3.1, 4.11-4.13, 8; and `spec/jolt/` for the replayer's and the
-Tracer's windows); where the two differ, this document is wrong. **This file is generated** by `tools/regs/gen_regs.cpp`,
-from the register table in `tools/regs/regtable.h`, which also generates `fw/include/mesh.h`; edit the generator, not
-the file. `run_tests.sh`'s `regdoc` step checks both files against the generator, and that the simulator behaves as
-every row says.
+**v1.36 (`mesh.h` 1.36).** Everything a tile's program reaches with loads and stores, and the words it builds: the
+address map, region 0xFF, the tile window, the tables, the peripherals' windows and regions, the packet and the
+requests. `spec/machine-spec.md` is the source of truth (chapters 2, 4, 5, 7-13, 17 and 19; `spec/jolt/replayer.md`
+and `spec/jolt/tracer.md` for the replayer's and the Tracer's, 17.8 and 17.9); where the two differ, this document is
+wrong. Every name is the specification's, and every section number below is its. **This file is generated** by
+`tools/regs/gen_regs.cpp`, from the register table in `tools/regs/regtable.h`, which also generates
+`fw/include/mesh.h`; edit the table, not the file. `tests/test_regs.cpp` checks both files against the generator, the
+table against the simulator's decoding (`src/units/regmap.h`), and the table against the specification's tables.
 
 ## 1. The address map
 
-An address is an 8-bit region [31:24] and a 24-bit byte offset [23:0] (2.2). A C pointer is the packet address.
+An address is an 8-bit region [31:24] and a 24-bit byte offset [23:0] (5.1). One map serves the core's own accesses
+and the addresses that `WRITE` packets carry.
 
-| address | contents | the controller | packets (mode 0) |
+| region | contents | the core | a `WRITE` packet | `mesh.h` |
+|---|---|---|---|---|
+)TB";
+    for (const Region& r : REGIONS)
+        b += fmt("| %s | %s | %s | %s | %s |\n", r.lo == r.hi ? fmt("`0x%02X`", r.lo).c_str() : fmt("`0x%02X`-`0x%02X`", r.lo, r.hi).c_str(), r.contents, r.core,
+                 r.packet, r.macro ? rd::code(r.macro).c_str() : "");
+    b += R"TB(
+**Access rules** (5.1, 5.4, 6.4):
+- **Access faults** (`ERRORS.access_fault`, and a trap): a load or store to IMEM or the boot ROM; an unmapped address,
+  region 0xFF's included (window 11, an absent peripheral's window, a word a block does not define, a block a window
+  does not use); a sub-word access in region 0xFF; a store to a read-only register.
+- **A misaligned load or store** traps before it reaches the map, and sets no bit in `ERRORS` (6.2).
+- **A load from a write-only register reads 0.** Reserved bits, above a word's last field, ignore a store and read 0.
+- **An address past the end of its memory** is undefined behaviour (1.3), and so is a `WRITE` there.
+- **Timing.** A load from a window takes `WINDOW_LOAD_LATENCY` = 2 cycles, a load from a table `TABLE_LOAD_LATENCY`
+  = 1: issued in cycle *t* with latency *L*, it returns the state at the end of *t* + *L* - 2 and takes its side
+  effect (a consuming load of `EVENTS`, a pop) at the end of *t* + *L* - 1. A store takes effect at the end of
+  *t* + *L* - 1: the end of *t* + 1 in a window, of *t* in a table.
+- **Stalls.** Only a `WRITE_SEND_*` on a full holding register that is not being injected, a `REQUEST_SEND` on a full
+  request queue from which nothing leaves, and Ingress/Egress's `UART_TX` and `STREAM_SEND` on a full FIFO stall.
+
+## 2. Region 0xFF
+
+Region 0xFF maps only its top 8 KiB, `0xFFFFE000`-`0xFFFFFFFF`: 16 windows of 512 bytes, window *w* at
+`0xFFFFE000 + 0x200 w`, picked by address bits [12:9] (5.2). The tile window and the peripherals' are in the top
+2 KiB, so each register is one `lw` or `sw` relative to `x0` (`X0REL(off)`, `P_X0REL(n, off)`); a table needs a base
+register.
+
+| window | address | contents | in C |
 |---|---|---|---|
 )TB";
-    b += fmt("| `%s`-`%s` | data memory, 32 KB; the first 16 bytes reserved; the reply block at `0x%08X`, the command block at `0x%08X` | loads, stores (1 cycle) | yes |\n",
-             h8(DMEM_BASE).c_str(), h8(DMEM_BASE + DMEM_SIZE - 1).c_str(), REPLY_BASE, COMMAND_BASE);
-    b += fmt("| `%s`-`%s` | program memory, 32 KB | fetch, loads; a store is a bus error | yes |\n", h8(PMEM_BASE).c_str(), h8(PMEM_BASE + PMEM_SIZE - 1).c_str());
-    b += fmt("| `%s`- | the boot ROM | fetch, loads | no (a bad packet) |\n", h8(BOOTROM_BASE).c_str());
-    b += fmt("| `%s`- | big SRAM: chunk *c* at `0x03000000 + 4c` | bus error (no port) | yes |\n", h8(REGION_SRAM).c_str());
-    b += "| `0x04000000`-`0x06FFFFFF` | peripherals 1-3's regions | bus error | yes, if present |\n";
-    b += "| `0x07000000`-`0xFEFFFFFF` | unmapped | bus error | no |\n";
-    b += fmt("| `%s`-`%s` | the table window (section 4) | word accesses; only `HIST` loads (1 cycle) | no |\n", h8(TABLE_BASE).c_str(), h8(TABLE_END - 1).c_str());
-    b += fmt("| `%s`-`%s` | the controller's register block (section 2) | word accesses (loads 2 cycles) | no |\n", h8(REG_BASE).c_str(), h8(REG_BASE + 4 * BLOCK_WORDS - 1).c_str());
+    for (const Table& t : TABLES) {
+        const int w = int((t.base - WINDOWS_BASE) / WINDOW_BYTES), nw = int(uint32_t(t.entries * t.words * 4) / WINDOW_BYTES);
+        b += fmt("| %s | `%s` | `%s` (%s) | `tables->%s` |\n", nw == 1 ? fmt("%d", w).c_str() : fmt("%d, %d", w, w + nw - 1).c_str(), h8(t.base).c_str(), t.name,
+                 t.section, t.name);
+    }
+    b += fmt("| 11 | `%s` | unmapped | |\n", h8(TABLE_END).c_str());
+    b += fmt("| 12 | `%s` | the tile window (section 3) | `tile->` (`TileRegs`) |\n", h8(TILE_WINDOW_BASE).c_str());
     for (int n = 1; n <= 3; n++)
-        b += fmt("| `%s`-`%s` | peripheral %d's window (section 3) | word accesses (2 cycles); absent: bus error | no |\n",
-                 h8(window_base(n)).c_str(), h8(window_base(n) + 0x1FF).c_str(), n);
-    b += "| the rest of region 0xFF | unmapped | bus error | no |\n";
+        b += fmt("| %d | `%s` | peripheral %d's window, if present (section 5) | `peripheral(%d)->` (`PeripheralRegs`) |\n", 12 + n,
+                 h8(peripheral_window_base(n)).c_str(), n, n);
     b += R"TB(
-**Access rules** (4.11, 8.1):
-- **Misaligned loads and stores are undefined behavior** (v1.25): the hardware does nothing special; meshsim stops.
-- **Bus errors** (`ERRORS` [9]): a store to program memory or the boot ROM; an unmapped address,
-  an absent peripheral's window included; a sub-word access to the block, a window or the table window; a store to a
-  read-only register; a load from `PTR`, the `STREAM` arrays or `GROUP`.
-- **Write-only registers read 0.** The request port's four words are the exception: a load reads the receive side.
-- **Reserved words** in the block and the windows read 0 and ignore stores (meshsim flags the access). Reserved and
-  spare bits are ignored on a store and read 0.
-- **An offset past the end of data or program memory is not checked**: the high bits are ignored and the access
-  aliases (meshsim flags it). meshsim also flags any write into data memory's first 16 bytes.
-- **Timing:** a load from the block or a window takes 2 cycles and returns the state at the end of its first cycle,
-  taking any side effect (a consuming load of `EVENTS`, a pop of `REQUEST_RECEIVE`) at the end of its second; a load from
-  the memories or the table window takes 1. Stores are single-cycle and posted, taking effect at the end of their
-  cycle. Only a send store on an occupied send holding register and a `REQUEST_SEND` on a full request FIFO stall.
-- **Pulse registers:** a store of 1 fires the action for one cycle, a store of 0 does nothing; a load reads 0.
+A register window is eight blocks of 16 words: block *b* at + `0x40 b`, picked by address bits [8:6], and a word by
+bits [5:2] (5.3). A block holds one module's registers.
 
-## 2. The controller's register block
+| block | the tile window | a peripheral's window |
+|---|---|---|
+)TB";
+    for (int blk = 0; blk < int(BLOCKS); blk++)
+        b += fmt("| %d | %s | %s |\n", blk, TILE_BLOCK[blk] ? fmt("`%s` (%d)", TILE_BLOCK[blk], TILE_BLOCK_CHAPTER[blk]).c_str() : "unused",
+                 blk == 0 ? "its control block (17.1)" : blk == 1 ? "its DMA, if it has one (17.4)" : "its own");
+    b += R"TB(
+Block 0, the control block, is the same in every register window: `PARAMS`, `STATUS`, `ERRORS`, `EVENTS`,
+`EVENTS_PEEK`, `EVENTS_MASK`, then the start, `ARRIVE` in the tile window and `START` in a peripheral's. `STATUS` [0]
+and `EVENTS` [0] are the start's state and its end, and `STATUS` [1] and `EVENTS` [1] the DMA's. A word a block does
+not define, and a block a window does not use, is unmapped: an access fault. The one exception is block 1 of a
+peripheral without a DMA, every word of which reads 0.
 
-One per unit, identical on every unit, at `0xFFFFF800`; register *i* at `0xFFFFF800 + 4i`, reached from `x0` (the
-offset below is the address's low 12 bits). In C: `tile->NAME` (`TileRegs`, `mesh.h`).
+## 3. The tile window
 
-| offset | register | access | reset | a load returns | function |
+At `0xFFFFF800`, the same on every tile (5.5). In C: `tile->NAME` (`TileRegs`); in assembly `X0REL(OFF_NAME)(zero)`.
+
+)TB";
+    rd::regs(b, TILE, N_TILE, "");
+    b += R"TB(
+`COUNTER_n` is at word *n* of block 5: `OFF_COUNTER(n)`, `*counter(n)`. "Undefined" at the reset means undefined
+until written (18). Every other word of the window is unmapped.
+
+### 3.1 `PARAMS`
+
+`PARAMS` holds the straps alone (7.1). The memories' sizes are the chip's parameters, which its software is built with
+(section 8).
+
+)TB";
+    rd::fields(b, "PARAMS", "bits");
+    b += R"TB(
+| tile | `tile_id` | `peripherals` | `receiver` | `request_target` | `attach` | `barrier` | `boot_local` |
+|---|---|---|---|---|---|---|---|
+| a compute tile | 0-63 | 0b001, the replayer | 0 | 0 | the special tiles attached to it: tile 0 0b001, tile 7 0b010, tile 15 0b100, the others 0 | 1 | 0 |
+| the master tile | 64 | 0b001, Ingress/Egress | 1 | 0 | 0b001 | 0 | 1 |
+| the memory tile | 65 | 0b001, the RW engine | 1 | 1 | 0b010 | 0 | 1 |
+| the tracer tile | 66 | 0b001, the Tracer | 1 | 2 | 0b100 | 0 | 0 |
+
+### 3.2 `STATUS`
+
+`STATUS` holds states, and `EVENTS` what has happened (7.1).
+
+)TB";
+    rd::bits(b, "STATUS", "state");
+    b += R"TB(
+### 3.3 `EVENTS`, `EVENTS_PEEK` and `EVENTS_MASK`
+
+)TB";
+    rd::bits(b, "EVENT", "event");
+    b += R"TB(
+- **One model for every event**, the tile's and each peripheral's (7.2). A counted event of depth *d* holds a count
+  from 0 to *d*: its bit reads 1 while the count is above 0, its cause adds 1, up to *d*, and a consuming load
+  subtracts 1. A live event's bit follows its source, and no load changes it.
+- **A load of `EVENTS`** returns every bit, and consumes one count from each counted bit that it returns set and that
+  `EVENTS_MASK` selects. `EVENTS_PEEK` returns the same value and consumes nothing. An event set after the load's
+  sample point survives.
+- **The wake** is `(EVENTS & EVENTS_MASK) != 0`, except under the arrival gate, from `ARRIVE` until the cycle after
+  the release, when it is `EVENTS.release` alone. A wake consumes nothing.
+- **`EVENTS_MASK`** resets to `release` and `all_counters_done` (`EVENTS_MASK_RESET`, 0x5); a peripheral's to 0.
+- **The tie rule.** A clear that starts a new wait wins over a set, in the same cycle, that ends the wait before it:
+  `DMA_START`'s and `ARRIVE`'s clears.
+
+### 3.4 `ERRORS`
+
+One bit per error (7.4). A correct program on correct hardware never sets one. P is a program error, H a
+hardware-fault detector. Each bit is sticky until the reset, except the peripherals', which are live. A non-zero
+`ERRORS` raises the NMI, taken at most once, and the tile's error line.
+
+)TB";
+    rd::bits(b, "ERROR", "error");
+    b += R"TB(
+### 3.5 Header registers
+
+Every register that carries a packet header (`_HDR`) shares one layout (5.4): the header block in [7:0], as in the
+packet, `dst` in [14:8], and the register's own fields in [31:15]. `HEADER(mode, counter, size)` builds the header
+block.
+
+)TB";
+    rd::fields(b, "HDR", "bits");
+    b += "\n| register | bits | field | meaning | `mesh.h` |\n|---|---|---|---|---|\n";
+    for (const char* w : {"WRITE_HDR", "STREAM_HDR", "DMA_HDR"})
+        for (const Field& f : FIELDS)
+            if (same(f.word, w)) b += fmt("| `%s` | %s | `%s` | %s | %s |\n", w, bits_of(f.lo, f.width).c_str(), f.name, f.doc, rd::macro_cell(f).c_str());
+    b += R"TB(
+A field the unit fills itself is ignored on a store and reads 0: the size in `WRITE_HDR` and in a peripheral's
+`DMA_HDR`, and the mode and `dst` in `READ_HDR`. `WRITE_HDR`'s `dst` is an absolute tile id. `STREAM_HDR`'s `dst`
+below `TILE_COUNT` is a compute tile: on a compute tile, tile (me + `dst`) mod `TILE_COUNT`, so that 0 is the tile
+itself, and on a special tile, tile `dst`; otherwise it is an absolute tile id, a special tile or broadcast (8.3).
+
+A scratchpad address inside the units is a 21-bit word address, in bits [20:0] (`STREAM_SRC_ADDR`, a `PTR` entry,
+`READ_SEND`, `GATHER_CONFIG.record_base`): word address *w* is the byte address `0x03000000 | w << 2`
+(`SCRATCHPAD_ADDRESS(w)`). Every `_DEST_ADDR` is a byte address of 32 bits.
+
+### 3.6 The units' fields
+
+| register | bits | field | meaning | `mesh.h` |
+|---|---|---|---|---|
+)TB";
+    for (const char* w : {"DMA_CONFIG", "READ_SEND", "READ_FREE", "RECEIVE_CONFIG", "COUNTER", "GATHER_CONFIG"})
+        for (const Field& f : FIELDS)
+            if (same(f.word, w)) b += fmt("| `%s` | %s | `%s` | %s | %s |\n", same(w, "COUNTER") ? "COUNTER_n" : w, bits_of(f.lo, f.width).c_str(), f.name, f.doc, rd::macro_cell(f).c_str());
+    b += R"TB(
+- **The write unit** (9). Software stores a packet's words in ascending order, and the send, the last store, puts the
+  top word above `WRITE_W0`-`W2`: `WRITE_SEND_32` alone, `WRITE_W0` then `WRITE_SEND_64`, or `WRITE_W0`-`W2` then
+  `WRITE_SEND_128`. At the send a `WRITE` advances `WRITE_DEST_ADDR` by the size unless `no_increment` is set, and
+  `WRITE_W0`-`W2` clear. A packet of any other mode carries address 0. The write unit checks nothing.
+- **The read unit** (10). A store to `READ_SEND` queues a read of `READ_HDR`'s size at a word address; then
+  `READ_DEST_ADDR` advances by the size. Each read comes back as one `WRITE` to the tile itself, at its destination
+  in DMEM, counted on `READ_HDR`'s counter. With no free entry the read is dropped, `ERRORS.read_overflow` is set, and
+  `READ_DEST_ADDR` still advances.
+- **The counters** (12.2). A packet's counter field names one; the traffic director decrements it once the packet's
+  write has landed. A store of *N* adds *N*, and *N* > 0 arms the counter: it clears its `counter_n_done` and
+  `all_counters_done`, and arms both. A decrement of a counter at 0 sets `ERRORS.counter_underflow`.
+- **The DMA unit** (8). `DMA_START` starts the transfer `DMA_CONFIG` describes; a start during a transfer is undefined
+  behaviour. `EVENTS.dma_done` says the transfer has read its last table entry.
+- **The request unit** (11.1). Words 0-2 in `REQUEST_OUT_W0`-`W2`, then `REQUEST_SEND`, word 3, which pushes the
+  request and clears them. On a special tile `REQUEST_IN_W0`-`W2` read the oldest received request and
+  `REQUEST_RECEIVE` pops it; a tile whose `PARAMS.receiver` is 0 reads an empty queue.
+
+## 4. The tables
+
+Entry *i* of a table is the word at + 4 *i*; `GROUP[g]` is two words, at + 8 *g* and + 8 *g* + 4 (5.2). A table stores
+only its fields' bits: a core store ignores the others, and a core load reads them as 0. In C: `tables->HIST[i]`,
+`set_stream(i, src_addr, dest_addr, hdr)`, `set_group(g, w0, w1)`.
+
+| table | addresses | entries | fields | section | `mesh.h` |
 |---|---|---|---|---|---|
 )TB";
-    for (const Row& r : rows) {
-        const Reg& g = by_name(r.reg);
-        const std::string n = g.name;
-        const std::string o = n.rfind("REQUEST_GET", 0) == 0 || n == "REQUEST_RECEIVE" ? off(g) + " (load)" : off(g);
-        b += fmt("| `%s` | `%s` | %s | %s | %s | %s |\n", o.c_str(), g.name, acc(g.access).c_str(), r.reset, r.load, r.function);
-        if (n == "PULSE_DMA") b += "| `0x814` | reserved (was `PULSE_GO`, now C&C 1's peripheral) | | | 0 | |\n";
-        if (n == "SRAM_RD_DEST_ADDR") b += "| `0x884`-`0x9F4` | reserved | | | 0 | stores ignored (meshsim flags them) |\n";
+    for (const Table& t : TABLES)
+        b += fmt("| `%s` | `%s`-`%s` | %d%s | %s | %s | `%s_BASE` |\n", t.name, h8(t.base).c_str(), h8(t.base + uint32_t(t.entries * t.words * 4) - 1).c_str(),
+                 t.entries, t.words == 1 ? "" : " of 2 words", t.doc, t.section, t.name);
+    b += "\n| word | bits | field | meaning | `mesh.h` |\n|---|---|---|---|---|\n";
+    for (const char* w : {"GROUP_W0", "GROUP_W1"})
+        for (const Field& f : FIELDS)
+            if (same(f.word, w)) b += fmt("| `GROUP[g]` word %c | %s | `%s` | %s | %s |\n", w[7], bits_of(f.lo, f.width).c_str(), f.name, f.doc, rd::macro_cell(f).c_str());
+    b += R"TB(
+**When the core may touch them.** `STREAM` and `GROUP` (8.6): the core may load any entry at any time, and store any
+entry the running transfer does not read. `PTR` and `HIST` (12.5): only while their engine is idle; in a cycle the
+engine uses a port, a core store is lost and a core load returns an undefined value. `EVENTS.counter_n_done` says the
+arrivals' `PTR` and `HIST` updates are done.
+
+## 5. The peripherals' windows
+
+Peripheral *n* (1-3) has region 0x03 + *n* and window 12 + *n*, at `0xFFFFF800 + 0x200 n`, if present
+(`PARAMS.peripherals`); any word of an absent peripheral's window is an access fault, and a `WRITE` to its region a
+bad packet (17.1). Blocks 0 and 1 are the same on every peripheral; blocks 2-7 are its own. In C:
+`peripheral(n)->NAME` (`PeripheralRegs`), and one struct and pointer for each peripheral below.
+
+)TB";
+    rd::regs(b, PERIPHERAL, N_PERIPHERAL, "P_");
+    b += "\n";
+    rd::fields(b, "P_PARAMS", "`PARAMS`");
+    b += "\n";
+    rd::bits(b, "P_STATUS", "state");
+    b += "\n";
+    rd::bits(b, "P_EVENT", "event");
+    b += "\n";
+    rd::values(b, "PTYPE", "`PARAMS.type`");
+    b += R"TB(
+- **Start** (17.2). `START` starts the peripheral's work; `STATUS.busy` is 1 until the work ends, which posts
+  `EVENTS.done`. A `START` while busy is undefined behaviour.
+- **Events.** A peripheral's events are consumed only by a load of its own `EVENTS`: no store clears one. The tile's
+  `EVENTS.peripheral_n` is live: 1 while the peripheral's `EVENTS & EVENTS_MASK` is non-zero; it may lag a consuming
+  load by a cycle, so software re-checks after every wake.
+- **Errors.** The tile's `ERRORS.peripheral_n` is live: 1 while the peripheral's `ERRORS` is non-zero.
+- **The DMA** (17.4), on a special tile's peripheral: `DMA_START` sends `DMA_HDR.count` 128-bit packets from the
+  output queue `DMA_HDR.queue` to `DMA_HDR.dst`, each stamped with `DMA_HDR`'s counter and mode. A `WRITE` carries
+  `DMA_DEST_ADDR`, 16-byte aligned, which then advances by 16. `STATUS.dma_busy` is 1 until the last packet has left,
+  and then `EVENTS.dma_done` is posted. A peripheral without a DMA reads 0 in every word of block 1.
+)TB";
+    int sub = 1;
+    for (const Peripheral& p : PERIPHERALS) {
+        std::string title = p.name;
+        if (title.compare(0, 4, "the ") == 0) title = "The " + title.substr(4);
+        b += fmt("\n### 5.%d %s\n\n", sub++, title.c_str());
+        b += fmt("Peripheral 1 of %s, type %d, version 0 (%s); %s. In C: `%s->NAME` (`%s`).\n\n", p.tile, p.type, p.section,
+                 p.dma ? "it has a DMA" : "it has no DMA: its block 1 reads 0", p.c_pointer, p.c_struct);
+        rd::regs(b, p.regs, p.n_regs, (std::string(p.prefix) + "_").c_str());
+        b += "\nEvery other word of blocks 2-7 is unmapped.\n";
+        const std::string pre = p.prefix;
+        if (pre == "IE") {
+            b += "\n| register | bits | field | meaning | `mesh.h` |\n|---|---|---|---|---|\n";
+            for (const char* w : {"LED", "UART_TX", "UART_RX", "UART_DIVISOR", "UART_STATUS"})
+                for (const Field& f : FIELDS)
+                    if (same(f.word, w)) b += fmt("| `%s` | %s | `%s` | %s | %s |\n", w, bits_of(f.lo, f.width).c_str(), f.name, f.doc, rd::macro_cell(f).c_str());
+            b += "\n";
+            rd::bits(b, "IE_STATUS", "state");
+            b += "\n";
+            rd::bits(b, "IE_ERROR", "error");
+            b += "\n";
+            rd::bits(b, "IE_EVENT", "event");
+            b += R"TB(
+It does no work and sends nothing: a `START` is undefined behaviour, and its region takes no write. Bit *i* of
+`ERROR_LINES` is tile *i*'s error line; the master tile's own bit, 64, and the bits past 66 read 0. Bit *i* of
+`ARRIVALS` is set when compute tile *i*'s arrival reaches it, and cleared by a `RELEASE`. A beat of the host interface
+is `STREAM_BYTES` bytes, `STREAM_BEAT_WORDS` = ceil(`STREAM_BYTES` / 4) words: software stores the words below the
+beat's top in `STREAM_OUT_W0`-`W2`, then its top word in `STREAM_SEND` or `STREAM_SEND_LAST`; `STREAM_IN_W0`-`W2` read
+the words below the oldest beat's top, and `STREAM_RECEIVE` its top word, which pops it.
+)TB";
+        } else if (pre == "RW") {
+            b += "\n| register | bits | field | meaning | `mesh.h` |\n|---|---|---|---|---|\n";
+            for (const char* w : {"RW_CONFIG", "RW_LPDDR_ADDR", "RW_BUFFER_ADDR"})
+                for (const Field& f : FIELDS)
+                    if (same(f.word, w)) b += fmt("| `%s` | %s | `%s` | %s | %s |\n", w, bits_of(f.lo, f.width).c_str(), f.name, f.doc, rd::macro_cell(f).c_str());
+            b += "\n";
+            rd::values(b, "RW_KIND", "`RW_CONFIG.kind`");
+            b += "\n`STATUS` and `EVENTS` have the standard bits alone.\n\n";
+            rd::bits(b, "RW_ERROR", "error");
+            b += "\nIts region, 0x04 on the memory tile:\n\n";
+            rd::parts(b, "RW");
+            b += R"TB(
+`START` starts the job `RW_CONFIG` describes. A read's beats enter output queue 0, which a DMA transfer of
+`DMA_HDR.queue` 0, mode `WRITE` and `count` `beats` sends. A store to `RW_REPLY_SEND` pushes the reply
+{0, `RW_REPLY_SEND`, `RW_REPLY_W0`} into output queue 1, which holds one entry and which a transfer of `count` 1
+sends.
+)TB";
+        } else {
+            const bool tr = pre == "TR";
+            b += "\n| register | bits | field | meaning | `mesh.h` |\n|---|---|---|---|---|\n";
+            for (const char* w : {"RUN_CONFIG", "ROWS_RUN", "EXPANSION_OFFSET", "HASH_STEP", "HASH_LINES", "EXPANSION_TEMPLATE"}) {
+                if (!tr && (same(w, "HASH_STEP") || same(w, "HASH_LINES") || same(w, "EXPANSION_TEMPLATE"))) continue;
+                for (const Field& f : FIELDS)
+                    if (same(f.word, w)) b += fmt("| `%s` | %s | `%s` | %s | %s |\n", w, bits_of(f.lo, f.width).c_str(), f.name, f.doc, rd::macro_cell(f).c_str());
+            }
+            b += "\n`STATUS` has the standard bits alone.\n\n";
+            rd::bits(b, (pre + "_EVENT").c_str(), "event");
+            b += "\n";
+            rd::bits(b, (pre + "_ERROR").c_str(), "error");
+            b += fmt("\nIts region, 0x04 on %s, takes 128-bit `WRITE`s, 16-byte aligned; a queue's part is one address in effect:\n\n",
+                     tr ? "the tracer tile" : "a compute tile");
+            rd::parts(b, pre.c_str());
+            if (tr) {
+                b += "\nThe files word, the record's word 66 (17.9.2), 128 bits:\n\n";
+                rd::fields(b, "FILES", "bits");
+            } else {
+                b += "\nA credit is half a queue, 128 entries (`REPLAY_QUEUE_ENTRIES` / 2); the state write fills all four (17.8.8).\n";
+            }
+        }
     }
-    b += "\n### 2.1 `PARAMS` and `STATUS`\n\n| register | bits | field |\n|---|---|---|\n";
-    for (const Field& f : FIELDS) if (std::string(f.word) == "PARAMS") b += field_row("PARAMS", f);
-    for (int i = 0; i < N_ST; i++) {
-        std::string lower = ST_NAME[i];
-        for (char& c : lower) if (c >= 'A' && c <= 'Z') c = char(c - 'A' + 'a');
-        b += fmt("| `STATUS` | [%d] | `%s` (`ST_%s`) |\n", i, lower.c_str(), ST_NAME[i]);
-    }
     b += R"TB(
-`PARAMS` [2:0] is 0b001 on tiles 0-63 (the replayer) and on C&C 1-3; the endpoint id is 0-63 on a mesh tile and 64-66
-on C&C 1-3; the size is 15 at the default 4 MB (`sram_chunks()` = (size + 1) << 16). `STATUS` is diagnostic only: no
-program needs to poll it; programs wait by events.
+## 6. The packet
 
-### 2.2 `ERRORS`
-
-Any non-zero bit raises the unit's hard interrupt and its error line (4.13). In a correct program on correct hardware
-`ERRORS` reads 0 forever.
-
-| bit | `mesh.h` | error |
-|---|---|---|
-)TB";
-    static const char* const en[] = {"ERR_ROUTER_OVF", "ERR_BAD_PACKET", "ERR_UNEXPECTED", "ERR_DRIFT", "ERR_WE_IN_OVF",
-        "ERR_TABLE_OVF", "ERR_GATHER_OVF", "ERR_READ_PORT", "ERR_DONE_EARLY", "ERR_BUS", "ERR_ILLEGAL", "ERR_PERIPH(1)",
-        "ERR_PERIPH(2)", "ERR_PERIPH(3)", "ERR_RECV_UNDERFLOW"};
-    static const char* const ed[] = {"router overflow: a link, eject or fifth-port FIFO overflowed",
-        "bad packet: a packet to a region it can't reach, or mode 3 at 128 bits, dropped uncounted (v1.25: misalignment is undefined behavior; meshsim stops)",
-        "unexpected arrival: a decrement found its counter at 0", "drift: in a group run the SRAM read queue refused the address generator",
-        "write-engine input overflow", "table request overflow (a hardware fault)", "GATHER queue overflow (a hardware fault)",
-        "read-port error: a `SRAM_RD_ADDR_QUEUE` store with no free entry (the read is dropped)", "done early: `done` with a write counter non-zero",
-        "bus error", "illegal instruction", "peripheral 1 (live: its `ERRORS` non-zero)", "peripheral 2 (live)", "peripheral 3 (live)",
-        "receive underflow: `REQUEST_RECEIVE` on an empty queue"};
-    for (int i = 0; i < 15; i++) b += fmt("| %d | `%s` | %s |\n", i, en[i], ed[i]);
-    b += R"TB(
-Bits 0-10 and 14 are sticky until the reset; 11-13 follow the peripherals. [31:15] read 0. A store is a bus error.
-
-### 2.3 The events: `EVENTS`, `EVENTS_PEEK`, `EVENTS_MASK`, `EVENTS_REQUIRED`
-
-| bit | `mesh.h` | event | kind |
-|---|---|---|---|
-| [6:0] | `EV_CTR(n)` | write counter *n* done (bit *n* - 1): its count reached 0, armed since the event last set or cleared | sticky |
-| [7] | `EV_CTRS_DONE` | counters done: all seven at 0, one armed since it last fired | sticky |
-| [8] | `EV_GO` | GO, C&C 1's barrier release (mesh tiles only) | sticky |
-| [9] | `EV_COMMAND` | command landed: a director write covering command slot 0 | sticky |
-| [10] | `EV_RUN_DONE` | DMA run done: `rd_done` rose; cleared by `PULSE_DMA` | sticky |
-| [11] | `EV_REQ_ROOM` | request FIFO no longer full: `request_busy` fell | sticky |
-| [12] | `EV_REQ_PENDING` | request pending: the unit's receive queue holds a request (C&C 1-3 only) | live |
-| [15:13] | `EV_PERIPH(n)` | peripheral *n*: its `EVENTS & EVENTS_MASK` non-zero | live |
-
-- **A load of `EVENTS`** returns every pending event and clears exactly the returned sticky bits that are in
-  `EVENTS_MASK`; an event set after its sample point survives. `EVENTS_PEEK` returns the same and clears nothing.
-- **The wake term:** `wake = gate ? EVENTS[8] : ((EVENTS & EVENTS_MASK & ~EVENTS_REQUIRED) != 0) OR (EVENTS_REQUIRED != 0
-  AND (EVENTS & EVENTS_REQUIRED) == EVENTS_REQUIRED)`. A wake consumes nothing: `wfi()` loads `EVENTS` after `WFI`.
-- **The done gate:** from the `done` pulse until GO only GO wakes `WFI`, and the counters' done events can't be set.
-  `done` clears [7] and [6:0]. Keep [8] in `EVENTS_MASK` whenever `wait_for_command()` runs.
-- **A counter write** of *N* > 0 clears [7] and that counter's own done event and arms both.
-
-### 2.4 The common header layout
-
-Every register that carries a packet's header fields lays them out in [31:17], in the link word's order:
-
-| bits | field | `mesh.h` |
-|---|---|---|
-)TB";
-    for (const Field& f : FIELDS)
-        if (std::string(f.word) == "HDR") b += fmt("| [%d:%d] | %s | `HDR_%s()` |\n", f.lo + f.width - 1, f.lo, f.doc, f.name);
-    b += R"TB(
-Used by `ROUTER_HDR` (with no-increment [0]), `STREAM_COUNT` (count [16:0]; [31:25] is the relative *d*),
-`SRAM_RD_DEST_ADDR` (destination [16:0]; size and counter) and a peripheral's `DMA_HDR` (count [11:0], queue [13:12]).
-
-### 2.5 The send port
-
-`ROUTER_HDR` (no-increment [0], counter, mode, dst) and `ROUTER_ADDR` set the next packets' header and address; then one
-store per 32 bits of each packet, in ascending word order, the last store sending: `ROUTER_SEND_32` alone,
-`ROUTER_SET_W0` + `ROUTER_SEND_64`, or `ROUTER_SET_W0`-`W2` + `ROUTER_SEND_128`. At each send `ROUTER_ADDR` advances by
-4, 8 or 16 for mode 0 unless no-increment is set (modes 1-5 leave it); `ROUTER_SET_W0`-`W2` clear. The router stamps src.
-A send store stalls only if the holding register is full and not being injected that cycle. The send port checks
-nothing: the receiver and meshsim do.
-
-### 2.6 `DMA_CONFIG` and the write counters
-
-| bits | field |
-|---|---|
-)TB";
-    for (const Field& f : FIELDS)
-        if (std::string(f.word) == "DMA_CFG") b += fmt("| [%d:%d] | %s |\n", f.lo + f.width - 1, f.lo, f.doc);
-    b += R"TB(
-`DMA_CONFIG` is written once per run, before the start, and holds while the run's arrivals land. The write counters
-(`WRITE_COUNTER_1`-`7`, `tile->WRITE_COUNTER[n - 1]`) are 20 bits; a store of *N* adds *N* atomically with that cycle's
-decrement; a sum past 2^20 - 1 wraps (meshsim flags it); the count returns to 0 only by counting down or at the reset.
-A packet's counter field names one; the traffic director decrements it K cycles after accepting the packet, so a
-counter at 0 means everything it counted is in place.
-
-### 2.7 The read port
-
-A store to `SRAM_RD_ADDR_QUEUE` queues a read of 32, 64 or 128 bits at a chunk address aligned to the size, with
-`SRAM_RD_DEST_ADDR`'s destination (a data-memory byte offset [16:0]), size [18:17] and counter [21:19]; the
-destination then advances by the size in bytes. Each result lands as a mode-0 packet to the tile itself, counted on
-that counter. A misaligned read is undefined behavior (v1.25; meshsim stops); a store with no free entry is
-dropped (`ERRORS` [7]). `RD_DEST(byte_off, size, ctr)` builds the setup word.
-
-### 2.8 The request port
-
-Software stores the request's words 0-2 (`REQUEST_SET_W0`-`W2`), then `REQUEST_SEND` (bits [127:96]) pushes the
-128-bit request into the 128-entry request FIFO. Word 0 carries the target [9:7] (0 C&C 1, 1 C&C 2, 2 C&C 3; 3-7
-dropped at the root) and 0 in the requestor [6:0], which the tree stamps. The receive queues are in the request tree
-(128, 256 and 128 entries); C&C 1-3 read theirs through `REQUEST_GET_W0`-`W2` and `REQUEST_RECEIVE`, which pops. On
-tiles 0-63 the receive side reads an empty queue: `REQUEST_RECEIVE` returns 0 and sets receive underflow.
-
-### 2.9 The simulator-only words
-
-`SIM_EXIT` (`0x9F8`): a store ends a meshsim test with the stored value (`sim_exit(v)`; `crt0` stores `main`'s return
-value). `TRACE` (`0x9FC`): a store is logged with the cycle and the unit (`sim_trace(v)`). On hardware both are reserved
-words.
-
-## 3. The peripheral windows
-
-Peripheral *n* (1-3) has a 128-word window at `0xFFFFF800 + 0x200n`, if present (`PARAMS` [*n* - 1]); an absent
-peripheral's window is a bus error. Words 0-9 are standard, 10-31 reserved standard words, 32-127 the peripheral's own.
-In C: `peripheral(n)->NAME` (`PeripheralStd`), `replayer->NAME`, `cc1->NAME`.
-
-| word | name | access | function |
-|---|---|---|---|
-)TB";
-    static const char* const sd[] = {"[7:0] type, [15:8] version", "[0] run in progress, [1] DMA in progress", "sticky until the reset",
-        "store 1: start a run; a start while one runs is undefined behavior (meshsim stops)",
-        "store 1: start the DMA set up in DMA_HDR and DMA_ADDR; during a transfer, or naming a missing output queue, undefined behavior (meshsim stops)",
-        "a load returns the events and consumes one count from each set bit in EVENTS_MASK", "what a load of EVENTS would return",
-        "the events that count: wake the unit's EVENTS bit, are consumed; 0 at reset", "the DMA: count [11:0], queue [13:12], counter, mode, dst",
-        "the DMA's 32-bit destination, advancing per packet"};
-    for (int i = 0; i < STD_WORDS; i++) b += fmt("| %d | `%s` | %s | %s |\n", i, STD_WORD[i], acc(STD_ACCESS[i]).c_str(), sd[i]);
-    b += R"TB(
-The replayer (type 4, every mesh tile's peripheral 1): `RUN_CONFIG` (32, R/W: [23:0] rows to run, [24] use the store log,
-[25] output `rd_prev`, [28:26] the Tracer's compression enables, ignored; sticky, 0 at reset), `ROWS_RUN` (33, 24 bits), `EXPANSION_OFFSET` (34), `EXPANSION_OPCODE` (35),
-the same four as the Tracer's (v1.26.1). C&C 1's peripheral (type 1, Ingress/Egress): `ERROR_LINES[3]` (32-34), `READY_LINES[2]` (35-36), `READY_EXPECT[2]` (37-38), `PULSE_GO`
-(39), `WATCHDOG` (40), `LED` (41), and the UART: `UART_TX` (42), `UART_RX` (43), `UART_DIVISOR` (44), `UART_STATUS`
-(45). The Tracer (type 3, C&C 3's peripheral 1, v1.3): `RUN_CONFIG` to `EXPANSION_OPCODE` (32-35) as the replayer's,
-the queue lengths `STATE_LENGTH`, `CODE_LENGTH`, `READ_LOG_LENGTH`, `WRITE_LOG_LENGTH` (36-39), `HASH_MUL`, `HASH_STEP`,
-`HASH_LINES` (40-42), `EXPANSION_TEMPLATE` (43, write-only), and the statistics counters (44-51, read-only, cleared by the
-word-0 write): `STAT_CYCLES`, `STAT_STALL_FETCH`, `STAT_STALL_DATA`, `STAT_STALL_MAP`, `STAT_STALL_OUTPUT`, `STAT_MISS_I`,
-`STAT_MISS_D`, `STAT_PROBES`. Spec 4.17, 4.19, 4.21.3, 8.11-8.14 and 8.16 give their meanings.
-
-## 4. The table window
+Every link carries one 256-bit packet a cycle in each direction (4.1); its reserved bits, [255:182] at 8 x 8, are 0.
 
 )TB";
-    b += fmt(R"TB(| table | addresses | entries | load | store |
-|---|---|---|---|---|
-| `HIST` | `%s`-`%s` | 256 words; count [16:0] | the count | the count |
-| `PTR` | `%s`-`%s` | 256 words; chunk address [20:0] | bus error | the pointer |
-| `STREAM_SRC` | `%s`-`%s` | 256 words; source chunk [20:0], gap after [23:21] | bus error | the word |
-| `STREAM_DEST` | `%s`-`%s` | 256 words; the first element's 32-bit address (mode 0 only) | bus error | the word |
-| `STREAM_COUNT` | `%s`-`%s` | 256 words; count [16:0], read size, counter, mode, *d* [31:25] | bus error | the word |
-| `GROUP` | `%s`-`%s` | 64 entries, low word then high word | bus error | one word |
-)TB", h8(HIST_BASE).c_str(), h8(PTR_BASE - 1).c_str(), h8(PTR_BASE).c_str(), h8(STREAM_SRC_BASE - 1).c_str(),
-             h8(STREAM_SRC_BASE).c_str(), h8(STREAM_DEST_BASE - 1).c_str(), h8(STREAM_DEST_BASE).c_str(),
-             h8(STREAM_COUNT_BASE - 1).c_str(), h8(STREAM_COUNT_BASE).c_str(), h8(GROUP_BASE - 1).c_str(),
-             h8(GROUP_BASE).c_str(), h8(TABLE_END - 1).c_str());
+    rd::fields(b, "PACKET", "bits");
+    b += "\n";
+    rd::values(b, "SIZE", "size");
+    b += "\n";
+    rd::values(b, "MODE", "what the receiver does (4.2)");
+    b += "\n";
+    rd::values(b, "TILE", "tile id (2.1, 4.1), at 8 x 8");
     b += R"TB(
-`GROUP[g]` low: R [17:0]; high: start stream [7:0], *t* - 1 [11:8], gap [19:12]. In C: `tables->HIST[i]`,
-`set_stream(i, STREAM_SRC_W(chunk, gap), dest, STREAM_COUNT_W(n, size, ctr, mode, d))`, `set_group(g, lo, hi)`.
-**When the controller may touch them** (4.10): `STREAM` and `GROUP` only while the address generator isn't running (its
-lead-in included); `PTR` and `HIST` only while no arrivals use them. *d*: 0-63 a relative tile, (me + *d*) mod 64;
-64-66 C&C 1-3; 126 the broadcast (controllers only); mode 4 needs *d* = 0.
+**Bad packets.** The traffic director drops a bad packet, uncounted, and sets `ERRORS.bad_packet`: a `WRITE` to the
+boot ROM, to region 0xFF, to an unmapped region or to an absent peripheral; and an `AUGMENT` at 128 bits. A packet
+misaligned to its size, a `WRITE` past the end of its memory and a `GATHER` from another tile are undefined behaviour.
+A `COUNT` packet writes nothing: a fence, or "done" between tiles.
 
-## 5. Packets
+## 7. Requests
 
-The 256-bit link word: payload [127:0], address [159:128], size [161:160], counter [164:162], mode [167:165], src
-[174:168], dst [181:175]; [255:182] reserved. Sizes: 0 32 bits, 1 64, 2 128 (3 undefined); a payload's bits above its
-size are 0. Every access is naturally aligned to its size.
+A request is 128 bits, from any tile to a special tile over the request tree (11). Word 0 holds the hardware's fields
+and, on the special tiles, the operation (11.2, 11.5); `REQUEST_WORD_0(target, op)` builds it.
 
-| mode | `mesh.h` | what the receiver does | counted |
-|---|---|---|---|
-| 0 | `MODE_WRITE` | writes the payload at the address: data or program memory, big SRAM, a present peripheral's region | by its counter field |
-| 1 | `MODE_SRC` | big SRAM at `PTR[src]`, then `PTR[src]` += 1, 2 or 4 chunks | by its counter field |
-| 2 | `MODE_BUCKET` | big SRAM at `PTR[digit]` (`DMA_CONFIG`'s bucket digit) | by its counter field |
-| 3 | `MODE_AUGMENT` | a 64-bit record at `PTR[src]`: the payload's low word and the ordinal (32 or 64 bits only) | by its counter field |
-| 4 | `MODE_GATHER` | a gather request, to the tile itself only; its counter field passes to the values | never |
-| 5 | `MODE_COUNT` | nothing written | by its counter field |
-| 6-7 | | reserved: undefined behavior (meshsim stops) | no |
+)TB";
+    rd::fields(b, "REQUEST", "word 0");
+    b += "\n";
+    rd::values(b, "TARGET", "target (11.2)");
+    b += "\n";
+    rd::values(b, "OP", "operation, report number or counter (11.5, 6.5)");
+    b += "\n| request | word | bits | field | meaning | `mesh.h` |\n|---|---|---|---|---|---|\n";
+    struct { const char* w; const char* req; const char* word; } rows[] = {{"REPORT", "`REPORT`", "0"}, {"MEMORY", "`READ`, `WRITE`", "0"},
+        {"MEMORY_W3", "`READ`, `WRITE`", "3"}, {"MEMORY_REPLY_W1", "a `WRITE`'s reply", "1"}};
+    for (const auto& r : rows)
+        for (const Field& f : FIELDS)
+            if (same(f.word, r.w)) b += fmt("| %s | %s | %s | `%s` | %s | %s |\n", r.req, r.word, bits_of(f.lo, f.width).c_str(), f.name, f.doc, rd::macro_cell(f).c_str());
+    b += R"TB(
+- **`REPORT`** (the master tile's): words 1-3 are three data words; it asks for no reply. `REPORT_WORD_0(number)`.
+- **`LOAD`** (the master tile's): the boot ROM's; the tile waits in the ROM, counter 7 armed, for its next image.
+- **`READ`** (the memory tile's): word 1 the first beat's LPDDR beat address, word 2 the data's byte address at the
+  requester, word 3 the reply. The data comes as 128-bit `WRITE`s counted on `data_counter`, then, if `reply_counter`
+  is non-zero, a 128-bit reply of 0.
+- **`WRITE`** (the memory tile's): word 1 the first beat's LPDDR beat address, word 2 0, word 3 the reply,
+  `reply_counter` non-zero. The 128-bit reply holds the part's address, in the memory tile's region 0x04, in [31:0],
+  and in [34:32] the memory tile's counter that counts the part's packets.
+- **Answers** (11.4): the requester arms the counters for the request's data and reply before sending it. A reply is
+  one `WRITE` to the reply address, in the requester's DMEM, aligned to its size.
+- Every other `op` is the target's firmware's.
 
-**Bad packets** are dropped, uncounted, and set `ERRORS` [1]: a mode-0 packet not aligned to its size or for a region
-a packet can't reach (the boot ROM, 0x07-0xFF, an absent peripheral's), and a 128-bit mode 3. Counter field 0 is
-uncounted: only commands and boot overlays, from C&C 1-3, travel uncounted.
+## 8. Parameters
 
-## 6. The command block, the reply block and the command word
+Chapter 19's parameters that software needs, at their defaults, the 8 x 8 mesh's.
 
-- **The command block:** 16 words at `0x00007FC0`; slot 0 the command word, slots 1-15 its arguments: even commands
-  use slots 1-7, odd ones 8-15. C&C 1-3 write the arguments, then the command word, as uncounted mode-0 writes; a write
-  covering slot 0 sets command landed (`EVENTS` [9]). `COMMAND[s]` in C.
-- **The command word:** [31:24] type, [23] parity (the argument block), [22:0] argument: `CMD_WORD(type, parity, arg)`,
-  `CMD_TYPE(w)`, `CMD_ARG(w)`, `CMD_ARGS(w)`. `CMD_JUMP` (0x4A): jump to the address in the argument block's first slot.
-- **The reply block:** 256 words below it, at `0x00007BC0`: two words per source, `REPLY_WORD(src)` = `0x00007BC0 + 8 src`.
-  A reply is a 32- or 64-bit mode-0 write at the sender's own pair; a sender sets `ROUTER_ADDR` once with no-increment
-  and changes only the dst. Every request may name its own reply address instead.
-- **The stack** grows down from `0x00007BC0`; images place data from `0x00000010`.
+)TB";
+    rd::values(b, "PARAM", "parameter (19)");
+    b += R"TB(
+## 9. `mesh.h`'s helpers
 
-## 7. Common sequences (`mesh.h`'s helpers)
-
-- `wait_for_command()`: the done pulse and `WFI`, back to back; GO wakes it; it consumes GO and returns slot 0.
-- A local run: `set_stream`/`set_group`, `tile->DMA_CONFIG`, arm the counter (`tile->WRITE_COUNTER[c - 1] = N`), then
-  `start_run()`, then `wfi()` for counters done.
-- A block copy into controller memory: a mode-0 stream to the tile itself (*d* = 0) at the destination address, counted;
-  `wfi()`.
-- Several events at once: `wait_all(EV_CTR(2) | EV_RUN_DONE)`.
-- A reply: `send_to(ROUTER_HDR_W(dst, MODE_WRITE, ctr) | ROUTER_NOINC, REPLY_WORD(me))`, then `send32(v)` per receiver
-  (changing `tile->ROUTER_HDR` for each).
+- `tile_id()`: `PARAMS.tile_id`. `counter(n)`: a pointer to `COUNTER_n`.
+- `wfi()`: `WFI`, then a load of `EVENTS`, which it returns.
+- `arrive()`: `ARRIVE` and the canonical wait, a `WFI` right after the store, then the load of `EVENTS` that consumes
+  the release (7.3).
+- `dma_start()`, `set_stream()`, `set_group()`: the DMA unit and its tables.
+- `write_to(hdr, dest_addr)`, `write32()`, `write64()`, `write128()`: the write unit.
+- `request_send(w3, w2, w1, w0)`, `report(number, w1, w2, w3)`: the request unit.
+- `mcycle()`: the core's cycle counter, its low 32 bits.
 )TB";
     return b;
 }

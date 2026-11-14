@@ -140,6 +140,7 @@ pending sw-build "building the tile programs (fw/build.sh: the boot ROM, fw/test
 pending sort-build "building the sort program (fw/build.sh's sort part: one image, the split, the planner)" "$R_FW"
 #   step sort-build 2 "building the sort program (fw/build.sh's sort part: one image, the split, the planner)" - -- fw_part sort
 step bus 1 "bus primitives (on the framework's port kinds; the debug build, its throws checks being debug assertions)" tests/p2suites/bus.log -- build/$CC_NAME-debug/suite_bus
+check rtl-images "the RTL's vendored firmware against its hash list (fw/check_images.sh rtl; v1.36's, no v1.3 step)" -- bash fw/check_images.sh rtl
 check rtl-tile "acceptance A: the RTL's tile programs on one compute tile (tests/test_rtl_tile.cpp; v1.36's, no v1.3 step)" -- $S/test_rtl_tile
 NETREF=tests/p4suites/net.log; [ "$MODE" = quick ] && NETREF=tests/p4suites/net-quick.log   # v1.3's net step takes $Q
 pending net "network, packets, director" "$R_NET"

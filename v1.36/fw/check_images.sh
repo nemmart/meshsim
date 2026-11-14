@@ -1,19 +1,23 @@
 #!/bin/bash
 # fw/check_images.sh [--built DIR] [PART...]: the committed firmware images of fw/build.sh's parts (boot tests m1 m3 cc
-# recipes replay tracer sort; none named: all) against the hash lists committed beside them, for a machine without the
-# RISC-V toolchain, where fw/build.sh --check can't run. Each image is found where fw/build.sh --check looks for it
-# (fw/boot, the fixture folders tests/golden/images, tests/golden-m2/images and tests/m3-images, else fw/images) and its
-# sha256 must equal the one its folder lists (fw/images/MANIFEST; the fixture folders' MANIFEST, MANIFEST.md and
-# REQ_MANIFEST; COPIES.sha256 for the boot ROM). Exit 1 on any difference, missing image or missing hash.
+# recipes replay tracer sort) and the RTL's firmware vendored in fw/rtl (part rtl); none named: all. Each against the
+# hash lists committed beside them, for a machine without the RISC-V toolchain, where fw/build.sh --check can't run.
+# Each image of fw/build.sh's parts is found where fw/build.sh --check looks for it (fw/boot, the fixture folders
+# tests/golden/images, tests/golden-m2/images and tests/m3-images, else fw/images) and its sha256 must equal the one
+# its folder lists (fw/images/MANIFEST; the fixture folders' MANIFEST, MANIFEST.md and REQ_MANIFEST; COPIES.sha256 for
+# the boot ROM). Part rtl is fw/rtl/MANIFEST: every source and image it lists must be there with its sha256, and
+# fw/rtl's folders src, boot, tile and sort must hold no file it doesn't list (fw/rtl/README.md; fw/rtl/refresh.sh
+# writes the list; these images are built by Snarky One's toolchain, never by fw/build.sh).
+# Exit 1 on any difference, missing image or missing hash.
 #   --built DIR   after a real build (fw/build.sh --check leaves its images in fw/build/out): also check that the
-#                 images named here for the parts are exactly the images the build made, so the names below stay true.
+#                 images named here for fw/build.sh's parts are exactly the images the build made, so the names below
+#                 stay true.
 # The images' names follow fw/build.sh's parts: change one with the other.
 set -eu
 export LC_ALL=C   # byte order for sort, ls and globs, and nm's symbol order: the outputs are the same in any locale
 FW=$(cd "$(dirname "$0")" && pwd); SIM=$(cd "$FW/.." && pwd)
 BUILT=; [ "${1:-}" = --built ] && { BUILT=$2; shift 2; }
-PARTS=${*:-boot tests m1 m3 cc recipes replay tracer sort}
-
+PARTS=${*:-boot tests m1 m3 cc recipes replay tracer sort rtl}
 names() {   # names PART: the images fw/build.sh makes for it, relative to its output folder
   local n s
   [ "$1" = boot ] && { echo bootrom.hex; return; }
@@ -37,10 +41,26 @@ listed() {   # listed FOLDER NAME: the sha256 FOLDER's hash list gives NAME (emp
   done | head -1
 }
 
-for p in $PARTS; do case $p in boot|tests|m1|m3|cc|recipes|replay|tracer|sort) ;;
-  *) echo "fw/check_images.sh: no part '$p' (boot tests m1 m3 cc recipes replay tracer sort)"; exit 2;; esac; done
+rtl() {   # fw/rtl against fw/rtl/MANIFEST: every listed file there with its sha256, and no file it doesn't list
+  local m="$FW/rtl/MANIFEST" want f
+  [ -f "$m" ] || { echo "MISSING: fw/rtl/MANIFEST"; bad=1; return; }
+  while read -r want f; do
+    case $want in '#'*|'') continue ;; esac
+    if [ ! -f "$FW/rtl/$f" ]; then echo "MISSING: fw/rtl/$f"; bad=1
+    elif [ "$(sha256sum < "$FW/rtl/$f" | cut -d' ' -f1)" != "$want" ]; then echo "DIFFERS: fw/rtl/$f against its listed sha256"; bad=1
+    else ok=$((ok + 1)); fi
+  done < "$m"
+  for f in $(cd "$FW/rtl" && find src boot tile sort -type f 2> /dev/null | sort); do
+    [ -n "$(awk -v n="$f" '$1 ~ /^[0-9a-f]{64}$/ && $2 == n { print $1 }' "$m")" ] ||
+      { echo "NOT LISTED: fw/rtl/$f has no hash in fw/rtl/MANIFEST"; bad=1; }
+  done
+}
+
+for p in $PARTS; do case $p in boot|tests|m1|m3|cc|recipes|replay|tracer|sort|rtl) ;;
+  *) echo "fw/check_images.sh: no part '$p' (boot tests m1 m3 cc recipes replay tracer sort rtl)"; exit 2;; esac; done
 bad=0; ok=0; all=
 for p in $PARTS; do
+  [ "$p" != rtl ] || { rtl; continue; }
   for f in $(names "$p"); do
     all="$all $f"; where=; f2=$f
     case $f in

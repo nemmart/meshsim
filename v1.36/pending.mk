@@ -24,7 +24,6 @@ PENDING_TESTS += test_engconf test_memconf
 PENDING_TESTS += test_checkself test_chip test_sort test_cc_units test_cc_req test_t2_harness test_stageb \
                  test_p4suites test_ctl_suites test_sort_suites
 # The register-table generator's tables (tools/regs): v1.35's map.
-PENDING_TESTS += test_regs
 
 # ---- the other default targets ----
 PENDING_BIN := golden bench_controller replay_shard stageb

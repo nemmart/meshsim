@@ -58,7 +58,9 @@ pending, and why).
   the specification and, where it leaves a cycle to the implementation, the RTL block's README: `test_ag` (the DMA
   unit's address generator, 8.2–8.5), `test_receive` (the write engine with `PTR` and `HIST`, 12.4, 12.5), `test_mem` (the
   scratchpad and the inject unit, 14, 15; the runner's steps `mem*`), `test_gather` (the gather unit) and `test_mach`'s
-  gather case (13 on the whole tile). v1.3's references for those units (MemTest's logs, EngConf's and MemConf's
+  gather case (13 on the whole tile); and of the chip's parts: `test_special_router` (16.1–16.4: the special tile's
+  router, the attach ports, the reserved ids, the DMA input, the arbiters), `test_request_tree` (chapter 11: the request
+  unit and the tree, against a beat-by-beat model written from the RTL's READMEs) and `test_ingress_egress` (17.6). v1.3's references for those units (MemTest's logs, EngConf's and MemConf's
   fixtures) measured v1.35's FIFOs and queues and are retired or superseded, never regenerated
   (`../PENDING-v1.36.md`, the platform stage, sections 3 and 7).
 

@@ -35,40 +35,43 @@ struct Stand {
     const Ev* ev = nullptr;
     unsigned n = 0, i = 0;
     bool with_dma = false;
+    unsigned pn = 1;                 // the peripheral the stores, the consuming loads and the region writes are for
+    uint64_t hold_until = 0;         // the DMA's packets are left in the router input (its 4 places) before this cycle
     uint32_t reads[64] = {};
     unsigned n_reads = 0;
     uint64_t dma_t[16] = {}, dma_lo[16] = {}, dma_hi[16] = {}, dma_h[16] = {};
     unsigned n_dma = 0;
 
-    Stand(sim::Ports& p, const Ev* e, unsigned count, bool dma_port) : ev(e), n(count), with_dma(dma_port) {
+    Stand(sim::Ports& p, const Ev* e, unsigned count, bool dma_port, unsigned peripheral = 1, uint64_t hold = 0)
+        : ev(e), n(count), with_dma(dma_port), pn(peripheral), hold_until(hold) {
         p.out(core, "core", 1);
         p.out(region, "region", 3);
         p.in(window, "window");
         if (dma_port) p.in_credit(dma, "dma", 3, 4);
     }
     sim::Wake step(sim::Ctx& c) {
-        if (with_dma)
-            while (c.ready(dma)) {
-                const sim::Word* w = c.peek(dma);
-                if (n_dma < 16) { dma_t[n_dma] = c.now(); dma_lo[n_dma] = w[0]; dma_h[n_dma] = w[1]; dma_hi[n_dma] = w[2]; }
-                n_dma++;
-                c.take(dma);
-            }
+        if (with_dma && c.now() >= hold_until && c.ready(dma)) {     // the router input takes a packet a cycle
+            const sim::Word* w = c.peek(dma);
+            if (n_dma < 16) { dma_t[n_dma] = c.now(); dma_lo[n_dma] = w[0]; dma_h[n_dma] = w[1]; dma_hi[n_dma] = w[2]; }
+            n_dma++;
+            c.take(dma);
+        }
         for (; i < n && ev[i].t == c.now(); i++) {
             const Ev& e = ev[i];
             switch (e.kind) {
-                case STORE: c.put(core, CoreOp::store(1, e.a, e.b)); break;
+                case STORE: c.put(core, CoreOp::store(pn, e.a, e.b)); break;
                 case CONSUME_MASKED: {
                     // a consuming load of EVENTS sampling now: the value under EVENTS_MASK, from the window
-                    const uint32_t v = c.read(window, Win::reg(1, Win::R_STD + P_EVENTS)), m = c.read(window, Win::reg(1, Win::R_STD + P_EVENTS_MASK));
+                    const uint32_t v = c.read(window, Win::reg(pn, Win::R_STD + P_EVENTS)), m = c.read(window, Win::reg(pn, Win::R_STD + P_EVENTS_MASK));
                     reads[n_reads++] = v;
-                    if (v & m) c.put(core, CoreOp::consume(1, v & m));
+                    if (v & m) c.put(core, CoreOp::consume(pn, v & m));
                     break;
                 }
                 case REGION: c.put(region, e.lo, lw::hdr(7, 0, 0, 0, e.a, lw::SIZE_128), e.hi); break;
                 case READ: reads[n_reads++] = c.read(window, e.a); break;
             }
         }
+        if (with_dma && c.ready(dma)) return c.next();               // more to take
         if (i < n) return sim::Wake::at_cycle(ev[i].t);
         return with_dma ? c.next() : sim::Wake::none();
     }
@@ -77,10 +80,11 @@ struct Stand {
 
 struct Rig {
     sim::Sim m;
-    Rig(const Stand::Ev* ev, unsigned n, const PeriphSlotConfig& pc, const sim::Options& o) : m(build(ev, n, pc, o)) {}
-    static sim::Sim build(const Stand::Ev* ev, unsigned n, const PeriphSlotConfig& pc, const sim::Options& o) {
+    Rig(const Stand::Ev* ev, unsigned n, const PeriphSlotConfig& pc, const sim::Options& o, unsigned peripheral = 1, uint64_t hold = 0)
+        : m(build(ev, n, pc, o, peripheral, hold)) {}
+    static sim::Sim build(const Stand::Ev* ev, unsigned n, const PeriphSlotConfig& pc, const sim::Options& o, unsigned peripheral, uint64_t hold) {
         sim::Config cfg(o);
-        auto& st = cfg.add<Stand>("stand", ev, n, pc.controller);
+        auto& st = cfg.add<Stand>("stand", ev, n, pc.controller, peripheral, hold);
         auto& sl = cfg.add<PeriphSlot>("slot", pc);
         cfg.link(st.core, sl.core, 1);
         cfg.link(st.region, sl.region, 3);
@@ -94,6 +98,7 @@ struct Rig {
 
 const unsigned W_STATUS = Win::reg(1, Win::R_STD + P_STATUS), W_EVENTS_PEEK = Win::reg(1, Win::R_STD + P_EVENTS_PEEK),
                W_PARAMS = Win::reg(1, Win::R_STD + P_PARAMS), W_DMA_DEST_ADDR = Win::reg(1, Win::R_STD + Win::std(P_DMA_DEST_ADDR)),
+               W_EVENTS_MASK = Win::reg(1, Win::R_STD + P_EVENTS_MASK), W_DMA_HDR = Win::reg(1, Win::R_STD + Win::std(P_DMA_HDR)),
                W32 = Win::reg(1, Win::R_OWN + 0), W33 = Win::reg(1, Win::R_OWN + 1), DEF0 = Win::reg(1, Win::R_DEFINED);
 
 sim::Options opts(int variant) {
@@ -352,6 +357,162 @@ TEST(slot_replayer_done_set_in_a_consuming_loads_cycle_survives_it) {
         CHECK_EQ(s.reads[3] & 1, 1u);
         CHECK_EQ(s.reads[4] & 1, 0u);
         CHECK_EQ(r.slot().s.replayer(1).passes, 2u);
+    }
+}
+
+// 17.1, 5.4, from the specification and the RTL's blocks' headers (peripheral_control.veryl, peripheral_dma.veryl: "The
+// bits above a register's last field read 0, and a store ignores them"): EVENTS_MASK is 0 at the reset (18) and has
+// one bit per event, the test peripheral's five; DMA_HDR's size [1:0] is the DMA's, ignored by a store and read 0, and
+// so are its bits above `queue`, [31:29]. A store to START or to DMA_START with bit 0 clear does nothing ("a store
+// with bit 0 set starts ...; 0 does nothing"): no work, no transfer, no event. The packet's size is 128 bits whatever
+// DMA_HDR's store held (17.4).
+TEST(slot_reserved_bits_read_0_and_a_start_with_bit_0_clear_does_nothing) {
+    const uint32_t hdr = 1u << HDR_DST_LO | 1u << DMA_HDR_COUNT_LO;    // dst 1, WRITE, queue 0, 1 packet
+    const Stand::Ev ev[] = {
+        {2, Stand::READ, W_EVENTS_MASK, 0, 0, 0},       // 0: 0 at the reset
+        {2, Stand::STORE, P_EVENTS_MASK, 0xFFFFFFFF, 0, 0},
+        {3, Stand::READ, W_EVENTS_MASK, 0, 0, 0},       // 1: its five events' bits
+        {3, Stand::STORE, P_START, 2, 0, 0},            //    bit 0 clear
+        {4, Stand::READ, W_STATUS, 0, 0, 0},            // 2: not busy
+        {4, Stand::READ, W32, 0, 0, 0},                 // 3: no run started
+        {4, Stand::STORE, P_DMA_HDR, 0xFFFFFFFF, 0, 0},
+        {5, Stand::READ, W_DMA_HDR, 0, 0, 0},           // 4: [28:2]
+        {5, Stand::STORE, P_DMA_HDR, hdr | 3u, 0, 0},   //    with the size's bits set
+        {6, Stand::READ, W_DMA_HDR, 0, 0, 0},           // 5: without them
+        {6, Stand::STORE, P_DMA_START, 2, 0, 0},        //    bit 0 clear
+        {7, Stand::READ, W_STATUS, 0, 0, 0},            // 6: no transfer
+        {9, Stand::READ, W_EVENTS_PEEK, 0, 0, 0},       // 7: no event
+        {10, Stand::STORE, P_DMA_START, 1, 0, 0},       //    and with bit 0 set: one packet, taken in 11
+        {11, Stand::READ, W_STATUS, 0, 0, 0},           // 8: dma_busy
+    };
+    PeriphSlotConfig pc;
+    pc.tile = 66; pc.controller = true; pc.type[1] = PT_TEST;
+    for (int variant = 0; variant < 3; variant++) {
+        Rig r(ev, sizeof ev / sizeof ev[0], pc, opts(variant));
+        r.m.run(30);
+        Stand& s = r.stand();
+        CHECK_EQ(s.n_reads, 9u);
+        CHECK_EQ(s.reads[0], 0u);
+        CHECK_EQ(s.reads[1], 0x1Fu);
+        CHECK_EQ(s.reads[2], 0u);
+        CHECK_EQ(s.reads[3], 0u);
+        CHECK_EQ(s.reads[4], 0x1FFFFFFCu);
+        CHECK_EQ(s.reads[5], hdr);
+        CHECK_EQ(s.reads[6], 0u);
+        CHECK_EQ(s.reads[7], 0u);
+        CHECK_EQ(s.reads[8], 2u);
+        CHECK_EQ(s.n_dma, 1u);
+        CHECK_EQ(s.dma_t[0], 12u);
+        CHECK_EQ(lw::size(s.dma_h[0]), unsigned(lw::SIZE_128));
+        CHECK_EQ(r.slot().s.test_peripheral(1).runs, 0);
+        CHECK_EQ(r.slot().s.violation_total(), 0u);
+    }
+}
+
+// 17.2, 7.2: dma_done is counted with depth 1: its cause adds 1, up to the depth, and a consuming load subtracts 1. Two
+// transfers end with no load between them, and one consuming load takes the event.
+TEST(slot_dma_done_of_depth_1_holds_one_count) {
+    const Stand::Ev ev[] = {
+        {2, Stand::STORE, P_DMA_HDR, 1u << HDR_DST_LO, 0, 0},   // count 0
+        {3, Stand::STORE, P_EVENTS_MASK, 0x2, 0, 0},    //    EVENTS_MASK: dma_done
+        {4, Stand::STORE, P_DMA_START, 1, 0, 0},        //    ends in 5
+        {7, Stand::STORE, P_DMA_START, 1, 0, 0},        //    ends in 8: dma_done is at its depth
+        {10, Stand::CONSUME_MASKED, 0, 0, 0, 0},        // 0: dma_done, consumed at the end of 10
+        {11, Stand::READ, W_EVENTS_PEEK, 0, 0, 0},      // 1: gone
+        {13, Stand::READ, W_EVENTS_PEEK, 0, 0, 0},      // 2: and it stays gone
+    };
+    PeriphSlotConfig pc;
+    pc.tile = 66; pc.controller = true; pc.type[1] = PT_TEST;
+    for (int variant = 0; variant < 3; variant++) {
+        Rig r(ev, sizeof ev / sizeof ev[0], pc, opts(variant));
+        r.m.run(30);
+        Stand& s = r.stand();
+        CHECK_EQ(s.n_reads, 3u);
+        CHECK_EQ(s.reads[0], 2u);
+        CHECK_EQ(s.reads[1], 0u);
+        CHECK_EQ(s.reads[2], 0u);
+        CHECK_EQ(r.slot().s.dma[1].transfers, 2u);
+    }
+}
+
+// 17.4, Pace: the DMA sends at most one packet a cycle and waits while its router input has no room. The stand's input
+// has 4 places and takes nothing before cycle 20, then a packet a cycle: a transfer of 7 packets sends 4 and waits, STATUS.dma_busy 1 and no
+// dma_done, DMA_DEST_ADDR advanced by the four WRITEs sent; when the input is emptied the other three follow, in queue
+// order at the addresses in order, and the transfer ends.
+TEST(slot_dma_waits_while_its_router_input_has_no_room) {
+    const Stand::Ev ev[] = {
+        {2, Stand::STORE, P_DMA_HDR, 1u << HDR_DST_LO | 7u << DMA_HDR_COUNT_LO, 0, 0},   // dst 1, WRITE, queue 0, 7 packets
+        {3, Stand::STORE, P_DMA_DEST_ADDR, 0x400, 0, 0},
+        {4, Stand::STORE, P_DMA_START, 1, 0, 0},        //    from 5
+        {15, Stand::READ, W_STATUS, 0, 0, 0},           // 0: dma_busy: waiting
+        {15, Stand::READ, W_EVENTS_PEEK, 0, 0, 0},      // 1: no dma_done
+        {15, Stand::READ, W_DMA_DEST_ADDR, 0, 0, 0},    // 2: four WRITEs on
+        {20, Stand::READ, W_STATUS, 0, 0, 0},           // 3: still
+        {40, Stand::READ, W_STATUS, 0, 0, 0},           // 4: ended
+        {40, Stand::READ, W_EVENTS_PEEK, 0, 0, 0},      // 5: dma_done
+        {40, Stand::READ, W_DMA_DEST_ADDR, 0, 0, 0},    // 6: seven WRITEs on
+    };
+    PeriphSlotConfig pc;
+    pc.tile = 66; pc.controller = true; pc.type[1] = PT_TEST;
+    for (int variant = 0; variant < 3; variant++) {
+        Rig r(ev, sizeof ev / sizeof ev[0], pc, opts(variant), 1, 20);
+        r.m.run_until(15);
+        CHECK_EQ(r.slot().s.test_peripheral(1).taken[0], 4u);      // the input's four places
+        r.m.run_until(50);
+        Stand& s = r.stand();
+        CHECK_EQ(s.n_reads, 7u);
+        CHECK_EQ(s.reads[0] & 2, 2u);
+        CHECK_EQ(s.reads[1], 0u);
+        CHECK_EQ(s.reads[2], 0x440u);
+        CHECK_EQ(s.reads[3] & 2, 2u);
+        CHECK_EQ(s.reads[4] & 2, 0u);
+        CHECK_EQ(s.reads[5], 2u);
+        CHECK_EQ(s.reads[6], 0x470u);
+        CHECK_EQ(s.n_dma, 7u);
+        for (unsigned k = 0; k < 7 && k < s.n_dma; k++) {
+            CHECK_EQ(s.dma_lo[k], uint64_t(k));
+            CHECK_EQ(lw::addr(s.dma_h[k]), 0x400u + 16 * k);
+            if (k < 4) CHECK_EQ(s.dma_t[k], 20u + k);              // the four that waited in the input
+            else CHECK(s.dma_t[k] > s.dma_t[k - 1]);               // then the others, at most one a cycle
+        }
+        CHECK_EQ(r.slot().s.violation_total(), 0u);
+    }
+}
+
+// 17.1: peripheral n has region 0x03 + n and window 12 + n, and the tile's EVENTS.peripheral_n is its own
+// (EVENTS & EVENTS_MASK) != 0 (17.2; 7.2: bits 4-6); an absent peripheral's bits read 0. Peripheral 3 alone: its
+// window's stores and loads, a WRITE into region 0x06, and the tile's third bit.
+TEST(slot_peripheral_3_has_its_own_window_region_and_tile_bit) {
+    const Stand::Ev ev[] = {
+        {2, Stand::READ, Win::reg(3, Win::R_STD + P_PARAMS), 0, 0, 0},        // 0: PARAMS
+        {3, Stand::STORE, P_START, 1, 0, 0},            //    START in 3: the work ends in 13
+        {4, Stand::READ, Win::reg(3, Win::R_STD + P_STATUS), 0, 0, 0},        // 1: busy
+        {5, Stand::REGION, 0x06000040, 0, 0x55, 0x66},  //    a WRITE into region 0x06: lands at the end of 7
+        {6, Stand::STORE, P_EVENTS_MASK, 0x1, 0, 0},    //    EVENTS_MASK: done
+        {20, Stand::READ, Win::reg(3, Win::R_STD + P_EVENTS_PEEK), 0, 0, 0},  // 2: done
+        {20, Stand::READ, Win::R_LIVE, 0, 0, 0},        // 3: EVENTS.peripheral_3 alone
+        {21, Stand::CONSUME_MASKED, 0, 0, 0, 0},        // 4: consumed
+        {23, Stand::READ, Win::R_LIVE, 0, 0, 0},        // 5: the tile's bit down
+    };
+    PeriphSlotConfig pc;
+    pc.tile = 9; pc.type[3] = PT_TEST;
+    for (int variant = 0; variant < 3; variant++) {
+        Rig r(ev, sizeof ev / sizeof ev[0], pc, opts(variant), 3);
+        r.m.run(40);
+        Stand& s = r.stand();
+        CHECK_EQ(s.n_reads, 6u);
+        CHECK_EQ(s.reads[0], 15u | 3u << 8);
+        CHECK_EQ(s.reads[1] & 1, 1u);
+        CHECK_EQ(s.reads[2], 1u);
+        CHECK_EQ(s.reads[3], 1u << 2);
+        CHECK_EQ(s.reads[4], 1u);
+        CHECK_EQ(s.reads[5], 0u);
+        TestPeripheral& x = r.slot().s.test_peripheral(3);
+        CHECK_EQ(x.runs, 1);
+        CHECK_EQ(x.n_accepts, 1u);
+        CHECK_EQ(x.accepts[0].land_t, 7);
+        CHECK_EQ(x.accepts[0].offset, 0x40u);
+        CHECK_EQ(x.accepts[0].hi, 0x66u);
     }
 }
 

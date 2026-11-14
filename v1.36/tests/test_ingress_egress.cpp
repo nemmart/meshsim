@@ -261,6 +261,10 @@ TEST(ie_control_block_and_reset_values) {
         {8, EV, 0, EV_IDLE},                           // a consuming load under the mask: uart_tx is live, and stays
         {10, LD, reg(W_EVENTS_PEEK), EV_IDLE},
         {10, LD, LIVE, LIVE_EVENT},
+        // EVENTS_MASK has one bit per event, eight here: a store ignores the bits above them, and they read 0 (5.4;
+        // peripheral_control.veryl, EVENT_BITS)
+        {10, ST, W_EVENTS_MASK, 0xFFFFFFFF},
+        {11, LD, reg(W_EVENTS_MASK), 0xFF},
     };
     for (int variant = 0; variant < 3; variant++) {
         Rig r(ev, count(ev), nullptr, 0, 20, opts(variant));

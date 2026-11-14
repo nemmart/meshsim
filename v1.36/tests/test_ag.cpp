@@ -240,6 +240,25 @@ TEST(count_zero_streams) {
     }
 }
 
+// 8.5 and the RTL (address_generator.veryl: "a place freed in a cycle takes a read from the next"; a count-0 stream that
+// takes no cycle "keeps its place until it passes"). L = 1: READ_AHEAD is 4 places. Stream A (5 elements), then eight
+// count-0 streams P1-P8 with no gap, then B (1 element), the last.
+//   reads: A in E (in at F), P1 E + 1 (F + 1), P2 E + 2 (F + 2), P3 in F (F + 3): the four places held;
+//   A begins in F: its place is free from F + 1, when P4 is read (in at F + 4); A's elements F .. F + 4;
+//   F + 5: the generator looks for its next stream: P1-P4 are in and pass together; their places are free from F + 6;
+//   P5 is read in F + 6 (in at F + 9), P6 F + 7, P7 F + 8, P8 F + 9; P5 passes in F + 9, so B is read in F + 10: in at
+//   F + 13, when P6, P7 and P8 have passed in F + 10, F + 11 and F + 12: B's element is F + 13's.
+TEST(passes_keep_their_places_until_they_pass) {
+    Tables tb; tb.stream(0, 5);
+    for (unsigned i = 1; i <= 8; i++) tb.stream(i, 0);
+    tb.stream(9, 1);
+    Bench b(tb, dma_config(AddrGen::RUN_STREAMS, 0, 10, 0), 1, {S});
+    b.sim.run(80);
+    const Cycle F = first_stream_cycle(1);
+    CHECK(taken_at(b.got(), {F, F + 1, F + 2, F + 3, F + 4, F + 13}));
+    CHECK(status_is(b.mon(), F + 13));
+}
+
 // 8.2: an empty transfer ends in the cycle after its start takes effect: STATUS.dma_busy is 1 for that cycle alone (the
 // tile control unit's own, from the start), and EVENTS.dma_done is set at its end: the generator's `done` is at the tile
 // control unit at E + 2, the edge that ends E + 1, and it never says `running`.

@@ -23,9 +23,13 @@
 //   - THE CYCLES. It prints, as chip_test.rs does, each release's cycles, each step's (a step from its release to the
 //     next step's, L2 to its all arrived) and the total from L1's release to L2's all arrived, and checks them equal to
 //     the RTL chip's, as Snarky One's rtl/chip/README.md (Results) gives them for these four runs: every step, the
-//     empty phases together, the total, and the load from the reset to its release. The figures are the RTL's, written
-//     here; the simulator is not tuned to them: its units are the specification's (PENDING-v1.36.md, section 6, has the
-//     one figure that still differs, the image's start-up, which is printed and not checked).
+//     empty phases together, the total, the load from the reset to its release, and the image's start-up: 16,033
+//     cycles from the load's release to every tile's arrival at the start-up's barrier, as the master records them
+//     (the README's "the image's start-up 16,033", chip_test.rs's line for release 1), and 16,036 from the load's
+//     release to L1's, which the README does not give: the RTL chip's summary in all four runs (phase 0 arrived at
+//     20,780 and released at 20,784, phase 1 at 36,817 and 36,820), read from the master's DMEM on Snarky One's main at
+//     076e647 (PENDING-v1.36.md, section 6, says how). The figures are the RTL's, written here; the simulator is not
+//     tuned to them: its units are the specification's.
 //
 // THE RUNS: sort_16_kv32 and sort_16_k128, 16 records a tile, always; sort_64k_kv32 and sort_64k_k128, 65,536 a tile,
 // when RTL_SORT_64K_KEYS names the key file (fw/rtl/README.md: 16 MiB, not committed; its sha256 beside the images):
@@ -262,8 +266,9 @@ void run_sort(Format format, bool full, unsigned parts = 1, std::vector<uint64_t
         report += (report.empty() ? "" : ", ") + s.first + " " + std::to_string(s.second);
     }
     if (phases >= 2)
-        std::printf("test_rtl_sort: %s the load, from the reset to its release: %u cycles; the image's start-up, to L1's release: %u\n",
-                    tag, phase(0, 2), phase(1, 2) - phase(0, 2));
+        std::printf("test_rtl_sort: %s the load, from the reset to its release: %u cycles; the image's start-up: all arrived %u "
+                    "cycles after the load's release, L1 released %u after it\n",
+                    tag, phase(0, 2), phase(1, 1) - phase(0, 2), phase(1, 2) - phase(0, 2));
     std::printf("test_rtl_sort: %s steps (each release to the next step's): %s\n", tag, report.c_str());
     std::printf("test_rtl_sort: %s the empty phases together (XC, TH, SWEEP, DESC, K1, K2%s): %u\n", tag, format == K128 ? ", V1, V2" : "", empty);
     std::printf("test_rtl_sort: %s total, L1's release to L2's all arrived: %u cycles\n", tag, total);
@@ -289,7 +294,10 @@ void run_sort(Format format, bool full, unsigned parts = 1, std::vector<uint64_t
         CHECK_EQ(step_cycles("L2"), r->l2);
         CHECK_EQ(empty, r->empty);
         CHECK_EQ(total, r->total);
-        CHECK_EQ(phase(0, 2), 20784u);                                  // the load, from the reset to its release
+        CHECK_EQ(phase(0, 1), 20780u);                                  // the load: every tile arrived in its boot ROM,
+        CHECK_EQ(phase(0, 2), 20784u);                                  //   and its release, from the reset
+        CHECK_EQ(phase(1, 1) - phase(0, 2), 16033u);                    // the image's start-up, to every tile's arrival
+        CHECK_EQ(phase(1, 2) - phase(0, 2), 16036u);                    //   and to L1's release
     }
     std::printf("test_rtl_sort: %s summary: failure 0x%x in phase %u, %u exits, %u stray, mcause 0x%x, %u error reports\n", tag,
                 summary[SUMMARY_FAILURE], summary[SUMMARY_FAILED_PHASE], summary[SUMMARY_EXITS], summary[SUMMARY_STRAYS],

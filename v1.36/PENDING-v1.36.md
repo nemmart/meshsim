@@ -135,7 +135,6 @@ to follow it, and the fixtures cannot be regenerated. The RTL's own figures and 
 | `chip_memory_test`: the master's requests to the memory tile and LPDDR | the memory tile's peripheral 1 is a stand-in that stops the simulator if it is started, written or made to send (`RwEngineStub`, `src/units/ingress_egress.h`): the RW engine (17.7), its write buffer and its AXI4 port are not modelled | the RW engine's model (P10), with the RTL's AXI4 slave model's timing |
 | `chip_stream_test`: the master echoing beats on its AXI4-Stream ports | Ingress/Egress's host interface (17.6) is not modelled: its receive side reads empty and a store to its transmit side stops the simulator; the UART has a transmit FIFO only | the host interface's and the UART's receive side in `IngressEgress` (P10) |
 | `chip_trace_test`, `chip_replay_test`: a segment from the Tracer to the replayers | no test boots the tracer tile's image, and the Tracer's memory system on the chip is the harness's (`Tracer::own_memory`), not placed by any chip test | the segment on the chip (P10; the Tracer stage's first row) |
-| the image's start-up, from the load's release to L1's release | 16,036 cycles here, 16,033 on the RTL's chip: printed, not checked (every step of the sort, the total, the load and the link's latency are checked equal to the RTL's) | the timing stage (section 6) |
 
 ### 3. Tests of `make check` that are not built (`pending.mk`)
 
@@ -276,7 +275,8 @@ Cycles, a step from its release to the next step's, the total from L1's release 
 | | 64 × 16 kv32 | 64 × 16 k128 | 64 × 64K kv32 | 64 × 64K k128 |
 |---|---|---|---|---|
 | from the reset to the load's release | 20,784 | 20,784 | 20,784 | 20,784 |
-| the image's start-up, to L1's release (**the RTL's: 16,033**) | 16,036 | 16,036 | 16,036 | 16,036 |
+| the image's start-up: from the load's release to every tile's arrival, as the master records it | 16,033 | 16,033 | 16,033 | 16,033 |
+| the same, to L1's release | 16,036 | 16,036 | 16,036 | 16,036 |
 | L1 | 7,518 | 7,646 | 335,118 | 475,646 |
 | SPLIT | 118,367 | 118,367 | 259,473 | 259,473 |
 | XB | 9,856 | 10,176 | 9,856 | 10,176 |
@@ -288,7 +288,16 @@ Cycles, a step from its release to the next step's, the total from L1's release 
 | total | 150,261 | 153,013 | 952,154 | 1,306,907 |
 | the link's latency at tile 0, as the master measures it | 36 | 36 | 36 | 36 |
 
-Every figure but the start-up's is the RTL's. How they came to be, each change a unit brought to the specification and
+Every figure is the RTL's, the start-up's two among them, and `test_rtl_sort` checks each. **The start-up was never 3
+cycles off:** the RTL's README gives "the image's start-up 16,033", which is `chip_test`'s line for release 1, from the
+load's release to the master's record of every tile's arrival; this page compared it with the simulator's 16,036 from
+the load's release to L1's release. The RTL's chip gives both: its master's summary in each of the four runs holds
+phase 0 arrived at 20,780 and released at 20,784, phase 1 arrived at 36,817 and released at 36,820, the simulator's
+words exactly (Snarky One's main at 076e647, a scratch test that runs `chip_test`'s set-up and reads the summary from
+the master's DMEM; `BARRIER_RELEASE`'s flip-flop is 1 in the RTL's cycles 20,784 and 36,820, a cycle sooner than the
+simulator numbers them). In the kv32 run of 16 records, every retirement of the master's core and of tiles 0, 27 and
+63's, 52,810 in the first 39,990 cycles, is at the same pc in the same cycle in both (the RTL's `rvfi_valid` and
+`rvfi_pc_rdata`, the simulator's retire trace). How the steps' figures came to be, each change a unit brought to the specification and
 none made for a figure (the 64 × 16 kv32 total and the 64 × 64K k128 total, the RTL's 150,261 and 1,306,907): before
 the units, 150,378 and 1,288,415; the scratchpad and the inject unit (`READ_LATENCY` 3, a write winning its bank, the
 arbiter), 150,238 at 16 records; the write engine's pipeline and `PTR`'s and `HIST`'s timing, no change (a phase waits
@@ -301,7 +310,6 @@ What still differs:
 
 | what | the RTL | the simulator | the RTL's source |
 |---|---|---|---|
-| the image's start-up, from the load's release to L1's release | 16,033 cycles | 16,036 (16,035 before the live levels' cycle): not traced to a unit. The request unit and tree are checked against the RTL's timing in every cycle (`test_request_tree`: a receive queue's read was a cycle late and is fixed, which did not move this figure), which leaves the master's UART as the candidate | `rtl/chip/README.md`, Results |
 | `ERRORS.drift` | set at the end of the cycle a group transfer's read is refused in | set two cycles later: the generator learns of the refusal the cycle after (the Hold), and its pulse crosses a Link(1) | `rtl/blocks/dma_unit/src/address_generator.veryl` (`drift`) |
 | a write's landing in a peripheral | within `PERIPHERAL_LATENCY` (at most `LAND_LATENCY` − `WRITE_PORT_LATENCY` = 6) of the write port, which presents it `WRITE_PORT_LATENCY` = 2 cycles after the director takes it; the replayer and the Tracer land it at the end of the port's cycle | the same (the slot's `region`, a Link of `WRITE_PORT_LATENCY` + 1; `accept(t)` presenting in *t* + 2). The director's acceptance cycle on the tile is the RTL's for a loopback packet (injected in T, accepted in T + 3: `test_mach`'s gather case) | `rtl/tile/base/spec.md` 12.3, 17.3; `rtl/blocks/replayer_unit/src/replayer_unit.veryl` line 47, `rtl/blocks/tracer_unit/src/tracer_control.veryl` line 53 |
 | the nets | `BARRIER_ARRIVE` a flip-flop's pulse the cycle after the tile is ready, a wire to Ingress/Egress; `BARRIER_RELEASE` a flip-flop of Ingress/Egress, in every tile in the same cycle; the error lines wires | the chip's nets at those latencies (`arrive_latency` 0, `release_latency` 1, `error_latency` 0), but an error line's level reaches `ERROR_LINES` a cycle later than the RTL's wire (a Link of 1 + `error_latency`: a Wire cannot cross thread domains) | `rtl/tile/base/spec.md` 7.3, 18; `rtl/chip/src/chip.veryl` |

@@ -57,6 +57,15 @@ struct RegBlockState {
         return ((slot_live & straps.peripherals & 7) << EV_PERIPH_1) | (request_pending ? 1u << EV_REQUEST_PENDING : 0u);
     }
     uint32_t live_errors() const { return (slot_live >> 3 & straps.peripherals & 7) << ERR_PERIPH_1; }
+    // The live levels as meip and nmi take them: the levels of the cycle before, which the tile control unit's
+    // flip-flops sampled (the RTL's tile_control_unit: "a live event's or a peripheral error's level in t reaches the
+    // core in t + 1, a cycle after a load presented in t reads it"). TileCtl moves them after each edge.
+    uint32_t slot_live_ff = 0;
+    bool request_pending_ff = false;
+    uint32_t live_events_ff() const {
+        return ((slot_live_ff & straps.peripherals & 7) << EV_PERIPH_1) | (request_pending_ff ? 1u << EV_REQUEST_PENDING : 0u);
+    }
+    uint32_t live_errors_ff() const { return (slot_live_ff >> 3 & straps.peripherals & 7) << ERR_PERIPH_1; }
     // ---- the DMA unit's status as the block keeps it (8.2) ----
     bool dma_done_prev = false;                 // the address generator's done at the last end_cycle (its edge sets dma_done)
     uint32_t dma_starts = 0;                    // DMA_START's starts so far (the AG's `start` Wire: a change = a start)
@@ -178,10 +187,10 @@ struct RegBlockState {
         if (pulses >> ERR_BAD_PACKET & 1) bad_total++;
         errors |= pulses;
 
-        // ---- the core's inputs and the error line, from flip-flops: the state at the end of this cycle, with this
-        // cycle's live levels ----
-        wake_ff = gate_next ? (events >> EV_RELEASE & 1) != 0 : ((events | live_events()) & mask) != 0;
-        error_raised = errors != 0 || live_errors() != 0;
+        // ---- the core's inputs and the error line, from flip-flops: the state at the end of this cycle, with the live
+        // levels this edge sampled, the cycle's own (a load in the next cycle reads the next cycle's) ----
+        wake_ff = gate_next ? (events >> EV_RELEASE & 1) != 0 : ((events | live_events_ff()) & mask) != 0;
+        error_raised = errors != 0 || live_errors_ff() != 0;
         status = uint32_t(arrived) << ST_ARRIVED | uint32_t(dma_busy(in)) << ST_DMA_BUSY
                  | uint32_t(in.gather_busy) << ST_GATHER_BUSY | uint32_t(request_full()) << ST_REQUEST_FULL;
     }
@@ -191,7 +200,7 @@ struct RegBlockState {
                                   | uint64_t(was_ready) << 4 | uint64_t(arrive_pulse) << 5 | uint64_t(canon) << 6
                                   | uint64_t(dma_done_prev) << 7 | uint64_t(dma_pulse) << 8 | uint64_t(request_pending) << 9,
                               events, mask, armed, errors, status, req_n, dma_config, receive_config, gather_config, dma_starts,
-                              slot_live, params_value(straps), request_queue_depth, releases, arrivals, sends, underflows,
+                              slot_live, slot_live_ff, uint32_t(request_pending_ff), params_value(straps), request_queue_depth, releases, arrivals, sends, underflows,
                               early_arrivals, counter_wraps, violations, bad_total};
         uint64_t h = 0;
         for (uint64_t v : w) h = digest_mix(h, v);

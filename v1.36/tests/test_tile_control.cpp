@@ -17,7 +17,7 @@ using In = RegBlockState::In;
 
 // The events' and errors' bits (7.2, 7.4), and the tile window's words by offset (5.5): written here, not taken from
 // regmap.h's names for them.
-constexpr uint32_t kRelease = 1u << 0, kDmaDone = 1u << 1, kAllDone = 1u << 2, kPeripheral1 = 1u << 4;
+constexpr uint32_t kRelease = 1u << 0, kDmaDone = 1u << 1, kAllDone = 1u << 2, kRequestPending = 1u << 3, kPeripheral1 = 1u << 4;
 constexpr uint32_t kCounterDone(unsigned n) { return 1u << (6 + n); }
 constexpr uint32_t kErrCounterUnderflow = 1u << 2, kErrEarlyArrival = 1u << 6, kErrBadPacket = 1u << 1, kErrPeripheral1 = 1u << 10;
 constexpr unsigned kWordStatus = 0x004 / 4, kWordErrors = 0x008 / 4, kWordEvents = 0x00C / 4, kWordMask = 0x014 / 4,
@@ -260,30 +260,50 @@ TEST(dma_start_and_the_request_queue) {
 
 // 7.4: ERRORS' bits are sticky until the reset, except the peripherals', which are live and 0 for an absent peripheral;
 // a non-zero ERRORS raises the NMI and the error line. 7.2: a peripheral's event is live too.
+// The live levels reach the core a cycle after a load reads them (the RTL's rtl/blocks/tile_control_unit/README.md,
+// "Timing": meip and nmi come from flip-flops, "a live event's or a peripheral error's level in t reaches it in t + 1
+// too, a cycle after a load presented in t reads it"; so "a live event that falls may leave the wake up for one more
+// cycle"). `slot_live` is the level of the cycle after the edge, which a load of that cycle reads; `edge` is the tile
+// control unit's step: the edge, then the levels it will sample at the next (tile_ctl.h).
 TEST(errors_and_the_live_bits) {
     RegBlockState s = compute_tile();
     uint64_t t = 1;
+    auto edge = [&](const In& in) { s.end_cycle(t++, in); s.slot_live_ff = s.slot_live; s.request_pending_ff = s.request_pending; };
     s.slot_live = 1u << 3 | 1u << 4 | 1u;                   // peripheral 1's and 2's ERRORS != 0; peripheral 1's event
-    s.end_cycle(t++, idle());
+    edge(idle());
     CHECK_EQ(s.reg(kWordErrors), kErrPeripheral1);           // peripheral 2 is absent (PARAMS.peripherals)
-    CHECK_EQ(s.reg(kWordEvents), kPeripheral1);
+    CHECK_EQ(s.reg(kWordEvents), kPeripheral1);              // a load of this cycle reads the levels
+    CHECK(!s.nmi());                                         // the NMI and the wake follow them a cycle late
+    edge(store(kWordMask, kPeripheral1));
     CHECK(s.nmi());
-    CHECK(!s.wake());                                        // EVENTS_MASK does not select it
-    s.end_cycle(t++, store(kWordMask, kPeripheral1));
-    CHECK(s.wake());
+    CHECK(s.wake());                                         // EVENTS_MASK selects it from this edge
     In load;                                                 // a consuming load changes no live bit
     load.events_load = true;
-    s.end_cycle(t++, load);
+    edge(load);
     CHECK_EQ(s.reg(kWordEvents), kPeripheral1);
     s.slot_live = 0;
-    s.end_cycle(t++, idle());
+    edge(idle());
     CHECK_EQ(s.reg(kWordErrors), 0u);
     CHECK_EQ(s.reg(kWordEvents), 0u);
+    CHECK(s.nmi());                                          // one more cycle
+    CHECK(s.wake());
+    edge(idle());
     CHECK(!s.nmi());
+    CHECK(!s.wake());
+    s.request_pending = true;                                // EVENTS.request_pending's level, likewise
+    edge(store(kWordMask, kRequestPending));
+    CHECK_EQ(s.reg(kWordEvents), kRequestPending);
+    CHECK(!s.wake());
+    edge(idle());
+    CHECK(s.wake());
+    s.request_pending = false;
+    edge(idle()); edge(idle());
+    CHECK(!s.wake());
     In bad;
     bad.error_pulses = kErrBadPacket;
-    s.end_cycle(t++, bad);
-    s.end_cycle(t++, idle());
+    edge(bad);
+    CHECK(s.nmi());                                          // a sticky error raised at the end of t is the NMI in t + 1
+    edge(idle());
     CHECK_EQ(s.reg(kWordErrors), kErrBadPacket);             // sticky
     CHECK(s.nmi());
 }

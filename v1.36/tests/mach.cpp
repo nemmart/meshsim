@@ -100,7 +100,7 @@ const Field kFields[] = {
     F_U("readyLatency", ready_latency), F_B("cncGoSettle", cnc_go_settle), F_U("cncReaction", cnc_reaction),
     F_B("checkReadPortOverlap", check_read_port_overlap), F_B("bootLocal", boot_local),   // (bootLocal: v1.36's, not ref's)
     F_B("checkDisjoint", check_disjoint), F_L("shuffleSeed", shuffle_seed), F_U("maxViolationMessages", max_violation_messages),
-    F_B("measureS1", measure_s1), F_B("checkErrors", check_errors), F_B("checkUnexpected", check_unexpected),
+    F_B("measureS1", measure_s1), F_B("checkErrors", check_errors),
     F_U("cncRxDepth", cnc_rx_depth),
     F_U("replayerLogEntries", replayer_log_entries),   // (not ref's Config: its -Dreplayer.logq; the kit's -q)
 };
@@ -115,8 +115,9 @@ const std::vector<std::pair<std::string, std::string>>& MachConfig::dropped() {
         {"idleSkip", "ref's own speed option (Chip's sleep/skip); the framework is event-driven"},
         {"startSkew", "set by ref's Chip from skewSeed; no driver sets it (skew, skewSeed do)"},
         {"receiveQueueDepth", "an array; no driver, kit or sweep sets it (the request bus's default {128, 256, 128})"},
-        {"periphTypes", "an array; no driver sets it (testPeripheral: MachConfig::test_periph_tile)"},
-        {"testPeripheral", "a Java function: MachConfig::test_periph_tile (the replayer on one tile)"},
+        {"periphTypes", "an array; no driver sets it"},
+        {"testPeripheral", "a Java function; v1.36: no machine with the replayer on one tile only"},
+        {"checkUnexpected", "v1.36: a counter underflow is the hardware's error (12.2), reported with ERRORS (checkErrors)"},
         {"hops", "the hop table: data/hops.txt"},
         {"cc3Tracer", "v1.36: the tracer tile's peripheral 1 is the Tracer (2.1)"},
         {"ccLinkLatency", "v1.36: an attach link is a link like the others (16.1: linkLatency)"},
@@ -253,15 +254,8 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     g.periph_present = c.periph_type != 0 ? 1 : 0;
     g.periph_slot = c.periph_type != 0 || c.special_tiles;     // ref: every tile's slot holds its peripheral 1 (type 4)
     if (c.periph_type != 0 && c.periph_type != 4) FATAL("mach: periph_type %d (4 the replayer, or 0)", c.periph_type);
-    if (c.test_periph_tile >= 64) FATAL("mach: test_periph_tile %d (a mesh tile)", c.test_periph_tile);
     if (c.test_peripheral_tile >= 64) FATAL("mach: test_peripheral_tile %d (a mesh tile)", c.test_peripheral_tile);
-    if (c.test_peripheral_tile >= 0 && c.test_peripheral_tile == c.test_periph_tile)
-        FATAL("mach: tile %d: the replayer and the test peripheral on one tile", c.test_peripheral_tile);
     g.test_periph_tile = c.test_peripheral_tile;
-    if (c.test_periph_tile >= 0) {                        // ref's testPeripheral: the replayer on that tile only
-        if (c.periph_type != 0) FATAL("mach: test_periph_tile needs periph_type 0 (ref's StageB: periphType 0)");
-        g.periph_present = 1; g.periph_slot = true; g.periph_only = c.test_periph_tile;
-    }
     g.replayer_log_entries = c.replayer_log_entries;
     g.request_queue_depth = c.request_queue_depth;
     g.K = c.K; g.cm_latency = c.cm_latency;
@@ -270,8 +264,8 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     g.read_port_depth = c.read_port_depth;
     m.gx.bootrom = m.rom.data(); m.gx.bootrom_words = uint32_t(m.rom.size()); m.gx.bootrom_handler = rom.handler;
     if (c.boot_local) {
-        if (c.test_periph_tile >= 0 || c.test_peripheral_tile >= 0)
-            FATAL("mach: boot_local with a peripheral on one tile only: the straps are per machine here");
+        if (c.test_peripheral_tile >= 0)
+            FATAL("mach: boot_local with the test peripheral on one tile: the straps are per machine here");
         m.gx.straps = boot_local_straps;
     }
     m.gx.mem = m.mem.data(); m.gx.units = m.nunits; m.gx.sram = &m.sram;
@@ -325,8 +319,7 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         for (const char* u : {"t0.reqleaf", "reqbus.row0", "reqbus.root", "cc1.reqrecv", "reqbus.host"})
             if (m.sim->has_unit(u)) m.lines.push_back(m.sim->type_of(u));
     CheckSwitches sw;
-    sw.errors = c.check_errors; sw.unexpected = c.check_unexpected; sw.read_port_overlap = c.check_read_port_overlap;
-    sw.command_read = false; sw.strict_replies = false;   // v1.35's command and reply blocks: no such facts are recorded
+    sw.errors = c.check_errors; sw.read_port_overlap = c.check_read_port_overlap;
     sw.K = c.K;
     sw.disjoint = c.check_disjoint;                       // the switch (ref's checkDisjoint)
     m.checker = std::make_unique<Checker>(sim::check::kOn ? c.check_capacity : 0, c.max_violation_messages, sw);
@@ -539,21 +532,6 @@ std::vector<std::array<int64_t, 6>> ReqBus::delivered_log() const {
 }
 uint64_t ReqBus::delivered() const { return c_->unit<units::reqbus::ReqRoot>("reqbus.root").delivered; }
 
-
-bool Chip::parked_untouched() const {                      // ref's: each parked tile quiescent, no link into or out of it busy
-    if (cfg_.parked.empty()) return true;
-    for (int k : cfg_.parked) {
-        TileRef p = const_cast<Chip*>(this)->tile(unsigned(k));
-        for (const auto& f : p.unit<units::Router>("router").q) if (f.count) return false;
-        const units::Injection& in = p.unit<units::Injection>("inj");
-        if (p.unit<units::AddrGen>("ag").running || p.ts_busy() || in.tok.reads ||
-            p.unit<units::WriteEngine>("we").count || p.unit<units::Gather>("gather").left)
-            return false;
-        if (impl_->sim->in_flight_into(units::unit_prefix(unsigned(k)))) return false;   // its ports (the links into it)
-    }
-    for (unsigned k = 0; k < 64; k++) if (impl_->sim->in_flight_into(units::tile_unit(k, "router"))) return false;
-    return true;
-}
 
 void drain_next(Chip& c);   // Cc::drain_reports' (below)
 void Chip::step() {
@@ -1283,7 +1261,7 @@ void Chip::Impl::push(unsigned tile, unsigned ring, const E4& e) {   // between 
 
 MachConfig Net::cfg(int64_t shuffle) {
     MachConfig k = MachConfig::defaults();
-    k.shuffle_seed = shuffle; k.check_unexpected = false; k.check_errors = false;
+    k.shuffle_seed = shuffle; k.check_errors = false;
     return k;
 }
 Net::Net(const MachConfig& cfg) : c(cfg) { c.impl().enable_net(cfg); }   // any machine, as ref's (Config.machine())

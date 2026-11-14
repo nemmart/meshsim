@@ -502,7 +502,6 @@ struct G1Config {
     PeriphType periph1 = PT_REPLAYER;  // a compute tile's peripheral 1 in the slot (tests: PT_TEST)
     unsigned replayer_log_entries = 256;   // the replayer's log queues
     int test_periph_tile = -1;         // (harness-only): >= 0: this compute tile's peripheral 1 is the test peripheral
-    int periph_only = -1;              // (harness-only): >= 0: only this compute tile has peripheral 1
     uint32_t mem_chunks = 1u << 20;    // the scratchpad's words: SCRATCHPAD_BYTES / 4 (4 MiB: 19)
     unsigned K = 8;                    // LAND_LATENCY (12.3): the counters' delay line
     unsigned cm_latency = 2;           // WRITE_PORT_LATENCY (12.3): the director's writes into DMEM and IMEM

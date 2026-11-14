@@ -143,17 +143,15 @@ struct MachConfig {
     unsigned req_hop_latency = 3;
     std::array<unsigned, 3> receive_queue_depth = {128, 256, 128};
     int periph_type = 4;               // every compute tile's peripheral 1: 4 the replayer, 0 none
-    int test_periph_tile = -1;         // the replayer on this compute tile only, the others none (with periph_type 0)
     int test_peripheral_tile = -1;     // that compute tile's peripheral 1 is the test peripheral, the other tiles' as
                                        //   periph_type says
-    std::vector<int> parked;           // tiles nothing must reach: simulated all the same; Chip::parked_untouched checks
     // ---- the simulator and its checks ----
     int64_t shuffle_seed = -1;         // >= 0: the debug shuffle with this seed
     bool step_all = false;             // the framework's debug options (sim.h DEBUG CHECKS): every unit stepped every
     bool instance_major = false;       //   cycle; the instance-major order (else type-major)
     unsigned max_violation_messages = 50;
     bool check_read_port_overlap = true, check_disjoint = true;
-    bool measure_s1 = true, check_errors = true, check_unexpected = true;
+    bool measure_s1 = true, check_errors = true;
     uint32_t check_capacity = 1u << 18;   // the checker's facts (src/check.h) per machine (fatal when full)
     // ---- the harness ----
     uint32_t log_capacity = 1u << 14;      // Net: director-log entries per tile (fatal when exceeded, never grows)
@@ -407,7 +405,6 @@ public:
     bool toast() const;                                     // the chip: the toast pin (17.6) and the cycle at whose end it
     int64_t toast_at() const;                               //   was set (-1: not set); the bench: the model's latch
     bool all_in_wfi() const;                                // every compute tile's core in a WFI
-    bool parked_untouched() const;                          // MachConfig::parked: each quiescent, no link into it busy
 
     // ---- the checker ----
     uint64_t violations() const;
@@ -464,7 +461,7 @@ public:
 class Net {
 public:
     explicit Net(const MachConfig& cfg);
-    static MachConfig cfg(int64_t shuffle);                 // defaults(), check_unexpected and check_errors off
+    static MachConfig cfg(int64_t shuffle);                 // defaults(), check_errors off
     Chip c;
     int64_t late() const;                                   // packets taken later than scheduled (must stay 0)
 

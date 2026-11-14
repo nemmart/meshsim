@@ -19,6 +19,11 @@ except for the deliberate differences (D30; `spec/CHANGES-v1.3-to-v1.35.md`). Ea
 - **Fingerprints:** a canonical hash of the machine's state at fixed points (`*.corefp`, the sort's `fp`, the chains'
   `*.starts`), so a long run is checked without a full trace. The formats are `TRACE-FORMAT.md`.
 
+**v1.36, against the RTL.** The core model is the RTL's core, not v1.3's (`src/units/rv32.h`), and its evidence is
+the RTL's own: Snarky One's core programs with the cycles, retired instructions and retire traces its simulation
+gave (`core-programs/`), which `test_core_programs` requires of the model exactly. The chip still runs v1.35's core
+(`v135_platform`), so everything below stands until the platform stage (`../PENDING-v1.36.md`).
+
 ## Tests and suites
 
 - **`make check`** builds and runs every `test_*.cpp` here, in the debug and release builds with gcc and clang
@@ -32,6 +37,7 @@ except for the deliberate differences (D30; `spec/CHANGES-v1.3-to-v1.35.md`). Ea
 
 | folder | what |
 |---|---|
+| `core-programs/` | the RTL's own core programs (riscv-tests, firmware tests, CoreMark) and what the RTL's simulation measured on each: cycles, retired instructions, retire traces (its `README.md`) |
 | `golden/` | the M1 programs' retire traces (`RUNS` lists each: tile, images, schedule), and their images |
 | `golden-m2/` | M2's references: the programs' outputs and hashes (its `README.md`) |
 | `golden-m3/` | M3's references, T2's unit lines among them (its `README.md`) |

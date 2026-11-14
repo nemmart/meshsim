@@ -63,7 +63,7 @@ std::string hash_of(const std::vector<std::string>& lines) {
 
 TEST(core_programs_fixtures_are_the_listed_files) {
     const auto sums = read_list("SHA256SUMS");
-    CHECK_EQ(sums.size(), 50u);
+    CHECK_EQ(sums.size(), 54u);
     for (const auto& row : sums) {
         CHECK_EQ(row.size(), 2u);
         std::ifstream in(kDir + "elf/" + row[1], std::ios::binary);
@@ -76,10 +76,10 @@ TEST(core_programs_fixtures_are_the_listed_files) {
 // Every program: its verdict, its cycles and retired instructions, and its whole retire trace against the RTL's.
 TEST(core_programs_pass_in_the_rtls_cycles) {
     const std::vector<Program> list = programs();
-    CHECK_EQ(list.size(), 50u);                              // the 49, and the benchmark run
+    CHECK_EQ(list.size(), 54u);                              // the 49, the benchmark run, the interrupt programs
     std::map<std::string, std::string> hashes;
     for (const auto& row : read_list("RETIRE.sha256")) if (row.size() == 2) hashes[row[1]] = row[0];
-    CHECK_EQ(hashes.size(), 50u);
+    CHECK_EQ(hashes.size(), 54u);
     unsigned bad = 0;
     for (const Program& p : list) {
         core_programs::Run r;
@@ -100,9 +100,9 @@ TEST(core_programs_pass_in_the_rtls_cycles) {
     CHECK_EQ(bad, 0u);
 }
 
-// Four programs' traces line by line, so that a difference names the first cycle it shows in.
+// Eight programs traces line by line, so that a difference names the first cycle it shows in.
 TEST(core_programs_retire_in_the_rtls_cycles_line_by_line) {
-    for (const char* name : {"rv32ui-jalr", "rv32ui-ld_st", "rv32um-mul", "firmware-isa_edges"}) {
+    for (const char* name : {"rv32ui-jalr", "rv32ui-ld_st", "rv32um-mul", "firmware-isa_edges", "irq_wfi", "nmi_wfi", "nmi_run", "trap_nmi"}) {
         std::vector<std::string> want;
         std::ifstream in(kDir + "retire/" + name + ".rtl");
         for (std::string line; std::getline(in, line);) want.push_back(line);

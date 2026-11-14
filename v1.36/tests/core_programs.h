@@ -9,11 +9,16 @@
 //   0x1000_0000  DMEM, 32 KiB
 //   0x2000_0000  result: a store reports a pass          0x2000_0004  result: a store reports a failure, its code
 //   0x2000_0010  side effects: a load returns the number of earlier loads
-//   0x2000_0014  side effects: a store is counted and kept
+//   0x2000_0014  side effects: a store is counted and kept; it is also the event trigger (below)
 //   0x2000_0018  console: a store's low byte
 //   0x2000_001C  barrier: a store lowers the line (the core's MEIP) and with bit 0 arms; release() raises it;
 //                a load reads the line in bit 0 and the arming in bit 1
 // Any other access to the system window is answered with an error; an address in no window faults (the core's own).
+//
+// The event trigger, for the programs that take interrupts (tests/core-programs/src/events.h; the RTL's test was given
+// the same): a store of KIND << 8 | DELAY to the side-effect write device raises an input DELAY cycles after the cycle
+// the test sees the store counted in. KIND 0: the barrier's release in that cycle (the line, MEIP, high from the next);
+// KIND 1: the core's nmi input high from that cycle on.
 //
 // Cycles are the RTL test's: cycle 0 is the first after reset, and a run's count is the cycle in which the test sees
 // the result, the cycle after the result store's answer (program_test.rs's loop index at its return). The devices act
@@ -45,8 +50,9 @@ struct Bus {
     uint64_t result_at = 0;
     uint32_t failure_code = 0, side_effect_reads = 0, side_effect_writes = 0, side_effect_last_write = 0;
     std::string console;
-    bool line = false, armed = false, line_was = false;      // the barrier: the line before its last change
-    uint64_t line_at = 0;                                    // ... and the cycle the change holds from
+    bool armed = false;                                      // the barrier's arming
+    std::vector<std::pair<uint64_t, bool>> line_changes;     // the barrier line's changes: {the cycle it holds from, level}
+    uint64_t nmi_from = ~uint64_t(0);                        // the nmi input is high from this cycle on
 
     // ---- rv32.h's bus
     uint32_t bus_fetch(uint32_t a, bool& err) const { err = a - IMEM_BASE >= BYTES; return imem[(a >> 2) % (BYTES / 4)]; }
@@ -60,7 +66,7 @@ struct Bus {
         }
         if (!store) {
             if (a == SIDE_EFFECT_READ) { rdata = side_effect_reads++; return true; }
-            if (a == BARRIER) { rdata = uint32_t(armed) << 1 | uint32_t(line); return true; }
+            if (a == BARRIER) { rdata = uint32_t(armed) << 1 | uint32_t(line_at(now + 1)); return true; }
             return false;
         }
         switch (a) {
@@ -70,21 +76,34 @@ struct Bus {
             if (!passed && !failed) result_at = now + 2;
             failed = true;
             return true;
-        case SIDE_EFFECT_WRITE: side_effect_writes++; side_effect_last_write = wdata; return true;
+        case SIDE_EFFECT_WRITE: {
+            side_effect_writes++; side_effect_last_write = wdata;
+            const uint64_t at = now + 2 + (wdata & 0xFF);    // the cycle the test sees the store counted in, + DELAY
+            if (wdata >> 8 == 0) release(at + 1);
+            if (wdata >> 8 == 1) nmi_from = at;
+            return true;
+        }
         case CONSOLE: console.push_back(char(wdata)); return true;
         case BARRIER:
-            set_line(false, now + 2);
+            line_changes.push_back({now + 2, false});
             if (wdata & 1) armed = true;
             return true;
         default: return false;
         }
     }
-    bool meip() const { return now >= line_at ? line : line_was; }
-    bool nmi() const { return false; }
+    bool meip() const { return line_at(now); }
+    bool nmi() const { return now >= nmi_from; }
 
     // The release: the line is high from cycle `from` on (the RTL test's barrier_release in cycle from - 1).
-    void release(uint64_t from) { set_line(true, from); armed = false; }
-    void set_line(bool v, uint64_t from) { line_was = meip(); line = v; line_at = from; }
+    void release(uint64_t from) { line_changes.push_back({from, true}); armed = false; }
+    // The line in cycle c: its last change by then; a release wins over a store's lowering at the same edge.
+    bool line_at(uint64_t c) const {
+        uint64_t last = 0;
+        bool level = false;
+        for (const auto& [from, v] : line_changes)
+            if (from <= c && (from > last || (from == last && v))) { last = from; level = v; }
+        return level;
+    }
 };
 
 // An ELF file's loadable segments into the bus's memories (program_test.rs's memory_images). Returns an error, or "".

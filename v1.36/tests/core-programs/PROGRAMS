@@ -52,3 +52,8 @@ firmware-rust.elf 28779 22281
 coremark.elf 398723 301189
 # CoreMark as mise run bench-core builds it (10 iterations); its own report is also checked, against BENCH.
 coremark-bench.elf 3641314 2773473
+# The interrupt programs (src/, README.md): the machine external interrupt, WFI and the NMI, with the event trigger.
+irq_wfi.elf 2940 1523
+nmi_wfi.elf 118 56
+nmi_run.elf 102 53
+trap_nmi.elf 99 42

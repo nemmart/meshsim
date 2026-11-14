@@ -46,19 +46,22 @@
 //     shows the master's store a cycle before the RTL's SRAM rows do; not traced further (no unit of the chip reads
 //     DMEM that way).
 //
-// From rtl/tile/memory/test/src/memory_tile_test.rs (the memory tile alone, a program written in the test, requests
-// from the root, an AXI4 slave): what it adds to this test and test_rw_engine is the tile's composition, which here is
-// checked in the chip: the straps (PARAMS: boot_local, the receive queue, the peripheral with a DMA, read by the RTL's
-// boot ROM and firmware here), the request's path to the firmware and the credit back (the 300 requests), the write
-// port from the tile's receive unit into the write buffer (the WRITE's beats, counted on the memory tile's counter 1),
-// the DMA's input to the router with the tile's id as src (the answers arrive at the master by their dst and are
-// counted there), the events and errors to the tile's control unit (the firmware sleeps on EVENTS.peripheral_1). Not
-// taken: its own program and its requests injected at the root with random timing (the RTL's firmware and the master's
-// requests stand for them), its region WRITEs of 32 and 64 bits through the tile (test_rw_engine's write port and slot
-// tests have the three sizes; the chip's firmware sends 128-bit beats), the LPDDR error to ERRORS.peripheral_1 and the
-// tile's error line (test_rw_engine has the engine's bit and the slot's live bit; the firmware does not provoke one),
-// and its reset in a job (the hard and soft resets are Open). They need a one-tile bench for a special tile, which
-// the simulator has not (PENDING-v1.36.md, section 1, the `special` row).
+// From rtl/tile/memory/test/src/memory_tile_test.rs (the memory tile alone at the chip's boundary: a program written in
+// the test in place of the firmware, the root and the attach tile's router played, an AXI4 slave; its parts A to D).
+// What it checks of the tile's composition is checked here in the chip, by the RTL's firmware: the straps (the boot
+// from IMEM, the receive queue, the peripheral with its DMA), a request's path to the core and its credit back (the 300
+// requests), the engine's registers through the register bus (the firmware's stores and loads), the events to the
+// tile's EVENTS.peripheral_1 (the firmware sleeps on them), the write port from the tile's receive unit into the write
+// buffer, counted on the memory tile's counter (the WRITE's beats), and the DMA's input to the router with the tile's
+// id as src (the answers reach the master by their dst and are counted there). NOT TAKEN, each for want of a one-tile
+// bench for a special tile, which the simulator has not (PENDING-v1.36.md, section 1's `special` row, and section 5):
+// its part B's read under a stalled attach output (the DMA waiting for the router's ready, queue 0 holding only what
+// it has room for: test_rw_engine has it at the slot's port, with the router input played; with the simulator's router
+// behind it the cycles would differ, PENDING section 5); part C's 64-bit and 32-bit region WRITEs through the tile
+// (test_rw_engine's write port and slot tests have the three sizes; the chip's firmware sends 128-bit beats); part D's
+// LPDDR error to ERRORS.peripheral_1, the NMI, the reports 24 and 25 and the error line (test_rw_engine has the
+// engine's bit and the slot's live error bit; test_rtl_sort the NMI, the reports and the lines for the tile's other
+// errors); and its registers read back at their widths through the tile (test_rw_engine, at three configurations).
 #include <cstdio>
 #include <cstdlib>
 #include <string>

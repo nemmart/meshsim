@@ -1,3 +1,4 @@
+| `rtl-memory` | both | `build/clang-suite/test_rw_engine`, then `…/test_rtl_memory` | 2 s | `results/rtl-memory.log` | the RTL's `rw_engine_unit_test.rs` ported, with the RTL's outputs' fingerprints (`tests/rwengine/unit.fp`), and the RTL's `chip_memory_test.rs`'s checks with the RTL chip's handshakes on `lpddr` (`tests/rwengine/chip-memory-*.ev`), in the tests |
 # Running v1.35
 
 *For anyone running v1.35's suites, kits and tools: each one's command, how long it takes, what it writes, and what it is
@@ -27,7 +28,7 @@ pending steps by reason and ends with `N steps REPLACED …; M steps PENDING` (2
 the 64K key file; 20 and 16 in `quick`), and the run exits 0 when every step that runs passed. `PENDING-v1.36.md` (the
 platform stage, section 4) has both tables, and what each replacement does not cover; in `run_tests.sh` a replaced
 or pending step keeps its v1.3 `step` line under it as a comment. The steps that run: `layout`, `bus`, `rtl-images`,
-`rtl-tile`, `rtl-sort` (and `rtl-sort-64k` in `all`), `mem`, `mem-shuf`, `mem-shuf2`, `core-programs`, `core-tile`,
+`rtl-tile`, `rtl-sort` (and `rtl-sort-64k` in `all`), `rtl-memory`, `mem`, `mem-shuf`, `mem-shuf2`, `core-programs`, `core-tile`,
 `replayer`, `memsys`, `rvc`, `tracer`, `tracer-block-synth` and `tracer-block`. Those with no v1.3 step are v1.36's own, with no reference log: a
 failing test fails the run. `rtl-tile`, right after `bus`, is acceptance A: the RTL's tile programs on one compute
 tile (`build/clang-suite/test_rtl_tile`); what the test itself leaves pending is counted apart. `rtl-sort` is

@@ -21,7 +21,7 @@ of this page each. Where they stand:
 The tile's units (the DMA, write, read, receive, gather and inject units and the scratchpad) are the specification's
 (8-15), each with a test written from it (`test_ag`, `test_receive`, `test_mem`, `test_gather`, `test_mach`), and the
 sort's cycles on the chip are the RTL chip's, step for step, which `test_rtl_sort` checks. What is left is named below as
-in the plan: the router's conformance, the memory tile's RW engine, the host interface and the segment on the chip
+in the plan: the router's conformance, the host interface and the segment on the chip
 (P10), the old suites (P11), meshsim's own firmware (P12), and what is left of the timing.
 
 ## The core stage
@@ -128,11 +128,13 @@ to follow it, and the fixtures cannot be regenerated. The RTL's own figures and 
 
 ### 2. Acceptance B: what of the RTL's chip tests is pending
 
-`tests/test_rtl_sort.cpp` is `chip_test.rs` (the sort, four runs). The RTL's other chip tests have no counterpart:
+`tests/test_rtl_sort.cpp` is `chip_test.rs` (the sort, four runs), and `tests/test_rtl_memory.cpp` is
+`chip_memory_test.rs` (the master's requests to the memory tile and LPDDR: every check of the RTL's, and every
+handshake on the `lpddr` port and the done word's cycle equal to the RTL chip's, `tests/rwengine/`). The RTL's other
+chip tests have no counterpart:
 
 | what | why | what closes it |
 |---|---|---|
-| `chip_memory_test`: the master's requests to the memory tile and LPDDR | the memory tile's peripheral 1 is a stand-in that stops the simulator if it is started, written or made to send (`RwEngineStub`, `src/units/ingress_egress.h`): the RW engine (17.7), its write buffer and its AXI4 port are not modelled | the RW engine's model (P10), with the RTL's AXI4 slave model's timing |
 | `chip_stream_test`: the master echoing beats on its AXI4-Stream ports | Ingress/Egress's host interface (17.6) is not modelled: its receive side reads empty and a store to its transmit side stops the simulator; the UART has a transmit FIFO only | the host interface's and the UART's receive side in `IngressEgress` (P10) |
 | `chip_trace_test`, `chip_replay_test`: a segment from the Tracer to the replayers | no test boots the tracer tile's image, and the Tracer's memory system on the chip is the harness's (`Tracer::own_memory`), not placed by any chip test | the segment on the chip (P10; the Tracer stage's first row) |
 | the image's start-up, from the load's release to L1's release | 16,036 cycles here, 16,033 on the RTL's chip: printed, not checked (every step of the sort, the total, the load and the link's latency are checked equal to the RTL's) | the timing stage (section 6) |
@@ -235,7 +237,8 @@ unit, the inject unit and the scratchpad are the specification's (`src/units/REA
 | what | the RTL | the simulator | closes |
 |---|---|---|---|
 | the router under random load | the arbiters and queues of 16.3 | v1.35's router with v1.36's rules: the attach ports on tiles 0, 7 and 15, a reserved dst dropped, a special tile's router (its DMA input with the tile's own id and 16.4's flow control, an attach arrival for another tile dropped, its eject's order). `test_special_router` checks from the specification the routes of all 67 × 67 pairs at four cycles a link, the broadcast, the arbiters' round-robin order, the loopback queue's rule, a full queue's loss, and those rules; what no test compares with the RTL is a router under random many-to-one load (`test_router`'s references past a reserved id are the simulator's own, section 3). The overflow is counted a cycle after the lost push (the RTL signals it in the push's cycle); a special tile has one DMA input (the RTL allows four) | a conformance against the RTL's router |
-| the memory tile | the RW engine (17.7): its region, its DMA's two queues, LPDDR over AXI4 | a stand-in with 17.7's `PARAMS` and words, idle; **a `START`, a store to its words, a transfer or a `WRITE` into its region stops the simulator** | P10 |
+| the memory tile's RW engine under a stalled router input | the DMA's packet register holds one packet in front of the router, so a read's beats stay in output queue 0, whose room the read's next burst waits for (17.7; `peripheral_dma.veryl`) | the engine is the RTL's (`rw_engine.h`; section 9), and the slot's DMA ends a transfer as the RTL's does, but its packets go into the router's DMA input, a queue of `cc_dma_depth` (4): with the router not taking, up to 4 packets leave queue 0 where the RTL holds one, so a read may raise its next burst earlier. No difference while the router takes a packet a cycle (`test_rtl_memory`: equal to the RTL's chip, cycle for cycle); at the slot's port, with the router input played as the RTL's register, the engine equals the RTL under every stall (`test_rw_engine`) | with the router |
+| the memory tile alone | `memory_tile_test`: the tile with a program of the test's: a read under a stalled attach output (the DMA waiting for the router), region `WRITE`s of 64 and 32 bits through the tile, an LPDDR error to `ERRORS.peripheral_1`, the NMI, the reports 24 and 25 and the error line | the tile's composition is checked in the chip (`test_rtl_memory`: the straps, the requests and their credits, the registers, the write port, the DMA's input, the events), and those three at the unit only (`test_rw_engine`: the room under a stall with the router input played, the three sizes, the engine's error bit and the slot's live bit); no one-tile bench for a special tile | the bench of section 1's `special` row |
 | Ingress/Egress | the UART both ways, the host interface (AXI4-Stream) both ways, the LED and the toast pin (17.6) | the nets, `RELEASE`, the watchdog (a store or a `RELEASE` in the expiry's cycle wins), the LED, the toast pin, the UART's transmit FIFO; the UART's and the host interface's receive sides read empty; **a store to the host interface's transmit words stops the simulator** | P10 |
 | the tracer tile's memory system | *Open* behind the `fill` port (17.9.14) | the simulator's `MemSystem` over a `FileStore`, given by the harness; on the chip no test gives one, and a run without it stops the simulator | the segment (P10) |
 | the peripheral's DMA under a full router input | the packet register takes an entry whenever it is empty or its packet leaves, and offers it until the router takes it (`peripheral_dma.veryl`) | an entry is taken only in a cycle the router's input has room (the credit); the same packets a cycle apart at most, and the transfer's end the same | with the router |
@@ -349,3 +352,40 @@ v1.36, and they are not regenerated: tests written from the specification and th
    stall"; `src/write_unit.veryl`).
 9. **The live levels** (`EVENTS.request_pending`, a peripheral's event and error) reach `meip` and `nmi` a cycle after a
    load reads them (`rtl/blocks/tile_control_unit/README.md`, "Timing").
+
+### 9. Notes: what the RW engine's model takes from the RTL where the specification is silent
+
+`src/units/rw_engine.h` is the RTL's `rw_engine_unit` (`rtl/blocks/rw_engine_unit/src/rw_engine_unit.veryl`, its
+README's Timing and Decisions), on the slot's control block and DMA (`rtl/blocks/peripheral`). 17.7 leaves these to
+the implementation, and the model takes the RTL's:
+
+1. **The bursts** are the job's 64-byte groups: each burst runs from the job's next beat to the end of that beat's
+   aligned group of 4 beats, or to the job's last beat (17.7: "their lengths are the implementation's").
+2. **A read's room** (17.7: "only while the queue has room for every beat in flight"): a burst of *L* beats is
+   raised only if the beats raised and not yet received, with *L*, fit in output queue 0's free entries at the start
+   of the cycle; the entry the DMA takes in a cycle is still counted as held in that cycle.
+3. **The cycles**: `START` presented in *p* takes the job's registers at the end of *p*; `STATUS.busy` from *p* + 1;
+   the first burst raised at the end of *p* + 1, on AR or AW from *p* + 2, and a next burst at the edge after the
+   address channel frees; a write's first beat on W in *p* + 3 and a beat a cycle while WREADY is 1 (the buffer's row
+   read in every cycle, the pending one again until the W register takes it); a job of 0 beats ends in *p* + 1; a
+   read ends in the cycle its last beat comes and a write in the cycle of its last response, `EVENTS.done` posted
+   then. 21.5's row gives the first three of these.
+4. **The write data may run ahead of its address**, and the writes outstanding have no bound of their own; AR and AW
+   share their address and length register; RREADY and BREADY are 1 and RLAST is not read.
+5. **The write port** lands a `WRITE` at the edge that ends the cycle the port presents it (the RTL's README counts
+   that as 1 of `PERIPHERAL_LATENCY`'s 6); a write past the buffer's end lands at its row within the buffer, a misaligned
+   one lands aligned, one of the reserved size writes nothing (all UB: the model also flags them).
+6. **The reply**: `RW_REPLY_W0` is a register, 0 at the reset; a store to `RW_REPLY_SEND` pushes at the end of its
+   cycle, into room at its start, and clears `RW_REPLY_W0`; a push to a full queue 1 (UB) is lost, `RW_REPLY_W0`
+   cleared all the same (flagged). Queue 1 holds one entry.
+7. **`lpddr_error`** is set by any response but OKAY, EXOKAY among them, at the end of its cycle.
+8. **A `START` in the cycle a job ends** starts the next (the RTL's test does it); a `START` while busy otherwise is
+   UB and stops the simulator. `RW_CONFIG`, `RW_LPDDR_ADDR` and `RW_BUFFER_ADDR` are 0 before their first store and
+   keep their values through a reset (the RTL does not reset them: undefined, 17.7).
+9. **The slot's DMA** (`peripheral_dma.veryl`): a transfer ends in the cycle its last packet leaves the packet
+   register, so its end, like a take, waits for the router input's room (`dma_run`); with a count of 0 it ends the
+   cycle after `DMA_START`'s, if the register is empty or its packet leaves.
+10. **The LPDDR controller is not chip hardware**: the `lpddr` port is the simulator's boundary, a harness places an
+    AXI4 slave on it (`LpddrSlave`), and a job that raises a burst with none stops the simulator. The reset is not
+    the port's: a harness that resets the engine resets its slave (3: "the LPDDR controller, which shares the
+    reset").

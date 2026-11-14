@@ -51,7 +51,11 @@ pending, and why).
   `test_core_programs` and `test_core_tile` (the RTL's core; the steps `core-programs` and `core-tile`), `test_tile_control`
   (the tile control unit and the register bus's decode against the specification's text), `test_periph_slot` and
   `test_tracer_slot` (the peripheral slot: 17.1's blocks and the RTL's cycles of a consuming load and of the DMA,
-  with the test peripheral, the replayer and the Tracer in it), `test_mach` (the machine harness: the
+  with the test peripheral, the replayer and the Tracer in it), `test_rw_engine` and `test_rtl_memory` (the memory tile:
+  the RW engine against the RTL's unit, the RTL's unit test ported with the RTL's outputs' fingerprints, and the
+  RTL's memory run on the chip with an AXI4 slave, `axi4_slave.h`, on the `lpddr` port, against the RTL chip's
+  handshakes: `rwengine/`; the runner's step `rtl-memory`; `tests/rw_engine_teeth.sh` plants bugs in the model, one at
+  a time, and requires these tests to fail on each), `test_mach` (the machine harness: the
   boot ROM's pull boot on all 64 tiles, the chip's build, and v1.3's `packets`, `reads` and `a2a` sequences on the
   coreless machine), `test_router` (against ref up to v1.36's two rules, then `routerconf/v1.36/`), the unit stages'
   tests (`test_replayer`, `test_replayconf`, `test_replay_lists`, `test_tracer*`), and the tests of the tile's units, each written from
@@ -80,6 +84,7 @@ pending, and why).
 | `tileslotconf/` | a tile's controller with its slot: programs and observations |
 | `reqconf/` | the request bus under five loads (calm, drop, fan-in, full, mix) |
 | `replayer/` | the replayer's fixtures: the conformance scripts with the RTL's observations of them, the ALU sweep and reports (its `README.md`) |
+| `rwengine/` | the RW engine against the RTL: the RTL unit's outputs' fingerprints under its own test, the RTL chip's `lpddr` handshakes in `chip_memory_test`, and the instrumentation that printed them (its `README.md`) |
 | `tracerparts/` | the Tracer's parts (the LRU coder, the memory system, the RVC expansion) |
 | `ctlsuites/`, `p2suites/`, `p4suites/`, `tracersuites/`, `stageb/` | v1.3's suite logs, the references of `run_tests.sh --check`; `PROVENANCE` in each says how they were made |
 | `ctl/` | the control suites' sources (code, not fixtures) |

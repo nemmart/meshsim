@@ -126,7 +126,8 @@ struct Outputs {
     LpddrOut lpddr;                  // the port's outputs as the slave takes them
 };
 
-// The first failure of a bench (a CHECK returns from the test function only, so the bench's own checks record).
+// The first failure of a bench (a CHECK returns from the test function only, so the bench's own checks record); with
+// RW_ENGINE_VERBOSE set, the first four are printed as they come.
 struct Failures {
     unsigned n = 0;
     std::string first;

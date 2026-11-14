@@ -61,6 +61,7 @@ SUITES="$SUITES test_mem"                            # v1.36: the scratchpad and
 SUITES="$SUITES test_router test_special_router test_ag test_receive test_gather test_request_tree test_reqbus"
 SUITES="$SUITES test_regs test_periph_slot test_ingress_egress test_tile_control"
 SUITES="$SUITES test_rtl_tile test_rtl_sort"         # v1.36: acceptances A and B (the rtl-tile and rtl-sort steps)
+SUITES="$SUITES test_rw_engine test_rtl_memory"      # v1.36: the memory tile (the rtl-memory step)
 
 if [ "$BUILD" = 1 ]; then
   echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
@@ -168,6 +169,11 @@ if [ "$MODE" != quick ]; then
     pending rtl-sort-64k "acceptance B at 64 x 65,536 records: kv32 and k128" "skipped: RTL_SORT_64K_KEYS does not name the RTL's 64K key file (fw/rtl/README.md)"
   fi
 fi
+# The memory tile (v1.36's, no v1.3 step): the RW engine against the RTL's unit, the RTL's unit test ported with the
+# RTL's outputs' fingerprints (tests/test_rw_engine.cpp, tests/rwengine/), then the RTL's memory run on the chip, the
+# RTL test's AXI4 slave on the lpddr port, against the RTL chip's handshakes (tests/test_rtl_memory.cpp).
+rtl_memory() { $S/test_rw_engine && $S/test_rtl_memory; }
+check rtl-memory "the memory tile: the RW engine against the RTL's unit, cycle for cycle, and the RTL's memory run on the chip (tests/test_rw_engine.cpp, tests/test_rtl_memory.cpp)" -- rtl_memory
 NETREF=tests/p4suites/net.log; [ "$MODE" = quick ] && NETREF=tests/p4suites/net-quick.log   # v1.3's net step takes $Q
 net_tests() { $S/test_router && $S/test_special_router; }
 replaced net "network, packets, director" "v1.3's NetTest drives v1.35's command conditions and attach tiles 0-2; the router against ref's observations and v1.36's two rules (test_router), the special tile's router, the attach ports and the DMA input from 16.2-16.4 (test_special_router); the packets end to end are test_mach's and rtl-sort's" -- net_tests

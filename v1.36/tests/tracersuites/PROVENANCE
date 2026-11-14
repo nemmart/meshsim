@@ -3,3 +3,7 @@ memsys.log, rvc.log, tracer.log: run_tests.sh's steps of the same names (MemoryS
 rvc-gold.txt.gz: gold.Decoder.uncompress on every compressed encoding (oracle/ref/GoldRvc.java)
 hashorder.txt: java.util.HashMap's iteration order for Long keys (oracle/ref/JavaHashOrder.java)
 openjdk version "21.0.13.0.3" 2026-10-24
+v1.36: tracer.log is suite_tracer's own output (run_tests.sh's step `tracer`), regenerated when the Tracer became the
+RTL's (Snarky One's rtl/blocks/tracer_unit): its three lines changed with the hardware (the loop's cycles and stalls,
+the drain's cycles, the count of assertions); each assertion's expectation is spec 17.9's or the RTL's, in
+tests/suite_tracer.cpp. memsys.log and rvc.log are unchanged.

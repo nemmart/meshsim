@@ -1,0 +1,162 @@
+evm-zone-23 segment 0, compression 0, a fill read's latency 1 of the guest's file and 1 of the map's:
+  windows 64; rows 4194304; padding rows 0; instructions 3078818 (1.3623 rows an instruction); M rows 194670
+  cycles, START to the rows' end: 19661953; a row 4.6878; a row that is not padding 4.6878, an instruction 6.3862; a row of the windows all padding 4.0000 (0 rows)
+  the rows' schedules 17166556 (4.0928 a row); STAT_STALL_FETCH 2399938 (0.5722); STAT_STALL_DATA 24210 (0.0058); STAT_STALL_MAP 68362 (0.0163); in no counter 2887 (the waits on the core 2695, and 3 a run of the measure's)
+  instruction cache: look-ups 3095926, misses 3352 (hits 99.8917%); data cache: memory rows 1029955 (638450 loads, 391505 stores), misses 4035 (hits 99.6082%), write-backs 1963, lines taken back from the write-back buffer 0
+  jump LRU: control transfers 289616, probes 9766 (hits 96.6279%), map lines read 9766 (1.0000 a probe); core-fed expansions posted 668; rows that set their successor's pc (a branch, JAL or JALR) 471577
+  the drain: 3083676 cycles, 48182 a window; packets 1435749; STAT_STALL_OUTPUT 0; STAT_CYCLES: 22745565
+  the simulator: 22747581 cycles in 1.48 s, 15.34 Mcycles/s
+against gold's files: 64 runs: 64 records of 68 words, 1431397 stream entries, 668 posts, the length words, ROWS_RUN, STATUS, ERRORS, the live events, STAT_MISS_I, STAT_MISS_D, STAT_PROBES, the fill port's reads, the cycles adding up; the segment's end: the advice field 0, the record against the next segment's start, 21232 of 22849 cells of the update list: 0 differences
+against the RTL: 64 of 64 runs equal in every figure, 0 figures differ
+PASS evm-zone-23 segment 0, compression 0, fill 1
+evm-zone-23 segment 0, compression 0, a fill read's latency 55 of the guest's file and 35 of the map's:
+  windows 64; rows 4194304; padding rows 0; instructions 3078818 (1.3623 rows an instruction); M rows 194670
+  cycles, START to the rows' end: 20392614; a row 4.8620; a row that is not padding 4.8620, an instruction 6.6235; a row of the windows all padding 4.0000 (0 rows)
+  the rows' schedules 17166556 (4.0928 a row); STAT_STALL_FETCH 2580095 (0.6151); STAT_STALL_DATA 242670 (0.0579); STAT_STALL_MAP 400406 (0.0955); in no counter 2887 (the waits on the core 2695, and 3 a run of the measure's)
+  instruction cache: look-ups 3095926, misses 3352 (hits 99.8917%); data cache: memory rows 1029955 (638450 loads, 391505 stores), misses 4035 (hits 99.6082%), write-backs 1963, lines taken back from the write-back buffer 0
+  jump LRU: control transfers 289616, probes 9766 (hits 96.6279%), map lines read 9766 (1.0000 a probe); core-fed expansions posted 668; rows that set their successor's pc (a branch, JAL or JALR) 471577
+  the drain: 3083676 cycles, 48182 a window; packets 1435749; STAT_STALL_OUTPUT 0; STAT_CYCLES: 23476226
+  the simulator: 23478242 cycles in 1.56 s, 15.05 Mcycles/s
+against gold's files: 64 runs: 64 records of 68 words, 1431397 stream entries, 668 posts, the length words, ROWS_RUN, STATUS, ERRORS, the live events, STAT_MISS_I, STAT_MISS_D, STAT_PROBES, the fill port's reads, the cycles adding up; the segment's end: the advice field 0, the record against the next segment's start, 21232 of 22849 cells of the update list: 0 differences
+against the RTL: 64 of 64 runs equal in every figure, 0 figures differ
+PASS evm-zone-23 segment 0, compression 0, fill 55,35
+evm-zone-23 segment 0, compression 7, a fill read's latency 1 of the guest's file and 1 of the map's:
+  windows 64; rows 4194304; padding rows 0; instructions 3078818 (1.3623 rows an instruction); M rows 194670
+  cycles, START to the rows' end: 19661953; a row 4.6878; a row that is not padding 4.6878, an instruction 6.3862; a row of the windows all padding 4.0000 (0 rows)
+  the rows' schedules 17166556 (4.0928 a row); STAT_STALL_FETCH 2399938 (0.5722); STAT_STALL_DATA 24210 (0.0058); STAT_STALL_MAP 68362 (0.0163); in no counter 2887 (the waits on the core 2695, and 3 a run of the measure's)
+  instruction cache: look-ups 3095926, misses 3352 (hits 99.8917%); data cache: memory rows 1029955 (638450 loads, 391505 stores), misses 4035 (hits 99.6082%), write-backs 1963, lines taken back from the write-back buffer 0
+  jump LRU: control transfers 289616, probes 9766 (hits 96.6279%), map lines read 9766 (1.0000 a probe); core-fed expansions posted 668; rows that set their successor's pc (a branch, JAL or JALR) 471577
+  the drain: 3084538 cycles, 48196 a window; packets 612453; STAT_STALL_OUTPUT 0; STAT_CYCLES: 22746427
+  the simulator: 22748443 cycles in 1.62 s, 14.07 Mcycles/s
+against gold's files: 64 runs: 64 records of 68 words, 608101 stream entries, 668 posts, the length words, ROWS_RUN, STATUS, ERRORS, the live events, STAT_MISS_I, STAT_MISS_D, STAT_PROBES, the fill port's reads, the cycles adding up; the segment's end: the advice field 0, the record against the next segment's start, 21232 of 22849 cells of the update list: 0 differences
+against the RTL: 64 of 64 runs equal in every figure, 0 figures differ
+PASS evm-zone-23 segment 0, compression 7, fill 1
+evm-zone-23 segment 0, compression 7, a fill read's latency 55 of the guest's file and 35 of the map's:
+  windows 64; rows 4194304; padding rows 0; instructions 3078818 (1.3623 rows an instruction); M rows 194670
+  cycles, START to the rows' end: 20392614; a row 4.8620; a row that is not padding 4.8620, an instruction 6.6235; a row of the windows all padding 4.0000 (0 rows)
+  the rows' schedules 17166556 (4.0928 a row); STAT_STALL_FETCH 2580095 (0.6151); STAT_STALL_DATA 242670 (0.0579); STAT_STALL_MAP 400406 (0.0955); in no counter 2887 (the waits on the core 2695, and 3 a run of the measure's)
+  instruction cache: look-ups 3095926, misses 3352 (hits 99.8917%); data cache: memory rows 1029955 (638450 loads, 391505 stores), misses 4035 (hits 99.6082%), write-backs 1963, lines taken back from the write-back buffer 0
+  jump LRU: control transfers 289616, probes 9766 (hits 96.6279%), map lines read 9766 (1.0000 a probe); core-fed expansions posted 668; rows that set their successor's pc (a branch, JAL or JALR) 471577
+  the drain: 3084538 cycles, 48196 a window; packets 612453; STAT_STALL_OUTPUT 0; STAT_CYCLES: 23477088
+  the simulator: 23479104 cycles in 1.65 s, 14.25 Mcycles/s
+against gold's files: 64 runs: 64 records of 68 words, 608101 stream entries, 668 posts, the length words, ROWS_RUN, STATUS, ERRORS, the live events, STAT_MISS_I, STAT_MISS_D, STAT_PROBES, the fill port's reads, the cycles adding up; the segment's end: the advice field 0, the record against the next segment's start, 21232 of 22849 cells of the update list: 0 differences
+against the RTL: 64 of 64 runs equal in every figure, 0 figures differ
+PASS evm-zone-23 segment 0, compression 7, fill 55,35
+evm-zone-23 segment 0, compression 0, the fill port on the simulator's memory system (17.9.14):
+  windows 64; rows 4194304; padding rows 0; instructions 3078818 (1.3623 rows an instruction); M rows 194670
+  cycles, START to the rows' end: 20236671; a row 4.8248; a row that is not padding 4.8248, an instruction 6.5729; a row of the windows all padding 4.0000 (0 rows)
+  the rows' schedules 17166556 (4.0928 a row); STAT_STALL_FETCH 2542520 (0.6062); STAT_STALL_DATA 220482 (0.0526); STAT_STALL_MAP 304226 (0.0725); in no counter 2887 (the waits on the core 2695, and 3 a run of the measure's)
+  instruction cache: look-ups 3095926, misses 3352 (hits 99.8917%); data cache: memory rows 1029955 (638450 loads, 391505 stores), misses 4035 (hits 99.6082%), write-backs 1963, lines taken back from the write-back buffer 2
+  jump LRU: control transfers 289616, probes 9766 (hits 96.6279%), map lines read 9766 (1.0000 a probe); core-fed expansions posted 668; rows that set their successor's pc (a branch, JAL or JALR) 471577
+  the drain: 3083676 cycles, 48182 a window; packets 1435749; STAT_STALL_OUTPUT 0; STAT_CYCLES: 23320283
+  the simulator: 23322299 cycles in 1.48 s, 15.80 Mcycles/s
+against gold's files: 64 runs: 64 records of 68 words, 1431397 stream entries, 668 posts, the length words, ROWS_RUN, STATUS, ERRORS, the live events, STAT_MISS_I, STAT_MISS_D, STAT_PROBES, the fill port's reads, the cycles adding up; the segment's end: the advice field 0, the record against the next segment's start, 21232 of 22849 cells of the update list: 0 differences
+PASS evm-zone-23 segment 0, compression 0, fill model
+evm-zone-23 segment 1, compression 0, a fill read's latency 1 of the guest's file and 1 of the map's:
+  windows 64; rows 4194304; padding rows 2555539; instructions 1347903 (1.2158 rows an instruction); M rows 129567
+  cycles, START to the rows' end: 17777578; a row 4.2385; a row that is not padding 4.6102, an instruction 5.6051; a row of the windows all padding 4.0001 (2490368 rows)
+  the rows' schedules 17036350 (4.0618 a row); STAT_STALL_FETCH 638651 (0.1523); STAT_STALL_DATA 24510 (0.0058); STAT_STALL_MAP 77875 (0.0186); in no counter 192 (the waits on the core 0, and 3 a run of the measure's)
+  instruction cache: look-ups 1359038, misses 4513 (hits 99.6679%); data cache: memory rows 402521 (246751 loads, 155770 stores), misses 4085 (hits 98.9851%), write-backs 2374, lines taken back from the write-back buffer 0
+  jump LRU: control transfers 84115, probes 11125 (hits 86.7741%), map lines read 11125 (1.0000 a probe); core-fed expansions posted 0; rows that set their successor's pc (a branch, JAL or JALR) 120621
+  the drain: 3910943 cycles, 61108 a window; packets 1223555; STAT_STALL_OUTPUT 0; STAT_CYCLES: 21688457
+  the simulator: 21690219 cycles in 1.31 s, 16.55 Mcycles/s
+against gold's files: 64 runs: 64 records of 68 words, 1219203 stream entries, 0 posts, the length words, ROWS_RUN, STATUS, ERRORS, the live events, STAT_MISS_I, STAT_MISS_D, STAT_PROBES, the fill port's reads, the cycles adding up; the segment's end: the advice field 0, the record against the next segment's start, 21521 of 21687 cells of the update list: 0 differences
+against the RTL: 64 of 64 runs equal in every figure, 0 figures differ
+PASS evm-zone-23 segment 1, compression 0, fill 1
+evm-zone-23 segment 1, compression 0, a fill read's latency 55 of the guest's file and 35 of the map's:
+  windows 64; rows 4194304; padding rows 2555539; instructions 1347903 (1.2158 rows an instruction); M rows 129567
+  cycles, START to the rows' end: 18619743; a row 4.4393; a row that is not padding 5.1241, an instruction 6.2299; a row of the windows all padding 4.0001 (2490368 rows)
+  the rows' schedules 17036350 (4.0618 a row); STAT_STALL_FETCH 881205 (0.2101); STAT_STALL_DATA 245871 (0.0586); STAT_STALL_MAP 456125 (0.1087); in no counter 192 (the waits on the core 0, and 3 a run of the measure's)
+  instruction cache: look-ups 1359038, misses 4513 (hits 99.6679%); data cache: memory rows 402521 (246751 loads, 155770 stores), misses 4085 (hits 98.9851%), write-backs 2374, lines taken back from the write-back buffer 0
+  jump LRU: control transfers 84115, probes 11125 (hits 86.7741%), map lines read 11125 (1.0000 a probe); core-fed expansions posted 0; rows that set their successor's pc (a branch, JAL or JALR) 120621
+  the drain: 3910943 cycles, 61108 a window; packets 1223555; STAT_STALL_OUTPUT 0; STAT_CYCLES: 22530622
+  the simulator: 22532384 cycles in 1.35 s, 16.73 Mcycles/s
+against gold's files: 64 runs: 64 records of 68 words, 1219203 stream entries, 0 posts, the length words, ROWS_RUN, STATUS, ERRORS, the live events, STAT_MISS_I, STAT_MISS_D, STAT_PROBES, the fill port's reads, the cycles adding up; the segment's end: the advice field 0, the record against the next segment's start, 21521 of 21687 cells of the update list: 0 differences
+against the RTL: 64 of 64 runs equal in every figure, 0 figures differ
+PASS evm-zone-23 segment 1, compression 0, fill 55,35
+evm-zone-23 segment 1, compression 7, a fill read's latency 1 of the guest's file and 1 of the map's:
+  windows 64; rows 4194304; padding rows 2555539; instructions 1347903 (1.2158 rows an instruction); M rows 129567
+  cycles, START to the rows' end: 17777578; a row 4.2385; a row that is not padding 4.6102, an instruction 5.6051; a row of the windows all padding 4.0001 (2490368 rows)
+  the rows' schedules 17036350 (4.0618 a row); STAT_STALL_FETCH 638651 (0.1523); STAT_STALL_DATA 24510 (0.0058); STAT_STALL_MAP 77875 (0.0186); in no counter 192 (the waits on the core 0, and 3 a run of the measure's)
+  instruction cache: look-ups 1359038, misses 4513 (hits 99.6679%); data cache: memory rows 402521 (246751 loads, 155770 stores), misses 4085 (hits 98.9851%), write-backs 2374, lines taken back from the write-back buffer 0
+  jump LRU: control transfers 84115, probes 11125 (hits 86.7741%), map lines read 11125 (1.0000 a probe); core-fed expansions posted 0; rows that set their successor's pc (a branch, JAL or JALR) 120621
+  the drain: 3911092 cycles, 61111 a window; packets 474064; STAT_STALL_OUTPUT 0; STAT_CYCLES: 21688606
+  the simulator: 21690368 cycles in 1.35 s, 16.12 Mcycles/s
+against gold's files: 64 runs: 64 records of 68 words, 469712 stream entries, 0 posts, the length words, ROWS_RUN, STATUS, ERRORS, the live events, STAT_MISS_I, STAT_MISS_D, STAT_PROBES, the fill port's reads, the cycles adding up; the segment's end: the advice field 0, the record against the next segment's start, 21521 of 21687 cells of the update list: 0 differences
+against the RTL: 64 of 64 runs equal in every figure, 0 figures differ
+PASS evm-zone-23 segment 1, compression 7, fill 1
+evm-zone-23 segment 1, compression 7, a fill read's latency 55 of the guest's file and 35 of the map's:
+  windows 64; rows 4194304; padding rows 2555539; instructions 1347903 (1.2158 rows an instruction); M rows 129567
+  cycles, START to the rows' end: 18619743; a row 4.4393; a row that is not padding 5.1241, an instruction 6.2299; a row of the windows all padding 4.0001 (2490368 rows)
+  the rows' schedules 17036350 (4.0618 a row); STAT_STALL_FETCH 881205 (0.2101); STAT_STALL_DATA 245871 (0.0586); STAT_STALL_MAP 456125 (0.1087); in no counter 192 (the waits on the core 0, and 3 a run of the measure's)
+  instruction cache: look-ups 1359038, misses 4513 (hits 99.6679%); data cache: memory rows 402521 (246751 loads, 155770 stores), misses 4085 (hits 98.9851%), write-backs 2374, lines taken back from the write-back buffer 0
+  jump LRU: control transfers 84115, probes 11125 (hits 86.7741%), map lines read 11125 (1.0000 a probe); core-fed expansions posted 0; rows that set their successor's pc (a branch, JAL or JALR) 120621
+  the drain: 3911092 cycles, 61111 a window; packets 474064; STAT_STALL_OUTPUT 0; STAT_CYCLES: 22530771
+  the simulator: 22532533 cycles in 1.38 s, 16.28 Mcycles/s
+against gold's files: 64 runs: 64 records of 68 words, 469712 stream entries, 0 posts, the length words, ROWS_RUN, STATUS, ERRORS, the live events, STAT_MISS_I, STAT_MISS_D, STAT_PROBES, the fill port's reads, the cycles adding up; the segment's end: the advice field 0, the record against the next segment's start, 21521 of 21687 cells of the update list: 0 differences
+against the RTL: 64 of 64 runs equal in every figure, 0 figures differ
+PASS evm-zone-23 segment 1, compression 7, fill 55,35
+evm-zone-23 segment 1, compression 0, the fill port on the simulator's memory system (17.9.14):
+  windows 64; rows 4194304; padding rows 2555539; instructions 1347903 (1.2158 rows an instruction); M rows 129567
+  cycles, START to the rows' end: 18725980; a row 4.4646; a row that is not padding 5.1890, an instruction 6.3087; a row of the windows all padding 4.0001 (2490368 rows)
+  the rows' schedules 17036350 (4.0618 a row); STAT_STALL_FETCH 935641 (0.2231); STAT_STALL_DATA 253751 (0.0605); STAT_STALL_MAP 500046 (0.1192); in no counter 192 (the waits on the core 0, and 3 a run of the measure's)
+  instruction cache: look-ups 1359038, misses 4513 (hits 99.6679%); data cache: memory rows 402521 (246751 loads, 155770 stores), misses 4085 (hits 98.9851%), write-backs 2374, lines taken back from the write-back buffer 0
+  jump LRU: control transfers 84115, probes 11125 (hits 86.7741%), map lines read 11125 (1.0000 a probe); core-fed expansions posted 0; rows that set their successor's pc (a branch, JAL or JALR) 120621
+  the drain: 3910943 cycles, 61108 a window; packets 1223555; STAT_STALL_OUTPUT 0; STAT_CYCLES: 22636859
+  the simulator: 22638621 cycles in 1.36 s, 16.62 Mcycles/s
+against gold's files: 64 runs: 64 records of 68 words, 1219203 stream entries, 0 posts, the length words, ROWS_RUN, STATUS, ERRORS, the live events, STAT_MISS_I, STAT_MISS_D, STAT_PROBES, the fill port's reads, the cycles adding up; the segment's end: the advice field 0, the record against the next segment's start, 21521 of 21687 cells of the update list: 0 differences
+PASS evm-zone-23 segment 1, compression 0, fill model
+cyclone-22 segment 0, compression 0, a fill read's latency 1 of the guest's file and 1 of the map's:
+  windows 64; rows 4194304; padding rows 1488485; instructions 1911900 (1.4153 rows an instruction); M rows 211725
+  cycles, START to the rows' end: 18525430; a row 4.4168; a row that is not padding 4.6460, an instruction 6.5753; a row of the windows all padding 4.0001 (1441792 rows)
+  the rows' schedules 17200666 (4.1010 a row); STAT_STALL_FETCH 1138611 (0.2715); STAT_STALL_DATA 66300 (0.0158); STAT_STALL_MAP 116634 (0.0278); in no counter 3219 (the waits on the core 3027, and 3 a run of the measure's)
+  instruction cache: look-ups 1921668, misses 3775 (hits 99.8036%); data cache: memory rows 738528 (402392 loads, 336136 stores), misses 11050 (hits 98.5038%), write-backs 7917, lines taken back from the write-back buffer 0
+  jump LRU: control transfers 116957, probes 16662 (hits 85.7537%), map lines read 16662 (1.0000 a probe); core-fed expansions posted 860; rows that set their successor's pc (a branch, JAL or JALR) 222571
+  the drain: 3407131 cycles, 53236 a window; packets 1282361; STAT_STALL_OUTPUT 0; STAT_CYCLES: 21932497
+  the simulator: 21934385 cycles in 1.37 s, 16.05 Mcycles/s
+against gold's files: 64 runs: 64 records of 68 words, 1278009 stream entries, 860 posts, the length words, ROWS_RUN, STATUS, ERRORS, the live events, STAT_MISS_I, STAT_MISS_D, STAT_PROBES, the fill port's reads, the cycles adding up; the segment's end: the advice field 0, the record against the next segment's start, 75849 of 77564 cells of the update list: 0 differences
+against the RTL: 64 of 64 runs equal in every figure, 0 figures differ
+PASS cyclone-22 segment 0, compression 0, fill 1
+cyclone-22 segment 0, compression 0, a fill read's latency 55 of the guest's file and 35 of the map's:
+  windows 64; rows 4194304; padding rows 1488485; instructions 1911900 (1.4153 rows an instruction); M rows 211725
+  cycles, START to the rows' end: 19892228; a row 4.7427; a row that is not padding 5.1512, an instruction 7.2902; a row of the windows all padding 4.0001 (1441792 rows)
+  the rows' schedules 17200666 (4.1010 a row); STAT_STALL_FETCH 1340420 (0.3196); STAT_STALL_DATA 664781 (0.1585); STAT_STALL_MAP 683142 (0.1629); in no counter 3219 (the waits on the core 3027, and 3 a run of the measure's)
+  instruction cache: look-ups 1921668, misses 3775 (hits 99.8036%); data cache: memory rows 738528 (402392 loads, 336136 stores), misses 11050 (hits 98.5038%), write-backs 7917, lines taken back from the write-back buffer 0
+  jump LRU: control transfers 116957, probes 16662 (hits 85.7537%), map lines read 16662 (1.0000 a probe); core-fed expansions posted 860; rows that set their successor's pc (a branch, JAL or JALR) 222571
+  the drain: 3407131 cycles, 53236 a window; packets 1282361; STAT_STALL_OUTPUT 0; STAT_CYCLES: 23299295
+  the simulator: 23301183 cycles in 1.45 s, 16.11 Mcycles/s
+against gold's files: 64 runs: 64 records of 68 words, 1278009 stream entries, 860 posts, the length words, ROWS_RUN, STATUS, ERRORS, the live events, STAT_MISS_I, STAT_MISS_D, STAT_PROBES, the fill port's reads, the cycles adding up; the segment's end: the advice field 0, the record against the next segment's start, 75849 of 77564 cells of the update list: 0 differences
+against the RTL: 64 of 64 runs equal in every figure, 0 figures differ
+PASS cyclone-22 segment 0, compression 0, fill 55,35
+cyclone-22 segment 0, compression 7, a fill read's latency 1 of the guest's file and 1 of the map's:
+  windows 64; rows 4194304; padding rows 1488485; instructions 1911900 (1.4153 rows an instruction); M rows 211725
+  cycles, START to the rows' end: 18525430; a row 4.4168; a row that is not padding 4.6460, an instruction 6.5753; a row of the windows all padding 4.0001 (1441792 rows)
+  the rows' schedules 17200666 (4.1010 a row); STAT_STALL_FETCH 1138611 (0.2715); STAT_STALL_DATA 66300 (0.0158); STAT_STALL_MAP 116634 (0.0278); in no counter 3219 (the waits on the core 3027, and 3 a run of the measure's)
+  instruction cache: look-ups 1921668, misses 3775 (hits 99.8036%); data cache: memory rows 738528 (402392 loads, 336136 stores), misses 11050 (hits 98.5038%), write-backs 7917, lines taken back from the write-back buffer 0
+  jump LRU: control transfers 116957, probes 16662 (hits 85.7537%), map lines read 16662 (1.0000 a probe); core-fed expansions posted 860; rows that set their successor's pc (a branch, JAL or JALR) 222571
+  the drain: 3407308 cycles, 53239 a window; packets 572696; STAT_STALL_OUTPUT 0; STAT_CYCLES: 21932674
+  the simulator: 21934562 cycles in 1.43 s, 15.35 Mcycles/s
+against gold's files: 64 runs: 64 records of 68 words, 568344 stream entries, 860 posts, the length words, ROWS_RUN, STATUS, ERRORS, the live events, STAT_MISS_I, STAT_MISS_D, STAT_PROBES, the fill port's reads, the cycles adding up; the segment's end: the advice field 0, the record against the next segment's start, 75849 of 77564 cells of the update list: 0 differences
+against the RTL: 64 of 64 runs equal in every figure, 0 figures differ
+PASS cyclone-22 segment 0, compression 7, fill 1
+cyclone-22 segment 0, compression 7, a fill read's latency 55 of the guest's file and 35 of the map's:
+  windows 64; rows 4194304; padding rows 1488485; instructions 1911900 (1.4153 rows an instruction); M rows 211725
+  cycles, START to the rows' end: 19892228; a row 4.7427; a row that is not padding 5.1512, an instruction 7.2902; a row of the windows all padding 4.0001 (1441792 rows)
+  the rows' schedules 17200666 (4.1010 a row); STAT_STALL_FETCH 1340420 (0.3196); STAT_STALL_DATA 664781 (0.1585); STAT_STALL_MAP 683142 (0.1629); in no counter 3219 (the waits on the core 3027, and 3 a run of the measure's)
+  instruction cache: look-ups 1921668, misses 3775 (hits 99.8036%); data cache: memory rows 738528 (402392 loads, 336136 stores), misses 11050 (hits 98.5038%), write-backs 7917, lines taken back from the write-back buffer 0
+  jump LRU: control transfers 116957, probes 16662 (hits 85.7537%), map lines read 16662 (1.0000 a probe); core-fed expansions posted 860; rows that set their successor's pc (a branch, JAL or JALR) 222571
+  the drain: 3407308 cycles, 53239 a window; packets 572696; STAT_STALL_OUTPUT 0; STAT_CYCLES: 23299472
+  the simulator: 23301360 cycles in 1.51 s, 15.44 Mcycles/s
+against gold's files: 64 runs: 64 records of 68 words, 568344 stream entries, 860 posts, the length words, ROWS_RUN, STATUS, ERRORS, the live events, STAT_MISS_I, STAT_MISS_D, STAT_PROBES, the fill port's reads, the cycles adding up; the segment's end: the advice field 0, the record against the next segment's start, 75849 of 77564 cells of the update list: 0 differences
+against the RTL: 64 of 64 runs equal in every figure, 0 figures differ
+PASS cyclone-22 segment 0, compression 7, fill 55,35
+cyclone-22 segment 0, compression 0, the fill port on the simulator's memory system (17.9.14):
+  windows 64; rows 4194304; padding rows 1488485; instructions 1911900 (1.4153 rows an instruction); M rows 211725
+  cycles, START to the rows' end: 19837346; a row 4.7296; a row that is not padding 5.1309, an instruction 7.2615; a row of the windows all padding 4.0001 (1441792 rows)
+  the rows' schedules 17200666 (4.1010 a row); STAT_STALL_FETCH 1391773 (0.3318); STAT_STALL_DATA 710416 (0.1694); STAT_STALL_MAP 531272 (0.1267); in no counter 3219 (the waits on the core 3027, and 3 a run of the measure's)
+  instruction cache: look-ups 1921668, misses 3775 (hits 99.8036%); data cache: memory rows 738528 (402392 loads, 336136 stores), misses 11050 (hits 98.5038%), write-backs 7917, lines taken back from the write-back buffer 0
+  jump LRU: control transfers 116957, probes 16662 (hits 85.7537%), map lines read 16662 (1.0000 a probe); core-fed expansions posted 860; rows that set their successor's pc (a branch, JAL or JALR) 222571
+  the drain: 3407131 cycles, 53236 a window; packets 1282361; STAT_STALL_OUTPUT 0; STAT_CYCLES: 23244413
+  the simulator: 23246301 cycles in 1.50 s, 15.53 Mcycles/s
+against gold's files: 64 runs: 64 records of 68 words, 1278009 stream entries, 860 posts, the length words, ROWS_RUN, STATUS, ERRORS, the live events, STAT_MISS_I, STAT_MISS_D, STAT_PROBES, the fill port's reads, the cycles adding up; the segment's end: the advice field 0, the record against the next segment's start, 75849 of 77564 cells of the update list: 0 differences
+PASS cyclone-22 segment 0, compression 0, fill model

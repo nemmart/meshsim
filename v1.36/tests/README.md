@@ -60,7 +60,11 @@ pending, and why).
   scratchpad and the inject unit, 14, 15; the runner's steps `mem*`), `test_gather` (the gather unit) and `test_mach`'s
   gather case (13 on the whole tile); and of the chip's parts: `test_special_router` (16.1–16.4: the special tile's
   router, the attach ports, the reserved ids, the DMA input, the arbiters), `test_request_tree` (chapter 11: the request
-  unit and the tree, against a beat-by-beat model written from the RTL's READMEs) and `test_ingress_egress` (17.6). v1.3's references for those units (MemTest's logs, EngConf's and MemConf's
+  unit and the tree, against a beat-by-beat model written from the RTL's READMEs), `test_ingress_egress` (17.6: the unit
+  between a core stand, the nets and the far ends of its pins and ports, `ie_far_end.h`: the UART's line bit for bit, the
+  host interface's handshakes, each rule with its cycle) and `test_rtl_stream` (the RTL's `chip_stream_test.rs` and the
+  UART through the master's core, on the chip, at the RTL chip's cycles for the same far ends; the runner's step
+  `rtl-stream`). v1.3's references for those units (MemTest's logs, EngConf's and MemConf's
   fixtures) measured v1.35's FIFOs and queues and are retired or superseded, never regenerated
   (`../PENDING-v1.36.md`, the platform stage, sections 3 and 7).
 
@@ -90,7 +94,8 @@ pending, and why).
 | `freeze/` | the freeze check: its body and the task that runs it |
 
 The `p4_*.sh` and `tracer_teeth.sh` scripts are checks run on the suites (debug-build checks, the logs' line counts,
-that the Tracer's tests fail when the Tracer is broken).
+that the Tracer's tests fail when the Tracer is broken). `ie_teeth.sh` plants slips of the UART and the host interface
+in Ingress/Egress, one at a time, and requires `test_ingress_egress` or `test_rtl_stream` to fail on each.
 
 ## How the fixtures were made
 

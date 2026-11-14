@@ -14,7 +14,10 @@
 //   - ARRIVALS: bit i is set at the end of the cycle in which tile i's BARRIER_ARRIVE reaches Ingress/Egress: the row
 //     wire's bit at u is a pulse in u - 1 (its link is 1 + ARRIVE_LATENCY), so a load presented in u reads it.
 //   - WATCHDOG: a store of N presented in p sets the limit and the count at the end of p; the count decreases at the end
-//     of every later cycle and expires at the end of p + N: EVENTS.watchdog posted, the toast pin set.
+//     of every later cycle and expires at the end of p + N: EVENTS.watchdog posted, the toast pin set. A store or a
+//     RELEASE presented in the cycle the watchdog would expire in wins, and it does not expire (17.6: "nothing sets
+//     it"; ingress_egress_unit.veryl: watchdog_expires = !watchdog_store && !release_store && watchdog_count == 1):
+//     step(p) has run when the store of p is applied, so the store takes that expiry back (unexpire).
 //   - The toast pin: set at the end of a cycle in which the master tile's own error line is 1, or the watchdog expires.
 //
 // THE NETS, through the peripheral's own ports (peripheral.h, OWN PORTS; wired by the chip, chip.cpp):
@@ -73,6 +76,8 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
     int64_t cleared_at = INT64_MIN;    // arrivals seen before it are cleared (a RELEASE)
     uint64_t expect = 0;               // ARRIVE_EXPECT_0-1
     uint64_t wd_count = 0, wd_limit = 0;
+    int64_t wd_expired_at = INT64_MIN; // the cycle of the last expiry, and what it did: a store of that cycle takes it back
+    bool wd_posted = false, wd_toasted = false;
     bool toast = false; int64_t toast_at = -1;   // the toast pin; the cycle at whose end it was set
     uint32_t led = 0;
     uint8_t tx[FIFO] = {}; unsigned tx_head = 0, tx_n = 0;
@@ -120,6 +125,7 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
             const bool high = c.peek(line[0])[0] & 1;
             c.take(line[0]);
             if (high && !toast) { toast = true; toast_at = t - 1; }
+            if (high) wd_toasted = false;                        // the pin is the line's too: no store takes it back
         }
     }
     void end(sim::Ctx& c, int64_t, OwnPorts& o) {
@@ -142,7 +148,7 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
         case 37: expect = (expect & ~0xFFFFFFFFull) | v; return 1;
         case 38: expect = (expect & 0xFFFFFFFFull) | uint64_t(v) << 32; return 1;
         case RELEASE: if (v & 1) release(t); return 1;
-        case WATCHDOG: wd_limit = v; wd_count = v; return 1;
+        case WATCHDOG: unexpire(t); wd_limit = v; wd_count = v; return 1;
         case LED: led = v & 1; return 1;
         case UART_TX:
             if (tx_n >= FIFO) FATAL("Ingress/Egress: UART_TX stored at %lld with the TX FIFO full", (long long)t);
@@ -193,7 +199,11 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
 
     // ---- the edge that ends t ----
     void step(int64_t t) {
-        if (wd_count > 0 && --wd_count == 0) { ev.post(t, EV_WATCHDOG); if (!toast) { toast = true; toast_at = t; } }
+        if (wd_count > 0 && --wd_count == 0) {                 // the expiry, unless a store or a RELEASE of t sets the count
+            wd_expired_at = t; wd_posted = ev.count_of(EV_WATCHDOG) == 0; wd_toasted = !toast;
+            ev.post(t, EV_WATCHDOG);
+            if (!toast) { toast = true; toast_at = t; }
+        }
         if (t >= tx_busy_until && tx_n > 0) {
             const uint8_t b = tx[tx_head]; tx_head = (tx_head + 1) % FIFO; tx_n--;
             if (serial_n < kSerial) serial_out[serial_n] = char(b);
@@ -214,6 +224,7 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
         std::memset(err_line, 0, sizeof err_line);
         for (auto& r : arrived_at) r = INT64_MIN;
         cleared_at = INT64_MIN; expect = 0; wd_count = wd_limit = 0; toast = false; toast_at = -1; led = 0;
+        wd_expired_at = INT64_MIN; wd_posted = wd_toasted = false;
         tx_head = tx_n = 0; divisor = reset_divisor; tx_busy_until = INT64_MIN;
         rx_overrun = framing = false; release_due = false;
         ev.clear_all();
@@ -230,8 +241,17 @@ private:
     // RELEASE's effect at the end of p: the arrivals seen through p are cleared (one whose pulse reached Ingress/Egress
     // in p is first seen by the reads of p + 1, and kept), the watchdog restarts, BARRIER_RELEASE's flip-flop is set.
     void release(int64_t p) {
+        unexpire(p);
         cleared_at = p + 1; releases++; last_release_at = uint64_t(p); release_due = true;
         wd_count = wd_limit;
+    }
+    // A WATCHDOG store or a RELEASE presented in p sets the count at the end of p, so the watchdog does not expire in p
+    // (header): what step(p)'s expiry did is taken back, the event's count it added and the toast pin it set.
+    void unexpire(int64_t p) {
+        if (wd_expired_at != p) return;
+        if (wd_posted) ev.clear(EV_WATCHDOG);
+        if (wd_toasted) { toast = false; toast_at = -1; }
+        wd_expired_at = INT64_MIN;
     }
     void set_live(int64_t t) {
         ev.live(EV_ALL_ARRIVED, all_arrived(t));

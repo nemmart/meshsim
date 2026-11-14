@@ -2,7 +2,8 @@
 
 *Section 17.9 of the machine specification (`spec/machine-spec.md`), which keeps a stub there. Section numbers are
 the machine specification's. 17.9 and 17.9.1–17.9.12 are the hardware, as the RTL (Snarky One) builds it: its
-specification's text, under its numbers. 17.9.13–17.9.18 are what v1.35's 4.21 has beyond that, kept in v1.36's
+specification's text, under its numbers, corrected in the three places where the RTL's sources differ from it
+(`spec/CHANGES-v1.35-to-v1.36.md`, section 9.1). 17.9.13–17.9.18 are what v1.35's 4.21 has beyond that, kept in v1.36's
 terms: the overview, the simulator's model of the memory system, the core's loop, the reasons, the timing and cost,
 and the simulator's checks. v1.35's own text is `spec/history/tracer-v1.35.md`.*
 
@@ -158,6 +159,11 @@ So at a run's end, words 0 and 2–66 are the next window's start, and words 1 a
 `lowest_address` is 0x8000_0000 − `io_size`, a 64-bit address. A `log_k` above 32
 is UB.
 
+**The spare bits are not held.** The state word's [127:112], the stream word's
+[127:125] and the files word's [127:103] are dropped as their words land, and
+output queue 0 reads them as 0, whatever was written. Register 0 reads 0
+(17.9.4), so image word 0's [63:0] is read as 0 likewise.
+
 **Its region**, 0x04 on the tracer tile, is the replayer's map (17.8.9), its
 parts picked by offset bits [22:20], with bit 23 0:
 
@@ -207,8 +213,10 @@ starts a segment.
 - A `START` with no state write since the reset is UB (1.3).
 - With `rows` 0 the run traces no row and writes no code value, even inside an
   expansion: its output is output queue 0 alone (17.9.6).
-- **The rows' end** is the cycle in which the run's last row completes, or, with
-  `rows` 0, the cycle after `START`'s.
+- **The rows' end** is the cycle after the one in which the run's last row
+  completes, or, with `rows` 0, the cycle after `START`'s. `ROWS_RUN` counts
+  each row in the cycle after it completes, and no row starts in the rows'
+  end's cycle.
 
 **The read queue**, part 2, holds the segment's advice: two 64-bit values an
 entry, the low first.
@@ -546,9 +554,11 @@ counted in one stall counter at most, by what the next row waits for.
 
 - **Queue overrun** drops the push, and the Tracer runs on.
 - **Every other error stops the Tracer** where it is: it traces no further row,
-  drains nothing more and posts no event, and `STATUS.busy` stays 1 until the
-  reset. Every error is terminal (6.2), so this decides only what the handler
-  reports.
+  its rows end no more and its run never ends, it posts no event, and
+  `STATUS.busy` stays 1 until the reset. The drain is not stopped: a scan that
+  is running goes on, and so does a transfer of the DMA's in progress, whose
+  packets are sent; only their events are withheld. Every error is terminal
+  (6.2), so this decides only what the handler reports.
   - **No event** from the cycle after the error: no counted event is set,
     `dma_done` among them, and the live events are down. Counts already posted
     stay until consumed, and later errors are still set.
@@ -856,20 +866,22 @@ host does around them. No rule is added. (Not stated by the RTL's specification;
 #### 17.9.17 Timing and cost
 
 *Kept from v1.35's 4.21.9, at the RTL's figures. 17.9.7 is the contract; this subsection gives what was measured,
-and on what. v1.35's own figures are marked so, and are to be measured again on v1.36's simulator. (Not stated by
+and on what. v1.35's own figures are marked so: they are of v1.35's hardware, and v1.36's simulator gives the RTL's. (Not stated by
 the RTL's specification; kept from v1.35.)*
 
 **What v1.36's simulator models.** v1.35's model charged a row its schedule and its waits on the memory system,
 and nothing else. The RTL (Snarky One) has a pipeline, whose costs beyond the schedule are below; 17.9.7 makes the
 first of them the contract's ("a row that sets its successor's pc"), and 17.9.8 says where each is counted. v1.36's
-simulator is to reproduce them. *(Open: item 153, how exactly; item 175.)*
+simulator reproduces them, cycle for cycle: its Tracer is the RTL's `tracer_unit` at the block level, and what it
+takes from the RTL's sources beyond this table is listed in `OPEN-v1.36.md`. *(Items 153 and 175: whether that
+exactness is the requirement is the owner's to confirm.)*
 
 | Path | v1.36: the RTL [meas: RTL] | v1.35's model |
 |---|---|---|
 | a row of class S or L; of class M | 4; 6 (17.9.7) | `tr_row_cycles` 4; `tr_mul_cycles` 6 |
 | a row that sets its successor's pc: a control transfer, a branch taken or not, the program's end | the next row starts 5 cycles after its schedule would have it, every access a hit; in `STAT_STALL_FETCH` | 0 |
 | a run's first instruction, but one the last run left inside an expansion | starts 6 cycles after `START`'s effect | the cycle after `START` |
-| a row under the rd = x0 NOP policy (17.8.5) | + 1 | 0 |
+| a row under the rd = x0 NOP policy (17.8.5) | + 2: the template's first ROM word is read for its `rd0`, then ROM word 1, as on the replayer (17.8.16) | 0 |
 | the successor of a core-fed instruction | + 1 | 0 |
 | an instruction miss | its fills, and about 2 cycles | its fills |
 | a data miss | its fill, and 5 cycles | its fill |
@@ -959,9 +971,9 @@ The simulator's own:
 | 144 | The Tracer's `EVENTS` and `ERRORS` positions: v1.35 kept the replayer's positions, with gaps (accepted, owner, 2026-11-05); v1.36 packs both from bit 0, as the RTL does (item 161, in chapter 26) | 17.9.1 | closed, and reversed in v1.36 (161); for the owner to rule on |
 | 147 | To measure: the caches' sizes, by gold replaying both workloads | 17.9.5 | decided, part open |
 | 148 | The fill port's statuses, to revisit with the memory system's design. v1.36 adds the write's status and `write_back_error` | 17.9.5, 17.9.9 | decided, part deferred |
-| 153 | The Tracer's timing. The RTL's values are in 17.9.7 and 17.9.17; what stays open is how exactly the simulator reproduces the pipeline's costs, and the memory system's latencies | 17.9.7, 17.9.17 | part closed by the RTL; part open |
+| 153 | The Tracer's timing. The RTL's values are in 17.9.7 and 17.9.17, and v1.36's simulator reproduces the RTL's Tracer cycle for cycle (item 175); what stays open is the memory system's latencies | 17.9.7, 17.9.17 | part closed by the RTL; part open |
 | 157 | The statistics counters' attribution: the RTL's, 17.9.8, which the simulator follows | 17.9.8 | closed by the RTL |
-| 174 | The simulator's model of the memory system with a read and a write outstanding together, and its write status | 17.9.14 | open |
-| 175 | Whether the simulator reproduces the RTL's Tracer cycle for cycle, or its rows, counts and stall classes with the table's costs as constants | 17.9.17 | open |
+| 174 | The simulator's model of the memory system with a read and a write outstanding together, and its write status. Decided for the simulator only: its model serves one access at a time, a request taken while another is served starting when that one ends (`OPEN-v1.36.md`); the design's answer comes with the memory system (items 60, 119) | 17.9.14 | open |
+| 175 | Whether the simulator reproduces the RTL's Tracer cycle for cycle, or its rows, counts and stall classes with the table's costs as constants. v1.36's simulator does the first: its rows, counters and cycles equal the RTL's at the block level and on the chip (`OPEN-v1.36.md`) | 17.9.17 | built cycle for cycle; for the owner to confirm |
 | 176 | The `op` codes of `ARMED` and `STREAMS_ARMED`: the tracer tile's firmware's (17.9.10); the RTL's firmware uses 1 and 2 | 17.9.10, 11.5 | open |
 | 177 | The cycle of the rows' end's effects: 17.9.1 and 17.9.6 give the length words, the stream word and `state_ready` "when the rows end"; the RTL writes the stream word 2 cycles after and raises the others the cycle after that | 17.9.6, 17.9.17 | open |

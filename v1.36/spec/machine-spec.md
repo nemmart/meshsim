@@ -22,9 +22,12 @@ v1.35's sections went. v1.35's numbering is not kept; a v1.35 section is always 
 - `spec/history/`: v1.35's documents as they were, each earlier version's guide and the decisions behind it.
   Where a log and this document differ, this document is the authority.
 - `data/tables/`: the replayer's expansion tables (17.8.6), with the opcode table and a manifest.
-- `fw/` and `src/`: the firmware and meshsim, the cycle-level simulator. **They are being brought to v1.36**
-  (`README.md`): until they are, `fw/include/mesh.h`, `fw/REGISTERS.md` and the simulator's sources hold v1.35's
-  names and layouts, and this document is what they are to match.
+- `fw/` and `src/`: the firmware and meshsim, the cycle-level simulator. **The simulator is v1.36's:** it models
+  the RTL's hardware at the register, packet and cycle level, and runs the RTL's firmware images (`fw/rtl/`)
+  unmodified, at the RTL chip's cycle counts. `fw/include/mesh.h` and `fw/REGISTERS.md` are generated from this
+  document's tables. What is left of v1.35 in the tree, meshsim's own firmware and the old suites among it, and
+  every decision the simulator takes from the RTL's sources where this document is silent, are listed in
+  `OPEN-v1.36.md`.
 
 **How it is written.**
 - One fact, one place. Chapters 1 to 19 state the hardware contract only: one chapter per module (2.3), each with
@@ -36,8 +39,8 @@ v1.35's sections went. v1.35's numbering is not kept; a v1.35 section is always 
   *(Deferred)* set aside until the design it belongs to. Chapter 26 lists every open, proposed and deferred item,
   under v1.35's item numbers, which are never reused.
 - **Figures.** A number marked `[meas: RTL]` was measured on the RTL (Snarky One), in simulation, and v1.36's
-  simulator is to reproduce it. One marked `[meas: v1.35]`, or with an earlier version, was measured on that
-  version's simulator and is to be measured again on v1.36's. `[estimate]`, `[derived]` and `[model]` are as they say.
+  simulator reproduces it. One marked `[meas: v1.35]`, or with an earlier version, was measured on that
+  version's simulator, on that version's hardware, and is not measured again on v1.36's (item 164). `[estimate]`, `[derived]` and `[model]` are as they say.
 - **What is contract and what is not.** A value the contract leaves to the implementation (`READ_LATENCY`, the nets'
   latencies) is the RTL's where the simulator needs one: Appendix A and chapter 21 give them. Synthesis results are
   not part of this specification.
@@ -662,11 +665,14 @@ requires only these:
   load issued in cycle *t* with latency *L* returns the state at the end of
   *t* + *L* − 2, its **sample point**, and takes its side effect (an `EVENTS`
   load's consumption, a pop) at the end of *t* + *L* − 1.
-- **Stores.** A store takes the latency of a load from the same place, and
-  takes effect as a load takes its side effect: a store issued in cycle *t*
-  takes effect at the end of *t* + *L* − 1, the end of *t* + 1 in a window and
-  of *t* in a table. The state at the end of a cycle includes what takes effect
-  then, so a load issued after a store sees it.
+- **Stores.** A store takes effect as a load from the same place takes its side
+  effect: a store issued in cycle *t* takes effect at the end of
+  *t* + *L* − 1, the end of *t* + 1 in a window and of *t* in a table, and is
+  answered in *t* + 1 in both. A store that may stall (9, 11.1, 17.6) takes
+  effect at the end of the cycle *c* its unit takes it, *t* + 1 at the
+  earliest, and is answered in *c* + 1. The state at the end of a cycle
+  includes what takes effect then, so a load issued after a store sees it.
+- **An access fault** (5.1) is answered in *t* + 1, a load's or a store's.
 - **Lockstep.** Cores that leave the canonical wait (7.3) at the same `WFI` in
   the same cycle, and run identical code, retire identically, cycle for cycle.
   A phase's synchronised start relies on this.
@@ -2085,8 +2091,8 @@ row, and lists what the simulator sets beside it. Three kinds of value appear:
 - **contract:** the value is the table's, and the simulator has no choice;
 - **the implementation's:** the contract leaves it to the implementation, and the simulator takes the RTL's
   (Snarky One's) value, marked `[meas: RTL]`, which Appendix A also lists;
-- **the simulator's:** a value only the model has. v1.36's simulator is to reproduce the RTL's cycle counts
-  (chapter 21), within what item 163 decides.
+- **the simulator's:** a value only the model has. v1.36's simulator reproduces the RTL's cycle counts
+  (chapter 21; item 163).
 
 **Mapped onto chapter 19.**
 
@@ -2159,7 +2165,7 @@ row, and lists what the simulator sets beside it. Three kinds of value appear:
 | `cc_link_latency` | 1 | none: an attach link is a link, 3 stages (16.1) |
 | `cc_dma_depth` | a 4-deep credit FIFO | none: a peripheral DMA's `ready` is room in the router queue its packet enters (16.4) |
 | `strict_replies` | off | unchanged: the simulator's check of the reply block's convention (22.18; invariant 8), with the block's address from the image |
-| Tracer and replayer stall costs | the models' | chapter 21, `spec/jolt/replayer.md` and `spec/jolt/tracer.md`; how exact, item 163 |
+| Tracer and replayer stall costs | the models' | the RTL's, cycle for cycle: chapter 21, `spec/jolt/replayer.md` and `spec/jolt/tracer.md` (item 163) |
 
 **The global nets.** `ARRIVE_LATENCY`, `RELEASE_LATENCY` and `ERROR_LATENCY` are the chip's, and their physical
 values are *(Open)* (item 8). Nothing in the machine depends on their values but the cycle counts.
@@ -2337,9 +2343,11 @@ an attach link included, in four cycles: three register stages and one for the r
 |---|---|---|---|---|
 | a load from a window | `WINDOW_LOAD_LATENCY` = 2 cycles; it returns the state at the end of *t*, and takes its side effect at the end of *t* + 1 | contract | 6.4 | the same |
 | a load from a table | `TABLE_LOAD_LATENCY` = 1; it returns the state at the end of *t* − 1 | contract | 6.4 | the same |
-| a store to a window | takes effect at the end of *t* + 1 | contract | 6.4 | the end of *t* |
-| a store to a table | takes effect at the end of *t* | contract | 6.4 | the same |
-| a store that stalls | `WRITE_SEND_32`, `_64`, `_128`, `REQUEST_SEND`, and Ingress/Egress's `UART_TX`, `STREAM_SEND` and `STREAM_SEND_LAST`: held until its owner takes it; no other store or load waits | contract | 9, 11.1, 17.6 | the same three, without the host interface's |
+| a store to a window | takes effect at the end of *t* + 1, and is answered in *t* + 1: a store costs the core one cycle, as a DMEM store | contract | 6.4 | the end of *t* |
+| a store to a table | takes effect at the end of *t*, and is answered in *t* + 1 | contract | 6.4 | the same |
+| a store that stalls | `WRITE_SEND_32`, `_64`, `_128`, `REQUEST_SEND`, and Ingress/Egress's `UART_TX`, `STREAM_SEND` and `STREAM_SEND_LAST`: held until its owner takes it, in a cycle *c*, *t* + 1 at the earliest, at whose end it takes effect; answered in *c* + 1; no other store or load waits | contract | 6.4, 9, 11.1, 17.6 | the same three, without the host interface's |
+| an access fault in region 0xFF | answered in *t* + 1, a load's or a store's | contract | 6.4, 5.1 | — |
+| a trap or an `MRET` | the handler's first instruction, or the one at `mepc`, retires 4 cycles after the trap is taken or the `MRET` retires `[meas: RTL]` | the RTL's | the core specification's "The core's cycle costs" | not stated |
 | a DMEM load or store | answered the next cycle; an instruction that uses a load's result right after it waits one cycle | contract | the core specification's Core contract | load-use 0 |
 | a taken branch, or a `JALR` that is not a ready return | the next instruction retires 4 cycles after it (3 more than after one not taken) | contract | the core specification's Core contract | 1 more |
 | a `JAL`, or a ready return | 3 cycles after it retires, or fewer if it waited in execute | contract | the core specification's Core contract | 1 more |
@@ -3507,8 +3515,8 @@ row says how. Chapters 1 to 19 mark an open subject *Open* in place; each is an 
 | 160 | **A peripheral DMA's packets carry the tile's own id as src** (16.4), where item 118 decided src = the id + 8 (owner, 2026-11-05). *(Reversed in v1.36, for the owner to rule on: see `spec/CHANGES-v1.35-to-v1.36.md`)* | 16.4, 17.4 | open: reverses a ruling |
 | 161 | **The Tracer's `EVENTS` and `ERRORS` are packed from bit 0** (17.9.1), where item 144 kept the positions shared with the replayer. *(Reversed in v1.36, for the owner to rule on: see `spec/CHANGES-v1.35-to-v1.36.md`)* | 17.9.1 | open: reverses a ruling |
 | 162 | **The segment's handshakes are requests to the tracer tile** (17.9.10), where v1.35's 4.21.10 staged them by a software delay, with "no 'booted' packets and no request-tree barrier". *(Reversed in v1.36, for the owner to rule on: see `spec/CHANGES-v1.35-to-v1.36.md`)* | 17.9.10, 11.5 | open: reverses a ruling |
-| 163 | How exact the simulator must be: the RTL's core, Tracer and replayer stall costs cycle for cycle, or exact rows and results with cycle counts close | 21, 19.1 | open |
-| 164 | Every `[meas: v1.35]` figure, and every older one, re-measured on v1.36's simulator; the RTL's sort comparison (27) re-run against it | all | open |
+| 163 | How exact the simulator must be: the RTL's core, Tracer and replayer stall costs cycle for cycle, or exact rows and results with cycle counts close. v1.36's simulator is the first: the RTL's firmware images run on it unmodified at the RTL chip's cycle counts, and where the contract is silent it takes the RTL's sources (`OPEN-v1.36.md` lists each such decision, and where a path still differs) | 21, 19.1 | built cycle for cycle; for the owner to confirm |
+| 164 | Every `[meas: v1.35]` figure, and every older one, re-measured on v1.36's simulator. Done for the RTL's own runs, which the simulator reproduces: the sort's four runs (27), the segment and the replay (17.8.16, 17.9.17). Left: the figures of meshsim's own firmware, which is not ported (`OPEN-v1.36.md`) | all | open, part done |
 | 165 | The field accelerator: where it attaches, as a peripheral or at the core's coprocessor port; what the coprocessor port serves; its access to the scratchpad; and, before those, its prime, operations and representation | 2.2, 6.1, 15 | open |
 | 166 | The host interface's meaning: the master tile's boot over LVDS, the beats and TLAST | 6.5, 17.6 | open |
 | 167 | How a silicon memory tile's IMEM and DMEM are filled (`boot_local`) | 6.5 | open |
@@ -3537,7 +3545,7 @@ row says how. Chapters 1 to 19 mark an open subject *Open* in place; each is an 
 
 **The index:** where each item lives; *closed* means settled, its record in the history file or below.
 
-1 here; 2 closed (v1.36); 3 closed (v1.36); 4 closed (v1.36); 5 closed (v1.36); 6 closed (v1.36); 7 here; 8 here; 9 closed; 10 here; 11 closed; 12 closed; 13 here; 14 closed; 15 here; 16 closed; 17 here; 18 here; 19 here; 20 here; 21 here; 22 here; 23 closed; 24 here; 25 closed; 26 closed; 27 here; 28 here; 29 closed; 30 closed; 31 closed; 32 closed; 33 closed; 34 closed; 35 `spec/jolt/replayer.md`; 36 `spec/jolt/replayer.md`; 37 closed; 38 `spec/jolt/replayer.md`; 39 `spec/jolt/replayer.md`; 40 closed; 41 closed; 42 `spec/jolt/replayer.md`; 43 closed; 44 closed; 45 closed; 46 closed; 47 closed; 48 here; 49 closed; 50 closed; 51 closed; 52 closed; 53 closed; 54 closed; 55 closed; 56 `spec/jolt/replayer.md`; 57 `spec/jolt/replayer.md`; 58 closed; 59 `spec/jolt/replayer.md`; 60 here; 61 here; 62 closed (owner, 2026-11-12); 63 closed (v1.36); 64 here; 65 closed; 66 closed; 67 closed (v1.36); 68 closed; 69 closed; 70 closed (owner, 2026-11-12); 71 closed; 72 closed; 73 closed; 74 closed; 75 closed; 76 closed; 77 closed; 78 closed; 79 closed; 80 closed; 81 closed; 82 closed (v1.36); 83 closed (v1.36); 84 closed (v1.36); 85 closed; 86 closed; 87 closed; 88 closed; 89 closed; 90 closed; 91 closed; 92 closed; 93 closed; 94 closed; 95 closed; 96 closed; 97 closed; 98 closed; 99 closed; 100 closed; 101 closed; 102 closed; 103 closed (owner, 2026-11-12); 104 closed; 105 closed; 106 closed; 107 here; 108 closed; 109 closed; 110 closed; 111 closed; 112 closed; 113 `spec/jolt/replayer.md`; 114 closed; 115 `spec/jolt/replayer.md`; 116 here; 117 closed (v1.36); 118 closed (v1.36), its decided half reversed (160); 119 here; 120 closed (v1.36); 121 closed (v1.36); 122 closed (v1.36); 123 `spec/jolt/replayer.md`; 124 here; 125 here; 126 closed (v1.36); 127 closed; 128 here; 129 closed (v1.36); 130 here; 131 closed; 132 closed; 133 closed (v1.36); 134 closed; 135 closed; 136 closed; 137 `spec/jolt/replayer.md`; 138 closed; 139 `spec/jolt/replayer.md`; 140 `spec/jolt/replayer.md`; 141 closed; 142 closed (v1.36); 143 closed; 144 closed, and reversed (161); 145 closed; 146 closed; 147 `spec/jolt/tracer.md`; 148 `spec/jolt/tracer.md`; 149 closed; 150 closed; 151 closed; 152 closed; 153 `spec/jolt/tracer.md`; 154 closed; 155 closed; 156 closed; 157 closed; 158 `spec/jolt/replayer.md`; 159 here; 160 here; 161 here; 162 here; 163 here; 164 here; 165 here; 166 here; 167 here; 168 here; 169 here; 170 here; 171 here; 172 here; 173 here; 174 `spec/jolt/tracer.md`; 175 `spec/jolt/tracer.md`; 176 `spec/jolt/tracer.md`; 177 `spec/jolt/tracer.md`.
+1 here; 2 closed (v1.36); 3 closed (v1.36); 4 closed (v1.36); 5 closed (v1.36); 6 closed (v1.36); 7 here; 8 here; 9 closed; 10 here; 11 closed; 12 closed; 13 here; 14 closed; 15 here; 16 closed; 17 here; 18 here; 19 here; 20 here; 21 here; 22 here; 23 closed; 24 here; 25 closed; 26 closed; 27 here; 28 here; 29 closed; 30 closed; 31 closed; 32 closed; 33 closed; 34 closed; 35 `spec/jolt/replayer.md`; 36 `spec/jolt/replayer.md`; 37 closed; 38 `spec/jolt/replayer.md`; 39 `spec/jolt/replayer.md`; 40 closed; 41 closed; 42 `spec/jolt/replayer.md`; 43 closed; 44 closed; 45 closed; 46 closed; 47 closed; 48 here; 49 closed; 50 closed; 51 closed; 52 closed; 53 closed; 54 closed; 55 closed; 56 `spec/jolt/replayer.md`; 57 `spec/jolt/replayer.md`; 58 closed; 59 `spec/jolt/replayer.md`; 60 here; 61 here; 62 closed (owner, 2026-11-12); 63 closed (v1.36); 64 here; 65 closed; 66 closed; 67 closed (v1.36); 68 closed; 69 closed; 70 closed (owner, 2026-11-12); 71 closed; 72 closed; 73 closed; 74 closed; 75 closed; 76 closed; 77 closed; 78 closed; 79 closed; 80 closed; 81 closed; 82 closed (v1.36); 83 closed (v1.36); 84 closed (v1.36); 85 closed; 86 closed; 87 closed; 88 closed; 89 closed; 90 closed; 91 closed; 92 closed; 93 closed; 94 closed; 95 closed; 96 closed; 97 closed; 98 closed; 99 closed; 100 closed; 101 closed; 102 closed; 103 closed (owner, 2026-11-12); 104 closed; 105 closed; 106 closed; 107 here; 108 closed; 109 closed; 110 closed; 111 closed; 112 closed; 113 `spec/jolt/replayer.md`; 114 closed; 115 `spec/jolt/replayer.md`; 116 here; 117 closed (v1.36); 118 closed (v1.36), its decided half reversed (160); 119 here; 120 closed (v1.36); 121 closed (v1.36); 122 closed (v1.36); 123 closed (v1.36), its record in `spec/jolt/replayer.md`; 124 here; 125 here; 126 closed (v1.36); 127 closed; 128 here; 129 closed (v1.36); 130 here; 131 closed; 132 closed; 133 closed (v1.36); 134 closed; 135 closed; 136 closed; 137 `spec/jolt/replayer.md`; 138 closed; 139 `spec/jolt/replayer.md`; 140 closed (v1.36), its record in `spec/jolt/replayer.md`; 141 closed; 142 closed (v1.36); 143 closed; 144 closed, and reversed (161); 145 closed; 146 closed; 147 `spec/jolt/tracer.md`; 148 `spec/jolt/tracer.md`; 149 closed; 150 closed; 151 closed; 152 closed; 153 `spec/jolt/tracer.md`; 154 closed; 155 closed; 156 closed; 157 closed (v1.36), its record in `spec/jolt/tracer.md`; 158 `spec/jolt/replayer.md`; 159 here; 160 here; 161 here; 162 here; 163 here; 164 here; 165 here; 166 here; 167 here; 168 here; 169 here; 170 here; 171 here; 172 here; 173 here; 174 `spec/jolt/tracer.md`; 175 `spec/jolt/tracer.md`; 176 `spec/jolt/tracer.md`; 177 `spec/jolt/tracer.md`.
 
 **Closed in v1.36,** each by the RTL's hardware, which v1.36 takes:
 - **2,** the bank request-queue depth, and **4,** the bound on bank queueing: there is no bank queue. A write
@@ -3567,17 +3575,27 @@ row says how. Chapters 1 to 19 mark an open subject *Open* in place; each is an 
 - **120,** the tables' address: 0xFFFF_E000 to 0xFFFF_F5FF, in 512-byte windows (5.2).
 - **121,** the core's CSRs and their reset values: `spec/core.md`, CSRs. There is no `mtime`.
 - **122,** the handler's report: a `REPORT` request, `op` 1, its number in word 0's [25:18] (6.5, 11.5).
+- **123,** the replayer's event and error bits: `ERRORS` packed from bit 0, v1.35's bits one lower, the events
+  v1.35's (17.8.1). Its row is in `spec/jolt/replayer.md`.
 - **126,** a request dropped at the root: nothing is recorded (11.2).
 - **129,** `STREAM_SRC_ADDR` stays a 21-bit word address (8.3).
 - **133,** the handler parks in a jump to itself (6.5).
+- **140,** the PEXT method: a contiguous mask keeps the schedule, and a mask of two or more runs takes a cycle a
+  mask bit (17.8.16); the contract stays "as many as the implementation's" (17.8.7). Its row is in
+  `spec/jolt/replayer.md`.
 - **142,** the region-decode check: kept, as the bad packet's first case (4.2).
+- **157,** the Tracer's statistics counters' attribution: the RTL's (17.9.8), which the simulator follows. Its row
+  is in `spec/jolt/tracer.md`.
+
+Item 144 is closed and reversed (161), and item 153 part closed: their rows are in `spec/jolt/tracer.md`.
 
 ## 27. Context: the sort these tiles serve
 
 Not part of the hardware specification; it is here because it explains the gather unit and augmenting. The
 program is in `fw/sort/program/` (the split in `fw/sort/split/`, skew handling in `fw/sort/skew/`), and v1.3's
 measured times are in `v1.3/results/`. Every figure below marked `[meas: …]` or `[model]` for a version before
-v1.36 was made on that version's hardware and simulator, and is to be re-measured on v1.36's (item 164).
+v1.36 was made on that version's hardware and simulator. v1.36's simulator runs the RTL's port of the program
+(`fw/rtl/sort/`), and its figures are the RTL's (below; item 164).
 
 For a 32-bit key and a value of *k* records (*k* = 2 for 128-bit values), the sort has six steps:
 
@@ -3636,7 +3654,7 @@ full-size sort `uniform-k128` (64 tiles × 65,536 records, 128-bit values):
 | v1.2 | 1,360,082 | [meas: v1.2] |
 | v1.25 | 1,229,008 | [meas: v1.25]: 131,074 fewer, all from the even-*k* gathers (13) |
 | v1.35 | 1,229,687 | [meas: v1.35], its simulator at its defaults, the three global nets at 8 cycles (`RUNNING.md`) |
-| v1.36 | to be measured | item 164 |
+| v1.36 | 1,306,907 | [meas: v1.36], the RTL's image and run on v1.36's simulator, from the first step's release to the last step's all arrived: the RTL's figure, below. v1.35's program is not ported, so its own run is not measured again (item 164) |
 
 Since v1.1 the values all-to-all of the 128-bit-value format sends one packet per value instead of two.
 
@@ -3658,19 +3676,20 @@ latencies at 1, on the same input. The sort's sources are the same in v1.25 and 
 - **The core accounts for the gap.** The steps bound by code take longer: the split, 66 barriers round a
   bisection through the read unit, 1.22 to 1.26 times; the exchanges driven a word at a time by the core, 1.3
   times. v1.25's and v1.35's simulators retire an instruction a cycle with no load-use delay; the RTL's core's
-  costs are `spec/core.md`'s, and v1.36's simulator is to take them (19.1; item 163).
+  costs are `spec/core.md`'s, and v1.36's simulator has them (19.1; item 163).
 - **The gathers.** With 128-bit values the two local sorts with their gathers take 2.2 % and 2.5 % longer at
   65,536 records: the gather in 128-bit rows on the scratchpad's fixed read latency, with a write winning its
   bank (13, 14.1, 15). Measured, and not attributed further.
 - **An empty phase** is 35 cycles from release to release, against 43 for v1.25's command at latency 1.
 
-v1.36's simulator is to reproduce the RTL's column (chapter 21), and the comparison is to be re-run against it
-(item 164).
+v1.36's simulator reproduces the RTL's column, step for step, under the RTL's own images
+(`tests/test_rtl_sort.cpp`; chapter 21). The comparison with v1.25's and v1.35's sort is not re-run: their
+program is not ported to v1.36's hardware (item 164).
 
 ## Appendix A. The RTL's implementation
 
 Facts of the RTL (Snarky One) that are not contract: what it holds where chapters 1–19 leave a choice to the
-implementation, and how it builds some parts. They are here because v1.36's simulator is to reproduce the RTL's
+implementation, and how it builds some parts. They are here because v1.36's simulator reproduces the RTL's
 cycle counts (21, item 163), and because a reader of v1.35 will look for them. Another implementation may differ
 in any of them and still meet the contract. Synthesis results are not part of this specification: there is no
 PDK, and the RTL's are on a predictive process with placeholder SRAM macros.

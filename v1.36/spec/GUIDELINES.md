@@ -10,9 +10,15 @@ current answer, not a proof: anyone may reopen one with a reason [owner].*
 - **The spec states what the hardware must do observably, not how.** A mechanism in it (a buffer, an order of
   operations) is a reasonable default; an implementation that is observably the same, or better and reported back,
   is welcome (owner, 2026-11-06).
-- **The spec and meshsim are the high-level design; the RTL owns what is buildable and the exact timing.** The RTL
-  may diverge here and there, hopefully by little. They must agree on results and on behaviour at the architecture's
-  level [owner]. What the RTL work turns up comes back as a delta into the next version (README).
+- **The RTL is the truth about the hardware.** Where the spec and the RTL differ, the RTL wins and the spec is
+  corrected [owner, 2026-11]. v1.36 is that rule applied whole: its platform and core chapters are the RTL's
+  specification, and a difference found later, in the RTL's specification as in ours, is corrected to the RTL's
+  sources and listed in the guide (`spec/CHANGES-v1.35-to-v1.36.md`, section 9).
+- **The spec and meshsim are the high-level design; the RTL owns what is buildable and the exact timing.** A new
+  design is tried here first, and the RTL may then diverge from it here and there, hopefully by little. They must
+  agree on results and on behaviour at the architecture's level [owner]. What the RTL work turns up comes back
+  into the next version (README), by the rule above; where the owner rules against the RTL, the RTL and the spec
+  change together.
 - **Where a decisions log and the spec differ, the spec is the authority** (v1.35's preamble).
 
 ## 2. Who checks what
@@ -94,6 +100,9 @@ current answer, not a proof: anyone may reopen one with a reason [owner].*
   replaces it and comes back (19.1).
 - **Between simulator versions: identical results, cycle counts very close.** A deliberate difference is proposed,
   approved and recorded, and preferred where no reference program reaches it (D30).
+- **Where there is RTL, the simulator follows it.** v1.36's models the RTL's hardware at the register, packet and
+  cycle level, runs the RTL's firmware images unmodified, and gives the RTL chip's results at its cycle counts;
+  its references are the RTL's, not v1.35's simulator's [owner, 2026-11; section 1].
 - **Every measurement names what it was measured on.**
 
 ## 8. Versions
@@ -101,5 +110,6 @@ current answer, not a proof: anyone may reopen one with a reason [owner].*
 - **Each version is a folder; a frozen folder is never edited,** except for an errata file and point releases in
   their own folder (README).
 - **The RTL moves from one frozen version to the next by a guide,** unit by unit, each item marked whether it
-  affects the RTL (the `CHANGES-…-to-…` files).
+  affects the RTL (the `CHANGES-…-to-…` files). v1.36's guide goes the other way: it brings the specification
+  and the simulator to the RTL.
 - **Item and invariant numbers are never reused.** Section numbers were v1.35's until v1.36, which takes the RTL's numbering; `spec/CHANGES-v1.35-to-v1.36.md` maps the old to the new. From v1.36 on, a section that is removed or moved leaves a one-line stub.

@@ -13,3 +13,6 @@ $(B)/suite_tracer: $(B)/tests/suite_tracer.o $(B)/tests/tracer_rig.o $(B)/tests/
 # the suites are run by test_tracer_suites (order-only: built with it, not linked into it)
 $(B)/test_tracer_suites: | $(TRACER_SUITES)
 $(B)/test_tracer_rig: $(B)/tests/tracer_rig.o $(TRACER_LINK) | $(B)/suite_tracer
+# the Tracer at the block level on a real workload's segments (tests/tracer_block_main.cpp), against the RTL's figures
+$(B)/tracer_block: $(B)/tests/tracer_block_main.o $(B)/tests/tracer_block.o $(B)/tests/chain.o $(B)/tests/sha256.o $(TRACER_LINK) $(LIB_OBJ)
+	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)

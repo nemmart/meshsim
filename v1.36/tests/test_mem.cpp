@@ -131,6 +131,8 @@ struct Rig {
         cfg.connect(in.rs.rp_injected, st.rp_injected);
         cfg.connect(in.rs.sram_rd, sr.rd);
         cfg.link(sr.ret, in.rs.ret, RL - 1);
+        // a client waiting for a token sleeps until one is returned, which may not be on its way yet (as in the chip)
+        cfg.missed_wake_after("inj", 1u << 20);
         return cfg.build();
     }
     BigSram& sram() { return m.unit<BigSram>("sram"); }

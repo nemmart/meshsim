@@ -241,6 +241,9 @@ struct TileCore {
     bool periph_pending = false;
     // ---- statistics ----
     uint64_t sends = 0, stall_send = 0, stall_request = 0, reads = 0;
+    // (harness-only): the coreless test machine (tests/mach.h, MachConfig::coreless): the core never executes; the NoC
+    // port's writes still land in its memories. Set by the harness only, before the first cycle.
+    bool coreless = false;
 
     TileCore(sim::Ports& p, const Rv32& initial, unsigned tile_ = 0, unsigned read_port_depth = 64, bool slot_ = false,
              bool receiver_ = false, bus::Straps straps_ = {}, unsigned request_queue_depth = 4)
@@ -463,6 +466,7 @@ struct TileCore {
             else { sq[0][0] = sq[1][0]; sq[0][1] = sq[1][1]; sq[0][2] = sq[1][2]; sq_put[0] = sq_put[1]; sq_n--; }
         }
         if (sq_n && sq_put[0] < 0) { c.put(send, sq[0][0], sq[0][1], sq[0][2]); sq_put[0] = int64_t(t); }
+        if (coreless) return sim::Wake::none();                  // (harness-only)
         Env e{c, *this};
         uint64_t next = rv.step(e, t);
         if ((sq_n || periph_pending) && t + 1 < next) next = t + 1;

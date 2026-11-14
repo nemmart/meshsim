@@ -3,6 +3,7 @@
 
 #include <sys/stat.h>
 
+#include <algorithm>
 #include <cctype>
 #include <cerrno>
 #include <cinttypes>
@@ -10,20 +11,17 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <optional>
 
 #include "base/fatal.h"
 #include "checker.h"
-#include "statefp.h"
-#include "statefp_g1.h"
-#include "statefp_g2.h"
+#include "rtl_images.h"
 #include "units/ag.h"
 #include "units/big_sram.h"
 #include "units/director.h"
 #include "units/gather.h"
 #include "units/inject.h"
-#include "units/periph_slot.h"
-#include "units/replayer.h"
 #include "units/reqbus.h"
 #include "units/router.h"
 #include "units/write_engine.h"
@@ -40,79 +38,21 @@ namespace {
 
 bool exists(const std::string& p) { struct stat st; return ::stat(p.c_str(), &st) == 0; }
 
-// A data file by its path in v1.35 (the tree; nothing here reads sim/ref).
+// A data file by its path in the version's folder.
 std::string data_path(std::initializer_list<const char*> candidates) {
     for (const char* c : candidates) if (exists(c)) return c;
     std::string all;
     for (const char* c : candidates) { all += all.empty() ? "" : ", "; all += c; }
-    FATAL("mach: none of %s found (run from sim/)", all.c_str());
+    FATAL("mach: none of %s found (run from the version's folder)", all.c_str());
 }
 
-bool read_file(const std::string& path, std::string& out) {
-    FILE* f = std::fopen(path.c_str(), "rb");
-    if (!f) return false;
-    char buf[1 << 16];
-    size_t n;
-    out.clear();
-    while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) out.append(buf, n);
-    std::fclose(f);
-    return true;
+// A compute tile's straps with boot_local (MachConfig::boot_local; 7.1, 6.5): the builder's, and that bit on tiles 0-63.
+units::Straps boot_local_straps(unsigned k, const units::G1Config& cfg) {
+    units::Straps s = units::default_straps(k, cfg.periph_present);
+    if (k < units::TILE_COUNT) s.boot_local = true;
+    return s;
 }
 
-std::vector<uint32_t> words_of(const std::string& path) {   // Mach.words: little-endian, zero-padded to a word
-    std::string b;
-    if (!read_file(path, b)) FATAL("mach: cannot read %s", path.c_str());
-    std::vector<uint32_t> w((b.size() + 3) / 4, 0);
-    for (size_t i = 0; i < b.size(); i++) w[i >> 2] |= uint32_t(uint8_t(b[i])) << (8 * (i & 3));
-    return w;
-}
-
-std::vector<uint32_t> bootrom() {
-    std::string rom;
-    const std::string p = data_path({"fw/boot/bootrom.hex"});
-    if (!read_file(p, rom)) FATAL("mach: cannot read %s", p.c_str());
-    std::vector<uint32_t> w;
-    for (size_t at = 0; at < rom.size();) {
-        size_t e = rom.find('\n', at);
-        if (e == std::string::npos) e = rom.size();
-        if (e > at) w.push_back(uint32_t(std::stoul(rom.substr(at, e - at), nullptr, 16)));
-        at = e + 1;
-    }
-    return w;
-}
-
-constexpr uint32_t PMEM_BASE = 0x01000000, CMD_JUMP = 0x4A;
-
-}  // namespace
-
-// ---- MESHSIM_DIGEST (B25): the chips' lines, written in creation order at exit ----
-namespace {
-struct Digests {
-    std::map<int, std::string> done;
-    std::map<int, const Chip*> live;
-    int next = 0;
-    bool hooked = false;
-};
-Digests& digests() { static Digests d; return d; }
-const char* digest_file() { return std::getenv("MESHSIM_DIGEST"); }
-void write_digests() {
-    Digests& d = digests();
-    for (const auto& e : d.live) d.done[e.first] = e.second->digest();
-    d.live.clear();
-    if (FILE* f = std::fopen(digest_file(), "a")) {
-        for (const auto& e : d.done) std::fprintf(f, "chip %d %s\n", e.first, e.second.c_str());
-        std::fclose(f);
-    } else std::fprintf(stderr, "digest: cannot append to %s\n", digest_file());
-    d.done.clear();
-}
-// ref's G2Chip line hook (test_chip's): the register block's line at the end of c
-fp::LineEdge line_edge_of(const void* ctx, unsigned k, uint64_t c) {
-    const fp::G1Tile& g = static_cast<const fp::G1Tile*>(ctx)[k];
-    const units::LineEdge e = units::line_edge(*g.sim, *g.uctl, c);
-    fp::LineEdge le;
-    le.put = e.put; le.ready = e.word & 1; le.level = e.word >> 1 & 1;
-    return le;
-}
 }  // namespace
 
 // ================================================================================================= the configuration
@@ -133,7 +73,7 @@ MachConfig& MachConfig::with_ts_latency(unsigned L) {
     return *this;
 }
 namespace {
-// ref's Config fields by name: an int, a long or a boolean member, or dropped (dropped()).
+// v1.3's Config fields by name: an int, a long or a boolean member, or dropped (dropped()).
 struct Field { const char* name; char kind; size_t off; };   // kind: 'u' unsigned, 'i' int, 'l' int64_t, 'b' bool
 #define F_U(n, m) {n, 'u', offsetof(MachConfig, m)}
 #define F_I(n, m) {n, 'i', offsetof(MachConfig, m)}
@@ -142,21 +82,20 @@ struct Field { const char* name; char kind; size_t off; };   // kind: 'u' unsign
 const Field kFields[] = {
     F_U("linkLatency", link_latency), F_U("queueDepth", queue_depth), F_U("intraTileLatency", intra_tile_latency),
     F_B("skew", skew), F_L("skewSeed", skew_seed), F_U("weInDepth", we_in_depth), F_U("readPortDepth", read_port_depth),
-    F_U("gatherDepth", gather_depth), F_U("cmLatency", cm_latency), F_B("logTrace", log_trace), F_U("refCycle", ref_cycle),
+    F_U("gatherDepth", gather_depth), F_U("cmLatency", cm_latency), F_U("refCycle", ref_cycle),
     F_U("rpLatency", rp_latency), F_U("K", K), F_U("memChunks", mem_chunks), F_U("areaQueueDepth", area_queue_depth),
     F_U("sramReadLatency", sram_read_latency), F_B("writeCombining", write_combining), F_B("fifoCountBeforePop", fifo_count_before_pop),
     F_U("readTokens", read_tokens), F_B("loopbackLast", loopback_last), F_B("loopbackTokens", loopback_tokens),
     F_I("loopbackDepth", loopback_depth), F_U("tsEngineLatency", ts_engine_latency), F_I("agLookahead", ag_lookahead),
-    F_B("testReadClients", test_read_clients), F_U("regLoadLatency", reg_load_latency), F_U("stageDelay", stage_delay),
+    F_B("testReadClients", test_read_clients), F_U("regLoadLatency", reg_load_latency),
     F_B("ccCores", cc_cores), F_B("cc3Tracer", cc3_tracer), F_U("ccDmaDepth", cc_dma_depth), F_U("ccLinkLatency", cc_link_latency),
-    F_U("requestFifoDepth", request_fifo_depth), F_U("reqHopLatency", req_hop_latency), F_I("periphType", periph_type),
-    F_B("realResponder", real_responder), F_B("coreless", coreless), F_U("goLatency", go_latency), F_U("runLatency", run_latency),
+    F_U("requestFifoDepth", request_queue_depth), F_U("reqHopLatency", req_hop_latency), F_I("periphType", periph_type),
+    F_B("realResponder", real_responder), F_B("coreless", coreless), F_U("goLatency", go_latency),
     F_U("readyLatency", ready_latency), F_B("cncGoSettle", cnc_go_settle), F_U("cncReaction", cnc_reaction),
-    F_B("strictReplies", strict_replies), F_B("counterStoreClearsLatch", counter_store_clears_latch),
-    F_B("checkReadPortOverlap", check_read_port_overlap), F_B("checkCommandRead", check_command_read),
+    F_B("checkReadPortOverlap", check_read_port_overlap), F_B("bootLocal", boot_local),   // (bootLocal: v1.36's, not ref's)
     F_B("checkDisjoint", check_disjoint), F_L("shuffleSeed", shuffle_seed), F_U("maxViolationMessages", max_violation_messages),
     F_B("measureS1", measure_s1), F_B("checkErrors", check_errors), F_B("checkUnexpected", check_unexpected),
-    F_B("doneGate", done_gate), F_U("cncRxDepth", cnc_rx_depth),
+    F_U("cncRxDepth", cnc_rx_depth),
     F_U("replayerLogEntries", replayer_log_entries),   // (not ref's Config: its -Dreplayer.logq; the kit's -q)
 };
 #undef F_U
@@ -174,13 +113,21 @@ const std::vector<std::pair<std::string, std::string>>& MachConfig::dropped() {
         {"testPeripheral", "a Java function: MachConfig::test_periph_tile (the replayer on one tile)"},
         {"hops", "the hop table: data/hops.txt"},
         {"errorLatency", "no v1.3 driver sets it other than readyLatency (PeripheralSlotTest only reads it); the C++ machine carries READY and the error line on one line"},
+        // v1.36: parameters of hardware, or of checks of hardware, that the RTL's tile does not have
+        {"runLatency", "v1.36: no RUN state (the barrier: machine-spec 7.3)"},
+        {"stageDelay", "v1.36: v1.35's boot staging is gone (the boot ROM pulls its image with LOAD: 6.5)"},
+        {"counterStoreClearsLatch", "v1.36: the counter events' priority is the RTL's (7.2), not a choice"},
+        {"doneGate", "v1.36: no DONE and no gate (ARRIVE and the arrival gate: 7.3)"},
+        {"strictReplies", "v1.36: no reply block, so no check of it"},
+        {"checkCommandRead", "v1.36: no command block, so no check of its reads"},
+        {"logTrace", "v1.36: no TRACE word (a program reports with a REPORT request: 11.5)"},
     };
     return d;
 }
 
 bool MachConfig::set(const std::string& field, const std::string& value, std::string& err) {
     for (const auto& d : dropped())
-        if (d.first == field) { err = "Config." + field + ": dropped in v1.35 (" + d.second + ")"; return false; }
+        if (d.first == field) { err = "Config." + field + ": dropped (" + d.second + ")"; return false; }
     for (const Field& f : kFields) {
         if (field != f.name) continue;
         char* base = reinterpret_cast<char*>(this) + f.off;
@@ -229,15 +176,10 @@ struct Chip::Impl {
     std::unique_ptr<Cc> cc;
     std::unique_ptr<ReqBus> reqbus;
     bool drain = false;                                   // Cc::drain_reports
-    uint64_t resets = 0;                                  // Chip::reset (B20)
-    int64_t last_reset_at = -1;
-    std::vector<std::string> reset_log;                   // ref's Chip.log's reset lines
     std::vector<std::array<int64_t, 6>> dlog[3];          // ReqBus::delivered_log
     std::vector<std::array<int64_t, 5>> reports, requests;
-    std::vector<std::array<int64_t, 4>> results;
-    std::unique_ptr<Checker> checker;                    // ref's violations (src/check.h; on with SIM_CHECKS)
-    // ref's hardware FIFOs for invariant 1 (Tile.hardwareFifos, then C&C's receive FIFOs), in ref's scan order
-    int digest_seq = -1;                                 // MESHSIM_DIGEST: this chip's place in creation order
+    std::unique_ptr<Checker> checker;                    // the violations (src/check.h; on with SIM_CHECKS)
+    // the hardware FIFOs for invariant 1 (each tile's, then the master side's receive FIFOs), in scan order
     struct Hw { int tile; units::Router* router; unsigned q; const sim::FifoIn* in; bool reported; };
     std::vector<Hw> hw;
     void collect_overflows();
@@ -249,15 +191,6 @@ struct Chip::Impl {
     struct Wait { uint32_t step; std::function<bool()> cond; };   // Cc::wait_until's, in order
     std::vector<Wait> waits;
     void check_waits();
-    // Chip::on_row's hooks: tile, its replayer, the buffer it sinks into, the function
-    struct RowHook { unsigned tile; units::Replayer* r; std::vector<uint64_t> buf; std::function<void(const uint64_t*, int64_t)> fn; };
-    std::vector<RowHook> row_hooks;
-    void drain_rows(int64_t cycle);
-    // PhaseLog's hooks: C&C's GO stores and all-READY, the tiles' READY pulses, seen after each cycle
-    std::unique_ptr<PhaseLog> phases;
-    uint64_t seen_gos = 0;
-    int64_t seen_all_ready = -1, seen_ready[64] = {};
-    void phase_events();
     // Net (the coreless machine fed from the harness): each tile's feed (inject.h's HarnessFeed, harness-only) and the
     // rings' storage (grown between cycles, the feed's pointers refreshed), and the directors' logs (fixed size)
     using E4 = std::array<uint64_t, 4>;
@@ -265,7 +198,6 @@ struct Chip::Impl {
     std::vector<std::vector<E4>> ring_store;            // tile k's ring r (0: ret, 1-3: clients 0-2) at 4k + r
     std::vector<std::vector<E4>> logs;
     std::vector<E4> writer_logs[64], gather_logs[64];     // TileRef::record_writer, record_gather
-    std::vector<std::array<int64_t, 2>> trace_logs[64];   // TileRef::record_trace (H6)
     // the endpoints' harness parts (cnc.h's HarnessSends): C&C 1 (the Java model), C&C 2, C&C 3
     units::HarnessSends sends[3];
     std::vector<std::array<int64_t, 2>> plog;             // C&C's phase log (Cc::phase_log)
@@ -287,9 +219,6 @@ struct Chip::Impl {
 
 Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     Impl& m = *impl_;
-    if (!c.start_skew.empty()) FATAL("mach: a per-tile start_skew is not modelled");
-    // ref's fields no unit of ref reads (runLatency, stageDelay, counterStoreClearsLatch; rpLatency only in kMin) are
-    // inert here as there. Two the C++ machine doesn't model: refused unless at ref's default.
     if (c.error_latency >= 0 && unsigned(c.error_latency) != c.ready_latency)
         FATAL("mach: Config.errorLatency %d: the C++ machine carries READY and the error line on one line (= readyLatency)", c.error_latency);
     if (c.K < c.k_min())                                   // TrafficDirector's constructor (ref: IllegalArgumentException)
@@ -297,14 +226,14 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
               c.K, c.k_min(), c.ts_engine_latency);
     if (c.cc3_tracer && !c.cc_cores) FATAL("mach: cc3_tracer needs cc_cores (ref's Config)");
     m.hops = units::load_hops(data_path({"data/hops.txt"}).c_str());
-    m.rom = bootrom();
+    const rtl_images::BootRom rom = rtl_images::boot_rom();   // the RTL's boot ROM (6.5)
+    m.rom = rom.words;
     m.nunits = c.cc_cores ? 67 : 64;
     m.mem.assign(size_t(m.nunits) * 2 * units::MEM_WORDS, 0);
 
     units::G1Config& g = m.gx.cfg;
     g.timing.reg_load_latency = c.reg_load_latency;
     g.timing.ref_cycle = c.ref_cycle;
-    g.done_gate = c.done_gate;
     g.mem_chunks = c.mem_chunks;
     g.periph_present = c.periph_type != 0 ? 1 : 0;
     g.periph_slot = c.periph_type != 0 || c.cc_cores;     // ref: every tile's slot holds its peripheral 1 (type 4)
@@ -319,15 +248,20 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         g.periph_present = 1; g.periph_slot = true; g.periph_only = c.test_periph_tile;
     }
     g.cc3_tracer = c.cc3_tracer;
-    g.stray_check = sim::check::kOn;
-    g.replayer_log_entries = c.replayer_log_entries;                      // the director's stray check (a checker fact: on with SIM_CHECKS)
+    g.replayer_log_entries = c.replayer_log_entries;
+    g.request_queue_depth = c.request_queue_depth;
     g.K = c.K; g.cm_latency = c.cm_latency;
     g.ts_engine_latency = c.ts_engine_latency;
     g.ag_lookahead = c.ag_lookahead > 0 ? unsigned(c.ag_lookahead) : 0;
     g.area_queue_depth = c.area_queue_depth; g.sram_read_latency = c.sram_read_latency;
     g.read_port_depth = c.read_port_depth;
     g.write_combining = c.write_combining; g.fifo_count_before_pop = c.fifo_count_before_pop;
-    m.gx.bootrom = m.rom.data(); m.gx.bootrom_words = uint32_t(m.rom.size());
+    m.gx.bootrom = m.rom.data(); m.gx.bootrom_words = uint32_t(m.rom.size()); m.gx.bootrom_handler = rom.handler;
+    if (c.boot_local) {
+        if (c.test_periph_tile >= 0 || c.test_peripheral_tile >= 0)
+            FATAL("mach: boot_local with a peripheral on one tile only: the straps are per machine here");
+        m.gx.straps = boot_local_straps;
+    }
     m.gx.mem = m.mem.data(); m.gx.units = m.nunits; m.gx.sram = &m.sram;
     m.gx.we_in_depth = c.we_in_depth; m.gx.gather_depth = c.gather_depth;
 
@@ -355,27 +289,24 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     spec.net = nc; spec.hops = &m.hops; spec.control = units::add_g1; spec.control_ctx = &m.gx;
     spec.domain = c.parts > 1 ? dom : nullptr;
     spec.cc_cores = c.cc_cores; spec.cc3_dma = c.cc3_tracer; spec.host_capacity = c.host_capacity;
-    spec.reqbus.fifo_depth = c.request_fifo_depth; spec.reqbus.hop_latency = c.req_hop_latency;
+    spec.reqbus.fifo_depth = c.request_queue_depth; spec.reqbus.hop_latency = c.req_hop_latency;
     spec.reqbus_host = c.reqbus_host && !c.cc_cores;
     if (c.reqbus_host) {
-        if (c.cc_cores) FATAL("mach: reqbus_host: the machine with C&C's model (C&C 1-3 as cores have their own ports)");
+        if (c.cc_cores) FATAL("mach: reqbus_host: the machine with C&C's model (units 64-66 as cores have their own receive sides)");
         spec.reqbus.credit_latency = 0;                   // D34: exact as ref (one domain)
     }
     for (unsigned q = 0; q < 3; q++) spec.reqbus.queue_depth[q] = c.receive_queue_depth[q];
     if (!c.cc_cores) spec.program = &m.prog;
     units::build_chip(sc, spec);
     m.sim.emplace(sc.build());
-    // The harness's machine (harness-only flags in the units): the coreless core (ref's Config.coreless), ref's Drain
-    // in the GATHER engine's place (realResponder off), and the table stores' republish of a harness poke.
+    // The harness's machine (harness-only flags in the units): the coreless core, the drain in the gather unit's place
+    // (real_responder off), and the table stores' republish of a harness poke.
     for (unsigned k = 0; k < 64; k++) {
         if (c.coreless) m.sim->unit<units::TileCore>(units::tile_unit(k, "core")).coreless = true;
         if (!c.real_responder) m.sim->unit<units::Gather>(units::tile_unit(k, "gather")).drain = true;
         m.sim->unit<units::TableStore>(units::tile_unit(k, "ts")).host_poke = true;
         m.sim->unit<units::HistStore>(units::tile_unit(k, "hist")).host_poke = true;
-        m.sim->unit<units::TileCtl>(units::tile_unit(k, "ctl")).host_on = true;
     }
-    for (unsigned k = 64; k < m.nunits; k++)              // C&C 1-3 as cores: their blocks take the test's writes too
-        m.sim->unit<units::TileCtl>(units::unit_prefix(k) + "ctl").host_on = true;
     m.shifted = {m.sim->type_of(units::tile_unit(0, "ctl")), m.sim->type_of(units::tile_unit(0, "core"))};
     if (!c.cc_cores) m.lines = {m.sim->type_of("row0"), m.sim->type_of("cnc")};
     // ref's quiescent leaves the request bus out (Tile.quiescent, Chip.quiescent: no request port, node or queue)
@@ -384,14 +315,14 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
             if (m.sim->has_unit(u)) m.lines.push_back(m.sim->type_of(u));
     CheckSwitches sw;
     sw.errors = c.check_errors; sw.unexpected = c.check_unexpected; sw.read_port_overlap = c.check_read_port_overlap;
-    sw.command_read = c.check_command_read; sw.strict_replies = c.strict_replies; sw.K = c.K;
+    sw.command_read = false; sw.strict_replies = false;   // v1.35's command and reply blocks: no such facts are recorded
+    sw.K = c.K;
     sw.disjoint = c.check_disjoint;                       // the switch (ref's checkDisjoint)
     m.checker = std::make_unique<Checker>(sim::check::kOn ? c.check_capacity : 0, c.max_violation_messages, sw);
     for (unsigned k = 0; k < m.nunits; k++) {             // the units that record facts under their tile (src/check.h)
         units::TileCtl& b = m.sim->unit<units::TileCtl>(units::unit_prefix(k) + "ctl");
         b.ck_tile = int(k); b.s.ck_tile = int(k);
         m.sim->unit<units::TileCore>(units::unit_prefix(k) + "core").rv.ck_tile = int(k);
-        m.sim->unit<units::TileCore>(units::unit_prefix(k) + "core").rv.ub_fatal_tile = int(k);   // ref's UndefinedBehavior stop
         if (k < 64) m.sim->unit<units::WriteEngine>(units::tile_unit(k, "we")).ck_tile = int(k);
         if (k < 64)                                       // ref's measureS1 (the check builds only)
             if (auto& s1 = m.sim->unit<units::Director>(units::tile_unit(k, "dir")).s1) s1->on = c.measure_s1;
@@ -419,19 +350,12 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         }
     }
     m.has_cnc = !c.cc_cores;
-    if (c.log_trace) for (unsigned k = 0; k < 64; k++) tile(k).record_trace();   // ref's logTrace: every tile's TRACE stores
     if (c.reqbus_host && !c.cc_cores)                     // the receive queues' delivery logs (ReqBus::delivered_log)
         for (unsigned q = 0; q < 3; q++) {
             static const char* kRecv[3] = {"cc1.reqrecv", "cc2.reqrecv", "cc3.reqrecv"};
             m.dlog[q].reserve(c.log_capacity);
             m.sim->unit<units::reqbus::ReqRecv>(kRecv[q]).dlog = &m.dlog[q];
         }
-    if (digest_file() && !c.cc_cores) {                  // MESHSIM_DIGEST (B25)
-        Digests& d = digests();
-        m.digest_seq = d.next++;
-        d.live[m.digest_seq] = this;
-        if (!d.hooked) { d.hooked = true; std::atexit(write_digests); }
-    }
     if (!c.cc_cores) {                                    // ref's CnC.phaseLog
         m.plog.assign(c.phase_log_capacity, {});
         units::Cnc& cn = m.sim->unit<units::Cnc>("cnc");
@@ -450,70 +374,8 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
 }
 
 
-std::string Chip::digest() const { return digest_impl(nullptr); }
-std::vector<std::string> Chip::fingerprint_lines() const { std::vector<std::string> l; digest_impl(&l); return l; }
-void Chip::fingerprint_dump(const std::string& unit, FILE* out) const { digest_impl(nullptr, &unit, out); }
-std::string Chip::digest_impl(std::vector<std::string>* lines_out, const std::string* dump_unit, FILE* dump_out) const {
-    if (cfg_.cc_cores) FATAL("mach: digest(): the machine with C&C's model (C&C 1-3 as cores: statefp_m3's registry, not wired yet)");
-    sim::Sim& m = const_cast<Chip*>(this)->sim();
-    std::vector<fp::G1Tile> g1(64);
-    std::vector<fp::G2Tile> g2(64);
-    for (unsigned k = 0; k < 64; k++) {
-        g1[k] = fp::g1_tile(m, k);
-        g1[k].uinj = &m.unit<units::Injection>(units::tile_unit(k, "inj"));
-        g2[k] = fp::g2_tile(m, k);
-    }
-    fp::G2Chip gc;
-    gc.cnc = &m.unit<units::Cnc>("cnc");
-    for (unsigned r = 0; r < 8; r++) gc.rows[r] = &m.unit<units::RowCollector>("row" + std::to_string(r));
-    gc.ep[0] = &m.unit<units::Endpoint>("ep2"); gc.ep[1] = &m.unit<units::Endpoint>("ep3");
-    gc.ready_latency = cfg_.ready_latency;
-    gc.edge = line_edge_of; gc.edge_ctx = g1.data();
-    units::reqbus::ReqBusUnits rbu;
-    units::reqbus::ReqBusConfig rb;
-    rb.fifo_depth = cfg_.request_fifo_depth; rb.hop_latency = cfg_.req_hop_latency;
-    for (unsigned q = 0; q < 3; q++) rb.queue_depth[q] = cfg_.receive_queue_depth[q];
-    fp::attach_reqbus(m, g1.data(), 64, gc, rbu, rb);
-    if (cfg_.reqbus_host && !cfg_.cc_cores) {             // the bus driven from the test: its receive queues and host
-        static const char* kRecv[units::reqbus::TARGETS] = {"cc1.reqrecv", "cc2.reqrecv", "cc3.reqrecv"};
-        for (unsigned c = 0; c < units::reqbus::TARGETS; c++)
-            if (m.has_unit(kRecv[c])) rbu.recv[c] = &m.unit<units::reqbus::ReqRecv>(kRecv[c]);
-        rbu.host = &m.unit<units::reqbus::ReqHost>("reqbus.host");
-    }
-    fp::FpRegistry reg;
-    std::vector<unsigned> tiles;
-    for (unsigned k = 0; k < 64; k++) { fp::register_g1(reg, g1[k]); fp::register_g2_tile(reg, g2[k]); tiles.push_back(k); }
-    fp::register_g2(reg, gc);
-    std::vector<std::string> lines;
-    reg.point(fp::FpCtx{uint64_t(cycle()), &m}, tiles, true, lines);
-    if (lines_out) *lines_out = lines;
-    if (dump_unit) reg.dump(*dump_unit, fp::FpCtx{uint64_t(cycle()), &m}, dump_out);
-    std::string fp = "?";
-    for (const std::string& l : lines) {                 // "cycle chip hash"
-        const size_t a = l.find(" chip ");
-        if (a != std::string::npos) fp = l.substr(a + 6);
-    }
-    uint64_t mc = 0, wfi = 0, ins = 0;
-    for (unsigned k = 0; k < 64; k++) {
-        int64_t i, w, st;
-        const units::Rv32& r = m.unit<units::TileCore>(units::tile_unit(k, "core")).rv;
-        i = int64_t(r.instructions); w = int64_t(r.cycles_wfi); st = 0;
-        if (r.halt == units::Rv32::RUN && !r.ub && !r.parked && cycle() > int64_t(r.last) && r.in_wfi) w += cycle() - int64_t(r.last);
-        mc += r.mcycle + (r.halt == units::Rv32::RUN && !r.ub && !r.parked && cycle() > int64_t(r.last) ? uint64_t(cycle() - int64_t(r.last)) : 0);
-        wfi += uint64_t(w); ins += uint64_t(i); (void)st;
-    }
-    char b[256];
-    std::snprintf(b, sizeof b, "cycle %lld units 64 mcycle %llu wfi %llu instructions %llu violations %llu fp %s", (long long)cycle(),
-                  (unsigned long long)mc, (unsigned long long)wfi, (unsigned long long)ins, (unsigned long long)violations(), fp.c_str());
-    return b;
-}
 
 Chip::~Chip() {
-    if (impl_ && impl_->digest_seq >= 0) {
-        Digests& d = digests();
-        d.live.erase(impl_->digest_seq);
-        d.done[impl_->digest_seq] = digest();
-    }
     if (impl_ && impl_->checker) impl_->checker->uninstall();
 }
 
@@ -529,7 +391,7 @@ void Chip::Impl::collect_overflows() {
         Hw& h = hw[i];
         if (h.reported) continue;
         uint64_t first = 0;
-        bool flag = false;                                // ref's overflow flag: set since the last reset cleared it
+        bool flag = false;                                // the FIFO has overflowed
         if (h.router) { first = h.router->q[h.q].first_overflow; flag = first != 0; }
         else { sim::Cycle f = sim::kNoCycle; sim->fifo_overflows(*h.in, &f); first = f; flag = f != sim::kNoCycle; }
         if (!flag) continue;
@@ -562,26 +424,6 @@ void Chip::Impl::check_waits() {
     sim->wake("cnc");
 }
 
-// ref's hooks into PhaseLog, in ref's order for a cycle t: a tile's READY pulse of t - 1 (the register block records it
-// at its next step, the end of t - 1 in ref's view), then C&C's all-READY and GO store of t.
-void Chip::Impl::phase_events() {
-    if (!phases || !has_cnc) return;
-    for (unsigned k = 0; k < 64; k++) {
-        const int64_t r = sim->unit<units::TileCtl>(units::tile_unit(k, "ctl")).s.ready_pulse_at;
-        if (r != seen_ready[k]) { seen_ready[k] = r; if (r >= 0) phases->on_ready(k, r); }
-    }
-    phases->after_cycle();
-    const units::Cnc& c = *cnc();
-    if (c.seen >= 0 && c.seen != seen_all_ready) { seen_all_ready = c.seen; phases->on_all_ready(c.seen); }
-    if (c.gos != seen_gos) {
-        if (c.last_all_ready_at > seen_all_ready && c.last_all_ready_at <= c.last_go_at) {   // seen and gone in one cycle
-            seen_all_ready = c.last_all_ready_at;
-            phases->on_all_ready(c.last_all_ready_at);
-        }
-        seen_gos = c.gos;
-        phases->on_go(c.last_go_at, int32_t(c.last_command_word));
-    }
-}
 ReqBus& Chip::reqbus() {
     if (!cfg_.reqbus_host) FATAL("mach: reqbus(): MachConfig::reqbus_host (the request bus driven from the test)");
     if (!impl_->reqbus) impl_->reqbus = std::make_unique<ReqBus>(*this);
@@ -634,10 +476,6 @@ bool ReqBus::head(unsigned target, int64_t t, uint32_t w[4]) const {   // ref's 
     for (unsigned i = 0; i < 4; i++) w[i] = e.w[i];
     return true;
 }
-void ReqBus::on_reset() {
-    static const char* kRecv[3] = {"cc1.reqrecv", "cc2.reqrecv", "cc3.reqrecv"};
-    for (unsigned q = 0; q < 3; q++) if (c_->sim().has_unit(kRecv[q])) popped_[q] = recv_of(*c_, q).received;
-}
 bool ReqBus::pending(unsigned target, int64_t t) const { uint32_t w[4]; return head(target, t, w); }
 uint32_t ReqBus::get(unsigned target, int64_t t, unsigned i) const { uint32_t w[4]; return head(target, t, w) ? w[i & 3] : 0; }
 bool ReqBus::peek_request(unsigned target, int64_t t, uint32_t w[4]) const { return head(target, t, w); }
@@ -688,32 +526,7 @@ std::vector<std::array<int64_t, 6>> ReqBus::delivered_log() const {
 }
 uint64_t ReqBus::delivered() const { return c_->unit<units::reqbus::ReqRoot>("reqbus.root").delivered; }
 
-PhaseLog& Chip::phases() {
-    if (!impl_->phases) {
-        if (!impl_->has_cnc) FATAL("mach: phases(): C&C 1's model only (not with cc_cores)");
-        impl_->phases = std::make_unique<PhaseLog>(*this);
-        impl_->phases->after_cycle();                     // (the read port's counts as they stand now)
-        impl_->seen_gos = unit<units::Cnc>("cnc").gos;
-        for (unsigned k = 0; k < 64; k++) impl_->seen_ready[k] = unit<units::TileCtl>(units::tile_unit(k, "ctl")).s.ready_pulse_at;
-    }
-    return *impl_->phases;
-}
 
-void Chip::Impl::drain_rows(int64_t cycle) {
-    for (RowHook& h : row_hooks) {
-        const uint64_t n = h.r->rows_sunk() - h.r->row_base();
-        for (uint64_t i = 0; i < n; i++) h.fn(h.buf.data() + i * units::Replayer::REC_LONGS, cycle);
-        h.r->drained();
-    }
-}
-void Chip::on_row(unsigned tile, std::function<void(const uint64_t*, int64_t)> fn) {
-    units::PeriphSlot& sl = unit<units::PeriphSlot>(units::tile_unit(tile, "slot"));
-    Impl::RowHook h{tile, &sl.s.replayer(1), std::vector<uint64_t>(size_t(64) * units::Replayer::REC_LONGS), std::move(fn)};
-    impl_->row_hooks.push_back(std::move(h));
-    Impl::RowHook& r = impl_->row_hooks.back();
-    r.r->drained();
-    r.r->set_row_buffer(r.buf.data(), 64);                 // at most one row a cycle leaves (the sink): 64 is plenty
-}
 bool Chip::parked_untouched() const {                      // ref's: each parked tile quiescent, no link into or out of it busy
     if (cfg_.parked.empty()) return true;
     for (int k : cfg_.parked) {
@@ -729,7 +542,7 @@ bool Chip::parked_untouched() const {                      // ref's: each parked
     return true;
 }
 
-void drain_next(Chip& c);   // ref's CnC drain (Cc::drain_reports, below)
+void drain_next(Chip& c);   // Cc::drain_reports' (below)
 void Chip::step() {
     impl_->checker->install();
     impl_->sim->run(1);
@@ -737,13 +550,11 @@ void Chip::step() {
     impl_->checker->process(cycle(), false);
     impl_->run_calls();
     impl_->check_waits();
-    impl_->drain_rows(cycle());
-    impl_->phase_events();
     drain_next(*this);
 }
 void Chip::run(uint64_t n) {
     impl_->sim->wake_all();
-    if (impl_->calls.empty() && impl_->waits.empty() && impl_->row_hooks.empty() && !impl_->phases && !impl_->drain) {
+    if (impl_->calls.empty() && impl_->waits.empty() && !impl_->drain) {
         impl_->checker->install();
         impl_->sim->run(n);
         impl_->collect_overflows();
@@ -784,59 +595,34 @@ bool Chip::quiescent() const {
 std::vector<int> Chip::start_skew() const { return std::vector<int>(impl_->skew, impl_->skew + 64); }
 
 Cc& Chip::cc() {
-    if (!impl_->cc) FATAL("mach: Chip::cc(): C&C 1 is a core (cc_cores): use Mach::cc1_command and phase");
+    if (!impl_->cc) FATAL("mach: Chip::cc(): no model of the master side with cc_cores");
     return *impl_->cc;
 }
 
-bool Chip::all_stopped() const {
-    for (unsigned k = 0; k < 64; k++) if (impl_->sim->unit<units::TileCore>(units::tile_unit(k, "core")).rv.halt == units::Rv32::RUN) return false;
-    return true;
-}
-bool Chip::all_exited() const {
-    for (unsigned k = 0; k < 64; k++) if (impl_->sim->unit<units::TileCore>(units::tile_unit(k, "core")).rv.halt != units::Rv32::HALT_EXIT) return false;
-    return true;
-}
 bool Chip::all_in_wfi() const {
     for (unsigned k = 0; k < 64; k++) if (!impl_->sim->unit<units::TileCore>(units::tile_unit(k, "core")).rv.in_wfi) return false;
     return true;
 }
 
 void Chip::host_load(unsigned c, uint32_t byte_addr, const std::vector<uint32_t>& words) {
+    if (c > 2) FATAL("mach: host_load: unit %u (64-66: cc 0-2)", 64 + c);
     if (!cfg_.cc_cores) FATAL("mach: host_load needs cc_cores");
     const std::string n = "cc" + std::to_string(c + 1) + ".host";
     impl_->sim->unit<units::HostPort>(n).load(byte_addr, words.data(), words.size());
     impl_->sim->wake(n);
 }
-void Chip::host_command(unsigned c, uint32_t word, const std::vector<uint32_t>& args) {
-    if (!cfg_.cc_cores) FATAL("mach: host_command needs cc_cores");
-    const std::string n = "cc" + std::to_string(c + 1) + ".host";
-    impl_->sim->unit<units::HostPort>(n).command(word, args.data(), args.size());
-    impl_->sim->wake(n);
-}
 
-// ---- the checker (checker.cpp): ref's Chip.violations, violationMessages, violationReport, scanOverflows ----
-// The report through the cycle just run: the register blocks' ERRORS and error lines as ref has them at its end (their
-// own facts for it come at their next step: block_at_end now; the duplicates later are harmless, the rule is
-// idempotent), then every fact through it.
+// ---- the checker (checker.cpp) ----
+// Every fact recorded so far, processed. (The tile control units record their ERRORS and error lines for a cycle at their
+// next step: a report made between cycles has them through the cycle before the one just run.)
 void Chip::finalize_checks() const {
     if (!sim::check::kOn) return;
-    Chip& me = const_cast<Chip&>(*this);
-    Checker& ck = *impl_->checker;
-    for (unsigned k = 0; k < 64; k++) {
-        const units::RegBlockState b = me.tile(k).block(false);   // ref's end of the cycle (not the test's bits since)
-        const uint32_t v = b.conditions | b.live_errors();
-        sim::check::Fact f{uint64_t(cycle()), int32_t(k), sim::check::Kind::ERRORS_SET, 0, {v, 0, 0, 0}};
-        ck.add(f);
-        f.kind = sim::check::Kind::ERROR_LINE; f.a[0] = b.error_line;
-        ck.add(f);
-    }
-    ck.process(cycle(), false, true);
+    impl_->checker->process(cycle(), false, true);
 }
 uint64_t Chip::violations() const { finalize_checks(); return impl_->checker->violations(); }
 const std::vector<std::string>& Chip::violation_messages() const { finalize_checks(); return impl_->checker->messages(); }
 void Chip::clear_violation_messages() { finalize_checks(); impl_->checker->clear_messages(); }
 void Chip::set_check_errors(bool on) { finalize_checks(); impl_->checker->switches().errors = on; cfg_.check_errors = on; }
-void Chip::set_strict_replies(bool on) { finalize_checks(); impl_->checker->switches().strict_replies = on; cfg_.strict_replies = on; }
 void Chip::set_max_violation_messages(unsigned n) { finalize_checks(); impl_->checker->set_max_messages(n); cfg_.max_violation_messages = n; }
 void Chip::clear_violations() { finalize_checks(); impl_->checker->clear_count(); impl_->checker->clear_messages(); }
 void Chip::new_phase() {
@@ -853,173 +639,6 @@ std::string Chip::violation_report() {
     for (const std::string& s : violation_messages()) sb += "  " + s + "\n";
     return sb;
 }
-// ---- the reset (B20; ref's Chip.doReset, 6.1), at the end of the cycle just run ----
-// First what ref has done by the end of t and the C++ units do a cycle later (the register block's end of cycle, port
-// B's write of t), then every port emptied (ref's buses flushed), then every unit as ref's resets leave it (Tile.reset's
-// list, the request bus, C&C 1's peripheral, C&C's model), then the checker's error lines, and every unit woken.
-// Memories, the tables and HIST are kept, as ref's. Hard and soft are the same here, as in ref (its log line says which).
-void Chip::reset(bool hard) {
-    if (cfg_.cc_cores) FATAL("mach: reset on the machine with C&C 1-3 as cores: not modelled");
-    sim::Sim& s = sim();
-    const int64_t t = cycle();
-    Impl& m = *impl_;
-    // 1. the end of t as ref has it
-    for (unsigned k = 0; k < m.nunits; k++) {
-        units::TileCtl& b = unit<units::TileCtl>(units::unit_prefix(k) + "ctl");
-        units::RegBlockState x = units::block_at_end(s, b, uint64_t(t), b.host_go_at == t);
-        x.ck_tile = b.s.ck_tile; x.tlog = b.s.tlog;
-        b.s = x;
-        b.reset_status = x.status; b.reset_status_at = t;   // STATUS stays as computed here until the next end of cycle
-        units::TileCore& core = unit<units::TileCore>(units::unit_prefix(k) + "core");
-        sim::PortEntry e[8];
-        const uint32_t n = s.observe(core.port_b, e, 8).n;
-        for (uint32_t i = 0; i < n; i++) {                // port B's write of t (ref's cmem at t)
-            if (e[i].at != uint64_t(t) + 1) continue;
-            namespace lw = units::lw;
-            const uint64_t h = e[i].w[1];
-            const uint32_t a = lw::addr(h);
-            uint32_t* mem = lw::region(a) == lw::R_DMEM ? core.rv.dmem : lw::region(a) == lw::R_PMEM ? core.rv.imem : nullptr;
-            if (!mem) continue;
-            const unsigned sz = lw::size(h);
-            const uint32_t w0 = (lw::offset(a) & (units::MEM_BYTES - 1)) >> 2;
-            const uint64_t v[4] = {e[i].w[0] & 0xFFFFFFFFu, e[i].w[0] >> 32, e[i].w[2] & 0xFFFFFFFFu, e[i].w[2] >> 32};
-            for (unsigned j = 0; j < (1u << sz) && j < 4; j++) mem[(w0 + j) & (units::MEM_WORDS - 1)] = uint32_t(v[j]);
-        }
-    }
-    // 2. every bus flushed
-    s.flush_ports();
-    // 3. every unit (ref's Tile.reset: ag, gather, read port, srq, writer, router, sram, ts, hist, slot, req, cmem, ctl, core)
-    for (unsigned k = 0; k < 64; k++) {
-        TileRef p = tile(k);
-        units::AddrGen& ag = p.unit<units::AddrGen>("ag");
-        ag.starts_seen = p.unit<units::TileCtl>("ctl").s.dma_starts;   // pStart = false
-        if (ag.running) {
-            ag.running = false; ag.lead_in = false; ag.finished_issuing = false;
-            ag.stream_discard += ag.sq_out; ag.group_discard += ag.cq_out;
-            ag.sq_buf = ag.sq_head = ag.sq_out = 0; ag.cq_buf = ag.cq_head = ag.cq_out = 0;
-        }
-        ag.refused_now = false; ag.put_this_cycle = false;
-        units::Gather& ga = p.unit<units::Gather>("gather");
-        ga.left = 0;
-        ga.ovf_seen = s.fifo_overflows(ga.in, nullptr);
-        units::Injection& in = p.unit<units::Injection>("inj");
-        units::InjReadSide& rs = in.rs;
-        rs.ord_n[0] = rs.ord_n[1] = 0; rs.ord_head[0] = rs.ord_head[1] = 0; rs.rp_n = 0;
-        rs.free_head = 0; rs.free_n = uint8_t(rs.cap);
-        for (unsigned i = 0; i < rs.cap; i++) { rs.free_q[i] = uint8_t(i); rs.held_slot[i] = 0; }
-        rs.in_flight[0] = rs.in_flight[1] = rs.in_flight[2] = 0;
-        rs.cur_v = rs.nxt_v = false;
-        in.tok.reads = 0; in.tok.loop_held = 0;
-        units::TileCore& core = p.unit<units::TileCore>("core");
-        core.rp_stored = rs.rp_injected_n;                // ReadPort.haltReset: stores = injected = accepted
-        p.unit<units::Director>("dir").rp_accepted = rs.rp_injected_n;
-        core.host_rd_n = 0; core.host_rd_head = 0;
-        units::WriteEngine& we = p.unit<units::WriteEngine>("we");
-        we.head = 0; we.count = 0; we.aw_head = 0; we.aw_n = 0;
-        we.ovf_seen = s.fifo_overflows(we.in, nullptr);   // ref's evPrev copied from the counts: no event for what's past
-        for (auto& x : we.st_have) x = 0;
-        units::Router& r = p.unit<units::Router>("router");
-        for (auto& x : r.rr) x = 0;
-        r.loopback_last = true;
-        for (auto& f : r.q) {
-            // ref's WordFIFO.flush: a put of t is not yet committed and is dropped, so an overflow of t is never counted;
-            // the overflow flag and cycle are cleared, the count kept
-            if (f.put_at == uint64_t(t) && !f.put_kept) f.overflows--;
-            f.first_overflow = 0;
-            f.head = 0; f.count = 0; f.put_at = 0; f.put_kept = 0;
-        }
-        r.occ = 0;
-        r.ovf_due = 0;                                    // the overflows of t, counted at t + 1: dropped with their puts
-        units::BigSram& m2 = p.unit<units::BigSram>("sram");
-        for (unsigned a = 0; a < units::BigSram::AREAS; a++) { m2.head[a] = 0; m2.count[a] = 0; }
-        m2.busy = 0;
-        units::TableStore& ts = p.unit<units::TableStore>("ts");
-        ts.pipe.valid = false;
-        for (units::ReqFifo* f : {&ts.q_stream, &ts.q_group, &ts.q_we}) { f->n = 0; f->head = 0; f->pend = false; }
-        units::HistStore& hs = p.unit<units::HistStore>("hist");
-        hs.pipe.valid = false; hs.q.n = 0; hs.q.head = 0; hs.q.pend = false;
-        if (s.has_unit(units::tile_unit(k, "slot"))) p.unit<units::PeriphSlot>("slot").s.reset(t);
-        const std::string leaf = "t" + std::to_string(k) + ".reqleaf";
-        if (s.has_unit(leaf)) {
-            units::reqbus::ReqLeaf& l = unit<units::reqbus::ReqLeaf>(leaf);
-            l.head = 0; l.n = 0; l.beats_sent = 0; l.freed_on = false; l.freed_at = INT64_MIN;
-            l.fwd_known = l.sent_total;
-        }
-        core.req_set_w[0] = core.req_set_w[1] = core.req_set_w[2] = 0;
-        core.track.slot0_unread = false;
-        // TileControl.reset
-        units::TileCtl& b = p.unit<units::TileCtl>("ctl");
-        units::RegBlockState& x = b.s;
-        x.done = x.landed = x.gate = false; x.events = 0; x.q_all = false;
-        for (auto& q : x.q_one) q = false;
-        x.cond_all_prev = true;
-        for (auto& q : x.cond_one_prev) q = true;
-        x.ready_level = false; x.rd_done_prev = false; x.request_busy_prev = false;
-        x.mask = units::EVENTS_MASK_RESET; x.required = 0; x.conditions = 0;
-        x.router_hdr = x.router_addr = x.dma_config = x.record_base = x.rd_setup = 0;
-        x.set_w[0] = x.set_w[1] = x.set_w[2] = 0; x.req_n = 0; x.sim_exit_at = 0;
-        for (auto& rem : x.remaining) rem = 0;            // dir.resetCounters
-        x.dma_pulse = false; x.ready_pulse = false; x.error_line = false;
-        b.error_out = false; b.ck_errors = 0; b.ck_line = false; b.host_go_at = -1;
-        units::Director& d = p.unit<units::Director>("dir");
-        d.line_n = 0; d.overlay_kinds = 0;
-        // Controller.reset
-        units::Rv32& v = core.rv;
-        for (auto& reg : v.x) reg = 0;
-        v.pc = units::BOOTROM_BASE; v.halt = units::Rv32::RUN; v.in_wfi = false; v.stall = 0; v.pending_t = units::Rv32::kNever;
-        v.mstatus = v.mie = v.mtvec = v.mscratch = v.mepc = v.mcause = v.mtval = 0; v.mcycle = 0;
-        v.in_handler = false; v.parked = false; v.ub = false; v.trap_cause = -1; v.trap_at = -1; v.first_image_at = -1;
-        v.load_wait_t = units::Rv32::kNever; v.stop = units::Stop::running; v.stop_cycle = 0; v.last = uint64_t(t);
-    }
-    // the request bus (RequestBus.reset)
-    if (s.has_unit("reqbus.root")) {
-        auto reset_node = [&](units::reqbus::ReqNode& n, bool root) {
-            for (auto& bf : n.buf) { bf.n = 0; bf.head = 0; }
-            n.cur = -1; n.rr = root ? units::reqbus::ROOT_INPUTS - 1 : 7; n.dropping = false;
-            if (root) for (int q = 0; q < units::reqbus::TARGETS; q++) n.credits[q] = n.queue_depth[q];
-            n.out_fwd_known = n.out_sent;
-        };
-        auto& root = unit<units::reqbus::ReqRoot>("reqbus.root");
-        reset_node(root, true);
-        for (unsigned rw = 0; rw < 8; rw++) {
-            auto& row = unit<units::reqbus::ReqNode>("reqbus.row" + std::to_string(rw));
-            reset_node(row, false);
-            for (unsigned c = 0; c < 8; c++) {                // the inputs' counts: everything sent is forwarded
-                const std::string leaf = "t" + std::to_string(8 * rw + c) + ".reqleaf";
-                if (s.has_unit(leaf)) row.buf[c].arrived_total = row.buf[c].fwd_total = unit<units::reqbus::ReqLeaf>(leaf).sent_total;
-            }
-            root.buf[rw].arrived_total = root.buf[rw].fwd_total = row.out_sent;
-        }
-        for (unsigned c = 0; c < 3; c++) root.buf[8 + c].fwd_total = root.buf[8 + c].arrived_total;
-        static const char* kRecv[3] = {"cc1.reqrecv", "cc2.reqrecv", "cc3.reqrecv"};
-        for (unsigned q = 0; q < 3; q++)
-            if (s.has_unit(kRecv[q])) {
-                auto& rv = unit<units::reqbus::ReqRecv>(kRecv[q]); rv.qn = 0; rv.qh = 0;
-                for (auto& x : rv.host_extra) x = units::reqbus::HostExtra{};   // the test's further pops: gone
-            }
-        for (auto& tq : root.host_extra) for (auto& x : tq) x = units::reqbus::HostExtra{};
-        if (m.reqbus) m.reqbus->on_reset();
-        if (s.has_unit("reqbus.host")) {
-            auto& h = unit<units::reqbus::ReqHost>("reqbus.host");
-            for (unsigned q = 0; q < 3; q++) { h.send[q].on = false; h.pop_at[q] = -1; }
-        }
-    }
-    // C&C's model (CnC.resetModel): its receive FIFO and its error bit
-    units::Cnc& cn = unit<units::Cnc>("cnc");
-    cn.rx_count = 0; cn.rx_head = 0; cn.err_line = 0; cn.err_line_seen = false; cn.error_bit = false; cn.error_set_at = -1;
-    cn.reply_n = 0; cn.reply_h = 0; cn.pending_retry = 0;
-    // C&C 1's peripheral (Cnc1Peripheral.reset; its READY side lives in the model here): READY_EXPECT 0, no READY seen
-    cn.expect = 0; cn.cleared_at = INT64_MIN;
-    cn.toast = false; cn.toast_at = -1;
-    for (auto& r : cn.ready_at) r = INT64_MIN;
-    // 4. the checker (ref's errSeen), the log, a wake
-    m.checker->on_reset();
-    m.reset_log.push_back("cycle " + std::to_string(t) + ": reset (" + (hard ? "hard" : "soft") + "): every unit to the boot ROM");
-    m.resets++; m.last_reset_at = t;
-    s.wake_all();
-}
-uint64_t Chip::resets() const { return impl_->resets; }
-int64_t Chip::last_reset_at() const { return impl_->last_reset_at; }
 // ref's Chip.resetStats (Tile.resetStats, the units' own): statistics only, never state the machine runs on
 void Chip::reset_stats() {
     for (unsigned k = 0; k < 64; k++) {
@@ -1053,16 +672,16 @@ void TileRef::sram_poke(uint32_t chunk, uint32_t v) { c_->unit<units::BigSram>(u
 uint64_t TileRef::sram_peek64(uint32_t chunk) const { return c_->unit<units::BigSram>(un(k_, "sram")).peek64(chunk); }
 void TileRef::sram_poke64(uint32_t chunk, uint64_t v) { c_->unit<units::BigSram>(un(k_, "sram")).poke64(chunk, v); c_->touched(un(k_, "sram")); }
 
-// The controller's memories (Controller.peekLocal / pokeLocal): region 0x00 data, 0x01 program, byte addresses.
+// The core's memories: region 0x00 DMEM, 0x01 IMEM, byte addresses.
 namespace {
 uint32_t* local(Chip::Impl& m, unsigned k, uint32_t a) {
     const uint32_t region = a >> 24, off = (a & 0xFFFFFF) >> 2;
     if ((region != 0 && region != 1) || off >= units::MEM_WORDS || (a & 3))
-        FATAL("mach: tile %u: 0x%08x is not a word of the controller's program or data memory", k, a);
+        FATAL("mach: tile %u: 0x%08x is not a word of the core's IMEM or DMEM", k, a);
     return (region == 1 ? m.imem(k) : m.dmem(k)) + off;
 }
 }  // namespace
-// A word of the controller's memory as ref has it at the end of the cycle just run: port B's write of that cycle
+// A word of the core's memory as it is at the end of the cycle just run: the NoC port's write of that cycle
 // reaches the C++ core at its next step (Link(cm_latency + 1)), so it is applied here over what the memory holds.
 uint32_t TileRef::peek_local(uint32_t a) const {
     uint32_t v = *local(c_->impl(), k_, a);
@@ -1090,41 +709,157 @@ uint32_t TileRef::dmem(uint32_t w) const {
 uint32_t TileRef::pc() const { return c_->unit<units::TileCore>(un(k_, "core")).rv.pc; }
 uint32_t TileRef::x(unsigned r) const { return c_->unit<units::TileCore>(un(k_, "core")).rv.x[r & 31]; }
 bool TileRef::in_wfi() const { return c_->unit<units::TileCore>(un(k_, "core")).rv.in_wfi; }
-int TileRef::halt() const { return c_->unit<units::TileCore>(un(k_, "core")).rv.halt; }
-int64_t TileRef::exit_value() const { return int32_t(block().sim_exit_value); }
-std::string TileRef::halt_report() const {
-    static const char* const kName[] = {"running", "illegal instruction", "ecall", "ebreak", "bus error", "SIM_EXIT",
-                                        "fetch outside program memory and the boot ROM", "misaligned jump target",
-                                        "a trap inside the handler"};
-    const units::Rv32& r = c_->unit<units::TileCore>(un(k_, "core")).rv;
-    char b[160];
-    std::snprintf(b, sizeof b, "tile %u: %s at pc=0x%x", k_, r.halt >= 0 && r.halt <= 8 ? kName[r.halt] : "?", r.pc);
-    return b;   // ref's report adds the halting instruction (and a bus error's address): not kept by the C++ core yet
-}
 
-// ---- the send port's holding register from a test (ref's Tile.sendHold) ----
-void TileRef::send_put(int64_t t, uint64_t lo, uint64_t hdr, uint64_t hi) {
+uint64_t TileRef::send_refusals() const { return c_->sim().hold_refusals(unit<units::Injection>("inj").send); }
+
+// ---- the write unit's holding register from a test ----
+void TileRef::send_put(uint64_t lo, uint64_t hdr, uint64_t hi) {
     units::TileCore& core = unit<units::TileCore>("core");
-    if (t == c_->cycle()) {                                 // as of the cycle just run
-        const sim::Word w[3] = {lo, hdr, hi};
-        c_->sim().put_late(un(k_, "core"), core.send, w, 3);
-        return;
-    }
-    if (t != c_->cycle() + 1) FATAL("mach: tile %u: a send-hold put at cycle %lld (the cycle just run or the next)", k_, (long long)t);
-    if (core.host_send) FATAL("mach: tile %u: a second send-hold put pending", k_);
-    core.host_send = true; core.host_send_t = uint64_t(t);
-    core.host_send_w[0] = lo; core.host_send_w[1] = hdr; core.host_send_w[2] = hi;
-    c_->touched(un(k_, "core"));
+    if (!core.coreless) FATAL("mach: tile %u: send_put: the coreless machine only (a running core's write unit owns the port)", k_);
+    const sim::Word w[3] = {lo, hdr, hi};
+    c_->sim().put_late(un(k_, "core"), core.send, w, 3);
 }
-bool TileRef::send_empty(int64_t t) const {               // WordHold.isEmpty(t): nothing in it, nothing put for t
-    if (t != c_->cycle() + 1) FATAL("mach: tile %u: send_empty(%lld): the next cycle only", k_, (long long)t);
-    const units::TileCore& core = unit<units::TileCore>("core");
-    if (core.host_send) return false;
+bool TileRef::send_empty() const {                         // nothing in the register, nothing put for the next cycle
     sim::PortEntry e[1];
     const sim::PortView v = c_->sim().observe(unit<units::Injection>("inj").send, e, 1);
     return !v.valid && !v.put && v.n == 0;
 }
-uint64_t TileRef::send_refusals() const { return c_->sim().hold_refusals(unit<units::Injection>("inj").send); }
+
+// ---- the tables (back doors) ----
+namespace {
+uint32_t table_read(const units::TableMems& m, uint32_t table, uint32_t i) {
+    switch (table) {
+    case units::TBL_STREAM_SRC: return m.stream_src[i & 255];
+    case units::TBL_STREAM_DEST: return m.stream_dest[i & 255];
+    case units::TBL_STREAM_HDR: return m.stream_count[i & 255];
+    case units::TBL_GROUP: return m.group[i & 127];
+    case units::TBL_PTR: return m.ptr[i & 255];
+    default: FATAL("mach: table %u (units::TBL_STREAM_SRC, TBL_STREAM_DEST, TBL_STREAM_HDR, TBL_GROUP, TBL_PTR; HIST: hist_peek)", table);
+    }
+}
+}  // namespace
+void TileRef::table_poke(uint32_t table, uint32_t i, uint32_t v) {
+    if (table > units::TBL_PTR) FATAL("mach: table_poke: table %u (HIST: hist_poke)", table);
+    unit<units::TableStore>("ts").poke_host(table, i, v & units::table_mask(table, i));
+    c_->touched(un(k_, "ts"));
+}
+// A table store of the cycle just run (the core's, on `window`, applied by the table store at its next step) is in the
+// table at the end of that cycle, unless PTR's write-back took the port then (12.5: then it is lost).
+uint32_t TileRef::table_peek(uint32_t table, uint32_t i) const {
+    const units::TableStore& ts = unit<units::TableStore>("ts");
+    uint32_t v = table_read(ts.m, table, i);
+    sim::PortEntry e[2];
+    const uint32_t n = c_->sim().observe(ts.window, e, 2).n;
+    const uint32_t mask = table == units::TBL_GROUP ? 127 : 255;
+    for (uint32_t k = 0; k < n; k++)
+        if (e[k].at == uint64_t(c_->cycle()) + 1 && uint32_t(e[k].w[0] >> 32) == table && (uint32_t(e[k].w[0]) & mask) == (i & mask) &&
+            !(table == units::TBL_PTR && ts.pipe.last_wb == uint64_t(c_->cycle())))
+            v = uint32_t(e[k].w[1]);
+    return v;
+}
+void TileRef::hist_poke(uint32_t i, uint32_t v) {
+    unit<units::HistStore>("hist").poke_host(i, v & units::table_mask(units::TBL_HIST, i));
+    c_->touched(un(k_, "hist"));
+}
+uint32_t TileRef::hist_peek(uint32_t i) const {           // (with the store of the cycle just run: table_peek's rule)
+    const units::HistStore& h = unit<units::HistStore>("hist");
+    uint32_t v = h.m.hist[i & 255];
+    sim::PortEntry e[2];
+    const uint32_t n = c_->sim().observe(h.window, e, 2).n;
+    for (uint32_t k = 0; k < n; k++)
+        if (e[k].at == uint64_t(c_->cycle()) + 1 && (uint32_t(e[k].w[0]) & 255) == (i & 255) && h.pipe.last_wb != uint64_t(c_->cycle()))
+            v = uint32_t(e[k].w[1]);
+    return v;
+}
+void TileRef::set_ptr(unsigned i, uint32_t word) { table_poke(units::TBL_PTR, i, word); }
+uint32_t TileRef::ptr(unsigned i) const { return table_peek(units::TBL_PTR, i); }
+void TileRef::set_stream(unsigned i, uint32_t src, uint32_t dest, uint32_t hdr) {
+    table_poke(units::TBL_STREAM_SRC, i, src); table_poke(units::TBL_STREAM_DEST, i, dest); table_poke(units::TBL_STREAM_HDR, i, hdr);
+}
+void TileRef::set_group(unsigned g, uint32_t w0, uint32_t w1) { table_poke(units::TBL_GROUP, 2 * g, w0); table_poke(units::TBL_GROUP, 2 * g + 1, w1); }
+
+// ---- the units' registers (back doors): the tile control unit's state, published at its next step ----
+const units::RegBlockState& TileRef::block() const { return unit<units::TileCtl>("ctl").s; }
+void TileRef::set_dma_config(uint32_t v) {
+    unit<units::TileCtl>("ctl").s.dma_config = v & units::DMA_CONFIG_BITS;
+    c_->touched(un(k_, "ctl"));
+}
+void TileRef::set_receive_config(uint32_t v) {
+    const uint32_t bd = units::rc_bucket_digit(v), hd = units::rc_hist_digit(v);
+    if (bd > 4 || hd > 4)                                   // 12.5: digits 5-7 are reserved
+        FATAL("mach: tile %u, cycle %lld: RECEIVE_CONFIG with a reserved digit (bucket %u, histogram %u; 5-7 are reserved: "
+              "machine-spec 12.5)", k_, (long long)c_->cycle(), bd, hd);
+    unit<units::TileCtl>("ctl").s.receive_config = v & units::RECEIVE_CONFIG_BITS;
+    c_->touched(un(k_, "ctl"));
+}
+void TileRef::set_gather_config(uint32_t v) {
+    unit<units::TileCtl>("ctl").s.gather_config = v & units::GATHER_CONFIG_BITS;
+    c_->touched(un(k_, "ctl"));
+}
+void TileRef::dma_start() {
+    if (unit<units::AddrGen>("ag").running)
+        FATAL("mach: tile %u, cycle %lld: dma_start while a transfer is in progress: UB (8.2)", k_, (long long)c_->cycle());
+    units::RegBlockState& s = unit<units::TileCtl>("ctl").s;
+    s.dma_starts++;
+    s.events &= ~(1u << units::EV_DMA_DONE);
+    c_->touched(un(k_, "ctl"));
+}
+// COUNTER_n as at the end of the cycle just run: the unit's count with what it applies at its next step, for that
+// cycle's edge, counted in (12.2: next = count + N - decrement): the decrement the delay line delivers then, and a
+// core's store to the counter.
+namespace {
+uint32_t counter_at_end(Chip& c, const units::TileCtl& b, unsigned ctr) {
+    const uint64_t next = uint64_t(c.cycle()) + 1;
+    sim::PortEntry e[8];
+    uint32_t n = 0;
+    bool dec = false;
+    uint32_t k = c.sim().observe(b.kline, e, 8).n;
+    for (uint32_t i = 0; i < k; i++) if (e[i].at == next && uint32_t(e[i].w[0]) == ctr) dec = true;
+    k = c.sim().observe(b.bus, e, 8).n;
+    for (uint32_t i = 0; i < k; i++)
+        if (e[i].at == next && uint32_t(e[i].w[0] >> 32) == units::BUS_STORE && uint32_t(e[i].w[0]) == units::COUNTER_1 + ctr - 1)
+            n = uint32_t(e[i].w[1]) & units::COUNTER_MASK;
+    const uint32_t count = b.s.remaining[ctr];
+    return (count + n - (dec && (count || n) ? 1 : 0)) & units::COUNTER_MASK;
+}
+}  // namespace
+uint32_t TileRef::remaining(unsigned ctr) const {
+    if (ctr < 1 || ctr > 7) FATAL("mach: tile %u: counter %u (1-7)", k_, ctr);
+    return counter_at_end(*c_, unit<units::TileCtl>("ctl"), ctr);
+}
+void TileRef::set_remaining(unsigned ctr, uint32_t v) {
+    if (ctr < 1 || ctr > 7) FATAL("mach: tile %u: counter %u (1-7)", k_, ctr);
+    unit<units::TileCtl>("ctl").s.remaining[ctr] = v & units::COUNTER_MASK;
+    c_->touched(un(k_, "ctl"));
+}
+void TileRef::set_errors(uint32_t bits) {
+    if (bits & ~((1u << units::ERR_PERIPH_1) - 1)) FATAL("mach: tile %u: set_errors(0x%x): the sticky bits [9:0] (a peripheral's are live)", k_, bits);
+    unit<units::TileCtl>("ctl").s.errors |= bits;
+    c_->touched(un(k_, "ctl"));
+}
+void TileRef::set_events(uint32_t bits) {
+    if (bits & (units::EVENTS_LIVE | ~uint32_t(units::EVENTS_VALID))) FATAL("mach: tile %u: set_events(0x%x): the counted events (the others are live levels)", k_, bits);
+    unit<units::TileCtl>("ctl").s.events |= bits;
+    c_->touched(un(k_, "ctl"));
+}
+
+// ---- the request unit from a test ----
+void TileRef::req_set_w(unsigned i, uint32_t v) {
+    if (i > 2) FATAL("mach: req_set_w(%u): W0-W2", i);
+    unit<units::TileCore>("core").req_out_w[i] = v;
+}
+uint32_t TileRef::req_w(unsigned i) const { return unit<units::TileCore>("core").req_out_w[i % 3]; }
+
+// ---- the read unit ----
+bool TileRef::rp_idle() const {                             // a return injected in a cycle frees its entry in the next
+    const units::TileCore& core = unit<units::TileCore>("core");
+    const units::InjReadSide& rs = unit<units::Injection>("inj").rs;
+    const uint64_t freed = rs.rp_injected_n - (rs.rp_inj_t == uint64_t(c_->cycle()) ? rs.rp_inj_now : 0);
+    return core.rp_stored == freed;
+}
+bool TileRef::rp_all_accepted() const {
+    return unit<units::TileCore>("core").rp_stored == unit<units::Director>("dir").rp_accepted;
+}
 void TileRef::record_writer() {
     Chip::Impl& m = c_->impl();
     auto& v = m.writer_logs[k_];
@@ -1136,23 +871,6 @@ std::vector<std::array<uint64_t, 4>> TileRef::writer_log() const {
     const units::WriteEngine& we = unit<units::WriteEngine>("we");
     const auto& v = c_->impl().writer_logs[k_];
     return std::vector<std::array<uint64_t, 4>>(v.begin(), v.begin() + we.log_n);
-}
-void TileRef::record_trace() {
-    auto& v = c_->impl().trace_logs[k_];
-    v.assign(c_->cfg().trace_capacity, {});
-    units::RegBlockState& b = unit<units::TileCtl>("ctl").s;
-    b.tlog = reinterpret_cast<int64_t(*)[2]>(v.data()); b.tlog_cap = uint32_t(v.size()); b.tlog_n = 0;
-}
-std::vector<std::array<int64_t, 2>> TileRef::trace_log() const {   // as ref has it at the end of the cycle just run
-    const units::TileCtl& b = unit<units::TileCtl>("ctl");
-    const auto& v = c_->impl().trace_logs[k_];
-    std::vector<std::array<int64_t, 2>> r(v.begin(), v.begin() + b.s.tlog_n);
-    sim::PortEntry e[8];                                    // a store of the cycle just run reaches the block at its next step
-    const uint32_t n = c_->sim().observe(b.bus, e, 8).n;
-    for (uint32_t i = 0; i < n; i++)
-        if (e[i].at == uint64_t(c_->cycle()) + 1 && uint32_t(e[i].w[0] >> 32) == units::BUS_STORE && uint32_t(e[i].w[0]) == units::TRACE)
-            r.push_back({c_->cycle(), int64_t(uint32_t(e[i].w[1]))});
-    return r;
 }
 std::string Chip::s1_report() const {                     // ref's S1.report(K), summed over the tiles (units::s1_report)
     if (!sim::check::kOn) FATAL("mach: s1_report: S1 is measured in the debug and suite builds only");
@@ -1189,22 +907,6 @@ std::string Chip::ag_report() const {                       // ref's Chip.agRepo
                   (unsigned long long)max_grp, max_drift, drift_group >= 0 ? (" (group " + std::to_string(drift_group) + ")").c_str() : "");
     return b;
 }
-std::vector<std::string> Chip::log() const {
-    std::vector<std::array<int64_t, 3>> all;
-    for (unsigned k = 0; k < 64; k++)
-        for (const auto& e : const_cast<Chip*>(this)->tile(k).trace_log()) all.push_back({e[0], int64_t(k), e[1]});
-    std::stable_sort(all.begin(), all.end(), [](const auto& a, const auto& b) { return a[0] != b[0] ? a[0] < b[0] : a[1] < b[1]; });
-    std::vector<std::string> r;
-    char b[96];
-    for (const auto& e : all) { std::snprintf(b, sizeof b, "cycle %lld tile %lld: TRACE 0x%x", (long long)e[0], (long long)e[1], uint32_t(e[2])); r.push_back(b); }
-    if (!impl_->reset_log.empty()) {                      // ref's reset lines, in cycle order with the rest
-        r.insert(r.end(), impl_->reset_log.begin(), impl_->reset_log.end());
-        std::stable_sort(r.begin(), r.end(), [](const std::string& a, const std::string& c) {
-            return std::strtoll(a.c_str() + 6, nullptr, 10) < std::strtoll(c.c_str() + 6, nullptr, 10);
-        });
-    }
-    return r;
-}
 void TileRef::record_gather() {
     units::Gather& g = unit<units::Gather>("gather");
     if (!g.drain) FATAL("mach: tile %u: record_gather: ref's gatherStub (the drain, real_responder off) only", k_);
@@ -1218,86 +920,12 @@ std::vector<std::array<uint64_t, 4>> TileRef::gather_log() const {
     return std::vector<std::array<uint64_t, 4>>(v.begin(), v.begin() + g.log_n);
 }
 
-// ---- a test's loads and stores through the core (ref's Controller.load, store) ----
-namespace {
-// The Env Rv32::load reads through, between cycles: the registers as the block publishes them for t (its end of
-// t - 1, block_at_end), HIST as stored.
-struct LoadEnv {
-    sim::Sim& s;
-    units::TileCore& u;
-    const units::RegBlockState& b;
-    const units::HistStore& h;
-    uint64_t t;
-    unsigned k;
-    uint32_t reg(unsigned r) const { return b.reg(r); }
-    // ref's ctrlRead: on the write-back cycle the port's read returns the engine's written value
-    uint32_t hist(uint32_t i) const { return h.pipe.valid && h.pipe.due == t ? h.pipe.val : h.m.hist[i & 255]; }
-    void post(uint32_t op, uint32_t arg, uint32_t v) const {          // made by the core at t (ref: the load's side effect)
-        if (u.host_post_n == units::TileCore::kHostPosts) FATAL("mach: too many test loads' side effects pending");
-        u.host_post[u.host_post_n++] = {t, 0, uint64_t(op) << 32 | arg, uint64_t(v)};
-    }
-    uint32_t live_events() const {
-        if (!u.receiver) return 0;
-        return s.regfile_value(u.recv, units::reqbus::ReqRecv::R_PENDING) ? 1u << units::EV_REQUEST_PENDING : 0;
-    }
-    uint32_t req_get(unsigned i) const { return u.receiver ? s.regfile_value(u.recv, units::reqbus::ReqRecv::R_W0 + i) : 0; }
-    uint32_t req_receive(bool& ok) const {
-        if (u.receiver) FATAL("mach: a test's REQUEST_RECEIVE on a controller: not modelled");
-        ok = false;
-        return 0;
-    }
-    uint32_t rp_free() const {
-        return uint32_t(int64_t(u.rp_depth) - int64_t(u.rp_stored - s.unit<units::Injection>(units::unit_prefix(k) + "inj").rs.rp_injected_n));
-    }
-    int window_load(unsigned n, unsigned w, uint32_t& v) const {      // the core's Env::window_load, from the slot's RegFile
-        using units::Win;
-        if (!u.slot) FATAL("mach: a test's load from peripheral %u's window: the tile has no peripheral slot", n);
-        if (w == 5) {
-            v = s.regfile_value(u.win, Win::reg(n, Win::R_STD + 5));
-            const uint32_t m = s.regfile_value(u.win, Win::reg(n, Win::R_STD + 7));
-            if (v & m) {
-                if (u.host_post_n == units::TileCore::kHostPosts) FATAL("mach: too many test loads' side effects pending");
-                u.host_post[u.host_post_n++] = {t, 1, uint64_t(units::CoreOp::consume(n, v & m)), 0};
-            }
-            return 1;
-        }
-        if (w < Win::STD) { v = s.regfile_value(u.win, Win::reg(n, Win::R_STD + w)); return 1; }
-        v = 0;
-        if (w < Win::OWN0) return 2;
-        const unsigned k = w - Win::OWN0;
-        if (!(s.regfile_value(u.win, Win::reg(n, Win::R_DEFINED + k / 32)) >> (k % 32) & 1)) return 2;
-        v = s.regfile_value(u.win, Win::reg(n, Win::R_OWN + k));
-        return 1;
-    }
-};
-}  // namespace
-std::optional<uint32_t> TileRef::load(int64_t t, uint32_t ea, unsigned width) const {
-    if (t != c_->cycle() + 1) FATAL("mach: tile %u: a test's load at cycle %lld, not the next (%lld)", k_, (long long)t, (long long)c_->cycle() + 1);
-    const uint32_t region = units::lw::region(ea & ~3u);
-    if (region == units::lw::R_DMEM || region == units::lw::R_PMEM)   // the memories as ref has them (port B's last write)
-        return peek_local(region << 24 | (((units::lw::offset(ea & ~3u)) & (units::MEM_BYTES - 1))));
-    units::TileCore& core = unit<units::TileCore>("core");
-    const units::RegBlockState b = block();
-    LoadEnv e{c_->sim(), core, b, unit<units::HistStore>("hist"), uint64_t(t), k_};
-    uint32_t v = 0;
-    const uint32_t posts = core.host_post_n;
-    if (!core.rv.load(e, ea, width, v)) return std::nullopt;
-    if (core.host_post_n != posts) c_->touched(un(k_, "core"));   // its side effects: the core steps at t
-    return v;
-}
 
-// ---- the request port from a test ----
-void TileRef::req_set_w(unsigned i, uint32_t v) {
-    if (i > 2) FATAL("mach: req_set_w(%u): W0-W2", i);
-    unit<units::TileCore>("core").req_set_w[i] = v;          // the core's copy (what a REQUEST_SEND pushes)
-    unit<units::TileCtl>("ctl").s.set_w[i] = v;              // the block's (its view)
-}
-uint32_t TileRef::req_w(unsigned i) const { return unit<units::TileCore>("core").req_set_w[i % 3]; }
-void TileRef::req_send(int64_t t, uint32_t w3) {           // RequestPort.send(t, w3) at the cycle just run
+void TileRef::req_send(int64_t t, uint32_t w3) {           // REQUEST_SEND as of the cycle just run
     if (t != c_->cycle()) FATAL("mach: tile %u: req_send at cycle %lld: the cycle just run only (%lld)", k_, (long long)t, (long long)c_->cycle());
     units::TileCore& core = unit<units::TileCore>("core");
-    // ref's RequestPort.send appends to the FIFO at once, any number between cycles: straight into the leaf's
-    // FIFO, as a push of t is there at the start of t + 1; a push into a full FIFO is flagged (the fact) and dropped
+    // appended to the request queue (the leaf's FIFO) at once, any number between cycles, as a push of t is there at
+    // the start of t + 1; a push into a full queue is flagged (the fact) and dropped
     const std::string leaf = "t" + std::to_string(k_) + ".reqleaf";
     units::reqbus::ReqLeaf& l = c_->unit<units::reqbus::ReqLeaf>(leaf);
     if (l.n >= l.depth) {
@@ -1305,15 +933,18 @@ void TileRef::req_send(int64_t t, uint32_t w3) {           // RequestPort.send(t
         sim::check::record(uint64_t(t), int(k_), sim::check::Kind::CTL_REQ_FULL);
     } else {
         units::reqbus::ReqLeaf::Entry& e = l.fifo[(l.head + l.n) % l.depth];
-        e.w[0] = core.req_set_w[0]; e.w[1] = core.req_set_w[1]; e.w[2] = core.req_set_w[2]; e.w[3] = w3;
+        e.w[0] = core.req_out_w[0]; e.w[1] = core.req_out_w[1]; e.w[2] = core.req_out_w[2]; e.w[3] = w3;
         e.store_t = t;
         l.n++; l.sends++;
+        // the queue's two counts beside the leaf's, as a REQUEST_SEND store of t leaves them: the core's (its stall)
+        // and the tile control unit's (STATUS.request_full); each falls when the tree takes the queue's head
+        core.req_n++;
+        units::RegBlockState& s = unit<units::TileCtl>("ctl").s;
+        s.req_n++; s.sends++;
+        c_->touched(un(k_, "ctl"));
     }
     c_->touched(leaf);
-    core.req_set_w[0] = core.req_set_w[1] = core.req_set_w[2] = 0;
-    units::RegBlockState& s = unit<units::TileCtl>("ctl").s;
-    s.req_n++; s.sends++; s.set_w[0] = s.set_w[1] = s.set_w[2] = 0;   // the block's FIFO count, as a REQUEST_SEND at t
-    c_->touched(un(k_, "ctl"));
+    core.req_out_w[0] = core.req_out_w[1] = core.req_out_w[2] = 0;
 }
 bool TileRef::req_can_push(int64_t t) const {               // fifo.size() < depth (the bus frees nothing before t runs)
     if (t != c_->cycle() + 1) FATAL("mach: tile %u: req_can_push(%lld): the next cycle only", k_, (long long)t);
@@ -1332,25 +963,6 @@ bool TileRef::req_idle() const {                            // fifo.isEmpty(), a
     return l.n == 0 && c_->sim().observe(l.push, e, 4).n == 0;
 }
 
-// ---- the read port's host queue ----
-void TileRef::rp_host_queue(uint32_t addr, uint32_t dest) {
-    units::TileCore& core = unit<units::TileCore>("core");
-    if (core.host_rd_n == units::TileCore::kHostReads) FATAL("mach: tile %u: more than %u host reads queued", k_, units::TileCore::kHostReads);
-    uint32_t* r = core.host_rd[(core.host_rd_head + core.host_rd_n) % units::TileCore::kHostReads];
-    r[0] = addr; r[1] = dest;
-    core.host_rd_n++;
-    c_->touched(un(k_, "core"));
-}
-bool TileRef::rp_idle() const {                             // ref's free(t) == depth: a return injected at t frees its entry at t + 1
-    const units::TileCore& core = unit<units::TileCore>("core");
-    const units::InjReadSide& rs = unit<units::Injection>("inj").rs;
-    const uint64_t freed = rs.rp_injected_n - (rs.rp_inj_t == uint64_t(c_->cycle()) ? rs.rp_inj_now : 0);
-    return core.host_rd_n == 0 && core.rp_stored == freed;
-}
-bool TileRef::rp_all_accepted() const {
-    const units::TileCore& core = unit<units::TileCore>("core");
-    return core.host_rd_n == 0 && core.rp_stored == unit<units::Director>("dir").rp_accepted;
-}
 
 // ---- the write engine's request lines from a test ----
 namespace {
@@ -1365,159 +977,8 @@ void we_req(TileRef& p, Chip& c, unsigned k, unsigned line, int64_t t, uint32_t 
 void TileRef::we_ts_req(int64_t t, uint32_t op, uint32_t idx, uint32_t add) { we_req(*this, *c_, k_, 0, t, op, idx, add); }
 void TileRef::we_hist_req(int64_t t, uint32_t op, uint32_t idx, uint32_t add) { we_req(*this, *c_, k_, 1, t, op, idx, add); }
 
-// ---- the register block from a test (the (d)) ----
-void TileRef::set_events(uint32_t bits) { unit<units::TileCtl>("ctl").host_events |= bits; c_->touched(un(k_, "ctl")); }
-void TileRef::schedule_go(int64_t t) {
-    units::TileCtl& b = unit<units::TileCtl>("ctl");
-    if (t <= c_->cycle()) FATAL("mach: tile %u: schedule_go(%lld): a cycle not yet run", k_, (long long)t);
-    if (b.host_go_at >= 0) FATAL("mach: tile %u: a second GO scheduled", k_);
-    b.host_go_at = t;
-    c_->touched(un(k_, "ctl"));
-}
-std::string TileRef::store(int64_t t, uint32_t ea, uint32_t v, uint32_t mask) {
-    namespace lw = units::lw;
-    if (t < c_->cycle()) FATAL("mach: tile %u: a test's store at cycle %lld, already run", k_, (long long)t);
-    units::TileCore& core = unit<units::TileCore>("core");
-    if (t == c_->cycle()) {                                // ref's core.store(tr, ...) at the cycle just run
-        if (!units::in_tables(ea & ~3u) || mask != 0xFFFFFFFFu)
-            FATAL("mach: tile %u: a test's store at the cycle just run: the table window only (a full word)", k_);
-        const units::TableAddr ta = units::table_addr(ea & ~3u);
-        const uint32_t val = v & units::table_mask(ta.table);   // as of t: the table store applies it at t + 1, as the core's
-        if (ta.table == units::TBL_HIST) {
-            const sim::Word w[2] = {sim::Word(ta.index), sim::Word(val)};
-            c_->sim().put_late(un(k_, "core"), core.hist_w, w, 2);
-        } else {
-            const sim::Word w[2] = {sim::Word(ta.table) << 32 | ta.index, sim::Word(val)};
-            c_->sim().put_late(un(k_, "core"), core.tables, w, 2);
-        }
-        return "";
-    }
-    const units::Rv32& r = core.rv;
-    const uint32_t a = ea & ~3u;                            // ref's reasons, in ref's order (Controller.store)
-    const unsigned region = lw::region(a);
-    if (region == lw::R_PMEM) return "store to program memory";
-    if (region == lw::R_BOOTROM) return "store to the boot ROM";
-    if (units::in_tables(a) && mask != 0xFFFFFFFFu) return "sub-word store to the table window";
-    if (units::in_regs(a)) {
-        if (mask != 0xFFFFFFFFu) return "sub-word store to a register";
-        if (const unsigned n = units::window_of(a)) { if (!r.window_present(n)) return "store to an absent peripheral's window"; }
-        else {
-            const units::RegInfo& ri = units::reg_info((a - units::REG_BASE) >> 2);
-            if (ri.store == units::A_NONE && ri.load != units::A_NONE) return "store to a read-only register";
-        }
-    } else if (region != lw::R_DMEM && !units::in_tables(a)) return "store to an unmapped address";
-    if (core.host_n == units::TileCore::kHostStores) FATAL("mach: tile %u: more than %u test stores pending", k_, units::TileCore::kHostStores);
-    core.host_st[core.host_n++] = {uint64_t(t), ea, v, mask};
-    c_->touched(un(k_, "core"));
-    return "";
-}
 
-// ---- the table stores (back doors: ref's TableStore.poke / peek in its index spaces, HIST's) ----
-namespace {
-constexpr uint32_t PTR_IDX = 0x100, GROUP_IDX = 0x400, SSRC_IDX = 0x1000, SDEST_IDX = 0x1100, SCOUNT_IDX = 0x1200;
-void table_of(uint32_t idx, uint32_t& table, uint32_t& i) {
-    if (idx >= SCOUNT_IDX) { table = units::TBL_STREAM_COUNT; i = idx - SCOUNT_IDX; }
-    else if (idx >= SDEST_IDX) { table = units::TBL_STREAM_DEST; i = idx - SDEST_IDX; }
-    else if (idx >= SSRC_IDX) { table = units::TBL_STREAM_SRC; i = idx - SSRC_IDX; }
-    else if (idx >= GROUP_IDX) { table = units::TBL_GROUP; i = idx - GROUP_IDX; }
-    else if (idx >= PTR_IDX) { table = units::TBL_PTR; i = idx - PTR_IDX; }
-    else FATAL("mach: table index 0x%x (ref's index spaces: PTR 0x100, GROUP 0x400, STREAM 0x1000-0x12FF)", idx);
-}
-uint32_t table_read(const units::TableMems& m, uint32_t table, uint32_t i) {
-    switch (table) {
-    case units::TBL_STREAM_SRC: return m.stream_src[i & 255];
-    case units::TBL_STREAM_DEST: return m.stream_dest[i & 255];
-    case units::TBL_STREAM_COUNT: return m.stream_count[i & 255];
-    case units::TBL_GROUP: return m.group[i & 127];
-    default: return m.ptr[i & 255];
-    }
-}
-}  // namespace
-void TileRef::ts_poke(uint32_t idx, uint32_t v) {
-    uint32_t table, i;
-    table_of(idx, table, i);
-    unit<units::TableStore>("ts").poke_host(table, i, v);
-    c_->touched(un(k_, "ts"));
-}
-// A table-window store of the cycle just run (the core's, on `window`, applied by the table store at t + 1) is in
-// ref's table at t, unless a write-back took the port at t (figure 12: then it's lost).
-uint32_t TileRef::ts_peek(uint32_t idx) const {
-    uint32_t table, i;
-    table_of(idx, table, i);
-    const units::TableStore& ts = unit<units::TableStore>("ts");
-    uint32_t v = table_read(ts.m, table, i);
-    sim::PortEntry e[2];
-    const uint32_t n = c_->sim().observe(ts.window, e, 2).n;
-    for (uint32_t k = 0; k < n; k++)
-        if (e[k].at == uint64_t(c_->cycle()) + 1 && uint32_t(e[k].w[0] >> 32) == table && (uint32_t(e[k].w[0]) & 255) == (i & 255) &&
-            !(table == units::TBL_PTR && ts.pipe.last_wb == uint64_t(c_->cycle())))
-            v = uint32_t(e[k].w[1]);
-    return v;
-}
-void TileRef::hist_poke(uint32_t i, uint32_t v) { unit<units::HistStore>("hist").poke_host(i, v); c_->touched(un(k_, "hist")); }
-uint32_t TileRef::hist_peek(uint32_t i) const {           // (with the window store of the cycle just run: ts_peek's rule)
-    const units::HistStore& h = unit<units::HistStore>("hist");
-    uint32_t v = h.m.hist[i & 255];
-    sim::PortEntry e[2];
-    const uint32_t n = c_->sim().observe(h.window, e, 2).n;
-    for (uint32_t k = 0; k < n; k++)
-        if (e[k].at == uint64_t(c_->cycle()) + 1 && (uint32_t(e[k].w[0]) & 255) == (i & 255) && h.pipe.last_wb != uint64_t(c_->cycle()))
-            v = uint32_t(e[k].w[1]);
-    return v;
-}
 
-// ---- Tile's own operations (ref's Tile.set*): the register block's state, published at its next step ----
-void TileRef::set_master_config(uint32_t v) {
-    const uint32_t bd = v >> 18 & 7, hd = v >> 21 & 7;
-    if (bd > 4 || hd > 4)                                   // v1.25 (s8e): ref's UndefinedBehavior, its message
-        FATAL("undefined behavior at cycle %lld, tile %u, DMA_CONFIG: a reserved digit selector (bucket %u, hist %u; 5-7 are "
-              "reserved: spec 4.15) (DECISIONS-v1.25 s8: meshsim stops; the hardware does nothing special)",
-              (long long)c_->cycle(), k_, bd, hd);
-    units::TileCtl& b = unit<units::TileCtl>("ctl");
-    b.host.dma_config = v; b.host.mask |= units::TileCtl::HostWrites::DMA_CONFIG;
-    c_->touched(un(k_, "ctl"));
-}
-void TileRef::set_errors(uint32_t bits) {
-    units::TileCtl& b = unit<units::TileCtl>("ctl");
-    b.host_cond |= bits;
-    c_->touched(un(k_, "ctl"));
-}
-void TileRef::set_record_base(uint32_t chunk) {
-    units::TileCtl& b = unit<units::TileCtl>("ctl");
-    b.host.record_base = chunk & 0x1FFFFF; b.host.mask |= units::TileCtl::HostWrites::RECORD_BASE;
-    c_->touched(un(k_, "ctl"));
-}
-void TileRef::set_ptr(unsigned i, uint32_t chunk) { ts_poke(PTR_IDX + i, chunk & 0x1FFFFF); }
-uint32_t TileRef::ptr(unsigned i) const { return ts_peek(PTR_IDX + i); }
-void TileRef::set_stream(unsigned i, uint32_t src, uint32_t dest, uint32_t count) {
-    ts_poke(SSRC_IDX + i, src); ts_poke(SDEST_IDX + i, dest); ts_poke(SCOUNT_IDX + i, count);
-}
-void TileRef::set_group(unsigned g, uint32_t lo, uint32_t hi) { ts_poke(GROUP_IDX + 2 * g, lo); ts_poke(GROUP_IDX + 2 * g + 1, hi); }
-void TileRef::pulse(uint32_t bits) {                       // TILE_PULSE's start: the AG's start Wire at the next cycle
-    if (bits & fields::PULSE_START) {
-        units::TileCtl& b = unit<units::TileCtl>("ctl");
-        b.host.starts++; b.host.mask |= units::TileCtl::HostWrites::STARTS;
-        c_->touched(un(k_, "ctl"));
-    }
-}
-// The register block as ref has it at the end of the cycle just run (its endCycle of that cycle runs at the next step:
-// tile_ctl.h's block_at_end), with the harness's writes still pending over it.
-units::RegBlockState TileRef::block(bool with_cond) const {
-    const units::TileCtl& b = unit<units::TileCtl>("ctl");
-    units::RegBlockState r = units::block_at_end(c_->sim(), b, uint64_t(c_->cycle()), b.host_go_at == c_->cycle());   // (a test's GO)
-    if (with_cond) { r.conditions |= b.host_cond; r.events |= b.host_events; }   // set from the test: ref's ctl has them now
-    if (b.host.mask & units::TileCtl::HostWrites::DMA_CONFIG) r.dma_config = r.dma_master = b.host.dma_config;
-    if (b.host.mask & units::TileCtl::HostWrites::RECORD_BASE) r.record_base = r.record_master = b.host.record_base;
-    if (b.host.mask & units::TileCtl::HostWrites::STARTS) r.dma_starts += b.host.starts;
-    for (unsigned k = 0; k < 8; k++) if (b.host.mask & units::TileCtl::HostWrites::REMAINING << k) r.remaining[k] = b.host.remaining[k];
-    return r;
-}
-uint32_t TileRef::remaining(unsigned ctr) const { return block().remaining[ctr & 7]; }
-void TileRef::set_remaining(unsigned ctr, uint32_t v) {
-    units::TileCtl& b = unit<units::TileCtl>("ctl");
-    b.host.remaining[ctr & 7] = v & 0xFFFFF; b.host.mask |= units::TileCtl::HostWrites::REMAINING << (ctr & 7);
-    c_->touched(un(k_, "ctl"));
-}
 
 namespace {
 bool port_empty(sim::Sim& s, const sim::FifoIn& p) { sim::PortEntry e[64]; const sim::PortView v = s.observe(p, e, 64); return v.n == 0 && !v.put; }
@@ -1553,8 +1014,7 @@ uint32_t link_after(sim::Sim& s, const sim::LinkIn& p, uint64_t c) {   // a Link
 }  // namespace
 bool TileRef::phase_done() const {
     if (unit<units::AddrGen>("ag").running) return false;
-    const units::RegBlockState b = block();
-    for (unsigned k = 1; k <= 7; k++) if (b.remaining[k]) return false;
+    for (unsigned k = 1; k <= 7; k++) if (remaining(k)) return false;
     sim::Sim& s = c_->sim();
     const uint64_t next = uint64_t(c_->cycle()) + 1;      // a word arriving at the next cycle landed at ref's end of this one
     if (link_after(s, unit<units::TileCtl>("ctl").kline, next)) return false;
@@ -1562,7 +1022,6 @@ bool TileRef::phase_done() const {
     if (link_after(s, unit<units::TileCore>("core").port_b, next)) return false;
     return !ts_busy();
 }
-bool TileRef::quiescent() const { FATAL("mach: TileRef::quiescent: use Chip::quiescent (the chip's ports are judged together)"); }
 
 // ============================================================================================ C&C 1's model (CnC)
 namespace {
@@ -1590,26 +1049,12 @@ uint32_t take_id(Chip::Impl& m) {
 Cc& Cc::load_words(unsigned dst, uint32_t a, const std::vector<uint32_t>& w) {
     c_->impl().prog.load_words(dst, a, w.data(), w.size()); publish(*c_); return *this;
 }
-Cc& Cc::command(unsigned dst, uint32_t word, const std::vector<uint32_t>& args) {
-    c_->impl().prog.command(dst, word, args.data(), args.size()); publish(*c_); return *this;
-}
 Cc& Cc::send(unsigned dst, unsigned mode, unsigned counter, uint32_t addr, unsigned size, uint64_t lo, uint64_t hi) {
     const units::CncPacket p{uint8_t(dst), uint8_t(mode), uint8_t(counter), uint8_t(size), addr, lo, hi};
     c_->impl().prog.send(&p, 1); publish(*c_); return *this;
 }
 Cc& Cc::go() { c_->impl().prog.go(); publish(*c_); return *this; }
 Cc& Cc::wait_cycles(uint32_t n) { c_->impl().prog.wait_cycles(n); publish(*c_); return *this; }
-Cc& Cc::reset(bool hard) {                                 // ref's step (one register action: the reset at its end),
-    Chip* chip = c_;                                       //  then waitCycles(2), then the expect step: the call is instant
-    call([chip, hard](int64_t) { chip->reset(hard); });    //  here, so the wait covers the reset's own cycle too (3); the
-    wait_cycles(3);                                        //  expect step is a register action of its own (its cycle)
-    Chip::Impl& m = c_->impl();
-    const uint32_t id = take_id(m);
-    m.prog.call_step(id);
-    m.calls.push_back({id, [chip](int64_t) { chip->cc().set_expect(~uint64_t(0)); }});
-    publish(*c_);
-    return *this;
-}
 Cc& Cc::call(std::function<void(int64_t)> fn) {
     Chip::Impl& m = c_->impl();
     const uint32_t id = take_id(m);
@@ -1618,7 +1063,7 @@ Cc& Cc::call(std::function<void(int64_t)> fn) {
     publish(*c_);
     return *this;
 }
-// ref's CnC.runCycle's drain, for cycle t = cycle() + 1 (between cycles: the receive pops at t, the reply goes at t)
+// The drain (Cc::drain_reports), for cycle t = cycle() + 1 (between cycles: the receive pops at t)
 void drain_next(Chip& c) {
     Chip::Impl& m = c.impl();
     if (!m.drain) return;
@@ -1628,18 +1073,9 @@ void drain_next(Chip& c) {
     if (!b.peek_request(0, t, w)) return;
     b.receive(0, t);
     const std::array<int64_t, 5> e = {t, int64_t(w[0]), int64_t(w[1]), int64_t(w[2]), int64_t(w[3])};
-    const unsigned op = w[0] >> 10 & 0xFF, src = w[0] & 0x7F;
-    if (op == 1) { m.reports.push_back(e); return; }        // REQ_OP_REPORT
+    const unsigned op = w[0] >> units::REQ_OP_LO & units::REQ_OP_MASK;
+    if (op == units::REQ_OP_REPORT) { m.reports.push_back(e); return; }
     m.requests.push_back(e);
-    if (op != 3) return;                                  // REQ_OP_RESULT: recorded and answered
-    m.results.push_back({t, int64_t(src), int64_t(w[2]), int64_t(w[3])});
-    units::Cnc& cn = c.unit<units::Cnc>("cnc");
-    if (cn.reply_n == 16) FATAL("mach: C&C 1's replies: more than 16 pending");
-    units::CncPacket& p = cn.reply_q[(cn.reply_h + cn.reply_n) % 16];
-    p = units::CncPacket{};
-    p.dst = uint8_t(src); p.mode = units::lw::M_WRITE; p.counter = uint8_t(w[0] >> 18 & 7); p.size = units::lw::SIZE_32; p.addr = w[1];
-    cn.reply_n++;
-    m.sim->wake("cnc");                                     // it answers at t
 }
 void Cc::drain_reports(bool on) {
     Chip::Impl& m = c_->impl();
@@ -1658,7 +1094,6 @@ template <size_t N> std::vector<std::array<int64_t, N>> drained(const std::vecto
 }  // namespace
 std::vector<std::array<int64_t, 5>> Cc::reports() const { return drained(c_->impl_const().reports, c_->cycle()); }
 std::vector<std::array<int64_t, 5>> Cc::requests() const { return drained(c_->impl_const().requests, c_->cycle()); }
-std::vector<std::array<int64_t, 4>> Cc::results() const { return drained(c_->impl_const().results, c_->cycle()); }
 std::vector<std::array<int64_t, 5>> Cc::reports_of(unsigned id) const {
     std::vector<std::array<int64_t, 5>> r;
     for (const auto& e : c_->impl_const().reports) if ((e[1] & 0x7F) == int64_t(id) && e[0] <= c_->cycle()) r.push_back(e);
@@ -1699,139 +1134,7 @@ std::vector<std::array<int64_t, 2>> Cc::phase_log() const {   // ref's CnC.phase
 }
 size_t Cc::phases_logged() const { return const_cast<Chip*>(c_)->unit<units::Cnc>("cnc").plog_n; }
 std::vector<std::array<uint64_t, 4>> Cc::received() const { return c_->received(0); }
-uint64_t Cc::ready_bits() const { FATAL("mach: Cc::ready_bits comes with the coreless machine"); }
 
-// ================================================================================================= Mach
-MachConfig Mach::cfg(int64_t shuffle) { MachConfig k = MachConfig::machine(); k.shuffle_seed = shuffle; return k; }
-MachConfig Mach::cores_cfg(int64_t shuffle) { MachConfig k = cfg(shuffle); k.cc_cores = true; return k; }
-
-Mach::Image Mach::Image::load_dir(const std::string& dir, const std::string& name) {
-    Image im;
-    im.name = name;
-    const std::string base = dir + "/" + name;
-    if (!exists(base + ".code.bin")) FATAL("mach: image %s: no %s.code.bin", name.c_str(), base.c_str());
-    im.code = words_of(base + ".code.bin");
-    im.data = words_of(base + ".data.bin");
-    std::string s;
-    if (!read_file(base + ".sym", s)) FATAL("mach: image %s: cannot read %s.sym", name.c_str(), base.c_str());
-    for (size_t at = 0; at < s.size();) {                  // Mach.Image: "VALUE TYPE NAME" lines, value in hex
-        size_t e = s.find('\n', at);
-        if (e == std::string::npos) e = s.size();
-        char v[64], t[16], n[256];
-        if (std::sscanf(s.substr(at, e - at).c_str(), "%63s %15s %255s", v, t, n) == 3)
-            im.syms[n] = uint32_t(std::stoull(v, nullptr, 16));
-        at = e + 1;
-    }
-    return im;
-}
-Mach::Image Mach::Image::load(const std::string& name, const MachConfig& cfg) {
-    std::vector<std::string> dirs = cfg.image_dirs;
-    if (dirs.empty()) {
-        if (const char* e = std::getenv("SIM_IMAGES")) {
-            std::string s = e;
-            for (size_t at = 0; at <= s.size();) {
-                size_t c = s.find(':', at);
-                if (c == std::string::npos) c = s.size();
-                if (c > at) dirs.push_back(s.substr(at, c - at));
-                at = c + 1;
-            }
-        }
-        for (const char* d : {"fw/images", "tests/golden-m2/images", "tests/golden/images", "tests/m3-images"}) dirs.push_back(d);
-    }
-    for (const std::string& d : dirs) if (exists(d + "/" + name + ".code.bin")) return load_dir(d, name);
-    FATAL("mach: image %s not found (the search path: MachConfig::image_dirs, $SIM_IMAGES, then the defaults)", name.c_str());
-}
-uint32_t Mach::Image::sym(const std::string& s) const {
-    auto it = syms.find(s);
-    if (it == syms.end()) FATAL("%s: no symbol %s", name.c_str(), s.c_str());
-    return it->second;
-}
-
-Mach::Mach(const MachConfig& cfg) : c(cfg) {}
-
-Mach::Image Mach::boot(const std::string& name) { return boot(Image::load(name, c.cfg())); }
-Mach::Image Mach::boot(const Image& im) {
-    boot_start = c.cycle();
-    c.cc().load_words(units::lw::BROADCAST, PMEM_BASE, im.code)
-        .load_words(units::lw::BROADCAST, im.sym("_data_start"), im.data)
-        .command(units::lw::BROADCAST, CMD_JUMP << 24, {im.sym("_start")})
-        .run_when_ready()
-        .call([this](int64_t) { run_at = c.cc().last_run_at(); });
-    return im;
-}
-
-Mach::Image Mach::boot_cores(const std::string& tile) { return boot_cores(Image::load(tile, c.cfg()), nullptr); }
-Mach::Image Mach::boot_cores(const Image& t, const Image* cc3) {
-    if (!c.cfg().cc_cores) FATAL("bootCores needs Config.ccCores");
-    cc1 = Image::load("cc1", c.cfg());
-    cc23 = Image::load("cc23", c.cfg());
-    boot_start = c.cycle();
-    units::BigSram& s = c.unit<units::BigSram>("cc1.sram");
-    uint32_t at = STAGE_CHUNK;
-    struct Staged { uint32_t chunk, packets; };
-    auto stage = [&](const std::vector<uint32_t>& w) {       // 128-bit rows, zero-padded
-        const uint32_t ch = at, pk = uint32_t((w.size() + 3) / 4);
-        for (uint32_t i = 0; i < 4 * pk; i++) s.poke(ch + i, i < w.size() ? w[i] : 0);
-        at += 4 * (pk ? pk : 1);
-        return Staged{ch, pk};
-    };
-    std::vector<uint32_t> desc(1 + 3 * 6 + 2, 0);
-    desc[0] = 0xB007DE5Cu;
-    const Staged cp = stage(cc23.code), cd = stage(cc23.data), tp = stage(t.code), td = stage(t.data);
-    const Staged c3p = cc3 ? stage(cc3->code) : cp, c3d = cc3 ? stage(cc3->data) : cd;
-    for (unsigned u = 0; u < 3; u++) {
-        const Image& im = u == 0 ? cc23 : u == 1 ? (cc3 ? *cc3 : cc23) : t;
-        const Staged p = u == 0 ? cp : u == 1 ? c3p : tp, d = u == 0 ? cd : u == 1 ? c3d : td;
-        const uint32_t cmd = at; at += 4;
-        const uint32_t e[6] = {p.chunk, p.packets, d.chunk, d.packets, cmd, im.sym("_start")};
-        for (unsigned i = 0; i < 6; i++) desc[1 + 6 * u + i] = e[i];
-    }
-    desc[19] = c.cfg().go_latency; desc[20] = uart_divisor;
-    std::vector<uint32_t> data = cc1.data;
-    const uint32_t base = (cc1.sym("boot_desc") - cc1.sym("_data_start")) / 4;
-    if (base + desc.size() > data.size()) FATAL("mach: cc1's data image ends before boot_desc's %zu words", desc.size());
-    for (size_t i = 0; i < desc.size(); i++) data[base + i] = desc[i];
-    c.touched("cc1.sram");
-    host_boot(cc1, data);
-    return t;
-}
-void Mach::host_boot(const Image& im, const std::vector<uint32_t>& data) {
-    c.host_load(0, PMEM_BASE, im.code);
-    if (!data.empty()) c.host_load(0, im.sym("_data_start"), data);
-    c.host_command(0, CMD_JUMP << 24, {im.sym("_start")});
-}
-void Mach::stage_cc1(uint32_t at, const std::vector<uint32_t>& w, uint32_t rows) {
-    if (w.size() > 4 * size_t(rows)) FATAL("%zu words in %u rows", w.size(), rows);
-    units::BigSram& s = c.unit<units::BigSram>("cc1.sram");
-    for (uint32_t i = 0; i < 4 * rows; i++) s.poke(at + i, i < w.size() ? w[i] : 0);
-    c.touched("cc1.sram");
-}
-uint32_t Mach::mbox(unsigned i) const { return const_cast<Chip&>(c).tile(64).peek_local(cc1.sym("mbox") + 4 * i); }
-uint32_t Mach::toast_info(unsigned i) const { return const_cast<Chip&>(c).tile(64).peek_local(cc1.sym("toast_info") + 4 * i); }
-void Mach::cc1_command(uint32_t type, uint32_t arg, const std::vector<uint32_t>& args) { c.host_command(0, type << 24 | arg, args); }
-void Mach::phase(uint32_t word, const std::vector<uint32_t>& args) {
-    std::vector<uint32_t> a{word};
-    a.insert(a.end(), args.begin(), args.end());
-    cc1_command(CC_PHASE, uint32_t(args.size()), a);
-}
-bool Mach::cores_booted() const { return !cc1.name.empty() && mbox(3) == 2; }
-
-int64_t Mach::exit_value(unsigned tile) const { return const_cast<Chip&>(c).tile(tile).exit_value(); }
-uint32_t Mach::word(unsigned tile, uint32_t a) const { return const_cast<Chip&>(c).tile(tile).peek_local(a); }
-uint32_t Mach::word(unsigned tile, const Image& im, const std::string& sym, unsigned i) const { return word(tile, im.sym(sym) + 4 * i); }
-std::string Mach::halt_summary() const {
-    std::string sb;
-    Chip& ch = const_cast<Chip&>(c);
-    for (unsigned k = 0; k < 64; k++) {
-        TileRef p = ch.tile(k);
-        if (p.halt() == units::Rv32::HALT_EXIT) continue;
-        char b[48];
-        std::snprintf(b, sizeof b, " pc=0x%x", p.pc());
-        sb += p.halt_report() + b + (p.in_wfi() ? " (WFI)" : "") + "; ";
-        if (sb.size() > 400) break;
-    }
-    return sb;
-}
 
 }  // namespace mach
 
@@ -1892,7 +1195,7 @@ int A2A::verify(Chip& c) const {
     }
     return bad;
 }
-void A2A::load(Chip& c, int gap) const {                  // A2A.load
+void A2A::load(Chip& c, int gap) const {
     for (unsigned s = 0; s < 64; s++) {
         TileRef p = c.tile(s);
         for (size_t k = 0; k < rec[s].size(); k++) p.sram_poke64(SRC + 2 * uint32_t(k), uint64_t(rec[s][k]));
@@ -1900,22 +1203,24 @@ void A2A::load(Chip& c, int gap) const {                  // A2A.load
             for (unsigned i = 0; i < 4; i++) {
                 const unsigned off = unsigned(G4[g][i]), d = (s + off) & 63;
                 p.set_stream(4 * g + i, fields::stream_src(SRC + 2 * uint32_t(first(s, d))), 0,
-                             fields::stream_count(uint32_t(cnt[s][d]), fields::SIZE_64, 1, units::lw::M_SRC, off));
+                             fields::stream_hdr(uint32_t(cnt[s][d]), fields::SIZE_64, 1, units::lw::M_SRC, off));
             }
-            p.set_group(g, fields::group_lo(uint32_t(R[g])), fields::group_hi(4 * g, 4, uint32_t(gap)));
+            p.set_group(g, fields::group_w0(uint32_t(R[g]), 4 * g, 4), fields::group_w1(uint32_t(gap)));
         }
         for (unsigned src = 0; src < 64; src++) p.set_ptr(src, INBOX + 2 * uint32_t(dstoff[src][s]));
         p.set_remaining(1, uint32_t(expected(s)));
-        p.set_master_config(fields::master_config(fields::RUN_GROUPS, 0, 16, 0, 0, 1));
+        p.set_dma_config(fields::dma_config(fields::RUN_GROUPS, 0, 16));
+        p.set_receive_config(fields::receive_config(0, 0));
+        p.set_gather_config(fields::gather_config(0, 1));
     }
 }
-int64_t A2A::run(Chip& c, int64_t max) {                   // A2A.run
+int64_t A2A::run(Chip& c, int64_t max) {
     const int64_t t0 = c.cycle();
     const std::vector<int> skew = c.start_skew();
     bool started[64] = {};
     int64_t end = -1;
     for (int64_t i = 0; i < max; i++) {
-        for (unsigned k = 0; k < 64; k++) if (!started[k] && c.cycle() >= t0 + skew[k]) { c.tile(k).pulse(fields::PULSE_START); started[k] = true; }
+        for (unsigned k = 0; k < 64; k++) if (!started[k] && c.cycle() >= t0 + skew[k]) { c.tile(k).dma_start(); started[k] = true; }
         c.step();
         bool all = true;
         for (unsigned k = 0; k < 64 && all; k++) {
@@ -2022,7 +1327,6 @@ std::vector<std::array<uint64_t, 4>> Chip::received(unsigned cc) const {
                                 cc + 1, m.sends[cc].log_cap, (unsigned long long)m.sends[cc].lost);
     return std::vector<std::array<uint64_t, 4>>(m.recv[cc].begin(), m.recv[cc].begin() + m.sends[cc].log_n);
 }
-uint32_t Net::cm(uint32_t w) { return w < 0x800 ? uint32_t(units::lw::R_PMEM) << 24 | w << 2 : (w - 0x800) << 2; }
 int64_t Net::late() const { int64_t n = 0; for (const auto& f : const_cast<Chip&>(c).impl().feeds) n += int64_t(f.late); return n; }
 bool Net::pending() const {
     const Chip::Impl& m = c.impl_const();
@@ -2079,5 +1383,31 @@ unsigned Net::max_router_peak() const {
     }
     return m;
 }
+
+}  // namespace mach
+
+// ================================================================================================= Mach
+namespace mach {
+
+MachConfig Mach::cfg(int64_t shuffle) { MachConfig k = MachConfig::machine(); k.shuffle_seed = shuffle; return k; }
+MachConfig Mach::cores_cfg(int64_t shuffle) { MachConfig k = cfg(shuffle); k.cc_cores = true; return k; }
+
+Mach::Mach(const MachConfig& cfg) : c(cfg) {}
+
+void Mach::place(unsigned unit, uint32_t byte_addr, const std::vector<uint32_t>& words) {
+    Chip::Impl& m = c.impl();
+    const uint32_t region = units::region(byte_addr), off = units::offset(byte_addr);
+    if (unit >= m.nunits) FATAL("mach: place: unit %u of %u", unit, m.nunits);
+    if ((region != units::R_DMEM && region != units::R_IMEM) || (byte_addr & 3) || off / 4 + words.size() > units::MEM_WORDS)
+        FATAL("mach: place: %zu words at 0x%08x of unit %u: not whole words inside IMEM or DMEM", words.size(), byte_addr, unit);
+    uint32_t* mem = (region == units::R_IMEM ? m.imem(unit) : m.dmem(unit)) + off / 4;
+    for (size_t i = 0; i < words.size(); i++) mem[i] = words[i];
+    c.touched(units::unit_prefix(unit) + "core");
+}
+void Mach::place_elf(unsigned unit, const std::string& path) {
+    for (const rtl_images::Row& r : rtl_images::program_rows(path))
+        place(unit, r.address, {uint32_t(r.lo), uint32_t(r.lo >> 32), uint32_t(r.hi), uint32_t(r.hi >> 32)});
+}
+uint32_t Mach::word(unsigned unit, uint32_t a) const { return const_cast<Chip&>(c).tile(unit).peek_local(a); }
 
 }  // namespace mach

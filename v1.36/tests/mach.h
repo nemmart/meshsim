@@ -1,63 +1,79 @@
-// mach.h (rows C1 and B18): the machine harness the Java-driven suites of v1.3 port onto. v1.3's suites
-// drive `ref`'s Chip through three harness classes, and this header gives each its C++ counterpart:
+// mach.h: the machine harness: the 64-tile chip as units::build_chip assembles it, with what a test needs to configure
+// it, run it and read it back, between cycles. It began as the C++ counterpart of v1.3's Java harness (ref's Config,
+// Chip, Tile, CnC, Mach, Net, A2A, Fields), which v1.3's suites drive; v1.36 moved the tile to the RTL's hardware
+// (machine-spec 5-13: no GO, DONE or READY registers, no commands and no command block, no TRACE or SIM_EXIT words, an
+// NMI, the boot ROM's LOAD), and this header was cut back to what that hardware has. Every name of a register, a field
+// or a table here is v1.36's (src/units/regmap.h).
 //
-//   Java (sim/ref/meshsim)                 here
-//   Config (spec 10), Config.machine(),    mach::MachConfig, MachConfig::machine(), MachConfig::defaults()
-//     Config.defaults()                    (step 3 completes the fields and `cfg.<field>=`; D41 Q4)
-//   Chip (run, step, runUntil, drain,      mach::Chip: either machine, its tiles' units, C&C, the cores, the checks
-//     quiescent, tiles[], cc, cores, ...)
-//   Tile (sram, ts, ag, setStream, ...)    mach::TileRef: a tile's units by name and Tile's own operations
-//   CnC (command, go, runWhenReady, ...)   mach::Cc: C&C 1's Java model, queued from the harness between cycles
-//   Mach (boot, bootCores, word, ...)      mach::Mach: the machine as specified, booting images
-//   Net (at, rd, cncSends, runAll, ...)    mach::Net: the coreless machine fed packets from the harness
-//   A2A                                    mach::A2A: the digit all-to-all's data, loaded and verified
-//   Fields (the table entries, DMA_CONFIG) mach::fields (below); LinkWord is units/linkword.h's `lw`
-//   T                                      suite.h
+//   mach::MachConfig    the machine's parameters; MachConfig::machine() and MachConfig::defaults() (the two machines)
+//   mach::fields        the encoders of the tables' entries and the units' configuration words
+//   mach::Chip          either machine: time, its tiles' units, the master side, the checker
+//   mach::TileRef       a tile's units by name, back doors into its memories, tables and registers
+//   mach::Cc            the master side's behavioural model (below), queued from the harness between cycles
+//   mach::ReqBus        the request tree driven from a test (MachConfig::reqbus_host)
+//   mach::Mach          the machine as specified: images placed in the tiles' memories, read back
+//   mach::Net           a machine fed packets and reads from the harness, with the directors' arrival logs
+//   mach::A2A           the digit all-to-all's data, loaded into the tables and verified
 //
-// STATUS. The header is published before its body (owner, 2026-11-10) so P4-P6's workers can plan against it. What a
-// suite may rely on now: the names, the Java each one stands for, and the semantics stated here. Members marked
-// [step 2] (the checker, reset), [step 3] (Config's remaining fields) and [step 4] (PhaseLog, the TRACE log) are
-// declared now and come with those steps of the plan. Anything a suite
-// needs that isn't here: the harness grows with the suites (V135-INVENTORY's wave 2).
+// THE TWO MACHINES.
+//   - The machine as specified (MachConfig::machine(): coreless off, real_responder on): every tile's core runs from
+//     the reset PC in the RTL's boot ROM (fw/rtl/boot/, read by tests/rtl_images.h). A compute tile's ROM pulls its image
+//     with a LOAD request to the master tile (6.5). NOTHING ON THIS CHIP SERVES THAT REQUEST YET (below: the master
+//     side), so such a tile waits in its ROM for ever; with MachConfig::boot_local every compute tile has the strap
+//     boot_local (7.1), and its ROM enters the image the harness placed in its IMEM (Mach::place) instead.
+//   - The coreless test machine (MachConfig::defaults(): coreless, real_responder off): the tiles' cores never execute
+//     (TileCore::coreless, harness-only), the gather unit is a drain; the harness configures the units through
+//     TileRef's back doors and feeds packets (Net). Every other unit of the tile is the real one.
 //
-// THE TWO MACHINES (ref's Config, B18).
-//   - The machine as specified (MachConfig::machine(), ref's Config.machine(): coreless off, realResponder on): every
-//     tile halted in the boot ROM at reset, its controller on; C&C 1 boots an image (Mach::boot) and runs the phases.
-//     With `cc_cores`, C&C 1-3 are cores (units 64-66) booted through the host port (Mach::boot_cores).
-//   - The coreless test machine (MachConfig::defaults(), ref's Config.defaults(): coreless, realResponder off): every
-//     tile in RUN with no controller executing, the GATHER engine a drain; the harness configures the engines (TileRef's
-//     set_* and pulse, ref's Tile.set*) and feeds packets (Net). Its tiles are the full tiles (the register block, the
-//     director, port B, the engines, big SRAM) with the core held off, as in ref (`core.enabled = !coreless`).
+// THE MASTER SIDE: WHAT IT IS TODAY. The chip that units::build_chip assembles still has v1.35's master side, in one of
+// two forms; neither is the RTL's master, memory and tracer tiles, which come with the special tiles' stage
+// (PENDING-v1.36.md, P7):
+//   - C&C's behavioural model (src/units/cnc.h, "cnc"; without cc_cores), with C&C 2's and 3's endpoints ("ep2",
+//     "ep3") on the attach tiles 0, 7 and 15. What it still means on v1.36's tiles: its GO link drives every tile's
+//     `release` input, which is BARRIER_RELEASE's pulse (18); its READY input receives each tile's `line` bit 0, which is
+//     BARRIER_ARRIVE's pulse, so its "all READY, then GO" is "every expected tile arrived, then the release"; `line`
+//     bit 1 is the tile's error line; its sends are packets from id 64 through tile 0's attach port, so a WRITE of it
+//     into a tile's IMEM, DMEM or scratchpad lands as the NoC port lands it. What it no longer means: its program's
+//     `command` (a packet into v1.35's command block) and v1.35's boot (the image broadcast, CMD_JUMP) address
+//     hardware that is gone and no v1.36 image understands them; the model's sequencer keeps them (cnc.h is left as it
+//     was), this harness does not offer them. The model has no request service: a tile's REPORT or LOAD reaches the
+//     request tree's root and, without MachConfig::reqbus_host, goes nowhere.
+//   - C&C 1-3 as cores (cc_cores: units 64-66, "cc<c>.core" and the rest, with v1.35's peripherals: C&C 1's Ingress/
+//     Egress model, the stub, the Tracer). They are built with the special tiles' straps (units::default_straps: a
+//     receive side, no barrier, boot_local on 64 and 65) and run the RTL's boot ROM, but no v1.36 image exists for them
+//     here and their peripherals are v1.35's: such a machine builds and steps, and Chip::host_load writes their memories
+//     through the host port, nothing more.
 //
-// TIME. `Chip::cycle()` is ref's `Chip.cycle`: the last cycle run, 0 before the first. (The framework numbers cycles from
-// 1 and `Sim::now()` is the next cycle to run, so cycle() == now() - 1, and every cycle a suite prints is ref's.) `step`
-// runs one cycle (ref's `step`: `++cycle`). `run`, `run_until` and `drain` first wake every unit, as ref's `run` and
-// `runUntil` do (`wakeAll`: the harness may have changed any unit between cycles), and scan the FIFO overflows at the end
-// (ref's `scanOverflows`). `run_until(cond, max)` evaluates cond between cycles, before each, exactly as ref's runUntil.
+// TIME. `Chip::cycle()` is the last cycle run, 0 before the first (the framework numbers cycles from 1 and `Sim::now()`
+// is the next cycle to run, so cycle() == now() - 1). `step` runs one cycle. `run`, `run_until` and `drain` first wake
+// every unit (the harness may have changed any unit between cycles) and scan the FIFO overflows at the end.
+// `run_until(cond, max)` evaluates cond between cycles, before each.
+//
+// WHAT A READ RETURNS. The tile control unit applies the edge that ends cycle t at its step in t + 1 (tile_ctl.h), so
+// between cycles its state (TileRef::block, reg, status, events, errors) is the state at the end of the cycle before
+// the one just run, plus any back-door write since. The counters alone are brought to the end of the cycle just run
+// (TileRef::remaining, and phase_done with it): the decrement and the store the unit applies at its next step counted in. A back-door write (set_*, dma_start) changes the unit's
+// state at once and is published at the unit's next step: the units that read it see it from the next cycle on.
 //
 // BETWEEN CYCLES ONLY. Every member here is called between cycles (D6: harness code never runs inside the cycle loop).
-// The mutators (pokes, set_*, pulse, C&C's queue, the host port, Net's queues) wake the units they touch, so a suite
-// that changes state through them may `step` at once; a suite that changes a unit directly (through `unit<T>`) calls
-// `Chip::touched(name)` (or uses run/run_until/drain, which wake everything).
+// The mutators wake the units they touch, so a test that changes state through them may `step` at once; a test that
+// changes a unit directly (through `unit<T>`) calls `Chip::touched(name)` (or uses run/run_until/drain, which wake
+// everything).
 //
-// THE UNITS. `TileRef::unit<T>(name)` is tile k's unit "t<k>.<name>" (chip.h's unit_prefix; C&C 1-3 as cores are
-// "cc<c>.<name>"), in namespace units, the C++ type of ref's member: "sram" BigSram (ref's sram), "ts" TableStore (ts),
-// "hist" HistStore (hist), "ag" AddrGen (ag), "we" WriteEngine (writer), "gather" Gather (gather), "inj" Injection (inj
-// and srq: one unit here), "router" Router (router), "dir" Director (dir), "ctl" TileCtl (ctl), "core" TileCore (core),
-// "slot" PeriphSlot (slot); the chip's "cnc" Cnc (cc), "ep2", "ep3" Endpoint (ccs), "cc<c>.host" HostPort. Statistics a suite reads that a C++ unit doesn't keep yet are added to the unit (counters only:
-// no cost in the loop beyond the increment) by whoever ports the suite.
+// THE UNITS. `TileRef::unit<T>(name)` is tile k's unit "t<k>.<name>" (chip.h's unit_prefix; units 64-66 are
+// "cc<c>.<name>"), in namespace units: "sram" BigSram (the scratchpad), "ts" TableStore (PTR, STREAM, GROUP), "hist"
+// HistStore, "ag" AddrGen (the DMA unit's address generator), "we" WriteEngine, "gather" Gather, "inj" Injection (the
+// inject unit, the read arbiter and the tokens), "router" Router, "dir" Director (the receive unit's traffic director),
+// "ctl" TileCtl (the tile control unit), "core" TileCore, "slot" PeriphSlot; the chip's "cnc" Cnc, "ep2", "ep3" Endpoint,
+// "cc<c>.host" HostPort.
 //
-// IMAGES. Mach::Image is ref's Mach.Image (DIR/NAME.code.bin, .data.bin, .sym). The directories searched, in order: the
-// MachConfig's `image_dirs`, else $SIM_IMAGES (':'-separated), else
-// fw/images, then tests/golden-m2/images, tests/golden/images and tests/m3-images.
+// SHUFFLING. `shuffle_seed` >= 0 sets the framework's debug shuffle (sim.h DEBUG CHECKS) with that seed: a test's output
+// must not depend on the order units of one level are stepped in.
 //
-// SHUFFLING (B24, C25). ref's `shuffleSeed` >= 0 shuffles every child order every cycle; here it sets the framework's
-// debug shuffle (sim.h DEBUG CHECKS) with that seed. The seeds don't map to ref's orders (the generator), but a suite's
-// output is order-independent by design, so its log must equal ref's shuffled step's too.
-//
-// THE CHECKER [step 2]. ref's per-cycle invariant checks (Chip.checkInvariants, scanOverflows; spec 9) are on in the
-// debug and suite builds and compiled out of the timing builds (owner, Q1). `violations()`, `violation_messages()` and
-// `violation_report()` are ref's `violations`, `violationMessages` and `violationReport()`, message for message.
+// THE CHECKER. The per-cycle invariant checks (src/check.h's facts, tests/checker.h's rules) are on in the debug and
+// suite builds and compiled out of the timing builds. `violations()`, `violation_messages()` and `violation_report()`
+// report them. v1.35's facts about hardware that is gone (the command block, the reply block, the stray check) are no
+// longer recorded by the units (PENDING-v1.36.md, section 4).
 //
 // THIS IS TEST-SIDE CODE (the configuration regime, D6): std::function, std::vector and strings are fine here.
 #pragma once
@@ -66,291 +82,297 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <optional>
-#include <map>
 #include <string>
 #include <vector>
 
 #include "config.h"
-#include "phase_log.h"
 #include "sim.h"
 #include "units/chip.h"
 #include "units/regblock.h"
+#include "units/regmap.h"
 
 namespace mach {
 
 // ================================================================================================= the configuration
-// ref's Config (spec 10), the fields the harness builds from. Defaults are ref's. Step 3 adds the remaining used fields,
-// `set` (one `cfg.<field>=value` front end for every driver) and the list of dropped fields.
+// The machine's parameters: the fields the harness builds from (units::G1Config, G1Ctx, NetConfig, ChipSpec, the request
+// tree's and the checker's). `set` is the one `cfg.<field>=value` front end of every driver; the names are v1.3's
+// Config's (the drivers' options were written with them).
 struct MachConfig {
-    // ---- the machine (Config.machine / defaults) ----
-    bool coreless = true;              // tiles start in RUN, no controller executing (defaults); machine(): false
-    bool real_responder = false;       // the GATHER engine real (machine()); false: a drain
-    bool cc_cores = false;             // C&C 1-3 as cores (units 64-66; ref's ccCores)
-    bool cc3_tracer = false;           // C&C 3's peripheral 1 the Tracer (needs cc_cores)
-    // ---- network (3.2, 4.7) ----
+    // ---- the machine ----
+    bool coreless = true;              // no tile's core executes (defaults); machine(): false
+    bool real_responder = false;       // the gather unit real (machine()); false: a drain
+    bool boot_local = false;           // every compute tile has the strap boot_local (7.1): its ROM enters the image placed
+                                       //   in its IMEM (Mach::place) instead of pulling one with LOAD (6.5)
+    bool cc_cores = false;             // v1.35's C&C 1-3 as cores (units 64-66) in place of C&C's model (above)
+    bool cc3_tracer = false;           // unit 66's peripheral 1 the Tracer (needs cc_cores)
+    // ---- the network (16) ----
     unsigned link_latency = 3, queue_depth = 16, intra_tile_latency = 1;
-    bool skew = true;
+    bool skew = true;                  // v1.35's start skew: +0 or +1 a tile on the release's link
     int64_t skew_seed = 1;
-    std::vector<int> start_skew;       // per tile, 0 or 1 (empty: drawn from skew_seed when skew is on); ref's startSkew
-    // ---- receive side, memory, engines (4.1-4.11) ----
-    unsigned we_in_depth = 4, read_port_depth = 64, gather_depth = 16, cm_latency = 2, rp_latency = 2;
-    unsigned K = 8, ts_engine_latency = 1, reg_load_latency = 2, ref_cycle = 40;
+    // ---- the receive side, the memories, the units (8-15) ----
+    unsigned we_in_depth = 4;          // v1.35's write-engine input FIFO (v1.36's engine has none: PENDING-v1.36.md)
+    unsigned read_port_depth = 64;     // the read unit's queue (READ_FREE's reset value)
+    unsigned gather_depth = 64;        // GATHER_QUEUE_DEPTH (13)
+    unsigned cm_latency = 2;           // WRITE_PORT_LATENCY (12.3)
+    unsigned rp_latency = 2;           // (read by k_min alone)
+    unsigned K = 8;                    // LAND_LATENCY (12.3)
+    unsigned ts_engine_latency = 1;    // TABLE_LATENCY
+    unsigned reg_load_latency = 2;     // a window load's cycles (6.4)
+    unsigned ref_cycle = 40;           // core cycles per reference-oscillator cycle (unit 64's UART, cc_cores)
     int ag_lookahead = -1;             // <= 0: 2 ts_engine_latency + 2
-    uint32_t mem_chunks = 1u << 20;
+    uint32_t mem_chunks = 1u << 20;    // the scratchpad's words
     unsigned area_queue_depth = 8, sram_read_latency = 2, read_tokens = 64;
     bool write_combining = false, fifo_count_before_pop = true;
-    bool test_read_clients = false;    // the read queue's AG client a harness-fed FIFO (Net::rd), no AG
-    bool reqbus_host = false;          // the request bus driven from the test (Chip::reqbus()): its receive queues and
-                                       //   controller inputs on the machine with C&C's model (ref's RequestBus there)
-    // ---- C&C, the lines (6) ----
-    unsigned go_latency = 8, run_latency = 1, ready_latency = 8, cnc_reaction = 1, stage_delay = 64;
+    bool test_read_clients = false;    // the read arbiter's clients fed from the harness (Net::rd), no address generator
+    bool reqbus_host = false;          // the request tree driven from the test (Chip::reqbus()): its receive queues and
+                                       //   the special tiles' inputs on the machine with C&C's model
+    // ---- the master side's model and the nets (18) ----
+    unsigned go_latency = 8;           // the release's link, from the model's GO to a tile
+    unsigned ready_latency = 8;        // a tile's `line` (BARRIER_ARRIVE's pulse, the error line) to the model
+    unsigned cnc_reaction = 1;         // every expected tile arrived -> the release
     unsigned cnc_rx_depth = 64, cc_dma_depth = 4, cc_link_latency = 1;
-    bool done_gate = true, cnc_go_settle = true;
-    int error_latency = -1;            // -1: ready_latency (the C++ machine requires it so: one line per tile)
+    bool cnc_go_settle = true;         // the model sends nothing until the release has reached every tile
+    int error_latency = -1;            // -1: ready_latency (the machine requires it so: one line a tile carries both)
     bool loopback_last = true, loopback_tokens = true;
     int loopback_depth = -1;           // -1: read_tokens
-    unsigned replayer_log_entries = 256;   // the replayer's log queues (ref's -Dreplayer.logq; the kit's -q 512)
-    bool counter_store_clears_latch = true;   // (inert in ref: no unit reads it; likewise run_latency, stage_delay)
-    // ---- the request bus (3.3, 4.18), the peripheral slot (4.17) ----
-    unsigned request_fifo_depth = 128, req_hop_latency = 3;
+    unsigned replayer_log_entries = 256;   // the replayer's log queues
+    // ---- the request unit and tree (11), the peripherals (17) ----
+    unsigned request_queue_depth = 4;  // REQUEST_QUEUE_DEPTH (19); `cfg.requestFifoDepth=`
+    unsigned req_hop_latency = 3;
     std::array<unsigned, 3> receive_queue_depth = {128, 256, 128};
-    int periph_type = 4;               // every mesh tile's peripheral 1: 4 the replayer, 0 none
-    int test_periph_tile = -1;         // ref's testPeripheral (StageB): the replayer on this mesh tile only, the
-                                       //   others none (with periph_type 0)
-    int test_peripheral_tile = -1;     // ref's testPeripheral giving a TestPeripheral: that mesh tile's peripheral 1
-                                       //   is the test peripheral, the other tiles' as periph_type says
-    std::vector<int> parked;           // ref's Chip.parked (StageB's -Dstageb.lone): tiles nothing must reach. Here they are
-                                       //   simulated all the same (asleep, they cost little); Chip::parked_untouched is ref's check
-    // ---- the simulator and its checks (spec 9) [step 2] ----
+    int periph_type = 4;               // every compute tile's peripheral 1: 4 the replayer, 0 none
+    int test_periph_tile = -1;         // the replayer on this compute tile only, the others none (with periph_type 0)
+    int test_peripheral_tile = -1;     // that compute tile's peripheral 1 is the test peripheral, the other tiles' as
+                                       //   periph_type says
+    std::vector<int> parked;           // tiles nothing must reach: simulated all the same; Chip::parked_untouched checks
+    // ---- the simulator and its checks ----
     int64_t shuffle_seed = -1;         // >= 0: the debug shuffle with this seed
-    bool step_all = false;             // the framework's debug options (sim.h DEBUG CHECKS; the ask 8): every unit
-    bool instance_major = false;       //   stepped every cycle; the instance-major order (else type-major)
+    bool step_all = false;             // the framework's debug options (sim.h DEBUG CHECKS): every unit stepped every
+    bool instance_major = false;       //   cycle; the instance-major order (else type-major)
     unsigned max_violation_messages = 50;
-    bool strict_replies = false, check_read_port_overlap = true, check_command_read = true, check_disjoint = true;
+    bool check_read_port_overlap = true, check_disjoint = true;
     bool measure_s1 = true, check_errors = true, check_unexpected = true;
-    bool log_trace = false;            // ref's logTrace (8.15, H6): every tile's TRACE stores recorded; Chip::log()'s lines
-    uint32_t trace_capacity = 1u << 14;   // TRACE stores kept per tile (fatal when exceeded)
     uint32_t check_capacity = 1u << 18;   // the checker's facts (src/check.h) per machine (fatal when full)
     // ---- the harness ----
-    std::vector<std::string> image_dirs;   // Mach::Image's search path (empty: the default above)
     uint32_t log_capacity = 1u << 14;      // Net: director-log entries per tile (fatal when exceeded, never grows)
-    uint32_t host_capacity = 4096;         // each controller's host-port queue (packets)
-    uint32_t phase_log_capacity = 1u << 16;   // C&C's phase log (GOs; fatal when exceeded)
-    unsigned threads = 1, parts = 1;       // the framework's split (row bands); a suite's default is one thread
+    uint32_t host_capacity = 4096;         // each host port's queue (packets; cc_cores)
+    uint32_t phase_log_capacity = 1u << 16;   // the model's log of its releases (Cc::phase_log; fatal when exceeded)
+    unsigned threads = 1, parts = 1;       // the framework's split (row bands); a test's default is one thread
 
-    static MachConfig machine();       // ref's Config.machine()
-    static MachConfig defaults();      // ref's Config.defaults()
+    static MachConfig machine();
+    static MachConfig defaults();
     unsigned ag_lookahead_used() const { return ag_lookahead > 0 ? unsigned(ag_lookahead) : 2 * ts_engine_latency + 2; }
-    unsigned k_min() const;            // ref's kMin(): max(2L + 4, L + 4, cm_latency, rp_latency), L = ts_engine_latency
-    MachConfig& with_ts_latency(unsigned L);   // ref's withTsLatency
-    // ref's field by name (SortTest's `cfg.<field>=value`, ref's spelling and types: int, long, boolean as Java parses
-    // them): false and `err` for an unknown field, a dropped one (dropped() says why) or a bad value. Fields no unit of
-    // ref reads (runLatency, stageDelay, counterStoreClearsLatch; rpLatency only in kMin) are inert here too; errorLatency
-    // other than readyLatency and logTrace (until H6) stop the build, naming them: never silently ignored.
+    unsigned k_min() const;            // max(2L + 4, L + 4, cm_latency, rp_latency), L = ts_engine_latency
+    MachConfig& with_ts_latency(unsigned L);
+    // A field by v1.3's name (`cfg.<field>=value`: an int, a long, a boolean as Java parses them): false and `err` for an
+    // unknown field, a dropped one (dropped() says why) or a bad value.
     bool set(const std::string& field, const std::string& value, std::string& err);
     // Every `cfg.<field>=value` among args, in order (others left alone); false and `err` at the first bad one.
     bool set_args(const std::vector<std::string>& args, std::string& err);
-    // The fields of ref's Config no v1.35 driver, kit, sweep or documented option sets (D41 Q4), each with its reason.
+    // v1.3's Config fields this harness does not have, each with its reason: never set by a driver, or (v1.36) a
+    // parameter of hardware or of a check that is gone.
     static const std::vector<std::pair<std::string, std::string>>& dropped();
 };
 
-// ============================================================================================ Fields (ref's Fields.java)
-// The engines' encoders, as the coreless suites compose STREAM, GROUP and DMA_CONFIG words (spec 4.2, 8.1, 8.5, 8.9).
+// ============================================================================================================== fields
+// The encoders of the tables' entries and of the units' configuration words (machine-spec 5.4, 8.1, 8.3, 8.4, 12.1, 13;
+// regmap.h's fields).
 namespace fields {
-inline constexpr uint32_t SIZE_32 = 0, SIZE_64 = 1, SIZE_128 = 2, SIZE_UNDEF = 3, COUNT_MAX = 0x1FFFF;
-inline constexpr uint32_t RUN_STREAMS = 0, RUN_GROUPS = 1, PULSE_START = 2;
-constexpr uint32_t hdr_bits(uint32_t size, uint32_t counter, uint32_t mode, uint32_t dst) {
-    return (size & 3) << 17 | (counter & 7) << 19 | (mode & 7) << 22 | (dst & 0x7F) << 25;
+inline constexpr uint32_t SIZE_32 = 0, SIZE_64 = 1, SIZE_128 = 2, SIZE_UNDEF = 3, COUNT_MAX = units::STREAM_HDR_COUNT_MASK;
+inline constexpr uint32_t RUN_STREAMS = 0, RUN_GROUPS = 1;          // DMA_CONFIG.kind
+// a header block (5.4): size [1:0], counter [4:2], mode [7:5], dst [14:8]
+constexpr uint32_t hdr_block(uint32_t size, uint32_t counter, uint32_t mode, uint32_t dst) {
+    return (size & 3) << units::HDR_SIZE_LO | (counter & 7) << units::HDR_COUNTER_LO | (mode & 7) << units::HDR_MODE_LO |
+           (dst & units::HDR_DST_MASK) << units::HDR_DST_LO;
 }
-constexpr uint32_t stream_src(uint32_t chunk, uint32_t gap_after = 0) { return (chunk & 0x1FFFFF) | (gap_after & 7) << 21; }
-constexpr uint32_t stream_count(uint32_t count, uint32_t size, uint32_t counter, uint32_t mode, uint32_t d) {
-    return (count & COUNT_MAX) | hdr_bits(size, counter, mode, d);
+// STREAM_SRC_ADDR (8.3): a 21-bit scratchpad word address
+constexpr uint32_t stream_src(uint32_t word) { return word & units::WORD_ADDRESS_MASK; }
+// STREAM_HDR (8.3): the header block, count [31:15]
+constexpr uint32_t stream_hdr(uint32_t count, uint32_t size, uint32_t counter, uint32_t mode, uint32_t dst) {
+    return hdr_block(size, counter, mode, dst) | (count & COUNT_MAX) << units::STREAM_HDR_COUNT_LO;
 }
-constexpr uint32_t group_lo(uint32_t R) { return R & 0x3FFFF; }
-constexpr uint32_t group_hi(uint32_t start_stream, uint32_t t, uint32_t gap) {
-    return (start_stream & 0xFF) | ((t - 1) & 0xF) << 8 | (gap & 0xFF) << 12;
+// GROUP (8.4): word 0 rotations [17:0], first_stream [25:18], streams - 1 [29:26]; word 1 the gap [7:0]
+constexpr uint32_t group_w0(uint32_t rotations, uint32_t first_stream, uint32_t streams) {
+    return (rotations & units::GROUP_ROTATIONS_MASK) | (first_stream & units::GROUP_FIRST_MASK) << units::GROUP_FIRST_LO |
+           ((streams - 1) & units::GROUP_STREAMS_MASK) << units::GROUP_STREAMS_LO;
 }
-constexpr uint32_t master_config(uint32_t kind, uint32_t start, uint32_t count, uint32_t bucket_digit, uint32_t hist_digit,
-                                 uint32_t k) {
-    return (kind & 1) | (start & 0xFF) << 1 | (count & 0x1FF) << 9 | (bucket_digit & 7) << 18 | (hist_digit & 7) << 21 |
-           ((k - 1) & 7) << 24;
+constexpr uint32_t group_w1(uint32_t gap) { return gap & units::GROUP_GAP_MASK; }
+// DMA_CONFIG (8.1): kind [0], start [8:1], count [17:9], gap [20:18]
+constexpr uint32_t dma_config(uint32_t kind, uint32_t start, uint32_t count, uint32_t gap = 0) {
+    return (kind & 1) << units::DMA_KIND_LO | (start & units::DMA_START_MASK) << units::DMA_START_LO |
+           (count & units::DMA_COUNT_MASK) << units::DMA_COUNT_LO | (gap & units::DMA_GAP_MASK) << units::DMA_GAP_LO;
+}
+// RECEIVE_CONFIG (12.1): bucket_digit [2:0], histogram_digit [5:3]
+constexpr uint32_t receive_config(uint32_t bucket_digit, uint32_t histogram_digit) {
+    return (bucket_digit & 7) << units::RECEIVE_BUCKET_LO | (histogram_digit & 7) << units::RECEIVE_HIST_LO;
+}
+// GATHER_CONFIG (13): record_base [20:0], value_size (k - 1) [23:21]
+constexpr uint32_t gather_config(uint32_t record_base, uint32_t k) {
+    return (record_base & units::WORD_ADDRESS_MASK) | ((k - 1) & units::GATHER_VALUE_SIZE_MASK) << units::GATHER_VALUE_SIZE_LO;
 }
 }  // namespace fields
 
 class Chip;
 
-// ======================================================================= the request bus from a test (ref's RequestBus)
-// On the machine with C&C's Java model and MachConfig::reqbus_host (RequestBusTest's Net(Config.machine())): ref's
-// RequestBus as a test drives it, between cycles. t is the cycle the call stands for (ref's: the next, cycle() + 1, for
-// the receivers' side; the cycle just run for controller_send); the reads are as ref has them at the end of the cycle
-// just run, the test's own pops already counted out.
+// ================================================================================== the request tree from a test
+// On the machine with C&C's model and MachConfig::reqbus_host: the request tree's receive queues and the special tiles'
+// inputs, driven by the test between cycles (units::reqbus::ReqHost). t is the cycle the call stands for (the next,
+// cycle() + 1, for the receivers' side; the cycle just run for controller_send); the reads are as at the end of the
+// cycle just run, the test's own pops already counted out.
 class ReqBus {
 public:
     explicit ReqBus(Chip& c) : c_(&c) {}
-    bool pending(unsigned target, int64_t t) const;                  // ref's pending(target, t)
-    uint32_t get(unsigned target, int64_t t, unsigned i) const;      // ref's get(target, t, i): word i of the head, 0 if none
-    uint32_t receive(unsigned target, int64_t t);                   // ref's receive: pops the head at t (its credit back at
-                                                                     //   t + 1), returns its word 3; an underflow (0) if none
-    bool peek_request(unsigned target, int64_t t, uint32_t w[4]) const;   // ref's peekRequest (false: none)
-    void controller_send(int64_t t, unsigned cc, uint32_t w0, uint32_t w1, uint32_t w2, uint32_t w3);   // ref's controllerSend
-    size_t queue_size(unsigned target) const;                        // ref's queue[target].size()
-    int64_t credits(unsigned target) const;                          // ref's credits[target]
-    uint64_t underflows() const { return underflows_; }              // ref's underflows (the test's receives)
-    uint64_t received(unsigned target) const { return received_[target % 3]; }   // ref's received[target]
-    uint64_t dropped() const;                                        // ref's dropped.size()
-    uint64_t delivered() const;                                      // ref's delivered.size()
-    bool idle() const;                                               // ref's idle(): no beat in a node's input or on its
-                                                                     //   way to one, no request on its way to a queue
-    // ref's delivered list: every request delivered to a receive queue, {deliveredAt, srcTile, w0, w1, w2, w3},
-    // in delivery order (all targets)
+    bool pending(unsigned target, int64_t t) const;                  // the target's queue holds a request at t
+    uint32_t get(unsigned target, int64_t t, unsigned i) const;      // word i of the head, 0 if none
+    uint32_t receive(unsigned target, int64_t t);                    // pops the head at t (its credit back at t + 1),
+                                                                     //   returns its word 3; an underflow (0) if none
+    bool peek_request(unsigned target, int64_t t, uint32_t w[4]) const;   // the head's four words (false: none)
+    // a special tile's request (cc 0-2: ids 64-66) entering the root as of t
+    void controller_send(int64_t t, unsigned cc, uint32_t w0, uint32_t w1, uint32_t w2, uint32_t w3);
+    size_t queue_size(unsigned target) const;
+    int64_t credits(unsigned target) const;                          // the root's credits for the target's queue
+    uint64_t underflows() const { return underflows_; }              // the test's receives of an empty queue
+    uint64_t received(unsigned target) const { return received_[target % 3]; }
+    uint64_t dropped() const;                                        // requests the root dropped (no such target)
+    uint64_t delivered() const;
+    bool idle() const;                                               // no beat in a node's input or on its way to one,
+                                                                     //   no request on its way to a queue
+    // every request delivered to a receive queue, {delivered at, requester, w0, w1, w2, w3}, in delivery order
     std::vector<std::array<int64_t, 6>> delivered_log() const;
-    void on_reset();                                                 // Chip::reset: the test's pops on their way go with
-                                                                     //   the queues
 private:
     Chip* c_;
     uint64_t underflows_ = 0, popped_[3] = {}, received_[3] = {};
     bool head(unsigned target, int64_t t, uint32_t w[4]) const;
 };
 
-// ================================================================================================ a tile (ref's Tile)
+// ============================================================================================================== a tile
 class TileRef {
 public:
     TileRef(Chip& c, unsigned k) : c_(&c), k_(k) {}
-    unsigned idx() const { return k_; }                     // ref's idx
+    unsigned idx() const { return k_; }
     template <class T> T& unit(const char* name) const;     // "t<k>.<name>" (above)
 
-    // ---- the memories (back doors, as ref's poke and peek: no timing) ----
-    uint32_t sram_peek(uint32_t chunk) const;               // BigSRAM.peek / poke: one 32-bit chunk
-    void sram_poke(uint32_t chunk, uint32_t v);
-    uint64_t sram_peek64(uint32_t chunk) const;             // BigSRAM.peek64 / poke64: chunks c, c + 1
-    void sram_poke64(uint32_t chunk, uint64_t v);
-    uint32_t ts_peek(uint32_t i) const;                     // TableStore.peek / poke (PTR, STREAM, GROUP by index)
-    void ts_poke(uint32_t i, uint32_t v);
-    uint32_t hist_peek(uint32_t i) const;                   // the HIST store's peek / poke
+    // ---- the memories (back doors: no timing) ----
+    uint32_t sram_peek(uint32_t word) const;                // the scratchpad: one 32-bit word, by word address
+    void sram_poke(uint32_t word, uint32_t v);
+    uint64_t sram_peek64(uint32_t word) const;              // words w, w + 1
+    void sram_poke64(uint32_t word, uint64_t v);
+    // A table's word (units::TBL_PTR, TBL_STREAM_SRC, TBL_STREAM_DEST, TBL_STREAM_HDR; TBL_GROUP's index is its word:
+    // GROUP[g]'s are 2g and 2g + 1). A poke stores the word's field bits alone (table_mask). The address generator and
+    // the write engine read what was poked; a core's load of STREAM or GROUP reads the table store's `view`, which only
+    // the core's own stores write.
+    uint32_t table_peek(uint32_t table, uint32_t i) const;
+    void table_poke(uint32_t table, uint32_t i, uint32_t v);
+    uint32_t hist_peek(uint32_t i) const;                   // HIST
     void hist_poke(uint32_t i, uint32_t v);
-    uint32_t peek_local(uint32_t byte_addr) const;          // Controller.peekLocal / pokeLocal: the controller's
-    void poke_local(uint32_t byte_addr, uint32_t v);        //  memories (program 0x01xxxxxx, data otherwise)
-    uint32_t dmem(uint32_t word) const;                     // ControllerMemories.dmem[word]
+    // The core's memories by byte address: DMEM (region 0x00) and IMEM (0x01), a whole word. peek_local returns the
+    // word with the NoC port's write of the cycle just run already applied (the director hands it to the core a cycle
+    // later).
+    uint32_t peek_local(uint32_t byte_addr) const;
+    void poke_local(uint32_t byte_addr, uint32_t v);
+    uint32_t dmem(uint32_t word) const;                     // DMEM's word `word`
 
-    // ---- Tile's own operations (coreless tests, ref's Tile.set*) ----
-    void set_master_config(uint32_t v);                     // DMA_CONFIG: the AG's run, the digits, k (UB: FATAL)
-    void set_record_base(uint32_t chunk);                   // DMA_RECORD_BASE_ADDRESS (augment and gather)
-    void set_ptr(unsigned i, uint32_t chunk);               // PTR[i]
+    // ---- the units' registers (back doors: the tile control unit's state, published at its next step) ----
+    void set_dma_config(uint32_t v);                        // DMA_CONFIG (8.1)
+    void set_receive_config(uint32_t v);                    // RECEIVE_CONFIG (12.1); a reserved digit (5-7) is fatal
+    void set_gather_config(uint32_t v);                     // GATHER_CONFIG (13)
+    // DMA_START's start (8.2): the start count the address generator watches, and dma_done's clear; fatal while a
+    // transfer runs. (A store's STATUS.dma_busy is set by the store itself; here it follows the generator's status.)
+    void dma_start();
+    uint32_t remaining(unsigned ctr) const;                 // COUNTER_n (12.2), n 1-7, at the end of the cycle just run
+    void set_remaining(unsigned ctr, uint32_t v);           // the count alone: it arms no event (a store does)
+    void set_errors(uint32_t bits);                         // ERRORS' sticky bits [9:0] set (7.4): nmi and the error
+                                                            //   line from the unit's next step
+    void set_events(uint32_t bits);                         // counted events set (7.2), likewise
+    const units::RegBlockState& block() const;              // the tile control unit's state (above: WHAT A READ RETURNS)
+    uint32_t reg(unsigned r) const { return block().reg(r); }   // a word of the tile window it holds (regmap.h's Reg)
+    uint32_t status() const { return block().reg(units::STATUS); }
+    uint32_t events() const { return block().events_value(); }
+    uint32_t errors() const { return block().errors_value(); }
+
+    // ---- the tables by name ----
+    void set_ptr(unsigned i, uint32_t word);                // PTR[i]
     uint32_t ptr(unsigned i) const;
-    void set_stream(unsigned i, uint32_t src, uint32_t dest, uint32_t count);   // STREAM[i]'s three words
-    void set_group(unsigned g, uint32_t lo, uint32_t hi);   // GROUP[g]
-    void pulse(uint32_t bits);                              // TILE_PULSE's start, acting from the next cycle
-    // ref's sendHold (the send port's holding register, from a test): put(t, ...) at t = cycle() (as of the cycle just
-    // run: Sim::put_late) or cycle() + 1 (made by the core in its step then); empty(t) for t = cycle() + 1; refusals
-    void send_put(int64_t t, uint64_t lo, uint64_t hdr, uint64_t hi);
-    bool send_empty(int64_t t) const;
+    void set_stream(unsigned i, uint32_t src, uint32_t dest, uint32_t hdr);   // STREAM[i]'s three words
+    void set_group(unsigned g, uint32_t w0, uint32_t w1);   // GROUP[g]'s two words
+
+    // ---- the write unit's holding register from a test (9, 14.3) ----
+    // send_put: a packet put on the inject unit's holding register as of the cycle just run (Sim::put_late), as the write
+    // unit puts one; the coreless machine only (a running core's write unit owns the port). send_empty: nothing in the
+    // register and nothing put for the next cycle.
+    void send_put(uint64_t lo, uint64_t hdr, uint64_t hi);
+    bool send_empty() const;
     uint64_t send_refusals() const;
-    // ref's writer.record()/log and gatherStub.record()/log: {t, payload [63:0], header, payload [127:64]} from now on
+    // the write engine's and the gather drain's logs: {t, payload [63:0], header, payload [127:64]} from now on
     void record_writer();
     std::vector<std::array<uint64_t, 4>> writer_log() const;
-    // H6: every TRACE store's {cycle, value} (ref's TileControl.traceHook; logTrace's lines), from now on
-    void record_trace();
-    std::vector<std::array<int64_t, 2>> trace_log() const;
-    void record_gather();
+    void record_gather();                                   // (the drain: real_responder off)
     std::vector<std::array<uint64_t, 4>> gather_log() const;
-    // ref's `ctl.conditions |= bits` from a test (the request 9): ERRORS from the next cycle on (its view, its error
-    // line and the checker at that cycle's end), as ref's set between cycles
-    void set_errors(uint32_t bits);
-    uint32_t remaining(unsigned ctr) const;                 // the director's write counters (dir.remaining[ctr])
-    void set_remaining(unsigned ctr, uint32_t v);
-    bool mem_idle() const;                                  // mem_idle (4.1)
-    bool ts_busy() const;                                   // ts_busy (4.15)
-    bool quiescent() const;                                 // Tile.quiescent
-    // ref's EngineTest.phaseDone (AgTest's and EngineTest's runLocal stop on it): the AG's run over, every counter
-    // 0, nothing on the delay line (dir.inFlight), mem_idle, port B idle (dir.cmIdle), the table stores quiet; as ref
-    // has them at the end of the cycle just run (the delay line's and port B's words not yet landed by then)
+
+    bool mem_idle() const;                                  // nothing on its way into the scratchpad, no write queued
+    bool ts_busy() const;                                   // PTR's or HIST's pipeline or request FIFOs busy
+    // A transfer and its landing are over: the address generator not running, every counter 0, no decrement on the
+    // delay line, mem_idle, no NoC-port write on its way, the table stores quiet.
     bool phase_done() const;
 
-    // ---- a test's loads and stores through the core (ref's Controller.load(t, ea, width), store(t, ea, v, mask)) ----
-    // load: what a load at t = cycle() + 1 returns (the memories, the boot ROM, HIST, the registers as the core sees
-    // them at t, a present peripheral's window); nullopt is ref's null (a bus error). Its side effects are ref's, made
-    // by the core in its step at t: EVENTS consumes what it returned under the mask, a window's consuming word likewise,
-    // REQUEST_RECEIVE on a mesh tile reads 0 and sets receive underflow (ERRORS [14], visible two cycles later).
-    std::optional<uint32_t> load(int64_t t, uint32_t ea, unsigned width) const;
-    // store: ref's bus-error reason ("" for none, ref's null); a store that isn't a bus error is made by the core in its
-    // step at t (t >= cycle() + 1), through the instruction's path. `mask` as ref's (-1 a whole word).
-    std::string store(int64_t t, uint32_t ea, uint32_t v, uint32_t mask = 0xFFFFFFFFu);
-
-    // ---- the request port from a test (ref's req.setW, req.send, req.canPush, req.setW[]) ----
-    void req_set_w(unsigned i, uint32_t v);                 // ref's req.setW(i, v): REQUEST_SET_W<i> without a store
-    void req_send(int64_t t, uint32_t w3);                  // ref's req.send(t, w3), t the cycle just run: pushed as of t
-    bool req_can_push(int64_t t) const;                     // ref's req.canPush(t), t = cycle() + 1
-    bool req_idle() const;                                  // ref's req.idle(): the request port's FIFO empty (a push of
-                                                            //   the cycle just run included), as of the cycle just run
-    uint32_t req_w(unsigned i) const;                       // ref's req.setW[i]
-    // ---- the read port's host queue (ref's ReadPort.hostQueue, idle, allAccepted) ----
-    void rp_host_queue(uint32_t addr, uint32_t dest);       // a 32-bit read on counter 2 to dest, one a cycle from the next
-    bool rp_idle() const;                                   // every entry free and nothing queued from the host
-    bool rp_all_accepted() const;                           // every result issued accepted by the director, none queued
-    // ---- the write engine's request lines from a test (ref's weTsReq.put, weHistReq.put: AgTest's figure 12) ----
+    // ---- the request unit from a test (11.1) ----
+    void req_set_w(unsigned i, uint32_t v);                 // REQUEST_OUT_W<i>, without a store
+    uint32_t req_w(unsigned i) const;
+    // REQUEST_SEND with word 3 as of the cycle just run (t = cycle()): the request joins the queue at once (any number
+    // between cycles; one into a full queue is dropped, counted and recorded as a fact), W0-W2 clear
+    void req_send(int64_t t, uint32_t w3);
+    bool req_can_push(int64_t t) const;                     // the queue has a free entry at t = cycle() + 1
+    bool req_idle() const;                                  // the request queue empty, a push of the cycle just run included
+    // ---- the read unit (10) ----
+    bool rp_idle() const;                                   // every entry free
+    bool rp_all_accepted() const;                           // every result issued accepted by the director
+    // ---- the write engine's request lines from a test (figure 12's PTR and HIST ports) ----
     // put(t, op, idx, add) at t = cycle() + 1: on the line to PTR (idx: mem::IDX_PTR + i) or to HIST, arriving L later
     void we_ts_req(int64_t t, uint32_t op, uint32_t idx, uint32_t add);
     void we_hist_req(int64_t t, uint32_t op, uint32_t idx, uint32_t add);
-    // ---- the register block from a test (the (d)) ----
-    void set_events(uint32_t bits);                         // ref's ctl.events |= bits (sticky; from the next cycle on)
-    void schedule_go(int64_t t);                            // ref's ctl.scheduleGo(t): GO seen at t (this tile only)
 
-    // ---- the controller (the machine as specified) ----
+    // ---- the core ----
     uint32_t pc() const;
     uint32_t x(unsigned r) const;
     bool in_wfi() const;
-    int halt() const;                                       // ref's Controller.halt: RUN, HALT_EXIT, ...
-    int64_t exit_value() const;                             // TileControl.simExitValue (SIM_EXIT, 8.15)
-    std::string halt_report() const;                        // Controller.haltReport()
-
-    units::RegBlockState block(bool with_cond = true) const;   // the register block as ref has it now (mach.cpp)
 
 private:
     Chip* c_;
     unsigned k_;
 };
 
-// =========================================================================================== C&C 1's Java model (CnC)
-// ref's CnC queue, from the harness. A step queued between cycles joins C&C's queue at once (a release point, cnc.h)
-// and wakes C&C for the next cycle, as ref's harness queues steps between cycles. With cc_cores there is no CnC (C&C 1
-// is a core): use Mach's cc1_command and phase.
+// ================================================================================= the master side's model (Cc)
+// C&C's behavioural model (cnc.h), queued from the harness: a step queued between cycles joins the model's queue at once
+// and wakes it for the next cycle. What its steps mean on v1.36's tiles is in the header (THE MASTER SIDE). With
+// cc_cores there is no model.
 class Cc {
 public:
     explicit Cc(Chip& c) : c_(&c) {}
-    Cc& load_words(unsigned dst, uint32_t byte_addr, const std::vector<uint32_t>& words);   // CnC.loadWords
-    Cc& command(unsigned dst, uint32_t word, const std::vector<uint32_t>& args = {});        // CnC.command
+    // 128-bit WRITE packets of `words` to byte address `byte_addr` of dst (a tile, or BROADCAST), from id 64
+    Cc& load_words(unsigned dst, uint32_t byte_addr, const std::vector<uint32_t>& words);
     Cc& send(unsigned dst, unsigned mode, unsigned counter, uint32_t addr, unsigned size, uint64_t lo, uint64_t hi = 0);
-    Cc& go();                                               // CnC.go
-    Cc& run_when_ready();                                   // CnC.runWhenReady (last_run_at)
-    Cc& at_all_ready(std::function<void(int64_t)> fn);      // atAllReady: fn(cycle) between cycles, after it ran
-    Cc& wait_cycles(uint32_t n);                            // CnC.waitCycles
-    Cc& call(std::function<void(int64_t)> fn);              // CnC.call: fn(the cycle it ran), run between cycles right
-                                                            //  after that cycle (ref's lambdas record cycles and state)
-    // CnC.waitUntil(cond) in the form (approved): C&C waits at this step; the harness checks cond between cycles once
-    // C&C has reached it, and C&C moves on in the next cycle. Runs go cycle by cycle while one is pending.
+    Cc& go();                                               // waits for every expected tile's arrival, then the release
+    Cc& run_when_ready();                                   // go(), recording the release's cycle (last_run_at)
+    Cc& at_all_ready(std::function<void(int64_t)> fn);      // waits for every expected tile's arrival, then fn(cycle)
+    Cc& wait_cycles(uint32_t n);
+    Cc& call(std::function<void(int64_t)> fn);              // fn(the cycle it ran), run between cycles right after it
+    // The model waits at this step; the harness checks cond between cycles once the model has reached it, and the model
+    // moves on in the next cycle. Runs go cycle by cycle while one is pending.
     Cc& wait_until(std::function<bool()> cond);
-    // ref's CnC.reset(hard) (B20): a step taking its cycle whose end resets the chip (Chip::reset), two waiting cycles,
-    // then READY_EXPECT for all 64 tiles (the model's firmware)
-    Cc& reset(bool hard);
-    void set_expect(uint64_t tiles);                        // ref's cc1p.expect (READY_EXPECT_0-1): the tiles GO waits for
-    // ref's drainReports (C&C 1's request service, modelled; needs MachConfig::reqbus_host): from now on, one request a
-    // cycle from target 0's queue: REQ_OP_REPORT into reports(), anything else into requests(), REQ_OP_RESULT also into
-    // results() ({t, requestor, w2, w3}) and answered by C&C 1 with a 32-bit mode-0 write to the address in W1 on the
-    // request's reply counter, before its own steps. Runs go cycle by cycle while on.
+    void set_expect(uint64_t tiles);                        // the tiles whose arrival the release waits for
+    // The master's request service as far as a test needs it (needs MachConfig::reqbus_host): from now on, one request
+    // a cycle from target 0's queue: a REPORT (op 1: 11.5) into reports(), anything else into requests(). Runs go cycle
+    // by cycle while on.
     void drain_reports(bool on);
     std::vector<std::array<int64_t, 5>> reports() const;            // {t, w0, w1, w2, w3}, in arrival order
-    std::vector<std::array<int64_t, 5>> reports_of(unsigned id) const;   // ref's reportsOf(id): a unit's reports
+    std::vector<std::array<int64_t, 5>> reports_of(unsigned id) const;   // a requester's reports
     std::vector<std::array<int64_t, 5>> requests() const;
-    std::vector<std::array<int64_t, 4>> results() const;            // {t, requestor, w2, w3}
-    bool busy() const;                                      // CnC.busy(): steps left in its queue
+    bool busy() const;                                      // steps left in its queue
     int64_t last_go_at() const, last_all_ready_at() const, last_run_at() const;
-    // CnC.phaseLog: {all READY seen, GO store} per GO
-    std::vector<std::array<int64_t, 2>> phase_log() const;
-    size_t phases_logged() const;                           // phaseLog.size(), without the copy (for run conditions)
-    std::vector<std::array<uint64_t, 4>> received() const;  // Endpoint.received: {t, payload lo, header, payload hi}
-    uint64_t ready_bits() const;                            // the READY bits as C&C sees them
-    // (received: ref's cnc.received, on either machine without cc_cores: {t, payload [63:0], header, payload [127:64]})
+    std::vector<std::array<int64_t, 2>> phase_log() const;  // {every expected tile seen arrived, the release} per release
+    size_t phases_logged() const;
+    std::vector<std::array<uint64_t, 4>> received() const;  // every packet the model received: {t, payload [63:0],
+                                                            //   header, payload [127:64]}
 private:
     Chip* c_;
 };
@@ -369,159 +391,97 @@ public:
     void touched(const std::string& name);                  // a unit changed directly: stepped at the next cycle
 
     // ---- time (above) ----
-    int64_t cycle() const;                                  // ref's Chip.cycle
+    int64_t cycle() const;
     void step();                                            // one cycle
     void run(uint64_t n);                                   // wake all, n cycles, scan overflows
     bool run_until(const std::function<bool()>& cond, uint64_t max);   // true if cond held (checked before each cycle)
     bool drain(uint64_t max);                               // run until quiescent
-    bool quiescent() const;                                 // nothing in flight anywhere (ref's quiescent)
-    std::vector<int> start_skew() const;                    // the skew each tile was given (ref's startSkew)
+    bool quiescent() const;                                 // nothing in flight anywhere
+    std::vector<int> start_skew() const;                    // the skew each tile's release link was given
 
     // ---- the parts ----
-    TileRef tile(unsigned k) { return TileRef(*this, k); }  // 0-63; 64-66 the controllers with cc_cores
-    Cc& cc();                                               // C&C 1's model (not with cc_cores)
-    PhaseLog& phases();                                     // ref's Chip.phases, attached at the first call (phase_log.h)
-    ReqBus& reqbus();                                       // ref's Chip.reqBus from a test (MachConfig::reqbus_host)
-    bool toast() const;                                     // ref's cc1p.toast: C&C 1's toast latch (C&C's model only)
-    int64_t toast_at() const;                               // ref's cc1p.toastAt (-1: not latched)
-    bool all_stopped() const;                               // no tile's core in RUN
-    bool all_exited() const;                                // every tile ended through SIM_EXIT
-    bool all_in_wfi() const;
-    bool parked_untouched() const;                          // ref's parkedUntouched (MachConfig::parked; true if none)
-    // ref's Replayer.rowListener on tile k's replayer (peripheral 1): fn(the record, REC_LONGS words; the cycle it left)
-    // for every row the replayer sinks, called between cycles after the cycle it left in (runs go cycle by cycle then)
-    void on_row(unsigned tile, std::function<void(const uint64_t* rec, int64_t cycle)> fn);
+    TileRef tile(unsigned k) { return TileRef(*this, k); }  // 0-63; 64-66 with cc_cores
+    Cc& cc();                                               // the master side's model (not with cc_cores)
+    ReqBus& reqbus();                                       // the request tree from a test (MachConfig::reqbus_host)
+    bool toast() const;                                     // the model's latch of the tiles' error lines (v1.35's
+    int64_t toast_at() const;                               //   toast pin; -1: not latched)
+    bool all_in_wfi() const;                                // every compute tile's core in a WFI
+    bool parked_untouched() const;                          // MachConfig::parked: each quiescent, no link into it busy
+    // v1.35's host port of unit 64 + cc (cc_cores): 128-bit WRITE packets of `words` into its memories
+    void host_load(unsigned cc, uint32_t byte_addr, const std::vector<uint32_t>& words);
 
-    // ---- the cores (cc_cores; ref's CcCores) ----
-    void host_load(unsigned cc, uint32_t byte_addr, const std::vector<uint32_t>& words);       // CcCores.hostLoad
-    void host_command(unsigned cc, uint32_t word, const std::vector<uint32_t>& args);          // CcCores.hostCommand
-
-    // ---- the checker [step 2] ----
-    uint64_t violations() const;                            // ref's Chip.violations
-    const std::vector<std::string>& violation_messages() const;   // the first max_violation_messages, ref's text
+    // ---- the checker ----
+    uint64_t violations() const;
+    const std::vector<std::string>& violation_messages() const;   // the first max_violation_messages
     void clear_violation_messages();
-    // ref's Config switches changed mid-run (the request 10, CtrlTest): from the next cycle on, as ref reads them each
-    // cycle (the report through the cycle just run is made first); and ref's `violations = 0` with the messages cleared
-    void set_check_errors(bool on);
-    void set_strict_replies(bool on);
+    void set_check_errors(bool on);                         // from the next cycle on
     void set_max_violation_messages(unsigned n);
     void clear_violations();
-    std::string violation_report();                         // ref's violationReport() (scans the overflows first)
+    std::string violation_report();                         // (scans the overflows first)
     void scan_overflows();
-    // ref's Chip.newPhase (the agreed form): between cycles, a new disjoint-buffer phase on every tile (BigSram::new_phase,
-    // the), each woken. (Every GO starts one too, inside the tile: the.)
-    void new_phase();                                  // ref's scanOverflows
-    void finalize_checks() const;                           // the checker's report through the cycle just run
-    // ---- the fingerprint (B25; D41 Q5: in place of ref's -Dmeshsim.digest=FILE) ----
-    // With MESHSIM_DIGEST=FILE in the environment, every Chip appends, when destroyed (and those still alive at exit),
-    // one line in creation order: "chip N cycle C units U mcycle M wfi W instructions I violations V fp HASH", the totals
-    // as ref's digest prints them and HASH the canonical state fingerprint (tests/statefp.h, equal to ref's StateFp) of
-    // the whole chip at its last cycle, in place of ref's digest hash. digest() is that line's text after "chip N ".
-    std::string digest() const;
-    std::vector<std::string> fingerprint_lines() const;     // the StateFp point's lines ("cycle unit hash"), for diffing
-    void fingerprint_dump(const std::string& unit, FILE* out) const;   // one unit's words (StateFp's fpdump), for diffing
-    // ref's Chip.log as far as v1.35 keeps it: with log_trace, "cycle T tile K: TRACE 0xV" for every TRACE store, in
-    // cycle order (tiles in order within a cycle)
-    std::vector<std::string> log() const;
-    std::string ag_report() const;                          // ref's Chip.agReport (one line, ref's text)
-    std::string s1_report() const;                          // ref's S1.report(K) over the tiles (the debug and suite builds)
-    // ---- reset (6.1) [step 2] ----
-    void reset(bool hard);                                  // takes effect at the end of the current cycle
-    uint64_t resets() const;
-    int64_t last_reset_at() const;
-    void reset_stats();                                     // ref's resetStats: the units' statistics to 0, every FIFO's
-                                                            //   peak to its occupancy (the framework FIFOs' peaks, the
-                                                            //   write-engine input's and the GATHER queue's, exist under
-                                                            //   SIM_CHECKS only: Sim::fifo_peak)
-    std::vector<std::array<uint64_t, 4>> received(unsigned cc) const;   // ref's ccs[cc].received (C&C cc + 1; no cc_cores)
+    void new_phase();                                       // a new disjoint-buffer phase on every tile (BigSram)
+    void finalize_checks() const;                           // every fact recorded so far processed
+    std::string ag_report() const;                          // the address generators' statistics (one line)
+    std::string s1_report() const;                          // item S1's measurement over the tiles (debug and suite builds)
+    void reset_stats();                                     // the units' statistics to 0, every FIFO's peak to its
+                                                            //   occupancy (the framework FIFOs' peaks: SIM_CHECKS only)
+    std::vector<std::array<uint64_t, 4>> received(unsigned cc) const;   // the model's (0) and the endpoints' (1, 2) packets
 
     struct Impl;                                            // mach.cpp: the machine, its memories, the harness units
     Impl& impl() { return *impl_; }
     const Impl& impl_const() const { return *impl_; }
 private:
     MachConfig cfg_;
-    std::string digest_impl(std::vector<std::string>* lines_out, const std::string* dump_unit = nullptr, FILE* dump_out = nullptr) const;
     std::unique_ptr<Impl> impl_;
 };
 
 // =============================================================================== the machine as specified (Mach)
 class Mach {
 public:
-    struct Image {                                          // Mach.Image
-        std::string name;
-        std::vector<uint32_t> code, data;
-        std::map<std::string, uint32_t> syms;
-        uint32_t sym(const std::string& s) const;           // FATAL "<name>: no symbol <s>", as ref's IllegalArgument
-        static Image load(const std::string& name, const MachConfig& cfg);   // the search path above; FATAL if absent
-        static Image load_dir(const std::string& dir, const std::string& name);
-    };
-
     explicit Mach(const MachConfig& cfg);
-    static MachConfig cfg(int64_t shuffle);                 // Mach.cfg: machine() with the shuffle seed
-    static MachConfig cores_cfg(int64_t shuffle);           // Mach.coresCfg: cfg plus cc_cores
+    static MachConfig cfg(int64_t shuffle);                 // machine() with the shuffle seed
+    static MachConfig cores_cfg(int64_t shuffle);           // cfg plus cc_cores
     Chip c;
-    int64_t boot_start = 0, run_at = -1;                    // Mach.bootStart, runAt
-    uint32_t uart_divisor = 0;                              // Mach.uartDivisor
 
-    // ---- the boot through C&C's model (6.2): the image broadcast, CMD_JUMP, READY, GO ----
-    Image boot(const std::string& name);
-    Image boot(const Image& im);
-    // ---- the boot with C&C 1-3 as cores (cores_cfg; the bootCores and hostBoot) ----
-    static constexpr uint32_t CC_PHASE = 0x50, CC_GO = 0x47, CC_EXPECT = 0x45, CC_EXIT = 0x58, CC_WATCHDOG = 0x57,
-                              CC_UART = 0x55, CC_SEGMENT = 0x54;
-    static constexpr uint32_t STAGE_CHUNK = 0x10000;
-    Image cc1, cc23;
-    Image boot_cores(const std::string& tile);
-    Image boot_cores(const Image& tile, const Image* cc3);  // cc3 null: cc23 for C&C 3 too
-    void host_boot(const Image& im, const std::vector<uint32_t>& data);
-    void stage_cc1(uint32_t chunk, const std::vector<uint32_t>& words, uint32_t rows);
-    uint32_t mbox(unsigned i) const;                        // C&C 1's mailbox word i (cc1.c)
-    uint32_t toast_info(unsigned i) const;
-    void cc1_command(uint32_t type, uint32_t arg, const std::vector<uint32_t>& args = {});
-    void phase(uint32_t word, const std::vector<uint32_t>& args = {});
-    bool cores_booted() const;                              // mbox(3) == 2
+    // An image placed in a unit's memories (a back door, before the unit's core needs it: 6.5's boot_local start, or a
+    // test's own data): `words` from byte address `byte_addr` of IMEM (region 0x01) or DMEM (0x00).
+    void place(unsigned unit, uint32_t byte_addr, const std::vector<uint32_t>& words);
+    // An ELF file's loadable segments (tests/rtl_images.h's rows: the RTL's images, fw/rtl/) placed likewise.
+    void place_elf(unsigned unit, const std::string& path);
 
     // ---- running and reading back ----
     bool run(const std::function<bool()>& cond, uint64_t max) { return c.run_until(cond, max); }
-    bool all_stopped() const { return c.all_stopped(); }
-    bool all_exited() const { return c.all_exited(); }
     bool all_in_wfi() const { return c.all_in_wfi(); }
-    int64_t exit_value(unsigned tile) const;
-    uint32_t word(unsigned tile, uint32_t byte_addr) const;
-    uint32_t word(unsigned tile, const Image& im, const std::string& sym, unsigned i) const;
-    std::string halt_summary() const;                       // Mach.haltSummary, ref's text
+    uint32_t word(unsigned unit, uint32_t byte_addr) const; // TileRef::peek_local
 };
 
 // ===================================================================== a machine fed from the harness (Net)
-// ref's Net, on any machine (the coreless one or Config.machine(), as ref's; not with cc_cores): per-tile packet queues
-// fed through each tile's read-return holding register (the injection point's top
-// priority: a packet scheduled for cycle T is taken by the injection point at T), per-tile read-queue client requests,
-// C&C's sends, and per-tile arrival logs at the director. The feeding is ref's `feed()`, run between cycles before each
-// cycle, so it sees exactly what ref's harness saw. The harness's ports into the injection unit and the director's
-// log are optional parts of those units, declared only on a Net machine (nothing in the units' loop otherwise).
+// Either machine (not with cc_cores): per-tile packet queues fed through each tile's read-return holding register (the
+// inject unit's top priority: a packet scheduled for cycle T is taken by it at T), per-tile requests of the read
+// arbiter's clients, the model's sends, and per-tile arrival logs at the director. The feeding runs between cycles before
+// each cycle. The harness's ports into the inject unit and the director's log are optional parts of those units,
+// declared only on a Net machine (nothing in the units' loop otherwise).
 class Net {
 public:
     explicit Net(const MachConfig& cfg);
-    static MachConfig cfg(int64_t shuffle);                 // Net.cfg: defaults(), check_unexpected and check_errors off
+    static MachConfig cfg(int64_t shuffle);                 // defaults(), check_unexpected and check_errors off
     Chip c;
     int64_t late() const;                                   // packets taken later than scheduled (must stay 0)
 
-    // Net.at: tile's packet for injection at cycle T (nondecreasing T per tile): 64 bits on counter 1, or in full
+    // tile's packet for injection at cycle T (nondecreasing T per tile): 64 bits on counter 1, or in full
     void at(unsigned tile, int64_t T, unsigned dst, unsigned mode, uint32_t addr, uint64_t payload);
     void at(unsigned tile, int64_t T, unsigned dst, unsigned mode, unsigned counter, uint32_t addr, unsigned size,
             uint64_t lo, uint64_t hi);
-    // Net.rd: a read-queue request from client cl (0-2) of tile, presented from cycle T (FIFO order per client)
-    void rd(unsigned tile, unsigned cl, int64_t T, uint32_t src_chunk, unsigned width, unsigned mode, unsigned counter,
+    // a read request from client cl (0-2) of tile's read arbiter, presented from cycle T (FIFO order per client)
+    void rd(unsigned tile, unsigned cl, int64_t T, uint32_t src_word, unsigned width, unsigned mode, unsigned counter,
             unsigned dst, uint32_t dst_addr);
-    // Net.cncSends: {T, dst, mode, addr, lo[, size, hi[, counter]]}, in order (C&C 1 puts it at T - 1, visible at T)
+    // the model's sends, in order (it puts one at T - 1, visible at T)
     struct CncSend { int64_t T; unsigned dst, mode; uint32_t addr; uint64_t lo; unsigned size = 1; uint64_t hi = 0; unsigned counter = 1; };
     void cnc_send(const CncSend& s);
-    // ref's ccs[cc].send(c.cycle, ...) between cycles: C&C cc + 1's endpoint puts a packet as of the cycle just run
-    // (Sim::put_late), seen by the mesh in the next cycle, as ref's; refused (and lost, as ref's) if its Hold is full.
+    // the model's (cc 0) or an endpoint's (1, 2) packet put as of the cycle just run (Sim::put_late), seen by the mesh in
+    // the next cycle; refused (and lost) if its holding register is full
     void send(unsigned cc, unsigned dst, unsigned mode, unsigned counter, uint32_t addr, unsigned size, uint64_t lo, uint64_t hi);
-    // ref's ccs[cc].received: {t, payload [63:0], header, payload [127:64]} of every packet C&C cc + 1 received
-    std::vector<std::array<uint64_t, 4>> received(unsigned cc) const;
-    static uint32_t cm(uint32_t packed_word);               // Net.cm: a v1.1 packed controller-memory word's address
+    std::vector<std::array<uint64_t, 4>> received(unsigned cc) const;   // Chip::received
     static uint64_t tagged(uint64_t seq, int64_t T) { return seq << 32 | (uint64_t(T) & 0xFFFFFFFFull); }
 
     bool pending() const;
@@ -534,8 +494,8 @@ public:
 };
 
 // ===================================================================================== the digit all-to-all (A2A)
-// ref's A2A: the data sets (Data(seed, n) with java.util.Random, or a stream matrix from data/), the 16-group schedule,
-// the send buffer at chunk 0 and the receive buffer at 0x40000.
+// The data sets (Data(seed, n) with java.util.Random, or a stream matrix from data/), the 16-group schedule, the send
+// buffer at word 0 and the receive buffer at 0x40000.
 struct A2A {
     static const int G4[16][4];
     static constexpr uint32_t SRC = 0, INBOX = 0x40000;
@@ -549,9 +509,9 @@ struct A2A {
     int expected(unsigned d) const;
     int64_t bound(int gap) const;
     int first(unsigned s, unsigned d) const;
-    void load(Chip& c, int gap) const;                      // A2A.load: the coreless machine's buffers and engines
-    int verify(Chip& c) const;                              // A2A.verify: records out of place (0: every one landed)
-    static int64_t run(Chip& c, int64_t max);               // A2A.run
+    void load(Chip& c, int gap) const;                      // the coreless machine's buffers, tables and registers
+    int verify(Chip& c) const;                              // records out of place (0: every one landed)
+    static int64_t run(Chip& c, int64_t max);               // every tile's DMA_START, then until every tile is done
 };
 
 // ---- inline definitions ----

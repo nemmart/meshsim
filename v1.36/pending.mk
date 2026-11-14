@@ -15,7 +15,7 @@ PENDING_TESTS += test_g1_tile test_tile_slot test_tileslotconf
 # Unit conformance against v1.3's observations, whose scripts hold v1.35's DMA_CONFIG and table layouts.
 PENDING_TESTS += test_ag test_gather test_mem test_engconf test_memconf
 # The machine (tests/mach.h) and what is built on it: v1.35's chip with C&C's model or C&C 1-3 as cores, v1.35's images.
-PENDING_TESTS += test_mach test_checkself test_chip test_sort test_cc_units test_cc_req test_t2_harness test_stageb \
+PENDING_TESTS += test_checkself test_chip test_sort test_cc_units test_cc_req test_t2_harness test_stageb \
                  test_p4suites test_ctl_suites test_sort_suites
 # The register-table generator's tables (tools/regs): v1.35's map.
 PENDING_TESTS += test_regs

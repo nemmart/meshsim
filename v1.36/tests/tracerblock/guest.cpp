@@ -139,6 +139,10 @@ void emit(Asm& a, const Params& p) {
     a.label("loop");
     a.w(load(F_D, 23, 10, 32)); a.w(add(23, 23, 5)); a.w(store(F_D, 23, 10, 32)); a.w(xor_(24, 24, 23)); a.w(mul(25, 23, 6));
     a.w(div(26, 25, 7)); a.c(c_addi(5, -1)); a.w(bne(5, 0, a.to("loop")));
+    a.w(addi(5, 0, 6));                                      // a loop of 16 instructions: each again is a hit at E[15]
+    a.label("sixteen");
+    for (int k = 1; k <= 14; k++) a.w(addi(9, 9, k));
+    a.c(c_addi(5, -1)); a.w(bne(5, 0, a.to("sixteen")));
     a.w(addi(5, 0, p.lines)); a.w(lui(31, 1)); a.c(c_add(31, 10));   // x31 = the data's second page
     a.label("lines");
     a.w(store(F_D, 5, 31, 0)); a.w(addi(31, 31, 128)); a.c(c_addi(5, -1)); a.w(bne(5, 0, a.to("lines")));
@@ -543,6 +547,29 @@ std::vector<uint64_t> decode(const std::vector<uint64_t>& entries, StreamSize si
     return values;
 }
 
+// A stream's bits LRU-coded, by 17.9.6's encoders: a value in the table is a hit at its lowest index, in the write
+// log at index 15 first, 5 bits; a miss is 2 bits and its value, 32 bits when its top 32 are 0 and 64 otherwise.
+uint64_t coded_bits(int stream, const RunPlan& p) {
+    uint64_t E[16] = {}, bits = 0;
+    const int lru = stream == 2 ? 15 : 16;
+    auto code = [&](uint64_t v) {
+        int hit = stream == 2 && E[15] == v ? 15 : -1;
+        for (int i = 0; hit < 0 && i < lru; i++)
+            if (E[i] == v) hit = i;
+        bits += hit >= 0 ? 5 : (v >> 32) != 0 ? 66 : 34;
+        if (hit == 15 && stream == 2) return;
+        for (int j = hit >= 0 ? hit : lru - 1; j > 0; j--) E[j] = E[j - 1];
+        E[0] = v;
+    };
+    if (stream == 0) { for (uint32_t v : p.code) code(v); return bits; }
+    for (const auto& l : p.log) {
+        if (stream == 1) { if (l.first != TAG_WRITE) code(l.second); }
+        else if (l.first == TAG_LOAD) E[15] = l.second;
+        else if (l.first == TAG_WRITE) code(l.second);
+    }
+    return bits;
+}
+
 uint64_t stored_cell(const FileStore& fs, FileStore::File f, uint64_t cell) {
     FileStore::Walk w;
     fs.walk(f.root, f.depth, int64_t(cell / 16), w);
@@ -642,9 +669,12 @@ bool run_setting(const Guest& g, const ReplayTables& tb, const std::string& fill
             if (size.values != expected_values[s]) d.add("%s: %s's values %u, the interpreter's %llu", context, kName[s], size.values, (unsigned long long)expected_values[s]);
             if (o.lengths[s] != size.words || o.queue[s + 1].size() != 2 * size_t(size.words))
                 d.add("%s: %s's words %u, its length word %u, its entries %zu", context, kName[s], size.words, o.lengths[s], o.queue[s + 1].size() / 2);
-            if (size.compressed ? ((compression >> s) & 1) == 0 || size.words >= raw_words : size.words != raw_words)
-                d.add("%s: %s is %s in %u words, raw %u, tracer_compression %u", context, kName[s], size.compressed ? "LRU-coded" : "raw", size.words,
-                      raw_words, compression);
+            // the choice (17.9.6): LRU-coded if its tracer_compression bit is set and its coded form is fewer words
+            const uint32_t coded_words = uint32_t((coded_bits(s, p) + 127) / 128);
+            const bool coded = ((compression >> s) & 1) != 0 && coded_words < raw_words;
+            if (size.compressed != coded || size.words != (coded ? coded_words : raw_words))
+                d.add("%s: %s is %s in %u words; raw %u words, LRU-coded %u, tracer_compression %u", context, kName[s],
+                      size.compressed ? "LRU-coded" : "raw", size.words, raw_words, coded_words, compression);
             bool bad = false;
             const std::vector<uint64_t> values = decode(o.queue[s + 1], size, s, p.log, bad);
             if (bad) d.add("%s: %s's values run past its entries", context, kName[s]);

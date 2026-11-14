@@ -42,7 +42,7 @@ rm -f results/*.log
 [ -z "${STEP_TIMES:-}" ] || : > results/.step-times
 
 # The programs the steps run (targets of the Makefile).
-SUITES="test_core_programs test_core_tile test_regs test_tile_control"                      # the core, the map, the tile control unit
+SUITES="test_core_programs test_core_tile test_rv32_rtl test_regs test_tile_control"                      # the core, the map, the tile control unit
 SUITES="$SUITES test_router test_special_router test_request_tree test_reqbus"              # the router, the request tree
 SUITES="$SUITES test_mem test_ag test_receive test_gather test_mach test_checker"                     # the tile's units, and the tile
 SUITES="$SUITES test_periph_slot test_ingress_egress test_rw_engine"                        # the peripherals
@@ -101,6 +101,7 @@ check rtl-images "the RTL's vendored firmware against its hash list (fw/check_im
 # ---- the core and the register map ----
 check core-programs "the RTL's core programs on the core: each pass, cycle, retirement and trap the RTL's (tests/core-programs/)" -- $S/test_core_programs
 check core-tile "the RTL's core on the tile's environment: region 0xFF's accesses in register_bus's cycles" -- $S/test_core_tile
+check core-contract "the RTL's core against its contract: the core specification's §1 on a bus, and machine-spec 5 and 6.4 through register_bus.h's decode (tests/test_rv32_rtl.cpp)" -- $S/test_rv32_rtl
 check regs "REGISTERS.md and mesh.h against their generator, the simulator's decode, the specification and the RTL firmware's definitions (tests/test_regs.cpp)" -- $S/test_regs
 check tile-control "the tile control unit and the register bus's decode: events, errors, the barrier (machine-spec 5, 7)" -- $S/test_tile_control
 

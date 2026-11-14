@@ -37,6 +37,7 @@ rebuild a slip).
 |---|---|---|
 | `test_core_programs` | the core alone: the RTL's 49 programs, CoreMark, the interrupt programs, the boot ROM; every retirement, trap and wait in the RTL's cycle | the RTL (`core-programs/`) |
 | `test_core_tile` | the core's join to the tile's register bus, access by access | the specification (5, 6.4) and `register_bus`'s cycles |
+| `test_rv32_rtl` | the core against its contract, 57 tests: on a small bus, the pipeline's cycles, control transfers, data, multiply, the CSRs, the traps table, interrupts, WFI and the canonical wait; on the tile's environment, region 0xFF through `register_bus.h`'s decode: the windows', the tables' and the stalling stores' cycles, every kind of access fault, a peripheral's window by the straps, `core_status`, the wake and the NMI | the core specification's §1 (`spec/core.md`) and, where it is silent, the RTL core's source; the specification (5, 6.4, 7.2, 17.1) and `register_bus`'s cycles |
 | `test_regs` | `fw/REGISTERS.md` and `fw/include/mesh.h` | the generator, the simulator's decode, the specification's tables, the RTL firmware's definitions |
 | `test_tile_control` | the tile control unit and the register bus's decode | the specification (5, 7) |
 | `test_ag`, `test_receive`, `test_mem`, `test_gather` | the DMA unit's address generator (8.2–8.5), the write engine with `PTR` and `HIST` (12.4, 12.5), the scratchpad and the inject unit (14, 15), the gather unit (13) | the specification and the RTL blocks' READMEs |

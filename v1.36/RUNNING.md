@@ -34,6 +34,7 @@ about 2.5 minutes after the build, `quick --check` about 40 seconds.
 | `rtl-images` | both | `fw/check_images.sh` | <1 s | `fw/rtl/MANIFEST`: the RTL's vendored firmware, file by file |
 | `core-programs` | both | `test_core_programs` | 1 s | the RTL's core programs: each pass, cycle, retirement and trap the RTL's (`tests/core-programs/`) |
 | `core-tile` | both | `test_core_tile` | <1 s | the core's accesses to region 0xFF in `register_bus`'s cycles (machine-spec 5, 6.4) |
+| `core-contract` | both | `test_rv32_rtl` | <1 s | the core against its contract, test by test: the core specification's §1 on a small bus (the pipeline's cycles, control transfers, multiply, the CSRs, the traps table, interrupts, WFI and the canonical wait), and the tile's environment with region 0xFF decoded by `register_bus.h` (machine-spec 5, 6.4) |
 | `regs` | both | `test_regs` | <1 s | `fw/REGISTERS.md` and `fw/include/mesh.h` against their generator, the simulator's decode, the specification's tables and the RTL firmware's definitions |
 | `tile-control` | both | `test_tile_control` | <1 s | the tile control unit and the register bus's decode (5, 7) |
 | `router` | both | `test_router`, `test_special_router` | <1 s | the RTL's router under scripted random load, cycle by cycle (`tests/routerconf/`); chapter 16 |

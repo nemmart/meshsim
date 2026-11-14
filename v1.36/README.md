@@ -58,7 +58,7 @@ against the RTL's own block and then on the chip under the RTL's firmware. v1.35
 
 | what | the model | checked by | against |
 |---|---|---|---|
-| the core | the RTL's `rv32_core`, cycle for cycle | `test_core_programs`, `test_core_tile` | the RTL's 49 programs, CoreMark, the interrupt programs and the boot ROM: every retirement and trap in the RTL's cycle (`tests/core-programs/`) |
+| the core | the RTL's `rv32_core`, cycle for cycle | `test_core_programs`, `test_core_tile`, `test_rv32_rtl` | the RTL's 49 programs, CoreMark, the interrupt programs and the boot ROM: every retirement and trap in the RTL's cycle (`tests/core-programs/`); the core specification's §1 and machine-spec 6.4, test by test |
 | the tile | the register map, the register bus, the tile control unit, the boot; the DMA, write, read, request, receive, gather and inject units and the scratchpad (machine-spec 5–15) | `test_regs`, `test_tile_control`, `test_ag`, `test_receive`, `test_mem`, `test_gather`, `test_mach`, `test_rtl_tile` | the specification and the RTL blocks' READMEs; the RTL's tile programs on a tile, with the boot ROM's cycles |
 | the NoC | the RTL's `router`; the request tree | `test_router`, `test_special_router`, `test_request_tree`, `test_reqbus` | the RTL's router under scripted random load, cycle by cycle (`tests/routerconf/`); chapters 11 and 16 |
 | the peripherals | the control block and the DMA; Ingress/Egress with its UART and host interface; the RW engine | `test_periph_slot`, `test_ingress_egress`, `test_rw_engine` | 17.1–17.7; the RTL's `rw_engine_unit` under its own test, cycle for cycle (`tests/rwengine/`) |

@@ -1,8 +1,9 @@
 # units.mk: the rules (the tile's units in src/units/ and their tests), included by the Makefile.
 
-# the RTL's own core programs on the core alone (tests/core-programs/, tests/core_programs.h)
+# the RTL's own core programs on the core alone (tests/core-programs/, tests/core_programs.h); the core on the
+# tile's environment (tests/test_core_tile.cpp); the core against its contract (tests/test_rv32_rtl.cpp)
 $(B)/test_core_programs: $(B)/src/units/trace_log.o $(B)/tests/sha256.o
-$(B)/test_core_tile: $(B)/src/units/trace_log.o
+$(B)/test_core_tile $(B)/test_rv32_rtl: $(B)/src/units/trace_log.o
 
 # the canonical state fingerprint's C++ side (tests/statefp.*), and its test.
 FP_OBJ := $(B)/tests/statefp.o

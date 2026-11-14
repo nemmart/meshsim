@@ -31,14 +31,19 @@ struct Dir {
         return n < reqs.size() ? Wake::at_cycle(reqs[n].at) : Wake::none();
     }
 };
-// The block's `dma` RegFile: DMA_CONFIG and the record base, written at cycle 1 (and changed at `at2`).
+// The block's `dma` RegFile, written at cycle 1 (and changed at `at2`). The cases hold v1.35's values, a DMA_CONFIG word
+// with k - 1 at [26:24] and a record base; the gather unit reads both from GATHER_CONFIG (machine-spec 13: record_base
+// [20:0], value_size, k - 1, at [23:21]), so the stand-in writes that word from them.
 struct Dma {
     RegFileOut rf;
     uint32_t cfg, base, cfg2; Cycle at2;
+    static uint32_t gather_config(uint32_t v135_dma_config, uint32_t record_base) {
+        return (record_base & 0x1FFFFF) | (v135_dma_config >> 24 & 7) << 21;
+    }
     Dma(Ports& p, uint32_t c, uint32_t b, uint32_t c2 = 0, Cycle a2 = 0) : cfg(c), base(b), cfg2(c2), at2(a2) { p.out(rf, "dma", units::DMA_REGS); }
     Wake step(Ctx& c) {
-        if (c.now() == 1) { c.write(rf, units::DMA_R_CONFIG, cfg); c.write(rf, units::DMA_R_RECORD_BASE, base); }
-        if (at2 && c.now() == at2) c.write(rf, units::DMA_R_CONFIG, cfg2);
+        if (c.now() == 1) c.write(rf, units::DMA_R_GATHER, gather_config(cfg, base));
+        if (at2 && c.now() == at2) c.write(rf, units::DMA_R_GATHER, gather_config(cfg2, base));
         return at2 && c.now() < at2 ? Wake::at_cycle(at2) : Wake::none();
     }
 };

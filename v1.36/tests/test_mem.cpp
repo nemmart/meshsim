@@ -2,6 +2,7 @@
 // against ref is MemConf's (oracle/ref/MemConf.java); these pin the rules: the overflow events (D29), the request FIFO's
 // judgment (PORTS.md 3), the big SRAM's room by the count before the pop (13a), write combining, the write engine's
 // stage and the SRAM Hold's refusal.
+// The `dma` RegFile the write engine reads is v1.36's (DMA_CONFIG, RECEIVE_CONFIG, GATHER_CONFIG: write_engine.h).
 #include <cstdint>
 #include <vector>
 
@@ -38,7 +39,7 @@ struct WeStand {
     }
     sim::Wake step(sim::Ctx& c) {
         const uint64_t t = c.now();
-        if (t == 1) { c.write(dma, DMA_R_CONFIG, 0); c.write(dma, DMA_R_RECORD_BASE, 0); }
+        if (t == 1) { c.write(dma, DMA_R_CONFIG, 0); c.write(dma, DMA_R_RECEIVE, 0); c.write(dma, DMA_R_GATHER, 0); }
         if (c.ready(ovf)) { ovf_at.push_back(t); c.take(ovf); }
         if (c.ready(hist_req)) c.take(hist_req);
         if (c.ready(ts_req)) {
@@ -127,20 +128,11 @@ TEST(request_fifo_judges_a_put_by_the_start_of_its_cycle) {
     CHECK_EQ(unsigned(f.n), ReqFifo::N);
 }
 
-// The register block: the overflow events set ERRORS [4] and [5] at their endCycle.
-TEST(block_sets_we_in_and_table_overflow_conditions_from_events) {
-    RegBlockState b;
-    RegBlockState::In in;
-    in.we_in_ovf_ev = true;
-    b.end_cycle(10, in);
-    CHECK(b.conditions >> RegBlockState::COND_WE_IN_OVF & 1);
-    CHECK(!(b.conditions >> RegBlockState::COND_TABLE_OVF & 1));
-    RegBlockState::In in2;
-    in2.table_ovf_ev = true;
-    b.end_cycle(11, in2);
-    CHECK(b.conditions >> RegBlockState::COND_TABLE_OVF & 1);
-    CHECK(b.error_line);
-}
+// (v1.35's case `block_sets_we_in_and_table_overflow_conditions_from_events` is not here: it checked that the register
+// block set ERRORS [4] and [5] from the write-engine input FIFO's and the table request FIFOs' overflow events. v1.36's
+// ERRORS has no such bits (machine-spec 7.4), because its write engine and tables have no such FIFOs (12.4, 12.5); while
+// the simulator's units still have them, TileCtl stops the simulator on either event (tile_ctl.h; PENDING-v1.36.md,
+// section 4). The events themselves are still checked above and below.)
 
 namespace {
 // The big SRAM fed directly: writes `w` (chunk, n, lo) at cycles; records its write Hold's refusals.
@@ -230,8 +222,9 @@ struct TsDriver {
 };
 struct PtrReader {
     sim::RegFileIn ptr;
+    sim::RegFileIn view;                   // v1.36: the store's `view` of STREAM and GROUP (5.2), wired, not read here
     std::vector<uint32_t> seen[3];         // PTR[0..2] at each cycle (index = cycle)
-    explicit PtrReader(sim::Ports& p) { p.in(ptr, "ptr"); }
+    explicit PtrReader(sim::Ports& p) { p.in(ptr, "ptr"); p.in(view, "view"); }
     sim::Wake step(sim::Ctx& c) {
         for (unsigned i = 0; i < 3; i++) { seen[i].resize(c.now() + 1); seen[i][c.now()] = c.read(ptr, i); }
         return c.next();
@@ -259,6 +252,7 @@ TEST(table_store_ptr_view_is_ptr_before_this_cycles_write_back) {
     cfg.link(ts.ret_group, d.ret_group, 1);
     cfg.link(ts.ovf_ev, d.ovf, 1);
     cfg.connect(ts.ptr_view, r.ptr);
+    cfg.connect(ts.view, r.view);
     sim::Sim m = cfg.build();
     m.run(14);
     const PtrReader& a = m.unit<PtrReader>("ag");

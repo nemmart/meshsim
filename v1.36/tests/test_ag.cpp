@@ -19,13 +19,19 @@ namespace {
 
 constexpr unsigned L = 2;                         // ts_engine_latency
 
+// The entries in v1.36's layouts (machine-spec 8.1, 8.3, 8.4; the cases' values are v1.35's, re-encoded): STREAM_HDR is the
+// header block (size [1:0], counter [4:2], mode [7:5], dst [14:8]) and count [31:15]; GROUP is word 0 (rotations
+// [17:0], first_stream [25:18], streams - 1 [29:26]) and word 1, here [39:32], the gap; DMA_CONFIG is kind [0], start
+// [8:1], count [17:9] and gap [20:18], the gap after each stream of the transfer (v1.35 had one in each stream's entry).
 uint32_t stream_count(uint32_t count, uint32_t size, uint32_t counter, uint32_t mode, uint32_t d) {
-    return (count & 0x1FFFF) | (size & 3) << 17 | (counter & 7) << 19 | (mode & 7) << 22 | (d & 0x7F) << 25;
+    return (size & 3) | (counter & 7) << 2 | (mode & 7) << 5 | (d & 0x7F) << 8 | (count & 0x1FFFF) << 15;
 }
 uint64_t group_entry(uint32_t R, uint32_t start, uint32_t T, uint32_t gap) {
-    return uint64_t(R & 0x3FFFF) | uint64_t(start & 0xFF) << 32 | uint64_t((T - 1) & 0xF) << 40 | uint64_t(gap & 0xFF) << 44;
+    return uint64_t(R & 0x3FFFF) | uint64_t(start & 0xFF) << 18 | uint64_t((T - 1) & 0xF) << 26 | uint64_t(gap & 0xFF) << 32;
 }
-uint32_t dma_config(uint32_t kind, uint32_t start, uint32_t count) { return (kind & 1) | (start & 0xFF) << 1 | (count & 0x1FF) << 9; }
+uint32_t dma_config(uint32_t kind, uint32_t start, uint32_t count, uint32_t gap = 0) {
+    return (kind & 1) | (start & 0xFF) << 1 | (count & 0x1FF) << 9 | (gap & 7) << 18;
+}
 
 struct Tables { uint32_t src[256] = {}, dest[256] = {}, count[256] = {}; uint64_t group[64] = {}; uint32_t ptr[256] = {}; };
 
@@ -38,7 +44,7 @@ struct Blk {
     }
     uint64_t digest() const { return hash_fields(n, count); }
     Wake step(Ctx& c) {
-        if (c.now() == 1) { c.write(dma, units::DMA_R_CONFIG, cfg); c.write(dma, units::DMA_R_RECORD_BASE, base); }
+        if (c.now() == 1) { c.write(dma, units::DMA_R_CONFIG, cfg); c.write(dma, units::DMA_R_GATHER, base & 0x1FFFFF); /* GATHER_CONFIG: record_base, k = 1 */ }
         while (n < starts.size() && starts[n] == c.now()) { n++; c.drive(start, ++count); }
         return n < starts.size() ? Wake::at_cycle(starts[n]) : Wake::none();
     }
@@ -118,10 +124,11 @@ Sim bench(const Tables& tb, uint32_t cfg, std::vector<Cycle> starts, uint64_t pe
 
 TEST(ag_stream_run_lead_in_elements_gap_and_done) {
     Tables tb;
-    // stream 7: 3 elements of 64 bits, mode 1, counter 2, d = 1, gap 2; stream 8: 2 of 32 bits, mode 0 to 0x40, d = 66
-    tb.src[7] = 0x100 | 2u << 21; tb.dest[7] = 0; tb.count[7] = stream_count(3, lw::SIZE_64, 2, lw::M_SRC, 1);
+    // stream 7: 3 elements of 64 bits, mode 1, counter 2, d = 1; stream 8: 2 of 32 bits, mode 0 to 0x40, d = 66; the
+    // transfer's gap 2 (v1.35: stream 7's own; no gap follows the last stream)
+    tb.src[7] = 0x100; tb.dest[7] = 0; tb.count[7] = stream_count(3, lw::SIZE_64, 2, lw::M_SRC, 1);
     tb.src[8] = 0x200; tb.dest[8] = 0x40; tb.count[8] = stream_count(2, lw::SIZE_32, 0, lw::M_WRITE, 66);
-    Sim sim = bench(tb, dma_config(AddrGen::RUN_STREAMS, 7, 2), {10});
+    Sim sim = bench(tb, dma_config(AddrGen::RUN_STREAMS, 7, 2, 2), {10});
     sim.run(40);
     auto& s = sim.unit<Srq>("srq");
     auto& a = sim.unit<AddrGen>("t5.ag");

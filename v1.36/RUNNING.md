@@ -18,7 +18,9 @@ drive v1.35's register map, so the runner prints and logs each such step as `PEN
 it, in v1.3's order under v1.3's name; its summary counts them by reason and ends with `N steps PENDING` (47 in `all`,
 36 in `quick`), and the run exits 0 when every step that runs passed. `PENDING-v1.36.md`, section 3, lists them and what
 closes each; in `run_tests.sh` a pending step keeps its `step` line under it as a comment. The steps that run: `layout`,
-`bus`, `rtl-tile`, `mem`, `mem-shuf`, `mem-shuf2`, `replayer`, `memsys`, `rvc` and `tracer`. `rtl-tile` is v1.36's
+`bus`, `rtl-tile`, `mem`, `mem-shuf`, `mem-shuf2`, `core-programs`, `core-tile`, `replayer`, `memsys`, `rvc` and `tracer`.
+`core-programs` and `core-tile` are v1.36's own too: the RTL's core programs on the core in the RTL's cycles
+(`test_core_programs`) and the core's join to the tile's register bus (`test_core_tile`), no reference logs. `rtl-tile` is v1.36's
 own, right after `bus`: acceptance A, the RTL's tile programs on one compute tile (`build/clang-suite/test_rtl_tile`),
 with no reference log: a failing test fails the run, and what the test itself leaves pending is counted apart. The rows
 below for the pending steps, and the times, are v1.35's.

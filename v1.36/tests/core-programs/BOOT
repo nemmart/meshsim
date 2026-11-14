@@ -1,0 +1,11 @@
+# The RTL's boot ROM's cycles on the block `core`, behind register_bus's latencies, as Snarky One's
+# rtl/blocks/core/README.md states them at 370e3ac ("The boot ROM's program": boot_rom_program_test's figures). Each
+# ends at the cycle in which the named store is raised on the system port: from the reset (cycle 0 the first after
+# it) to a loaded tile's LOAD request's REQUEST_SEND, and with PARAMS.boot_local to the image's first instruction, a
+# store; from the COUNT's decrement of counter 7, the core asleep in its wait, to the ARRIVE, or without the barrier
+# to the image's first instruction; from the release to the image's first instruction.
+reset_to_load_request_send 26
+reset_to_image_boot_local 27
+count_to_arrive 9
+count_to_image_no_barrier 17
+release_to_image 13

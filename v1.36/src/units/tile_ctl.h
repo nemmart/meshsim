@@ -7,19 +7,25 @@
 // t - 1 (regblock.h's end_cycle(t - 1), from what reached it at t: the shifted end of cycle, PORTS.md 7), then publishes
 // the state at the end of t - 1, which the core reads at t.
 //
-// THE REGISTER BUS'S TIMING (6.4; the RTL's register_bus). For an access the core issues in cycle t:
-//   - a window load is presented to its owner in t + 1 and returns the state at the end of t: the core waits a cycle
-//     and reads the published view at t + 1; its side effect (an EVENTS load's consumption, a REQUEST_RECEIVE's pop)
-//     is at the end of t + 1: put on `side`, a Link(1), at t + 1;
-//   - a window store takes effect at the end of t + 1: put on `bus`, a Link(2), at t, with the core's status pulses
-//     (which reach ERRORS at the end of t + 1 too) and its canonical-wait level (core_status.canonical_wait, a cycle
-//     late);
-//   - a table load returns the state at the end of t - 1 (the tables' RegFiles at t), a table store takes effect at
-//     the end of t (the table stores' `window`, a Link(1)).
+// THE REGISTER BUS'S TIMING (6.4; the RTL's register_bus, its header's "Timing"). The core (rv32.h) calls the bus in the
+// cycle an access is made in, m: for an access it raises in cycle q, m = q for a table and q + 1 for a register
+// window (the bus's stage); a store that may stall is made in the first cycle from q + 1 its owner is ready in.
+//   - a window load returns the state at the end of m - 1: the published view at m; its side effect (an EVENTS
+//     load's consumption, a REQUEST_RECEIVE's pop) is at the end of m: put on `side`, a Link(1), at m;
+//   - a window store takes effect at the end of m: put on `bus`, a Link(1), at m, as are the core's status pulses
+//     in the cycle of each (core_status's flip-flops: the cycle after the trap), which reach ERRORS at its end; the
+//     registers on the core's side (the write, read and request units') are written in m, which no load of m reads;
+//   - core_status.canonical_wait, a flip-flop of the core: its level in cycle t + 1 is known as the core's step of
+//     t ends, and put on `canon`, a Link(2), then, when it changes: the tile control unit has it at the edge that
+//     ends t + 1 (7.3);
+//   - a table load returns the state at the end of m - 1 (the tables' RegFiles at m), a table store takes effect at
+//     the end of m (the table stores' `window`, a Link(1));
+//   - an access fault reaches no owner: the core answers it itself, the cycle after it is raised (Env::bus_kind).
 // Stores run one a cycle and window loads one every other cycle.
 //
 // THE TILE CONTROL UNIT'S PORTS (TileCtl):
-//   bus         Link(2), width 2   the core's window store, status pulse or canonical-wait level of t
+//   bus         Link(1), width 2   the core's window store or status pulse, made in t
+//   canon       Link(2), width 1   core_status.canonical_wait's level in the cycle after the core's step that put it
 //   side        Link(1), width 1   a load's side effect: a consuming EVENTS load; receive_underflow's pulse
 //   release     Link, width 0      BARRIER_RELEASE's pulse (18), from the master tile's side
 //   kline       Link(LAND_LATENCY + 1), width 1, from the director: a counter's decrement due (12.3)
@@ -69,7 +75,6 @@ namespace units {
 enum : uint32_t {
     BUS_STORE = 1,       // arg: the tile window's word (regmap.h's Reg); value
     BUS_STATUS = 2,      // arg: an error's bit (7.4): core_status's access_fault or illegal_instruction, read_overflow
-    BUS_CANON = 3,       // arg: core_status.canonical_wait's level
     SIDE_EVENTS = 1,     // a consuming load of EVENTS presented this cycle
     SIDE_ERROR = 2,      // arg: an error's bit: receive_underflow (a REQUEST_RECEIVE of an empty queue)
 };
@@ -77,7 +82,7 @@ enum : uint32_t {
 // ------------------------------------------------------------------------------------------ the tile control unit
 struct TileCtl {
     // ---- inputs ----
-    sim::LinkIn bus, side, release, kline, bad, ovf;
+    sim::LinkIn bus, canon, side, release, kline, bad, ovf;
     sim::LinkIn we_ovf, ts_ovf, hist_ovf;
     sim::CountIn router_ovf, we_in_ovf, gather_ovf;   // the overflow Counts (statistics: the events above carry them)
     sim::RegIn send_busy;                      // the inject unit's holding-register status (v1.36 has no STATUS bit for it)
@@ -116,7 +121,7 @@ struct TileCtl {
             p.in(ag_status, "ag_status", 1); p.in(drift, "drift", 0);
             p.out(ag_start, "ag_start");
         }
-        p.in(bus, "bus", 2); p.in(side, "side", 1); p.in(release, "release", 0); p.in(kline, "kline", 1);
+        p.in(bus, "bus", 2); p.in(canon, "canon", 1); p.in(side, "side", 1); p.in(release, "release", 0); p.in(kline, "kline", 1);
         p.in(req_freed_ev, "req_freed_ev", 0);
         p.in(send_busy, "send_busy", 1);
         p.in(bad, "bad", 0);
@@ -145,9 +150,9 @@ struct TileCtl {
             const uint32_t op = uint32_t(m[0] >> 32), arg = uint32_t(m[0]);
             if (op == BUS_STORE) { in.store = true; in.word = arg; in.value = uint32_t(m[1]); }
             else if (op == BUS_STATUS) in.error_pulses |= 1u << arg;
-            else if (op == BUS_CANON) s.canon = arg != 0;              // the level in the cycle this edge ends
             c.take(bus);
         }
+        if (c.ready(canon)) { s.canon = c.peek(canon)[0] != 0; c.take(canon); }   // the level in the cycle this edge ends
         if (c.ready(side)) {
             const sim::Word m = c.peek(side)[0];
             if (uint32_t(m >> 32) == SIDE_EVENTS) in.events_load = true;
@@ -203,7 +208,7 @@ struct TileCore {
     sim::RegFileIn regs, hist, tview, ptrv;   // the tile window; HIST; STREAM and GROUP; PTR (table_store.h)
     sim::WireIn wake, irq;
     sim::LinkIn port_b;                // width 3: packets from the director, Link(WRITE_PORT_LATENCY + 1)
-    sim::LinkOut bus, side;            // -> the tile control unit: Link(2), width 2; Link(1), width 1
+    sim::LinkOut bus, side, canon;     // -> the tile control unit: Link(1), width 2; Link(1), width 1; Link(2), width 1
     sim::HoldOut send;                 // width 3: the write unit's packet -> the inject unit's holding register
     sim::LinkOut tables, hist_w;       // width 2: table stores -> the table store, HIST (Link(1))
     sim::FifoOut rd_port;              // width 2, the read unit's reads -> the read queue (client 2)
@@ -223,10 +228,11 @@ struct TileCore {
     bus::Straps straps;                // register_bus's: the peripherals present, and their DMAs
     // ---- the write unit (9): its registers, and the packets on their way to the holding register ----
     uint32_t write_hdr = 0, write_dest = 0, write_w[3] = {};
-    // A send store at t builds its packet at t and puts it on `send` at t + 1 (visible to the inject unit at t + 2:
-    // 14.3's "injected in t + 2 at the earliest"). The Hold is the holding register: a put it refuses (full, and not
-    // injected that cycle) is put again. Up to two packets wait here, the one being put and the next send's; a send
-    // with both places taken stalls.
+    // A send made in cycle m (the header) builds its packet and puts it on `send` in m (visible to the inject unit at
+    // m + 1: 14.3's "injected in t + 2 at the earliest", t the cycle the store is raised in). The Hold is the holding
+    // register: a put it refuses (full, and not injected that cycle) is put again. Up to two packets wait here, the one
+    // being put and the next send's; a send with both places taken is not taken, and stalls (PENDING-v1.36.md: the
+    // RTL's write unit stalls a send only while the holding register is full and not injected that cycle).
     uint64_t sq[2][3] = {};
     int64_t sq_put[2] = {-1, -1};      // the cycle of the packet's last put; -1 not put yet
     uint32_t sq_n = 0;
@@ -237,9 +243,7 @@ struct TileCore {
     // ---- the request unit (11.1) ----
     uint32_t req_out_w[3] = {};
     uint32_t req_n = 0, req_depth = 4; // the request queue's count as the core's stall sees it; REQUEST_QUEUE_DEPTH
-    // ---- a window store on its way to the peripheral slot (it takes effect at the end of t + 1) ----
-    uint64_t periph_op = 0;
-    bool periph_pending = false;
+    bool canon_put = false;            // core_status.canonical_wait's level as last put on `canon`
     // ---- statistics ----
     uint64_t sends = 0, stall_send = 0, stall_request = 0, reads = 0;
     // (harness-only): the coreless test machine (tests/mach.h, MachConfig::coreless): the core never executes; the NoC
@@ -255,36 +259,52 @@ struct TileCore {
         if (receiver) { p.in(recv, "recv"); p.out(recv_pop, "recv_pop", 0); p.out(recv_credit, "recv_credit", 1); }
         p.in(regs, "regs"); p.in(hist, "hist"); p.in(tview, "tview"); p.in(ptrv, "ptrv");
         p.in(wake, "wake"); p.in(irq, "irq"); p.in(port_b, "port_b", 3);
-        p.out(bus, "bus", 2); p.out(side, "side", 1); p.out(send, "send", 3); p.out(tables, "tables", 2); p.out(hist_w, "hist_w", 2);
+        p.out(bus, "bus", 2); p.out(side, "side", 1); p.out(canon, "canon", 1); p.out(send, "send", 3); p.out(tables, "tables", 2); p.out(hist_w, "hist_w", 2);
         p.out(rd_port, "rd_port", 2); p.in(rp_injected, "rp_injected"); p.out(rp_stores, "rp_stores");
     }
 
     struct Env {
         sim::Ctx& c; TileCore& u;
-        // ---- the core's inputs and its status (6.2) ----
-        uint32_t hart_id() const { return u.tile; }
+        // ---- the core's inputs, and its status pulse of this cycle (6.2, 7.4) ----
         bool meip() const { return c.read(u.wake) != 0; }
         bool nmi() const { return c.read(u.irq) != 0; }
         void core_status(uint32_t bit) { c.put(u.bus, sim::Word(BUS_STATUS) << 32 | bit, sim::Word(0)); }
-        void canonical_wait(bool level) { c.put(u.bus, sim::Word(BUS_CANON) << 32 | uint32_t(level), sim::Word(0)); }
 
-        // ---- register_bus (5): a load issued at t (a window's: in its second cycle, so the view is its sample point) ----
-        int bus_load(uint64_t, uint32_t a, bool whole, uint32_t& v) {
-            const bus::Decoded d = bus::decode(u.straps, a, false, whole);
-            v = 0;
+        // ---- register_bus (5): what an access to region 0xFF is, as it is raised. Every access fault (5.1, 5.3) is
+        // found here, from the address, the straps and the peripheral's map alone, and reaches no owner ----
+        BusKind bus_kind(uint32_t a, bool store, bool whole) const {
+            const bus::Decoded d = bus::decode(u.straps, a, store, whole);
             switch (d.target) {
-            case bus::Target::FAULT: return 1;
-            case bus::Target::ZERO: return 0;
+            case bus::Target::FAULT: return BusKind::fault;
+            case bus::Target::ZERO: return store ? BusKind::fault : BusKind::window;   // a load that reads 0, as slowly
+            case bus::Target::TABLE: return BusKind::table;
+            case bus::Target::TILE:                            // the stores that may stall (9, 11.1)
+                return store && ((d.word >= WRITE_SEND_32 && d.word <= WRITE_SEND_128) || d.word == REQUEST_SEND)
+                    ? BusKind::window_stalls : BusKind::window;
+            case bus::Target::PERIPH_CONTROL: need_slot(d.n); return BusKind::window;
+            default:                                           // a peripheral's own word
+                need_slot(d.n);
+                if (!own_bit(d.n, Win::R_DEFINED, d.word)) return BusKind::fault;            // undefined: unmapped (5.3)
+                if (store && !own_bit(d.n, Win::R_WRITABLE, d.word)) return BusKind::fault;  // an R word
+                // The slot says which words stall now, not which may (17.6's UART_TX and the like): a store raised
+                // while its word stalls is one that may (PENDING-v1.36.md).
+                return store && own_bit(d.n, Win::R_STALL, d.word) ? BusKind::window_stalls : BusKind::window;
+            }
+        }
+        // ---- a load made in t (a fault never is): the value at the end of t - 1, the view at t ----
+        uint32_t bus_load(uint64_t, uint32_t a) {
+            const bus::Decoded d = bus::decode(u.straps, a, false, true);
+            switch (d.target) {
             case bus::Target::TABLE: {
                 const TableAddr ta = table_addr(a);
-                if (ta.table == TBL_HIST) v = hist(ta.index);
-                else if (ta.table == TBL_PTR) v = c.read(u.ptrv, ta.index & 255);
-                else v = c.read(u.tview, table_view_index(ta.table, ta.index));
-                return 0;
+                if (ta.table == TBL_HIST) return hist(ta.index);
+                if (ta.table == TBL_PTR) return c.read(u.ptrv, ta.index & 255);
+                return c.read(u.tview, table_view_index(ta.table, ta.index));
             }
-            case bus::Target::TILE: v = tile_load(d.word); return 0;
-            case bus::Target::PERIPH_CONTROL: return periph_control_load(d.n, d.word, v);
-            default: return periph_own_load(d.n, d.word, v);
+            case bus::Target::TILE: return tile_load(d.word);
+            case bus::Target::PERIPH_CONTROL: return periph_control_load(d.n, d.word);
+            case bus::Target::PERIPH_OWN: return periph_own_load(d.n, d.word);
+            default: return 0;                                 // a W word, a DMA-less peripheral's block 1
             }
         }
         uint32_t tile_load(unsigned w) {
@@ -313,38 +333,39 @@ struct TileCore {
             default: return c.read(u.regs, w);                 // the tile control unit's view (block 0, and the units')
             }
         }
-        // ---- a store issued at t ----
-        int bus_store(uint64_t t, uint32_t a, uint32_t v, bool whole) {
-            const bus::Decoded d = bus::decode(u.straps, a, true, whole);
+        // ---- a store made in t (a fault never is), in effect at the end of t; false: one that may stall, which its
+        // owner does not take in t ----
+        bool bus_store(uint64_t, uint32_t a, uint32_t v) {
+            const bus::Decoded d = bus::decode(u.straps, a, true, true);
             switch (d.target) {
-            case bus::Target::FAULT: case bus::Target::ZERO: return 1;
             case bus::Target::TABLE: {
                 const TableAddr ta = table_addr(a);
                 const uint32_t val = v & table_mask(ta.table, ta.index);
                 if (ta.table == TBL_HIST) c.put(u.hist_w, sim::Word(ta.index), sim::Word(val));
                 else c.put(u.tables, sim::Word(ta.table) << 32 | ta.index, sim::Word(val));
-                return 0;
+                return true;
             }
-            case bus::Target::TILE: return tile_store(t, d.word, v);
+            case bus::Target::TILE: return tile_store(d.word, v);
             case bus::Target::PERIPH_CONTROL: return periph_control_store(d.n, d.word, v);
-            default: return periph_own_store(d.n, d.word, v);
+            case bus::Target::PERIPH_OWN: return periph_own_store(d.n, d.word, v);
+            default: FATAL("tile core: a store to 0x%x made, which register_bus refuses", a);
             }
         }
-        int tile_store(uint64_t t, unsigned w, uint32_t v) {
+        bool tile_store(unsigned w, uint32_t v) {
             switch (w) {
             // the write unit (9): the size is the send's, ignored on a store and read 0 (5.4)
-            case WRITE_HDR: u.write_hdr = v & (0xFCu | HDR_DST_MASK << HDR_DST_LO | WRITE_HDR_NO_INCREMENT); return 0;
-            case WRITE_DEST_ADDR: u.write_dest = v; return 0;
-            case WRITE_W0: case WRITE_W1: case WRITE_W2: u.write_w[w - WRITE_W0] = v; return 0;
+            case WRITE_HDR: u.write_hdr = v & (0xFCu | HDR_DST_MASK << HDR_DST_LO | WRITE_HDR_NO_INCREMENT); return true;
+            case WRITE_DEST_ADDR: u.write_dest = v; return true;
+            case WRITE_W0: case WRITE_W1: case WRITE_W2: u.write_w[w - WRITE_W0] = v; return true;
             case WRITE_SEND_32: case WRITE_SEND_64: case WRITE_SEND_128: return write_send(w - WRITE_SEND_32, v);
             // the read unit (10): the mode and dst are the unit's
-            case READ_HDR: u.read_hdr = v & 0x1F; return 0;
-            case READ_DEST_ADDR: u.read_dest = v; return 0;
-            case READ_SEND: read_send(v & WORD_ADDRESS_MASK); return 0;
+            case READ_HDR: u.read_hdr = v & 0x1F; return true;
+            case READ_DEST_ADDR: u.read_dest = v; return true;
+            case READ_SEND: read_send(v & WORD_ADDRESS_MASK); return true;
             // the request unit (11.1)
-            case REQUEST_OUT_W0: case REQUEST_OUT_W1: case REQUEST_OUT_W2: u.req_out_w[w - REQUEST_OUT_W0] = v; return 0;
+            case REQUEST_OUT_W0: case REQUEST_OUT_W1: case REQUEST_OUT_W2: u.req_out_w[w - REQUEST_OUT_W0] = v; return true;
             case REQUEST_SEND:
-                if (u.req_n >= u.req_depth) { u.stall_request++; return 2; }   // full, and no entry left this cycle
+                if (u.req_n >= u.req_depth) { u.stall_request++; return false; }   // full, and no entry left this cycle
                 c.put(u.req_push, sim::Word(u.req_out_w[0]) | sim::Word(u.req_out_w[1]) << 32,
                       sim::Word(u.req_out_w[2]) | sim::Word(v) << 32);
                 u.req_out_w[0] = u.req_out_w[1] = u.req_out_w[2] = 0;
@@ -353,14 +374,13 @@ struct TileCore {
             default: break;
             }
             c.put(u.bus, sim::Word(BUS_STORE) << 32 | w, sim::Word(v));
-            (void)t;
-            return 0;
+            return true;
         }
         // A send (9): the packet from the registers as they stand, the top word above WRITE_W0-W2. A WRITE advances
         // WRITE_DEST_ADDR by the size unless no_increment; a packet of any other mode carries address 0 (4.1); W0-W2
         // clear.
-        int write_send(unsigned size, uint32_t v) {
-            if (u.sq_n == 2) { u.stall_send++; return 2; }
+        bool write_send(unsigned size, uint32_t v) {
+            if (u.sq_n == 2) { u.stall_send++; return false; }
             const uint32_t h = u.write_hdr, mode = hdr_mode(h);
             const uint32_t w0 = u.write_w[0], w1 = u.write_w[1], w2 = u.write_w[2];
             uint64_t* q = u.sq[u.sq_n];
@@ -371,7 +391,7 @@ struct TileCore {
             if (mode == lw::M_WRITE && !(h & WRITE_HDR_NO_INCREMENT)) u.write_dest += 4u << size;
             u.write_w[0] = u.write_w[1] = u.write_w[2] = 0;
             u.sends++;
-            return 0;
+            return true;
         }
         // READ_FREE (10): entries free at the start of t (the reads queued so far; returns injected before t)
         uint32_t rp_free() const { return uint32_t(int64_t(u.rp_depth) - int64_t(u.rp_stored - c.through_last(u.rp_injected))); }
@@ -422,36 +442,26 @@ struct TileCore {
             }
         }
         void need_slot(unsigned n) const { if (!u.slot) FATAL("tile core: peripheral %u's window: the tile has no peripheral slot", n); }
-        int periph_control_load(unsigned n, unsigned w, uint32_t& v) {
+        uint32_t periph_control_load(unsigned n, unsigned w) {
             need_slot(n);
-            v = c.read(u.win, Win::reg(n, Win::R_STD + slot_word(w)));
+            const uint32_t v = c.read(u.win, Win::reg(n, Win::R_STD + slot_word(w)));
             if (w == P_EVENTS) {                               // a consuming load: under the peripheral's mask (17.2)
                 const uint32_t m = c.read(u.win, Win::reg(n, Win::R_STD + 7));
                 if (v & m) c.put(u.periph, CoreOp::consume(n, v & m));
             }
-            return 0;
+            return v;
         }
         bool own_bit(unsigned n, unsigned base, unsigned w) const {
             const unsigned k = w - Win::OWN0;
             return c.read(u.win, Win::reg(n, base + k / 32)) >> (k % 32) & 1;
         }
-        int periph_own_load(unsigned n, unsigned w, uint32_t& v) {
-            need_slot(n);
-            if (!own_bit(n, Win::R_DEFINED, w)) return 1;      // a word the peripheral does not define: unmapped (5.3)
-            v = c.read(u.win, Win::reg(n, Win::R_OWN + (w - Win::OWN0)));
-            return 0;
-        }
-        int periph_put(unsigned n, unsigned w, uint32_t v) {   // the slot applies it at the end of t + 1
-            if (u.periph_pending) FATAL("tile core: two window stores to the peripheral slot in one cycle");
-            u.periph_op = CoreOp::store(n, w, v); u.periph_pending = true;
-            return 0;
-        }
-        int periph_control_store(unsigned n, unsigned w, uint32_t v) { need_slot(n); return periph_put(n, slot_word(w), v); }
-        int periph_own_store(unsigned n, unsigned w, uint32_t v) {
-            need_slot(n);
-            if (!own_bit(n, Win::R_DEFINED, w) || !own_bit(n, Win::R_WRITABLE, w)) return 1;   // unmapped, or an R word
-            if (own_bit(n, Win::R_STALL, w)) return 2;         // a store that stalls (17.6's UART_TX and the like)
-            return periph_put(n, w, v);
+        uint32_t periph_own_load(unsigned n, unsigned w) { return c.read(u.win, Win::reg(n, Win::R_OWN + (w - Win::OWN0))); }
+        // A window store made in t: the slot applies it at the end of t (its `core` port, a Link(1)).
+        bool periph_control_store(unsigned n, unsigned w, uint32_t v) { c.put(u.periph, CoreOp::store(n, slot_word(w), v)); return true; }
+        bool periph_own_store(unsigned n, unsigned w, uint32_t v) {
+            if (own_bit(n, Win::R_STALL, w)) return false;     // a store that stalls (17.6's UART_TX and the like)
+            c.put(u.periph, CoreOp::store(n, w, v));
+            return true;
         }
     };
 
@@ -459,24 +469,27 @@ struct TileCore {
         const uint64_t t = c.now();
         if (c.ready(port_b)) { apply_port_b(c.peek(port_b)); c.take(port_b); }
         if (c.read(req_freed) != 0 && req_n > 0) req_n--;        // the tree took the queue's head in this cycle
-        if (periph_pending) { c.put(periph, periph_op); periph_pending = false; }   // the window store of t - 1
         // the write unit's packets: the one put at t - 1 was taken into the holding register, or refused and put again;
-        // then the next
+        // then the next, and a send made in this cycle
         if (sq_n && sq_put[0] == int64_t(t) - 1) {
             if (c.refused(send)) { c.put(send, sq[0][0], sq[0][1], sq[0][2]); sq_put[0] = int64_t(t); }
             else { sq[0][0] = sq[1][0]; sq[0][1] = sq[1][1]; sq[0][2] = sq[1][2]; sq_put[0] = sq_put[1]; sq_n--; }
         }
-        if (sq_n && sq_put[0] < 0) { c.put(send, sq[0][0], sq[0][1], sq[0][2]); sq_put[0] = int64_t(t); }
         if (coreless) return sim::Wake::none();                  // (harness-only)
         Env e{c, *this};
         uint64_t next = rv.step(e, t);
-        if ((sq_n || periph_pending) && t + 1 < next) next = t + 1;
+        if (sq_n && sq_put[0] < 0) { c.put(send, sq[0][0], sq[0][1], sq[0][2]); sq_put[0] = int64_t(t); }
+        if (rv.core_status_canonical_wait != canon_put) {         // its level in t + 1, for the edge that ends t + 1
+            canon_put = rv.core_status_canonical_wait;
+            c.put(canon, sim::Word(canon_put));
+        }
+        if (sq_n && t + 1 < next) next = t + 1;
         return next == Rv32::kNever ? sim::Wake::none() : sim::Wake::at_cycle(next);
     }
     uint64_t digest() const {
         uint64_t h = rv.digest();
         const uint64_t w[] = {write_hdr, write_dest, write_w[0], write_w[1], write_w[2], sq_n, read_hdr, read_dest, rp_stored,
-                              rp_dropped, req_out_w[0], req_out_w[1], req_out_w[2], req_n, periph_pending ? periph_op + 1 : 0};
+                              rp_dropped, req_out_w[0], req_out_w[1], req_out_w[2], req_n, canon_put};
         for (uint64_t v : w) h = digest_mix(h, v);
         for (uint32_t i = 0; i < sq_n; i++) h = digest_mix(digest_mix(digest_mix(h, sq[i][0]), sq[i][1]), sq[i][2]);
         return h;

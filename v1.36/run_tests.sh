@@ -52,7 +52,7 @@ mkdir -p results
 # suite_accounting suite_s1bench suite_cccores suite_ccbench (P5), stageb, sort_test, sweep; the equivalents test_golden
 # and test_tileslotconf.
 SUITES="suite_memsys suite_rvc suite_tracer"
-EQUIVS=""
+EQUIVS="test_core_programs test_core_tile"           # v1.36: the RTL's core (make-check tests, run as steps)
 SUITES="$SUITES suite_replayer"
 SUITES="$SUITES suite_mem"                           # P4: MemTest
 SUITES="$SUITES test_rtl_tile"                       # v1.36: acceptance A (the rtl-tile step)
@@ -128,7 +128,7 @@ R_ENG="its suite drives v1.35's DMA_CONFIG, record base, pulses and read port th
 R_CTL="its suite runs v1.35 firmware under C&C's commands (GO, DONE, the command block); the sort end to end, P8, then the old suites, P11"
 R_CC="v1.35's C&C 1-3 as cores with cc1.c and cc23.c; the special tiles, P7"
 R_REGS="REGISTERS.md and mesh.h are v1.35's register map; the register tables and firmware headers, P12"
-R_CORE="test_golden: the M1 goldens of v1.35's core (ISA, traps, map); the core stage, v1.36-core"
+R_CORE="test_golden: the M1 goldens of v1.35's core, which is deleted; the step core-programs stands for it (PENDING-v1.36.md)"
 R_SLOT="test_tileslotconf: boot-ROM programs on v1.35's map and peripheral window; the peripherals, P7"
 R_REQ="suite_reqbus: v1.35's 128-entry request FIFO and its receive protocol through the harness; the request tree, P7"
 R_STAGEB="v1.35's replay controller (replay_ctl.c) on v1.35's replayer and map; the replayer, 17.8"
@@ -162,6 +162,10 @@ pending ctrl-shuf "shuffled child order (seed 4)" "$R_CTL"
 #   step ctrl-shuf 1 "shuffled child order (seed 4)" tests/ctlsuites/ctrl-shuf.log -- $S/suite_ctrl 4
 pending riscv "riscv-tests rv32ui/rv32um on the controller" "$R_CORE"
 #   equiv riscv           "riscv-tests rv32ui/rv32um on the controller" "test_golden (every program's retire trace equal to ref's)" -- $S/test_golden
+# v1.36: the RTL's core (src/units/rv32.h), alone: the RTL's own programs in the RTL's cycles (tests/core-programs/),
+# and its join to the tile's register bus, access by access, on a scripted environment
+step core-programs 1 "the RTL's core programs on the core: each pass, cycle, retirement and trap the RTL's (tests/core-programs/)" - -- $S/test_core_programs
+step core-tile     1 "the RTL's core on the tile's environment: region 0xFF's accesses in register_bus's cycles" - -- $S/test_core_tile
 pending rdport "read port, GATHER (with fw/tests/rdport.c and gather.c on the machine)" "$R_ENG"
 #   step rdport 1 "read port, GATHER (with fw/tests/rdport.c and gather.c on the machine)" tests/p4suites/rdport.log -- $S/suite_rdport -1
 pending accounting "per-phase accounting (from C)" "$R_CTL"

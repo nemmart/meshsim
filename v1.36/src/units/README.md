@@ -4,7 +4,7 @@
 which check is which invariant.* How a unit is written and added is `src/README.md`.
 
 **v1.36 is being brought to the RTL's hardware in stages** (`PENDING-v1.36.md`). The platform stage has moved the
-register map, the register bus, the tile control unit, the units' registers, the core's minimum and the boot: those
+register map, the register bus, the tile control unit, the units' registers and the boot, and the core stage the core: those
 rows below cite v1.36's machine-spec (the RTL's `rtl/tile/base/spec.md`, the same section numbers), marked **v1.36**.
 The other rows, the settings table and the invariants table are still v1.35's, with v1.35's section numbers
 (`spec/machine-spec.md` as v1.35 had it; 4.19 and 4.21 in `spec/jolt/`), until their stage.
@@ -30,12 +30,12 @@ its machine through them.
 | the traffic director | `director.h` | 4.8 |
 | the write engine | `write_engine.h` | 4.9 |
 | the table memories | `table_store.h` | 4.10 |
-| the core, its minimum for the platform (`v1.36-core` replaces it) | `rv32.h` | **v1.36** 6; `spec/core.md` |
+| the tile's core: the RTL's `rv32_core`, cycle for cycle, with its decode; it reaches region 0xFF through its environment, in `register_bus`'s cycles | `rv32.h`, `rv32_decode.h` | **v1.36** 6; `spec/core.md` §1 |
 | the address map, region 0xFF, the registers' words and bits | `regmap.h` | **v1.36** 5, 7–13, 17.1 |
 | the register bus: the decode of region 0xFF and its access faults | `register_bus.h` | **v1.36** 5 |
 | the tile control unit as plain code, with the units' registers it holds (`DMA_CONFIG`, `RECEIVE_CONFIG`, the counters, `GATHER_CONFIG`) | `regblock.h` | **v1.36** 7, 8.1, 12.1, 12.2, 13 |
 | the tile control unit as a unit; the core with the register bus and the core's side of the write, read and request units; a tile's control part and its straps | `tile_ctl.h`, `tile_ctl.cpp` | **v1.36** 6, 7, 9, 10, 11.1 |
-| v1.35's M1 bench (v1.35's core with its register block): not built (`pending.mk`) | `controller.h`, `controller.cpp` | 4.11 |
+| v1.35's M1 bench (v1.35's core, which is deleted, with its register block): not built, kept for the pending tests that include it (`PENDING-v1.36.md`, section 2) | `controller.h`, `controller.cpp` | 4.11 |
 | the peripheral slot and the peripheral contract | `periph_slot.h`, `periph_slot.cpp`, `peripheral.h` | 4.17 |
 | a peripheral's counted events | `event_counts.h` | 4.17.3 |
 | C&C 1's peripheral (Ingress/Egress, the UART), C&C 2's and 3's stubs | `cnc1_periph.h` | 4.17.1, 4.20, 8.13, 8.14 |

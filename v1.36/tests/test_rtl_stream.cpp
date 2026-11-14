@@ -226,19 +226,21 @@ TEST(chip_stream_the_master_echoes_beats_at_the_rtl_chips_cycles) {
 
 // The UART through the master's core, on the chip (what master_tile_test.rs's part 6 adds: bytes stored to UART_TX
 // back to back, more than its FIFO holds, so that the later stores stall on the reg interface's ready; then bytes
-// received, each polled in UART_RX, whose load pops it). The program: UART_DIVISOR 3 (the chip's reset divisor, 8681,
-// would make a frame 86,810 cycles); 20 bytes, 0x41 up, each stored by the next instruction of a loop; UART_STATUS
-// then, stored to DMEM; four bytes polled in UART_RX until `valid`, each stored to DMEM; UART_STATUS again; the done
-// word. The line's far end sends four frames of 3 cycles a bit, their falling edges on uart_rx in cycles 700, 730
-// (back to back with the first), 800 and 900.
-// Checked from 17.6: the 20 bytes on uart_tx in order, every bit of every frame 3 cycles (the decoder), the frames
-// back to back, 30 cycles apart (the TX FIFO never empties: the stores keep it full); UART_STATUS after the stores, 14
-// bytes in the TX FIFO; each byte received with `valid`; UART_STATUS at the end, both FIFOs empty and no line error.
-// And the cycles, the RTL chip's with the same program and line (header, CYCLES): the first start bit's cycle, the
-// cycles after which the first UART_STATUS is in DMEM, which is when the last stalled store was taken, and the done
-// word's.
+// received, each polled in UART_RX, whose load pops it). The program: UART_DIVISOR 20 (the chip's reset divisor, 8681,
+// would make a frame 86,810 cycles); 20 bytes, 0x41 up, each stored to UART_TX and then to LED, whose pin, the byte's
+// bit 0, so changes once each store is taken; UART_STATUS then, stored to DMEM; four bytes polled in UART_RX until
+// `valid`, each stored to DMEM; UART_STATUS again; the done word. The line's far end sends four frames of 20 cycles a
+// bit, their falling edges on uart_rx in cycles 4200, 4400 (back to back with the first), 4700 and 5000.
+// Checked from 17.6: the 20 bytes on uart_tx in order, every bit of every frame 20 cycles (the decoder), the frames
+// back to back, 200 cycles apart; the first 17 stores taken at the core's pace (one on the line, 16 in the FIFO) and
+// the last three stalled, each taken only after a frame's end has made room, 200 cycles apart; UART_STATUS after the
+// stores, 16 bytes in the TX FIFO; each byte received with `valid`; UART_STATUS at the end, both FIFOs empty and no
+// line error. And the cycles, the RTL chip's with the same program and line (header, CYCLES): the first start bit's
+// cycle, every change of the led pin (so each store's cycle, the stalled ones' the cycle after their frame's pop made
+// room), the cycles after which the first UART_STATUS is in DMEM, and the done word's.
 TEST(chip_uart_through_the_core_stalled_stores_and_polled_bytes_at_the_rtl_chips_cycles) {
-    constexpr uint32_t D = 3;
+    constexpr uint32_t D = 20;
+    constexpr int32_t LED = IE + 0x0A4;
     Program p;
     p.li(5, D);
     p.as(sw(5, UART_DIVISOR, 0));
@@ -246,6 +248,7 @@ TEST(chip_uart_through_the_core_stalled_stores_and_polled_bytes_at_the_rtl_chips
     p.li(7, 20);
     const int32_t top = p.here();
     p.as(sw(6, UART_TX, 0));
+    p.as(sw(6, LED, 0));
     p.as(addi(6, 6, 1));
     p.as(addi(7, 7, -1));
     p.as(bne(7, 0, top - p.here()));
@@ -268,9 +271,9 @@ TEST(chip_uart_through_the_core_stalled_stores_and_polled_bytes_at_the_rtl_chips
     p.as(sw(5, 0, 6));
     p.as(jal(0, 0));
     // the program is the one the RTL chip ran: its words as the RTL's encoders gave them
-    static const uint32_t kWords[] = {0x300293, 0xaa502823, 0x4100313, 0x1400393, 0xaa602423, 0x130313, 0xfff38393, 0xfe039ae3, 0xab402403,
-                                      0x10802023, 0x10400493, 0x400513, 0xaac02583, 0x1005f613, 0xfe060ce3, 0xb4a023, 0x448493, 0xfff50513,
-                                      0xfe0514e3, 0xab402403, 0x10802a23, 0x444f52b7, 0xe4528293, 0x20000313, 0x532023, 0x6f};
+    static const uint32_t kWords[] = {0x1400293, 0xaa502823, 0x4100313, 0x1400393, 0xaa602423, 0xaa602223, 0x130313, 0xfff38393, 0xfe0398e3,
+                                      0xab402403, 0x10802023, 0x10400493, 0x400513, 0xaac02583, 0x1005f613, 0xfe060ce3, 0xb4a023, 0x448493,
+                                      0xfff50513, 0xfe0514e3, 0xab402403, 0x10802a23, 0x444f52b7, 0xe4528293, 0x20000313, 0x532023, 0x6f};
     CHECK_EQ(p.words.size(), sizeof kWords / sizeof kWords[0]);
     for (size_t i = 0; i < p.words.size() && i < sizeof kWords / sizeof kWords[0]; i++) CHECK_EQ(p.words[i], kWords[i]);
 
@@ -278,17 +281,17 @@ TEST(chip_uart_through_the_core_stalled_stores_and_polled_bytes_at_the_rtl_chips
     b.m.place(units::ID_MASTER, units::IMEM_BASE, p.words);
     b.m.place(units::ID_MASTER, 0x100, {0, 0, 0, 0, 0, 0, 0, 0});
     b.m.place(units::ID_MASTER, DONE_ADDRESS, {0});
-    static const struct { int64_t start; uint8_t byte; } kFrames[] = {{700, 0x5A}, {730, 0xA5}, {800, 0x01}, {900, 0xFE}};
+    static const struct { int64_t start; uint8_t byte; } kFrames[] = {{4200, 0x5A}, {4400, 0xA5}, {4700, 0x01}, {5000, 0xFE}};
     for (const auto& f : kFrames) b.far.frame(f.start, f.byte, D);
 
     uint64_t status_after = 0;
-    while (b.cycle < 3000 && !b.done()) {
+    while (b.cycle < 8000 && !b.done()) {
         b.run_cycle();
         if (status_after == 0 && b.m.word(units::ID_MASTER, 0x100) != 0) status_after = b.cycle;
     }
     CHECK(b.done());
     // ---- the results ----
-    CHECK_EQ(b.m.word(units::ID_MASTER, 0x100), 14u);                  // UART_STATUS after the 20 stores: 14 bytes wait
+    CHECK_EQ(b.m.word(units::ID_MASTER, 0x100), 16u);                  // UART_STATUS after the 20 stores: the TX FIFO full
     for (unsigned i = 0; i < 4; i++) CHECK_EQ(b.m.word(units::ID_MASTER, 0x104 + 4 * i), 0x100u | kFrames[i].byte);
     CHECK_EQ(b.m.word(units::ID_MASTER, 0x114), 0u);                   // at the end: both FIFOs empty, no line error
     // ---- the line out ----
@@ -303,11 +306,20 @@ TEST(chip_uart_through_the_core_stalled_stores_and_polled_bytes_at_the_rtl_chips
     }
     CHECK(std::string(b.ie.serial_out, 20) == "ABCDEFGHIJKLMNOPQRST");   // the model's log of the bytes sent
     CHECK_EQ(b.ie.serial_n, 20u);
-    std::printf("test_rtl_stream: chip_uart: the first start bit in cycle %lld; UART_STATUS in DMEM after %llu cycles; done after %llu\n",
+    // ---- the led pin's changes: each store's cycle ----
+    std::vector<int64_t> led;
+    for (int64_t t = 1; t < int64_t(b.cycle); t++) if (b.far.at(t).led != b.far.at(t - 1).led) led.push_back(t);
+    CHECK_EQ(led.size(), size_t(20));
+    for (size_t k = 18; k < led.size(); k++) CHECK_EQ(led[k], led[k - 1] + 10 * D);   // the stalled stores (the 18th on), a frame apart (17.6)
+    std::printf("test_rtl_stream: chip_uart: the first start bit in cycle %lld; UART_STATUS in DMEM after %llu cycles; done after %llu; led at",
                 frames.empty() ? -1ll : (long long)frames[0].start, (unsigned long long)status_after, (unsigned long long)b.cycle);
+    for (int64_t t : led) std::printf(" %lld", (long long)t);
+    std::printf("\n");
     // ---- the RTL chip's cycles (chip_uart_ref, a scratch test of the RTL chip with this program and line: uart_tx
-    // falls first in cycle 34; "status word after 192 cycles"; "done after 951 cycles") ----
+    // falls first in cycle 34; led's changes; "status word after 643 cycles"; "done after 5210 cycles") ----
     if (!frames.empty()) CHECK_EQ(frames[0].start, int64_t(34));
-    CHECK_EQ(status_after, uint64_t(192));
-    CHECK_EQ(b.cycle, uint64_t(951));
+    static const int64_t kLed[20] = {35, 44, 53, 62, 71, 80, 89, 98, 107, 116, 125, 134, 143, 152, 161, 170, 179, 237, 437, 637};
+    for (size_t k = 0; k < led.size() && k < 20; k++) CHECK_EQ(led[k], kLed[k]);
+    CHECK_EQ(status_after, uint64_t(643));
+    CHECK_EQ(b.cycle, uint64_t(5210));
 }

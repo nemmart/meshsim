@@ -15,11 +15,17 @@
 // Instruction port: a fetch raised in cycle t reads its words in t (as the edge that ends t finds the memories) and is
 // answered in t + 1. The words come from `imem` and `bootrom` here, or from `env.bus_fetch`.
 //
-// Data port: a load or store is raised in the cycle q its instruction leaves execute, and answered in q + L, where it
-// leaves writeback; L is the target's latency (`Rv32Timing`; 1 for DMEM and for an address in no window, which is
-// answered with an error). The access itself is made in cycle q + L - 1, the cycle before its answer: a load reads
-// the environment as that cycle shows it and a store, or a load's side effect, is posted in that cycle
-// (spec/machine-spec.md 6.4: the sample point is the end of q + L - 2, the effect the end of q + L - 1).
+// Data port: a load or store is raised in the cycle q its instruction leaves execute; it leaves writeback in the cycle
+// of its answer. The target gives two things (`route`): the cycle the access is made in, q + m, when a load reads the
+// environment as that cycle shows it and a store, or a load's side effect, is posted (spec/machine-spec.md 6.4: the
+// sample point is the end of q + m - 1, the effect the end of q + m); and whether the answer comes in that cycle or
+// the next. As the RTL's memories and register_bus have them (`Rv32Timing` holds the latencies L):
+//   DMEM, the table window (L = 1)          made in q, answered in q + 1
+//   an address in no window                 answered in q + 1 with an error, and not made
+//   a register-window load (L = 2)          made in q + L - 1, answered in q + L
+//   a register-window store                 made in q + L - 1 and answered in that cycle
+//   a register-window store that may stall  made in the first cycle from q + L - 1 on in which its owner takes it,
+//                                           and answered in the next (`may_stall`)
 //
 // Interrupt inputs, read in every cycle: `meip` (the wake; `mip`.MEIP) and `nmi`.
 //
@@ -32,15 +38,15 @@
 //
 // A bus (tests/core_programs.h: the RTL's test memory and devices), which gives the whole map:
 //   uint32_t bus_fetch(a, err)       the instruction word at a; err: a is in no fetch window
-//   uint32_t bus_route(a)            a data access's latency at a, 0: in no data window
+//   uint32_t bus_route(a)            a data access's latency at a (made the cycle before its answer), 0: in no data window
 //   bool bus_access(t, a, store, mask, wdata, rdata)   the access, made in cycle t; false: answered with an error
 //   bool meip(), bool nmi()          the interrupt inputs at t
 //
 // The tile (the map of regmap.h, the register block and the units behind it), v1.35's interface:
 //   uint32_t reg(unsigned r)    the register block's view at t (the state at the end of t - 1)
-//   bool wake()                 the wake term at t
-//   bool nmi()                  optional: the tile's errors, ERRORS != 0, at t (absent: never)
-//   bool irq()                  (v135_platform) ERRORS != 0 at t
+//   bool wake()                 the wake term at t: MEIP
+//   bool irq()                  ERRORS != 0 at t: the NMI (`nmi()`, where the environment has it, is read instead)
+//   bool store_may_stall(a)     optional: a store to register-window address a may stall (the header's table)
 //   bool can_push()             a REQUEST_SEND store may complete at t (RequestPort.canPush)
 //   void post(op, arg, v)       what the block applies at the end of t (one a cycle): BUS_STORE (register, value),
 //                               BUS_CONSUME (-, the EVENTS bits returned), BUS_ERROR (condition, -)
@@ -58,12 +64,12 @@
 // What isn't modelled yet stops with FATAL("... not modelled yet"), naming the register or window.
 //
 // ---- v135_platform
-// One option, for the tile's register block and firmware as v1.35 left them, which the platform stage deletes with
-// them: every use is marked `v135_platform`. Set (the default), the core keeps what v1.35's programs rely on and the
-// RTL's core does not have: the errors as the maskable external interrupt (`irq()`: MEIP is ERRORS != 0, there is no
-// NMI) with the wake term ending a WFI whatever `mie` holds; data loads from program memory and the boot ROM; the
-// halts (ecall, ebreak, a fetch fault, a trap inside the handler) and undefined behaviour (a misaligned load or store)
-// that end a run; `mtime`; FENCE.I as a no-op. Clear, the core is the RTL's.
+// One option, for the tile's register block, C&C and firmware as v1.35 left them, which the platform stage deletes
+// with them: every use is marked `v135_platform`. Set (the default), `step` runs v1.35's core whole, its function and
+// its one-instruction-a-cycle timing (rv32_v135.h), and the data side keeps what v1.35's programs rely on (loads from
+// program memory and the boot ROM, a memory's aliases). v1.35's protocols and references hold that core's cycles (a
+// command lands a fixed time after the last; the goldens replay their events at ref's cycles), so its platform does
+// not run on the RTL's core. Clear, the core is the RTL's, on either environment.
 #pragma once
 
 #include <cstddef>
@@ -104,13 +110,12 @@ inline void check_bootrom(size_t words, const char* from) {
         FATAL("the boot ROM image %s is %zu bytes; the ROM is %u (spec 6.2, DECISIONS-v1.25 s8d)", from, 4 * words, 4u * BOOTROM_MAX_WORDS);
 }
 
-// The tile's bus as the core's data port sees it (the header: a load or store raised in cycle q is answered in
-// q + L and made in q + L - 1). The pipeline's own costs are not parameters: they follow from its structure.
+// The tile's bus as the core's data port sees it (the header's table). The pipeline's own costs are not parameters:
+// they follow from its structure.
 struct Rv32Timing {
     uint32_t reg_load_latency = 2;     // L of the register block and the windows (WINDOW_LOAD_LATENCY)
     uint32_t table_load_latency = 1;   // L of the table window (TABLE_LOAD_LATENCY)
-    uint32_t branch_penalty = 1, mul_latency = 3;   // v1.35's one-instruction-a-cycle costs: read by nothing but the
-                                                    // goldens' D12 header (tests/golden_run.cpp)
+    uint32_t branch_penalty = 1, mul_latency = 3;   // (v135_platform) v1.35's core's stall cycles
     uint32_t ref_cycle = 40;           // (v135_platform) core cycles per `mtime` tick
 };
 
@@ -197,8 +202,9 @@ struct Rv32 {
     // ---- the load/store unit (lsu.veryl): the one outstanding access ----
     bool lsu_out = false, lsu_store = false, lsu_made = false, lsu_err = false;
     uint32_t lsu_addr = 0, lsu_size = 0, lsu_wdata = 0, lsu_rdata = 0;
-    uint64_t lsu_make_at = 0, lsu_resp_at = 0;   // the cycle the access is made in, and the cycle of its answer
-    // ---- v135_platform ----
+    uint64_t lsu_make_at = 0, lsu_resp_at = 0;   // the cycle the access is made in (the first it may be), and its answer's
+    uint8_t lsu_answer = 1;                      // the answer comes this many cycles after the access is made (0 or 1)
+    // ---- v1.35's send port ----
     uint64_t pending_t = kNever; uint64_t send_w[3] = {};   // M2: a send store's packet awaiting acceptance (ref's pendingT)
     int ck_tile = -1; uint64_t ck_t = 0;   // the checker's facts (src/check.h) under this tile, -1 none; the step's cycle
     CmemTrack* cm = nullptr;               // invariant 8's read tracking (the tile core's; null: none)
@@ -270,10 +276,12 @@ struct Rv32 {
         core_status_canonical_wait = core_status_access_fault = core_status_illegal_instruction = false;
         f = Fetch{};
         d_valid = x_valid = w_valid = redir_pending = lsu_out = false;
-        pending_t = kNever;
+        pending_t = kNever; stall = 0; load_wait_t = kNever;                  // (v135_platform)
         stop = Stop::running; stop_cycle = 0; last = t;
         trap_at = first_image_at = -1; trap_cause = -1;
     }
+
+#include "units/rv32_v135.h"   // (v135_platform) v1.35's core: v135_step, v135_digest and their state
 
     // ================================================================ the cycle
     // One clock cycle, t, after catching up the cycles slept since `last`. Returns the next cycle the core needs to
@@ -282,11 +290,13 @@ struct Rv32 {
     // every cycle and one stepped only when it asks end in the same state.
     template <class Env>
     UNITS_NOINLINE uint64_t step(Env& e, uint64_t t) {
+        if constexpr (requires { e.irq(); }) { if (v135_platform) return v135_step(e, t); }
+        else if (v135_platform) FATAL("the core: v135_platform is the tile's (a bus runs the RTL's core)");
         ck_t = t;                                                              // the cycle of this step's facts
         if (stop != Stop::running && stop != Stop::parked) return kNever;   // the run ended: nothing more (mcycle frozen)
         catch_up(t);
-        if constexpr (requires { e.send_refused(); }) {                 // (v135_platform) a refused send: the core puts
-            if (pending_t == t - 1 && e.send_refused()) {               // the packet again, and nothing moves in t
+        if constexpr (requires { e.send_refused(); }) {                 // (v1.35's send port) a refused send: the core
+            if (pending_t == t - 1 && e.send_refused()) {               // puts the packet again, and nothing moves in t
                 e.send(send_w[0], send_w[1], send_w[2]);
                 pending_t = t; stall_send++; cycles_stalled++; mcycle++;
                 if (lsu_out && lsu_made) lsu_resp_at++;
@@ -311,31 +321,23 @@ struct Rv32 {
         mcycle += gap; cycles_wfi += gap;
     }
 
-    // The interrupt inputs at t.
+    // The interrupt inputs at t: MEIP, the tile's wake, and the NMI, the tile's errors.
     template <class Env>
     bool line_meip(Env& e) const {
         if constexpr (requires { e.meip(); }) return e.meip();
-        else {
-            if constexpr (requires { e.irq(); }) { if (v135_platform) return e.irq(); }
-            return e.wake();
-        }
+        else return e.wake();
     }
     template <class Env>
     bool line_nmi(Env& e) const {
-        if constexpr (requires { e.nmi(); }) return !v135_platform && e.nmi();
-        else return false;
-    }
-    // (v135_platform) the wake term ends a WFI's wait whatever mie holds.
-    template <class Env>
-    bool line_v135_wake(Env& e) const {
-        if constexpr (requires { e.wake(); }) return v135_platform && e.wake();
-        else return false;
+        if constexpr (requires { e.nmi(); }) return e.nmi();
+        else return e.irq();
     }
 
     // The core's digest: its state and its memories, not their addresses. A core that slept (ready-driven) and one
     // stepped every cycle (step-all) differ only in what catch_up adds per skipped cycle, so those are folded in
     // relative to `last`: mcycle and the WFI cycle count grow by one per cycle of the canonical wait.
     uint64_t digest() const {
+        if (v135_platform) return v135_digest();
         uint64_t h = 0;
         for (uint32_t v : x) h = digest_mix(h, v);
         const uint64_t w[] = {
@@ -362,7 +364,7 @@ struct Rv32 {
             lsu_out ? uint64_t(lsu_addr) | uint64_t(lsu_wdata) << 32 : 0,
             lsu_out ? uint64_t(lsu_store) | uint64_t(lsu_made) << 1 | uint64_t(lsu_err) << 2 | uint64_t(lsu_size) << 8 |
                           uint64_t(lsu_rdata) << 32 : 0,
-            lsu_out ? lsu_make_at : 0, lsu_out && lsu_made ? lsu_resp_at : 0,
+            lsu_out ? lsu_make_at << 1 | lsu_answer : 0, lsu_out && lsu_made ? lsu_resp_at : 0,
         };
         for (uint64_t v : w) h = digest_mix(h, v);
         for (unsigned i = 0; i < f.n; i++) h = digest_mix(h, uint64_t(f.q[i]) | uint64_t(f.qe[i]) << 16);
@@ -370,37 +372,10 @@ struct Rv32 {
         return h;
     }
 
-    // ================================================================ halts (v135_platform) and undefined behaviour
-    // ecall, ebreak, a fetch fault, a trap inside the handler: ref stops loudly (and counts a violation).
-    // (`detail`: the checker's text, as ref's stopLoudly message: the fetch's pc, the trap's cause)
-    void stop_loudly(uint64_t t, int why, uint32_t at, uint32_t detail = 0) {
-        violations++;
-        if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::CTL_HALT, uint64_t(why), detail);
-        halt_with(t, why, at);
-    }
+    // A halt: the run ends at t (SIM_EXIT's store; v1.35's core has others).
     void halt_with(uint64_t t, int why, uint32_t at) {
         halt = why;
         if (log) log->add(t, T_HALT, 0, uint32_t(why), at);
-    }
-    void undefined(uint64_t t, bool store, uint32_t width, uint32_t ea, uint32_t ipc) {
-        ub = true;
-        if (log) log->add(t, T_UB, store, ea, ipc, width);
-        if (ub_fatal_tile >= 0)                                // (harness-only; the request 11): ref's UndefinedBehavior
-            FATAL("undefined behavior at cycle %llu, tile %d, controller: a misaligned %u-byte %s 0x%x at pc 0x%x "
-                  "(DECISIONS-v1.25 s8: meshsim stops; the hardware does nothing special)", (unsigned long long)t, ub_fatal_tile,
-                  width, store ? "store to" : "load from", ea, ipc);
-    }
-    int ub_fatal_tile = -1;                // (harness-only): >= 0, the run stops at undefined behaviour, naming this tile
-    // (v135_platform) the exception of the instruction at `at` ends the run instead of trapping.
-    bool v135_ends_run(uint64_t t, uint32_t cause, uint32_t tval, uint32_t at) {
-        if (cause == CAUSE_LOAD_MISALIGNED || cause == CAUSE_STORE_MISALIGNED)
-            undefined(t, cause == CAUSE_STORE_MISALIGNED, (w_raw & 3) != 3 ? 4 : 1u << (w_raw >> 12 & 3), tval, at);
-        else if (cause == CAUSE_ECALL) stop_loudly(t, HALT_ECALL, at);
-        else if (cause == CAUSE_BREAKPOINT) stop_loudly(t, HALT_EBREAK, at);
-        else if (cause == CAUSE_FETCH) stop_loudly(t, HALT_FETCH, at, at);
-        else if (in_handler) stop_loudly(t, HALT_TRAP2, at, cause);
-        else return false;
-        return true;
     }
 
     // ================================================================ rv32_pipeline.veryl, fetch.veryl, lsu.veryl
@@ -414,6 +389,8 @@ struct Rv32 {
             if (core_status_access_fault) e.post(BUS_ERROR, COND_BUS_ERROR, 0);
             if (core_status_illegal_instruction) e.post(BUS_ERROR, COND_ILLEGAL, 0);
         }
+        // ---- the data port: an outstanding access made in a later cycle than it was raised in (a register window's)
+        if (lsu_out && !lsu_made && lsu_make_at <= t) make_access_at(e, t);
 
         // ---- csr.veryl: the interrupts, from the registers and the inputs of t
         const bool meip = line_meip(e);
@@ -421,7 +398,7 @@ struct Rv32 {
         const bool meip_ready = meip && (mie & MEIE);
         const bool interrupt_pending = nmi_ready || ((mstatus & MSTATUS_MIE) && meip_ready);
         const uint32_t interrupt_cause = nmi_ready ? uint32_t(CAUSE_NMI) : uint32_t(CAUSE_EXTERNAL);
-        const bool wfi_wake_up = nmi_ready || meip_ready || line_v135_wake(e);
+        const bool wfi_wake_up = nmi_ready || meip_ready;
         const uint32_t trap_vector = mtvec & ~3u, return_pc = mepc & ~1u;
 
         // ---- section 7: writeback: completion, exceptions and commit
@@ -563,7 +540,6 @@ struct Rv32 {
             const uint32_t at = w_traps ? w_pc : x_pc;
             const uint32_t tval = !w_traps || cause == CAUSE_FETCH || cause == CAUSE_ECALL ? 0
                                 : cause == CAUSE_ILLEGAL ? w_raw : cause == CAUSE_BREAKPOINT ? w_pc : w_result;
-            if (v135_platform && w_traps && v135_ends_run(t, cause, tval, at)) { mcycle++; return false; }
             traps++; trap_at = int64_t(t); trap_cause = int32_t(cause);
             in_handler = true;
             mepc = at & ~1u; mcause = cause; mtval = tval;
@@ -595,11 +571,12 @@ struct Rv32 {
         }
 
         // ---- the load/store unit: a new access starts as its instruction moves to writeback
-        if (x_moves && x_accesses && !x_misaligned) {
+        const bool lsu_starts = x_moves && x_accesses && !x_misaligned;
+        if (lsu_starts) {
             lsu_out = true; lsu_made = false; lsu_err = false;
             lsu_store = x_dec.cls == STORE; lsu_addr = x_result; lsu_size = 1u << (x_dec.f3 & 3); lsu_wdata = x_b;
-            const uint32_t latency = route(e, lsu_addr);
-            lsu_make_at = t + latency - 1; stall_reg_load += latency - 1;
+            const DataRoute r = route(e, lsu_addr, lsu_store);
+            lsu_make_at = t + r.make; lsu_answer = r.answer; stall_reg_load += r.make + r.answer - 1;
         } else if (lsu_done) lsu_out = false;
 
         // ---- writeback
@@ -655,7 +632,7 @@ struct Rv32 {
         }
 
         // ---- the data port: the outstanding access is made in the cycle before its answer
-        if (lsu_out && !lsu_made && lsu_make_at <= t && make_access(e, t)) { lsu_made = true; lsu_resp_at = t + 1; }
+        if (lsu_starts && lsu_make_at == t) make_access_at(e, t);   // an access made in the cycle it is raised in
         return asleep;
     }
 
@@ -725,12 +702,6 @@ struct Rv32 {
         case MINSTRETH: v = uint32_t(minstret >> 32); return true;
         case MHARTID: v = hart_id; return true;
         case MSTATUSH: case MCOUNTINHIBIT: case MVENDORID: case MARCHID: case MIMPID: case MCONFIGPTR: return true;
-        case MTIME: case MTIMEH: {                                             // (v135_platform)
-            if (!v135_platform) return false;
-            const uint64_t mt = mcycle / (timing.ref_cycle ? timing.ref_cycle : 1);
-            v = csr == MTIME ? uint32_t(mt) : uint32_t(mt >> 32);
-            return true;
-        }
         default:                                                               // the counters and events that read 0
             return (csr >= 0x323 && csr <= 0x33F) || (csr >= 0xB03 && csr <= 0xB1F) || (csr >= 0xB83 && csr <= 0xB9F);
         }
@@ -769,19 +740,34 @@ struct Rv32 {
     }
 
     // ================================================================ the ports: the data port
-    // The latency L of the data access at `a`: the target's, or 1 for an address in no window (data_decoder.veryl:
-    // answered with an error the next cycle).
+    // When the data access at `a`, raised in cycle q, is made and answered (the header's table): made in q + make, or the
+    // first later cycle it can be, and answered `answer` cycles after that (0 or 1; 1 if make is 0).
+    struct DataRoute { uint32_t make, answer; };
     template <class Env>
-    uint32_t route(Env& e, uint32_t a) const {
-        if constexpr (requires { e.bus_route(a); }) { const uint32_t l = e.bus_route(a); return l ? l : 1; }
+    DataRoute route(Env& e, uint32_t a, bool store) const {
+        if constexpr (requires { e.bus_route(a); }) { const uint32_t l = e.bus_route(a); return {l ? l - 1 : 0, 1}; }
         else {
-            if (in_tables(a)) return timing.table_load_latency;
-            if (region(a) == 0xFF) return timing.reg_load_latency;
-            return 1;
+            if (in_tables(a)) return {timing.table_load_latency - 1, 1};
+            if (region(a) != 0xFF) return {0, 1};             // DMEM, or no window (data_decoder.veryl)
+            return {timing.reg_load_latency - 1, !store || may_stall(e, a) ? 1u : 0u};
         }
     }
-    // The outstanding access, made in cycle t. False: it cannot be made in t (v135_platform: a full request FIFO, a
-    // window that stalls), and is tried again in t + 1.
+    // A store to `a` in the register windows may stall (register_bus: it is answered the cycle after its owner takes it).
+    // v1.35's map: REQUEST_SEND, the sends, and what the environment's `store_may_stall` adds.
+    template <class Env>
+    bool may_stall(Env& e, uint32_t a) const {
+        if constexpr (requires { e.store_may_stall(a); }) { if (e.store_may_stall(a)) return true; }
+        if (!in_regs(a) || in_windows(a) || (a & 3)) return false;
+        const unsigned i = (a - REG_BASE) >> 2;
+        return i == REQUEST_SEND || (i >= ROUTER_SEND_32 && i <= ROUTER_SEND_128);
+    }
+    // Makes the outstanding access in cycle t, if it can be made then, and sets its answer's cycle.
+    template <class Env>
+    void make_access_at(Env& e, uint64_t t) {
+        if (make_access(e, t)) { lsu_made = true; lsu_resp_at = t + lsu_answer; }
+    }
+    // The outstanding access, made in cycle t. False: its owner does not take it in t (v1.35's: a full request FIFO, a
+    // window that stalls), and it is tried again in t + 1.
     template <class Env>
     bool make_access(Env& e, uint64_t t) {
         const uint32_t ea = lsu_addr, sh = (ea & 3) * 8;

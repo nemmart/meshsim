@@ -966,7 +966,10 @@ void Chip::reset(bool hard) {
         // Controller.reset
         units::Rv32& v = core.rv;
         for (auto& reg : v.x) reg = 0;
-        v.reset(uint64_t(t), units::BOOTROM_BASE);
+        v.pc = units::BOOTROM_BASE; v.halt = units::Rv32::RUN; v.in_wfi = false; v.stall = 0; v.pending_t = units::Rv32::kNever;
+        v.mstatus = v.mie = v.mtvec = v.mscratch = v.mepc = v.mcause = v.mtval = 0; v.mcycle = 0;
+        v.in_handler = false; v.parked = false; v.ub = false; v.trap_cause = -1; v.trap_at = -1; v.first_image_at = -1;
+        v.load_wait_t = units::Rv32::kNever; v.stop = units::Stop::running; v.stop_cycle = 0; v.last = uint64_t(t);
     }
     // the request bus (RequestBus.reset)
     if (s.has_unit("reqbus.root")) {

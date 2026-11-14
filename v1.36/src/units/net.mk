@@ -9,21 +9,14 @@ $(B)/test_router $(B)/test_net_headers: $(NET_LINK)
 $(B)/test_cnc: $(NET_LINK) $(B)/tests/statefp.o $(B)/tests/statefp_g2.o
 $(B)/test_chip: $(NET_LINK) $(B)/tests/statefp.o $(B)/tests/statefp_g1.o $(B)/tests/statefp_g2.o $(UNITS_LINK) $(GOLDEN_OBJ)
 
-# The chip on several threads under ThreadSanitizer (the build/<cc>-tsan/, its rules in threads.mk): make tsan-chip;
-# in make check. Only form 2's test (the others are one thread).
+# The chip on several threads under ThreadSanitizer: make tsan-chip, whose rules are tests/mach.mk's (v1.36: acceptance
+# B's run split over threads). v1.35's, test_chip's form 2, is pending with test_chip (pending.mk); its rules stay:
+# make tsan-chip-form2-one CC_NAME=<cc>, once test_chip is ported.
 NTB := build/$(CC_NAME)-tsan
 NTB_LINK := $(addprefix $(NTB)/src/units/,net.o router.o inject.o chip.o trace_log.o controller.o tile_ctl.o \
               periph_slot.o replayer.o file_store.o replay_tables.o tracer.o) \
             $(addprefix $(NTB)/tests/,statefp.o statefp_g1.o statefp_g2.o golden_run.o sha256.o)
 $(NTB)/test_chip: $(NTB_LINK)
-.PHONY: tsan-chip tsan-chip-one
-tsan-chip-one: $(NTB)/test_chip
+.PHONY: tsan-chip-form2-one
+tsan-chip-form2-one: $(NTB)/test_chip
 	TSAN_OPTIONS="halt_on_error=1 second_deadlock_stack=1" ./$(NTB)/test_chip form2
-# (pending.mk: while test_chip is pending, so is its TSan run)
-ifeq ($(filter test_chip,$(PENDING_TESTS)),)
-tsan-chip:
-	@set -e; for c in $(COMPILERS); do echo "==== $$c tsan (chip)"; $(MAKE) --no-print-directory CC_NAME=$$c tsan-chip-one; done
-else
-tsan-chip:
-	@echo "==== tsan (chip): PENDING test_chip (pending.mk)"
-endif

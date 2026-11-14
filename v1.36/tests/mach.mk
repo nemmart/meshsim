@@ -11,3 +11,14 @@ $(B)/test_mach: $(MACH_LINK)
 $(B)/test_rtl_sort: $(MACH_LINK)
 # test_checkself: oracle/ref/CheckSelf.java's sequence (the checker), apart from test_mach
 $(B)/test_checkself: $(MACH_LINK)
+
+# The chip on several threads under ThreadSanitizer (build/<cc>-tsan/, its rules in src/threads.mk): make tsan-chip; in
+# make check. Acceptance B's 16-record run split over 2 and over 8 threads (the nets and the request tree cross
+# domains), the digest at every poll against one domain's.
+MTB_LINK := $(subst $(B)/,$(TB)/,$(MACH_LINK))
+$(TB)/test_rtl_sort: $(MTB_LINK)
+.PHONY: tsan-chip tsan-chip-one
+tsan-chip-one: $(TB)/test_rtl_sort
+	TSAN_OPTIONS="halt_on_error=1 second_deadlock_stack=1" ./$(TB)/test_rtl_sort sort_16_kv32_split
+tsan-chip:
+	@set -e; for c in $(COMPILERS); do echo "==== $$c tsan (chip)"; $(MAKE) --no-print-directory CC_NAME=$$c tsan-chip-one; done

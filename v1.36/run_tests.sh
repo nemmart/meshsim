@@ -10,7 +10,8 @@
 #                   REF), timing masked (mask() below); a difference fails the run as a FAIL line would
 #     --no-build    use the binaries as they are
 #   Environment: CC_NAME (default clang); MESHSIM_INPUTS (default ~/meshsim-inputs: the real workloads' data, for the
-#   step tracer-block, pending without it); the suites build with MODE=suite (release flags, the checker's facts on:
+#   step tracer-block, pending without it); RTL_SORT_64K_KEYS (the RTL's 64K key file, for the step rtl-sort-64k of
+#   `all`, pending without it); the suites build with MODE=suite (release flags, the checker's facts on:
 #   src/check.h), into build/$CC_NAME-suite/.
 #
 # ADDING A STEP (wave 2 and on: each worker adds its own lines, in v1.3's order, and its Makefile include):
@@ -20,7 +21,7 @@
 #   The step's suite program must be in SUITES below (built before the steps run). A step still waiting:
 #     pending LOG "description" "who or what it waits for"
 # v1.36: the steps whose program is on v1.35's hardware or firmware and is not ported yet are pending this way
-# (PENDING-v1.36.md, section 3; the reasons are R_* below); each keeps its v1.3 `step` line under it as a comment, so
+# (PENDING-v1.36.md, the platform stage, section 4; the reasons are R_* below); each keeps its v1.3 `step` line under it as a comment, so
 # that un-pending it is one edit (and its program back in SUITES or EQUIVS). The summary counts them.
 #   A v1.3 suite whose C++ equivalent is a make-check test (not a port of its log): pass or fail, named in the log
 #     equiv LOG "description" "the equivalent" -- $S/test_x
@@ -56,7 +57,7 @@ SUITES="suite_memsys suite_rvc suite_tracer tracer_block"
 EQUIVS="test_core_programs test_core_tile"           # v1.36: the RTL's core (make-check tests, run as steps)
 SUITES="$SUITES suite_replayer"
 SUITES="$SUITES suite_mem"                           # P4: MemTest
-SUITES="$SUITES test_rtl_tile"                       # v1.36: acceptance A (the rtl-tile step)
+SUITES="$SUITES test_rtl_tile test_rtl_sort"         # v1.36: acceptances A and B (the rtl-tile and rtl-sort steps)
 
 if [ "$BUILD" = 1 ]; then
   echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
@@ -122,18 +123,18 @@ fw_part() {
   else echo "fw/build.sh ($*): no riscv64-unknown-elf-gcc, so the committed images against their hash lists"; bash fw/check_images.sh "$@"; fi
 }
 
-# ---- why a step is pending (v1.36; PENDING-v1.36.md, section 3) ----------------------------------------------------
-R_FW="v1.35's firmware: a build check of images that v1.36's tile does not run; the RTL's images are vendored (fw/rtl/); the sort end to end, P8, and the firmware headers, P12"
-R_NET="suite_net on tests/mach.h: NetTest checks v1.35's unexpected-packet and command conditions and its C&C attach tiles 0-2; the NoC and topology, P6, then the old suites, P11"
+# ---- why a step is pending (v1.36; PENDING-v1.36.md, the platform stage, section 4) ----------------------------------------------------
+R_FW="v1.35's firmware: a build check of images that v1.36's tile does not run (the chip runs the RTL's, vendored in fw/rtl/); meshsim's own firmware ported or deleted, P12"
+R_NET="suite_net on tests/mach.h: NetTest checks v1.35's unexpected-packet and command conditions, its C&C attach tiles 0-2 and its start skews; the old suites, P11"
 R_ENG="its suite drives v1.35's DMA_CONFIG, record base, pulses and read port through harness hooks that went with them; the units' behaviour, P9, then the old suites, P11"
-R_CTL="its suite runs v1.35 firmware under C&C's commands (GO, DONE, the command block); the sort end to end, P8, then the old suites, P11"
-R_CC="v1.35's C&C 1-3 as cores with cc1.c and cc23.c; the special tiles, P7"
-R_REGS="REGISTERS.md and mesh.h are v1.35's register map; the register tables and firmware headers, P12"
+R_CTL="its suite runs v1.35 firmware under C&C's commands (GO, DONE, the command block); the old suites, P11"
+R_CC="v1.35's C&C 1-3 as cores with cc1.c and cc23.c; the special tiles run the RTL's images in rtl-sort; deletion, P11"
+R_REGS="suite_regdoc is ref's RegDocTest on v1.35's tables and draft header; test_regs checks v1.36's REGISTERS.md and mesh.h; the old suites, P11"
 R_CORE="test_golden: the M1 goldens of v1.35's core, which is deleted; the step core-programs stands for it (PENDING-v1.36.md)"
-R_SLOT="test_tileslotconf: boot-ROM programs on v1.35's map and peripheral window; the peripherals, P7"
-R_REQ="suite_reqbus: v1.35's 128-entry request FIFO and its receive protocol through the harness; the request tree, P7"
-R_STAGEB="v1.35's replay controller (replay_ctl.c) on v1.35's replayer and map; the replayer, 17.8"
-R_SORT="v1.35's sort firmware under C&C's commands; the sort end to end, P8"
+R_SLOT="test_tileslotconf: boot-ROM programs on v1.35's map and peripheral window; the slot is test_periph_slot's and rtl-tile's; deletion, P11"
+R_REQ="suite_reqbus: v1.35's 128-entry request FIFO and its receive protocol through the harness; a test of the request tree (11.3), then the old suites, P11"
+R_STAGEB="v1.35's replay controller (replay_ctl.c) on v1.35's tile, map and commands; a replay controller on v1.36's map: the segment on the chip, P10"
+R_SORT="v1.35's sort firmware under C&C's commands; the sort end to end on v1.36's chip is the step rtl-sort; the old suites, P11"
 # ---- v1.3's steps, in v1.3's order -------------------------------------------------------------------------------
 echo "== the layout (v1.3: tools/check_layout.sh; v1.35: tools/check_copies.sh)"; sh tools/check_copies.sh > results/layout.log 2>&1 && tail -1 results/layout.log || { cat results/layout.log; echo "FAIL the layout"; }
 pending sw-build "building the tile programs (fw/build.sh: the boot ROM, fw/tests' programs, the M1, M3, replay and Tracer programs)" "$R_FW"
@@ -143,6 +144,18 @@ pending sort-build "building the sort program (fw/build.sh's sort part: one imag
 step bus 1 "bus primitives (on the framework's port kinds; the debug build, its throws checks being debug assertions)" tests/p2suites/bus.log -- build/$CC_NAME-debug/suite_bus
 check rtl-images "the RTL's vendored firmware against its hash list (fw/check_images.sh rtl; v1.36's, no v1.3 step)" -- bash fw/check_images.sh rtl
 check rtl-tile "acceptance A: the RTL's tile programs on one compute tile (tests/test_rtl_tile.cpp; v1.36's, no v1.3 step)" -- $S/test_rtl_tile
+# Acceptance B: the RTL's sort images end to end on the chip, the master, memory and tracer tiles booted as the RTL's
+# chip test boots them (tests/test_rtl_sort.cpp). The 16-record runs and the run split over threads here; the 64K runs
+# in `all`, with the RTL's 64K key file (16 MiB, not vendored: fw/rtl/README.md), which RTL_SORT_64K_KEYS names.
+rtl_sort() { $S/test_rtl_sort sort_oracle && $S/test_rtl_sort sort_16; }
+check rtl-sort "acceptance B: the RTL's sort images on the chip, 64 x 16 records: kv32, k128, and kv32 split over threads (tests/test_rtl_sort.cpp)" -- rtl_sort
+if [ "$MODE" != quick ]; then
+  if [ -f "${RTL_SORT_64K_KEYS:-}" ]; then
+    check rtl-sort-64k "acceptance B at 64 x 65,536 records: kv32 and k128 (about a minute)" -- $S/test_rtl_sort sort_64k
+  else
+    pending rtl-sort-64k "acceptance B at 64 x 65,536 records: kv32 and k128" "skipped: RTL_SORT_64K_KEYS does not name the RTL's 64K key file (fw/rtl/README.md)"
+  fi
+fi
 NETREF=tests/p4suites/net.log; [ "$MODE" = quick ] && NETREF=tests/p4suites/net-quick.log   # v1.3's net step takes $Q
 pending net "network, packets, director" "$R_NET"
 #   step net       1 "network, packets, director" $NETREF -- $S/suite_net -1 $Q
@@ -284,7 +297,7 @@ fi
 # ---- v1.3's summary ------------------------------------------------------------------------------------------------
 grep -h "^PENDING" results/*.log | sort | uniq -c
 OWN=$(grep -ch "^PENDING" results/rtl-tile.log 2> /dev/null); OWN=${OWN:-0}
-echo "== $NPENDING steps PENDING (PENDING-v1.36.md, section 3)$([ "$OWN" = 0 ] || echo "; $OWN PENDING lines of rtl-tile's own (section 1)")"
+echo "== $NPENDING steps PENDING (PENDING-v1.36.md, the platform stage, section 4)$([ "$OWN" = 0 ] || echo "; $OWN PENDING lines of rtl-tile's own (section 1)")"
 FAILED=0
 grep -h "FAIL" results/*.log | grep -v "(CL4: must fail)" && FAILED=1   # D46: Stage B's must-fail window (v1.3's runner fails on it too)
 [ -s results/.differs ] && { cat results/.differs; FAILED=1; }

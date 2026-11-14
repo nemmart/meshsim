@@ -51,6 +51,7 @@ can't share a process with ASan.
 | every test of one build, run | `make run CC_NAME=gcc MODE=debug` |
 | the tests and tools that are not built yet in v1.36, listed | `make pending` |
 | the thread tests under TSan, gcc and clang | `make tsan` |
+| the chip split over threads under TSan (acceptance B's 16-record run on 2 and 8 threads), gcc and clang | `make tsan-chip` |
 | the firmware images, rebuilt and checked against the committed copies | `fw/build.sh --check` |
 | the firmware images, rewritten into `fw/images/` | `fw/build.sh` |
 | the committed images against their hash lists, without the toolchain | `fw/check_images.sh` |
@@ -60,6 +61,8 @@ can't share a process with ASan.
 `make clean` removes `build/`.
 
 **v1.36: what is not built.** `pending.mk` names the tests and tools that are still on v1.35's hardware or firmware and do
-not compile or cannot pass against v1.36's; `make`, `make check` and `make run` leave them out (`make check`'s TSan runs
-of three of them print `PENDING` or are left out), and `make pending` lists them. `PENDING-v1.36.md`, section 2, has
-each one's reason and what closes it. A test leaves `pending.mk` in the commit that ports it.
+not compile or cannot pass against v1.36's; `make`, `make check` and `make run` leave them out (of `make check`'s TSan
+runs, the controllers' prints `PENDING`, `test_t2_harness`'s is left out, and the chip's, `make tsan-chip`, runs
+acceptance B's sort split over threads, `test_rtl_sort`, where it ran `test_chip`), and `make pending` lists them.
+`PENDING-v1.36.md` (the platform stage, section 3) has each one's reason and what closes it. A test leaves
+`pending.mk` in the commit that ports it.

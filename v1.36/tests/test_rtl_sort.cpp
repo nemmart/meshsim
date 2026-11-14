@@ -157,8 +157,12 @@ void place_scratchpad(mach::Mach& m, unsigned tile, const Region& r) {
     m.c.touched(units::tile_unit(tile, "sram"));
 }
 
-void run_sort(Format format, bool full) {
-    const std::string name = std::string(format == KV32 ? "kv32" : "k128") + (full ? "-64k" : "");
+// `parts` > 1: the chip split by bands of rows over as many threads (mach.h); `digests`: the machine's digest at every
+// poll, for the comparison of a split run with one domain's.
+void run_sort(Format format, bool full, unsigned parts = 1, std::vector<uint64_t>* digests = nullptr) {
+    const std::string name = std::string(format == KV32 ? "kv32" : "k128") + (full ? "-64k" : "") +
+                             (parts > 1 ? " on " + std::to_string(parts) + " threads" : "");
+    const std::string run_dir = std::string(format == KV32 ? "kv32" : "k128") + (full ? "-64k" : "");
     const char* tag = name.c_str();
     std::string keys_path = kDir + "sort.keys";
     if (full) {
@@ -185,13 +189,16 @@ void run_sort(Format format, bool full) {
     }
 
     // ---- the chip, its images and its input, before the first cycle ----
-    const std::string master_elf = kDir + name + "/master.elf", memory_elf = kDir + "memory-tile/memory.elf";
+    const std::string master_elf = kDir + run_dir + "/master.elf", memory_elf = kDir + "memory-tile/memory.elf";
     CHECK_EQ(rtl_images::entry(master_elf), uint32_t(units::IMEM_BASE));
     CHECK_EQ(rtl_images::entry(memory_elf), uint32_t(units::IMEM_BASE));
     const rtl_images::Section summary_section = rtl_images::section(master_elf, ".summary");
     CHECK(summary_section.found);
     CHECK(summary_section.size / 4 >= SUMMARY_WORDS);                   // the firmware's summary holds the layout written here
-    mach::Mach m(mach::Mach::chip_cfg(-1));
+    mach::MachConfig mc = mach::Mach::chip_cfg(-1);
+    mc.parts = parts; mc.threads = parts;
+    mach::Mach m(mc);
+    if (parts > 1) std::printf("test_rtl_sort: %s: %s\n", tag, m.c.sim().partition().c_str());
     for (unsigned tile = 0; tile < T; tile++) {
         const std::vector<uint32_t>& k = keys[tile];
         if (format == KV32) {
@@ -216,6 +223,7 @@ void run_sort(Format format, bool full) {
         m.c.run(POLL_CYCLES);
         cycle += POLL_CYCLES;
         finished = m.word(units::ID_MASTER, done_address) == DONE;
+        if (digests) digests->push_back(m.c.sim().digest());
     }
     const double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - wall0).count();
     if (finished) std::printf("test_rtl_sort: %s ran in %llu cycles from the reset (%.1f s)\n", tag, (unsigned long long)cycle, wall);
@@ -362,5 +370,21 @@ TEST(sort_oracle_orders_by_key_tile_and_position) {
 
 TEST(sort_16_kv32) { run_sort(KV32, false); }
 TEST(sort_16_k128) { run_sort(K128, false); }
+// The chip split over threads (src/units/chip.h, THE PARTITION: the nets and the request tree cross domains at latency
+// 1, so the barrier interval is 1): the same run, the same checks, and the machine's digest at every poll (512 cycles)
+// equal to one domain's.
+TEST(sort_16_kv32_split) {
+    std::vector<uint64_t> one, split;
+    run_sort(KV32, false, 1, &one);
+    for (unsigned parts : {2u, 8u}) {
+        split.clear();
+        run_sort(KV32, false, parts, &split);
+        CHECK_EQ(split.size(), one.size());
+        size_t differ = 0;
+        for (size_t i = 0; i < one.size(); i++) if (split[i] != one[i] && differ++ == 0) std::printf("test_rtl_sort: split %u: the digest differs first at cycle %zu\n", parts, 512 * (i + 1));
+        CHECK_EQ(differ, size_t(0));
+        std::printf("test_rtl_sort: kv32 on %u threads: %zu digests equal to one domain's\n", parts, one.size());
+    }
+}
 TEST(sort_64k_kv32) { run_sort(KV32, true); }
 TEST(sort_64k_k128) { run_sort(K128, true); }

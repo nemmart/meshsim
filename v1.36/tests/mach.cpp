@@ -218,6 +218,7 @@ struct Chip::Impl {
     void push(unsigned tile, unsigned ring, const E4& e);
 
     bool has_cnc = false;
+    bool split = false;                                   // more than one thread domain
     units::Cnc* cnc() { return has_cnc ? &sim->unit<units::Cnc>("cnc") : nullptr; }
     uint32_t* dmem(unsigned u) { return mem.data() + size_t(u) * 2 * units::MEM_WORDS; }
     uint32_t* imem(unsigned u) { return dmem(u) + units::MEM_WORDS; }
@@ -355,6 +356,7 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         }
     }
     m.has_cnc = !c.special_tiles;
+    m.split = c.parts > 1;
     if (c.reqbus_host && !c.special_tiles)                     // the receive queues' delivery logs (ReqBus::delivered_log)
         for (unsigned q = 0; q < 3; q++) {
             static const char* kRecv[3] = {"cc1.reqrecv", "cc2.reqrecv", "cc3.reqrecv"};
@@ -398,6 +400,10 @@ void Chip::Impl::collect_overflows() {
         uint64_t first = 0;
         bool flag = false;                                // the FIFO has overflowed
         if (h.router) { first = h.router->q[h.q].first_overflow; flag = first != 0; }
+        // (a machine split over threads: the framework reads a FIFO's overflows in one domain only. Those two FIFOs a tile
+        // are not lost from sight: the write engine's overflow stops the simulator, the gather queue's sets
+        // ERRORS.gather_overflow, whose fact the tile control unit records)
+        else if (split) continue;
         else { sim::Cycle f = sim::kNoCycle; sim->fifo_overflows(*h.in, &f); first = f; flag = f != sim::kNoCycle; }
         if (!flag) continue;
         h.reported = true;

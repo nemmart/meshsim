@@ -5,7 +5,11 @@
 **v1.36 is the RTL's hardware, in the RTL's terms.** The platform and the core are the specifications of the RTL
 (Snarky One), taken with their chapter numbers, names and text; what meshsim's specification has beyond them (the
 invariants, the timing summary, the budgets, the open items, the sort, the rules and figures only v1.35 stated) is
-kept, in the same terms.
+kept, in the same terms. **The RTL is the truth about the hardware:** where a document here and the RTL differ,
+the RTL wins and the document is corrected (`GUIDELINES.md`, section 1). v1.36's simulator models the RTL at the
+register, packet and cycle level, and runs the RTL's firmware images unmodified at the RTL chip's cycle counts;
+what it takes from the RTL's sources where the specification is silent, and what is still open, is
+`OPEN-v1.36.md`, at the version's root.
 
 1. `OVERVIEW.md`: what is being built and where it stands. Two pages.
 2. `GUIDELINES.md`: the rules the design follows.
@@ -21,9 +25,12 @@ kept, in the same terms.
    (`jolt/tracer.md`, 17.9), and the replayer's opcode appendix (`jolt/replayer-opcodes.md`). The split of v1.35 is
    kept: their section numbers are the platform's, and `machine-spec.md` keeps a stub under each.
 6. `schedule.md`: the all-to-all's schedule.
-7. `CHANGES-v1.35-to-v1.36.md`: **the guide from v1.35**: what to change in the simulator and the firmware, unit by
-   unit; the timing table; three reversals of recorded rulings, for the owner; the errors found in v1.35; the name
-   table; and where each of v1.35's sections went.
+7. `CHANGES-v1.35-to-v1.36.md`: **the guide from v1.35**: what changed in the simulator and the firmware, unit by
+   unit; the timing table; three reversals of recorded rulings, which v1.36 states as the RTL has them and the
+   owner has still to rule on; the differences and the silences found beyond the first inventory; the errors found
+   in v1.35; the name table; where each of v1.35's sections went; and the corrections the simulator's stages
+   found against the RTL's sources.
 
-`history/` holds v1.35's specification as it was, what changed in each earlier version and the decisions behind it
-(its `README.md`); a reference document never needs it.
+`history/` holds v1.35's specification as it was, what changed in each earlier version (v1.35's own guide from
+v1.3, `history/CHANGES-v1.3-to-v1.35.md`, among them) and the decisions behind it (its `README.md`); a reference
+document never needs it.

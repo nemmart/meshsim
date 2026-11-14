@@ -3,8 +3,8 @@
 *v1.36. Two pages by design; read it before `machine-spec.md`. The text is v1.35's overview (2026-11-12, confirmed
 by the owner) in v1.36's terms, with sections 5 and 6 brought up to date. Sources: **[spec]** the specification;
 **[plan]** the analytical studies in `jolt-asic-planning`, not measured; **[owner]** the owner's statements of
-2026-11-12; **[RTL]** what the RTL (Snarky One) built and measured in simulation. Sizes are binary (KiB, MiB); a
-figure in MB or GB is v1.35's, as it stated it.*
+2026-11-12; **[RTL]** what the RTL (Snarky One) built and measured in simulation. Sizes are binary (KiB, MiB); the
+two link rates, in GB/s, are decimal.*
 
 ## 1. The goal
 
@@ -21,7 +21,7 @@ Jolt-specific peripherals plugged in (section 4).
 
 - **A host** (x86) runs the guest and cuts the run into **128 segments of 2²² rows, one per chip**. Per proof it
   sends **one byte stream, the same for every chip**: per segment the processor state, the advice and the memory
-  words the segment wrote (2.6 and 12.5 MB of updates, compressed, on the two reference workloads) [spec;
+  words the segment wrote (about 2.5 and 12 MiB of updates, compressed, on the two reference workloads) [spec;
   DECISIONS-v1.3 15, 16].
 - **The network** [owner]: card FPGAs (a cheap part) and LVDS, **8 pairs each way per chip, about 1 GB/s**. Chips
   can be daisy-chained; direct connections are preferred as the FPGA's pins allow. The host's side (a switch, or
@@ -44,22 +44,22 @@ Jolt-specific peripherals plugged in (section 4).
    [spec 23; deferred].
 2. **Trace.** The Tracer executes its segment once, as 64 windows of 2¹⁶ rows, and writes each window's record
    and its three compressed streams. About 21 M cycles on v1.35's simulator, on an optimistic memory model; 22 M
-   to 23 M on the RTL's chip, on its tests' model [spec 17.9; RTL].
+   to 23 M on the RTL's chip and on v1.36's simulator, on the RTL's tests' model [spec 17.9; RTL].
 3. **Replay.** Each compute tile holds one window's record and streams and **regenerates its 65,536 rows on
    demand**, in about 0.2 ms a pass at 1 GHz, 3.1 cycles a row [spec 17.8, measured]. The passes a proof needs
    depend on the sumcheck and the round; about 45 [plan].
 4. **Sumchecks** [plan; not designed]. Seven stages, each a batch of sumchecks over a 128-bit field. A tile folds
    its own rows, then the 6 tile bits bind over the mesh, then the 7 chip bits across chips. **Chip-wide sorts**
    serve the checks that need address order, RAM read-write above all [owner]; sorting 2²² records takes
-   1.23 M cycles on v1.35's simulator and 1.31 M on the RTL [spec 27, measured].
+   1.23 M cycles on v1.35's simulator and 1.31 M on the RTL and on v1.36's simulator [spec 27, measured].
 5. **Across chips** [plan; a goal]. Per round, coefficients go out, summed on the way, and a challenge comes
    back, about 328 times a proof. No bulk data crosses between chips; to be confirmed once Akita is designed.
 6. **Commitment and opening (Akita), and the proof's way out:** not designed.
 7. **The check.** The host verifies every proof; one that fails is run again [owner].
 
 **Why replay:** a segment's rows are 80 bytes each, 320 MiB, against 256 MiB of scratchpad; streamed from LPDDR
-they would cost about 0.9 s a proof [derived]. The record and streams are about 21 MB per chip. **Why trace on the
-chip:** the host sends one small stream to all chips instead of a different 21 MB of streams to each.
+they would cost about 0.9 s a proof [derived]. The record and streams are about 21 MiB per chip. **Why trace on the
+chip:** the host sends one small stream to all chips instead of a different 21 MiB of streams to each.
 
 **The budget** [plan]: the sumcheck stages take about 82 ms at one field multiply per tile per cycle and 23 ms at
 four, nearly all of it arithmetic; commitment and opening are not counted. Tracing (about 22 ms) and replay (10 ms)
@@ -80,6 +80,12 @@ peripheral has **no port of its own into the scratchpad**, which a compute engin
   module of it, the four tile kinds, the request tree and the chip top, on which the sort runs end to end, a
   segment is traced and its windows are replayed. A passing simulation is not a working chip: there is no PDK, so
   macro shapes and physical latencies are placeholders.
+- **v1.36's simulator models that hardware** at the register, packet and cycle level, every stage of the guide
+  done: the RTL's own firmware images run on it unmodified, and the tile programs, the sort, the segment's trace
+  and replay, the memory tile's requests and the host interface give the RTL chip's results at the RTL chip's
+  cycle counts. What it takes from the RTL's sources where the specification is silent, where a path still
+  differs from the RTL's, and what is left of v1.35 in the tree (meshsim's own firmware, the old suites) are in
+  `OPEN-v1.36.md`.
 - **Changed from v1.35** (the guide, `CHANGES-v1.35-to-v1.36.md`): no commands, and a boot by `LOAD` requests; the
   barrier's rules; the register map; errors as an NMI; a scratchpad whose write wins its bank, with no request
   queues; the special tiles on tiles 0, 7 and 15, with 4 MiB each; the request tree's depths and timing; the RW
@@ -108,10 +114,11 @@ peripheral has **no port of its own into the scratchpad**, which a compute engin
 The owner works on the architecture, the algorithms and the high-level simulation; Tony on the RTL and the
 low-level design [owner]. **The spec and meshsim are the high-level design; the RTL owns what is buildable and
 the exact timing.** What the RTL work turns up comes back into the next version: v1.36 is that step, taken
-whole. Its specification is the RTL's; its simulator is to give the RTL's results and its cycle counts
-(`CHANGES-v1.35-to-v1.36.md`, the timing table).
+whole. **The RTL is the truth about the hardware:** where the specification and the RTL differ, the RTL wins and
+the specification is corrected (`GUIDELINES.md`, section 1). v1.36's specification is the RTL's, and its
+simulator gives the RTL's results and its cycle counts (`CHANGES-v1.35-to-v1.36.md`, the timing table).
 
-**meshsim** is the cycle-level simulator every change is checked on. v1.35's is C++ (`src/`), and v1.36's is
-v1.35's, changed stage by stage to the specification (`README.md`, Status). Until then the measured figures in
-the spec are the RTL's or v1.35's, each marked. The point of the simulator stays: shorter iterations, and trying
-a new peripheral or a new target before any RTL exists.
+**meshsim** is the cycle-level simulator every change is checked on. v1.36's is C++ (`src/`): v1.35's, brought
+stage by stage to the specification and, where that is silent, to the RTL's sources. The measured figures in the
+spec are the RTL's, which the simulator reproduces, or an earlier version's, each marked. The point of the
+simulator stays: shorter iterations, and trying a new peripheral or a new target before any RTL exists.

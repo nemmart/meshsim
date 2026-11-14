@@ -12,6 +12,8 @@ leaves out the steps marked *all* below. `--check` compares each log with its re
 difference fails the run. An *equivalent* step runs the `make check` test that stands for a v1.3 suite and logs its
 verdict. `CC_NAME=gcc` uses gcc. With `DELIVERY=DIR` (a tracer delivery's replay inputs), five more Stage B steps run
 on its guest windows (`stageb-lrd_x0`, `scd_x0`, `nop_hint`, `jalr_self`, `jalr_zero`), unchecked.
+The step `tracer-block` reads the real workloads' data from `MESHSIM_INPUTS` (`~/meshsim-inputs` by default), outside the
+repository; without it the step is not run and is printed and counted as `PENDING`, with or without `--check`.
 
 The times are wall times on the runner (an Intel i5-14400F: 6 P cores and 4 E cores, 16 threads), from the freeze check (Quest 195: `./run_tests.sh all --check`, 712 s in all; Quests 194 and 196 for the kit and `make check`); `planning/TIMES-V135.md` has them all.
 
@@ -59,6 +61,8 @@ The times are wall times on the runner (an Intel i5-14400F: 6 P cores and 4 E co
 | `memsys` | both | `build/clang-suite/suite_memsys` | <1 s | `results/memsys.log` | `tests/tracersuites/memsys.log` |
 | `rvc` | both | `build/clang-suite/suite_rvc` | <1 s | `results/rvc.log` | `tests/tracersuites/rvc.log` |
 | `tracer` | both | `build/clang-suite/suite_tracer` | <1 s | `results/tracer.log` | `tests/tracersuites/tracer.log` |
+| `tracer-block-synth` | both | `build/clang-suite/tracer_block --synthetic` | <1 s | `results/tracer-block-synth.log` | `tests/tracerblock/tracer-block-synth.log`; in the run itself, an interpreter of the synthetic guest (`tests/tracerblock/guest.h`) |
+| `tracer-block` | both, with the data | `build/clang-suite/tracer_block --inputs DIR --program P --segment S --compression C --fill F --quiet --ref tests/tracerblock/rtl/windows-….txt`, for EVM Zone's segments 0 and 1 and Cyclone's 0, `C` 0 and 7, `F` 1 and 55,35; then each segment with `--fill model` | 22 s (15 runs; on the development host) | `results/tracer-block.log` | `tests/tracerblock/tracer-block.log`; in the run itself, gold's files and the RTL's figures (`tests/tracerblock/rtl/`) |
 | `sort-p1` | both | `build/clang-suite/sort_test -1 p1` | 7 s | `results/sort-p1.log` | `tests/sort/ref/sort-p1.log` |
 | `sort` | both | `build/clang-suite/sort_test -1 sort` | 46 s | `results/sort.log` | `tests/sort/ref/sort.log` |
 | `sort-shuf` | both | `build/clang-suite/sort_test 4 sort` | 49 s | `results/sort-shuf.log` | `tests/sort/ref/sort-shuf.log` |

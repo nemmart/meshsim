@@ -42,7 +42,8 @@ endif
 B        := build/$(CC_NAME)-$(MODE)
 LIB_SRC  := $(wildcard src/base/*.cpp src/*.cpp)
 LIB_OBJ  := $(LIB_SRC:%.cpp=$(B)/%.o)
-TEST_SRC := $(wildcard tests/test_*.cpp)
+include pending.mk
+TEST_SRC := $(filter-out $(PENDING_TESTS:%=tests/%.cpp),$(wildcard tests/test_*.cpp))
 TESTS    := $(TEST_SRC:tests/%.cpp=$(B)/%)
 HARNESS  := $(B)/tests/harness.o
 # the stage 1 sketches: compiled in every build (they must build against the API), never linked or run.

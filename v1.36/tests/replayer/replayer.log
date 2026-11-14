@@ -27,5 +27,5 @@ ALU vectors: 252 rows; 225 match the tracer; 4 undefined for the replayer and fl
   n/a  VirtualAssertValidDiv0 rs1 0x0000000000000000 rs2 0x0000000000000005: the tracer aborts (a failing assertion never reaches a replayer)
   n/a  VirtualAssertValidUnsignedRemainder rs1 0x0000000000000005 rs2 0x0000000000000003: the tracer aborts (a failing assertion never reaches a replayer)
   n/a  VirtualAssertMulUNoOverflow rs1 0x0000000100000000 rs2 0x0000000100000000: the tracer aborts (a failing assertion never reaches a replayer)
-  program pass: 85 cycles from the run to the last row: rows 79, stalls [0, 4, 0, 0, 2, 0, 0] [IMAGE, CODE, NEWEXP, EXP, RLOG, WLOG, OUTQ]
-ReplayerTest: 2187 passed, 0 failed
+  program pass: 90 cycles from START to the pass's end: rows 79, stalls [8, 3, 0, 0, 0, 0, 0, 0] [PIPE, CODE, NEWEXP, EXP, RLOG, WLOG, OUTQ, ALU]
+ReplayerTest: 2343 passed, 0 failed

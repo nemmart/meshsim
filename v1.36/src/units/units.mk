@@ -49,7 +49,7 @@ $(B)/test_g1_replay: $(FP_OBJ) $(B)/tests/statefp_g1.o $(UNITS_LINK) $(GOLDEN_OB
 REPLAYER_LINK := $(B)/src/units/replayer.o
 $(B)/test_replayer $(B)/test_replayconf: $(REPLAYER_LINK) $(B)/tests/statefp.o
 $(B)/test_replayer: $(B)/src/units/replay_tables.o
-$(B)/replayconf: $(B)/tests/replayconf_main.o $(REPLAYER_LINK) $(B)/tests/statefp.o $(LIB_OBJ)
+$(B)/replayconf: $(B)/tests/replayconf_main.o $(REPLAYER_LINK) $(B)/tests/statefp.o $(B)/src/units/replay_tables.o $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 all: $(B)/replayconf
 # Stage A's C++ driver (tests/replay_delivery_main.cpp): a delivery's windows on the C++ replayer, ref's lines.

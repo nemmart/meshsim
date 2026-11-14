@@ -1,6 +1,9 @@
-// test_replayer: ref's test/ReplayerUnitTests.java ported group by group, on units::Replayer with
-// tests/replay_window.h (ReplayWindow) and tests/replay_driver.h (ReplayDriver). Each group is one TEST; its checks
-// and expected values are ref's, in ref's order, and its seeded inputs come from java.util.Random as ref's do.
+// test_replayer: the replayer's unit tests, on units::Replayer with tests/replay_window.h (ReplayWindow) and
+// tests/replay_driver.h (ReplayDriver, the ideal controller). Each group is one TEST. v1.36: the groups are v1.35's
+// (ref's ReplayerUnitTests, with java.util.Random's seeded inputs), ported to the RTL's behaviour (spec 17.8; the
+// inventory's A9 and B5): every expectation that changed says why, and the groups from `expansion_offset` on are new,
+// one for each change the others do not reach. A row's cycles are from the row before it leaving the row port to its
+// own leaving (ReplayDriver::left), the RTL's acceptance's measure.
 #include <algorithm>
 #include <cstdio>
 #include <memory>
@@ -15,7 +18,8 @@
 
 using namespace rtest;
 using units::Replayer;
-using units::ReplayerStream;
+using units::ReplayerQueue;
+using units::StreamDecoder;
 namespace alu = units::alu;
 
 namespace {
@@ -35,6 +39,7 @@ constexpr int OP_IMM = 0x13, OP = 0x33, LOAD = 0x03, STORE = 0x23, BRANCH = 0x63
 
 int64_t sext(uint64_t v) { return int64_t(v); }
 std::unique_ptr<Replayer> fresh() { return std::make_unique<Replayer>(0); }
+uint32_t word_of(Replayer& r, int64_t t, unsigned w) { uint32_t v = 0; r.word(t, w, v); return v; }
 
 // ================================================================ the decode index (4.19.5)
 void decode_index() {
@@ -85,9 +90,46 @@ void immediates() {
     T::eq(0, sext(source_imm(0, r_(0x7F, 31, 31, 7, 31, OP))), "R: 0");
 }
 
-// ================================================================ the decompressors (4.19.15)
+// ================================================================ the decoders (17.8.12)
+// One stream's queue and decoder with a consumer, cycle by cycle (stream_decoder.veryl's interfaces): each cycle the
+// queue takes the stream's next entry while there is one (and `feed` allows), the decoder decodes into its output
+// register when it is empty, and the consumer takes the value offered if it asks.
+struct DecoderBench {
+    ReplayerQueue q;
+    StreamDecoder d;
+    units::streamword::Size sz;
+    std::vector<uint64_t> entries;
+    size_t next = 0, feed = SIZE_MAX;     // the next entry to push; push no entry from `feed` on
+    int64_t t = 0;
+    unsigned most_pops = 0, pops_now = 0;
+    DecoderBench(unsigned bits, bool write, bool compressed, const std::vector<uint64_t>& e, unsigned values) : entries(e) {
+        d.init(bits, write);
+        d.clear();
+        sz = units::streamword::make(int64_t(e.size() / 2), values, compressed);
+    }
+    // One cycle. Returns whether the consumer took a value (it asked and one was offered), `v` the value.
+    bool cycle(bool ask, uint64_t& v, bool last_load_valid = false, uint64_t last_load = 0) {
+        d.eval(true, q.valid(), q.head_lo(), q.head_hi(), sz);
+        const bool had = d.value_valid;
+        v = d.value();
+        d.update(ask, q.head_lo(), q.head_hi(), last_load_valid, last_load);
+        pops_now = 0;
+        if (d.take) { q.pop(t, false); pops_now = 1; }
+        if (pops_now > most_pops) most_pops = pops_now;
+        if (next < entries.size() / 2 && next < feed && q.push(t, entries[2 * next], entries[2 * next + 1])) next++;
+        t++;
+        return had && ask;
+    }
+    // The next value: asks until one is offered (at most 16 cycles). False if none came.
+    bool take(uint64_t& v, bool last_load_valid = false, uint64_t last_load = 0) {
+        for (int k = 0; k < 16; k++) if (cycle(true, v, last_load_valid, last_load)) return true;
+        return false;
+    }
+    void idle(int n) { uint64_t v; for (int k = 0; k < n; k++) cycle(false, v); }
+};
+
 void decompressors() {
-    T::group("decompressors");
+    T::group("decoders");
     JRandom rnd(7);
     for (int trial = 0; trial < 40; trial++) {
         std::vector<LogEvent> ev;
@@ -110,78 +152,138 @@ void decompressors() {
         bool rc = trial % 2 == 0, wc = trial % 3 != 0;
         ReplayWindow w;
         w.set_logs(ev, rc, wc);
-        auto rp = fresh();
-        rp->rlog.reset(rc, unsigned(w.rlog.size() / 2), w.rlog_vals);
-        rp->wlog.reset(wc, unsigned(w.wlog.size() / 2), w.wlog_vals);
-        size_t rn = 0, wn = 0;
-        int64_t t = 0;
+        DecoderBench rb(64, false, rc, w.rlog, w.rlog_vals), wb(64, true, wc, w.wlog, w.wlog_vals);
         bool ok = true;
         int hits15 = 0;
         for (const LogEvent& e : ev) {
+            uint64_t v = 0, x = 0;
             if (e.has_read) {
-                while (rp->rlog.peek() == ReplayerStream::WAIT) { rp->rlog.push(t++, w.rlog[2 * rn], w.rlog[2 * rn + 1]); rn++; }
-                ok &= rp->rlog.peek() == ReplayerStream::AVAIL && rp->rlog.peek_value == e.read;
-                rp->rlog.commit(); rp->rlog.release_consumed(rp->ev);
-                if (e.load) rp->wlog.last_load(e.read);
+                // the read log's value, and the write log's decoder running beside it: a load's value is copied into
+                // its E[15] in the cycle the row takes it (17.8.12)
+                bool got = false;
+                for (int k = 0; k < 16 && !got; k++) {
+                    got = rb.cycle(true, v);
+                    wb.cycle(false, x, got && e.load, v);
+                }
+                ok &= got && v == e.read;
             }
             if (e.has_write) {
-                while (rp->wlog.peek() == ReplayerStream::WAIT) { rp->wlog.push(t++, w.wlog[2 * wn], w.wlog[2 * wn + 1]); wn++; }
-                ok &= rp->wlog.peek() == ReplayerStream::AVAIL && rp->wlog.peek_value == e.write;
-                if (wc && rp->wlog.peek_hit == 15) hits15++;
-                rp->wlog.commit(); rp->wlog.release_consumed(rp->ev);
+                bool got = false;
+                for (int k = 0; k < 16 && !got; k++) {
+                    const bool hit15 = wb.d.value_valid && wb.d.value_is_hit && wb.d.value_entry == 15;
+                    got = wb.cycle(true, v);
+                    rb.cycle(false, x);
+                    if (got && wc && hit15) hits15++;
+                }
+                ok &= got && v == e.write;
             }
         }
+        rb.idle(4); wb.idle(4);
         std::string n = "trial " + std::to_string(trial) + " (read " + (rc ? "LRU" : "raw") + ", write " + (wc ? "LRU+E15" : "raw") + ")";
         T::check(ok, n + ": every value decodes to what was encoded");
-        T::check(rp->rlog.peek() == ReplayerStream::END && rp->wlog.peek() == ReplayerStream::END, n + ": both logs end exactly at their lengths");
-        T::eq(0, rp->rlog.occ + rp->wlog.occ, n + ": every entry left its queue, including the one each stream ends inside");
+        T::check(rb.d.complete(rb.sz) && wb.d.complete(wb.sz), n + ": both logs end exactly at their sizes: their words taken, their values decoded and taken");
+        T::eq(0, rb.q.occ + wb.q.occ, n + ": every entry left its queue, including the one each stream ends inside");
+        T::eq(1, int64_t(rb.most_pops | wb.most_pops), n + ": at most one entry leaves a queue in a cycle (17.8.8)");
         if (wc) T::check(hits15 > 100, n + ": the last-load entry is used (" + std::to_string(hits15) + " index-15 hits)");
     }
     // move to front, by hand
     Bits bits;
     put_value(bits, -1, 1); put_value(bits, -1, 2); put_value(bits, -1, 3);
     put_value(bits, 2, 0); put_value(bits, 1, 0); put_value(bits, -1, 0x100000000ull);
-    std::vector<uint64_t> ent = bits.entries();
-    auto rp = fresh();
-    rp->rlog.reset(true, unsigned(ent.size() / 2), 6);
-    for (size_t k = 0; k < ent.size() / 2; k++) rp->rlog.push(int64_t(k), ent[2 * k], ent[2 * k + 1]);
+    DecoderBench mtf(64, false, true, bits.entries(), 6);
     const uint64_t expect[] = {1, 2, 3, 1, 3, 0x100000000ull};
     for (uint64_t e : expect) {
-        T::check(rp->rlog.peek() == ReplayerStream::AVAIL, "MTF: available");
-        T::eq(int64_t(e), int64_t(rp->rlog.peek_value), "MTF value");
-        rp->rlog.commit();
+        uint64_t v = 0;
+        T::check(mtf.take(v), "MTF: available");
+        T::eq(int64_t(e), int64_t(v), "MTF value");
     }
-    T::check(rp->rlog.E[0] == 0x100000000ull && rp->rlog.E[1] == 3 && rp->rlog.E[2] == 1 && rp->rlog.E[3] == 2 && rp->rlog.E[4] == 0, "MTF table order");
+    mtf.idle(2);
+    const uint64_t* E = mtf.d.E;
+    T::check(E[0] == 0x100000000ull && E[1] == 3 && E[2] == 1 && E[3] == 2 && E[4] == 0, "MTF table order");
     // the write log: hit 15 reorders nothing; a miss leaves E[15] alone and drops E[14]
-    auto rw = fresh();
-    Bits wb;
-    for (int k = 1; k <= 15; k++) put_value(wb, -1, uint64_t(k));
-    put_value(wb, 15, 0); put_value(wb, -1, 99);
-    std::vector<uint64_t> we = wb.entries();
-    rw->wlog.reset(true, unsigned(we.size() / 2), 17);
-    for (size_t k = 0; k < we.size() / 2; k++) rw->wlog.push(int64_t(k), we[2 * k], we[2 * k + 1]);
-    for (int k = 0; k < 15; k++) { rw->wlog.peek(); rw->wlog.commit(); }
-    rw->wlog.last_load(0xBEEF);
-    rw->wlog.peek();
-    T::eq(0xBEEF, int64_t(rw->wlog.peek_value), "write log hit 15: the last load");
-    rw->wlog.commit();
-    T::eq(15, int64_t(rw->wlog.E[0]), "hit 15 reorders nothing");
-    rw->wlog.peek(); rw->wlog.commit();
-    T::eq(99, int64_t(rw->wlog.E[0]), "a miss goes to the front");
-    T::eq(2, int64_t(rw->wlog.E[14]), "E[14] was 1, dropped; now 2");
-    T::eq(0xBEEF, int64_t(rw->wlog.E[15]), "E[15] untouched by a miss");
-    // a 32-bit miss is zero-extended; a value straddling two entries waits for the second
-    Bits b2;
-    b2.put(0, 100); put_value(b2, -1, 0xFFFFFFFFull);
-    std::vector<uint64_t> e2 = b2.entries();
-    auto r2 = fresh();
-    r2->rlog.reset(true, unsigned(e2.size() / 2), 2);
-    r2->rlog.push(0, e2[0], e2[1]);
-    r2->rlog.consumed = 100;
-    T::eq(ReplayerStream::WAIT, r2->rlog.peek(), "a value straddling entries waits for the second entry");
-    r2->rlog.push(1, e2[2], e2[3]);
-    T::eq(ReplayerStream::AVAIL, r2->rlog.peek(), "and decodes once it lands");
-    T::eq(0xFFFFFFFFll, int64_t(r2->rlog.peek_value), "a 32-bit miss is zero-extended");
+    Bits wbits;
+    for (int k = 1; k <= 15; k++) put_value(wbits, -1, uint64_t(k));
+    put_value(wbits, 15, 0); put_value(wbits, -1, 99);
+    DecoderBench wl(64, true, true, wbits.entries(), 17);
+    uint64_t v = 0;
+    for (int k = 0; k < 15; k++) wl.take(v);
+    // the decoder decodes ahead: the hit 15 is in its output register before the load's copy lands, and reads E[15]
+    // as the row takes it (17.8.12: a load row's copy precedes any later row's write-log value)
+    wl.idle(3);
+    T::check(wl.d.value_valid && wl.d.value_is_hit && wl.d.value_entry == 15, "the hit 15 is decoded, and held, before the copy");
+    wl.cycle(false, v, true, 0xBEEF);
+    wl.take(v);
+    T::eq(0xBEEF, int64_t(v), "write log hit 15: the last load, copied after the decode");
+    T::eq(15, int64_t(wl.d.E[0]), "hit 15 reorders nothing");
+    wl.take(v);
+    wl.idle(2);
+    T::eq(99, int64_t(wl.d.E[0]), "a miss goes to the front");
+    T::eq(2, int64_t(wl.d.E[14]), "E[14] was 1, dropped; now 2");
+    T::eq(0xBEEF, int64_t(wl.d.E[15]), "E[15] untouched by a miss");
+    // a 32-bit miss is zero-extended; a value straddling two entries waits for the second: 20 hits (100 bits), then a
+    // miss of 34 bits
+    {
+        // 20 hits of entry 0 (the cleared table's 0), 100 bits: 1 then index 0, five bits each
+        Bits b4;
+        for (int k = 0; k < 20; k++) put_value(b4, 0, 0);
+        put_value(b4, -1, 0xFFFFFFFFull);
+        DecoderBench st(64, false, true, b4.entries(), 21);
+        st.feed = 1;
+        bool ok = true;
+        for (int k = 0; k < 20; k++) ok &= st.take(v) && v == 0;
+        T::check(ok, "20 hits from the first entry");
+        st.idle(6);
+        T::check(!st.d.value_valid && !st.d.underflow(true), "a value straddling entries waits for the second entry: a stall, no underflow");
+        T::eq(0, st.q.occ, "the first entry left its queue once fewer than 66 of its bits were left: the decoder holds them (17.8.8)");
+        st.feed = SIZE_MAX;
+        T::check(st.take(v), "and decodes once it lands");
+        T::eq(0xFFFFFFFFll, int64_t(v), "a 32-bit miss is zero-extended");
+    }
+    // an entry leaves no later than its last bit's use, and early: a raw log's entry, two values, leaves after its
+    // first value's decode, 64 bits left, when the stream has an entry after it (A9.7; stream_decoder.veryl)
+    {
+        Bits raw;
+        for (uint64_t k = 1; k <= 6; k++) raw.put(k, 64);
+        DecoderBench rw(64, false, false, raw.entries(), 6);
+        uint64_t x = 0;
+        rw.idle(4);
+        T::check(rw.d.value_valid && rw.d.values == 0, "the first value is decoded and offered; none is taken");
+        T::eq(1, int64_t(rw.d.taken), "the first entry has left the queue, its second value still in the decoder's tail");
+        bool ok = true;
+        for (uint64_t k = 1; k <= 6; k++) ok &= rw.take(x) && x == k;
+        rw.idle(3);
+        T::check(ok && rw.d.complete(rw.sz) && rw.q.occ == 0, "every value in order; the last entry leaves after the last value");
+    }
+    // the code decoder: 32-bit values, a table of 16 x 32 bits; a miss with size bit 1 (UB) takes its 64 bits and keeps
+    // the low 32 (A9.8)
+    {
+        Bits cb;
+        put_value(cb, -1, 0x7700000013ull); put_value(cb, 0, 0);
+        DecoderBench cd(32, false, true, cb.entries(), 2);
+        uint64_t x = 0;
+        T::check(cd.take(x) && x == 0x13, "a code miss of 64 bits: the low 32");
+        T::check(cd.take(x) && x == 0x13, "and its table entry is 32 bits");
+        T::eq(1, int64_t(cd.d.miss64), "counted: the replayer flags it");
+    }
+    // the announcement (stream_decoder.veryl's value_soon): a decode whatever the token is, the cycle before the value
+    // is offered; none for a token the stream's last entry holds with fewer than 66 bits left
+    {
+        Bits raw;
+        for (uint64_t k = 1; k <= 4; k++) raw.put(k, 64);
+        DecoderBench an(64, false, false, raw.entries(), 4);
+        uint64_t x = 0;
+        std::vector<int> soon;
+        for (int k = 0; k < 4; k++) {
+            bool announced = false, got = false;
+            for (int c = 0; c < 16 && !got; c++) {
+                an.d.eval(true, an.q.valid(), an.q.head_lo(), an.q.head_hi(), an.sz);
+                announced |= an.d.value_soon;
+                got = an.cycle(true, x);
+            }
+            soon.push_back(announced ? 1 : 0);
+        }
+        T::check(soon == std::vector<int>({1, 1, 1, 0}), "values 1-3 are announced; the last, in the last entry's second half, is not");
+    }
 }
 
 // ================================================================ a hand-checked program
@@ -328,7 +430,7 @@ void program() {
     T::eq(0, d->r->instr_idx(), "instr_idx 0 after the program end");
     T::eq(0x1036, int64_t(d->r->reg(40)), "the remapped link is written into v40");
     T::eq(0x101, int64_t(d->r->reg(A0)), "a0");
-    T::eq(0, d->r->errors(d->t), "no condition (v1.26: ERRORS [0]-[6])");
+    T::eq(0, d->r->errors(d->t), "no error");
     T::check(d->r->clean(), "clean: " + error_report(*d->r));
     T::check(d->done, "done was posted");
 }
@@ -343,7 +445,7 @@ void program_compressed() {
         auto d = run_window(*w, 25);
         check_rows(n, rows_of(*d), exp, PADDING);
         T::check(d->r->clean(), n + ": clean " + error_report(*d->r));
-        if (c[2]) T::check(d->r->wlog.hits >= 1, n + ": the SD's pre-value came from the last-load entry");
+        if (c[2]) T::check(d->r->wlog_d.hits >= 1, n + ": the SD's pre-value came from the last-load entry");
     }
 }
 
@@ -353,7 +455,7 @@ void store_log_off() {
     T::eq(0, int64_t(w->wlog.size()), "the write log is empty");
     auto d = run_window(*w, 25);
     check_rows("no store log", rows_of(*d), expected(false), PADDING);
-    T::eq(0, d->wlog_next, "the write-log queue was never fed (its line stayed quiet)");
+    T::eq(0, int64_t(d->next[2]), "the write-log queue was never fed");
     T::check(d->r->clean(), "clean: " + error_report(*d->r));
 }
 
@@ -365,14 +467,26 @@ void pext_any_mask() {
     w.rom(20, {W::op(alu::PEXT_S).rd(129).rs1(130).rs2(131).fmt(0).report_c()});
     w.decode_rom(ins, 20);
     w.pc = 0x1000; w.instr_idx = 1; w.regs[A0] = 0x8000000000000001ull; w.regs[A1] = 0x8000000000000001ull;
-    w.set_code({ins, ins}, false);
+    w.set_code({ins, ins, ins}, false);
     w.set_logs({}, false, false);
-    auto d = run_window(w, 2);
+    auto d = run_window(w, 3);
     T::eq(-1, int64_t(d->row(0)[7]), "two single-bit runs, top bit set: sign-extended from the last bit placed");
-    T::eq(2, int64_t(d->r->pext_non_contiguous), "counted as a statistic");
+    T::eq(3, int64_t(d->r->pext_non_contiguous), "counted as a statistic");
     T::check(d->r->violations() == 0 && d->r->invalids() == 0, "not flagged: " + error_report(*d->r));
-    int64_t cyc = d->r->pass_end_at - d->r->pass_start_at;
-    T::check(cyc < 64 + 2 * 3 + 20, "timed like any S row (3 cycles): pass " + std::to_string(cyc));
+    // v1.36 (17.8.7, 17.8.16; the RTL's replayer_alu): a mask of two or more runs is extracted a bit a cycle up to its
+    // highest set bit, and the row is done the cycle after: 64 + 1 cycles past its schedule here (v1.35: 3 cycles)
+    T::eq(3 + 65, d->left(1) - d->left(0), "the second row: its 3 cycles and 65 more");
+    T::eq(3 + 65, d->left(2) - d->left(1), "the third likewise");
+    T::eq(3 * 65, int64_t(d->r->stalls[Replayer::ST_ALU]), "the ALU's extra cycles");
+    // a mask of two runs whose highest bit is bit 5: 6 + 1 cycles; a contiguous mask keeps the schedule
+    w.regs[A0] = 0x21; w.regs[A1] = 0x29;
+    auto d6 = run_window(w, 3);
+    T::eq(3 + 7, d6->left(2) - d6->left(1), "mask 0b101001: 7 cycles past the schedule");
+    T::eq(-3, int64_t(d6->row(0)[7]), "rs1 0b100001 under it: bits 1, 0, 1, sign-extended from the last placed");
+    w.regs[A1] = 0x38;
+    auto dc = run_window(w, 3);
+    T::eq(3, dc->left(2) - dc->left(1), "a contiguous mask: 3 cycles");
+    T::eq(0, int64_t(dc->r->pext_non_contiguous), "and not counted");
 }
 
 // ================================================================ mid-sequence starts (4.19.2, 4.19.4)
@@ -419,7 +533,7 @@ void ld_to_x0() {
     T::eq(0x200, int64_t(g[8]), "mem_addr rs1 + imm");
     T::eq(0, int64_t(g[9]), "mem_value 0: formed from the value written to rd, not the log word (F4)");
     T::eq(0xABCDEF0123ll, int64_t(d->row(1)[9]), "the SD's pre-value: the log word coded as index 15 decodes to the popped LD value");
-    T::eq(1, int64_t(d->r->wlog.hits), "via the last-load entry (E[15] takes the popped value even for an LD to x0: REPLAYER-NOTES N5)");
+    T::eq(1, int64_t(d->r->wlog_d.hits), "via the last-load entry (E[15] takes the popped value even for an LD to x0: REPLAYER-NOTES N5)");
 }
 
 // ================================================================ controller-fed expansions (4.19.8, 4.19.9)
@@ -450,6 +564,27 @@ void controller_fed() {
     T::eq(2, int64_t(d->r->new_expansions), "two new-expansion events");
     T::eq(0, int64_t(d->missing_templates), "every presented instruction had a template");
     T::check(d->r->stalls[Replayer::ST_NEWEXP] > 0, "the first word of each expansion was waited for");
+    // v1.36 (17.8.16, B5): under the ideal controller a core-fed expansion's first row waits 4 cycles for its word: the
+    // post, the load of EVENTS, of EXPANSION_OPCODE and of EXPANSION_OFFSET, then the push (v1.35: 2, its controller
+    // answering in the event's cycle); its other rows keep their schedules
+    T::check(d->left(uint64_t(n)) - d->left(uint64_t(n) - 1) > 3, "the second expansion's first row waits for the core");
+    T::eq(3, d->left(uint64_t(n) + 1) - d->left(uint64_t(n)), "its second row: 3");
+    T::eq(3, d->left(uint64_t(n) - 1) - d->left(uint64_t(n) - 2), "the first expansion's last row: 3");
+    {
+        // after a ROM instruction, as in the recorded windows (the RTL's acceptance: every such row + 4)
+        ReplayWindow v;
+        templates(v);
+        uint32_t addi = prog()[0];
+        v.decode_rom(addi, T_ADDI); v.decode_class(inl, 1);
+        v.template_(inl, std::vector<W>(words.begin() + n - 4, words.end()));
+        v.pc = 0x2000; v.instr_idx = 1;
+        v.set_code({addi, addi, inl, addi}, false);
+        v.set_logs({}, false, false);
+        auto e = run_window(v, 7);
+        T::eq(7, int64_t(e->rows()), "ADDI, ADDI, a 4-row core-fed expansion, ADDI");
+        T::eq(3 + 4, e->left(2) - e->left(1), "the expansion's first row: 4 cycles past its 3");
+        for (uint64_t k : {3u, 4u, 5u, 6u}) T::eq(3, e->left(k) - e->left(k - 1), "row " + std::to_string(k) + ": 3");
+    }
     T::check(d->r->violations() == 0 && d->r->invalids() == 0 && d->r->overruns() == 0, "clean: " + error_report(*d->r));
 
     T::group("controller-fed, mid-sequence start");
@@ -457,7 +592,7 @@ void controller_fed() {
     w.set_code({inl, inl}, false);
     auto d2 = run_window(w, 50 + n);
     T::eq(50 + n, int64_t(d2->rows()), "rows");
-    T::eq(251, int64_t(d2->row(0)[7]), "the first row is word 250: the controller started at PERIPH_STATUS_0's next offset");
+    T::eq(251, int64_t(d2->row(0)[7]), "the first row is word 250: the controller started at EXPANSION_OFFSET");
     T::eq(49, int64_t(d2->row(0)[1] & 0xFFFF), "seq_remaining 49");
     T::eq(0, int64_t((d2->row(0)[1] >> 18) & 1), "not is_first");
     T::eq(1, int64_t((d2->row(50)[1] >> 18) & 1), "the next expansion's first row is is_first");
@@ -508,7 +643,10 @@ void controller_fed_rd0() {
         T::eq(11, int64_t(e->row(13)[3]), "the full DIV expansion (rd != x0) still runs: its last word's constant");
         T::eq(A2, int64_t((e->row(13)[0] >> 40) & 0xFF), "into rd");
         T::eq(2, int64_t((e->row(14)[0] >> 32) & 0xFF), "the second div x0 is a NOP row too");
-        T::check(e->r->exp.occ <= 11, "only the last dropped expansion's words may remain at done: " + std::to_string(e->r->exp.occ));
+        // v1.36 (17.8.5, 17.8.13, A9.5): under a NOP policy the core sends the shared NOP row alone, and the replayer takes
+        // that one word and drops it (v1.35 dropped the template's other words, by the first word's seq_remaining)
+        T::eq(0, e->r->exp.occ, "nothing is left in the expansion queue: the one word sent was taken and dropped");
+        T::eq(1 + 12 + 1, int64_t(e->expansion_words_sent), "the core sent one word for each div x0 and the DIV's 12");
         T::check(e->r->violations() == 0 && e->r->invalids() == 0 && e->r->overruns() == 0, "clean: " + error_report(*e->r));
     }
 }
@@ -528,8 +666,8 @@ void padding() {
     for (uint64_t k = 0; k < d->rows(); k++) for (unsigned i = 0; i < Replayer::REC_LONGS; i++) zero &= d->row(k)[i] == 0;
     T::check(zero, "every record is all zeros");
     T::check(d->done && d->r->violations() == 0 && d->r->invalids() == 0, "done, clean");
-    int64_t cyc = d->r->pass_end_at - d->r->pass_start_at;
-    T::check(cyc >= 3 * 65536 && cyc < 3 * 65536 + 200, "about 3 cycles per row (v1.26 item 12: no image copy): " + std::to_string(cyc));
+    int64_t cyc = d->cycles();
+    T::check(cyc >= 3 * 65536 && cyc < 3 * 65536 + 200, "about 3 cycles per row: " + std::to_string(cyc));
 
     T::group("all-padding window, compressed code");
     w.set_code(std::vector<uint32_t>(65536, 0), true);
@@ -553,7 +691,6 @@ void debug_length() {
     d->load(); d->pass(10000);
     T::eq(256, int64_t(d->rows()), "a 256-row pass");
     T::check(d->done && !d->r->is_running(), "done after 256 rows");
-    T::eq(256, d->r->status(d->t, 0) & 0xFFFF, "PERIPH_STATUS_0 counts the rows run");
     uint32_t rr = 0;
     d->r->word(d->t, Replayer::W_ROWS_RUN, rr);
     T::eq(256, rr, "ROWS_RUN (word 33, v1.26.1) reads the row count after the pass");
@@ -620,7 +757,7 @@ void invalid() {
         else { w.rom(20, {word}); w.decode_rom(ins, 20); }
         w.set_logs({}, false, false);
         w.set_code({ins, ins}, false);
-        T::dies([&] { run_window(w, 10); }, "a word with bit " + std::to_string(bit) + " set", {"replayer", "reserved bits [61:55]", fed ? "controller-fed" : "ROM"});
+        T::dies([&] { run_window(w, 10); }, "a word with bit " + std::to_string(bit) + " set", {"replayer", "reserved bits [61:55]", fed ? "core-fed" : "ROM"});
     }
 }
 
@@ -634,14 +771,14 @@ void write_port() {
     T::eq(0x1234, int64_t(r->region0[0]), "the state word landed");
     struct Bad { uint32_t at; unsigned size; const char* what; const char* name; };
     const Bad badw[] = {{0x0, 1, "a 64-bit packet", "size 64"}, {0x100000, 0, "a queue takes 128 bits only", "size 32"},
-                        {0x800, 2, "unmapped in part 0", "unmapped"}, {0x500000, 2, "part 5 (v1.25 CL1: 1-4 the queues)", "unmapped"},
-                        {0x700000, 2, "part 7", "unmapped"}, {0x8, 2, "part 0 off a 128-bit boundary", "item 47"}};
+                        {0x800, 2, "unmapped in part 0", "unmapped"}, {0x4000, 2, "part 0 past the ROM", "unmapped"}, {0x500000, 2, "part 5", "unmapped"},
+                        {0x700000, 2, "part 7", "unmapped"}, {0x900000, 2, "offset bit 23", "unmapped"}, {0x8, 2, "part 0 off a 128-bit boundary", "128-bit boundary"}};
     for (const Bad& bw : badw) {
         auto rb = fresh();
         rb->accept(0, 3, bw.at, bw.size, 1, 1);
         T::dies([&] { for (int64_t u = 0; u < 8; u++) rb->step(u); }, std::string("a bad write: ") + bw.what, {"replayer", bw.name});
     }
-    T::eq(0, r->errors(t), "ERRORS [0] is reserved: never set");
+    T::eq(0, r->errors(t), "no error");
     T::eq(1, r->landed(2), "landed(t): a packet accepted at t - 2");
     T::eq(0, r->landed(101), "no packet");
     r->region0[0] = 0;
@@ -669,7 +806,7 @@ void write_port() {
         d->write_config(); d->r->run(d->t); d->step(); d->step();
         T::check(d->r->running(d->t), "a pass runs");
         d->r->run(d->t);
-        T::dies([&] { for (int k = 0; k < 3; k++) d->step(); }, "PULSE_RUN while a pass runs", {"replayer", "PULSE_RUN while a pass runs"});
+        T::dies([&] { for (int k = 0; k < 3; k++) d->step(); }, "START while a pass runs", {"replayer", "START while a pass runs"});
     }
     auto r3 = fresh();
     int64_t t3 = 0;
@@ -680,14 +817,15 @@ void write_port() {
     T::eq(3, r3->rlog.occ, "part 2 (0x200000-0x2FFFFF): the read-log queue, 0x280000 included");
     T::eq(2, r3->wlog.occ, "part 3 (0x300000-0x3FFFFF): the write-log queue");
     T::eq(2, r3->exp.occ, "part 4 (0x400000-0x4FFFFF): the expansion queue");
-    T::eq(0x280000, int64_t(r3->rlog.lo[(r3->rlog.head + 1) % r3->rlog.cap]), "0x280000 went to the read log, in order");
+    T::eq(0x280000, int64_t(r3->rlog.lo[(r3->rlog.head + 1) % ReplayerQueue::CAP]), "0x280000 went to the read log, in order");
     T::eq(0x400000, int64_t(r3->exp.lo[r3->exp.head]), "0x400000 went to the expansion queue");
     auto r2 = fresh();
     int64_t t2 = 0;
     for (int k = 0; k < 257; k++) { r2->accept(t2, 3, 0x100000, 2, uint64_t(k), 0); r2->step(t2++); }
     for (int k = 0; k < 4; k++) r2->step(t2++);
     T::eq(1, int64_t(r2->cond_events(Replayer::ERR_OVERRUN)), "queue overrun on the 257th push");
-    T::eq(1 << Replayer::ERR_OVERRUN, r2->errors(t2), "ERRORS [1], queue overrun");
+    // v1.36 (17.8.1, A9.1): ERRORS is packed from bit 0, each bit one lower than v1.35's
+    T::eq(1, r2->errors(t2), "ERRORS [0], queue_overrun");
     T::eq(256, r2->code.occ, "256 entries held");
     T::eq(1 << Replayer::ERR_OVERRUN, r2->errors(t2), "a push while stopped is accepted: only the overrun is set");
 }
@@ -708,19 +846,18 @@ void lines() {
     T::check(!r.running(t), "idle: STATUS [0] = 0");
     T::eq(code | rlog | wlog | exp, r.events().value(t), "idle, after the load: the state word's write set every queue's credits to 2");
     r.run(t); d->step(); r.sync(d->t);
-    T::check(r.running(t + 1), "running from the end of the run's cycle");
-    T::eq(code | rlog | wlog | exp, r.events().value(d->t), "PULSE_RUN leaves them (v1.26)");
+    T::check(r.running(t + 1), "busy from the end of START's cycle");
+    T::eq(code | rlog | wlog | exp, r.events().value(d->t), "START leaves them");
     for (unsigned b = Replayer::EV_CODE; b <= Replayer::EV_EXP; b++) T::eq(2, r.events().count_of(b), "credit bit " + std::to_string(b) + ": 2");
     r.consume_events(code); d->step(); r.sync(d->t);
     T::eq(code | rlog | wlog | exp, r.events().value(d->t), "one consuming load: code still has a credit");
     r.consume_events(code); d->step(); r.sync(d->t);
     T::eq(rlog | wlog | exp, r.events().value(d->t), "two: code's bit falls (two refills may be outstanding)");
     T::eq(4, r.params(), "PARAMS: type 4 (4.17.1, D46), version 0");
-    T::eq(0, r.status(d->t, 1), "EXPANSION_OPCODE: nothing presented yet");
-    uint32_t v35 = 0, v34 = 0, v32 = 0, v36 = 0;
+    uint32_t v35 = 1, v34 = 1, v32 = 0, v36 = 0;
     r.word(d->t, 35, v35); r.word(d->t, 34, v34); r.word(d->t, 32, v32);
-    T::eq(v35, r.status(d->t, 1), "word 35 is EXPANSION_OPCODE (v1.26.1; was 34)");
-    T::eq(r.status(d->t, 0) >> 16, v34, "word 34 is EXPANSION_OFFSET (was 33)");
+    T::eq(0, v35, "word 35, EXPANSION_OPCODE: nothing posted yet");
+    T::eq(0, v34, "word 34, EXPANSION_OFFSET: likewise");
     T::eq(25 | Replayer::RC_STORE_LOG | Replayer::RC_RD_PREV, v32, "word 32 reads RUN_CONFIG back");
     T::check(!r.word(d->t, 36, v36), "word 36 undefined");
     T::eq(0, r.write_word(d->t, 33, 1), "a store to ROWS_RUN (33) is a bus error");
@@ -743,12 +880,25 @@ void timing() {
     int64_t stalls = 0;
     std::string st;
     for (unsigned k = 0; k < Replayer::N_STALL; k++) { stalls += int64_t(d->r->stalls[k]); st += (k ? ", " : "") + std::to_string(d->r->stalls[k]); }
-    std::printf("  program pass: %lld cycles from the run to the last row: rows %lld, stalls [%s] [IMAGE, CODE, NEWEXP, EXP, RLOG, WLOG, OUTQ]\n",
+    std::printf("  program pass: %lld cycles from START to the pass's end: rows %lld, stalls [%s] [PIPE, CODE, NEWEXP, EXP, RLOG, WLOG, OUTQ, ALU]\n",
                 (long long)cyc, (long long)rows_cycles, st.c_str());
     T::eq(rows_cycles + stalls, cyc, "cycles = row schedules (3, or 5 for class M) + stall cycles");
-    T::eq(0, int64_t(d->r->stalls[Replayer::ST_IMAGE]), "v1.26 (item 12): no image copy, the first row starts at once");
     T::eq(2, int64_t(d->r->rows_m), "two class-M rows");
-    T::eq(25, d->r->status(d->t, 0) & 0xFFFF, "PERIPH_STATUS_0 [15:0]: rows run");
+    T::eq(25, word_of(*d->r, d->t, Replayer::W_ROWS_RUN), "ROWS_RUN: the rows run");
+    // v1.36 (17.8.16, B5; the RTL's fetch and row engine): every row keeps its schedule but those below. Rows are
+    // numbered from 0; row k's cycles are from row k - 1 leaving the row port to its own leaving.
+    auto took = [&](uint64_t k) { return d->left(k) - d->left(k - 1); };
+    T::eq(5, took(7), "the shared NOP row of a ROM template (add x0: rd0 1): 2 cycles past its 3: the fetch reads the template's first word for its policy, then ROM word 1");
+    T::eq(5, took(8), "and addi x0's (rd0 3)");
+    T::eq(5, took(10), "the M rows take 5: VirtualMULI");
+    T::eq(5, took(11), "and MUL");
+    for (uint64_t k : {1u, 2u, 3u, 4u, 5u, 6u, 9u, 12u, 13u, 14u, 15u, 16u, 17u, 20u, 24u})
+        T::eq(3, took(k), "row " + std::to_string(k) + " keeps its 3 cycles");
+    // the pass's first row: START in cycle p; the controller's first load in p + 1 releases the first entries, the
+    // port takes the code stream's first in p + 2, the decoder offers its first value in p + 4, the fetch takes it and
+    // reads its entry in p + 5 and its ROM word in p + 6, the reads are made in p + 7, the row starts in p + 8, completes
+    // in p + 10 and leaves the row port in p + 11
+    T::eq(11, d->left(0), "the first row leaves 11 cycles after START");
 }
 
 bool same_rows(const ReplayDriver& a, const ReplayDriver& b) {
@@ -757,7 +907,6 @@ bool same_rows(const ReplayDriver& a, const ReplayDriver& b) {
         for (unsigned i = 0; i < Replayer::REC_LONGS; i++) if (a.row(k)[i] != b.row(k)[i]) return false;
     return true;
 }
-uint32_t word_of(Replayer& r, int64_t t, unsigned w) { uint32_t v = 0; r.word(t, w, v); return v; }
 
 // ================================================================ v1.26.1 (DECISIONS-v1.26 items 13-16)
 void v1261_a() {
@@ -769,7 +918,7 @@ void v1261_a() {
     auto sh = run_window(*w2, 10);
     T::eq(10, int64_t(sh->rows()), "a 10-row pass of the 25-row record runs exactly 10 rows");
     T::check(sh->done && !sh->r->is_running(), "and raises done");
-    T::eq(1 << Replayer::ERR_LEFTOVER, sh->r->errors(sh->t), "with input left over, ERRORS [6] only");
+    T::eq(1 << 5, sh->r->errors(sh->t), "with input left over, ERRORS [5], leftover, only (17.8.1: v1.35's [6])");
     T::eq(10, word_of(*sh->r, sh->t, Replayer::W_ROWS_RUN), "ROWS_RUN reads 10");
 
     T::group("v1.26.1: a row count of 0");
@@ -787,7 +936,11 @@ void v1261_a() {
         d->r->sync(d->t);
         T::check((d->r->events().value(d->t) & 1u << Replayer::EV_RUN_DONE) != 0, "run done is posted");
         T::eq(0, d->r->rows_done(), "no row");
-        T::eq(empty ? 0 : 1 << Replayer::ERR_LEFTOVER, d->r->errors(d->t), empty ? "nothing to consume: no error" : "streams not consumed: [6], as at any done");
+        // v1.36 (17.8.10, A9.6; replayer_pass.veryl): the leftover check is the cycle after the end, so ERRORS.leftover
+        // reads 1 two cycles after EVENTS.done does (v1.35 set it with done)
+        T::eq(0, d->r->errors(d->t), "ERRORS still 0 in the cycle done is first read");
+        d->step(); d->step();
+        T::eq(empty ? 0 : 1 << Replayer::ERR_LEFTOVER, d->r->errors(d->t), empty ? "nothing to consume: no error" : "streams not consumed: leftover, as at any end");
     }
 
     T::group("v1.26.1: RUN_CONFIG, sticky and checked");
@@ -808,7 +961,7 @@ void v1261_a() {
         d->w.rows = 25; d->load();
         d->write_config(); d->r->run(d->t); d->step(); d->step();
         d->r->write_word(d->t, Replayer::W_RUN_CONFIG, 7);
-        T::dies([&] { for (int k = 0; k < 3; k++) d->step(); }, "a RUN_CONFIG write while a pass runs", {"replayer", "RUN_CONFIG write while a pass runs"});
+        T::dies([&] { for (int k = 0; k < 3; k++) d->step(); }, "a RUN_CONFIG store while a pass runs", {"replayer", "RUN_CONFIG store while a pass runs"});
     }
 
     T::group("v1.26.1: RUN_CONFIG [28:26], the Tracer's compression enables, ignored");
@@ -843,7 +996,7 @@ void v1261_a() {
         auto e = expected(false);
         for (auto& row : e) row[11] = 0;
         check_rows("record [115], [116] = 1, RUN_CONFIG [24], [25] = 0", rows_of(*d), e, PADDING);
-        T::check(d->r->clean(), "clean, the write log's sizes ignored (no [5], no [6]): " + error_report(*d->r));
+        T::check(d->r->clean(), "clean, the write log's sizes ignored (no underflow, no leftover): " + error_report(*d->r));
         T::check(!d->r->store_log_latched(), "the pass used no store log");
         auto w2 = program_window(false, false, false, true);
         auto on = run_window(*w2, 25);
@@ -878,21 +1031,24 @@ void rows_run_past_2_16() {
 }
 
 void working_state() {
-    T::group("v1.26: part 0 is the working state");
+    // v1.36: the region is written, never read (17.8.9), so the model keeps no copy of pc, instr_idx and the image in
+    // part 0's words: the state is the row engine's registers and the register file (v1.35's test read them in region0)
+    T::group("the working state");
     auto w = program_window(false, false, false, true);
     auto rp = fresh();
     Replayer& r = *rp;
     w->rows = 25;
     auto d = std::make_unique<ReplayDriver>(*w, 1u << 17, rp.get());
     d->load();
-    T::eq(0x1000, int64_t(r.region0[0]), "before the pass: the state word's pc");
+    T::eq(0x1000, int64_t(r.pc()), "before the pass: the state word's pc");
+    T::eq(1, r.instr_idx(), "and its instr_idx");
     d->pass(200000);
     std::vector<uint64_t> first(d->row(0), d->row(0) + d->rows() * Replayer::REC_LONGS);
-    T::eq(int64_t(r.pc()), int64_t(r.region0[0]), "after: the state word holds the end pc");
-    T::eq(r.instr_idx(), int64_t(r.region0[1] & 0xFFFFFFFF), "and the end instr_idx");
-    T::eq(0x101, int64_t(r.region0[4 + A0]), "the image holds the registers as the pass left them (a0 = 0x101)");
-    T::eq(0x1036, int64_t(r.region0[4 + 40]), "v40 too");
-    T::eq(0, int64_t(r.region0[1] >> 48), "the state word's [127:112] stay 0 (v1.26.1: no flags there)");
+    T::eq(0, int64_t(r.pc()), "after: the end pc");
+    T::eq(0, r.instr_idx(), "and the end instr_idx");
+    T::eq(0x101, int64_t(r.reg(A0)), "the register file holds the registers as the pass left them (a0 = 0x101)");
+    T::eq(0x1036, int64_t(r.reg(40)), "v40 too");
+    T::eq(0x1000, int64_t(r.region0[0]), "the state word as it was written");
     T::eq(w->run_config_word(), r.run_config_now(), "RUN_CONFIG is untouched by the pass (sticky)");
     d->pass(200000);
     std::vector<uint64_t> again(d->row(0), d->row(0) + d->rows() * Replayer::REC_LONGS);
@@ -965,7 +1121,9 @@ void underflows() {
             w.rom(20, {W::op(alu::ADDI).rd(129).rs1(130).rs2(132).fmt(1).report_c()});
             w.set_logs({}, false, false);
             if (ends(c, "values")) { expect_rows = 3; rows = 4; }
-            else { n_ins = 5; rows = 5; w.words_adj[0] = -1; expect_rows = 3; }
+            // v1.36 (17.8.12, A9.3): the underflow fires on the row that needs the value, the fifth, and every row before
+            // it is pushed (v1.35 raised it at the decode, an instruction ahead, and dropped the row in flight: 3 rows)
+            else { n_ins = 5; rows = 5; w.words_adj[0] = -1; expect_rows = 4; }
             expect_bit = Replayer::ERR_CODE_UNDER;
         } else if (starts(c, "read log") || starts(c, "a transfer")) {
             if (starts(c, "a transfer")) {
@@ -1004,6 +1162,7 @@ void underflows() {
             continue;
         }
         T::eq(1 << expect_bit, d->r->errors(d->t), "ERRORS [" + std::to_string(expect_bit) + "] alone");
+        T::eq(starts(c, "code") ? 4 : starts(c, "write") ? 16 : 8, d->r->errors(d->t), "its bit of 17.8.1: [2] code, [3] read log, [4] write log (v1.35's, one higher)");
         T::eq(1, int64_t(d->r->cond_events(unsigned(expect_bit))), "once");
         T::check(d->done && !d->r->is_running(), "the pass stopped, done posted");
         T::eq(expect_rows, int64_t(d->rows()), "rows before it");
@@ -1034,7 +1193,7 @@ void leftovers() {
         auto d = run_window(*w, 25);
         T::eq(25, int64_t(d->rows()), "the pass ran its rows");
         bool none = c.size() >= 6 && c.compare(c.size() - 6, 6, "no [6]") == 0;
-        T::eq(none ? 0 : 1 << Replayer::ERR_LEFTOVER, d->r->errors(d->t), none ? "no error" : "ERRORS [6] alone, at done");
+        T::eq(none ? 0 : 1 << Replayer::ERR_LEFTOVER, d->r->errors(d->t), none ? "no error" : "ERRORS.leftover alone");
         T::check(d->done, "done posted");
         if (!none) T::check(d->r->leftovers() == 1, "named: " + error_report(*d->r));
     }
@@ -1051,7 +1210,12 @@ void leftovers() {
     w.set_code({inl}, false); w.set_logs({}, false, false);
     auto d = run_window(w, 10);
     T::eq(10, int64_t(d->rows()), "10 of its 20 rows");
-    T::eq(0, d->r->errors(d->t), "no [6]: the code stream's one value was popped; the expansion queue isn't counted");
+    T::eq(0, d->r->errors(d->t), "no leftover: the code stream's one value was taken; the expansion queue isn't counted");
+    // v1.36 (17.8.1, 17.8.6, A9.2): EXPANSION_OFFSET is the row offset the posted expansion starts at, latched at the
+    // post (v1.35: the live offset of the next row, 10 here)
+    T::eq(0, word_of(*d->r, d->t, Replayer::W_EXP_OFFSET), "EXPANSION_OFFSET: 0, where the posted expansion started");
+    T::eq(inl, word_of(*d->r, d->t, Replayer::W_EXP_OPCODE), "EXPANSION_OPCODE: its code value");
+    T::eq(10, d->r->next_offset_now(), "the row offset itself, the state word's, is 10");
 }
 
 // Item 5: a stream's padding can be anything, compressed or not: the decoder stops at its values.
@@ -1082,7 +1246,7 @@ void padding_anything() {
 
 // Item 4: the write to word 0 flushes every queue; PULSE_RUN no longer does.
 void flushes() {
-    T::group("v1.26: the state word's write flushes the queues");
+    T::group("the state word's write empties the queues");
     auto w = program_window(false, false, false, true);
     auto rp = fresh();
     Replayer& r = *rp;
@@ -1090,29 +1254,27 @@ void flushes() {
     auto d = std::make_unique<ReplayDriver>(*w, 1u << 17, rp.get());
     d->load();
     uint64_t f0 = r.flushes;
-    for (uint32_t a : {0x40000u, 0x80000u, 0xC0000u, 0x100000u}) d->port.push_back({a, 0xBAD, 0xBAD});
-    d->port.push_back({0x8, 1, 2});
-    while (!d->port.empty()) d->step();
-    for (int k = 0; k < 4; k++) d->step();
+    for (uint32_t part : {1u, 2u, 3u, 4u}) d->write(part << 20, 0xBAD, 0xBAD);
+    d->write(0x20, 1, 2);
+    d->step();
     T::check(r.code.occ == 1 && r.rlog.occ == 1 && r.wlog.occ == 1 && r.exp.occ == 1, "pushed while stopped: held (one entry each)");
-    T::eq(int64_t(f0), int64_t(r.flushes), "an image write doesn't flush");
+    T::eq(int64_t(f0), int64_t(r.flushes), "an image write doesn't empty them");
     r.consume_events(1u << Replayer::EV_CODE);
-    d->port.push_back({0x4, w->stream_lo(), w->stream_hi()});
-    while (!d->port.empty()) d->step();
-    for (int k = 0; k < 4; k++) d->step();
-    T::eq(1, r.code.occ, "the stream word's write doesn't flush");
+    d->write(0x10, w->stream_lo(), w->stream_hi());
+    d->step();
+    T::eq(1, r.code.occ, "the stream word's write doesn't either");
     d->resend_state();
-    T::eq(int64_t(f0 + 1), int64_t(r.flushes), "the state word's write flushes");
-    T::check(r.code.values_out == w->code_vals && r.rlog.words == w->rlog.size() / 2 && r.rlog.taken == 0, "and latches the sizes, the counters cleared (item 10)");
+    d->step();
+    T::eq(int64_t(f0 + 1), int64_t(r.flushes), "the state word's write does");
+    T::check(r.size(0).values == w->code_vals && r.size(1).words == w->rlog.size() / 2 && r.rlog_d.taken == 0, "the sizes are the stream word's, the counters cleared");
     T::check(r.code.occ == 0 && r.rlog.occ == 0 && r.wlog.occ == 0 && r.exp.occ == 0, "every queue empty, the expansion queue too");
     for (unsigned b = Replayer::EV_CODE; b <= Replayer::EV_EXP; b++) T::eq(2, r.events().count_of(b), "credit bit " + std::to_string(b) + " set to 2");
-    int pre = std::min<int>(int(w->code.size() / 2), int(2 * r.code.half));
-    for (int k = 0; k < pre; k++) d->port.push_back({0x40000, w->code[2 * size_t(k)], w->code[2 * size_t(k) + 1]});
-    while (!d->port.empty()) d->step();
-    for (int k = 0; k < 4; k++) d->step();
-    T::eq(pre, r.code.occ, "pushed after the flush, before the run: kept");
+    int pre = std::min<int>(int(w->code.size() / 2), int(2 * ReplayerQueue::HALF));
+    for (int k = 0; k < pre; k++) d->write(ReplayDriver::PART_CODE, w->code[2 * size_t(k)], w->code[2 * size_t(k) + 1]);
+    d->step();
+    T::eq(pre, r.code.occ, "pushed after the state write, before START: kept");
     r.consume_events(1u << Replayer::EV_CODE); r.consume_events(1u << Replayer::EV_CODE);
-    d->passes_run = 1; d->code_next = pre;
+    d->passes_run = 1;
     d->pass_from(200000, pre);
     std::vector<uint64_t> rows(d->row(0), d->row(0) + d->rows() * Replayer::REC_LONGS);
     check_rows("preloaded code", rows_of(*d), expected(true), PADDING);
@@ -1122,21 +1284,25 @@ void flushes() {
     std::vector<uint64_t> again(d->row(0), d->row(0) + d->rows() * Replayer::REC_LONGS);
     T::check(again == rows, "a second pass after the state word: the same rows");
     T::check(r.clean(), "clean: " + error_report(r));
-    T::eq(int64_t(f0 + 2), int64_t(r.flushes), "one flush per pass");
+    T::eq(int64_t(f0 + 2), int64_t(r.flushes), "one state write per pass");
 
-    T::group("v1.26: a pass without the flush");
+    T::group("a pass without the state write");
     auto r2p = fresh();
     Replayer& r2 = *r2p;
     auto w2 = program_window(false, false, false, true);
     auto d2 = std::make_unique<ReplayDriver>(*w2, 1u << 17, r2p.get());
     d2->w.rows = 25; d2->load(); d2->pass(200000);
     T::check(r2.clean(), "the first pass is clean");
-    d2->port.push_back({0x40000, 0xBAD, 0xBAD});
-    while (!d2->port.empty()) d2->step();
-    for (int k = 0; k < 4; k++) d2->step();
+    d2->write(ReplayDriver::PART_CODE, 0xBAD, 0xBAD);
     r2.run(d2->t); d2->step(); d2->step();
-    T::eq(1, r2.code.occ, "PULSE_RUN doesn't empty the queues (v1.26)");
-    T::check(r2.fact_count(Replayer::V_NO_FLUSH) > 0, "meshsim flags a pass without the flush: " + error_report(r2));
+    T::eq(1, r2.code.occ, "START doesn't empty the queues");
+    T::check(r2.fact_count(Replayer::V_NO_FLUSH) == 1, "the simulator flags a START with no state write since the previous pass's: " + error_report(r2));
+    // v1.36 (17.8.10, A9.9): and one with none since the reset (v1.35 flagged only a second pass)
+    auto r3p = fresh();
+    ReplayWindow w3;
+    w3.fixed_rom();
+    r3p->run(0); r3p->step(0); r3p->step(1);
+    T::eq(1, int64_t(r3p->fact_count(Replayer::V_NO_FLUSH)), "a START with no state write since the reset is flagged");
 }
 
 // Item 8: the output-rd_prev flag.
@@ -1162,12 +1328,15 @@ void record_words() {
     auto rp = fresh();
     Replayer& r = *rp;
     int64_t t = 0;
-    std::vector<uint64_t> before(r.region0, r.region0 + 2 * Replayer::PART0_WORDS);
+    std::vector<uint64_t> before(r.region0, r.region0 + 4);
+    for (unsigned k = 0; k < 128; k++) before.push_back(r.reg(k));
     r.accept(t, 3, 16 * 66, 2, 0x66, 0x66); r.step(t++);
     r.accept(t, 3, 16 * 67, 2, 0x67, 0x67); r.step(t++);
     for (int k = 0; k < 4; k++) r.step(t++);
     T::eq(2, int64_t(r.ignored_writes), "both accepted and ignored while stopped");
-    T::check(before == std::vector<uint64_t>(r.region0, r.region0 + 2 * Replayer::PART0_WORDS), "part 0's words 0-65 unchanged");
+    std::vector<uint64_t> after(r.region0, r.region0 + 4);
+    for (unsigned k = 0; k < 128; k++) after.push_back(r.reg(k));
+    T::check(before == after, "the state word, the stream word and the registers unchanged");
     T::eq(0, r.errors(t), "no error");
     for (uint32_t wd : {66u, 67u}) {
         auto w = program_window(false, false, false, true);
@@ -1190,18 +1359,195 @@ void record_words() {
 // V3-12: every queue 4 KB; ref's -Dreplayer.logq=512 (the constructor's log_entries here) gives v1.25's 8 KB logs
 // for a control run.
 void queue_sizes() {
-    T::group("v1.26: the queues are 4 KB");
-    auto rp = fresh();
-    T::check(rp->code.cap == 256 && rp->rlog.cap == 256 && rp->wlog.cap == 256 && Replayer::EXP_CAP == 256, "256 x 128-bit entries each");
-    T::check(rp->rlog.half == 128 && rp->wlog.half == 128, "a credit is 128 entries");
-    auto r8 = std::make_unique<Replayer>(0, 512);
-    T::check(r8->rlog.cap == 512 && r8->wlog.half == 256 && r8->code.cap == 256, "the 8 KB control: logs 512 entries, the code queue unchanged");
-    auto w = program_window(true, true, true, true);
-    w->rows = 25;
-    auto d = std::make_unique<ReplayDriver>(*w, uint64_t(1) << 17, r8.get());
-    d->load();
-    d->pass(200000);
-    T::check(r8->clean() && d->rows() == 25, "a pass on the 8 KB control replayer: clean");
+    // v1.36: every input queue is REPLAY_QUEUE_ENTRIES (19); v1.35's 8 KB control (ref's -Dreplayer.logq=512) is not
+    // built by the RTL, and went with its model
+    T::group("the queues are 4 KiB");
+    T::check(ReplayerQueue::CAP == 256 && Replayer::EXP_CAP == 256 && Replayer::LOG_QUEUE_ENTRIES == 256, "256 x 128-bit entries each");
+    T::check(ReplayerQueue::HALF == 128, "a credit is 128 entries");
+    T::dies([] { Replayer r8(0, 512); }, "log queues of 512 entries are refused", {"replayer", "REPLAY_QUEUE_ENTRIES"});
+}
+
+// ================================================================ v1.36: the RTL's behaviour (the inventory's A9, B5)
+// Each group below fails on v1.35's model.
+
+// A9.3 (17.8.12, 17.8.3): no read-log look-ahead. A row with next_from_value that does not transfer takes no log word
+// and raises no underflow, whatever the read log holds; a pass that ends before a row needs the value sets leftover.
+void no_read_log_look_ahead() {
+    T::group("v1.36: a next_from_value row that does not transfer");
+    ReplayWindow w;
+    w.fixed_rom();
+    uint32_t ins = b_(8, A1, A0, 0, BRANCH);   // beq a0, a1, +8: not taken
+    w.rom(20, {W::op(alu::BEQ).rd(132).rs1(130).rs2(131).fmt(3).nfv().report_c().sign()});
+    w.decode_rom(ins, 20);
+    w.pc = 0x1000; w.instr_idx = 1; w.regs[A0] = 1; w.regs[A1] = 2;
+    w.set_code({ins, ins, ins}, false);
+    // one read-log value the stream word's words do not cover: v1.35 peeked at it before each row started, and
+    // stopped the pass on a read-log underflow with no row run
+    w.set_logs({{true, 5, false, false, 0}}, false, false);
+    w.words_adj[1] = -1;
+    auto d = run_window(w, 3);
+    T::eq(3, int64_t(d->rows()), "the three rows run");
+    T::eq(0x1008, int64_t(d->row(2)[2]), "sequentially");
+    T::eq(1 << 5, d->r->errors(d->t), "ERRORS.leftover alone: the read log's value was never needed, and is left over");
+    T::eq(0, int64_t(d->r->underflows()), "no underflow");
+    T::eq(0, int64_t(d->r->stalls[Replayer::ST_RLOG]), "and no row waited for the read log");
+}
+
+// A9.4 (17.8.7): a new pc, and the program's end, only on an expansion's last row.
+void new_pc_on_the_last_row() {
+    T::group("v1.36: a row that is not its expansion's last keeps its pc");
+    ReplayWindow w;
+    w.fixed_rom();
+    uint32_t ins = b_(8, A0, A0, 0, BRANCH);   // beq a0, a0, +8: taken, were its row the last
+    // a taken branch, then a JAL with imm 0 and imm0_pc0, the program's end on a last row, then an ADDI, the last
+    w.rom(20, {W::op(alu::BEQ).rd(132).rs1(130).rs2(131).fmt(3).nfv().sign(),
+               W::op(alu::JAL).rd(137).rs1(128).rs2(128).cnst(0).fmt(0).nfv().imm0pc0(),
+               W::op(alu::ADDI).rd(138).rs1(0).rs2(128).cnst(7).fmt(0).report_c()});
+    w.decode_rom(ins, 20);
+    w.pc = 0x1000; w.instr_idx = 1; w.regs[A0] = 1;
+    w.set_code({ins, ins}, false);
+    w.set_logs({}, false, false);
+    auto d = run_window(w, 6);
+    T::eq(6, int64_t(d->rows()), "both expansions run whole: no row transferred or ended the program");
+    T::check(d->r->clean() && d->r->errors(d->t) == 0, "no error, no log word taken: " + error_report(*d->r));
+    bool ok = true;
+    for (uint64_t k = 0; k < std::min<uint64_t>(6, d->rows()); k++) {
+        const uint64_t* g = d->row(k);
+        ok &= g[2] == (k < 3 ? 0x1000u : 0x1004u) && (g[0] & 0xFFFFFFFF) == 1 + k;
+    }
+    T::check(ok, "pc is the instruction's on every row and moves by 4 after the last; instr_idx + 1 a row");
+    T::eq(0x1008, int64_t(d->r->pc()), "the end pc: sequential");
+    T::eq(0x1000, int64_t(d->row(1)[7]), "the JAL's link, pc + pc_increment (0 on a row that is not the last)");
+}
+
+// A9.5 (17.8.5, 17.8.13): a core-fed NOP policy with rd = x0 at a row offset.
+void core_fed_nop_at_an_offset() {
+    for (unsigned pol : {1u, 3u}) {
+        T::group("v1.36: a core-fed NOP policy " + std::to_string(pol) + " at a row offset");
+        uint32_t divx0 = r_(1, A1, A0, 4, 0, OP), addi = prog()[0];
+        ReplayWindow v;
+        templates(v);
+        v.decode_class(divx0, 1); v.decode_rom(addi, T_ADDI);
+        std::vector<W> dw(12);
+        for (unsigned k = 0; k < 12; k++) dw[k] = W::op(alu::ADDI).rd(137 + k % 6).rs1(0).rs2(128).cnst(k).fmt(0);
+        dw[0].rd0(pol); dw[11].rd(129).report_c();
+        v.template_(divx0, dw);
+        v.pc = 0x2000; v.instr_idx = 1; v.next_offset = 3;   // the window starts at the expansion's row 3
+        v.set_code({divx0, addi}, false);
+        v.set_logs({}, false, false);
+        auto e = run_window(v, 2);
+        T::eq(2, int64_t(e->rows()), "rows: the NOP row, ADDI");
+        const uint64_t* nop = e->row(0);
+        T::eq(2, int64_t((nop[0] >> 32) & 0xFF), "the first row is the shared NOP row, ROM word 1 (v1.35 ran the word as the expansion's row 3)");
+        T::eq(0, int64_t(nop[1] & 0xFFFF), "seq_remaining 0");
+        T::eq(pol == 1 ? 1 : 0, int64_t((nop[1] >> 17) & 1), "is_virtual per rd0 " + std::to_string(pol) + ", whatever the row offset");
+        T::eq(pol == 1 ? 1 : 0, int64_t((nop[1] >> 18) & 1), "is_first likewise: a one-row expansion");
+        T::eq(0x100, int64_t(e->row(1)[7]), "the next instruction runs");
+        T::eq(1, int64_t(e->expansion_words_sent), "the core sent one word");
+        T::eq(0, e->r->exp.occ, "and it was taken");
+        T::eq(3, word_of(*e->r, e->t, Replayer::W_EXP_OFFSET), "EXPANSION_OFFSET: the state word's row offset, 3");
+        T::check(e->r->clean() && e->r->errors(e->t) == 0, "clean: " + error_report(*e->r));
+    }
+}
+
+// A9.8, A9.9 (17.8.12, 17.8.8, 17.8.24): UB the simulator reports.
+void new_undefined_behavior() {
+    T::group("v1.36: a code miss of 64 bits");
+    {
+        ReplayWindow w;
+        w.fixed_rom();
+        uint32_t ins = i_(5, 0, 0, A0, OP_IMM);
+        w.rom(20, {W::op(alu::ADDI).rd(129).rs1(130).rs2(132).fmt(1).report_c()});
+        w.decode_rom(ins, 20);
+        w.pc = 0x1000; w.instr_idx = 1;
+        Bits b;
+        put_value(b, -1, uint64_t(ins) | 0x55ull << 32);   // a miss with size bit 1
+        w.code = b.entries(); w.code_comp = true; w.code_vals = 1;
+        w.set_logs({}, false, false);
+        auto d = run_window(w, 1);
+        T::eq(1, int64_t(d->rows()), "the row runs");
+        T::eq(5, int64_t(d->row(0)[7]), "on the value's low 32 bits");
+        T::eq(1, int64_t(d->r->fact_count(Replayer::V_CODE_MISS64)), "reported: " + error_report(*d->r));
+    }
+    T::group("v1.36: a word left in the expansion queue at a new expansion");
+    {
+        uint32_t inl = r_(0, 2, 1, 0, 3, CUSTOM0);
+        ReplayWindow w;
+        w.fixed_rom();
+        w.decode_class(inl, 1);
+        w.template_(inl, {W::op(alu::ADDI).rd(137).rs1(0).rs2(128).cnst(9).fmt(0).report_c()});
+        w.pc = 0x2000; w.instr_idx = 1; w.rows = 1;
+        w.set_code({inl}, false);
+        w.set_logs({}, false, false);
+        auto d = std::make_unique<ReplayDriver>(w);
+        d->load();
+        W left = W::op(alu::ADDI).rd(137).rs1(0).rs2(128).cnst(4).fmt(0).report_c();
+        d->write(ReplayDriver::PART_EXP, left.lo, left.hi);   // pushed before the pass, after the state write
+        d->pass_from(2000, 0);
+        T::eq(1, int64_t(d->r->fact_count(Replayer::V_EXP_LEFT)), "reported: " + error_report(*d->r));
+        T::eq(4, int64_t(d->rows() ? d->row(0)[7] : 0), "the word left is taken as the expansion's first, as the RTL takes it");
+    }
+}
+
+// A9.10 (17.8.14): the reset zeroes ROWS_RUN, EXPANSION_OFFSET and EXPANSION_OPCODE with RUN_CONFIG, and the events.
+void reset_zeroes() {
+    T::group("v1.36: the reset");
+    uint32_t inl = r_(0, 2, 1, 0, 3, CUSTOM0);
+    ReplayWindow w;
+    w.fixed_rom(); w.decode_class(inl, 1);
+    std::vector<W> words(4);
+    for (int k = 0; k < 4; k++) words[size_t(k)] = W::op(alu::ADDI).rd(137).rs1(0).rs2(128).cnst(uint64_t(k + 1)).fmt(0);
+    words[3].report_c();
+    w.template_(inl, words);
+    w.pc = 0x2000; w.instr_idx = 100; w.next_offset = 1;
+    w.set_code({inl}, false); w.set_logs({}, false, false);
+    auto d = run_window(w, 3);
+    Replayer& r = *d->r;
+    T::eq(3, word_of(r, d->t, Replayer::W_ROWS_RUN), "before: ROWS_RUN 3");
+    T::eq(1, word_of(r, d->t, Replayer::W_EXP_OFFSET), "EXPANSION_OFFSET 1");
+    T::eq(inl, word_of(r, d->t, Replayer::W_EXP_OPCODE), "EXPANSION_OPCODE the instruction");
+    r.reset(d->t); d->step();
+    T::eq(0, word_of(r, d->t, Replayer::W_ROWS_RUN), "after: ROWS_RUN 0 (v1.35's reset left it)");
+    T::eq(0, word_of(r, d->t, Replayer::W_EXP_OFFSET), "EXPANSION_OFFSET 0");
+    T::eq(0, word_of(r, d->t, Replayer::W_EXP_OPCODE), "EXPANSION_OPCODE 0");
+    T::eq(0, word_of(r, d->t, Replayer::W_RUN_CONFIG), "RUN_CONFIG 0");
+    r.sync(d->t);
+    T::eq(0, r.events().value(d->t), "EVENTS 0, the credits among them");
+    T::eq(0, r.errors(d->t), "ERRORS 0");
+    T::check(!r.running(d->t) && r.out_queue_rows() == 0 && r.exp.occ == 0, "no pass, the queues empty");
+    T::eq(4, int64_t(r.reg(40)), "the register file keeps its contents: v40, the last row's constant");
+    T::eq(0x2000, int64_t(r.region0[0]), "and the state word");
+}
+
+// B5 (17.8.16; the RTL's stream_decoder and row engine): a load or advice row whose read-log word its decoder does not
+// announce starts 2 cycles late. After a control transfer, which takes the read log's word in its cycle 3, the next
+// value is decoded in the next row's cycle 1: the row starts on its announcement, and the decoder announces none for a
+// token the stream's last entry holds with fewer than 66 bits left.
+void unannounced_read_log_word() {
+    T::group("v1.36: a read-log word its decoder does not announce");
+    for (int values : {2, 3}) {
+        ReplayWindow w;
+        w.fixed_rom();
+        uint32_t jal = j_(8, 0, JAL), adv = i_(0, 0, 0, A0, OP_IMM);
+        w.rom(20, {W::op(alu::JAL).rd(129).rs1(132).rs2(128).cnst(0).fmt(5).nfv().imm0pc0().rd0(2).report_c()});
+        w.rom(24, {W::op(alu::ADVICE).rd(129).rs1(128).rs2(128).cnst(0).from_log().report_c()});
+        w.decode_rom(jal, 20); w.decode_rom(adv, 24);
+        w.pc = 0x1000; w.instr_idx = 1;
+        // the read log, raw: the transfer's next instr_idx, then the advice row's value: in the stream's only entry,
+        // at bit 64, with 2 values; with 3 the stream has a second entry, and the decoder, the first entry in its
+        // tail, announces the value
+        std::vector<LogEvent> ev = {{true, 2, false, false, 0}, {true, 77, false, false, 0}};
+        std::vector<uint32_t> code = {jal, adv};
+        if (values == 3) { ev.push_back({true, 78, false, false, 0}); code.push_back(adv); }
+        w.set_code(code, false);
+        w.set_logs(ev, false, false);
+        auto d = run_window(w, uint32_t(values));
+        T::eq(values, int64_t(d->rows()), "rows");
+        T::eq(77, int64_t(d->row(1)[7]), "the advice row's value");
+        T::eq(2, int64_t(d->row(1)[0] & 0xFFFFFFFF), "after the transfer: instr_idx from the read log");
+        T::eq(values == 2 ? 3 + 2 : 3, d->left(1) - d->left(0), values == 2 ? "not announced: 2 cycles past its 3" : "announced: its 3 cycles");
+        T::check(d->r->clean() && d->r->errors(d->t) == 0, "clean: " + error_report(*d->r));
+    }
 }
 
 // Run a group; the TEST fails if any of its checks did.
@@ -1242,7 +1588,12 @@ TEST(unit_flushes) { CHECK(group_ok(flushes)); }
 TEST(unit_rd_prev_flag) { CHECK(group_ok(rd_prev_flag)); }
 TEST(unit_record_words) { CHECK(group_ok(record_words)); }
 TEST(unit_queue_sizes) { CHECK(group_ok(queue_sizes)); }
+TEST(unit_no_read_log_look_ahead) { CHECK(group_ok(no_read_log_look_ahead)); }
+TEST(unit_new_pc_on_the_last_row) { CHECK(group_ok(new_pc_on_the_last_row)); }
+TEST(unit_core_fed_nop_at_an_offset) { CHECK(group_ok(core_fed_nop_at_an_offset)); }
+TEST(unit_new_undefined_behavior) { CHECK(group_ok(new_undefined_behavior)); }
+TEST(unit_reset_zeroes) { CHECK(group_ok(reset_zeroes)); }
+TEST(unit_unannounced_read_log_word) { CHECK(group_ok(unannounced_read_log_word)); }
 
-// Every check of every group, against ref's: ReplayerUnitTests' groups as ported run this many checks here (printed
-// for the record; the groups themselves fail on any failed check).
-TEST(unit_check_count) { std::printf("  ReplayerUnitTests port: %d checks passed, %d failed (this binary)\n", T::passed, T::failed); CHECK_EQ(T::failed, 0); }
+// Every check of every group (printed for the record; the groups themselves fail on any failed check).
+TEST(unit_check_count) { std::printf("  the replayer's unit tests: %d checks passed, %d failed (this binary)\n", T::passed, T::failed); CHECK_EQ(T::failed, 0); }

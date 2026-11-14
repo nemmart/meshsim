@@ -204,6 +204,7 @@ struct TileCore {
     sim::LinkIn port_b;                // width 3: packets from the director, Link(WRITE_PORT_LATENCY + 1)
     sim::LinkOut bus, side, canon;     // -> the tile control unit: Link(1), width 2; Link(1), width 1; Link(2), width 1
     sim::HoldOut send;                 // width 3: the write unit's packet -> the inject unit's holding register
+    sim::WireIn send_taken;            // the write unit's packets the injection point has injected, this cycle's included
     sim::LinkOut tables, hist_w;       // width 2: table stores -> the table store, HIST (Link(1))
     sim::FifoOut rd_port;              // width 2, the read unit's reads -> the read queue (client 2)
     sim::CountIn rp_injected;          // read-unit returns injected (free entries: injections before t)
@@ -222,14 +223,13 @@ struct TileCore {
     bus::Straps straps;                // register_bus's: the peripherals present, and their DMAs
     // ---- the write unit (9): its registers, and the packets on their way to the holding register ----
     uint32_t write_hdr = 0, write_dest = 0, write_w[3] = {};
-    // A send made in cycle m (the header) builds its packet and puts it on `send` in m (visible to the inject unit at
-    // m + 1: 14.3's "injected in t + 2 at the earliest", t the cycle the store is raised in). The Hold is the holding
-    // register: a put it refuses (full, and not injected that cycle) is put again. Up to two packets wait here, the one
-    // being put and the next send's; a send with both places taken is not taken, and stalls (PENDING-v1.36.md: the
-    // RTL's write unit stalls a send only while the holding register is full and not injected that cycle).
-    uint64_t sq[2][3] = {};
-    int64_t sq_put[2] = {-1, -1};      // the cycle of the packet's last put; -1 not put yet
-    uint32_t sq_n = 0;
+    // A send made in cycle m (the header) is taken unless the holding register is full and is not injected in m (9; the
+    // RTL's write unit: reg_ready = !holding_valid || packet_ready), that is, iff every packet put before is injected by
+    // the end of m: `send_taken`, the injection point's count of them, this cycle's included (inject.h). A send taken
+    // builds its packet and puts it on `send` in m: the Hold is the holding register, its packet offered to the
+    // injection point from m + 1 (14.3's "injected in t + 2 at the earliest", t the cycle the store is raised in), and the
+    // Hold never refuses it. A send not taken stalls, and is made again in the next cycle.
+    uint64_t sends_put = 0;            // packets put on the holding register
     // ---- the read unit (10) ----
     uint32_t read_hdr = 0, read_dest = 0;
     unsigned rp_depth = 64;
@@ -253,7 +253,7 @@ struct TileCore {
         if (receiver) { p.in(recv, "recv"); p.out(recv_pop, "recv_pop", 0); p.out(recv_credit, "recv_credit", 1); }
         p.in(regs, "regs"); p.in(hist, "hist"); p.in(tview, "tview"); p.in(ptrv, "ptrv");
         p.in(wake, "wake"); p.in(irq, "irq"); p.in(port_b, "port_b", 3);
-        p.out(bus, "bus", 2); p.out(side, "side", 1); p.out(canon, "canon", 1); p.out(send, "send", 3); p.out(tables, "tables", 2); p.out(hist_w, "hist_w", 2);
+        p.out(bus, "bus", 2); p.out(side, "side", 1); p.out(canon, "canon", 1); p.out(send, "send", 3); p.in(send_taken, "send_taken"); p.out(tables, "tables", 2); p.out(hist_w, "hist_w", 2);
         p.out(rd_port, "rd_port", 2); p.in(rp_injected, "rp_injected"); p.out(rp_stores, "rp_stores");
     }
 
@@ -374,14 +374,15 @@ struct TileCore {
         // WRITE_DEST_ADDR by the size unless no_increment; a packet of any other mode carries address 0 (4.1); W0-W2
         // clear.
         bool write_send(unsigned size, uint32_t v) {
-            if (u.sq_n == 2) { u.stall_send++; return false; }
+            if (u.sends_put != c.read(u.send_taken)) { u.stall_send++; return false; }   // full, and not injected now
             const uint32_t h = u.write_hdr, mode = hdr_mode(h);
             const uint32_t w0 = u.write_w[0], w1 = u.write_w[1], w2 = u.write_w[2];
-            uint64_t* q = u.sq[u.sq_n];
+            uint64_t q[3];
             q[0] = size == lw::SIZE_32 ? uint64_t(v) : size == lw::SIZE_64 ? uint64_t(v) << 32 | w0 : uint64_t(w1) << 32 | w0;
             q[1] = lw::hdr(0, hdr_dst(h), mode, hdr_counter(h), mode == lw::M_WRITE ? u.write_dest : 0, size);
             q[2] = size == lw::SIZE_128 ? uint64_t(v) << 32 | w2 : 0;
-            u.sq_put[u.sq_n++] = -1;
+            c.put(u.send, q[0], q[1], q[2]);
+            u.sends_put++;
             if (mode == lw::M_WRITE && !(h & WRITE_HDR_NO_INCREMENT)) u.write_dest += 4u << size;
             u.write_w[0] = u.write_w[1] = u.write_w[2] = 0;
             u.sends++;
@@ -454,29 +455,23 @@ struct TileCore {
         const uint64_t t = c.now();
         if (c.ready(port_b)) { apply_port_b(c.peek(port_b)); c.take(port_b); }
         if (c.read(req_freed) != 0 && req_n > 0) req_n--;        // the tree took the queue's head in this cycle
-        // the write unit's packets: the one put at t - 1 was taken into the holding register, or refused and put again;
-        // then the next, and a send made in this cycle
-        if (sq_n && sq_put[0] == int64_t(t) - 1) {
-            if (c.refused(send)) { c.put(send, sq[0][0], sq[0][1], sq[0][2]); sq_put[0] = int64_t(t); }
-            else { sq[0][0] = sq[1][0]; sq[0][1] = sq[1][1]; sq[0][2] = sq[1][2]; sq_put[0] = sq_put[1]; sq_n--; }
-        }
+        if (c.refused(send))
+            FATAL("tile %u, cycle %llu: the holding register refused the write unit's packet: a send is taken only when it "
+                  "is free (machine-spec 9)", tile, (unsigned long long)t);
         if (coreless) return sim::Wake::none();                  // (harness-only)
         Env e{c, *this};
         uint64_t next = rv.step(e, t);
-        if (sq_n && sq_put[0] < 0) { c.put(send, sq[0][0], sq[0][1], sq[0][2]); sq_put[0] = int64_t(t); }
         if (rv.core_status_canonical_wait != canon_put) {         // its level in t + 1, for the edge that ends t + 1
             canon_put = rv.core_status_canonical_wait;
             c.put(canon, sim::Word(canon_put));
         }
-        if (sq_n && t + 1 < next) next = t + 1;
         return next == Rv32::kNever ? sim::Wake::none() : sim::Wake::at_cycle(next);
     }
     uint64_t digest() const {
         uint64_t h = rv.digest();
-        const uint64_t w[] = {write_hdr, write_dest, write_w[0], write_w[1], write_w[2], sq_n, read_hdr, read_dest, rp_stored,
+        const uint64_t w[] = {write_hdr, write_dest, write_w[0], write_w[1], write_w[2], sends_put, read_hdr, read_dest, rp_stored,
                               rp_dropped, req_out_w[0], req_out_w[1], req_out_w[2], req_n, canon_put};
         for (uint64_t v : w) h = digest_mix(h, v);
-        for (uint32_t i = 0; i < sq_n; i++) h = digest_mix(digest_mix(digest_mix(h, sq[i][0]), sq[i][1]), sq[i][2]);
         return h;
     }
     // The NoC port (6.3): one naturally aligned 32-, 64- or 128-bit write into DMEM or IMEM at its offset.

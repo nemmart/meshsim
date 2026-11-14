@@ -155,6 +155,7 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     if (slot && slot->cfg.controller) { io.dma = slot->dma; io.has_dma = true; }
     io.slot = slot;
     io.send = c.send; io.send_busy = b.send_busy; io.eject = d.in;
+    io.has_send_taken = true; io.send_taken = c.send_taken;
     io.barrier = block.straps.barrier;
     if (io.barrier) { io.release = b.release; io.arrive = b.arrive; }
     io.error = b.error;

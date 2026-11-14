@@ -32,6 +32,10 @@
 //   out  to_router   LinkOut, 3 words, latency intra_tile_latency: into the router's local input (src unset).
 //        send_busy   RegOut, 1 word, to the tile control unit: the holding register OCCUPIED at the end of t (after t's
 //                    take). The Reg is put only when the value changes, so it costs nothing on a quiet tile.
+//        send_taken  WireOut (with `send_wire`), to the core's write unit: the write unit's packets injected so far, this
+//                    cycle's included. It is `packet_ready` for the write unit's stall (9: a send stalls only while
+//                    the holding register is full and is not being injected that cycle): a send made in cycle t is
+//                    taken iff every packet the write unit put before is injected by the end of t (tile_ctl.h).
 #pragma once
 
 #include <cstdint>
@@ -66,6 +70,7 @@ struct ReadSideConfig {
     bool present = false;
     bool gather = false, ag = false;   // the clients
     bool wr_note = false, gather_note = false;
+    bool send_wire = false;            // the injection point drives `send_taken` (the tile's core reads it)
     unsigned read_port_depth = 64;
     unsigned read_latency = 3;         // READ_LATENCY (15, 19): the RTL's is 3 (scratchpad_pkg)
     uint32_t mem_chunks = 1u << 20;
@@ -171,13 +176,16 @@ struct Injection {
     sim::LinkIn loop_left;
     sim::LinkOut to_router;
     sim::RegOut send_busy;
+    sim::WireOut send_taken;
 
     // ---- configuration ----
     uint8_t me = 0;
     bool tokens_on = true;            // NetConfig::loopback_tokens
+    bool send_wire = false;
 
     // ---- state ----
     Tokens tok;
+    uint64_t sends_taken = 0;         // the write unit's packets injected (`send_taken`)
     uint8_t busy_out = 0;             // the last value put on send_busy
     InjReadSide rs;
 
@@ -229,7 +237,7 @@ inline sim::Wake Injection::step(sim::Ctx& c) {
                 else rs.injected(c, h, tok);
                 from_read++;
             }
-            else { c.take(send); from_send++; }
+            else { c.take(send); from_send++; sends_taken++; if (send_wire) c.drive(send_taken, sends_taken); }
             check(c.now(), d, h, cw);
             c.put(to_router, d, h, cw);
             injected++;

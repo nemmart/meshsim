@@ -13,6 +13,8 @@ Injection::Injection(sim::Ports& p, unsigned tile, const NetConfig& c, const Rea
     p.in(loop_left, "loop-left", 0);
     p.out(to_router, "to-router", 3);
     p.out(send_busy, "send-busy", 1);
+    send_wire = rc.send_wire;
+    if (send_wire) p.out(send_taken, "send-taken");
     rs.configure(rc, tile, c);
     rs.declare(p);
 }
@@ -50,7 +52,7 @@ void Injection::check(uint64_t t, uint64_t dw, uint64_t h, uint64_t hi) {
 }
 
 uint64_t Injection::digest() const {
-    return sim::hash_fields(me, tokens_on, busy_out, tok.cap, tok.reads, tok.loop_held) ^ rs.digest();
+    return sim::hash_fields(me, tokens_on, busy_out, tok.cap, tok.reads, tok.loop_held, sends_taken) ^ rs.digest();
 }
 
 }  // namespace units

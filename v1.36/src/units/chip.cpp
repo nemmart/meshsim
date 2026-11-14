@@ -50,9 +50,11 @@ void wire_unit(sim::Config& cfg, const NetConfig& nc, unsigned k, const ControlI
     rc.present = io.mem.present; rc.gather = io.mem.gather; rc.ag = io.mem.ag;
     rc.read_port_depth = io.mem.read_port_depth; rc.read_latency = io.mem.read_latency; rc.mem_chunks = io.mem.mem_chunks;
     rc.wr_note = rc.gather_note = io.mem.present && io.mem.has_notes;
+    rc.send_wire = io.has_send_taken;
     auto& in = cfg.add<Injection>(tile_unit(k, "inj"), k, nc, rc);
     cfg.connect(io.send, in.send);
     cfg.connect(in.send_busy, io.send_busy);
+    if (io.has_send_taken) cfg.connect(in.send_taken, io.send_taken);
     cfg.link(in.to_router, r.inj, nc.intra_tile_latency);
     // 14.2: a loopback packet's token is freed when the traffic director takes its copy, the eject link after the
     // router's pop, and is free from the next cycle

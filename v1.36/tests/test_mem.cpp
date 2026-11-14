@@ -42,6 +42,11 @@ struct Stand {
     sim::LinkIn to_router;
     sim::RegIn send_busy, gather_srq_busy;
     sim::CountIn rp_injected;
+    sim::WireIn send_taken;
+    // the write unit's side of its stall (9), when `auto_sends`: a send is made in the first cycle the holding register
+    // is empty or its packet is injected, that is, when every packet put before is injected by the end of the cycle
+    unsigned auto_sends = 0, auto_from = 0, puts = 0;
+    std::vector<uint64_t> taken_seen;                    // `send_taken` as read in each cycle (index = cycle)
     std::vector<Ev> script;
     struct Pkt { uint64_t at, lo, h, hi; };
     std::vector<Pkt> out;
@@ -52,7 +57,7 @@ struct Stand {
         p.out(gather, "gather", 2); p.out(ag, "ag", 2); p.out(send, "send", 3); p.out(wr, "wr", 3);
         p.out(rp, "rp", 2); p.out(wr_note, "wr_note", 1); p.out(gather_note, "gather_note", 0); p.out(loop_left, "loop_left", 0);
         p.in(to_router, "to_router", 3); p.in(send_busy, "send_busy", 1); p.in(gather_srq_busy, "gather_srq_busy", 1);
-        p.in(rp_injected, "rp_injected");
+        p.in(rp_injected, "rp_injected"); p.in(send_taken, "send_taken");
         for (const Ev& e : script) if (e.kind == GATHER || e.kind == AG) cl[e.kind].q.push_back(e); else if (e.kind == SEND) cl[2].q.push_back(e);
     }
     void client(sim::Ctx& c, unsigned k, sim::HoldOut h, unsigned width) {
@@ -66,7 +71,14 @@ struct Stand {
     }
     sim::Wake step(sim::Ctx& c) {
         if (c.ready(to_router)) { const sim::Word* w = c.peek(to_router); out.push_back({c.now(), w[0], w[1], w[2]}); c.take(to_router); }
-        client(c, 0, gather, 2); client(c, 1, ag, 2); client(c, 2, send, 3);
+        client(c, 0, gather, 2); client(c, 1, ag, 2);
+        taken_seen.resize(c.now() + 1); taken_seen[c.now()] = c.read(send_taken);
+        if (auto_sends) {
+            if (puts < auto_sends && c.now() >= auto_from && puts == c.read(send_taken)) {
+                c.put(send, 0x9000 + puts, lw::hdr(0, 6, lw::M_COUNT, 4, 0, lw::SIZE_32), 0);
+                puts++;
+            }
+        } else client(c, 2, send, 3);
         for (const Ev& e : script) {
             if (e.at != c.now()) continue;
             if (e.kind == RP) c.put(rp, e.a, e.b);
@@ -97,7 +109,7 @@ struct Rig {
         ReadSideConfig rc;
         sim::Options opt;                                    // the runner's shuffled steps: MEM_SHUFFLE=<seed>
         if (const char* s = std::getenv("MEM_SHUFFLE")) opt.shuffle_seed = uint64_t(std::strtoull(s, nullptr, 10)) + 1;
-        rc.present = rc.gather = rc.ag = rc.wr_note = rc.gather_note = true;
+        rc.present = rc.gather = rc.ag = rc.wr_note = rc.gather_note = rc.send_wire = true;
         rc.read_latency = RL; rc.mem_chunks = mem_chunks;
         sim::Config cfg(opt);
         auto& st = cfg.add<Stand>("stand", std::move(script));
@@ -114,6 +126,7 @@ struct Rig {
         cfg.link(st.loop_left, in.loop_left, 1);
         cfg.link(in.to_router, st.to_router, nc.intra_tile_latency);
         cfg.connect(in.send_busy, st.send_busy);
+        cfg.connect(in.send_taken, st.send_taken);
         cfg.connect(in.rs.gather_srq_busy, st.gather_srq_busy);
         cfg.connect(in.rs.rp_injected, st.rp_injected);
         cfg.connect(in.rs.sram_rd, sr.rd);
@@ -368,4 +381,38 @@ TEST(scratchpad_sum_running_or_scanned_agree) {
     CHECK(x.data_sum() != 0);
     CHECK_EQ(x.data_sum(), y.data_sum());
     CHECK_EQ(y.sum.sum, uint64_t(0));                  // nothing kept per store
+}
+
+// 9 and the RTL's write unit (reg_ready = !holding_valid || packet_ready: rtl/blocks/write_unit): a send stalls only
+// while the holding register is full and is not being injected that cycle, so "a send in the cycle the held packet is
+// injected replaces it, and the unit sends a packet a cycle". The injection point's `send_taken` is that packet_ready:
+// the write unit's packets injected by the end of the cycle, read in the cycle itself.
+//   Sends made from cycle 4 on, nothing else at the injection point: the first is put in 4, offered and injected in
+//   5; the second is made in 5, the cycle the first is injected, and so on: one a cycle, at the router from 6.
+TEST(the_write_unit_sends_a_packet_a_cycle) {
+    Rig r({});
+    Stand& s = r.m.unit<Stand>("stand");
+    s.auto_sends = 6; s.auto_from = 4;
+    r.m.run(20);
+    CHECK_EQ(r.out().size(), size_t(6));
+    for (unsigned i = 0; i < 6; i++) { CHECK_EQ(r.out()[i].at, uint64_t(6 + i)); CHECK_EQ(r.out()[i].lo, uint64_t(0x9000 + i)); }
+    for (uint64_t t = 1; t <= 20; t++) CHECK_EQ(s.taken_seen[t], uint64_t(t < 5 ? 0 : t > 10 ? 6 : t - 4));   // injected in 5 .. 10
+}
+// A read return takes the injection point first (14.3), and the send behind the held packet stalls for that cycle:
+// reads taken in 5 and 6 are injected in 8 and 9. The sends: put in 4, 5, 6, 7 (injected 5, 6, 7), the fourth offered
+// from 8; it is injected in 10, after the two returns, and only then is the fifth made (10), injected in 11; the sixth 12.
+TEST(a_send_stalls_while_the_held_packet_waits_for_a_read_return) {
+    Rig r({read(4, Stand::AG, 0x40, lw::SIZE_32, 9, lw::M_SRC, 2), read(5, Stand::AG, 0x44, lw::SIZE_32, 9, lw::M_SRC, 2)});
+    Stand& s = r.m.unit<Stand>("stand");
+    s.auto_sends = 6; s.auto_from = 4;
+    r.m.run(24);
+    CHECK_EQ(r.out().size(), size_t(8));
+    const uint64_t at[8] = {6, 7, 8, 9, 10, 11, 12, 13};
+    const unsigned ctr[8] = {4, 4, 4, 2, 2, 4, 4, 4};        // counter 4: the write unit's; 2: the reads'
+    for (unsigned i = 0; i < 8; i++) { CHECK_EQ(r.out()[i].at, at[i]); CHECK_EQ(lw::counter(r.out()[i].h), ctr[i]); }
+    CHECK_EQ(s.taken_seen[7], uint64_t(3));
+    CHECK_EQ(s.taken_seen[8], uint64_t(3));                  // 8 and 9: the returns; the held packet waits
+    CHECK_EQ(s.taken_seen[9], uint64_t(3));
+    CHECK_EQ(s.taken_seen[10], uint64_t(4));
+    CHECK_EQ(s.taken_seen[11], uint64_t(5));
 }

@@ -65,6 +65,8 @@ struct ReqIO {
 struct ControlIO {
     sim::HoldOut send;            // the core's send holding register -> the injection unit (3 words)
     sim::RegIn send_busy;         // the injection unit -> the register block (STATUS's send-busy, with the core's own put)
+    bool has_send_taken = false;  // the one below is given (a control part with the core's write unit)
+    sim::WireIn send_taken;       // the injection unit -> the write unit: its packets injected so far (inject.h)
     sim::LinkIn eject;            // the router -> the director (3 words, intra_tile_latency)
     bool barrier = false;         // the strap (7.1): the two below are declared
     sim::LinkIn release;          // BARRIER_RELEASE's pulse -> the tile control unit (width 0; 18)

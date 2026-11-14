@@ -3,6 +3,8 @@
 // (S2/S3, Link(1)) and region writes (S1, Link(3)), reads the window RegFile, and takes the DMA's packets from the credit
 // Fifo. The stand is a small controller (TracerRig's, reduced): the tables, the record, the hash words, RUN_CONFIG and
 // PULSE_RUN, then the drain (queue 0 in one transfer, the streams by 128-word credits, in order 1-3) until run done.
+// v1.36: the events' bits are 17.9.1's, packed from bit 0, as literal numbers here; the slot's own words (its
+// standard block and its DMA's) are still v1.35's, the slot being ported apart.
 //
 // The reference is the same controller driving SlotCore directly with ref's timing (the slot's calls made at once, as
 // ref's PeripheralSlot under its Tile: the SlotConf holds SlotCore equal to ref's slot; TracerConf and Quest 163 hold
@@ -131,7 +133,7 @@ struct Ctl {
         Tracer::files_word(im.copy.root, im.copy.depth, im.map.root, im.map.depth, LOG2K, int64_t(LOWEST), fw);
         packets.push_back({0x420, {fw[0], fw[1]}});
         packets.push_back({0x430, {0, 0}});
-        stores = {{40, 0x9E3779B1u}, {41, 1000003u}, {42, 5u}, {7, 0x7FFu}};
+        stores = {{40, 0x9E3779B1u}, {41, 1000003u}, {42, 5u}, {7, 0x1FFu}};   // EVENTS_MASK: the nine events (17.9.1)
     }
 
     Act cycle(int64_t t, const View& v) {
@@ -158,13 +160,13 @@ struct Ctl {
                 dma++;
             } else if (dma == 4 && (v.peek & 2)) {
                 a.core = CONSUME; a.v = v.peek & v.mask; dma = 0;
-            } else if ((v.peek & 0x69) != 0) {     // run done, the advice and expansion credits, a new expansion
+            } else if ((v.peek & 0x1D) != 0) {     // done [0], the advice [2] and expansion [3] credits, a new expansion [4]
                 a.core = CONSUME; a.v = v.peek & v.mask;
                 if (v.peek & 1) phase = 2;
-            } else if (dma == 0 && !(v.status & 2)) {
-                if ((v.peek & 1u << Tracer::EV_SVC_STATE) && !q0_sent) { dq = 0; dwords = Tracer::REC_WORDS; q0_sent = true; dma = 1; }
+            } else if (dma == 0 && !(v.status & 2)) {   // state_ready [5]; code, read log, write log _ready [6]-[8]
+                if ((v.peek & 1u << 5) && !q0_sent) { dq = 0; dwords = Tracer::REC_WORDS; q0_sent = true; dma = 1; }
                 else for (unsigned q = 1; q <= 3; q++) {
-                    if (!(v.peek & 1u << (Tracer::EV_SVC_STATE + q))) continue;
+                    if (!(v.peek & 1u << (5 + q))) continue;
                     dq = q; dwords = std::min(128u, v.len[q] - sent[q]); sent[q] += dwords; dma = 1;
                     break;
                 }
@@ -342,14 +344,19 @@ TEST(tracer_in_the_slot_equals_slotcore_driven_directly) {
     }
 }
 
-// The slot creates the Tracer bare (ref's Config): a run before its memory is given is FATAL.
+// The slot creates the Tracer bare (ref's Config): a run before its memory is given is FATAL. (The state write
+// first: a START with none since the reset is UB, 17.9.3.)
 DEATH_TEST(tracer_in_the_slot_without_memory_is_fatal, "without a memory system") {
     SlotCore sc;
     sc.tile = TILE;
     sc.dma_port = true;
     sc.install(1, PT_TRACER);
-    sc.write(1, 1, 3, 1);   // PULSE_RUN at 1
-    for (int64_t t = 0; t < 4; t++) { sc.run_cycle(t); sc.end_cycle(t); }
+    for (int64_t t = 0; t < 10; t++) {
+        if (t == 1) sc.accept(t, 1, CODE, lw::hdr(7, 0, 0, 0, 0x04000000u, lw::SIZE_128), 0);   // record word 0
+        if (t == 6) sc.write(t, 1, 3, 1);   // START
+        sc.run_cycle(t);
+        sc.end_cycle(t);
+    }
 }
 
 // The Tracer's fingerprint in the slot unit at every cycle's end equals its twin's, driven directly at ref's timing

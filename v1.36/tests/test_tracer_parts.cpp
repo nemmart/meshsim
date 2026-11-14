@@ -474,3 +474,130 @@ TEST(replay_tables_load_and_match_the_manifest) {
     CHECK_EQ(ReplayTables::key_of(0x00001073u | (9u << 7) | (9u << 15)), 0x00001073u | (1u << 7) | (1u << 15));
     CHECK_EQ(ReplayTables::key_of(0x00002073u | (3u << 7) | (4u << 15)), 0x00002073u | (1u << 7) | (2u << 15));
 }
+
+// ================================================================ the fill port's two channels (v1.36)
+// MemSystem::port_read and port_write (spec 3 `fill`, 17.9.5, 17.9.14): a request's handshake in cycle t, its response
+// in the cycle returned.
+namespace {
+struct PortFiles {
+    FileStore fs;
+    FileStore::File img, cp;
+    PortFiles() {
+        img = fs.create(2);
+        for (int64_t p = 0; p < 4; p++) fs.put_page(img, p, page(p).data());
+        cp = fs.cow_open(img);
+        fs.make_private(cp, 1);   // the copy owns page 1 (lines 32-63); pages 0, 2 and 3 are the image's
+    }
+};
+bool line_is(const uint64_t* d, int64_t pg, int line) {
+    const std::vector<uint64_t> want = page(pg);
+    for (int k = 0; k < 16; k++) if (d[k] != want[size_t(16 * line + k)]) return false;
+    return true;
+}
+}  // namespace
+
+// At a fixed latency (the RTL's tests' memory system): a read is answered that many cycles after its handshake, a
+// write the cycle after its own, and this model's cache is not touched.
+TEST(mem_system_port_at_a_fixed_latency) {
+    PortFiles f;
+    MemSystem ms(&f.fs);
+    MemSystem::Response r;
+    CHECK_EQ(ms.port_read(100, f.cp.root, 2, 32, 7, r), int64_t(107));
+    CHECK_EQ(r.ready_at, int64_t(107));
+    CHECK_EQ(r.status, FileStore::ST_OK);            // the copy's own page
+    CHECK(line_is(r.data, 1, 0));
+    CHECK_EQ(ms.port_read(101, f.cp.root, 2, 3, 1, r), int64_t(102));   // a read while the first is outstanding
+    CHECK_EQ(r.status, FileStore::ST_NOT_OWNED);     // the image's page: the line, not writable
+    CHECK(line_is(r.data, 0, 3));
+    CHECK_EQ(ms.port_read(103, f.cp.root, 2, 70 * 32, 55, r), int64_t(158));
+    CHECK_EQ(r.status, FileStore::ST_HOLE);
+    for (uint64_t x : r.data) CHECK_EQ(x, uint64_t(0));
+    CHECK_EQ(ms.port_read(104, f.cp.root, 2, int64_t(1) << 25, 4, r), int64_t(108));
+    CHECK_EQ(r.status, FileStore::ST_BEYOND);
+    CHECK_EQ(ms.reads, int64_t(4));
+    CHECK_EQ(ms.index_accesses + ms.data_accesses + ms.lpddr_reads, int64_t(0));   // the model's cache untouched
+    CHECK(ms.idle(0));                                                             // and its bus
+    // a write: made at its handshake, answered the next cycle
+    uint64_t line[16];
+    for (int k = 0; k < 16; k++) line[k] = 0xABCD0000 + uint64_t(k);
+    int status = -1;
+    CHECK_EQ(ms.port_write(200, f.cp.root, 2, 33, line, true, status), int64_t(201));
+    CHECK_EQ(status, int(MemSystem::WRITE_OK));
+    ms.port_read(200, f.cp.root, 2, 33, 1, r);       // (the store holds it at once)
+    for (int k = 0; k < 16; k++) CHECK_EQ(r.data[k], line[k]);
+    // a write to a line that is not the file's own answers `error` and writes nothing: a shared page, a hole
+    CHECK_EQ(ms.port_write(210, f.cp.root, 2, 3, line, true, status), int64_t(211));
+    CHECK_EQ(status, int(MemSystem::WRITE_ERROR));
+    ms.port_read(211, f.cp.root, 2, 3, 1, r);
+    CHECK(line_is(r.data, 0, 3));
+    ms.port_read(211, f.img.root, 2, 3, 1, r);       // nor in the image
+    CHECK(line_is(r.data, 0, 3));
+    CHECK_EQ(ms.port_write(220, f.cp.root, 2, 70 * 32, line, true, status), int64_t(221));
+    CHECK_EQ(status, int(MemSystem::WRITE_ERROR));
+    ms.port_read(221, f.cp.root, 2, 70 * 32, 1, r);
+    CHECK_EQ(r.status, FileStore::ST_HOLE);          // no page was made
+    // a test's fault: an owned line's write answers `error`, after the delay set, and writes nothing
+    ms.fail_write_line = 34;
+    CHECK_EQ(ms.port_write(230, f.cp.root, 2, 34, line, true, status), int64_t(231));
+    CHECK_EQ(status, int(MemSystem::WRITE_ERROR));
+    ms.fail_write_delay = 40;
+    CHECK_EQ(ms.port_write(240, f.cp.root, 2, 34, line, true, status), int64_t(280));
+    CHECK_EQ(status, int(MemSystem::WRITE_ERROR));
+    ms.port_read(280, f.cp.root, 2, 34, 1, r);
+    CHECK(line_is(r.data, 1, 2));
+    CHECK_EQ(ms.port_write(290, f.cp.root, 2, 35, line, true, status), int64_t(291));   // another line is not the fault's
+    CHECK_EQ(status, int(MemSystem::WRITE_OK));
+    CHECK_EQ(ms.writes, int64_t(6));
+}
+
+// On its own model (latency 0): a request is timed by the model's walk, as `read` and `write` time it; the model serves
+// one access at a time, so a request taken while another is being served starts when that one ends (item 174). The
+// twin is the same model given each request at the cycle it starts.
+TEST(mem_system_port_on_its_own_model) {
+    PortFiles f;
+    MemSystem ms(&f.fs), twin(&f.fs);
+    MemSystem::Response r, tr;
+    uint64_t line[16];
+    for (int k = 0; k < 16; k++) line[k] = 0x77000000 + uint64_t(k);
+    int status = -1;
+    // a cold depth-2 walk: three accesses from LPDDR
+    CHECK_EQ(ms.port_read(100, f.cp.root, 2, 32, 0, r), int64_t(100 + 3 * 80));
+    twin.read(100, f.cp.root, 2, 32, tr);
+    CHECK_EQ(r.ready_at, tr.ready_at);
+    CHECK(line_is(r.data, 1, 0));
+    // a read taken while it is being served starts at its end, 340
+    const int64_t second = ms.port_read(105, f.cp.root, 2, 33, 0, r);
+    twin.read(340, f.cp.root, 2, 33, tr);
+    CHECK_EQ(second, tr.ready_at);
+    CHECK_EQ(second, int64_t(340 + 6 + 6 + 80));     // the two index lines cached, the data line from LPDDR
+    // a write taken while a read is being served: a read and a write outstanding together (17.9.5); it starts at 432
+    const int64_t write = ms.port_write(345, f.cp.root, 2, 34, line, false, status);
+    CHECK_EQ(status, int(MemSystem::WRITE_OK));
+    CHECK_EQ(write, twin.write(432, f.cp.root, 2, 34, line));
+    CHECK_EQ(write, int64_t(432 + 3 * 6));           // allocated without an LPDDR read
+    // and a read taken while that write is served starts at its end
+    const int64_t third = ms.port_read(433, f.cp.root, 2, 34, 0, r);
+    twin.read(write, f.cp.root, 2, 34, tr);
+    CHECK_EQ(third, tr.ready_at);
+    for (int k = 0; k < 16; k++) CHECK_EQ(r.data[k], line[k]);   // it reads what the write made
+    // an idle port: the request starts in its own cycle
+    const int64_t idle = third + 1000;
+    CHECK_EQ(ms.port_read(idle, f.cp.root, 2, 34, 0, r), idle + 3 * 6);
+    // beyond the depth's capacity: no access, the response the next cycle
+    CHECK_EQ(ms.port_read(idle + 100, f.cp.root, 2, int64_t(1) << 25, 0, r), idle + 101);
+    CHECK_EQ(r.status, FileStore::ST_BEYOND);
+    // a write to a line that is not the file's own, and a test's fault: `error` the next cycle, nothing written, the
+    // model's bus not taken
+    const int64_t t = idle + 200, writes = twin.writes;
+    CHECK_EQ(ms.port_write(t, f.cp.root, 2, 3, line, false, status), t + 1);
+    CHECK_EQ(status, int(MemSystem::WRITE_ERROR));
+    CHECK(ms.idle(t + 1));
+    ms.fail_write_line = 35;
+    CHECK_EQ(ms.port_write(t + 1, f.cp.root, 2, 35, line, false, status), t + 2);
+    CHECK_EQ(status, int(MemSystem::WRITE_ERROR));
+    ms.port_read(t + 2, f.cp.root, 2, 35, 0, r);
+    CHECK(line_is(r.data, 1, 3));
+    ms.port_read(r.ready_at, f.cp.root, 2, 3, 0, r);
+    CHECK(line_is(r.data, 0, 3));
+    CHECK_EQ(twin.writes, writes);
+}

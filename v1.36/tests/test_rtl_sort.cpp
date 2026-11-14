@@ -19,11 +19,13 @@
 //     The oracle and the inputs are computed here from the key file, a port of sort.rs written apart from the design;
 //     tests/sort_input.h's (meshsim's own SortTest port) is compared with it as a cross-check;
 //   - the error lines, the master's NMI, the tiles' reports 24 and 25 and the toast pin (6.2, 6.5, 7.4, 17.6, 18);
-//   - the links' latency: one hop is four cycles more (16.1). The absolute figure is printed beside the RTL's 36 and
-//     not asserted (chip_test.rs asserts the relation alone).
-// It prints, as chip_test.rs does, each release's cycles, each step's (a step from its release to the next step's, L2 to
-// its all arrived) and the total from L1's release to L2's all arrived. The RTL's figures are in rtl/chip/README.md; the
-// simulator's are not tuned to them (PENDING-v1.36.md, the timing left).
+//   - the links' latency: one hop is four cycles more (16.1), and at tile 0 it is the RTL chip's 36 cycles;
+//   - THE CYCLES. It prints, as chip_test.rs does, each release's cycles, each step's (a step from its release to the
+//     next step's, L2 to its all arrived) and the total from L1's release to L2's all arrived, and checks them equal to
+//     the RTL chip's, as Snarky One's rtl/chip/README.md (Results) gives them for these four runs: every step, the
+//     empty phases together, the total, and the load from the reset to its release. The figures are the RTL's, written
+//     here; the simulator is not tuned to them: its units are the specification's (PENDING-v1.36.md, section 6, has the
+//     one figure that still differs, the image's start-up, which is printed and not checked).
 //
 // THE RUNS: sort_16_kv32 and sort_16_k128, 16 records a tile, always; sort_64k_kv32 and sort_64k_k128, 65,536 a tile,
 // when RTL_SORT_64K_KEYS names the key file (fw/rtl/README.md: 16 MiB, not committed; its sha256 beside the images):
@@ -265,6 +267,30 @@ void run_sort(Format format, bool full, unsigned parts = 1, std::vector<uint64_t
     std::printf("test_rtl_sort: %s steps (each release to the next step's): %s\n", tag, report.c_str());
     std::printf("test_rtl_sort: %s the empty phases together (XC, TH, SWEEP, DESC, K1, K2%s): %u\n", tag, format == K128 ? ", V1, V2" : "", empty);
     std::printf("test_rtl_sort: %s total, L1's release to L2's all arrived: %u cycles\n", tag, total);
+    // ---- the cycles against the RTL chip's (rtl/chip/README.md, Results: its chip_test's figures for the same runs) ----
+    if (finished && summary[SUMMARY_FAILURE] == 0) {
+        struct Rtl { const char* run; uint32_t l1, split, xb, red, k, v, l2, empty, total; };
+        static const Rtl kRtl[] = {
+            {"kv32", 7518, 118367, 9856, 6818, 263, 0, 6841, 598, 150261},
+            {"k128", 7646, 118367, 10176, 7474, 1047, 267, 6968, 1068, 153013},
+            {"kv32-64k", 335118, 259473, 9856, 6664, 71524, 0, 268921, 598, 952154},
+            {"k128-64k", 475646, 259473, 10176, 7260, 72308, 71528, 409448, 1068, 1306907},
+        };
+        const Rtl* r = nullptr;
+        for (const Rtl& x : kRtl) if (run_dir == x.run) r = &x;
+        CHECK(r != nullptr);
+        auto step_cycles = [&](const char* name) { for (const auto& s : steps) if (s.first == name) return s.second; return 0u; };
+        CHECK_EQ(step_cycles("L1"), r->l1);
+        CHECK_EQ(step_cycles("SPLIT"), r->split);
+        CHECK_EQ(step_cycles("XB"), r->xb);
+        CHECK_EQ(step_cycles("RED"), r->red);
+        CHECK_EQ(step_cycles("K"), r->k);
+        CHECK_EQ(step_cycles("V"), r->v);
+        CHECK_EQ(step_cycles("L2"), r->l2);
+        CHECK_EQ(empty, r->empty);
+        CHECK_EQ(total, r->total);
+        CHECK_EQ(phase(0, 2), 20784u);                                  // the load, from the reset to its release
+    }
     std::printf("test_rtl_sort: %s summary: failure 0x%x in phase %u, %u exits, %u stray, mcause 0x%x, %u error reports\n", tag,
                 summary[SUMMARY_FAILURE], summary[SUMMARY_FAILED_PHASE], summary[SUMMARY_EXITS], summary[SUMMARY_STRAYS],
                 summary[SUMMARY_TRAP_CAUSE], summary[SUMMARY_ERROR_REPORTS]);
@@ -336,6 +362,7 @@ void run_sort(Format format, bool full, unsigned parts = 1, std::vector<uint64_t
     for (unsigned tile = 0; tile < T; tile++) CHECK(summary[SUMMARY_LATENCY + tile] != NONE);
     const uint32_t zero_hops = summary[SUMMARY_LATENCY];
     std::printf("test_rtl_sort: %s: the load's COUNT to tile 0 and its arrival back, %u cycles (the RTL's chip: 36)\n", tag, zero_hops);
+    CHECK_EQ(zero_hops, 36u);                                           // rtl/chip/README.md: "36 cycles at tile 0, 4 more a hop"
     for (unsigned way = 0; way < 4; way++) {
         auto destination = [&](unsigned hops) { return way == 0 ? hops : way == 1 ? T - hops : way == 2 ? 8 * hops : T - 8 * hops; };
         const unsigned one = destination(1), two = destination(2);

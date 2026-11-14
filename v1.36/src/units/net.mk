@@ -8,6 +8,8 @@ NET_LINK := $(B)/src/units/net.o $(B)/src/units/router.o $(B)/src/units/inject.o
 $(B)/test_router $(B)/test_net_headers: $(NET_LINK)
 $(B)/test_cnc: $(NET_LINK) $(B)/tests/statefp.o $(B)/tests/statefp_g2.o
 $(B)/test_chip: $(NET_LINK) $(B)/tests/statefp.o $(B)/tests/statefp_g1.o $(B)/tests/statefp_g2.o $(UNITS_LINK) $(GOLDEN_OBJ)
+# the router of v1.36's chip from the specification (tests/test_special_router.cpp)
+$(B)/test_special_router: $(B)/src/units/net.o $(B)/src/units/router.o
 
 # The chip on several threads under ThreadSanitizer: make tsan-chip, whose rules are tests/mach.mk's (v1.36: acceptance
 # B's run split over threads). v1.35's, test_chip's form 2, is pending with test_chip (pending.mk); its rules stay:

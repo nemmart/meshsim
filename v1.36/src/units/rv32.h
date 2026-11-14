@@ -797,11 +797,8 @@ struct Rv32 {
                         if (e.window_stalls(window_of(ea), (ea & 0x1FF) >> 2)) return false;   /* 8.14: UART_TX while the TX FIFO is full: retried */
                     } else FATAL("tile core: a store to peripheral %u's window at 0x%x: this bench has no peripheral slot", window_of(ea), ea);
                 }
-                lsu_err = !store(e, t, ea, lsu_wdata << sh, mask, w_pc);
-                if (halt != RUN) {                            // SIM_EXIT: the run ends with its store
-                    instructions++;
-                    if (log) log->add(t, T_RETIRE, 0, w_pc, w_raw, w_a, w_b, 0);
-                }
+                lsu_err = !store(e, t, ea, lsu_wdata << sh, mask, w_pc);   // (SIM_EXIT's store halts: it is answered, and
+                                                                           // retires, in this cycle, the run's last)
             } else {
                 lsu_rdata = 0;
                 lsu_err = !load(e, ea, lsu_size, lsu_rdata);

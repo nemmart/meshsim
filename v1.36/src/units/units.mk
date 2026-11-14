@@ -11,6 +11,7 @@ GOLDEN_OBJ  := $(B)/tests/golden_run.o $(B)/tests/sha256.o
 $(B)/test_rv32 $(B)/test_regblock $(B)/test_golden $(B)/test_controllers $(B)/test_broken_units: $(UNITS_LINK) $(GOLDEN_OBJ)
 # the RTL's own core programs on the core alone (tests/core-programs/, tests/core_programs.h)
 $(B)/test_core_programs: $(B)/src/units/trace_log.o $(B)/tests/sha256.o
+$(B)/test_core_m2_rtl: $(B)/src/units/trace_log.o
 
 $(B)/golden: $(B)/tests/golden_main.o $(GOLDEN_OBJ) $(UNITS_LINK) $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)

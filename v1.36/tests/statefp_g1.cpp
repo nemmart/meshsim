@@ -68,7 +68,7 @@ void w_core(const void* p, FpOut& o, const FpCtx& x) {
     const units::Rv32& k = *g.core;
     const uint64_t c = x.cycle;
     uint64_t mcycle = k.mcycle;
-    uint32_t stall = k.stall;
+    const uint32_t stall = 0;   // (v1.36: the core has no stall count; ref's fingerprint keeps the field)
     if (k.stop != units::Stop::running && k.stop != units::Stop::parked) {   // ref's halted core: mcycle++ every cycle
         // as a sleeping one, under M3's cyc one less when ref's idle-skip has put it to sleep (a halted core can)
         // (ref's idleAt == t: a core halted in the cycle just run hasn't been idle for a whole cycle yet)
@@ -80,7 +80,6 @@ void w_core(const void* p, FpOut& o, const FpCtx& x) {
         // ref's lag: cyc - countedTo, only for a unit its idle-skip put to sleep (under M3's cyc, one less)
         const bool asleep = x.label_shift && k.in_wfi && (!g.ref_asleep || g.ref_asleep(g.ref_asleep_ctx, g.tile, x));
         mcycle += gap - (asleep ? x.label_shift : 0);
-        if (!k.in_wfi) stall -= uint32_t(gap);
     }
     o.w("pc", k.pc);
     for (unsigned r = 1; r < 32; r++) o.wi("x", r, k.x[r]);
@@ -91,9 +90,7 @@ void w_core(const void* p, FpOut& o, const FpCtx& x) {
     o.w("inWfi", k.in_wfi); o.w("inHandler", k.in_handler);
     o.w("stall", stall);
     o.w("sendRetry", k.pending_t == c - x.label_shift);                  // a send awaiting its acceptance at c + 1
-    bool lw = k.load_wait_t == c - x.label_shift;
-    o.w("regLoad", lw);
-    if (lw) o.w("regLoadPc", k.load_wait_pc);
+    o.w("regLoad", false);                                              // (v1.36: a load waits in writeback)
 }
 
 // The two memories at the end of c, port B's writes landing at c + 1 overlaid; `bus`: port B's later entries.

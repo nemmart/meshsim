@@ -1,0 +1,6 @@
+# Snarky One's rtl/blocks/core/baseline/bench.toml at 370e3ac, [coremark]: what CoreMark's own report states for the
+# benchmark run (coremark-bench.elf), which mise run bench-core requires of the RTL: "Iterations", "Total ticks" (the
+# cycles between its two reads of mcycle) and "Instructions" (of minstret).
+iterations 10
+cycles 3602722
+instructions 2746880

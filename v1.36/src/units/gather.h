@@ -1,10 +1,10 @@
-// gather.h: the GATHER engine (sim/ref/meshsim/src/GatherEngine.java; AUDIT-M2 3.6).
-// Configuration part; the behaviour.
+// gather.h: the gather unit (machine-spec 13; the RTL's rtl/blocks/gather_unit).
 //
-// The unit: its input from the director (`in`, the gather queue, mode 4), its configuration (k from DMA_CONFIG, base
-// from DMA_RECORD_BASE_ADDRESS: Tile.setMasterConfig / setRecordBase), derived from the register block's `dma`
-// RegFile (write_engine.h) at every step, never copied (ref reads its fields live: `k` and `base` each cycle; `wide`
-// is fixed when a request is taken). ref's reset value of k is 1 (DMA_CONFIG 0 gives k = 1 too).
+// The unit: its input from the director (`in`, the gather queue of GATHER_QUEUE_DEPTH = TOKEN_COUNT requests), and its
+// configuration, GATHER_CONFIG, from the tile control unit's `dma` RegFile (write_engine.h). A request's value, its
+// start, its k and so its reads, is computed from GATHER_CONFIG as it stands when the request leaves the queue; no
+// later store moves a read of that request (a store while the unit is busy is UB, 13: this is the RTL's choice, its
+// README's decisions).
 //
 // The step at t (GatherEngine.runCycle):
 //   1. a refusal of t - 1's put: put the same words again, nothing advances (stallCycles);
@@ -65,6 +65,7 @@ struct Gather {
     // ---- state (GatherEngine's, StateFp.gather: left, ord, i, ctr, wide) ----
     uint32_t left = 0, ord = 0, i = 0, ctr = 0;
     bool wide = false;
+    uint32_t req_k = 1, req_base = 0;   // GATHER_CONFIG as it stood when the request left the queue: its value's k and start
     sim::Word held[2] = {};    // the words on `rd` (the producer's copy, for the retry)
     bool busy_out = false;     // the value last put on `busy`
     uint64_t ovf_seen = 0;     // the queue's overflows already reported
@@ -117,14 +118,14 @@ struct Gather {
                 const sim::Word* w = c.peek(in);
                 const uint32_t kk = k(c.read(dma, DMA_R_GATHER));
                 wide = (kk & 1) == 0;
+                req_k = kk; req_base = base(c.read(dma, DMA_R_GATHER));   // no later store moves this request's reads
                 ord = uint32_t(w[0] >> 32) & 0xFFFFF;
                 ctr = lw::counter(w[1]);
                 left = wide ? kk / 2 : kk; i = 0; requests++;
                 c.take(in);
             }
             if (left > 0) {                                  // 3. one read
-                const uint32_t kk = k(c.read(dma, DMA_R_GATHER)), b = base(c.read(dma, DMA_R_GATHER));
-                held[0] = mem::req_a(read_chunk(b, kk, ord, i, wide), wide ? lw::SIZE_128 : lw::SIZE_64, lw::M_SRC, ctr, me);
+                held[0] = mem::req_a(read_chunk(req_base, req_k, ord, i, wide), wide ? lw::SIZE_128 : lw::SIZE_64, lw::M_SRC, ctr, me);
                 held[1] = mem::req_b(0);
                 c.put(rd, held[0], held[1]);
                 reads++; i++; left--; put = true;
@@ -141,7 +142,7 @@ struct Gather {
     static uint32_t read_chunk(uint32_t base, uint32_t k, uint32_t ord, uint32_t i, bool wide) {
         return (base + 2 * k * ord + (wide ? 4 : 2) * i) & 0x1FFFFF;
     }
-    uint64_t digest() const { return sim::hash_fields(left, ord, i, ctr, wide, held[0], held[1], busy_out, ovf_seen); }
+    uint64_t digest() const { return sim::hash_fields(left, ord, i, ctr, wide, req_k, req_base, held[0], held[1], busy_out, ovf_seen); }
 };
 
 }  // namespace units

@@ -155,14 +155,17 @@ TEST(gather_busy_half_rises_with_the_first_put_and_falls_the_cycle_after_the_las
     CHECK(fell);
 }
 
-TEST(gather_k_follows_dma_config_live_wide_fixed_at_the_take) {
-    // the request is taken at 3 with k = 3 (left 3, 64 bits); k becomes 5 at 4: ref reads k each cycle for the address
-    // (2k * ord), while `left` and `wide` were fixed at the take
+// 13 and the RTL (rtl/blocks/gather_unit/README.md: "A request's value, its start, its k and so its reads, is computed
+// from GATHER_CONFIG as it stands in the cycle the request leaves the queue ... No store moves a read of a request that
+// has left the queue"). A store while the unit is busy is UB (13); the RTL's choice is the model's.
+TEST(gather_config_is_taken_when_the_request_leaves_the_queue) {
+    // the request (ordinal 1) is taken at 3 with k = 3: three 64-bit reads at record_base + 2 k ordinal + 2 i = 6, 8, 10;
+    // k becomes 5 at 4 and moves none of them
     Sim sim = Bench::make({{2, 1, 0}}, mc(3), 0, 1, 0, 16, mc(5), 4);
     sim.run(20);
     auto& s = sim.unit<Srq>("srq");
     CHECK_EQ(s.got.size(), size_t(3));
-    const uint32_t want[] = {6, 12, 14};
+    const uint32_t want[] = {6, 8, 10};
     for (size_t j = 0; j < 3 && j < s.got.size(); j++) CHECK_EQ(mem::a_addr(s.got[j].a), want[j]);
 }
 

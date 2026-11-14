@@ -18,8 +18,7 @@ old suites (P11), the register tables and firmware headers (P12), the replayer (
 
 | what | why | what closes it |
 |---|---|---|
-| the `replayer` program (kind 5) and its rows on the row port | the simulator's replayer is v1.35's (4.19): its tables come from files, not through its region, its region and words are v1.35's, and it has no row port a test reads | the replayer stage (17.8); then the run in `test_rtl_tile.cpp`, as `base_tile_test.rs`'s `replayer` |
-| `errors` with error 10, `peripheral_1` (257 pushes into the replayer's code queue) | the code queue is at 17.8.9's address only in v1.36's replayer | the same |
+| the replayer's row port at a random ready, and its handshake | the `replayer` program and `errors` 10 run and pass on v1.35's replayer behind the register bus (its region is 17.8.9's already; the rows are compared with 17.8.11's after the pass, from the sink's buffer, which is always ready) | the row port, with the replayer stage (17.8) |
 | the `special` program (kind 4, `base_tile_special_test.rs`) | a special tile's base: its straps, its receive queue, a peripheral with a DMA | the special tiles (P7) |
 | the RTL's model with all three attach ports at every tile id | a simulated tile has the attach port of its place in the chip (tile 0, 7 or 15: 2.1), so the runs at an attach tile use its one port | nothing: the RTL's model is a 1 × 1 chip's tile; the chip's attach ports are checked at chip level (P6) |
 | the request link's beats and its handshake monitor; the row port's | the simulator's request unit hands over whole requests; the framework's ports have no ready or valid | the request tree (P7); the row port with the replayer |
@@ -88,6 +87,7 @@ would silently lose what the hardware keeps, the simulator stops (noted).
 | tokens | a loopback packet's token is freed when the director takes its copy (14.2) | v1.35's: when it leaves the loopback queue | P9 |
 | the router | attach ports on the attach tiles only, the arbiters' order, a reserved dst dropped, no start skew (16) | v1.35's, with the attach tiles moved to 0, 7 and 15 | P6 |
 | the peripheral slot | the control block of 17.1 (`EVENTS` 3, `EVENTS_PEEK` 4, `EVENTS_MASK` 5, `START` 6, the DMA in block 1), `DMA_HDR`'s layout | v1.35's slot behind the register bus, which presents 17.1's words (`TileCore::Env::slot_word`); `DMA_HDR`'s fields are v1.35's | P7 |
+| the replayer | 17.8: `ERRORS` packed from bit 0, `EXPANSION_OFFSET` latched at the post, the underflow and leftover rules, the stall costs, the reset (`spec/CHANGES-v1.35-to-v1.36.md` 2.8) | v1.35's (4.19) behind 17.1's control block: its `ERRORS` bits read one position higher than 17.8.1's; no tile program reads them | the replayer stage |
 | the special tiles | the master, memory and tracer tiles (2.1) | v1.35's C&C 1–3 as units 64–66 with their v1.35 peripherals; `default_straps` gives them the specification's straps | P7 |
 | the checker | | v1.35's facts about hardware that is gone are no longer recorded: the command block, the reply block, the stray check, the table-window check of the core | P11 |
 

@@ -7,17 +7,17 @@ test loads them as that test does: each loadable segment as 16-byte rows (`tests
 
 | file | kind | what it checks (its source's header has the list) |
 |---|---|---|
-| `registers.elf` | 0 | every unit's registers and tables through the register bus |
-| `noc.elf` | 1 | a round trip through the router for each sender and each receiver's path, and the events that end each wait |
-| `barrier.elf` | 2 | a second barrier after the boot ROM's |
-| `errors.elf` | 3 | one error of `ERRORS`, raised by its unit, reaching the core and the boot ROM's handler |
-| `special.elf` | 4 | a special tile's base (the RTL's `base_tile_special_test`): not run yet |
-| `replayer.elf` | 5 | a short pass through the compute tile's replayer |
-| `programs.txt` | | each program's kind and file, as the RTL's build lists them |
+| `base_tile/registers.elf` | 0 | every unit's registers and tables through the register bus |
+| `base_tile/noc.elf` | 1 | a round trip through the router for each sender and each receiver's path, and the events that end each wait |
+| `base_tile/barrier.elf` | 2 | a second barrier after the boot ROM's |
+| `base_tile/errors.elf` | 3 | one error of `ERRORS`, raised by its unit, reaching the core and the boot ROM's handler |
+| `base_tile/special.elf` | 4 | a special tile's base (the RTL's `base_tile_special_test`): not run yet |
+| `base_tile/replayer.elf` | 5 | a short pass through the compute tile's replayer |
+| `base_tile/programs.txt` | | each program's kind and file, as the RTL's build lists them |
 
 **Made from** Snarky One at commit `370e3acae6254e9e94ba594dbce293e3fa948ed6`, by its task `mise run core-images`
 (xPack `riscv-none-elf-gcc` 15.2.0; `-march=rv32ic_zicond_zicsr_zmmul`), which writes
-`build/core-tests/tile/base_tile/`; copied from there.
+`build/core-tests/tile/base_tile/`; copied from there into `base_tile/`, a folder a tile design as the RTL has it.
 
 SHA-256:
 

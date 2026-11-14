@@ -185,8 +185,9 @@ struct TileCtl {
             error_out = s.nmi();
         }
         // The address generator's start is the block's until the generator's step: look again in the next cycle, when its
-        // status says the transfer runs (STATUS.dma_busy, and an empty transfer's end: 8.2).
-        return s.dma_pulse ? c.next() : sim::Wake::none();
+        // status says the transfer runs (STATUS.dma_busy, and an empty transfer's end: 8.2). And BARRIER_ARRIVE's
+        // flip-flop falls in the next cycle.
+        return s.dma_pulse || s.arrive_pulse ? c.next() : sim::Wake::none();
     }
     uint64_t digest() const { return digest_mix(s.digest(), error_out); }
     static bool reg_bit(const sim::Ctx& c, sim::RegIn r) { return c.valid(r) && c.read(r)[0] != 0; }

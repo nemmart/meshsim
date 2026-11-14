@@ -1,5 +1,5 @@
 // test_rtl_tile.cpp: acceptance A of v1.36's platform: the RTL's tile programs (Snarky One's
-// rtl/tile/base/test/programs/base_tile, vendored unmodified as ELF files in fw/rtl/tile/) on one simulated compute tile,
+// rtl/tile/base/test/programs/base_tile, vendored unmodified as ELF files in fw/rtl/tile/base_tile/) on one simulated compute tile,
 // booted through the RTL's boot ROM (fw/rtl/boot/), with the stimulus and the verdicts of the RTL's own test of its tile,
 // rtl/tile/base/test/src/base_tile_test.rs. The bench here plays what that test plays: the master tile (the load, the
 // barrier's release), the request tree's row node that takes the tile's reports, and the tiles at the ends of the router's
@@ -31,7 +31,9 @@
 //     requests. The bench takes a request's eight beats one a cycle, at the RTL test's random ready, and frees the
 //     queue's entry at the last, so the request queue fills and stalls the core as there.
 //   - The RTL's handshake monitors have no counterpart: the framework's ports have no ready or valid to watch.
-// Pending (PENDING-v1.36.md has each, with what closes it): printed as "PENDING", never passed silently.
+//   - The RTL's test takes the replayer's rows from the row port at a random ready; the simulator's row port is the
+//     replayer's sink, always ready, and the rows are read from its buffer after the pass.
+// PENDING-v1.36.md, section 1, lists what of the RTL's test is not here (the special tile's program).
 #include <algorithm>
 #include <array>
 #include <cstdarg>
@@ -47,6 +49,7 @@
 #include "rtl_images.h"
 #include "units/chip.h"
 #include "units/net.h"
+#include "units/periph_slot.h"
 #include "units/regmap.h"
 #include "units/tile_ctl.h"
 
@@ -60,15 +63,15 @@ constexpr uint32_t kMeshSize = 8, kTileCount = 64, kMasterTile = kTileCount;
 constexpr uint32_t REPORT_PASS = 0, REPORT_FAIL = 1, REPORT_WAIT = 2, REPORT_HANDLER_FIRST = 24, REPORT_HANDLER_SECOND = 25;
 constexpr uint32_t OP_REPORT = 1, OP_LOAD = 3;
 // The errors program's errors, by their bit in ERRORS (7.4).
-constexpr uint32_t ERROR_ROUTER_OVERFLOW = 0, ERROR_ACCESS_FAULT = 7, ERROR_ILLEGAL_INSTRUCTION = 8, ERROR_PERIPHERAL_1 = 10,
-                   ERROR_BITS = 11;
+constexpr uint32_t ERROR_ROUTER_OVERFLOW = 0, ERROR_ACCESS_FAULT = 7, ERROR_ILLEGAL_INSTRUCTION = 8, ERROR_BITS = 11;
 // The causes (6.2; the core specification).
 constexpr uint32_t CAUSE_NMI = 0x80000000, CAUSE_ILLEGAL_INSTRUCTION = 2, CAUSE_LOAD_ACCESS_FAULT = 5;
 constexpr uint32_t LOAD_COUNTER = 7;                       // the load's counter, the boot ROM's (6.5)
 // The packet's modes and sizes (4.1, 4.2).
 constexpr uint32_t MODE_WRITE = 0, MODE_COUNT = 5, SIZE_32 = 0, SIZE_128 = 2;
 // The programs' kinds (programs.txt; tile_programs.rs).
-constexpr uint32_t KIND_REGISTERS = 0, KIND_NOC = 1, KIND_BARRIER = 2, KIND_ERRORS = 3, KIND_COUNT = 6;   // (4 special, 5 replayer)
+constexpr uint32_t KIND_REGISTERS = 0, KIND_NOC = 1, KIND_BARRIER = 2, KIND_ERRORS = 3, KIND_REPLAYER = 5, KIND_COUNT = 6;   // (4: special)
+constexpr unsigned ROW_LONGS = 10;                         // a replayer row's 640 bits, as 64-bit words (17.8.11)
 // The arguments (tile_map.h): DMEM's 8 words past its reserved 16 bytes.
 constexpr uint32_t ARGUMENTS = 16;
 // The router's ports, as inputs and outputs: the links, then the attach ports of the master, memory and tracer tiles.
@@ -205,8 +208,25 @@ struct Machine {
     G1Ctx g;
     ChipSpec spec;
     sim::Sim m;
-    Machine(uint32_t tile_id, const Rv32Timing* timing) : mem(size_t(64) * 2 * MEM_WORDS, 0), m(build(tile_id, timing)) {}
-    sim::Sim build(uint32_t tile_id, const Rv32Timing* timing) {
+    // `placed`: null, or the image placed in the tile's IMEM and DMEM before the reset ends, with the strap boot_local 1
+    // (6.5).
+    Machine(uint32_t tile_id, const Rv32Timing* timing, const std::vector<rtl_images::Row>* placed = nullptr)
+        : mem(size_t(64) * 2 * MEM_WORDS, 0), m(build(tile_id, timing, placed)) {}
+    static Straps local_straps(unsigned k, const G1Config& cfg) {
+        Straps s = default_straps(k, cfg.periph_present);
+        s.boot_local = true;
+        return s;
+    }
+    sim::Sim build(uint32_t tile_id, const Rv32Timing* timing, const std::vector<rtl_images::Row>* placed) {
+        if (placed) {
+            g.straps = local_straps;
+            for (const rtl_images::Row& r : *placed) {
+                const uint32_t region = r.address >> 24, word = (r.address & 0xFFFFFF) >> 2;
+                if (region > 1 || word + 4 > MEM_WORDS) FATAL("a placed row at 0x%x: neither DMEM nor IMEM", r.address);
+                uint32_t* at = mem.data() + size_t(tile_id) * 2 * MEM_WORDS + (region == 1 ? size_t(MEM_WORDS) : size_t(0)) + word;
+                at[0] = uint32_t(r.lo); at[1] = uint32_t(r.lo >> 32); at[2] = uint32_t(r.hi); at[3] = uint32_t(r.hi >> 32);
+            }
+        }
         hops = load_hops("data/hops.txt");
         rom = rtl_images::boot_rom();
         g.bootrom = rom.words.data(); g.bootrom_words = uint32_t(rom.words.size()); g.bootrom_handler = rom.handler;
@@ -235,7 +255,7 @@ using Report = std::pair<uint32_t, std::array<uint32_t, 3>>;
 
 struct Counts {
     uint32_t runs[KIND_COUNT] = {}, inputs_driven[PORTS] = {}, outputs_seen[PORTS] = {}, reports = 0, loads = 0, request_stalls = 0,
-             errors_seen[ERROR_BITS] = {};
+             errors_seen[ERROR_BITS] = {}, rows = 0;
 };
 
 // The bench (base_tile_test.rs's Bench).
@@ -262,7 +282,7 @@ struct Run {
     Counts counts;
     bool dead = false;                                     // a check failed: the run stops
 
-    explicit Run(uint64_t seed) : random(seed), files(rtl_images::program_list("fw/rtl/tile", KIND_COUNT)) {}
+    explicit Run(uint64_t seed) : random(seed), files(rtl_images::program_list("fw/rtl/tile/base_tile", KIND_COUNT)) {}
 
     void fail(const char* fmt, ...) __attribute__((format(printf, 2, 3))) {
         if (dead) return;
@@ -288,13 +308,13 @@ struct Run {
     }
 
     // The tile's reset at `tile`, its inputs idle: a new machine.
-    void reset(uint32_t tile) {
+    void reset(uint32_t tile, const std::vector<rtl_images::Row>* placed = nullptr) {
         if (dead) return;
         tile_id = tile;
         for (auto& q : queued) q.clear();
         flood = false; expected_out.clear(); reports.clear(); loads = 0;
         arrive_allowed = false; arrivals = 0; error_allowed = false; error_risen = false; error_line = false;
-        mach = std::make_unique<Machine>(tile, timing);
+        mach = std::make_unique<Machine>(tile, timing, placed);
         bench = &mach->m.unit<Bench>("bench");
         inputs = {WEST, EAST, NORTH, SOUTH};
         if (attached_at(tile) >= 0) inputs.push_back(ATTACH + unsigned(attached_at(tile)));
@@ -598,6 +618,46 @@ struct Run {
         quiet();
     }
 
+    // replayer: a pass of 4 rows through the tile's replayer, its tables, record and stream written by the program
+    // through the write unit and the tile's own loopback (replayer.S); the rows out of the row port, written here from
+    // 17.8.11 for the program's instructions: ADDI x3, x1, 7; ADDI x4, x3, 17; ADDI x1, x2, 257 (x1 = 100, x2 = 200,
+    // x3 = 0x33, x4 = 0x44 before, rd_prev on), from pc 0x1000 and instr_idx 5, each the program's template's (opcode
+    // ADDI, rs2 an immediate, sign_imm), and a padding word's row, all 0. The PASS report: ROWS_RUN, the replayer's
+    // PARAMS (type 4, version 0) and its EVENTS_PEEK: the four credits the state write filled, still 2, done consumed.
+    // The simulator's row port is the replayer's sink, which takes a row in every cycle (the chip ties replay_row_ready
+    // to 1: 17.8.11); the rows are read from its buffer.
+    void replayer(uint32_t tile, unsigned port) {
+        // (instr_idx, rd, rs1, immediate, rs1's value, rd before, rd after)
+        const uint64_t rows[3][7] = {{5, 3, 1, 7, 100, 0x33, 107}, {6, 4, 3, 17, 107, 0x44, 124}, {7, 1, 2, 257, 200, 100, 457}};
+        std::vector<uint64_t> expected(4 * ROW_LONGS, 0);
+        for (unsigned at = 0; at < 3; at++) {
+            uint64_t* row = &expected[at * ROW_LONGS];
+            // Word 0: instr_idx, opcode ADDI (2), rd_reg, rs1_reg, rs2_reg 0; rs2 an immediate [85], imm_signed [86].
+            row[0] = rows[at][0] | uint64_t(2) << 32 | rows[at][1] << 40 | rows[at][2] << 48;
+            row[1] = uint64_t(3) << (85 - 64);
+            // Word 1: pc, the immediate; word 2: rs1, rs2 0; word 3: rd_prev, rd.
+            row[2] = 0x1000 + 4 * at; row[3] = rows[at][3];
+            row[4] = rows[at][4];
+            row[6] = rows[at][5]; row[7] = rows[at][6];
+        }
+        reset(tile);
+        if (dead) return;
+        std::vector<uint64_t> out(8 * ROW_LONGS, ~uint64_t(0));
+        Replayer& rp = mach->m.unit<PeriphSlot>(unit_prefix(tile) + "slot").s.replayer(1);
+        rp.set_row_buffer(out.data(), 8);
+        load(KIND_REPLAYER, port, {});
+        expect_report(report(), REPORT_PASS, 4, 4, 0x3C, "replayer's pass");
+        if (dead) return;
+        if (rp.rows_sunk() != 4) { fail("rows out of the row port: %llu, expected 4", (unsigned long long)rp.rows_sunk()); return; }
+        for (unsigned i = 0; i < 4 * ROW_LONGS; i++)
+            if (out[i] != expected[i]) { fail("row %u out of the row port: word %u is 0x%llx, expected 0x%llx", i / ROW_LONGS, i % ROW_LONGS, (unsigned long long)out[i], (unsigned long long)expected[i]); return; }
+        counts.rows += 4;
+        end();
+        quiet();
+        if (!dead && rp.rows_sunk() != 4) fail("a row after the pass: %llu rows", (unsigned long long)rp.rows_sunk());
+        rp.set_row_buffer(nullptr, 0);
+    }
+
     // A tile for a run, and the next input of the tile's in turn (base_tile_test.rs's `pick`).
     std::pair<uint32_t, unsigned> pick(size_t run) {
         const uint32_t tile = uint32_t(random.below(kTileCount));
@@ -622,13 +682,10 @@ void print_counts(const char* name, const Run& r) {
     for (uint32_t n : r.counts.inputs_driven) std::printf(" %u", n);
     std::printf("; outputs seen");
     for (uint32_t n : r.counts.outputs_seen) std::printf(" %u", n);
-    std::printf("; reports %u, loads %u, request stalls %u; errors seen", r.counts.reports, r.counts.loads, r.counts.request_stalls);
+    std::printf("; reports %u, loads %u, request stalls %u, rows %u; errors seen", r.counts.reports, r.counts.loads, r.counts.request_stalls, r.counts.rows);
     for (uint32_t n : r.counts.errors_seen) std::printf(" %u", n);
     std::printf("\n");
 }
-
-// What is pending of the RTL's test (PENDING-v1.36.md), said aloud.
-void pending(const char* what, const char* why) { std::printf("PENDING rtl-tile %s: %s\n", what, why); }
 
 }  // namespace
 
@@ -645,10 +702,9 @@ TEST(rtl_tile_programs) {
     // At each special tile's attach tile, so that every attach port sends.
     for (uint32_t special = 0; special < 3; special++) bench.noc(attach_tile(special), ATTACH + special);
     for (int i = 0; i < 2; i++) { auto [tile, port] = next(); bench.barrier(tile, port); }
-    pending("replayer", "the replayer's region, tables and row port are v1.35's (4.19) until 17.8 is brought (branch v1.36-replayer)");
+    for (int i = 0; i < 2; i++) { auto [tile, port] = next(); bench.replayer(tile, port); }
     for (uint32_t error = 0; error < ERROR_BITS; error++) {
         auto [tile, port] = next();
-        if (error == ERROR_PERIPHERAL_1) { pending("errors 10 (peripheral_1)", "the replayer's code queue is at 17.8.9's address only once 17.8 is brought"); continue; }
         bench.errors(error, tile, port);
     }
     print_counts("rtl_tile_programs", bench);
@@ -657,7 +713,25 @@ TEST(rtl_tile_programs) {
     bench.check_outputs();
     CHECK(!bench.dead);
     CHECK(bench.counts.request_stalls > 0);
-    for (uint32_t error = 0; error < ERROR_BITS; error++) if (error != ERROR_PERIPHERAL_1) CHECK_EQ(bench.counts.errors_seen[error], 1u);
+    for (uint32_t error = 0; error < ERROR_BITS; error++) CHECK_EQ(bench.counts.errors_seen[error], 1u);
+}
+
+// The boot strap (6.5): with PARAMS.boot_local 1 the boot ROM jumps to IMEM's base at once, to the image placed in the
+// tile's IMEM and DMEM before the reset ended: no LOAD request, no load, no arrival. The registers program, placed with
+// its arguments, passes with PARAMS as the straps give it (boot_local at [18]: 7.1), STATUS 0 and no event pending, and
+// the tile has sent no LOAD request by then. (base_tile_special_test.rs places its program so; a compute tile's image
+// then ends by jumping to the reset PC, and the ROM, to the image again: the test stops at the first pass.)
+TEST(rtl_tile_boot_local) {
+    Run bench(0x510e527f);
+    const uint32_t tile = 21;
+    const uint32_t params = Run::params(tile) | 1u << 18;
+    std::vector<rtl_images::Row> rows = rtl_images::program_rows(bench.files[KIND_REGISTERS]);
+    for (const rtl_images::Row& r : Run::argument_rows(KIND_REGISTERS, {params, 0, 0})) rows.push_back(r);
+    bench.reset(tile, &rows);
+    bench.expect_report(bench.report(), REPORT_PASS, params, tile, 0, "registers' pass, placed");
+    CHECK(!bench.dead);
+    CHECK_EQ(bench.counts.loads, 0u);
+    CHECK_EQ(bench.arrivals, 0u);
 }
 
 // The RTL's base_tile_without_attach_ports: the programs but the errors one, at random tiles that are not attach tiles.
@@ -670,6 +744,7 @@ TEST(rtl_tile_programs_at_plain_tiles) {
         { auto [tile, port] = plain(run); bench.registers(tile, port); }
         { auto [tile, port] = plain(run + 1); bench.noc(tile, port); }
         { auto [tile, port] = plain(run + 2); bench.barrier(tile, port); }
+        { auto [tile, port] = plain(run + 3); bench.replayer(tile, port); }
     }
     bench.check_outputs();
     print_counts("rtl_tile_programs_at_plain_tiles", bench);

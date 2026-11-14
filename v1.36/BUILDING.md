@@ -46,7 +46,7 @@ can't share a process with ASan.
 | the same, debug | `make debug` |
 | the same, the suite build | `make MODE=suite` |
 | the same with gcc | add `CC_NAME=gcc` |
-| one program, including the drivers `make` leaves out (`t2`, `chain`) | `make build/clang-release/<name>` |
+| one program, including the driver `make` leaves out (`tracer_block`) | `make build/clang-release/<name>` |
 | everything, and check it: v1.3's copied files unchanged, the TSan thread tests, then every test in the debug and release builds with gcc and clang | `make check` |
 | every test of one build, run | `make run CC_NAME=gcc MODE=debug` |
 | the tests and tools that are not built yet in v1.36, listed | `make pending` |
@@ -62,7 +62,7 @@ can't share a process with ASan.
 
 **v1.36: what is not built.** `pending.mk` names the tests and tools that are still on v1.35's hardware or firmware and do
 not compile or cannot pass against v1.36's; `make`, `make check` and `make run` leave them out (of `make check`'s TSan
-runs, the controllers' prints `PENDING`, `test_t2_harness`'s is left out, and the chip's, `make tsan-chip`, runs
+runs, the controllers' prints `PENDING`, and the chip's, `make tsan-chip`, runs
 acceptance B's sort split over threads, `test_rtl_sort`, where it ran `test_chip`), and `make pending` lists them.
 `PENDING-v1.36.md` (the platform stage, section 3) has each one's reason and what closes it. A test leaves
 `pending.mk` in the commit that ports it.

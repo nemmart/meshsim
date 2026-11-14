@@ -3,7 +3,7 @@
 // (`evm-zone-23`) and Cyclone (`cyclone-22`), traced by the tracer tile's Tracer from the guest's own memory, map and
 // advice, delivered to the compute tiles and replayed there.
 //
-// THE FILES are outside the repository, under the inputs' directory ($MESHSIM_INPUTS, ~/meshsim-inputs), read only:
+// THE FILES are outside the repository, under the inputs' directory ($MESHSIM_INPUTS), read only:
 //   w26-jumpmap/<run>/   the Tracer's host-side inputs: proof.json (log2 K, the lowest address, the map's constants),
 //                        map.lines (the jump-target map), initial.pages (the guest's memory at row 0), seg/NNN.pages (the
 //                        pages each host segment writes), segments.seg (each host segment's start, advice and update list);
@@ -33,7 +33,8 @@
 
 namespace segment {
 
-// The inputs' directory: $MESHSIM_INPUTS, else ~/meshsim-inputs; empty if it holds no recorded run.
+// The inputs' directory, $MESHSIM_INPUTS; empty if it is not set or holds no recorded run (the runner gives it its
+// default, ~/meshsim-inputs; a test binary run by hand or by `make check` runs the real segments only when asked).
 std::string inputs_directory();
 
 // Windows `first` to `first + windows - 1` of `run`, `first` a multiple of 64 and at most 64 windows. False and `err`

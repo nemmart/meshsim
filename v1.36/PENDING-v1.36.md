@@ -16,12 +16,14 @@ of this page each. Where they stand:
   peripheral slot (17.1–17.5), and the chip: the 64 compute tiles, the master, memory and tracer tiles, the request
   tree and the nets. **Acceptance A**, `tests/test_rtl_tile.cpp`, runs the RTL's own tile programs on one tile
   (`fw/rtl/tile/`) and checks the boot ROM's cycles against the RTL's; **acceptance B**, `tests/test_rtl_sort.cpp`,
-  runs the RTL's sort images end to end on the chip (`fw/rtl/sort/`), four runs, against the oracle.
+  runs the RTL's sort images end to end on the chip (`fw/rtl/sort/`), four runs, against the oracle;
+- **the segment**: **acceptance C**, `tests/test_rtl_segment.cpp`, runs the segment on the chip under the RTL's trace run,
+  tracer tile's image and replay image, traced, delivered and replayed, in the RTL chip's cycles.
 
 The tile's units (the DMA, write, read, receive, gather and inject units and the scratchpad) are the specification's
 (8-15), each with a test written from it (`test_ag`, `test_receive`, `test_mem`, `test_gather`, `test_mach`), and the
 sort's cycles on the chip are the RTL chip's, step for step, which `test_rtl_sort` checks. What is left is named below as
-in the plan: the router's conformance, the memory tile's RW engine, the host interface and the segment on the chip
+in the plan: the router's conformance, the memory tile's RW engine and the host interface
 (P10), the old suites (P11), meshsim's own firmware (P12), and what is left of the timing.
 
 ## The core stage
@@ -46,7 +48,6 @@ random ready.
 | what | why | what closes it |
 |---|---|---|
 | `test_slotconf` (`tests/slotconf/seed1-5`) | the slot's conformance replays ref's seeded scripts, which store and load v1.35's control-block words and reserved words at random, on a slot with the replayer in it; its reference is ref's observations of v1.35's replayer and v1.35's DMA under them (busy, errors, events and queue occupancies cycle by cycle), which neither the RTL's replayer nor 17.1's slot gives | a conformance of the slot against the RTL's `peripheral_control` and `peripheral_dma` (scripts replayed on the RTL's blocks in a Snarky One scratch worktree, as `tests/replayer/` does for the replayer). Until then every rule of 17.1–17.4 the slot implements is tested from the specification and the RTL's headers in `test_periph_slot` and `test_ingress_egress` (the control block's words and reserved bits, `START` and `DMA_START` with bit 0 clear, the counted events of depth 1, a set in a consuming load's cycle, the DMA's packets, cycles and wait for room, peripheral 3's window, region and tile bit), but: a sticky error through the slot, the DMA waiting on an empty queue, and the UB cases (a store to `DMA_HDR` or `DMA_DEST_ADDR` during a transfer: the slot reads `DMA_HDR` live and flags the store, the RTL takes it at the start). What the conformance would add is the random interleavings; the replayer's side is `test_replayconf`'s |
-| Stage B and Stage F (`test_stageb`, the tools `stageb` and `replay_shard`, the steps `replay-build`, `stageb`, `stageb-<guest>`; `tests/stageb/stageb.log`, the acceptance kit's B and F) | they run v1.35's replay controller (`fw/replay/replay_ctl.c`) on v1.35's tile, map and commands through `tests/mach.h`'s old machine (`Mach::boot`, C&C's commands), which the platform replaced: they passed on the replayer stage's branch only because its tile was still v1.35's. Not built (`pending.mk`) | a replay controller on v1.36's map: the RTL's replay image (`rtl/chip/test/programs/firmware`, `replay.elf`) on the chip with the master's and the tracer tile's (the segment's stage, P10), then the RTL chip's figures (3.0875 and 3.1249 cycles a row) |
 | the row port's handshake | the model's consumer is its sink, ready one cycle in `sink_interval` (1: always, as the chip ties it); no unit reads `replay_row` | the materializer, *Open* (17.8.11) |
 | `spec/CHANGES-v1.35-to-v1.36.md` 5.2.6 item 1: the timing rules the specification does not state | the model takes them from the RTL's sources: they are listed in `src/units/replayer.h`'s header and in the stage's report | a ruling: write them down (the guide suggests an appendix), or leave them to the RTL |
 
@@ -56,14 +57,12 @@ The Tracer's model is the RTL's `tracer_unit` at the block level (`tests/tracerb
 In the chip it is the tracer tile's peripheral 1, in the slot with the DMA (`src/units/periph_slot.h`, "THE
 CONTRACT"): 17.1's control and DMA blocks, `dma_done` the slot's (bit 1), the DMA's cycles `peripheral_dma.veryl`'s,
 a consuming load applied so that a set of its cycle survives it (`test_tracer_slot`, `test_periph_slot`). On the chip
-the tracer tile boots its ROM and waits for a load the sort's master never answers: no test runs a segment there yet.
+it traces segments under the RTL's tracer tile's image (the segment stage, below).
 
 ### Pending
 
 | What | Why | What closes it |
 | --- | --- | --- |
-| `chain` (`tests/chain_main.cpp`) and `t2` (`tests/t2_main.cpp`), with `test_t2_harness` and `tests/t2_harness.*`: the segment on the full chip | They boot v1.35's tracer-tile firmware (`fw/tracer/tracer_ctl.c`) on v1.35's C&C 3 through `tests/mach.h`'s old machine, which the platform replaced (the tracer tile is a base tile with the RTL's boot ROM now; its `EVENTS` bits are 17.9.1's, packed from bit 0, as `fw/include/mesh.h`'s `TR_EV_*` already are: `tools/regs/regtable.h`). Neither tool is built: `t2` is a target of `src/units/cc.mk` outside `all`, `chain` of `tests/chain.mk`, and both need `tests/t2_harness.cpp`, which includes the deleted M1 bench. They are in no suite (`RUNNING.md`, "by hand"), nor are `tests/freeze/body.sh`'s items 3 and 4, which run them | The segment on v1.36's chip (P10): the RTL's tracer-tile, master and replay images (17.9.10, 17.9.15: the handshakes by requests) and the memory system on the fill port, as the RTL's `chip_trace_test` |
-| `tests/golden-m3/` (`RUNS`, `*.chip`, `boot/*.boot.fp.gz`) and `tests/golden-chain/`: T2's and the chain's recorded figures and fingerprints | They are v1.35's Tracer's on the full chip, cycle for cycle (`tr`, `tr.ic`, `tr.dc`, `tr.mem`, `tr.files` at every 100,000 cycles); no test in a suite reads them | Regenerated with the segment's stage, from the RTL's chip figures where it has them |
 | `tracer_block`'s step `tracer-block` without the workloads' data | The real segments are read from `$MESHSIM_INPUTS` (`~/meshsim-inputs`), outside the repository; without it the runner prints the step as PENDING. `tracer-block-synth` always runs | The data on the host |
 | `tools/freeze/strip.sh` line 49 names `bench/tracer/tracer_play.cpp` and `bench/tracer/tracer.mk` | Both are retired (below) | The freeze tool's owner drops the pair |
 | The memory system's model with a read and a write outstanding together (item 174) | Decided here, for the simulator only: the model serves one access at a time, so a request taken while another is being served starts when that one ends (`MemSystem::port_read`, `port_write`); a write to a line that is not the file's own answers `error` a cycle after its handshake | The memory system's design (items 60, 119) |
@@ -115,6 +114,99 @@ to follow it, and the fixtures cannot be regenerated. The RTL's own figures and 
     (`replayer_alu.veryl`).
 15. **A key of 0xFFFF_FFFF** matches a free entry and takes its base, as v1.35's probe did (`tracer_jump_lookup.veryl`).
 
+## The segment stage
+
+The segment on the chip is the RTL's: `tests/test_rtl_segment.cpp` (**acceptance C**; `tests/segment_bench.h`) runs the
+RTL's chip tests of the segment, `chip_trace_test.rs` and `chip_replay_test.rs`, on the simulator, under the RTL's own
+firmware, unmodified: the master's trace run, the tracer tile's image and the replay image (`fw/rtl/sort/trace/`,
+`fw/rtl/sort/segment/`). The Tracer on tile 15's attach port traces the guest window by window, its DMA delivers each
+window's record and streams over the NoC, and the compute tiles' replayers replay them. The test takes every row out
+of every tile's row port (the replayer's sink: `set_row_buffer`, `set_row_times`), which closes the platform stage's
+row for a consumer of `replay_row` in the chip.
+
+**The memory system** behind the Tracer's fill port is *Open* (17.9.14), and the RTL's tests place a model of it at the
+chip's boundary. The simulator's tests place the same model (`segment::Fill`, the RTL test's `Fill`: its latencies, its
+readies 0 one cycle in four, its one xorshift32 stream, draw for draw) on the Tracer's fill port
+(`Tracer::FillPort`). It is the test's, not hardware; the simulator's own `MemSystem` stays the block-level tests'.
+
+**What is checked, and against what.** Nothing comes from the simulator:
+- the RTL test's three generated segments (4 windows of 3,000 rows; 64 windows of 1,500 rows, a guest built to miss; a
+  window of 65,536 rows), each from a fixture the RTL's test wrote as it ran (`tests/segment/rtl/`, its README): the
+  guest and the RTL's models' expectations (every row, record and stream), and the RTL chip's own figures. All of
+  `run_chip`'s checks, and every cycle: the run's cycles from the reset, the master's summary's 285 words, the tracer
+  tile's report, every fill request's cycle and answer, and the cycle each row left its tile's port;
+- the real workloads' windows (`MESHSIM_INPUTS`): EVM Zone's 0–63 and 64–127 and Cyclone's 0–63, the RTL's three
+  segments of 64 windows, every row against `rows.bin`, every record and stream against the recorded files, each
+  replayer's end registers against the next window's start, and the cycles against the RTL chip's published ones.
+
+**The cycles.** Every figure is the RTL chip's; no unit was changed for one (the stage changed one thing in the model:
+a fill request is presented until its channel is ready, `tracer_fill.veryl`'s handshake, which the simulator's own
+memory system, always ready, never showed). The generated segments, from the fixtures (the RTL's and the simulator's
+are equal in every row of the table, and in every word and cycle behind it):
+
+| | 4 × 3,000 rows | 64 × 1,500 rows | 1 × 65,536 rows |
+|---|---|---|---|
+| from the reset to the poll that sees the summary | 113,152 | 764,928 | 609,280 |
+| the load | 13,953 | 13,953 | 13,953 |
+| the trace with its windows' delivery | 68,302 | 722,628 | 333,770 |
+| the Tracer's own, its first `START` to its last `done` | 62,823 | 717,161 | 328,299 |
+| the replay, to the passes' end | 11,898 | 9,114 | 242,477 |
+| fill requests compared, cycle for cycle | 22 | 6,363 | 22 |
+| rows' cycles out of the row ports compared | 12,000 | 96,000 | 65,536 |
+
+The real workloads, against Snarky One's `rtl/chip/README.md` (Real workloads' windows), each figure equal:
+
+| | EVM Zone, windows 0–63 | EVM Zone, 64–127 | Cyclone, 0–63 |
+|---|---|---|---|
+| the replay, the release to each window's last row, summed: cycles; a row | 13,045,233; 3.1102 | 12,854,434; 3.0647 | 13,106,834; 3.1249 |
+| to the windows' first rows, summed | 13,235 | 8,938 | 12,151 |
+| the passes' end, from the release | 230,435 | 210,878 | 228,441 |
+| the trace, the Tracer's first `START` to its last `done` (the tracer tile's report) | 23,108,239 | 22,055,425 | 22,586,242 |
+| from the reset to the poll that sees the summary (the simulator's; the RTL's README rounds its own to 23.8 M, 22.4 M and 23.1 M, which its parts above do not add up to) | 23,377,408 | 22,305,280 | 22,853,632 |
+
+Over each whole run the replay is 25,899,667 cycles, 3.0875 a row, for EVM Zone, and 13,106,834, 3.1249 a row, for
+Cyclone: the RTL chip's.
+
+### Pending
+
+| what | why | what closes it |
+|---|---|---|
+| a segment that starts inside a host segment (the RTL test's six smaller ranges: EVM Zone's 33–36 and 86–89, Cyclone's 30–33 and 40–42 among them) | the RTL's test starts a segment at any window by running its model of the Tracer's execution from row 0 to it; the simulator's tests have no such model, and take none from the simulator, so `tests/segment_real.h` starts at a host segment's start, which the recorded files give (the start state, the update lists, the advice) | a model of the execution in the tests (a port of the RTL's `tracer_execution_model.rs`), or the RTL test's fixtures for those ranges |
+| the RTL test's reports (`print_trace`, `print_replay`, `print_instructions`, `chip_replay_test`'s stalls by kind) | reports, not checks: the test compares the figures they are made from (each run's `START`, rows' end and `done`, the statistics counters, every row's cycle) with the RTL's and prints the run's parts only | nothing needed; a port of the reports if they are wanted on the simulator |
+| the fill port's handshake monitors | the model has no valid without a request and no response without a handshake to break; the test's model checks one read and one write outstanding, and a write only of a writable line that was read | nothing in the simulator's ports |
+| `rtl-segment-real` without the workloads' data | the recorded runs are outside the repository (`MESHSIM_INPUTS`); the runner prints the step as PENDING, and the test binary run by hand or by `make check` runs the real segments only when `MESHSIM_INPUTS` is set | the data on the host |
+| `test_cc_req` (the platform stage's row, P11) has lost its harness | it includes `tests/t2_harness.h`, retired below; it was not built before either (v1.35's C&C cores) | its port to `tests/mach.h`'s chip, or its deletion (P11) |
+| `tests/m3-images/` (`cc1`, `cc23`, `tracer_ctl`, `replay_ctl`), `fw/images/log8k`, `fw/images/oldmap`, `fw/replay/`, `fw/tracer/`; `tests/golden-m3/` (`HASHES`, `cover/`, `baseline/`) | v1.35's controllers' images and sources, whose only loaders (T2, the chains, Stage B) are retired, and ref's records of T2; kept because `fw/build.sh`, `fw/check_images.sh` and their hash lists name them | the firmware stage (P12) and the old suites' deletion (P11) |
+
+### Retired, with what replaces it
+
+v1.3's and v1.35's tools for the segment ran meshsim's own controllers' firmware (`replay_ctl.c`, `tracer_ctl.c`,
+`cc1.c`) on v1.35's map and commands, on a machine that is gone, and their references were ref's (the Java
+simulator's) of that machine. None can run again, and none is regenerated: the RTL's firmware on the RTL's hardware,
+checked against the RTL, replaces them.
+
+| Retired | Was | Replaced by | What of it nothing checks now |
+|---|---|---|---|
+| `stageb` (`tests/stageb.cpp`, `stageb.h`, `stageb_main.cpp`), `test_stageb`, `tests/stageb/` (`stageb.log`, `replay-build.log`, `replay_build.sh`, `PROVENANCE`); the steps `replay-build`, `stageb`, `stageb-<guest>` | Stage B: `replay_ctl.c` on one tile replaying synthetic or delivered windows against Stage A, its cycles a row; the replay controller's build check | `test_rtl_segment`: the RTL's replay image replays the Tracer's deliveries on the chip, every row against the RTL's models or `rows.bin`, in the RTL chip's cycles (3.0875 and 3.1249 a row on the workloads); the image is vendored and hash-checked (`rtl-images`) | a controller on a wrong queue map failing as starved (CL4); a lone tile against the full chip with the 63 others untouched; the five delivered guests (`lrd_x0`, `scd_x0`, `nop_hint`, `jalr_self`, `jalr_zero`) on a tile, which were never on the runner (the replayer alone on a delivery is `replay_delivery`'s) |
+| Stage B and Stage F of `replay_shard` (`--stages`) and of the acceptance kit (`tests/acceptance/`) | the kit's shards ran Stage A (the replayer alone), B (a tile) and F (the full chip) | Stage A stays: `replay_shard` and the kit run it against the RTL's cycles (`tests/acceptance/rtl/`); B and F are `test_rtl_segment`'s real windows | B against F, the same cycles alone and on the full chip |
+| `t2` (`tests/t2_main.cpp`), `tests/t2_harness.*`, `test_t2_harness` and its TSan run; `tests/golden-m3/` `RUNS`, `evm.chip`, `cyclone.chip`, `boot/`; `tests/freeze/t2-rows.txt`; `tests/m3-images/bootstage.ref`, `boottrace.ref.gz`; `tests/freeze/body.sh`'s item 3 | T2: v1.35's tracer-tile firmware on C&C 3 with the full chip, segment 10 of two workloads, every unit's fingerprint at every 100,000 cycles against ref's, on one and six domains | `test_rtl_segment`: the segment on v1.36's chip against the RTL chip's cycles (the tables above), and split over 2 and 8 threads (`segment_small_split`) | v1.35's boot staging against ref; a fingerprint of every unit's state along the run (v1.36 has no reference for one: the summary, the report, the fill requests and the rows' cycles stand for it); a TSan run of the segment |
+| `chain` (`tests/chain_main.cpp`); `tests/golden-chain/`; of `tests/chain.*` and `test_chain` the landings (`Landings`), the `M3FILES1` and `M3SRAM01` streams and the `.starts` oracle; `tests/freeze/body.sh`'s item 4 | the chains: segments 0–127 of both workloads back to back, each segment's start memory and landings against ref's hashes | `test_rtl_segment`'s real segments: host segments 0 and 1 of EVM Zone and 0 of Cyclone, each started from the recorded files and traced on the chip; `tests/chain.*` is cut back to the readers of the pipeline's files, which `tracer_block` and `tests/segment_real.cpp` use | a segment's end memory (the write-backs and the data cache's dirty lines) carried into the next segment's start on one machine: the RTL's firmware runs one segment a run, and the memory system between segments is *Open* (17.9.14) |
+
+### Notes: what the segment's tests take from the RTL's tests where the specification is silent
+
+1. **The memory system's timing** on the chip is the RTL test's model's, not a design's: reads answered 2 to 24 (a
+   code line), 32 (a data line) or 40 (a map line) cycles after their handshake, writes 2 to 30, each ready 0 one
+   cycle in four. The trace's cycles depend on it, and are the RTL chip's only under it.
+2. **The scratchpads' layout** of a segment (the header's addresses, the tables at word 0x40, the replay region at
+   0x1_0000) is the RTL test's, "as the host would"; the firmware reads it from the header.
+3. **A cycle** of the RTL's test is the simulator's less one (the framework counts from 1); the fill port's draws and
+   the rows' cycles are compared in the RTL test's.
+4. **The tracer tile's report** is compared in the words its image writes (0–4, 8–15, three a window from 16): the
+   others are the RTL's memory model's start values.
+5. **A real segment's advice** is the values its windows' advice rows take (host segment k's first), its loaded
+   record's advice field their number: the tracer tile's image requires the last record's field 0 (`tracer.rs`,
+   `Status::AdviceLeft`).
+
 ## The platform stage
 
 ### 1. Acceptance A: what of the RTL's tile test is pending
@@ -128,13 +220,13 @@ to follow it, and the fixtures cannot be regenerated. The RTL's own figures and 
 
 ### 2. Acceptance B: what of the RTL's chip tests is pending
 
-`tests/test_rtl_sort.cpp` is `chip_test.rs` (the sort, four runs). The RTL's other chip tests have no counterpart:
+`tests/test_rtl_sort.cpp` is `chip_test.rs` (the sort, four runs), and `tests/test_rtl_segment.cpp` is `chip_trace_test.rs`
+and `chip_replay_test.rs` (the segment stage). The RTL's other chip tests have no counterpart:
 
 | what | why | what closes it |
 |---|---|---|
 | `chip_memory_test`: the master's requests to the memory tile and LPDDR | the memory tile's peripheral 1 is a stand-in that stops the simulator if it is started, written or made to send (`RwEngineStub`, `src/units/ingress_egress.h`): the RW engine (17.7), its write buffer and its AXI4 port are not modelled | the RW engine's model (P10), with the RTL's AXI4 slave model's timing |
 | `chip_stream_test`: the master echoing beats on its AXI4-Stream ports | Ingress/Egress's host interface (17.6) is not modelled: its receive side reads empty and a store to its transmit side stops the simulator; the UART has a transmit FIFO only | the host interface's and the UART's receive side in `IngressEgress` (P10) |
-| `chip_trace_test`, `chip_replay_test`: a segment from the Tracer to the replayers | no test boots the tracer tile's image, and the Tracer's memory system on the chip is the harness's (`Tracer::own_memory`), not placed by any chip test | the segment on the chip (P10; the Tracer stage's first row) |
 | the image's start-up, from the load's release to L1's release | 16,036 cycles here, 16,033 on the RTL's chip: printed, not checked (every step of the sort, the total, the load and the link's latency are checked equal to the RTL's) | the timing stage (section 6) |
 
 ### 3. Tests of `make check` that are not built (`pending.mk`)
@@ -151,10 +243,10 @@ of them no longer checks is in the second table.
 | `test_memconf` (`tests/memconf/`) | SUPERSEDED, kept unbuilt. ref's MemConf observations are v1.3's fingerprint streams of v1.35's memory path (`srq`, `inj`, `sram`, `we`, `ts`, `hist`): the read queue's token slots, the area queues, write combining, the write engine's input FIFO and the tables' request FIFOs, none of which v1.36's hardware has (12.4, 12.5, 14, 15). Its writer, `tests/statefp_g1.*`, does not compile, and `tests/statefp_g2.cpp`'s `inj` and `srq` writers now stop if called | nothing: `test_mem` (14, 15) and `test_receive` (12.4, 12.5) stand for it; deletion with the old suites (P11) |
 | `test_checkself` | ref's `CheckSelf.java` sequence provokes the checker kind by kind through v1.35's commands, replies, strays and a test's stores to v1.35's map (`Cc::command`, `TileRef::store`, `Mach::boot`: removed from `tests/mach.h`) | the checker's rules for v1.36's hardware, with the old suites (P11) |
 | `test_cnc1_periph` (`tests/cnc1conf/`) | SUPERSEDED, kept unbuilt. v1.35's conformance of C&C 1's peripheral against ref (`READY_LINES`, `PULSE_GO`, the row collectors' words, a toast pin on any error line); v1.36's master tile has Ingress/Egress (17.6) | nothing: `test_ingress_egress` (17.6 from the specification and the RTL's `ingress_egress_unit`: the arrivals, `RELEASE`, the watchdog and its ties, the error lines, the toast pin, the LED, the window's map, the UART's transmit side) stands for it; deletion with the old suites (P11) |
-| `test_slotconf`; `test_stageb` and the tools `replay_shard`, `stageb`; `test_t2_harness` | the replayer stage's and the Tracer stage's rows above | there |
+| `test_slotconf` | the replayer stage's first row | there |
 | `test_chip`, `test_sort`, `test_cc_units`, `test_cc_req`; `test_p4suites`, `test_ctl_suites`, `test_sort_suites` | v1.3's goldens and suites of the chip: v1.35's images under C&C's commands, C&C 1–3 as cores with `cc1.c`, v1.3's fingerprints of v1.35's state; the last three run the suite programs that `./run_tests.sh` has pending. What they checked of the chip end to end is checked on v1.36's by `test_rtl_sort` | each test ported to v1.36's chip or deleted (P11) |
 | `fw/mesh-v1.2-draft.h`, `tools/regs/header_diff.sh`, `tests/test_header_diff.sh` | v1.35's comparison of its generated header with its v1.2 draft; it means nothing for v1.36's map (the files are kept, unused) | deletion at the firmware port (P11) |
-| meshsim's own firmware (`fw/boot`, `fw/cc`, `fw/m1`, `fw/recipes`, `fw/replay`, `fw/sort`, `fw/tests`, `fw/tracer`) and `fw/build.sh` | written for v1.35's map and commands; the sources no longer compile against the generated `fw/include/mesh.h` (v1.36's). The committed images still pass `fw/check_images.sh` | a firmware stage. `fw/README.md` ("meshsim's own programs") says, program by program, what the RTL's firmware in `fw/rtl/` replaces (the boot ROM, the sort on its port layer for the RTL's four runs, the master's and the memory tile's programs, the core's programs, the tile programs the RTL has) and what waits (the recipes, `rdport.c`, `gather.c`, the search benchmark, the accounting programs, the other sort sets; the replay controller and the tracer tile's for the segment). Not started here: the runner has no `riscv64-unknown-elf-gcc`, which `fw/build.sh` pins |
+| meshsim's own firmware (`fw/boot`, `fw/cc`, `fw/m1`, `fw/recipes`, `fw/replay`, `fw/sort`, `fw/tests`, `fw/tracer`) and `fw/build.sh` | written for v1.35's map and commands; the sources no longer compile against the generated `fw/include/mesh.h` (v1.36's). The committed images still pass `fw/check_images.sh` | a firmware stage. `fw/README.md` ("meshsim's own programs") says, program by program, what the RTL's firmware in `fw/rtl/` replaces (the boot ROM, the sort on its port layer for the RTL's four runs, the master's and the memory tile's programs, the core's programs, the tile programs the RTL has) and what waits (the recipes, `rdport.c`, `gather.c`, the search benchmark, the accounting programs, the other sort sets). Not started here: the runner has no `riscv64-unknown-elf-gcc`, which `fw/build.sh` pins |
 | `bench/sort`'s `bench_sort` and `bench_chip` (`bench/sort/sort.mk`); `tests/sort_main.cpp` (`sort_test`), `sweep`, the sort kit (`tests/sort/kit/`) | they time or sweep v1.35's sort images on v1.35's machine (the M1 bench, C&C's commands, the phases from GO): they do not compile. `make build/<cc>-<mode>/bench_sort` prints PENDING and fails, so nothing builds a v1.35 machine by accident; `bench_threads` (the framework's own mesh) still builds and runs | the sort's runs for v1.36 beyond the RTL's four (section 4, "The sort's measurements"), then the benchmark on `tests/mach.h`'s chip |
 
 Checks that left a ported test, and sources that are in no target any more:
@@ -163,7 +255,6 @@ Checks that left a ported test, and sources that are in no target any more:
 |---|---|---|
 | `test_mach`: ref's `MachSelf.java` sequence (`tests/mach/machself.out`) | every case boots a v1.35 image through C&C's commands or C&C 1–3 as cores, and reads `SIM_EXIT`, `TRACE` and v1.3's phase log | deletion with the old suites (P11): the chip's boot is `test_rtl_sort`'s; the fixture stays until then |
 | `test_mach`: ref's `NetSelf.java` cases but `packets`, `reads` and `a2a` (the first 47 lines of `tests/mach/netself.out`) | they drive v1.35's map through the core from the test, answer v1.35's `RESULT` requests, or print cycles that depend on v1.35's 128-entry request FIFO, its attach tiles 0–2 or the register block's view at the end of a cycle | the old suites (P11) |
-| `test_mach`: the replayer's row hook (`Chip::on_row`) | v1.35's replayer's row listener; the RTL's replayer gives its rows to its sink (`set_row_buffer`, `set_row_times`), which `test_rtl_tile` reads | a consumer of `replay_row` in the chip, when a test needs one (the segment, P10) |
 | `test_router`: each of ref's runs past its first packet for a reserved id | v1.36's router drops a packet for a reserved id (16.2) and stamps the tile's own id (16.4); the whole runs are compared with references REGENERATED from the simulator for those two rules (`tests/routerconf/v1.36/README.md`: the simulator's own trace, not an oracle). ref's three runs of a controller's router are superseded: the special tile's router is tested from the specification in `test_special_router` | a conformance of the router under random load against the RTL's `router` (`router_test`'s model, or scripts replayed on the RTL) |
 | `tests/phase_log.*` (v1.3's per-phase accounting, `Chip::phases()`) | its phases are C&C's GO stores named by command words, its counters v1.35's (the command block's overwrites, the send's stalls in the core), its CSV v1.3's byte for byte | the accounting suite (P11) |
 | `tests/statefp_g1.*`, and with it `Chip::digest()` and `MESHSIM_DIGEST` | ref's `StateFp` of v1.35's state (the core, the register block, the command block) | a fingerprint of v1.36's state, if one is wanted (the timing stage) |
@@ -173,17 +264,18 @@ Checks that left a ported test, and sources that are in no target any more:
 
 Every step of v1.3's runner is still printed, in v1.3's order under v1.3's name, as one of three:
 - it **runs** (ported, or v1.36's own): `layout`, `bus`, `rtl-images`, `rtl-tile` (acceptance A), `rtl-sort`
-  (acceptance B: the 16-record runs and the run split over threads; `rtl-sort-64k` in `all`), `mem`, `mem-shuf`,
+  (acceptance B: the 16-record runs and the run split over threads; `rtl-sort-64k` in `all`), `rtl-segment` (acceptance
+  C: the generated segments; `rtl-segment-real` in `all`), `mem`, `mem-shuf`,
   `mem-shuf2` (`test_mem`: v1.3's MemTest is retired, section 7), `core-programs` and `core-tile` (the RTL's core),
   `replayer`, `memsys`, `rvc`, `tracer`, `tracer-block-synth`, `tracer-block`; with `--check`, `bus`, `replayer`,
   `memsys`, `rvc`, `tracer` and the two `tracer-block` steps are compared with their reference logs and equal them;
 - it is **`REPLACED (<by what>)`**: its v1.3 suite cannot run on v1.36's hardware, and tests written for that hardware
-  stand for it, which the step runs (or names, when a step above already ran them); 20 in `quick`, 23 in `all`. A
+  stand for it, which the step runs (or names, when a step above already ran them); 22 in `quick`, 25 in `all`. A
   replaced step has no reference log: its tests' expectations are the specification's and the RTL's, in the tests, and
   a failing test fails the run;
-- it is **`PENDING (<reason>)`**: nothing stands for it yet; 16 in `quick`, 24 in `all` (one more in `all` without
-  `RTL_SORT_64K_KEYS`, one more in either without the workloads' data at `MESHSIM_INPUTS`, five more, `stageb-<guest>`,
-  with `DELIVERY` set).
+- it is **`PENDING (<reason>)`**: nothing stands for it yet; 14 in `quick`, 22 in `all` (one more in `all` without
+  `RTL_SORT_64K_KEYS`; without the workloads' data at `MESHSIM_INPUTS` one more in either, `tracer-block`, and another
+  in `all`, `rtl-segment-real`).
 Each of v1.3's keeps its `step` line under it in `run_tests.sh`; its suite's source and reference log stay as they
 were until the old suites are deleted (P11).
 
@@ -199,8 +291,9 @@ were until the old suites are deleted (P11).
 | `hooks`, `hooks-shuf` | `suite_hooks`: v1.35's map, send port and pulses through the harness | the steps `regdoc`, `core-tile`, `rtl-tile` (the RTL's `registers` and `noc` programs) and `mem` (the write unit's send) | nothing of v1.36's hardware |
 | `periph`, `periph-shuf` | `test_tileslotconf`: boot-ROM programs on v1.35's map and peripheral window | `test_periph_slot` (17.1–17.4 and the RTL's `peripheral_control` and `peripheral_dma`), run by `periph`; the RTL's `replayer` tile program in `rtl-tile` | the special tile's base with every kind of peripheral interface (acceptance A's `special` program, section 1) |
 | `reqbus`, `reqbus-shuf` | `suite_reqbus`: v1.35's 128-entry request FIFO and its receive protocol | `test_request_tree` (chapter 11 from the specification and the RTL's request unit and tree) and `test_reqbus`, run by `reqbus` | the request link's beats (section 1) |
-| `cccores`, `cccores-shuf`; `ccbench` (*all*) | `suite_cccores`, `suite_ccbench`: v1.35's C&C 1–3 as cores with `cc1.c` and `cc23.c` | `rtl-sort`: the master and memory tiles boot the RTL's images through the RTL's boot ROM, the tracer tile waits in it; the load's and each phase's cycles are the RTL chip's | the tracer tile's image (the segment, P10) |
+| `cccores`, `cccores-shuf`; `ccbench` (*all*) | `suite_cccores`, `suite_ccbench`: v1.35's C&C 1–3 as cores with `cc1.c` and `cc23.c` | `rtl-sort`: the master and memory tiles boot the RTL's images through the RTL's boot ROM, the tracer tile waits in it; the load's and each phase's cycles are the RTL chip's | nothing: the tracer tile's image runs in `rtl-segment` |
 | `sort-p1` | `sort_test p1`: L1 and L2 under C&C's commands | `rtl-sort`: L1 and L2 of the RTL's runs, against the oracle and the RTL chip's cycles | the other key sets (`sort`, pending) |
+| `replay-build`, `stageb` | Stage B: v1.35's replay controller on v1.35's tile, and its build check (retired: the segment stage) | `rtl-segment` and `rtl-segment-real`: the RTL's replay image on the chip; `rtl-images` for its build | the segment stage's Retired table |
 
 **Pending:**
 
@@ -210,11 +303,10 @@ were until the old suites are deleted (P11).
 | `ctrl`, `ctrl-shuf`, `recipes`, `recipes-shuf`; `ctrl-full` (*all*) | `suite_ctrl`, `suite_recipes`: v1.35 firmware under C&C's commands (GO, DONE, the command block), which v1.36 does not have (7.3) | a firmware stage (the recipes rewritten for v1.36's map), or deletion (P11) |
 | `rdport`, `rdport-shuf`, `searchbench`; `rdport-full` (*all*) | `suite_rdport`, `suite_search`: `fw/tests/rdport.c`, `gather.c` and the search benchmark, v1.35 programs. The read unit's reads through the arbiter are `test_mem`'s and the gather unit is `test_gather`'s and `test_mach`'s, without firmware | those programs on v1.36's map (a firmware stage) |
 | `accounting`; `accounting-full` (*all*) | `suite_accounting`: v1.3's per-phase accounting (`tests/phase_log.*`) of phases named by C&C's command words | an accounting of v1.36's phases (the barrier's releases), with the measurements (section 6) |
-| `replay-build`, `stageb`; `stageb-lrd_x0`, `stageb-scd_x0`, `stageb-nop_hint`, `stageb-jalr_self`, `stageb-jalr_zero` (`DELIVERY`) | the replayer stage's second row | there |
 | `sort`, `sort-shuf`; `sort-bt-kv32`, `sort-bt-k128`, `sweep-quick` (*all*) | `sort_test` and `sweep`: v1.35's sort firmware under C&C's commands, on v1.3's built-in key sets, the BT path forced, and the parameter sweep. `rtl-sort` covers the sort's correctness on the RTL's four runs (uniform keys, the direct and the LB paths) | `sort_test`'s sets as runs of the RTL's image (the master's firmware takes its run from its link: a firmware stage), and the measurements re-established (below) |
 | `engine-full` (*all*) | EngineTest's full-size all-to-alls on four data sets, driven through v1.35's harness hooks and compared with ref's cycles | a port of those sets to `test_mach`'s all-to-all, with expectations from the specification's timetable |
 | `skewtable` (*all*) | NetTest's fan-in under start skews: v1.36's chip has no start skew (the release is one flip-flop, in every tile in the same cycle: 18) | deletion (P11) |
-| `rtl-sort-64k` (*all*) without the key file; `tracer-block` without the workloads' data | the RTL's 64K key file (16 MiB) and the real segments are outside the repository: `RTL_SORT_64K_KEYS`, `MESHSIM_INPUTS` (`RUNNING.md`) | the data on the host |
+| `rtl-sort-64k` (*all*) without the key file; `tracer-block` and `rtl-segment-real` (*all*) without the workloads' data | the RTL's 64K key file (16 MiB) and the real segments are outside the repository: `RTL_SORT_64K_KEYS`, `MESHSIM_INPUTS` (`RUNNING.md`) | the data on the host |
 
 **The sort's measurements.** v1.3's and v1.35's figures for the sort are superseded and none is re-established here:
 the phase tables and fingerprints of `tests/sort/` and `tests/golden-m2/` (v1.35's phases, from GO, of v1.35's
@@ -237,7 +329,7 @@ unit, the inject unit and the scratchpad are the specification's (`src/units/REA
 | the router under random load | the arbiters and queues of 16.3 | v1.35's router with v1.36's rules: the attach ports on tiles 0, 7 and 15, a reserved dst dropped, a special tile's router (its DMA input with the tile's own id and 16.4's flow control, an attach arrival for another tile dropped, its eject's order). `test_special_router` checks from the specification the routes of all 67 × 67 pairs at four cycles a link, the broadcast, the arbiters' round-robin order, the loopback queue's rule, a full queue's loss, and those rules; what no test compares with the RTL is a router under random many-to-one load (`test_router`'s references past a reserved id are the simulator's own, section 3). The overflow is counted a cycle after the lost push (the RTL signals it in the push's cycle); a special tile has one DMA input (the RTL allows four) | a conformance against the RTL's router |
 | the memory tile | the RW engine (17.7): its region, its DMA's two queues, LPDDR over AXI4 | a stand-in with 17.7's `PARAMS` and words, idle; **a `START`, a store to its words, a transfer or a `WRITE` into its region stops the simulator** | P10 |
 | Ingress/Egress | the UART both ways, the host interface (AXI4-Stream) both ways, the LED and the toast pin (17.6) | the nets, `RELEASE`, the watchdog (a store or a `RELEASE` in the expiry's cycle wins), the LED, the toast pin, the UART's transmit FIFO; the UART's and the host interface's receive sides read empty; **a store to the host interface's transmit words stops the simulator** | P10 |
-| the tracer tile's memory system | *Open* behind the `fill` port (17.9.14) | the simulator's `MemSystem` over a `FileStore`, given by the harness; on the chip no test gives one, and a run without it stops the simulator | the segment (P10) |
+| the tracer tile's memory system | *Open* behind the `fill` port (17.9.14); the RTL's chip tests place a model of it | on the chip the tests place the RTL test's model on the Tracer's fill port (`Tracer::FillPort`; the segment stage); the simulator's own `MemSystem` over a `FileStore` is the block-level tests'; a run with neither stops the simulator | the memory system's design |
 | the peripheral's DMA under a full router input | the packet register takes an entry whenever it is empty or its packet leaves, and offers it until the router takes it (`peripheral_dma.veryl`) | an entry is taken only in a cycle the router's input has room (the credit); the same packets a cycle apart at most, and the transfer's end the same | with the router |
 | the gather queue's count while a read is refused | a request leaves the queue in the cycle its first read enters the read register, which is empty or taken then (`gather_unit.veryl`) | the request leaves the queue when its first read is put, a cycle before the register is known to take it: with a read refused, the queue holds one request fewer than the RTL's for those cycles. Only an overflow at exactly 64 queued sees it, which the address generator alone cannot produce (13) | the timing stage |
 | a store to a `STREAM` or `GROUP` entry the running transfer reads | undefined (8.6): the RTL's read takes the entry `TABLE_LATENCY` cycles after its issue | the read takes the entry at its issue (`ag.h`) | nothing: undefined |

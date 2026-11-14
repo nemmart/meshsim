@@ -10,29 +10,35 @@ the debug build), runs every step in order and prints v1.3's summary; each step 
 builds), `results/.differs` (`--check`'s differences) and, with `STEP_TIMES=1`, `results/.step-times`. `quick`
 leaves out the steps marked *all* below. `--check` compares each log with its reference, its timings masked; a
 difference fails the run. An *equivalent* step runs the `make check` test that stands for a v1.3 suite and logs its
-verdict. `CC_NAME=gcc` uses gcc. With `DELIVERY=DIR` (a tracer delivery's replay inputs), five more Stage B steps run
-on its guest windows (`stageb-lrd_x0`, `scd_x0`, `nop_hint`, `jalr_self`, `jalr_zero`), unchecked.
+verdict. `CC_NAME=gcc` uses gcc.
 The step `tracer-block` reads the real workloads' data from `MESHSIM_INPUTS` (`~/meshsim-inputs` by default), outside the
 repository; without it the step is not run and is printed and counted as `PENDING`, with or without `--check`.
 The step `rtl-sort-64k` (*all*) reads the RTL's 64K key file, which `RTL_SORT_64K_KEYS` names (16 MiB, not vendored:
 `fw/rtl/README.md`; Snarky One's `mise run sort-images` writes it as `build/sort/sort-64k.keys`); without it the step is
 printed and counted as `PENDING` too.
+The step `rtl-segment-real` (*all*) reads the real workloads' data from `MESHSIM_INPUTS` as `tracer-block` does, and is
+`PENDING` without it.
 
 **v1.36: v1.3's steps run, are replaced, or are pending.** The suites that run v1.35's firmware or drive v1.35's
 register map cannot run on the RTL's hardware. The runner still prints every v1.3 step, in v1.3's order under v1.3's
 name: a step that **runs** as before (or with a test of v1.36's hardware in its suite's place: `mem`); a step
 **`REPLACED (<by what>)`**, which runs the tests of v1.36's hardware that stand for its suite, or names the step
 above that already ran them; a step **`PENDING (<reason>)`**, which nothing stands for yet. Its summary counts the
-pending steps by reason and ends with `N steps REPLACED …; M steps PENDING` (23 and 24 in `all`, 25 pending without
-the 64K key file; 20 and 16 in `quick`), and the run exits 0 when every step that runs passed. `PENDING-v1.36.md` (the
+pending steps by reason and ends with `N steps REPLACED …; M steps PENDING` (25 and 22 in `all`, 23 pending without
+the 64K key file; 22 and 14 in `quick`), and the run exits 0 when every step that runs passed. `PENDING-v1.36.md` (the
 platform stage, section 4) has both tables, and what each replacement does not cover; in `run_tests.sh` a replaced
 or pending step keeps its v1.3 `step` line under it as a comment. The steps that run: `layout`, `bus`, `rtl-images`,
-`rtl-tile`, `rtl-sort` (and `rtl-sort-64k` in `all`), `mem`, `mem-shuf`, `mem-shuf2`, `core-programs`, `core-tile`,
+`rtl-tile`, `rtl-sort` (and `rtl-sort-64k` in `all`), `rtl-segment` (and `rtl-segment-real` in `all`), `mem`, `mem-shuf`, `mem-shuf2`, `core-programs`, `core-tile`,
 `replayer`, `memsys`, `rvc`, `tracer`, `tracer-block-synth` and `tracer-block`. Those with no v1.3 step are v1.36's own, with no reference log: a
 failing test fails the run. `rtl-tile`, right after `bus`, is acceptance A: the RTL's tile programs on one compute
 tile (`build/clang-suite/test_rtl_tile`); what the test itself leaves pending is counted apart. `rtl-sort` is
 acceptance B: the RTL's sort images end to end on the chip (`build/clang-suite/test_rtl_sort`), 64 × 16 records with
 32-bit and with 128-bit values and the first split over 2 and 8 threads; `rtl-sort-64k` the same at 64 × 65,536.
+`rtl-segment` is acceptance C: the segment on the chip, run by the RTL's own firmware (the master's trace run, the tracer
+tile's image and the replay image), as the RTL's chip tests run it (`build/clang-suite/test_rtl_segment`): the RTL test's
+three generated segments, traced by the Tracer, delivered and replayed, against the RTL's models' expectations and, cycle
+for cycle, the RTL chip's own figures (`tests/segment/rtl/`); `rtl-segment-real` the real workloads' windows, 192, a
+segment of 64 at a time, against their recorded files and the RTL chip's published cycles.
 `core-programs` and `core-tile` are the RTL's core programs on the core in the RTL's cycles (`test_core_programs`) and
 the core's join to the tile's register bus (`test_core_tile`). The rows below for the pending steps, and their
 times, are v1.35's; a replaced step's row is v1.36's.
@@ -47,6 +53,7 @@ The times are wall times on the runner (an Intel i5-14400F: 6 P cores and 4 E co
 | `bus` | both | `build/clang-debug/suite_bus` | 2 s | `results/bus.log` | `tests/p2suites/bus.log` |
 | `rtl-tile` | both | `build/clang-suite/test_rtl_tile` | <1 s | `results/rtl-tile.log` | the RTL's `base_tile_test.rs`'s verdicts and the boot ROM's cycles, in the test |
 | `rtl-sort` | both | `build/clang-suite/test_rtl_sort sort_oracle`, then `… sort_16` | 5 s | `results/rtl-sort.log` | the RTL's `chip_test.rs`'s checks against the oracle, in the test; the split runs' digests against one domain's |
+| `rtl-segment` | both | `build/clang-suite/test_rtl_segment segment_` | 3 s | `results/rtl-segment.log` | the RTL's `chip_trace_test.rs`'s checks against the RTL's models' segments, and every cycle against the RTL chip's own figures (`tests/segment/rtl/`), in the test |
 | `net` | both | `build/clang-suite/test_router`, then `…/test_special_router` | <1 s | `results/net.log` | **replaced**: v1.3's NetTest cannot run; ref's router observations with v1.36's two rules, and 16.2–16.4, in the tests |
 | `net-shuf` | both | — | <1 s | `results/net-shuf.log` | **replaced**: in the step `net` (`test_router`'s own shuffled and instance-major runs) |
 | `net-shuf2` | both | — | <1 s | `results/net-shuf2.log` | **replaced**: in the step `net` |
@@ -79,8 +86,8 @@ The times are wall times on the runner (an Intel i5-14400F: 6 P cores and 4 E co
 | `reqbus-shuf` | both | — | <1 s | `results/reqbus-shuf.log` | **replaced**: in the step `reqbus` |
 | `cccores` | both | — | <1 s | `results/cccores.log` | **replaced**: the step `rtl-sort` (the special tiles boot the RTL's images) |
 | `cccores-shuf` | both | — | <1 s | `results/cccores-shuf.log` | **replaced**: in the step `rtl-sort` (its split run) |
-| `replay-build` | both | `tests/stageb/replay_build.sh` | <1 s | `results/replay-build.log` | `tests/stageb/replay-build.log` |
-| `stageb` | both | `build/clang-suite/stageb synthetic` | 1 s | `results/stageb.log` | `tests/stageb/stageb.log` |
+| `replay-build` | both | — | <1 s | `results/replay-build.log` | **replaced**: the step `rtl-images` (the RTL's replay image, vendored, against its hash list) |
+| `stageb` | both | — | <1 s | `results/stageb.log` | **replaced**: the steps `rtl-segment` and `rtl-segment-real` (the RTL's replay image replays the Tracer's deliveries on the chip) |
 | `replayer` | both | `build/clang-suite/suite_replayer` | 2 s | `results/replayer.log` | `tests/replayer/replayer.log` |
 | `memsys` | both | `build/clang-suite/suite_memsys` | <1 s | `results/memsys.log` | `tests/tracersuites/memsys.log` |
 | `rvc` | both | `build/clang-suite/suite_rvc` | <1 s | `results/rvc.log` | `tests/tracersuites/rvc.log` |
@@ -91,6 +98,7 @@ The times are wall times on the runner (an Intel i5-14400F: 6 P cores and 4 E co
 | `sort` | both | `build/clang-suite/sort_test -1 sort` | 46 s | `results/sort.log` | `tests/sort/ref/sort.log` |
 | `sort-shuf` | both | `build/clang-suite/sort_test 4 sort` | 49 s | `results/sort-shuf.log` | `tests/sort/ref/sort-shuf.log` |
 | `rtl-sort-64k` | all, with the key file | `RTL_SORT_64K_KEYS=FILE build/clang-suite/test_rtl_sort sort_64k` | 44 s | `results/rtl-sort-64k.log` | as `rtl-sort`, at 64 × 65,536 records |
+| `rtl-segment-real` | all, with the data | `MESHSIM_INPUTS=DIR build/clang-suite/test_rtl_segment real_` | 55 s | `results/rtl-segment-real.log` | the windows' recorded files under `DIR` (every row, record and stream), and the RTL chip's cycles for the same windows (Snarky One's `rtl/chip/README.md`, written in the test) |
 | `sort-bt-kv32` | all | `build/clang-suite/sort_test -1 run … fmt=kv32 ready=8 force=bt` on `tests/sort/keys.sh 16384 trace10-10` | 22 s | `results/sort-bt-kv32.log` | `tests/sort/ref/sort-bt-kv32.log` |
 | `sort-bt-k128` | all | `build/clang-suite/sort_test -1 run … fmt=k128 ready=8 force=bt` on `tests/sort/keys.sh 16384 trace10-10` | 28 s | `results/sort-bt-k128.log` | `tests/sort/ref/sort-bt-k128.log` |
 | `rdport-full` | all | `build/clang-suite/suite_rdport -1 full` | 20 s | `results/rdport-full.log` | `tests/p4suites/rdport-full.log` |
@@ -112,9 +120,7 @@ release build). The inputs they need beyond this folder are named; the freeze ch
 |---|---|---|---|---|
 | the full-size sort, one thread | `SORT_SIZE=64k SORT_PARTS=1 SORT_KEYS=DIR/uniform.keys SORT_FP=FILE build/clang-release/test_sort sort_runs`; the keys from `KeyGen … --n 65536 --only uniform` | 34 s | its log | every `sort64k-fp` point, the result, the phases, 1,229,687 cycles |
 | the same, 6 domains | `build/clang-release/bench_sort --keys DIR/uniform.keys --threads 6 --partition tiles --reps 1` (and `--threads 1 --partition one`) | 138 s (both runs) | one result line | the digest at L2's all-READY equal on both; the span 1,229,687 |
-| T2 | `build/clang-release/t2 --sram RUN.sram.gz --files RUN.files.gz --segment --parts N --fp-points RUN.fpchip.gz --rows-ref tests/freeze/t2-rows.txt --program P --hint-exit E --hint-end C`, for evm-zone-29 and cyclone-29 segment 10, `N` 1 and 6; the `RUN.*` files are golden-m3's data | 17 s (all four runs) | its log | golden-m3's unit lines, `tests/freeze/t2-rows.txt`, the exits, lag 0 |
-| the chains | `build/clang-release/chain --w26 DIR --delivery DIR --program P --segments 0-127`, for both workloads; the inputs are the pipeline's segment files and a tracer delivery (`pipeline/README.md`) | about 17 min each (1,047 s and 1,021 s; they can run side by side) | its log | every start against `tests/golden-chain/`, every TracerT2 check, the ends |
-| the acceptance kit's calibration | `tests/acceptance/make_kit.sh KIT.tgz`, then in the kit `./calibrate.sh OUT DELIVERY` (128 synthetic windows, seed 11; 1, 4, 8 and 16 processes) | 37 s | `OUT/` | `tests/acceptance/README.md`'s expectations |
+| the acceptance kit's calibration | `tests/acceptance/make_kit.sh KIT.tgz`, then in the kit `./calibrate.sh OUT DELIVERY` (128 synthetic windows, seed 11; 1, 4, 8 and 16 processes; Stage A only in v1.36) | 37 s (v1.35's, with Stages B and F) | `OUT/` | `tests/acceptance/README.md`'s expectations |
 | the sort kit, full size | `tests/sort/kit/assemble.sh OUTDIR [KEYDIR]`, then `OUTDIR/run.sh -j 10 -o results` | 22 min (1,312 s, `-j 10`) | per run `<id>.csv`, `<id>.phases.csv`, `<id>.log`; `SUMMARY.md`, `all.csv` | every run exits 0 or is refused as recorded (`tests/sort/README.md`) |
 | `make check` on a clean tree | `make check` | 24 min (1,428 s, `-j16`, both compilers, debug and release, TSan included) | `build/` | every test passes (`BUILDING.md`) |
 
@@ -125,7 +131,6 @@ release build). The inputs they need beyond this folder are named; the freeze ch
 | the sort as v1.3's SortTest | `build/clang-release/sort_test [SEED] p1\|sort\|run …` (`cfg.<field>=value` sets a `MachConfig` field) | its log |
 | the sweep, full | `build/clang-suite/sweep full` | `results/sweep-full.csv` |
 | two sort runs compared | `build/clang-release/sort_compare NEW_DIR REF_DIR [out.md]` | `out.md` |
-| a shard of the acceptance kit | `build/clang-release/replay_shard DELIVERY PROGRAM CSV [--stages ABF] [--variant V] [--first F --count N] [--manifest M]`; `shard_summary` sums the shards | `CSV` |
-| Stage B on a delivery | `build/clang-suite/stageb DELIVERY VARIANT PROGRAM [WINDOW …]` | its log |
+| a shard of the acceptance kit (Stage A: the replayer alone) | `build/clang-release/replay_shard DELIVERY PROGRAM CSV [--variant V] [--first F --count N] [--manifest M]`; `shard_summary` sums the shards | `CSV` |
 | the delivery tools, the register tables | `tools/README.md` | |
 | the benchmarks | `bench/README.md` | |

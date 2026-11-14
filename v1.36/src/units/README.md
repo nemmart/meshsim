@@ -46,7 +46,7 @@ its machine through them.
 | the replayer's expansion tables as delivered | `replay_tables.h`, `replay_tables.cpp` | 4.19; `data/REPLAY-INPUT-REQUIREMENTS.md` |
 | what the replayer and the Tracer share | `row_core.h` | 4.19, 4.21 |
 | the Tracer: the RTL's (Snarky One's `tracer_unit`), cycle for cycle | `tracer.h`, `tracer.cpp`, `rvc.h`, `lru_coder.h`, `lru_index.h` | 17.9 (`spec/jolt/tracer.md`) |
-| the memory system behind the fill port, and the memory as files, as the Tracer sees them | `mem_system.h`, `file_store.h`, `file_store.cpp` | 17.9.5, 17.9.14 |
+| the memory system behind the fill port, and the memory as files, as the Tracer sees them: the simulator's own model (17.9.14 is *Open*). A harness may place its own model on the fill port instead (`Tracer::FillPort`: the two request channels' readies and each request's answer), as the RTL's chip tests do; the chip's tests place the RTL test's (`tests/segment_bench.h`) | `mem_system.h`, `file_store.h`, `file_store.cpp`; `tracer.h` | 17.9.5, 17.9.14 |
 | S1's measurement | `s1.h` | 4.8, 4.10; invariant 24 |
 | the retire trace | `trace_log.h`, `trace_log.cpp` | 8.15; `tests/TRACE-FORMAT.md` |
 | a memory's part of the state fingerprint | `memsum.h` | (simulator only) |

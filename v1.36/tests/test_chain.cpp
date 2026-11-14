@@ -1,14 +1,11 @@
-// The chain's pieces (tests/chain.h), on what `make check` has without the runner's data:
-//   - the JSON reader (proof.json, the delivery's manifest);
+// The readers of the pipeline's host-side files (tests/chain.h), on what `make check` has without the runner's data:
+//   - the JSON reader (proof.json);
 //   - the segment file: segments written in frames 2-5 (raw runs and the LRU coding) and read back;
-//   - the inputs: a small set written in their formats, loaded, the store's pages and the checks' refusals;
-//   - the landings on the real replayer tables: every header word, the record, the advice, the expected end state, the
-//     tiles' headers; M3SRAM01's and M3FILES1's streams;
-//   - the oracle's files (tests/golden-chain) parsed; stream_values against packed values.
-// The landings' and the start memory's equality with `ref` (golden-chain's sha256s) is checked on the runner.
+//   - the inputs: a small set written in their formats, loaded, the store's pages and the checks' refusals.
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <set>
 #include <string>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -16,7 +13,6 @@
 
 #include "chain.h"
 #include "harness.h"
-#include "units/tracer.h"
 
 using namespace chain;
 
@@ -31,16 +27,9 @@ void put32(std::vector<uint8_t>& b, uint32_t v) { for (int i = 0; i < 4; i++) b.
 void put64(std::vector<uint8_t>& b, uint64_t v) { for (int i = 0; i < 8; i++) b.push_back(uint8_t(v >> (8 * i))); }
 void write(const std::string& p, const std::vector<uint8_t>& b) { FILE* f = std::fopen(p.c_str(), "wb"); if (!b.empty()) std::fwrite(b.data(), 1, b.size(), f); std::fclose(f); }
 void write(const std::string& p, const std::string& s) { write(p, std::vector<uint8_t>(s.begin(), s.end())); }
-uint32_t le32(const std::vector<uint8_t>& b, size_t at) { return uint32_t(b[at]) | uint32_t(b[at + 1]) << 8 | uint32_t(b[at + 2]) << 16 | uint32_t(b[at + 3]) << 24; }
 
 uint64_t rng = 0x9E3779B97F4A7C15ull;
 uint64_t next() { rng ^= rng << 13; rng ^= rng >> 7; rng ^= rng << 17; return rng; }
-
-// The landings as a lookup: (unit, chunk) -> value (0 when absent).
-uint32_t at(const std::vector<t2::SramLanding>& l, uint32_t u, uint32_t c) {
-    for (const auto& x : l) if (x.unit == u && x.chunk == c) return x.value;
-    return 0;
-}
 
 }  // namespace
 
@@ -154,13 +143,6 @@ TEST(chain_w26_inputs) {
         const int64_t nf = fs.next_free();
         CHECK_EQ(fs.set_ownership(w.img, w.written[0]), 1);
         CHECK_EQ(fs.next_free(), nf + FileStore::PAGE_UNITS);
-        // M3FILES1: the header, then every page with its address
-        const std::vector<uint8_t> s = files_stream(fs);
-        CHECK(std::memcmp(s.data(), "M3FILES1", 8) == 0);
-        CHECK_EQ(le32(s, 8), uint32_t(fs.next_free()));
-        CHECK_EQ(le32(s, 12), uint32_t(fs.pages_allocated()));
-        CHECK_EQ(s.size(), 16 + fs.pages_allocated() * (4 + 4096));
-        CHECK_EQ(le32(s, 16), 32u);
     }
     {
         FileStore fs;
@@ -176,109 +158,3 @@ TEST(chain_w26_inputs) {
         CHECK_EQ(fs.pages_allocated(), size_t(1 + 2 + 3) + 1 + 256);   // image root, two index pages, three data; map's
     }
 }
-
-TEST(chain_landings) {
-    const units::tracer::ReplayTables tb = units::tracer::ReplayTables::load(units::tracer::ReplayTables::default_dir());
-    W26 w;
-    w.log2k = 23; w.lowest = 0x7e000000; w.hash_k = 13; w.hash_p1 = int32_t(0x9e3779b1u); w.hash_p3 = 10368899;
-    w.img = {32, 2}; w.map = {16032, 1};
-    Seg sg, nx;
-    for (int i = 0; i < 131; i++) { sg.state[i] = next(); nx.state[i] = next(); }
-    sg.advice = {11, 22, 33};
-    std::vector<t2::SramLanding> l;
-    landings(tb, w, sg, &nx, 64, l);
-    for (size_t i = 1; i < l.size(); i++) CHECK(l[i - 1].unit < l[i].unit || (l[i - 1].unit == l[i].unit && l[i - 1].chunk < l[i].chunk));
-    for (const auto& x : l) CHECK(x.value != 0 && (x.unit < 64 || x.unit == 66));
-    // C&C 3's header
-    CHECK_EQ(at(l, 66, C_HDR + 0), TL_MAGIC); CHECK_EQ(at(l, 66, C_HDR + 1), TL_VERSION);
-    CHECK_EQ(at(l, 66, C_HDR + 4), uint32_t(tb.index_bytes.size() / 16));
-    CHECK_EQ(at(l, 66, C_HDR + 8), C_EXPECT); CHECK_EQ(at(l, 66, C_HDR + 10), 3u); CHECK_EQ(at(l, 66, C_HDR + 11), 65536u);
-    CHECK_EQ(at(l, 66, C_HDR + 12), 0x9e3779b1u); CHECK_EQ(at(l, 66, C_HDR + 13), 10368899u); CHECK_EQ(at(l, 66, C_HDR + 14), 13u);
-    CHECK_EQ(at(l, 66, C_HDR + 15), 64u); CHECK_EQ(at(l, 66, C_HDR + 19), S_WLOG);
-    // the record: state, idx | off << 32, advice count << 38, the registers, the files word
-    CHECK_EQ(at(l, 66, C_RECORD + 0), uint32_t(sg.state[0])); CHECK_EQ(at(l, 66, C_RECORD + 1), uint32_t(sg.state[0] >> 32));
-    CHECK_EQ(at(l, 66, C_RECORD + 2), uint32_t(sg.state[1])); CHECK_EQ(at(l, 66, C_RECORD + 3), uint32_t(sg.state[2] & 0xFFFF));
-    CHECK_EQ(at(l, 66, C_RECORD + 7), uint32_t((uint64_t(3) << 38) >> 32));
-    CHECK_EQ(at(l, 66, C_RECORD + 8 + 2 * 127), uint32_t(sg.state[130]));
-    uint64_t fw[2];
-    units::tracer::Tracer::files_word(32, 2, 16032, 1, 23, 0x7e000000, fw);
-    CHECK_EQ(at(l, 66, C_RECORD + 264), uint32_t(fw[0])); CHECK_EQ(at(l, 66, C_RECORD + 267), uint32_t(fw[1] >> 32));
-    // the advice (padded to even) and the expected end state
-    CHECK_EQ(at(l, 66, C_ADVICE + 4), 33u); CHECK_EQ(at(l, 66, C_ADVICE + 6), 0u);
-    CHECK_EQ(at(l, 66, C_EXPECT + 1), uint32_t(nx.state[0] >> 32));
-    CHECK_EQ(at(l, 66, C_EXPECT + 8 + 2 * 127 + 1), uint32_t(nx.state[130] >> 32));
-    // the tables in C&C 3's layout and every tile's
-    const std::vector<uint8_t> t0(tb.decode_bytes);
-    CHECK_EQ(at(l, 66, C_TABLES), le32(t0, 0));
-    CHECK_EQ(at(l, 17, S_TABLES + 5), le32(t0, 20));
-    CHECK_EQ(at(l, 63, S_TEMPLATES + 3), le32(tb.template_bytes, 12));
-    for (uint32_t t : {0u, 31u, 63u}) {
-        CHECK_EQ(at(l, t, S_HDR + 0), RL_MAGIC); CHECK_EQ(at(l, t, S_HDR + 1), 5u); CHECK_EQ(at(l, t, S_HDR + 8), ~0u);
-        CHECK_EQ(at(l, t, S_HDR + 13), 1u); CHECK_EQ(at(l, t, S_HDR + 14), 65536u | 3u << 24); CHECK_EQ(at(l, t, S_HDR + 15), 2u);
-    }
-    // the last segment: no expected end state; fewer windows: the idle tiles wait on the barriers
-    landings(tb, w, sg, nullptr, 64, l);
-    CHECK_EQ(at(l, 66, C_HDR + 8), 0u);
-    CHECK_EQ(at(l, 66, C_EXPECT + 1), 0u);
-    landings(tb, w, sg, &nx, 8, l);
-    CHECK_EQ(at(l, 66, C_HDR + 8), 0u); CHECK_EQ(at(l, 66, C_HDR + 15), 8u);
-    CHECK_EQ(at(l, 7, S_HDR + 13), 1u); CHECK_EQ(at(l, 8, S_HDR + 13), 0u); CHECK_EQ(at(l, 8, S_HDR + 15), 1u);
-    // M3SRAM01: unit, count, then (chunk, value), unit by unit
-    const std::vector<uint8_t> s = sram_stream(l);
-    CHECK(std::memcmp(s.data(), "M3SRAM01", 8) == 0);
-    size_t p = 8, words = 0;
-    uint32_t last = 0;
-    while (p < s.size()) {
-        const uint32_t u = le32(s, p), n = le32(s, p + 4);
-        CHECK(p == 8 || u > last);
-        last = u; p += 8 + 8 * size_t(n); words += n;
-    }
-    CHECK_EQ(p, s.size());
-    CHECK_EQ(words, l.size());
-}
-
-TEST(chain_oracle_files) {
-    std::string err;
-    for (const char* f : {"tests/golden-chain/evm.starts", "tests/golden-chain/cyclone.starts"}) {
-        std::vector<Start> st;
-        CHECK(load_starts(f, st, err));
-        CHECK_EQ(st.size(), 128u);
-        unsigned with_sram = 0;
-        for (const Start& x : st) { CHECK(x.present && x.sha.size() == 64 && x.pages > 0); if (!x.sram_sha.empty()) with_sram++; }
-        CHECK_EQ(with_sram, 5u);
-        CHECK(!st[10].sram_sha.empty() && !st[127].sram_sha.empty());
-    }
-}
-
-TEST(chain_manifest) {
-    const std::string d = tmpdir("dl");
-    write(d + "/p.manifest.json", R"({"programs": [{"name": "p", "window_entries": [{"index": 0, "files": {"x": 1}}, {"index": 1},
-        {"index": 2, "files": {}}]}, {"window_entries": [{"index": 9, "files": 1}]}]})");
-    std::set<unsigned> w;
-    std::string err;
-    CHECK(manifest_windows(d, "p", w, err));
-    CHECK(w == std::set<unsigned>({0, 2}));
-    CHECK(!manifest_windows(d, "q", w, err));
-}
-
-TEST(chain_stream_values) {
-    for (unsigned bits : {32u, 64u}) {
-        const size_t n = 37;
-        std::vector<uint64_t> v(n), words((n * bits + 127) / 128 * 2, 0);
-        for (size_t k = 0; k < n; k++) {
-            v[k] = bits == 64 ? next() : next() & 0xFFFFFFFF;
-            for (unsigned b = 0; b < bits; b++) {
-                const uint64_t pos = k * bits + b;
-                words[2 * (pos / 128) + (pos % 128) / 64] |= ((v[k] >> b) & 1) << (pos % 64);
-            }
-        }
-        bool sh = true;
-        CHECK(stream_values(words, n, bits, sh) == v);
-        CHECK(!sh);
-        words.resize(words.size() - 2);
-        stream_values(words, n, bits, sh);
-        CHECK(sh);
-    }
-}
-
-

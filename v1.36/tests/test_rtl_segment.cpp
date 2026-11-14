@@ -13,7 +13,8 @@
 //   segment_small    chip_trace_test: 4 windows of 3,000 rows on tiles 0-3, the small guest;
 //   segment_full     chip_trace_test_full: a window of 1,500 rows on each of the 64 compute tiles, a guest built to
 //                    miss in the Tracer's caches and its jump LRU and to write lines back;
-//   segment_window   chip_trace_test_window: one window of a real window's 65,536 rows on tile 0.
+//   segment_window   chip_trace_test_window: one window of a real window's 65,536 rows on tile 0;
+//   segment_small_split   the first again, the chip split over 2 and over 8 threads.
 // THE CYCLES are checked equal to the RTL chip's in each: see segment_bench.h.
 #include <cstdio>
 #include <string>
@@ -44,7 +45,7 @@ TEST(segment_full) { run_fixture("chip_trace_test_full"); }
 TEST(segment_window) { run_fixture("chip_trace_test_window"); }
 
 // ---- real workloads' windows (chip_replay_test.rs): a segment of 64 windows on the 64 compute tiles, read from the
-// inputs' directory, outside the repository ($MESHSIM_INPUTS, ~/meshsim-inputs: tests/segment_real.h). Without it they
+// inputs' directory, outside the repository ($MESHSIM_INPUTS: tests/segment_real.h). Without it they
 // print SKIPPED and pass. THE FIGURES are the RTL chip's for the same windows (Snarky One's rtl/chip/README.md, Real
 // workloads' windows), written here: the replay's cycles, from the windows' landing's release to each window's last
 // row out of its tile's port, summed over the tiles; those to each window's first row; the passes' end from the
@@ -63,7 +64,7 @@ const RtlReal kRtlReal[] = {
 void run_real(const RtlReal& rtl) {
     const std::string inputs = segment::inputs_directory();
     if (inputs.empty()) {
-        std::printf("test_rtl_segment: %s windows %u-%u: SKIPPED: no recorded runs in $MESHSIM_INPUTS or ~/meshsim-inputs (tests/segment_real.h)\n",
+        std::printf("test_rtl_segment: %s windows %u-%u: SKIPPED: MESHSIM_INPUTS does not name a directory with the recorded runs (tests/segment_real.h)\n",
                     rtl.run, rtl.first, rtl.first + 63);
         return;
     }
@@ -94,3 +95,10 @@ void run_real(const RtlReal& rtl) {
 TEST(real_evm_zone_0) { run_real(kRtlReal[0]); }
 TEST(real_evm_zone_64) { run_real(kRtlReal[1]); }
 TEST(real_cyclone_0) { run_real(kRtlReal[2]); }
+
+// The chip split over threads (src/units/chip.h, THE PARTITION), as acceptance B's split run: the small segment on 2 and
+// on 8 threads, with every check of the one-domain run, the RTL chip's cycles among them. (The fill port's model is
+// called by the tracer tile's domain alone and draws by the cycle, whatever the order the domains run in.)
+TEST(segment_small_split) {
+    for (unsigned parts : {2u, 8u}) run_fixture("chip_trace_test", parts);
+}

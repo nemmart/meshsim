@@ -58,7 +58,7 @@ name table from v1.35's terms, and three reversals of recorded rulings that wait
 | 6 | the receive, gather and inject units and the scratchpad | to do |
 | 7 | the peripherals: the control block and the DMA, Ingress/Egress and the host interface, the RW engine | to do |
 | 8 | the replayer | to do |
-| 9 | the Tracer and the segment | to do |
+| 9 | the Tracer and the segment | the Tracer at the block level and the segment on the chip under the RTL's firmware (acceptance C, `tests/test_rtl_segment.cpp`), both in the RTL's cycles; what is left: `PENDING-v1.36.md` |
 | the freeze | the suites and reference logs re-made on v1.36's simulator, every `[meas: …]` figure measured again, the documents of this folder made true of v1.36 | to do |
 
 Each stage is a section of the guide (`spec/CHANGES-v1.35-to-v1.36.md`). `CHANGES-v1.35.md`, `BUILDING.md`,

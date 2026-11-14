@@ -48,7 +48,6 @@ bool proof_value(const std::string& text, const char* name, uint64_t& out) {
 std::string inputs_directory() {
     std::string dir;
     if (const char* env = std::getenv("MESHSIM_INPUTS"); env && *env) dir = env;
-    else if (const char* home = std::getenv("HOME")) dir = std::string(home) + "/meshsim-inputs";
     std::vector<uint8_t> probe;
     if (dir.empty() || !read_bytes(dir + "/w26-jumpmap/evm-zone-23/proof.json", probe)) return "";
     return dir;

@@ -10,7 +10,7 @@
 #                   REF), timing masked (mask() below); a difference fails the run as a FAIL line would
 #     --no-build    use the binaries as they are
 #   Environment: CC_NAME (default clang); MESHSIM_INPUTS (default ~/meshsim-inputs: the real workloads' data, for the
-#   step tracer-block, pending without it); RTL_SORT_64K_KEYS (the RTL's 64K key file, for the step rtl-sort-64k of
+#   steps tracer-block and, in `all`, rtl-segment-real, each pending without it); RTL_SORT_64K_KEYS (the RTL's 64K key file, for the step rtl-sort-64k of
 #   `all`, pending without it); the suites build with MODE=suite (release flags, the checker's facts on:
 #   src/check.h), into build/$CC_NAME-suite/.
 #
@@ -51,7 +51,7 @@ mkdir -p results
 # The suite programs the steps run (each worker adds its own; targets of sim/Makefile).
 # v1.36: only what runs is built. The pending steps' programs (not built): suite_net suite_engine suite_search suite_ag
 # suite_rdport suite_agbench suite_reqbus (P4), suite_ctrl suite_recipes suite_cond suite_hooks suite_regdoc
-# suite_accounting suite_s1bench suite_cccores suite_ccbench (P5), stageb, sort_test, sweep; the equivalents test_golden
+# suite_accounting suite_s1bench suite_cccores suite_ccbench (P5), sort_test, sweep; the equivalents test_golden
 # and test_tileslotconf.
 SUITES="suite_memsys suite_rvc suite_tracer tracer_block"
 EQUIVS="test_core_programs test_core_tile"           # v1.36: the RTL's core (make-check tests, run as steps)
@@ -61,6 +61,7 @@ SUITES="$SUITES test_mem"                            # v1.36: the scratchpad and
 SUITES="$SUITES test_router test_special_router test_ag test_receive test_gather test_request_tree test_reqbus"
 SUITES="$SUITES test_regs test_periph_slot test_ingress_egress test_tile_control"
 SUITES="$SUITES test_rtl_tile test_rtl_sort"         # v1.36: acceptances A and B (the rtl-tile and rtl-sort steps)
+SUITES="$SUITES test_rtl_segment"                    # v1.36: acceptance C (the rtl-segment steps)
 
 if [ "$BUILD" = 1 ]; then
   echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
@@ -145,7 +146,6 @@ R_FW="meshsim's own firmware is not ported: v1.35's map and commands, and no ris
 R_NET="v1.36's chip has no start skew to tabulate (the release is one flip-flop, in every tile in the same cycle: 18); deletion with the old suites"
 R_ENG="its suite runs v1.35's C programs (fw/tests) or measures v1.35's settings; the units are tested without firmware (the steps engine, mem); a firmware stage"
 R_CTL="its suite runs v1.35 firmware under C&C's commands (GO, DONE, the command block), which v1.36 does not have (7.3); a firmware stage, or deletion"
-R_STAGEB="v1.35's replay controller (replay_ctl.c) on v1.35's tile, map and commands; a replay controller on v1.36's map: the segment on the chip, P10"
 R_SORT="v1.35's sort firmware under C&C's commands; the sort end to end on v1.36's chip is the step rtl-sort (the RTL's four runs); sort_test's other key sets and its measurements wait (PENDING-v1.36.md)"
 # ---- v1.3's steps, in v1.3's order -------------------------------------------------------------------------------
 echo "== the layout (v1.3: tools/check_layout.sh; v1.35: tools/check_copies.sh)"; sh tools/check_copies.sh > results/layout.log 2>&1 && tail -1 results/layout.log || { cat results/layout.log; echo "FAIL the layout"; }
@@ -166,6 +166,19 @@ if [ "$MODE" != quick ]; then
     check rtl-sort-64k "acceptance B at 64 x 65,536 records: kv32 and k128 (about a minute)" -- $S/test_rtl_sort sort_64k
   else
     pending rtl-sort-64k "acceptance B at 64 x 65,536 records: kv32 and k128" "skipped: RTL_SORT_64K_KEYS does not name the RTL's 64K key file (fw/rtl/README.md)"
+  fi
+fi
+# Acceptance C: the segment on the chip, run by the RTL's own firmware (the master's trace run, the tracer tile's image,
+# the replay image), as the RTL's chip_trace_test and chip_replay_test run it (tests/test_rtl_segment.cpp). The RTL test's
+# three generated segments here, each against the RTL's models' expectations and, cycle for cycle, the RTL chip's own
+# figures (tests/segment/rtl/); the real workloads' windows in `all`, with their data, outside the repository.
+check rtl-segment "acceptance C: the segment on the chip under the RTL's firmware: 4 windows, 64 windows and a window of 65,536 rows, traced, delivered and replayed, in the RTL chip's cycles (tests/test_rtl_segment.cpp)" -- $S/test_rtl_segment segment_
+if [ "$MODE" != quick ]; then
+  SEG_INPUTS=${MESHSIM_INPUTS:-$HOME/meshsim-inputs}
+  if [ -f "$SEG_INPUTS/w26-jumpmap/evm-zone-23/proof.json" ] && [ -f "$SEG_INPUTS/v1261/cyclone-22/window_00000.rows.bin" ]; then
+    check rtl-segment-real "acceptance C on the real workloads' windows: EVM Zone's 0-63 and 64-127 and Cyclone's 0-63, a segment of 64 windows each, every row and delivery against the recorded files, the cycles against the RTL chip's (about a minute)" -- env MESHSIM_INPUTS="$SEG_INPUTS" $S/test_rtl_segment real_
+  else
+    pending rtl-segment-real "acceptance C on the real workloads' windows (EVM Zone, Cyclone), against the recorded files and the RTL chip's figures" "skipped: the workloads' data is not at $SEG_INPUTS (MESHSIM_INPUTS)"
   fi
 fi
 NETREF=tests/p4suites/net.log; [ "$MODE" = quick ] && NETREF=tests/p4suites/net-quick.log   # v1.3's net step takes $Q
@@ -243,14 +256,8 @@ same cccores "C&C 1-3 as cores (Config.ccCores): the boot ROM's controller branc
 #   MASK_EXTRA=$D44_MASK step cccores      1 "C&C 1-3 as cores (Config.ccCores): the boot ROM's controller branch, the link, the request tree" tests/ctlsuites/cccores.log -- $S/suite_cccores -1
 same cccores-shuf "shuffled child order (seed 4)" "in the step rtl-sort (its split run)"
 #   MASK_EXTRA=$D44_MASK step cccores-shuf 1 "shuffled child order (seed 4)" tests/ctlsuites/cccores-shuf.log -- $S/suite_cccores 4
-pending replay-build "the replay controller (tests/stageb/replay_build.sh)" "$R_STAGEB"
-#   step replay-build 1 "the replay controller (tests/stageb/replay_build.sh)" tests/stageb/replay-build.log -- tests/stageb/replay_build.sh
-pending stageb "Stage B: replay_ctl.c on a tile against Stage A, synthetic windows" "$R_STAGEB"
-#   step stageb 1 "Stage B: replay_ctl.c on a tile against Stage A, synthetic windows" tests/stageb/stageb.log -- $S/stageb synthetic
-if [ -n "${DELIVERY:-}" ]; then   # Stage B on a tracer delivery's guest windows: DELIVERY=<replay-inputs dir> (v1.3's; no such delivery on the runner: unrun, as in v1.3)
-  for g in lrd_x0 scd_x0 nop_hint jalr_self jalr_zero; do pending stageb-$g "Stage B on the tile: $g" "$R_STAGEB"; done
-  #   for g in lrd_x0 scd_x0 nop_hint jalr_self jalr_zero; do step stageb-$g 1 "Stage B on the tile: $g" - -- $S/stageb "$DELIVERY" state $g; done
-fi
+same replay-build "the replay controller's build" "v1.35's replay controller is retired with its machine; v1.36's is the RTL's replay image, vendored and checked against its hash list in the step rtl-images"
+same stageb "Stage B: the replay controller on a tile, replaying delivered windows" "v1.35's replay_ctl.c on v1.35's tile is retired; the RTL's replay image replays the Tracer's deliveries on the chip, every row checked and in the RTL chip's cycles, in the steps rtl-segment and rtl-segment-real"
 step replayer 1 "the replayer model (v1.25): the opcode table, the ALU against vec.tsv at 821e1bd, the unit tests" tests/replayer/replayer.log -- $S/suite_replayer
 step memsys 1 "the Tracer's memory system (v1.3, B1): FileStore's trees and statuses, the shared cache's timing" tests/tracersuites/memsys.log -- $S/suite_memsys
 step rvc    1 "the Tracer's RVC decompressor against gold's, every 16-bit encoding (v1.3, B1)" tests/tracersuites/rvc.log -- $S/suite_rvc
@@ -317,6 +324,6 @@ grep -h "^PENDING" results/*.log | sort | uniq -c
 OWN=$(grep -ch "^PENDING" results/rtl-tile.log 2> /dev/null); OWN=${OWN:-0}
 echo "== $NREPLACED steps REPLACED by tests of v1.36's hardware; $NPENDING steps PENDING (PENDING-v1.36.md, the platform stage, section 4)$([ "$OWN" = 0 ] || echo "; $OWN PENDING lines of rtl-tile's own (section 1)")"
 FAILED=0
-grep -h "FAIL" results/*.log | grep -v "(CL4: must fail)" && FAILED=1   # D46: Stage B's must-fail window (v1.3's runner fails on it too)
+grep -h "FAIL" results/*.log && FAILED=1
 [ -s results/.differs ] && { cat results/.differs; FAILED=1; }
 [ "$FAILED" = 1 ] && { echo "== FAILURES"; exit 1; } || echo "== all passed (the $NPENDING PENDING steps aside; $NREPLACED REPLACED); logs in results/"

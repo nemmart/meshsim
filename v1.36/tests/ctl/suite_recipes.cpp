@@ -791,7 +791,7 @@ void replay() {
     suite::group("replay");
     // rcp_replay.c's state[] is never written (gcc folds it to zeros), so the pass it starts has an empty code stream:
     // the loop's shape runs (the state load into part 0, PULSE_RUN, the credits, the masks, run done) but no rows. The
-    // replayer's real check is StageB synthetic (fw/replay/replay_ctl.c, row for row against Stage A).
+    // replayer's real check was v1.35's Stage B (retired); v1.36's is acceptance C (tests/test_rtl_segment.cpp).
     Mach m(cfg());
     m.c.set_check_errors(false);                                   // the empty code stream's underflow, checked below
     m.boot("rcp_replay");

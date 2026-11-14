@@ -38,7 +38,8 @@ void build(Rig& g, const Prog& p) {
     pages.poke(CODE - g.lowest, p.bytes());
     pages.put(DATA - g.lowest, std::vector<uint64_t>(512, 0));
     g.build_image(pages, {DATA - g.lowest});
-    g.build_map({{p.pc_of(2), g.bases(p)[2]}});
+    if (p.parcels.size() > 2) g.build_map({{p.pc_of(2), g.bases(p)[2]}});   // the guests' one target, their third instruction
+    else g.build_map({});
     g.load_tables();
 }
 void start(Rig& g, const Prog& p) {

@@ -25,7 +25,7 @@
 // return port between G3 and G4). The read port (client 2) is the core's Fifo(read_port_depth), G3's own.
 //
 // Wiring: the units of both groups are added by the control builder (the add_g1); the crossing inside a tile is wired
-// there, and the read queue's ports (in the injection unit, the) through `MemIO` below, which tile_cycle connects.
+// there, and the read queue's ports (in the injection unit) through `MemIO` below, which tile_cycle connects.
 #pragma once
 
 #include <cstdint>

@@ -1,6 +1,6 @@
 // java_format.h (the owner, 2026-11-12): Java's own number formatting, for the suites whose logs print
 // what String.format made in v1.3. One shared helper (the tests/sort_kit.h and the tests/stageb.h, and the
-// tests/ctl/ctl.h, have their own: they switch to this one in P8's cleanup). From the, the most general: grouping and
+// tests/ctl/ctl.h, have their own: they switch to this one in P8's cleanup). From the most general of them: grouping and
 // the sign as well as the rounding.
 //
 //   jfmt::fixed(d, n[, plus])   String.format("%.nf", d) ("%+.nf" with plus). Java's Formatter rounds the SHORTEST

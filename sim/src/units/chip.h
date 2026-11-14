@@ -29,7 +29,7 @@ struct PeriphSlot;                // periph_slot.h
 
 // the part of a tile (the register block, the director, port B, the core) as the network meets it.
 // (D34, the request bus): a sender's port as its tile's control offers it. `present`: the
-// control has a request port (the; the network-only stand-in has none). `recv`: a controller's receive side.
+// control has a request port (the network-only stand-in has none). `recv`: a controller's receive side.
 struct ReqIO {
     bool present = false;
     sim::LinkOut push;            // the core's REQUEST_SEND: Link(1), width 2 -> the sender's leaf

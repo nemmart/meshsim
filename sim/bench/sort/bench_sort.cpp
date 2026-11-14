@@ -1,4 +1,4 @@
-// bench_sort: the 16K sort on the chip with the, the and the units, timed over M2Sort's counted span
+// bench_sort: the 16K sort on the chip with its units, timed over M2Sort's counted span
 // (L1's GO to L2's all-READY, as the baseline: setup, the boot and the input load excluded). The machine and the
 // sequence are the test_sort's (tests/test_sort.cpp, SortChip): the boot run to B by polling, the input loaded and the
 // sequence released at B. Its span is found once by a polling run (the phases as C&C records them, PhaseLog's rule)

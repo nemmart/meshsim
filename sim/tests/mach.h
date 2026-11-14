@@ -254,7 +254,7 @@ public:
     std::vector<std::array<int64_t, 2>> trace_log() const;
     void record_gather();
     std::vector<std::array<uint64_t, 4>> gather_log() const;
-    // ref's `ctl.conditions |= bits` from a test (the request 9): ERRORS from the next cycle on (its view, its error
+    // ref's `ctl.conditions |= bits` from a test (a harness request): ERRORS from the next cycle on (its view, its error
     // line and the checker at that cycle's end), as ref's set between cycles
     void set_errors(uint32_t bits);
     uint32_t remaining(unsigned ctr) const;                 // the director's write counters (dir.remaining[ctr])
@@ -400,7 +400,7 @@ public:
     uint64_t violations() const;                            // ref's Chip.violations
     const std::vector<std::string>& violation_messages() const;   // the first max_violation_messages, ref's text
     void clear_violation_messages();
-    // ref's Config switches changed mid-run (the request 10, CtrlTest): from the next cycle on, as ref reads them each
+    // ref's Config switches changed mid-run (for CtrlTest): from the next cycle on, as ref reads them each
     // cycle (the report through the cycle just run is made first); and ref's `violations = 0` with the messages cleared
     void set_check_errors(bool on);
     void set_strict_replies(bool on);
@@ -408,8 +408,8 @@ public:
     void clear_violations();
     std::string violation_report();                         // ref's violationReport() (scans the overflows first)
     void scan_overflows();
-    // ref's Chip.newPhase (the agreed form): between cycles, a new disjoint-buffer phase on every tile (BigSram::new_phase,
-    // the), each woken. (Every GO starts one too, inside the tile: the.)
+    // ref's Chip.newPhase (the agreed form): between cycles, a new disjoint-buffer phase on every tile (BigSram::new_phase),
+    // each woken. (Every GO starts one too, inside the tile.)
     void new_phase();                                  // ref's scanOverflows
     void finalize_checks() const;                           // the checker's report through the cycle just run
     // ---- the fingerprint (B25; D41 Q5: in place of ref's -Dmeshsim.digest=FILE) ----

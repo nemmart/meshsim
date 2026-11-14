@@ -38,9 +38,10 @@ undone or unchecked. This file is the only addition to v1.35/ since the freeze; 
    strict-reply cases included) and not by a CheckSelf case of its own. A review against the original design found no case missed (switches changed
    between install and a run, CheckSelf's strict-reply cases, other readers of the fact list).
 
-8. **The strip left one comment garbled**: `tests/checker.cpp`'s TRACER_VIOLATION case reads "(Tracer.violate, the)"
-   for "(Tracer.violate)" (a worker name removed from "W14's"). Fixed in sim/. Others like it may exist; the strip's
-   report (`build/strip-report/`) lists every edit.
+8. **The strip left 20 comments garbled.** It replaced a worker's possessive ("W14's") with "the", so 20 comments in
+   v1.35's sources read oddly, e.g. `tests/checker.cpp`'s "(Tracer.violate, the)" and `bench/sort/bench_sort.cpp`'s
+   "with the, the and the units". Comments only: no code, log or output differs. All 20 are rewritten in sim/ (scanned
+   by comparing every line the strip edited with its original); the strip's report lists every edit.
 
 ## The record
 

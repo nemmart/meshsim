@@ -14,7 +14,7 @@
 //   MemSum      a memory's sum, updated at every write (two fmix64 and an add); `scan` recomputes it in full (tests)
 //   bus writers the three bus kinds' canonical encodings, from entries (the port observer's, or a unit's own)
 //   FpRegistry  name -> writer: each unit contributes through one function `void(const void* unit, FpOut&, const
-//               FpCtx&)`; the and later groups' units plug in the same way; stubs write a not-yet-built unit's reset
+//               FpCtx&)`; later groups' units plug in the same way; stubs write a not-yet-built unit's reset
 //               stream (statefp_stubs.cpp)
 //   FpGolden    a golden `.fp` file: its D12 header (checked against ours, refusing on any difference, named) and its
 //               points; `compare` finds the first differing cycle and unit

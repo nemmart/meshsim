@@ -134,7 +134,7 @@ struct LoadProfile {
     static LoadProfile from_text(const std::string& text);   // fatal on a malformed text, naming the line
 };
 
-// the port observer (the request): one input port's contents at the end of cycle c, the last cycle run
+// the port observer: one input port's contents at the end of cycle c, the last cycle run
 // (Sim::now() == c + 1), into the caller's buffer. ref's order (oracle/ref/StateFp.java): a Link's entries in arrival
 // order, visible then in flight, each with its arrival cycle; a Fifo's visible entries; a Hold's word; a Reg's value; and
 // for a Fifo, credit Fifo, Hold or Reg the put made at c, judged at c + 1.

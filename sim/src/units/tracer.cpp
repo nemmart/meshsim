@@ -96,7 +96,7 @@ void Tracer::violate(int64_t t, int code, uint64_t a, uint64_t b) {
     // ref's host.violate: the slot passes it to the register block, a chip violation (the text: violation_text)
     sim::check::record(uint64_t(t), me_, sim::check::Kind::TRACER_VIOLATION, uint64_t(code), a, b);
 }
-// ref's Tracer.violate texts (the), for the checker: a, b as violate's (V_UNDEFINED: the op, the ALU's text)
+// ref's Tracer.violate texts, for the checker: a, b as violate's (V_UNDEFINED: the op, the ALU's text)
 void Tracer::violation_text(int code, uint64_t a, uint64_t b, char* o, size_t n) {
     char nb[24];
     auto op = [&](uint64_t v) -> const char* {

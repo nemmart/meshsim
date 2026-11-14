@@ -112,7 +112,7 @@ struct TsEnds {
 // The read queue's clients 0 (gather) and 1 (AG): one take a cycle when the plan allows, client 0 first.
 struct Srq {
     HoldIn ga, ag; const Plan* plan;
-    bool ga_occupied = false;                     // the gather's Hold occupied at the end of t (its Reg to the block, the)
+    bool ga_occupied = false;                     // the gather's Hold occupied at the end of t (its Reg to the block)
     Srq(Ports& p, const Plan* pl) : plan(pl) { p.in(ga, "ga", mem::kReadReqWidth); p.in(ag, "ag", mem::kReadReqWidth); }
     uint64_t digest() const { return hash_fields(ga_occupied); }
     Wake step(Ctx& c) {

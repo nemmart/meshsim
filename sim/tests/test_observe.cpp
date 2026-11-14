@@ -1,4 +1,4 @@
-// The port observer (the request) and the stop request (the). The observer is checked against the machine
+// The port observer and the stop request. The observer is checked against the machine
 // itself: what it reports at the end of cycle c must be exactly what the consumer sees at c + 1 (its visible words then
 // are the ones visible at c, plus those arriving at c + 1, plus the put judged at c + 1 if accepted), in one domain and
 // split over two threads, with run lengths that end between barriers; and against the producer's own log for a Link's
@@ -426,7 +426,7 @@ TEST(observe_links_of_different_latencies_split_as_in_one_domain) {
     }
 }
 
-// ---- Ports::overflow_steps (the and the request, D29): a Fifo overflow steps its owner in the cycle it is judged
+// ---- Ports::overflow_steps (D29): a Fifo overflow steps its owner in the cycle it is judged
 namespace {
 struct Flood {   // puts every cycle from 1 to 10
     FifoOut out;

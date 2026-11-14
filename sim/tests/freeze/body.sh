@@ -76,7 +76,7 @@ sec "4. the chains, segments 0-127 of both workloads (in the background)"
 D9=$DATA/w9-deliveries; D26=$DATA/w26-jumpmap
 declare -A S9=([evm-zone-29]=7142e894c80a0c9d491f21c852a942885e0abd97cfe6aefd0101d716824e138f [cyclone-29]=f8a0622e144a944c51386b5b36f81101dcdeb16e5a8d950c1e9ca0e3097f8982)
 declare -A S26=([evm-zone-29]=57dc0ffe7574ab3e11f79f8414501bd1ceb2fd75faab0b03f3b4a6c2c61cad2d [cyclone-29]=ace78f61efbb9c0e418a0b1d7f54a79f6e299b7ff45ad7f09537b11961b95fba)
-checkin() {   # the: the inputs against their COMPLETE markers and hashes
+checkin() {   # the inputs against their COMPLETE markers and hashes
   local P=$1 A B
   A=$(sha256sum "$D9/$P.manifest.json" 2>/dev/null | cut -d' ' -f1); B=$(sha256sum "$D26/$P/manifest.sha256" 2>/dev/null | cut -d' ' -f1)
   [ "$A" = "${S9[$P]}" ] && [ "$(cat "$D9/$P.COMPLETE" 2>/dev/null)" = "$A" ] || { echo "$P: the delivery isn't complete or differs"; return 1; }

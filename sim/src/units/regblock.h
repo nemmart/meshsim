@@ -1,6 +1,6 @@
 // regblock.h: the register block as plain code: TileControl.endCycle(t) and its view, with RequestPort's count of the
 // request FIFO (planning/audits/AUDIT-M1.md sections 2-4; sim/ref/meshsim/src/TileControl.java, RequestPort.java). M1's subset
-//; M2's registers (AUDIT-M2 3.3, 3.7): the send port's registers, the write counters (with the director's
+// first; M2's registers (AUDIT-M2 3.3, 3.7): the send port's registers, the write counters (with the director's
 // due decrements, judged without the same cycle's store: D27), their events and qualifiers, DMA_CONFIG and the record
 // base, the read port's setup, the condition counts, STATUS's M2 bits, the READY edge and the error line.
 //

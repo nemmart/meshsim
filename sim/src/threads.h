@@ -5,7 +5,7 @@
 // **boundary unit** (a placeholder with no logic that never steps after cycle 1): in the producer's domain the output
 // feeds a boundary input (the *proxy*, a real port in that domain's pools, where the producer's own view of the port
 // lives: a Link's count in flight, a credit Fifo's credits, a Hold's occupancy); in the consumer's domain the input is fed
-// by a boundary output. Each domain is then built by the build(), unchanged, and the builds are joined:
+// by a boundary output. Each domain is then built by the ordinary build(), unchanged, and the builds are joined:
 //
 //   - the producer's route points at an **outbox** for the destination domain (a ring of buckets indexed like a wheel,
 //     one per (source, destination, kind, width, latency)), so a put runs the same code either way;

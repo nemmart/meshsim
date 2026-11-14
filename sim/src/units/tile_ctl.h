@@ -99,7 +99,7 @@ struct TileCtl {
     };
     bool host_on = false;
     HostWrites host;
-    // ref's `ctl.conditions |= bits` from a test (the request 9): state from the next cycle on, so ORed in after this
+    // ref's `ctl.conditions |= bits` from a test (a harness request): state from the next cycle on, so ORed in after this
     // step's facts and line (ref's end of the cycle just run doesn't have them) and before the view for the next cycle
     uint32_t host_cond = 0;
     uint32_t host_events = 0;          // ref's `ctl.events |= bits` from a test (the (d)): the same point as host_cond

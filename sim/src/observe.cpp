@@ -1,4 +1,4 @@
-// observe.cpp: the port observer (the request for the canonical fingerprint, AUDIT-M2 6). Between runs only:
+// observe.cpp: the port observer (for the canonical fingerprint, AUDIT-M2 6). Between runs only:
 // reads one input port of a built machine, with what is still in the wheels, into the caller's buffer. The configuration
 // regime by its place (outside the loop), but allocation-free: a fingerprint per cycle calls it for every bus of a tile.
 #include "config_impl.h"

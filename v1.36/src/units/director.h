@@ -7,7 +7,7 @@
 //   bad (3.1: mode 0 to a region it can't reach, mode 3 at 128 bits) -> dropped, uncounted, an event on `bad` (ERRORS [1]
 //   at endCycle(t): an event, not a Count, so it steps the block in ref's cycle: PORTS.md 8);
 //   size 11 -> dropped, uncounted, no error (flagged); a misaligned mode 0, modes 6-7 -> fatal (UB in ref);
-//   mode 0, region 0x00/0x01 -> `port_b` (and `landed` if it covers command slot 0);
+//   mode 0, region 0x00/0x01 -> `port_b` (DMEM and IMEM: the NoC port, 6.3; v1.36 has no command block: 6.5);
 //   mode 0, region 0x03; modes 1, 2, 3 -> `we_in` (the write engine, G3);
 //   mode 4 -> `gather` (G4); mode 5 -> count only; mode 0 to a peripheral's region -> fatal, not modelled in M2.
 // Counting (modes 0-3 and 5, counter 1-7): the counter id goes on `kline`, a Link(K + 1) into the register block, which
@@ -15,9 +15,8 @@
 // judgement (a counter at 0 stays 0: unexpected, ERRORS [2]) is the block's, without a same-cycle store (D27).
 //
 // Port B. ref: the director puts on toPortB, Link(cm_latency), at t; ControllerMemories writes it at t + cm_latency
-// (committed at the end of that cycle, seen by a load at t + cm_latency + 1) and latches command landed for
-// endCycle(t + cm_latency). Here the memories stay in the core: `port_b` is a Link(cm_latency + 1) of link words into
-// the core, applied before its step, and `landed` a width-0 Link(cm_latency + 1) into the block (its shifted endCycle).
+// (committed at the end of that cycle, seen by a load at t + cm_latency + 1). Here the memories stay in the core:
+// `port_b` is a Link(cm_latency + 1) of link words into the core, applied before its step.
 //
 // Modelled in M2 by G1: modes 0 and 1 and the counting. Modes 2-4 have their place in the switch, fatal until G4 (the
 // write engine's and gather's inputs exist from the start, wired by the tile builder to stubs until G3/G4). Couplings
@@ -43,8 +42,6 @@ struct DirectorConfig {
     uint32_t mem_chunks = 1u << 20;    // big SRAM's size, for mode 0 region 0x03's bounds (flagged, invariant 19)
     bool g4 = false;                   // the tile has G4's gather engine wired: `gather_put` is declared
     bool periph_slot = false;          // (M3): the tile has the peripheral slot: `periph` is declared
-    unsigned K = 8;                    // the delay line's length (the stray check's window)
-    bool stray_check = false;          // (harness-only): `regs` declared, ref's stray at acceptance (invariant 9)
 };
 
 struct Director {
@@ -52,7 +49,6 @@ struct Director {
     sim::LinkIn in;            // width 3: link words from the router (eject), Link(intra_tile_latency = 1)
     // ---- outputs ----
     sim::LinkOut port_b;       // width 3: mode 0 to regions 0x00/0x01 -> the core's port B, Link(cm_latency + 1)
-    sim::LinkOut landed;       // width 0: that write covers command slot 0 (0x7FC0) -> the block, Link(cm_latency + 1)
     sim::LinkOut kline;        // width 1: a counted packet's counter id (1-7) -> the block, Link(K + 1)
     sim::FifoOut we_in;        // width 3: mode 0 region 0x03, modes 1-3 -> the write engine, Fifo(we_in_depth) (G3)
     sim::FifoOut gather;       // width 3: mode 4 -> the GATHER engine's queue, Fifo(gather_depth) (G4)
@@ -82,31 +78,12 @@ struct Director {
 
     Director(sim::Ports& p, const DirectorConfig& c) : cfg(c) {
         p.in(in, "in", 3);
-        p.out(port_b, "port_b", 3); p.out(landed, "landed", 0); p.out(kline, "kline", 1);
+        p.out(port_b, "port_b", 3); p.out(kline, "kline", 1);
         p.out(we_in, "we_in", 3); p.out(gather, "gather", 3);
         p.out(bad, "bad", 0);
         if (cfg.g4) p.out(gather_put, "gather_put", 0);
         if (cfg.periph_slot) p.out(periph, "periph", 3);
         p.in(rp_stores, "rp_stores");
-        if (cfg.stray_check) p.in(regs, "regs");
-    }
-    // (harness-only; P2): ref's TrafficDirector.schedule's stray (invariant 9, at acceptance): a counted packet with
-    // nothing armed for it beyond what is already on the delay line. The counters as the register block publishes them
-    // for t (before the decrements landing at the end of t, which this window's lines still count: the same difference
-    // as ref's); a counter store of the same cycle (ref's pendingAdd) isn't seen here.
-    sim::RegFileIn regs;
-    uint64_t line_t[64] = {};          // the delay line's puts: cycle, counter (one a cycle at most)
-    uint8_t line_c[64] = {};
-    uint32_t line_n = 0;
-    bool stray(uint64_t t, unsigned ctr, sim::Ctx& c) {
-        uint32_t prev = 0;
-        for (uint32_t i = 0; i < 64 && i < line_n; i++) {
-            const uint32_t j = (line_n - 1 - i) & 63;
-            if (line_t[j] + cfg.K < t) break;                  // applied in the view by now (put at t' seen at t' + K + 1)
-            if (line_c[j] == ctr) prev++;
-        }
-        line_t[line_n & 63] = t; line_c[line_n & 63] = uint8_t(ctr); line_n++;
-        return int64_t(c.read(regs, WRITE_COUNTER_1 + ctr - 1)) - int64_t(prev) <= 0;
     }
     sim::Wake step(sim::Ctx& c) {
         if (!c.ready(in)) return sim::Wake::none();
@@ -124,7 +101,7 @@ struct Director {
         per_mode[mode]++;
         namespace ck = sim::check;                             // the checker's facts (src/check.h)
         if (lw::read_port_tag(h)) rp_accepted++;
-        else if (c.through_last(rp_stores) > rp_accepted && lw::src(h) != cfg.tile && !command(h)) {
+        else if (c.through_last(rp_stores) > rp_accepted && lw::src(h) != cfg.tile) {
             rp_overlaps++;
             ck::record(c.now(), int(cfg.tile), ck::Kind::DIR_READPORT_OVERLAP, c.through_last(rp_stores) - rp_accepted, d, h, hi);
         }
@@ -143,40 +120,14 @@ struct Director {
         if (lw::reserved_mode(mode))
             FATAL("traffic director (tile %u): a packet in the reserved mode %u at cycle %llu: UB (v1.25 s8e)", cfg.tile, mode, (unsigned long long)c.now());
         if (mode == lw::M_COUNT && ctr == 0) { ck::record(c.now(), int(cfg.tile), ck::Kind::DIR_COUNT_CTR0, 0, d, h, hi); }   // a fact only (the count stays as before)
-        if constexpr (ck::kOn) {                               // ref's checkUncounted, bootKinds (facts only)
-            if (ctr == 0 && mode != lw::M_GATHER && mode != lw::M_COUNT) {
-                const unsigned r = lw::region(a);
-                if (mode != lw::M_WRITE) ck::record(c.now(), int(cfg.tile), ck::Kind::DIR_UNCOUNTED_MODE, 0, d, h, hi);
-                else if (r != lw::R_DMEM && r != lw::R_PMEM) ck::record(c.now(), int(cfg.tile), ck::Kind::DIR_UNCOUNTED_REGION, r, d, h, hi);
-                else if (!lw::controller(lw::src(h))) ck::record(c.now(), int(cfg.tile), ck::Kind::DIR_UNCOUNTED_SRC, lw::src(h), d, h, hi);
-                else if (cfg.stray_check && cfg.tile < 64 && (c.read(regs, STATUS) >> ST_LANDED & 1) &&   // command landed (the view
-                         !(r == lw::R_DMEM && in_command(lw::offset(a))))                                  //  at t: ref's ctl.landed)
-                    ck::record(c.now(), int(cfg.tile), ck::Kind::DIR_OVERLAY_AFTER_COMMAND, 0, d, h, hi);
-            }
-            if (ctr == 0 && mode == lw::M_WRITE && lw::controller(lw::src(h)) && (lw::region(a) == lw::R_DMEM || lw::region(a) == lw::R_PMEM)) {
-                const unsigned kind = lw::dst(h) == lw::BROADCAST ? 2 : 1;
-                const uint32_t off = lw::offset(a);
-                const bool slot0 = lw::region(a) == lw::R_DMEM && off <= 0x7FC0 && off + lw::bytes(size) > 0x7FC0;
-                if (in_command(off) && lw::region(a) == lw::R_DMEM) {
-                    if (slot0) {
-                        if (overlay_kinds & ~kind) ck::record(c.now(), int(cfg.tile), ck::Kind::DIR_COMMAND_KIND, kind, d, h, hi);
-                        overlay_kinds = 0;
-                    }
-                } else overlay_kinds |= kind;
-            }
-        }
         if (ctr != 0 && lw::counted_mode(mode)) {
-            if (cfg.stray_check && stray(c.now(), ctr, c)) ck::record(c.now(), int(cfg.tile), ck::Kind::DIR_UNEXPECTED, ctr, d, h, hi);
             c.put(kline, sim::Word(ctr));                      // decremented at endCycle(t + K)
         }
         switch (mode) {
         case lw::M_WRITE: {
             unsigned r = lw::region(a);
             if (r == lw::R_DMEM || r == lw::R_PMEM) {
-                if constexpr (ck::kOn) check_cmem(c.now(), d, h, hi, ctr, a, size);   // ref's checkCmem (facts only)
                 c.put(port_b, d, h, hi);
-                uint32_t w0 = (lw::offset(a) & 0x7FFF) >> 2, n = lw::chunks(size);
-                if (r == lw::R_DMEM && w0 <= kCmdWord && w0 + n > kCmdWord) c.put(landed);   // covers command slot 0
             } else if (r == lw::R_SRAM) {
                 if ((lw::offset(a) >> 2) + lw::chunks(size) > cfg.mem_chunks)   // a fact only (invariant 19)
                     ck::record(c.now(), int(cfg.tile), ck::Kind::DIR_PAST_SRAM, lw::offset(a) >> 2, d, h, hi);
@@ -200,29 +151,6 @@ struct Director {
         uint64_t h = digest_mix(accepted, count_only);
         for (uint64_t v : per_mode) h = digest_mix(h, v);
         return digest_mix(digest_mix(digest_mix(digest_mix(h, undefined_size), violations), bad_packets), rp_accepted);
-    }
-    // ref's checkCmem (invariants 11, 19, 22) and bootKinds' state (invariant 25), facts only
-    uint8_t overlay_kinds = 0;
-    void check_cmem(uint64_t t, uint64_t d, uint64_t h, uint64_t hi, unsigned ctr, uint32_t a, unsigned size) {
-        namespace ck = sim::check;
-        const uint32_t off = lw::offset(a), n = lw::bytes(size);
-        if (off + n > 0x8000) { ck::record(t, int(cfg.tile), ck::Kind::DIR_PAST_CMEM, lw::region(a), d, h, hi); return; }
-        if (lw::region(a) != lw::R_DMEM) return;
-        if (off < 16) ck::record(t, int(cfg.tile), ck::Kind::DIR_RESERVED_BYTES, 0, d, h, hi);
-        auto in_reply = [](uint32_t x) { return x >= 0x7BC0 && x < 0x7BC0 + 1024; };
-        const bool cmd = in_command(off) || in_command(off + n - 1), rep = in_reply(off) || in_reply(off + n - 1);
-        if (cmd && (ctr != 0 || !lw::controller(lw::src(h)) || !in_command(off) || !in_command(off + n - 1)))
-            ck::record(t, int(cfg.tile), ck::Kind::DIR_COMMAND_BLOCK, 0, d, h, hi);
-        if (rep && (size == lw::SIZE_128 || off != 0x7BC0 + 8 * lw::src(h)))
-            ck::record(t, int(cfg.tile), ck::Kind::DIR_REPLY_BLOCK, 0, d, h, hi);
-    }
-    static constexpr uint32_t kCmdWord = 0x7FC0 >> 2;                 // command slot 0 (ControllerMemories.COMMAND)
-    static bool in_command(uint32_t byte) { return byte >= 0x7FC0 && byte < 0x7FC0 + 64; }   // ControllerMemories.inCommand
-    // TrafficDirector's `command`: an uncounted mode-0 write from a controller into data memory's command area
-    static bool command(uint64_t h) {
-        const uint32_t a = lw::addr(h);
-        return lw::mode(h) == lw::M_WRITE && lw::counter(h) == 0 && lw::controller(lw::src(h)) && lw::region(a) == lw::R_DMEM &&
-               in_command(lw::offset(a));
     }
 };
 

@@ -115,7 +115,7 @@ struct Gather {
         } else {
             if (left == 0 && c.ready(in)) {                  // 2. the next request
                 const sim::Word* w = c.peek(in);
-                const uint32_t kk = k(c.read(dma, DMA_R_CONFIG));
+                const uint32_t kk = k(c.read(dma, DMA_R_GATHER));
                 wide = (kk & 1) == 0;
                 ord = uint32_t(w[0] >> 32) & 0xFFFFF;
                 ctr = lw::counter(w[1]);
@@ -123,7 +123,7 @@ struct Gather {
                 c.take(in);
             }
             if (left > 0) {                                  // 3. one read
-                const uint32_t kk = k(c.read(dma, DMA_R_CONFIG)), b = base(c.read(dma, DMA_R_RECORD_BASE));
+                const uint32_t kk = k(c.read(dma, DMA_R_GATHER)), b = base(c.read(dma, DMA_R_GATHER));
                 held[0] = mem::req_a(read_chunk(b, kk, ord, i, wide), wide ? lw::SIZE_128 : lw::SIZE_64, lw::M_SRC, ctr, me);
                 held[1] = mem::req_b(0);
                 c.put(rd, held[0], held[1]);
@@ -136,8 +136,8 @@ struct Gather {
     }
 
     static Gather idle() { return Gather(); }             // the reset state, outside a machine (fingerprint writers)
-    static uint32_t k(uint32_t dma_config) { return mc_k(dma_config); }
-    static uint32_t base(uint32_t record_base) { return record_base & 0x1FFFFF; }
+    static uint32_t k(uint32_t gather_config) { return gc_k(gather_config); }
+    static uint32_t base(uint32_t gather_config) { return gc_record_base(gather_config); }
     static uint32_t read_chunk(uint32_t base, uint32_t k, uint32_t ord, uint32_t i, bool wide) {
         return (base + 2 * k * ord + (wide ? 4 : 2) * i) & 0x1FFFFF;
     }

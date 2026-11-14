@@ -9,9 +9,10 @@
 namespace units {
 
 Router::Router(sim::Ports& p, unsigned tile, const NetConfig& c, const Hops* h, bool overflow_event, Fifth fifth, bool dma)
-    : ovf_event(overflow_event), me(uint8_t(tile)), attached(tile < 3), loopback_last(c.loopback_last), hops(h) {
+    : ovf_event(overflow_event), me(uint8_t(tile)), attached(tile < 64 && c.attached_special(tile) >= 0), loopback_last(c.loopback_last), hops(h) {
     if (tile > 63 && !lw::controller(tile)) FATAL("router: tile %u (0-63 a tile, 64-66 a controller)", tile);
     cc = tile > 63;
+    for (unsigned s = 0; s < 3; s++) attach[s] = c.attach[s];
     if (cc) {
         has_dma = dma;
         feed = kFeedersCc; nfeed = kNFeedersCc; first = kFirstCc; n_fifos = 28;
@@ -56,10 +57,10 @@ Router::Router(sim::Ports& p, unsigned tile, const NetConfig& c, const Hops* h, 
 // ref: s, d the tiles of src and dst; k = (d - s) mod 64; (b, a) = hops[k]; horizontal first until this column is b
 // columns from the source's (with the sign of b), then vertical; at d, the eject (or the to-controller output for a
 // controller's dst).
-unsigned route_unicast(const Hops& hops, unsigned me, unsigned src, unsigned dst) {
+unsigned route_unicast(const Hops& hops, unsigned me, unsigned src, unsigned dst, const uint8_t* attach) {
     using R = Router;
     const bool to_cnc_port = lw::controller(dst);
-    const int s = int(lw::tile_of(src) & 63), d = int(lw::tile_of(dst) & 63);
+    const int s = int(lw::tile_of(src, attach) & 63), d = int(lw::tile_of(dst, attach) & 63);
     const int k = (d - s) & 63;
     const int b = hops.b[k], a = hops.a[k];
     const int cs = s & 7, cm = me & 7;
@@ -69,9 +70,9 @@ unsigned route_unicast(const Hops& hops, unsigned me, unsigned src, unsigned dst
     return to_cnc_port ? R::M_CNC : R::M_EJ;
 }
 
-unsigned route_broadcast(unsigned me, unsigned port, unsigned src) {
+unsigned route_broadcast(unsigned me, unsigned port, unsigned src, const uint8_t* attach) {
     using R = Router;
-    const int s = int(lw::tile_of(src) & 63);
+    const int s = int(lw::tile_of(src, attach) & 63);
     const int cs = s & 7, cm = me & 7, rs = s >> 3, rm = me >> 3;
     switch (port) {
     case R::LOOPBACK: case R::FROM_CNC: return R::M_EJ | R::M_RIGHT | R::M_LEFT | R::M_DOWN | R::M_UP;

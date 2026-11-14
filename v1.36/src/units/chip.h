@@ -37,6 +37,7 @@ struct ReqIO {
     sim::LinkIn freed_ev;         // the leaf's `freed_ev` -> the register block (Link(1), width 0)
     bool recv = false;
     sim::RegFileIn head;          // the target's queue -> the core (RegFile 5)
+    sim::RegFileIn head_ctl;      // the same -> the tile control unit (EVENTS.request_pending's level, 11.1)
     sim::LinkOut pop;             // the core's REQUEST_RECEIVE -> the queue (Link(1), width 0)
     sim::LinkOut qcredit;         // the core's pop -> the root's credit (Link(1) or (3), width 1)
 };
@@ -44,8 +45,9 @@ struct ControlIO {
     sim::HoldOut send;            // the core's send holding register -> the injection unit (3 words)
     sim::RegIn send_busy;         // the injection unit -> the register block (STATUS's send-busy, with the core's own put)
     sim::LinkIn eject;            // the router -> the director (3 words, intra_tile_latency)
-    sim::LinkIn go;               // C&C -> the register block (width 0, go_latency + skew + 1)
-    sim::LinkOut line;            // the register block -> the row collector (width 1, ready_latency - 2)
+    sim::LinkIn release;          // BARRIER_RELEASE's pulse -> the tile control unit (width 0; 18)
+    sim::LinkOut line;            // the tile control unit's nets -> the master tile's side (width 1: bit 0 BARRIER_ARRIVE's
+                                  // pulse, bit 1 the error line's level; 18)
     sim::CountIn router_ovf;      // the router's FIFO overflows (ROUTER_OVF), read `through_last` at endCycle
     sim::LinkIn router_ovf_ev;    // D29: width 0, Link(1) from the router's `ovf_ev`, put in the step that counts an
                                   // overflow (t + 1, D28), so the block steps and its endCycle(t + 1) sets ERRORS [0]
@@ -68,9 +70,9 @@ using ControlBuilder = ControlIO (*)(sim::Config& cfg, unsigned k, void* ctx);
 struct TileIO {
     sim::LinkIn link_in[4];       // by arrival port (FROM_LEFT .. FROM_DOWN)
     sim::LinkOut link_out[4];     // by direction (TO_RIGHT .. TO_UP)
-    sim::LinkIn go;
-    sim::LinkOut line;
-    bool attached = false;        // tiles 0-2: the fifth port
+    sim::LinkIn release;          // BARRIER_RELEASE (18)
+    sim::LinkOut line;            // BARRIER_ARRIVE and the error line (18)
+    bool attached = false;        // the attach tiles (0, 7, 15: lw::attach_tile): the fifth port
     sim::HoldIn from_cnc;         // M2: C&C's model and the endpoints
     sim::FifoOut to_cnc;
     ReqIO req;                    // the control's request side (build_chip wires it to the bus)
@@ -84,8 +86,8 @@ struct CcIO {
     sim::LinkOut link_out;        // CC_LINK_OUT -> tile c's from-controller route block, Link(cc_link_latency)
     sim::FifoIn dma;              // CC_DMA_IN (a credit Fifo; with a DMA only): the slot's S6
     bool has_dma = false;
-    sim::LinkIn go;               // the register block's GO (nothing drives a controller's GO in ref)
-    sim::LinkOut line;            // the register block's line word: READY (ignored for controllers) and the error level
+    sim::LinkIn release;          // the tile control unit's release input (a special tile's barrier is not wired: 7.3)
+    sim::LinkOut line;            // its nets: the error line's level (a special tile never arrives)
     ReqIO req;                    // the controller's request port, send and receive sides (build_chip wires them)
     PeriphSlot* slot = nullptr;   // the controller's slot as staged (the control's `io.slot`), or null
 };

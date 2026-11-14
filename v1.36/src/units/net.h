@@ -42,7 +42,16 @@ constexpr unsigned token(uint64_t h) { return unsigned(h >> TOKEN_SHIFT & 0x3F);
 constexpr uint64_t with_src(uint64_t h, unsigned s) { return (h & ~SRC_MASK) | (s & 0x7Fu); }
 constexpr bool controller(unsigned id) { return id >= CC1 && id <= CC3; }
 constexpr bool dma_source(unsigned id) { return id >= DMA1 && id <= DMA1 + 2; }
-constexpr unsigned tile_of(unsigned id) { return controller(id) ? id - CC1 : dma_source(id) ? id - DMA1 : id; }
+// The attach tiles (machine-spec 2.1, 16.1, at 8 x 8): the master tile's is tile 0, the memory tile's MESH_SIZE - 1 = 7, the
+// tracer tile's (2 MESH_SIZE - 1) mod TILE_COUNT = 15. `attached_special`: the special tile (0-2) attached at a tile, or -1.
+constexpr unsigned attach_tile(unsigned special) { return special == 0 ? 0u : special == 1 ? 7u : 15u; }
+constexpr int attached_special(unsigned tile) { return tile == 0 ? 0 : tile == 7 ? 1 : tile == 15 ? 2 : -1; }   // the specification's
+// The tile a packet's endpoint is routed as: a special tile, and its DMA's source id, as its attach tile; `attach`, the
+// three attach tiles (NetConfig::attach), or null for the specification's.
+constexpr unsigned tile_of(unsigned id, const uint8_t* attach = nullptr) {
+    const unsigned special = controller(id) ? id - CC1 : dma_source(id) ? id - DMA1 : 3;
+    return special == 3 ? id : attach ? attach[special] : attach_tile(special);
+}
 constexpr bool reserved_mode(unsigned m) { return m >= M_RSVD6; }
 constexpr uint64_t mask_lo(uint64_t lo, unsigned size) { return size == SIZE_32 ? lo & 0xFFFFFFFFull : lo; }
 constexpr uint64_t mask_hi(uint64_t hi, unsigned size) { return size == SIZE_128 || size == SIZE_UNDEF ? hi : 0; }
@@ -61,6 +70,10 @@ Hops load_hops(const char* path);
 // Config.machine()'s.
 struct NetConfig {
     unsigned link_latency = 3;          // every link direction (overrides per link: not modelled in M2)
+    // The attach tiles of the master, memory and tracer tiles (machine-spec 2.1, at 8 x 8: 0, 7, 15). A parameter only so
+    // that the router's conformance test can run v1.35's reference observations, made with them at tiles 0, 1 and 2.
+    uint8_t attach[3] = {0, 7, 15};
+    int attached_special(unsigned tile) const { for (int s = 0; s < 3; s++) if (attach[s] == tile) return s; return -1; }
     unsigned queue_depth = 16;          // every router FIFO, C&C's included, and the endpoints' receive FIFOs
     unsigned intra_tile_latency = 1;    // injection -> router, router -> director
     unsigned read_tokens = 64;          // the token pool (4.5)

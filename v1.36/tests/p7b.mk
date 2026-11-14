@@ -5,7 +5,7 @@ $(B)/test_replay_lists: $(REPLAYER_LINK) $(B)/tests/statefp.o
 # The acceptance kit's replayer (ref's ReplayShard): tests/replay_shard_main.cpp.
 $(B)/replay_shard: $(B)/tests/replay_shard_main.o $(B)/tests/stageb.o $(B)/tests/sha256.o $(B)/tests/statefp.o $(MACH_LINK) $(B)/src/units/replay_tables.o $(LIB_OBJ)
 	$(CXX) $(FLAGS) $(sort $^) -o $@ $(WRAP)
-all: $(B)/replay_shard
+all: $(call live,$(B)/replay_shard)
 # The acceptance kit's summary step (run_shard.sh's Python in v1.3): tests/acceptance/shard_summary.cpp.
 $(B)/shard_summary: $(B)/tests/acceptance/shard_summary.o $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
@@ -19,5 +19,5 @@ $(B)/test_suite_replayer: | $(B)/suite_replayer
 # Stage B (ref's StageB): tests/stageb.cpp on the harness (tests/mach.mk's MACH_LINK); the driver stageb.
 $(B)/stageb: $(B)/tests/stageb_main.o $(B)/tests/stageb.o $(B)/tests/sha256.o $(B)/tests/statefp.o $(MACH_LINK) $(B)/src/units/replay_tables.o $(LIB_OBJ)
 	$(CXX) $(FLAGS) $(sort $^) -o $@ $(WRAP)
-all: $(B)/stageb
+all: $(call live,$(B)/stageb)
 $(B)/test_stageb: | $(B)/stageb

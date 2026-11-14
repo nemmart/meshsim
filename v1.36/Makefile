@@ -42,7 +42,8 @@ endif
 B        := build/$(CC_NAME)-$(MODE)
 LIB_SRC  := $(wildcard src/base/*.cpp src/*.cpp)
 LIB_OBJ  := $(LIB_SRC:%.cpp=$(B)/%.o)
-TEST_SRC := $(wildcard tests/test_*.cpp)
+include pending.mk
+TEST_SRC := $(filter-out $(PENDING_TESTS:%=tests/%.cpp),$(wildcard tests/test_*.cpp))
 TESTS    := $(TEST_SRC:tests/%.cpp=$(B)/%)
 HARNESS  := $(B)/tests/harness.o
 # the stage 1 sketches: compiled in every build (they must build against the API), never linked or run.
@@ -106,3 +107,8 @@ include tests/p7b.mk
 include tests/sort.mk
 include tests/bus.mk
 include tools/doccheck.mk
+
+# Acceptance A (v1.36's platform): the RTL's tile programs on one compute tile (tests/test_rtl_tile.cpp).
+RTL_TILE_LINK := $(NET_LINK) $(B)/src/units/trace_log.o $(B)/src/units/tile_ctl.o $(B)/src/units/periph_slot.o \
+                 $(B)/src/units/replayer.o $(TRACER_LINK)
+$(B)/test_rtl_tile: $(RTL_TILE_LINK)

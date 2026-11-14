@@ -22,16 +22,20 @@
 
 namespace units {
 
-// The block's `dma` RegFile: the registers as TileControl holds them (dmaConfig; recordBase, already masked to a chunk).
-enum : unsigned { DMA_R_CONFIG = 0, DMA_R_RECORD_BASE = 1, DMA_REGS = 2 };
+// The block's `dma` RegFile: the units' configuration registers as the tile control holds them (v1.36: 8.1, 12.1, 13):
+// DMA_CONFIG, RECEIVE_CONFIG and GATHER_CONFIG, each masked to its fields.
+enum : unsigned { DMA_R_CONFIG = 0, DMA_R_RECEIVE = 1, DMA_R_GATHER = 2, DMA_REGS = 3 };
 
-// DMA_CONFIG's fields (Fields.java).
+// DMA_CONFIG's fields (8.1): kind [0], start [8:1], count [17:9], gap [20:18]. RECEIVE_CONFIG's (12.1): bucket_digit
+// [2:0], histogram_digit [5:3]. GATHER_CONFIG's (13): record_base [20:0], value_size (k - 1) [23:21].
 inline uint32_t mc_kind(uint32_t v) { return v & 1; }
 inline uint32_t mc_start(uint32_t v) { return v >> 1 & 0xFF; }
 inline uint32_t mc_count(uint32_t v) { return v >> 9 & 0x1FF; }
-inline uint32_t mc_bucket_digit(uint32_t v) { return v >> 18 & 7; }   // 5-7: UB, stopped by the block
-inline uint32_t mc_hist_digit(uint32_t v) { return v >> 21 & 7; }
-inline uint32_t mc_k(uint32_t v) { return (v >> 24 & 7) + 1; }
+inline uint32_t mc_gap(uint32_t v) { return v >> 18 & 7; }
+inline uint32_t rc_bucket_digit(uint32_t v) { return v & 7; }          // 5-7: reserved (12.5), stopped by the block
+inline uint32_t rc_hist_digit(uint32_t v) { return v >> 3 & 7; }
+inline uint32_t gc_record_base(uint32_t v) { return v & 0x1FFFFF; }
+inline uint32_t gc_k(uint32_t v) { return (v >> 21 & 7) + 1; }
 
 struct WriteEngine {
     static constexpr unsigned MAX_STAGE = 2 * 15 + 2;
@@ -91,9 +95,9 @@ struct WriteEngine {
     }
 
     // The configuration as the engine uses it (WriteEngine's fields), from the block's registers.
-    static uint32_t bucket_digit(uint32_t dma_config) { return mc_bucket_digit(dma_config); }
-    static uint32_t hist_digit(uint32_t dma_config) { return mc_hist_digit(dma_config); }
-    static uint32_t augment_base(uint32_t record_base) { return record_base & 0x1FFFFF; }
+    static uint32_t bucket_digit(uint32_t receive_config) { return rc_bucket_digit(receive_config); }
+    static uint32_t hist_digit(uint32_t receive_config) { return rc_hist_digit(receive_config); }
+    static uint32_t augment_base(uint32_t gather_config) { return gc_record_base(gather_config); }
     // LinkWord.digit: byte sel - 1 of the payload (sel 0: 0).
     static uint32_t digit(uint64_t payload, uint32_t sel) { return sel == 0 ? 0 : uint32_t(payload >> (8 * (sel - 1)) & 0xFF); }
 
@@ -139,7 +143,7 @@ inline sim::Wake WriteEngine::step(sim::Ctx& c) {
         const unsigned mode = lw::mode(h);
         unsigned n;
         if (mode == lw::M_AUG) {
-            const uint32_t base = augment_base(c.read(dma, DMA_R_RECORD_BASE));
+            const uint32_t base = augment_base(c.read(dma, DMA_R_GATHER));
             lo = (lo & 0xFFFFFFFFull) | uint64_t(((a - base) & 0x1FFFFF) >> 1) << 32; hi = 0; n = 2; augmented++;
         } else n = 1u << lw::size(h);
         if (a & (n - 1)) {   // (F3, approved 2026-11-12): the PTR named as ref names it (PTR[digit] for mode 2, PTR[src N] otherwise)
@@ -182,7 +186,9 @@ inline sim::Wake WriteEngine::step(sim::Ctx& c) {
 #endif
         if (mode == lw::M_WRITE) { st_ptr[i] = lw::offset(lw::addr(h)) >> 2; st_have[i] = 1; explicit_writes++; }
         else {
-            const uint32_t cfgw = c.read(dma, DMA_R_CONFIG);
+            const uint32_t cfgw = c.read(dma, DMA_R_RECEIVE);
+            if ((mode == lw::M_BUCKET && bucket_digit(cfgw) > 4) || hist_digit(cfgw) > 4)
+                FATAL("write engine: RECEIVE_CONFIG 0x%x names a reserved digit (5-7: machine-spec 12.5) at cycle %llu", cfgw, (unsigned long long)c.now());
             const uint32_t idx = mode == lw::M_BUCKET ? digit(d, bucket_digit(cfgw)) : lw::src(h);
             const uint32_t stp = mode == lw::M_AUG ? 2 : 1u << lw::size(h);
             c.put(ts_req, mem::OP_ADD_RET, mem::IDX_PTR + idx, stp);

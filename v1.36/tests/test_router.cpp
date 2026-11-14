@@ -161,9 +161,14 @@ void w3(std::string& s, const char* tag, const Word* w) {
     s += b;
 }
 
+// v1.35's attach tiles, 0, 1 and 2, which the reference observations and tables were made at (v1.36's are 0, 7 and 15:
+// machine-spec 2.1; NetConfig::attach). The routing functions are the same; only where the fifth port is differs.
+constexpr uint8_t kRefAttach[3] = {0, 1, 2};
+
 // The C++ side of RouterConf run: the same observation lines.
 std::string run(const Script& s, const Hops& h, sim::Options opt) {
     NetConfig nc;
+    for (unsigned i = 0; i < 3; i++) nc.attach[i] = kRefAttach[i];
     sim::Config cfg(opt);
     const bool att = s.tile < 3;
     const bool cc = s.tile >= 64;
@@ -301,8 +306,8 @@ TEST(routing_tables_equal_refs) {
     std::string got;
     for (unsigned me = 0; me < 64; me++) {
         uint64_t x = 0xcbf29ce484222325ull;
-        for (unsigned s = 0; s < 128; s++) for (unsigned d = 0; d < 128; d++) { x ^= route_unicast(h, me, s, d); x *= 0x100000001b3ull; }
-        for (unsigned p = 0; p < 6; p++) for (unsigned s = 0; s < 128; s++) { x ^= route_broadcast(me, p, s); x *= 0x100000001b3ull; }
+        for (unsigned s = 0; s < 128; s++) for (unsigned d = 0; d < 128; d++) { x ^= route_unicast(h, me, s, d, kRefAttach); x *= 0x100000001b3ull; }
+        for (unsigned p = 0; p < 6; p++) for (unsigned s = 0; s < 128; s++) { x ^= route_broadcast(me, p, s, kRefAttach); x *= 0x100000001b3ull; }
         char b[48];
         std::snprintf(b, sizeof b, "%u %016" PRIx64 "\n", me, x);
         got += b;

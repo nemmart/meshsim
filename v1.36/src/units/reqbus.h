@@ -60,7 +60,8 @@ constexpr unsigned HOST_EXTRA = 8;
 struct ReqBusConfig {
     unsigned credit_latency = 3;            // D34: 0 exact as ref (one domain), 3 the spec (splittable); set explicitly
     unsigned hop_latency = 3;               // reqHopLatency
-    unsigned fifo_depth = 128;              // requestFifoDepth
+    unsigned fifo_depth = 128;              // the request queue (v1.36: REQUEST_QUEUE_DEPTH = 4, set by the chip's builder; 128 is
+                                            //   v1.35's, which the unit's conformance fixtures were made at)
     unsigned queue_depth[TARGETS] = {128, 256, 128};   // receiveQueueDepth
 };
 
@@ -595,6 +596,7 @@ void wire_sender(sim::Config& cfg, const ReqBusIO& io, unsigned k, Req& r) {
         if (k < 64 || !io.recv[k - 64]) FATAL("reqbus: sender %u has a receive side but no queue", k);
         ReqRecv& q = *io.recv[k - 64];
         cfg.connect(q.head, r.head);
+        cfg.connect(q.head, r.head_ctl);
         cfg.link(r.pop, q.pop, 1);
         cfg.link(r.qcredit, io.root->qcredit[k - 64], io.queue_credit_latency());
     }
@@ -674,7 +676,7 @@ void tie_off(sim::Config& cfg, const std::string& name, Req& r) {
     cfg.link(r.push, z.push, 1);
     cfg.connect(z.freed, r.freed);
     cfg.link(z.freed_ev, r.freed_ev, 1);
-    if (r.recv) { cfg.connect(z.head, r.head); cfg.link(r.pop, z.pop, 1); cfg.link(r.qcredit, z.qcredit, 1); }
+    if (r.recv) { cfg.connect(z.head, r.head); cfg.connect(z.head, r.head_ctl); cfg.link(r.pop, z.pop, 1); cfg.link(r.qcredit, z.qcredit, 1); }
 }
 
 // The units as built (the ReqBusIO pointers are for wiring only: the build moves units into their arena).

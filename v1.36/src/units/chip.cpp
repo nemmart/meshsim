@@ -74,7 +74,7 @@ struct NoDma {
 ControlIO stand_in(sim::Config& cfg, unsigned k) {
     auto& s = cfg.add<ControlStandIn>(tile_unit(k, "stand"));
     ControlIO io;
-    io.send = s.send; io.send_busy = s.send_busy; io.eject = s.eject; io.go = s.go; io.line = s.line; io.router_ovf = s.router_ovf;
+    io.send = s.send; io.send_busy = s.send_busy; io.eject = s.eject; io.release = s.go; io.line = s.line; io.router_ovf = s.router_ovf;
     io.router_ovf_ev = s.router_ovf_ev;
     return io;
 }
@@ -119,9 +119,9 @@ TileIO tile_cycle(sim::Config& cfg, const ChipSpec& spec, unsigned k) {
     wire_unit(cfg, nc, k, io, r);
     TileIO t;
     for (unsigned d = 0; d < 4; d++) { t.link_in[d] = r.in[d]; t.link_out[d] = r.out[d]; }
-    t.go = io.go;
+    t.release = io.release;
     t.line = io.line;
-    t.attached = k < 3;
+    t.attached = nc.attached_special(k) >= 0;
     if (t.attached && !spec.cc_cores) { t.from_cnc = r.from_cnc; t.to_cnc = r.to_cnc; }
     if (t.attached && spec.cc_cores) { t.from_cc = r.from_cc; t.to_cc = r.to_cc; }
     t.req = io.req;                                       // wired to the request bus by build_chip
@@ -146,7 +146,7 @@ CcIO cc_cycle(sim::Config& cfg, const ChipSpec& spec, unsigned c) {
     CcIO o;
     o.link_in = r.in[Router::CC_LINK_IN]; o.link_out = r.out[Router::CC_LINK_OUT];
     o.has_dma = dma; if (dma) o.dma = r.dma;
-    o.go = io.go; o.line = io.line; o.slot = io.slot;
+    o.release = io.release; o.line = io.line; o.slot = io.slot;
     o.req = io.req;                                       // its request port, both sides
     return o;
 }
@@ -164,7 +164,7 @@ void add_request_bus(sim::Config& cfg, const ChipSpec& spec, TileIO* io, CcIO* c
     }
     for (unsigned c = 0; cc && c < 3; c++) {
         if (cc[c].req.present) ccs |= 1u << c;
-        pl.leaf[64 + c] = pl.recv[c] = spec.domain ? spec.domain[c] : 0;
+        pl.leaf[64 + c] = pl.recv[c] = spec.domain ? spec.domain[spec.net.attach[c]] : 0;
     }
     pl.bus = spec.domain ? spec.domain[0] : 0;
     if (!tiles && !ccs) return;
@@ -188,10 +188,10 @@ void build_chip(sim::Config& cfg, const ChipSpec& spec) {
         // C&C c with tile c (the C&C links are Link(cc_link_latency), 1 in ref: one domain, D26)
         CcIO u[3];
         for (unsigned c = 0; c < 3; c++) {
-            if (spec.domain) cfg.domain(spec.domain[c]);
+            if (spec.domain) cfg.domain(spec.domain[nc.attach[c]]);
             u[c] = cc_cycle(cfg, spec, c);
-            cfg.link(io[c].to_cc, u[c].link_in, nc.cc_link_latency);
-            cfg.link(u[c].link_out, io[c].from_cc, nc.cc_link_latency);
+            cfg.link(io[nc.attach[c]].to_cc, u[c].link_in, nc.cc_link_latency);
+            cfg.link(u[c].link_out, io[nc.attach[c]].from_cc, nc.cc_link_latency);
         }
         add_request_bus(cfg, spec, io, u);                // (D34): the tiles' and the controllers' ports
         // The chip lines (AUDIT-M3 3.4, section 4): the tiles' line words through M2's row collectors, the controllers'
@@ -212,10 +212,10 @@ void build_chip(sim::Config& cfg, const ChipSpec& spec) {
             cfg.link(row.out, rows[r], 1);
             for (unsigned i = 0; i < 8; i++) cfg.link(io[8 * r + i].line, row.line[i], nc.ready_latency - 2);
         }
-        for (unsigned k = 0; k < 64; k++) cfg.link(go[k], io[k].go, nc.go_latency + skew[k]);
+        for (unsigned k = 0; k < 64; k++) cfg.link(go[k], io[k].release, nc.go_latency + skew[k]);
         for (unsigned c = 0; c < 3; c++) {
             cfg.link(u[c].line, lines[c], c == 0 ? 1 : nc.error_lat() - 1);
-            cfg.link(cl.cc_go[c], u[c].go, nc.go_latency + 1);
+            cfg.link(cl.cc_go[c], u[c].release, nc.go_latency + 1);
         }
         return;
     }
@@ -242,16 +242,16 @@ void build_chip(sim::Config& cfg, const ChipSpec& spec) {
         rows[r] = &cfg.add<RowCollector>("row" + std::to_string(r), r);
         cfg.link(rows[r]->out, cc.rows[r], 1);
     }
-    cfg.connect(cc.send, io[0].from_cnc);
-    cfg.connect(io[0].to_cnc, cc.rx);
+    cfg.connect(cc.send, io[nc.attach[0]].from_cnc);
+    cfg.connect(io[nc.attach[0]].to_cnc, cc.rx);
     for (unsigned e = 1; e < 3; e++) {
-        if (spec.domain) cfg.domain(spec.domain[e]);
+        if (spec.domain) cfg.domain(spec.domain[nc.attach[e]]);
         auto& ep = cfg.add<Endpoint>("ep" + std::to_string(e + 1), lw::CC1 + e, nc);
-        cfg.connect(ep.send, io[e].from_cnc);
-        cfg.connect(io[e].to_cnc, ep.rx);
+        cfg.connect(ep.send, io[nc.attach[e]].from_cnc);
+        cfg.connect(io[nc.attach[e]].to_cnc, ep.rx);
     }
     for (unsigned k = 0; k < 64; k++) {
-        cfg.link(cc.go[k], io[k].go, nc.go_latency + skew[k] + 1);
+        cfg.link(cc.go[k], io[k].release, nc.go_latency + skew[k] + 1);
         cfg.link(io[k].line, rows[k / 8]->line[k % 8], nc.ready_latency - 2);
     }
 }

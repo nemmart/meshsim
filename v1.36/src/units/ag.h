@@ -74,6 +74,7 @@ struct AddrGen {
     bool running = false, done = false, lead_in = false, finished_issuing = false, gather_checked = false;
     uint32_t sq_out = 0, cq_out = 0, stream_discard = 0, group_discard = 0, s_reads = 0, c_reads = 0, rg = 0, rr = 0, rv = 0;
     uint32_t sl_run = 0; bool cur = false;
+    uint32_t run_gap = 0;              // DMA_CONFIG.gap as read at this step (the configuration, not state)
     uint32_t c_src = 0, c_dest = 0, c_count = 0, c_j = 0, c_d = 0, c_mode = 0, c_size = 0, c_gap = 0, c_ctr = 0, gap_left = 0;
     uint32_t g = 0, r = 0, v = 0, g_r = 0, g_t = 0, g_gap = 0;
     int64_t group_s = 0, rot_sched = 0;
@@ -125,19 +126,20 @@ struct AddrGen {
     static uint32_t run_start(uint32_t dma_config) { return mc_start(dma_config); }
     static uint32_t run_count(uint32_t dma_config) { return mc_count(dma_config); }
 
-    // Fields.java: STREAM's entry (e0 = SRC | DEST << 32, e1 = COUNT) and GROUP's
+    // STREAM's entry (8.3: e0 = STREAM_SRC_ADDR | STREAM_DEST_ADDR << 32, e1 = STREAM_HDR: the header block [7:0], dst
+    // [14:8], count [31:15]) and GROUP's (8.4: word 0 rotations [17:0], first_stream [25:18], streams - 1 [29:26]; word 1,
+    // here bits [39:32], the gap). The gap after a stream is the transfer's, DMA_CONFIG.gap (8.1).
     static uint32_t s_src(uint64_t e0) { return uint32_t(e0 & 0x1FFFFF); }
-    static uint32_t s_gap(uint64_t e0) { return uint32_t(e0 >> 21 & 7); }
     static uint32_t s_dest(uint64_t e0) { return uint32_t(e0 >> 32); }
-    static uint32_t s_count(uint64_t e1) { return uint32_t(e1 & 0x1FFFF); }
-    static uint32_t s_size(uint64_t e1) { return uint32_t(e1 >> 17 & 3); }
-    static uint32_t s_counter(uint64_t e1) { return uint32_t(e1 >> 19 & 7); }
-    static uint32_t s_mode(uint64_t e1) { return uint32_t(e1 >> 22 & 7); }
-    static uint32_t s_d(uint64_t e1) { return uint32_t(e1 >> 25 & 0x7F); }
+    static uint32_t s_count(uint64_t e1) { return uint32_t(e1 >> 15 & 0x1FFFF); }
+    static uint32_t s_size(uint64_t e1) { return uint32_t(e1 & 3); }
+    static uint32_t s_counter(uint64_t e1) { return uint32_t(e1 >> 2 & 7); }
+    static uint32_t s_mode(uint64_t e1) { return uint32_t(e1 >> 5 & 7); }
+    static uint32_t s_d(uint64_t e1) { return uint32_t(e1 >> 8 & 0x7F); }
     static uint32_t grp_R(uint64_t e) { return uint32_t(e & 0x3FFFF); }
-    static uint32_t grp_start(uint64_t e) { return uint32_t(e >> 32 & 0xFF); }
-    static uint32_t grp_T(uint64_t e) { return uint32_t(e >> 40 & 0xF) + 1; }
-    static uint32_t grp_gap(uint64_t e) { return uint32_t(e >> 44 & 0xFF); }
+    static uint32_t grp_start(uint64_t e) { return uint32_t(e >> 18 & 0xFF); }
+    static uint32_t grp_T(uint64_t e) { return uint32_t(e >> 26 & 0xF) + 1; }
+    static uint32_t grp_gap(uint64_t e) { return uint32_t(e >> 32 & 0xFF); }
     static uint32_t chunks_of(uint32_t size) { return size == lw::SIZE_UNDEF ? 0 : 1u << size; }
 
     // ================================================================ cycle (AddressGenerator.runCycle)
@@ -146,6 +148,7 @@ struct AddrGen {
         const int64_t t = int64_t(c.now());
         const uint32_t mc = c.read(dma, DMA_R_CONFIG);
         const uint32_t knd = kind(mc), rstart = run_start(mc), rcount = run_count(mc);
+        run_gap = mc_gap(mc);
         const sim::Word s = c.read(start);
         if (s != starts_seen) {                                          // the start pulse of endCycle(t - 1)
             if (s != starts_seen + 1) FATAL("address generator (tile %u): %llu starts in one cycle at %lld", me, (unsigned long long)(s - starts_seen), (long long)t);
@@ -269,11 +272,11 @@ struct AddrGen {
     }
     void end_stream(uint32_t rcount) { cur = false; sl_run++; if (sl_run >= rcount) finished_issuing = true; }
     void load_stream(uint64_t e0, uint64_t e1) {
-        c_src = s_src(e0); c_dest = s_dest(e0); c_gap = s_gap(e0); c_d = s_d(e1);
+        c_src = s_src(e0); c_dest = s_dest(e0); c_gap = run_gap; c_d = s_d(e1);
         c_count = s_count(e1); c_mode = s_mode(e1); c_size = s_size(e1); c_ctr = s_counter(e1); c_j = 0;
     }
     void issue_element(sim::Ctx& c, int64_t t, uint32_t e) {
-        const uint32_t dst = c_d < 64 ? (me + c_d) & 63 : c_d;          // d: relative 0-63, absolute 64- (4.2)
+        const uint32_t dst = c_d < 64 && me < 64 ? (me + c_d) & 63 : c_d;   // 8.3: relative on a compute tile, absolute otherwise
         const uint32_t n = chunks_of(c_size);
         uint32_t dst_addr = 0;
         if (c_mode == lw::M_WRITE) dst_addr = c_dest + e * (4 * n);     // plain addition, 32 bits (4.2)
@@ -356,7 +359,7 @@ struct AddrGen {
     // Tile.checkGatherAlignment (v1.25 s8c): the gather buffers 128-bit aligned, the source (the record base) and the
     // destination (PTR[me]); UB, so meshsim stops.
     void gather_alignment(sim::Ctx& c, int64_t t) {
-        const uint32_t b = c.read(dma, DMA_R_RECORD_BASE) & 0x1FFFFF, p = c.read(ptr, me);
+        const uint32_t b = gc_record_base(c.read(dma, DMA_R_GATHER)), p = c.read(ptr, me);
         if ((p & 3) != 0 || (b & 3) != 0)
             FATAL("address generator (tile %u), cycle %lld: a run with mode-4 streams starts with the gather buffers not 128-bit "
                   "aligned (DMA_RECORD_BASE_ADDRESS chunk 0x%x, PTR[me] chunk 0x%x; DECISIONS-v1.25 s8c): UB", me, (long long)t, b, p);

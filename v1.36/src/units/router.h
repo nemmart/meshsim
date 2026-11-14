@@ -96,7 +96,8 @@ struct Router {
     // ---- configuration ----
     bool ovf_event = false;
     uint8_t me = 0;
-    bool attached = false;            // tiles 0-2: the fifth port is connected (C&C 1-3)
+    bool attached = false;            // an attach tile (NetConfig::attach): the fifth port is connected
+    uint8_t attach[3] = {0, 7, 15};   // the attach tiles (NetConfig::attach)
     bool cc = false;                  // a controller's router (me 64-66)
     bool fifth_link = false;          // attached: the fifth port is the C&C links (C&C as cores)
     bool has_dma = false;             // a controller's router with CC_DMA_IN connected
@@ -151,10 +152,11 @@ private:
 };
 
 // ref's routing decisions as pure functions (the router at tile `me`): output masks (Router::M_*).
-unsigned route_unicast(const Hops& hops, unsigned me, unsigned src, unsigned dst);
-unsigned route_broadcast(unsigned me, unsigned port, unsigned src);
-inline unsigned Router::unicast(unsigned src, unsigned dst) const { return route_unicast(*hops, me, src, dst); }
-inline unsigned Router::broadcast(unsigned port, unsigned src) const { return route_broadcast(me, port, src); }
+// (`attach`: the three attach tiles, NetConfig::attach; null: the specification's)
+unsigned route_unicast(const Hops& hops, unsigned me, unsigned src, unsigned dst, const uint8_t* attach = nullptr);
+unsigned route_broadcast(unsigned me, unsigned port, unsigned src, const uint8_t* attach = nullptr);
+inline unsigned Router::unicast(unsigned src, unsigned dst) const { return route_unicast(*hops, me, src, dst, attach); }
+inline unsigned Router::broadcast(unsigned port, unsigned src) const { return route_broadcast(me, port, src, attach); }
 
 // ---- the step (inline: the run function inlines it, config.h DISPATCH) --------------------------------------------
 

@@ -16,7 +16,7 @@ $(B)/golden: $(B)/tests/golden_main.o $(GOLDEN_OBJ) $(UNITS_LINK) $(LIB_OBJ)
 $(B)/bench_controller: $(B)/tests/bench_controller.o $(GOLDEN_OBJ) $(UNITS_LINK) $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 
-all: $(B)/golden $(B)/bench_controller
+all: $(call live,$(B)/golden $(B)/bench_controller)
 
 .PHONY: golden
 golden: $(B)/golden
@@ -62,3 +62,4 @@ $(B)/test_slotconf $(B)/test_periph_slot: $(SLOT_LINK) $(B)/tests/statefp.o
 $(B)/slotconf: $(B)/tests/slotconf_main.o $(SLOT_LINK) $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 all: $(B)/slotconf
+

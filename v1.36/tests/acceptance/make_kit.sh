@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# make_kit.sh -- builds the acceptance kit (v1.35, v1.3's acceptance/make_kit.sh) from the
-# committed sim/ at HEAD (commit first): the sources the kit's programs build from (Makefile, src/, tools/, tests/'s
-# top-level sources and makefiles, tests/acceptance/, bench/'s makefiles, which the Makefile includes), the data they read (data/tables with its manifest, data/hops.txt,
+# make_kit.sh -- builds the acceptance kit (v1.3's acceptance/make_kit.sh) from this version's folder as
+# committed at HEAD (commit first; the kit calls its copy sim/): the sources the kit's programs build from (Makefile, src/, tools/, tests/'s
+# top-level sources and makefiles, tests/acceptance/), the data they read (data/tables with its manifest, data/hops.txt,
 # the RTL's references of Stage A's cycles: tests/acceptance/rtl), and the
 # scripts (run_shard.sh, calibrate.sh, build.sh, README.md) at the top. No jar: the runner builds it (./build.sh).
 #   tests/acceptance/make_kit.sh OUT.tgz
@@ -10,12 +10,13 @@ export LC_ALL=C   # byte order for sort, ls and globs, and nm's symbol order: th
 cd "$(dirname "$0")/../.."
 OUTF=$(realpath -m "${1:?usage: make_kit.sh OUT.tgz}")
 TOP=$(git rev-parse --show-toplevel); REV=$(git rev-parse --short HEAD)
+V=$(git rev-parse --show-prefix); V=${V%/}   # this version's folder in the repository (the kit calls its copy sim/)
 [ -z "$(git status --porcelain -- . | grep -v '^??')" ] || echo "make_kit.sh: uncommitted changes in sim/ are not in the kit (HEAD $REV)" >&2
 K=$(mktemp -d); trap 'rm -rf "$K"' EXIT
 mkdir -p "$K/w25-kit"
-( cd "$TOP" && git archive --format=tar HEAD -- sim/Makefile sim/src sim/tools sim/data/tables sim/data/hops.txt \
-    ':(glob)sim/tests/*.cpp' ':(glob)sim/tests/*.h' ':(glob)sim/tests/*.mk' sim/tests/acceptance \
-    ':(glob)sim/bench/**/*.mk' ) | tar -xf - -C "$K/w25-kit"
+( cd "$TOP" && git archive --format=tar HEAD -- "$V/Makefile" "$V/src" "$V/tools" "$V/data/tables" "$V/data/hops.txt" \
+    ":(glob)$V/tests/*.cpp" ":(glob)$V/tests/*.h" ":(glob)$V/tests/*.mk" "$V/tests/acceptance" ) | tar -xf - -C "$K"
+mv "$K/$V" "$K/w25-kit/sim"
 for need in sim/Makefile sim/tests/replay_shard_main.cpp sim/tests/acceptance/shard_summary.cpp sim/tools/delivery/synthetic_delivery.cpp \
             sim/data/tables/manifest.json sim/data/tables/replayer/decode_table.bin sim/tests/acceptance/rtl/synthetic.txt; do
   [ -e "$K/w25-kit/$need" ] || { echo "make_kit.sh: the kit lacks $need" >&2; exit 1; }

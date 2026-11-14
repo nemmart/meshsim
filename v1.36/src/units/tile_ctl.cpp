@@ -48,7 +48,9 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     core.reset_mtvec = BOOTROM_BASE + g.bootrom_handler;   // mtvec resets to the ROM's handler (6.2)
     core.reset();
     RegBlockState block;
-    block.straps = g.straps ? g.straps(k, g.cfg) : default_straps(k, periph_present);
+    G1Config tile_cfg = g.cfg;                             // this tile's: its id and the peripherals it has
+    tile_cfg.tile = k; tile_cfg.periph_present = periph_present;
+    block.straps = g.straps ? g.straps(k, tile_cfg) : default_straps(k, periph_present);
     block.request_queue_depth = g.cfg.request_queue_depth;
     bus::Straps bs;
     bs.peripherals = block.straps.peripherals;

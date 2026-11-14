@@ -99,6 +99,8 @@ struct ChipSpec {
     ControlBuilder control = nullptr;         // the part of each tile (null: a stand-in that sinks the eject bus and
     void* control_ctx = nullptr;              //  never sends, never READY: the network-only checks)
     const uint8_t* domain = nullptr;          // 64 entries (null: one domain)
+    // (reqbus.fifo_depth is the caller's to set to the request queue's depth its cores stall at, REQUEST_QUEUE_DEPTH = 4,
+    // G1Config::request_queue_depth: the unit's own default, 128, is v1.35's, which its conformance fixtures were made at)
     units::reqbus::ReqBusConfig reqbus;       // (D34): the request bus; credit_latency set explicitly (3 the spec,
                                               // 0 exact as ref: one domain), never from the partition
     // M3: C&C 1-3 as cores (ref's Config.ccCores; AUDIT-M3 3.4). Units 64-66 are built like tiles (`control`

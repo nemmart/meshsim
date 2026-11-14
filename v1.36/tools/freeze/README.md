@@ -1,23 +1,36 @@
-# tools/freeze: the freeze's tools
+# tools/freeze: the version's file list, and freezing v1.36
 
-What turns the work-in-progress folder into the frozen v1.35. Run from anywhere; paths are relative to the version's root.
+*For whoever freezes v1.36: what is here, what the freeze takes, and what it does not need.*
 
 | file | what it does |
 |---|---|
-| `exclude.txt` | the paths the frozen copy leaves out: the oracle and v1.3's Java, the stage-1 API sketches, the leftover benches, the workers' session material (reports and the index stay). One extended regular expression per line; `!` keeps a path an earlier line left out |
-| `frozen.sh` | the files of the frozen copy, one per line: the tracked files less `exclude.txt`'s (`--untracked`: with the untracked files git doesn't ignore) |
-| `copy.sh DST [--dry-run]` | the copy: `frozen.sh`'s files into `DST`, byte for byte with their modes, nothing edited or added; refuses an existing `DST` or uncommitted changes. `--dry-run` lists what is left out, by the line that leaves it out |
-| `strip_files.sh` | the source files the comment strip reads, with the lexer's language for each |
-| `cstrip.cpp` | the strip's lexer: lists a file's comments (`list`), its code without them (`code`), or rewrites only its comments (`apply`); see its header |
+| `frozen.sh` | the files of the version, one per line: the tracked files less `exclude.txt`'s (`--untracked`: with the untracked files git doesn't ignore). `tools/doccheck.sh` checks the documents against this list |
+| `exclude.txt` | the paths the list leaves out. v1.36 leaves none out |
 
-`tools/doccheck.sh` (one folder up) checks the documents of the same file set.
+## v1.36 is frozen in place
 
-## The freeze, in order
+v1.35 was made in a work folder and frozen by copying it, less its oracle and session material, into `v1.35/`; its
+tools for that (the copy, the comment strip, the freeze check's task for the measurement runner) are in `../v1.35/`
+and are not here. v1.36 began as that frozen folder, copied to `v1.36/` on its own branch, and was changed there. So
+there is nothing to copy and nothing to strip: **the freeze is the commit that puts this folder on `main`**, after
+which it is never edited again but for an errata file (`spec/GUIDELINES.md`, 8).
 
-1. The ports finish: every `run_tests.sh` step live, none PENDING.
-2. `tools/freeze/strip.sh --apply` in this folder's version (the benches renamed, the comments and messages cleaned,
-   with its proof; run its dry run first), committed as one change with the freeze task's update to the new bench paths.
-3. `make check DOCCHECK=1`: the documents' checks run after the renames, since the documents use the new names.
-4. The freeze check on the runner (`tests/freeze/`).
-5. `tools/freeze/copy.sh DST` (`DST` the repository's `v1.35/`), then one commit of `DST`. That commit adds
-   `v1.35/README.md`, by which `tests/README.md` finds the freeze commit.
+What the freeze takes, in order, from this folder on the commit to be frozen:
+
+1. A clean tree: `git status --short` prints nothing for this folder.
+2. `make -j20`: builds without a warning (warnings are errors).
+3. `./run_tests.sh all --check`, with both outside inputs (`RUNNING.md`: `MESHSIM_INPUTS`, the real workloads' data,
+   and `RTL_SORT_64K_KEYS`, the RTL's 64K key file, whose sha256 is `fw/rtl/sort/sort-64k.keys.sha256`'s, and a JDK
+   first on `PATH`): its last line is `== all passed; logs in results/`, with no step `SKIPPED`.
+4. `setarch $(uname -m) -R make -j20 check`: its last line is `==== make check: all passed (gcc clang; debug,
+   release)`.
+5. `make doccheck`: `doccheck: 0 failures`.
+6. The acceptance kit's calibration (`RUNNING.md`): `PASS` at 1, 4, 8 and 16 processes.
+7. Then, outside this folder: the repository's top-level `README.md` gains v1.36's row and names v1.36 as the RTL's
+   target, and the commit lands on `main`. The folder's own `README.md` is already written for the frozen state.
+
+What the frozen folder is pinned to: the RTL's firmware in `fw/rtl/` at the Snarky One commit `fw/rtl/MANIFEST`'s
+header names, each file by its sha256 there; the files copied from v1.3 by `COPIES.sha256`; the RTL's references
+under `tests/` (each folder's `README.md` names the Snarky One commit and the command that made them). The
+specification follows Snarky One's `rtl/tile/base/spec.md` and `rtl/blocks/core/spec.md` at the commit
+`spec/README.md` names.

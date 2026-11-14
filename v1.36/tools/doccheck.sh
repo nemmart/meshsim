@@ -1,7 +1,7 @@
 #!/bin/bash
 # tools/doccheck.sh [-v]: the documents' checks (V135-DOCS-PROPOSAL section 6), on the files of the frozen copy
-# (tools/freeze/frozen.sh --untracked: sim/'s files less ref/, oracle/ and the rest the copy leaves out), so a path to
-# something the copy leaves out counts as missing. Four checks, each failure one line "KIND file:line: detail":
+# (tools/freeze/frozen.sh --untracked: the version's files), so a path to something that is not in the version counts as
+# missing. Four checks, each failure one line "KIND file:line: detail":
 #   MISSING      a path a document cites doesn't exist: a link's target, or a word in code (`...` or a fenced block)
 #                that is a path (it has a folder and a known extension, or its first folder is one of the tree's), or
 #                a document's bare name (README.md, PORTS.md: found anywhere in the tree)
@@ -14,8 +14,9 @@
 # copied verbatim (fw/rtl/src/), are kept whole and not checked for paths. A path in
 # a command beginning with "cd DIR" is also tried from DIR (and skipped when DIR is not a plain path). Exemptions, by
 # document and cited path: tools/doccheck-exempt.txt (kinds: other-repo, historical, output, cd). Generated
-# paths (build/, results/, fw/build/) and other versions' (v1.x/, ../) aren't checked. Exit 1 on any failure; -v also
-# lists every path that was checked.
+# paths (build/, results/) and other versions' (v1.x/, ../) aren't checked, nor is a path into Snarky One, the RTL's
+# repository (one that begins with its rtl/ or xtask/ folder and is not in this tree: the documents write such a path as
+# Snarky One's). Exit 1 on any failure; -v also lists every path that was checked.
 set -eu
 export LC_ALL=C   # byte order for sort, ls and globs, and nm's symbol order: the outputs are the same in any locale
 cd "$(dirname "$0")/.."
@@ -91,6 +92,7 @@ awk -F'\t' -v FILES="$LIST" -v DIRS="$LIST.dirs" -v V=$V -v EXF="$LIST.ex" '
     if (q !~ /\// && q !~ /\.md$/) next                       # a bare file name, not a document: a name, not a path
     ok = there(rel) || there(root) || (q !~ /\// && (q in B))
     if (!ok && cd != "") ok = there(norm(cd "/" q)) || there(norm((dir == "" ? "" : dir "/") cd "/" q))
+    if (!ok && first ~ /^(rtl|xtask)$/) next               # the RTL repository: its rtl/ and xtask/ folders
     if (V) print "checked " (ok ? "ok " : "NO ") doc ":" line ": " p
     if (!ok) { print "MISSING " doc ":" line ": " p " (" kind ")"; bad++ }
   }
@@ -129,6 +131,7 @@ awk -F'\t' -v FILES="$LIST" -v EXF="$LIST.ex" '
   { f = $1; p = $3; b = p; sub(/.*\//, "", b)
     if ((f SUBSEP p) in EX) next
     if (p ~ /^(\.\.\/)*v1\.[0-9.]+\// || b in B) next          # in the tree under that name, or another version'"'"'s
+    if (p ~ /^rtl\//) next                                    # the RTL repository (Snarky One)
     print "DOC-MISSING " f ":" $2 ": " p }' "$LIST.named" > "$LIST.out3"
 
 cat "$LIST.out1" "$LIST.out2" "$LIST.out3" | { if [ $V = 1 ]; then cat; else grep -v '^checked ' || true; fi; }

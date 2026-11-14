@@ -20,7 +20,7 @@
 //     visits, one a cycle, a visit idle when its rotation is not below its stream's count, then waits its gap; an
 //     R = 0 group takes one cycle and its gap. A cycle that waits for an entry not yet in shifts every later one.
 //   - A refused read (offered, not taken) is held until taken, and every later time shifts with it: there is no
-//     catching up. In a group transfer each refused cycle sets ERRORS.drift (`drift`).
+//     catching up. In a group transfer each refused cycle sets ERRORS.drift (below).
 //   - The end (8.2). The walk is complete in the cycle w the last entry is walked: the last stream's last element
 //     taken, or its pass, or the last group's end; the last gap is not waited. EVENTS.dma_done is set in w + 1, at
 //     whose end STATUS.dma_busy falls. An empty transfer's w is E: busy for the one cycle E + 1, dma_done at its end.
@@ -41,7 +41,9 @@
 //   ptr       RegFile            table store -> AG          PTR, for the gather alignment check   (level)
 //   rd        Hold, width 2      AG -> read arbiter         mem::req_a, mem::req_b                offered the cycle after
 //   status    Reg, width 1       AG -> tile control         running | done << 1                   put at E + 1 and w + 1
-//   drift     Link(1), width 0   AG -> tile control         a refused read in a group transfer    the cycle after it
+// ERRORS.drift (8.4) is set at the end of each cycle a group transfer's read is offered and not taken (the RTL's
+// `drift = group_valid && !read_request_ready`). The generator learns of a refusal a step late (the Hold), so the pulse
+// is the read arbiter's, in the refusal's cycle: a group transfer's reads carry mem::A_GROUP (inject.h, `ag_drift`).
 #pragma once
 
 #include <algorithm>
@@ -66,7 +68,6 @@ struct AddrGen {
     sim::WireIn start;
     sim::HoldOut rd;
     sim::RegOut status;
-    sim::LinkOut drift;
     sim::RegFileIn ptr, view;
 
     // ---- configuration ----
@@ -125,7 +126,6 @@ struct AddrGen {
         p.in(start, "start");
         p.out(rd, "rd", mem::kReadReqWidth);
         p.out(status, "status", 1);
-        p.out(drift, "drift", 0);
         p.in(ptr, "ptr"); p.in(view, "view");
     }
 
@@ -171,7 +171,7 @@ struct AddrGen {
             put_prev = false;
             if (stalled) {
                 stall_cycles++;
-                if (kind == RUN_GROUPS) { group_stall_cycles++; drift_events++; c.put(drift); }   // 8.4: drift
+                if (kind == RUN_GROUPS) { group_stall_cycles++; drift_events++; }   // 8.4: drift (the arbiter's pulse: inject.h)
             }
             // the read offered in t - 1, taken: its visit was made in t - 1
             if (offer.valid && !stalled) { const Action a = offer; offer.valid = false; made(a, t - 1); }
@@ -319,7 +319,7 @@ struct AddrGen {
         uint32_t dst_addr = 0;
         if (c_mode == lw::M_WRITE) dst_addr = c_dest + e * (4 * n);         // plain addition, 32 bits
         const uint32_t src = (c_src + e * n) & 0x1FFFFF;
-        held[0] = mem::req_a(src, c_size, c_mode, c_ctr, dst); held[1] = mem::req_b(dst_addr);
+        held[0] = mem::req_a(src, c_size, c_mode, c_ctr, dst) | (kind == RUN_GROUPS ? mem::A_GROUP : 0); held[1] = mem::req_b(dst_addr);
         c.put(rd, held[0], held[1]);
         put_prev = true;
         requests++;

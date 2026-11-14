@@ -169,11 +169,10 @@ void w_router(const void* p, FpOut& o, const FpCtx& x) {
     const units::Router& r = *g.router;
     r.fp_own(o, x.cycle - x.label_shift);                             // ref's cyc (M3: puts of c + 1 not yet in)
     static const char* const kLink[4] = {"link0", "link1", "link2", "link3"};
-    if (r.cc) {                                                       // a controller's router (FEEDERS_CC)
-        link_port(o, kLink[0], x.sim, r.in[units::Router::CC_LINK_IN]);
-        none(o, kLink[1]);                                           // (v1.36: no host port)
-        if (r.has_dma) fifo_port(o, kLink[2], x.sim, r.dma); else none(o, kLink[2]);
-        none(o, kLink[3]);
+    if (r.cc) {                                                       // a special tile's router: its attach port, then
+        link_port(o, kLink[0], x.sim, r.from_cc);                    // its DMA inputs (v1.36: no ref's stream to equal)
+        for (unsigned d = 0; d < 3; d++)
+            if (r.dma_inputs >> d & 1) link_port(o, kLink[d + 1], x.sim, r.in[d]); else none(o, kLink[d + 1]);
         link_port(o, "inj", x.sim, r.inj);                           // ref's fromCnc is null on a controller
         return;
     }

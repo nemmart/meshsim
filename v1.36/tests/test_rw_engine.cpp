@@ -26,9 +26,9 @@
 //   a load presented in c       SlotCore::peek(c) (EVENTS: read(c), consuming at the end of c), before the edge
 //   the edge that ends c        run_cycle(c, room), then the store of c (write(c)), end_cycle(c), and the write port's
 //                               write of c: accept(c - 2), which the director accepted two cycles before (17.3)
-//   packet_valid, packet        the DMA's packet register: the slot hands a packet over in the cycle it takes it,
-//                               when the register is empty or its packet leaves (`room`), and the bench holds it until
-//                               packet_ready, as the RTL's register does; its src is the tile's id here (16.4: the
+//   packet_valid, packet        the DMA's packet register, the slot's (SlotCore::Dma: full, pkt), which takes an entry
+//                               when it is empty or its packet leaves; the bench gives packet_ready as the
+//                               router's room (SlotCore::room_is_ready); its src is the tile's id here (16.4: the
 //                               router's stamp, which the slot gives), where the RTL's port carries none
 //   the lpddr port              RwEngine::lpddr_out(), its registers before the edge, and the slave's outputs of the
 //                               cycle, which the engine asks its slave for
@@ -147,8 +147,6 @@ struct Dut {
     SlotCore s;
     RwEngine* e = nullptr;
     int64_t t = 0;
-    bool offered = false;            // the packet register
-    Packet packet;
 
     explicit Dut(const Config& c, bool with_slave = true) {
         PeriphSlotConfig pc;
@@ -156,6 +154,7 @@ struct Dut {
         pc.rw.lpddr_bits = c.lpddr_bits; pc.rw.buffer_bytes = c.buffer_bytes; pc.rw.queue_beats = c.queue_beats;
         s.tile = TILE;
         s.dma_port = true;
+        s.room_is_ready = true;                                 // the bench plays packet_ready
         s.install(1, PT_RW, pc);
         e = &s.rw_engine(1);
         if (with_slave) e->attach(&latch);
@@ -171,8 +170,11 @@ struct Dut {
         }
         o.event = s.live_events(t) & 1;
         o.error = s.live_errors(t) & 1;
-        o.packet_valid = offered;
-        o.packet = packet;
+        const SlotCore::Dma& d = s.dma[1];                     // the packet register, before the edge
+        o.packet_valid = d.full;
+        if (d.full)
+            o.packet = Packet{uint32_t(lw::dst(d.pkt.h)), uint32_t(lw::src(d.pkt.h)), uint32_t(lw::mode(d.pkt.h)), uint32_t(lw::counter(d.pkt.h)),
+                              uint32_t(lw::size(d.pkt.h)), lw::addr(d.pkt.h), axi4::make128(d.pkt.hi, d.pkt.lo)};
         o.lpddr = e->lpddr_out();
         o.arvalid = o.lpddr.arvalid; o.awvalid = o.lpddr.awvalid;
         o.ar = o.aw = axi4::address_of(o.lpddr);
@@ -183,19 +185,10 @@ struct Dut {
     }
     // The edge that ends cycle t.
     void edge(const Inputs& i) {
-        if (i.reset) { s.reset(t); offered = false; t++; return; }
+        if (i.reset) { s.reset(t); t++; return; }
         latch.in = i.axi;
-        const bool leaving = offered && i.ready;
-        s.run_cycle(t, !offered || leaving ? 1 : 0);
-        if (leaving) offered = false;
+        s.run_cycle(t, i.ready ? 1 : 0);                        // packet_ready in this cycle
         if (s.n_out > 1) FATAL("test_rw_engine: two DMA packets in a cycle");
-        if (s.n_out == 1) {
-            if (offered) FATAL("test_rw_engine: the DMA took a packet with its register full");
-            const DmaPacket& p = s.out[0];
-            packet = Packet{uint32_t(lw::dst(p.h)), uint32_t(lw::src(p.h)), uint32_t(lw::mode(p.h)), uint32_t(lw::counter(p.h)),
-                            uint32_t(lw::size(p.h)), lw::addr(p.h), axi4::make128(p.hi, p.lo)};
-            offered = true;
-        }
         if (i.access.some && i.access.write && !s.write(t, 1, window_word(i.access), i.access.wdata))
             FATAL("test_rw_engine: a store to window word %u is a bus error", window_word(i.access));
         s.end_cycle(t);
@@ -1214,8 +1207,9 @@ TEST(rw_engine_a_reply_into_a_full_queue_is_lost_and_flagged) {
 // ================================================================ in the framework: the engine in a PeriphSlot unit
 // The slot behind its ports (periph_slot.h): the core's stores on S2 (Link(1): a store put in c is presented in c), the
 // director's region WRITEs on S1 (Link(3): a WRITE the director accepted in a is on the write port in a + 2 and lands
-// at its end), the window RegFile, and the DMA's packets on the credit Fifo (a packet the DMA takes in c is put in c
-// and is at the router's input in c + 1). The controller is UnitLpddr at its prompt timing, called by the engine.
+// at its end), the window RegFile, and the DMA's packets as a router's DMA input takes them (router.h, A DMA INPUT: a
+// packet the DMA takes in c is in its packet register, offered, in c + 1, and moves then, the input ready: `RouterSide`
+// drives its room, the stand records each packet in the cycle it moved). The controller is UnitLpddr at its prompt timing, called by the engine.
 namespace {
 
 struct PromptSlave final : LpddrSlave {
@@ -1232,12 +1226,20 @@ struct PromptSlave final : LpddrSlave {
     }
 };
 
+// The router's side of the DMA's `packet` interface (16.4): its queues always with room.
+struct RouterSide {
+    sim::WireOut room;
+    explicit RouterSide(sim::Ports& p) { p.out(room, "room", 0xFF); }
+    sim::Wake step(sim::Ctx&) { return sim::Wake::none(); }
+    uint64_t digest() const { return 0; }
+};
+
 struct Stand {
     enum : uint8_t { STORE, REGION, READ };
     struct Ev { uint64_t t; uint8_t kind; uint32_t a, b; uint64_t lo, hi; };
     sim::LinkOut core, region;
     sim::RegFileIn window;
-    sim::FifoIn dma;
+    sim::LinkIn dma;                 // the DMA's packet, delivered the cycle after it moved
     const Ev* ev = nullptr;
     unsigned n = 0, i = 0;
     uint32_t reads[64] = {};
@@ -1248,12 +1250,12 @@ struct Stand {
         p.out(core, "core", 1);
         p.out(region, "region", 3);
         p.in(window, "window");
-        p.in_credit(dma, "dma", 3, 4);
+        p.in(dma, "dma", 3);
     }
     sim::Wake step(sim::Ctx& c) {
         if (c.ready(dma)) {
             const sim::Word* w = c.peek(dma);
-            if (n_dma < 64) { dma_t[n_dma] = c.now(); dma_lo[n_dma] = w[0]; dma_h[n_dma] = w[1]; dma_hi[n_dma] = w[2]; }
+            if (n_dma < 64) { dma_t[n_dma] = c.now() - 1; dma_lo[n_dma] = w[0]; dma_h[n_dma] = w[1]; dma_hi[n_dma] = w[2]; }
             n_dma++;
             c.take(dma);
         }
@@ -1281,7 +1283,8 @@ struct Rig {
         cfg.link(st.core, sl.core, 1);
         cfg.link(st.region, sl.region, 3);
         cfg.connect(sl.window, st.window);
-        cfg.connect(sl.dma, st.dma);
+        cfg.link(sl.dma, st.dma, 1);
+        cfg.connect(cfg.add<RouterSide>("router").room, sl.dma_room);
         return cfg.build();
     }
     Stand& stand() { return m.unit<Stand>("stand"); }
@@ -1301,7 +1304,7 @@ const unsigned R_STATUS = Win::reg(1, Win::R_STD + P_STATUS), R_PEEK = Win::reg(
 
 // A read of 6 beats and its reply through the slot unit, the read timing test's job at the framework's ports. By hand,
 // from the README's timing (the controller prompt): START presented in p = 10, STATUS.busy read 1 in p + 1, AR accepted
-// in p + 2 and p + 3, the beats in p + 3 .. p + 8, taken by the DMA in p + 4 .. p + 9 and at the router's input a cycle
+// in p + 2 and p + 3, the beats in p + 3 .. p + 8, taken by the DMA in p + 4 .. p + 9 and moved into the router a cycle
 // later, the read's end in p + 8 (done read from p + 9) and the transfer's in p + 10 (dma_done read from p + 11).
 TEST(rw_engine_in_the_slot_unit_a_read_and_its_reply) {
     const Stand::Ev ev[] = {
@@ -1352,7 +1355,7 @@ TEST(rw_engine_in_the_slot_unit_a_read_and_its_reply) {
         CHECK(burst_list_of(r.slave.lpddr) == (std::vector<AddressBeat>{address_beat(0x102, 2), address_beat(0x104, 4)}));
         CHECK_EQ(s.n_dma, 7u);
         for (unsigned k = 0; k < 6; k++) {
-            CHECK_EQ(s.dma_t[k], 15u + k);                      // taken in p + 4 + k, at the router's input the cycle after
+            CHECK_EQ(s.dma_t[k], 15u + k);                      // taken in p + 4 + k, offered and moved the cycle after
             const u128 row = axi4::initial_row(0x102 + k);
             CHECK_EQ(s.dma_lo[k], axi4::lo64(row));
             CHECK_EQ(s.dma_hi[k], axi4::hi64(row));

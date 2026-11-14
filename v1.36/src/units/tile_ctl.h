@@ -31,7 +31,8 @@
 //                                  strap `barrier` (7.1: a special tile's barrier is not wired)
 //   kline       Link(LAND_LATENCY + 1), width 1, from the director: a counter's decrement due (12.3)
 //   bad, ovf, drift, gather_ovf_ev  width 0, Link(1): the errors' pulses of the receive unit, the router, the DMA unit
-//               and the gather unit (7.4)
+//               and the gather unit (7.4), each put in the cycle of its cause, so that the error is set at that cycle's
+//               end: `drift` by the read arbiter (inject.h), `gather_ovf_ev` by the traffic director (director.h)
 //   req_freed_ev  width 0, Link(1): the request queue's head left
 //   gather_busy, gather_srq_busy (Regs), gather_put (Link(1)): STATUS.gather_busy's inputs (gather.h)
 //   ag_status   Reg: the address generator's running | done << 1
@@ -88,7 +89,7 @@ struct TileCtl {
     sim::LinkIn gather_put, gather_ovf_ev;     // width 0, Link(1): the director's GATHER put; the gather queue's overflow
     sim::RegIn ag_status;                      // the AG's running | done << 1 at the end of t (ag.h)
     sim::LinkIn req_freed_ev;                  // width 0, Link(1): the request tree took the queue's head at t
-    sim::LinkIn drift;                         // width 0, Link(1): the AG's drift (ERRORS.drift)
+    sim::LinkIn drift;                         // width 0, Link(1): ERRORS.drift's pulse, from the read arbiter (inject.h)
     sim::RegFileIn slot_win;                   // the peripheral slot's window RegFile (its live bits), when `slot`
     sim::RegFileIn recv;                       // the receive queue's head (ReqRecv::R_PENDING), when `receiver`
     // ---- outputs ----

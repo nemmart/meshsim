@@ -1,6 +1,7 @@
 // test_periph_slot: the slot as a framework unit (AUDIT-M3 3.1): a stand-in for the core and the director puts
 // window stores and consuming loads on S2/S3 (Link(1)) and mode-0 region writes on S1 (Link(3)), reads the window
-// RegFile at chosen cycles (its loads' sample points), and takes the DMA's packets from the credit Fifo. The values and
+// RegFile at chosen cycles (its loads' sample points), and takes the DMA's packets as a router's DMA input does (router.h,
+// A DMA INPUT: `RouterSide` drives the input's room, the stand records each packet in the cycle it moved). The values and
 // cycles checked are ref's (PeripheralSlot under Tile: an input at t acts from the end of t, a load at t reads the end
 // of t - 1, a region write at t lands at the end of t + 2, the DMA's first packet the cycle after PULSE_DMA's).
 // Run plain, with step-all, and shuffled; the debug builds' missed-wake detector is on throughout.
@@ -31,12 +32,12 @@ struct Stand {
     struct Ev { uint64_t t; uint8_t kind; uint32_t a, b; uint64_t lo, hi; };
     sim::LinkOut core, region;
     sim::RegFileIn window;
-    sim::FifoIn dma;
+    sim::LinkIn dma;                 // the DMA's packet, delivered the cycle after it moved
     const Ev* ev = nullptr;
     unsigned n = 0, i = 0;
     bool with_dma = false;
     unsigned pn = 1;                 // the peripheral the stores, the consuming loads and the region writes are for
-    uint64_t hold_until = 0;         // the DMA's packets are left in the router input (its 4 places) before this cycle
+    uint64_t hold_until = 0;         // (RouterSide's: the router's input is not ready before this cycle)
     uint32_t reads[64] = {};
     unsigned n_reads = 0;
     uint64_t dma_t[16] = {}, dma_lo[16] = {}, dma_hi[16] = {}, dma_h[16] = {};
@@ -47,12 +48,12 @@ struct Stand {
         p.out(core, "core", 1);
         p.out(region, "region", 3);
         p.in(window, "window");
-        if (dma_port) p.in_credit(dma, "dma", 3, 4);
+        if (dma_port) p.in(dma, "dma", 3);
     }
     sim::Wake step(sim::Ctx& c) {
-        if (with_dma && c.now() >= hold_until && c.ready(dma)) {     // the router input takes a packet a cycle
+        if (with_dma && c.ready(dma)) {                              // a packet that moved in the cycle before
             const sim::Word* w = c.peek(dma);
-            if (n_dma < 16) { dma_t[n_dma] = c.now(); dma_lo[n_dma] = w[0]; dma_h[n_dma] = w[1]; dma_hi[n_dma] = w[2]; }
+            if (n_dma < 16) { dma_t[n_dma] = c.now() - 1; dma_lo[n_dma] = w[0]; dma_h[n_dma] = w[1]; dma_hi[n_dma] = w[2]; }
             n_dma++;
             c.take(dma);
         }
@@ -71,11 +72,23 @@ struct Stand {
                 case READ: reads[n_reads++] = c.read(window, e.a); break;
             }
         }
-        if (with_dma && c.ready(dma)) return c.next();               // more to take
         if (i < n) return sim::Wake::at_cycle(ev[i].t);
         return with_dma ? c.next() : sim::Wake::none();
     }
     uint64_t digest() const { return i * 131 + n_reads * 7 + n_dma; }
+};
+
+// The router's side of the DMA's `packet` interface (16.4): its room for the packet, a Wire, every queue with room
+// from cycle `from` on and none before (0: always).
+struct RouterSide {
+    sim::WireOut room;
+    uint64_t from;
+    RouterSide(sim::Ports& p, uint64_t ready_from) : from(ready_from) { p.out(room, "room", ready_from ? 0 : 0xFF); }
+    sim::Wake step(sim::Ctx& c) {
+        if (c.now() >= from) { c.drive(room, 0xFF); return sim::Wake::none(); }
+        return sim::Wake::at_cycle(from);
+    }
+    uint64_t digest() const { return from; }
 };
 
 struct Rig {
@@ -89,7 +102,11 @@ struct Rig {
         cfg.link(st.core, sl.core, 1);
         cfg.link(st.region, sl.region, 3);
         cfg.connect(sl.window, st.window);
-        if (pc.controller) cfg.connect(sl.dma, st.dma);
+        if (pc.controller) {
+            auto& rs = cfg.add<RouterSide>("router", hold);
+            cfg.link(sl.dma, st.dma, 1);
+            cfg.connect(rs.room, sl.dma_room);
+        }
         return cfg.build();
     }
     Stand& stand() { return m.unit<Stand>("stand"); }
@@ -435,10 +452,14 @@ TEST(slot_dma_done_of_depth_1_holds_one_count) {
     }
 }
 
-// 17.4, Pace: the DMA sends at most one packet a cycle and waits while its router input has no room. The stand's input
-// has 4 places and takes nothing before cycle 20, then a packet a cycle: a transfer of 7 packets sends 4 and waits, STATUS.dma_busy 1 and no
-// dma_done, DMA_DEST_ADDR advanced by the four WRITEs sent; when the input is emptied the other three follow, in queue
-// order at the addresses in order, and the transfer ends.
+// 17.4, Pace: the DMA sends at most one packet a cycle and waits while its router input has no room; the RTL's
+// peripheral_dma.veryl: "in each cycle in which a packet is still to send, the register is empty or its packet leaves
+// (packet_ready), and the queue holds an entry, it takes the entry at the head, and the packet is offered from the next
+// cycle", DMA_DEST_ADDR advancing "at the end of the cycle the packet is taken". The router's input is not ready
+// before cycle 20: of a transfer of 7 packets started by a store in 4, the first entry is taken in 5 into the packet
+// register, which holds it, and no other is taken: STATUS.dma_busy 1, no dma_done, DMA_DEST_ADDR advanced once. From
+// 20 a packet moves in every cycle, packet k in 20 + k, each entry taken as its predecessor leaves; the transfer ends
+// in 26, the cycle the last packet leaves.
 TEST(slot_dma_waits_while_its_router_input_has_no_room) {
     const Stand::Ev ev[] = {
         {2, Stand::STORE, P_DMA_HDR, 1u << HDR_DST_LO | 7u << DMA_HDR_COUNT_LO, 0, 0},   // dst 1, WRITE, queue 0, 7 packets
@@ -446,36 +467,76 @@ TEST(slot_dma_waits_while_its_router_input_has_no_room) {
         {4, Stand::STORE, P_DMA_START, 1, 0, 0},        //    from 5
         {15, Stand::READ, W_STATUS, 0, 0, 0},           // 0: dma_busy: waiting
         {15, Stand::READ, W_EVENTS_PEEK, 0, 0, 0},      // 1: no dma_done
-        {15, Stand::READ, W_DMA_DEST_ADDR, 0, 0, 0},    // 2: four WRITEs on
+        {15, Stand::READ, W_DMA_DEST_ADDR, 0, 0, 0},    // 2: one WRITE on: the packet in the register
         {20, Stand::READ, W_STATUS, 0, 0, 0},           // 3: still
-        {40, Stand::READ, W_STATUS, 0, 0, 0},           // 4: ended
-        {40, Stand::READ, W_EVENTS_PEEK, 0, 0, 0},      // 5: dma_done
-        {40, Stand::READ, W_DMA_DEST_ADDR, 0, 0, 0},    // 6: seven WRITEs on
+        {26, Stand::READ, W_STATUS, 0, 0, 0},           // 4: busy in 26, the cycle the last packet leaves
+        {26, Stand::READ, W_EVENTS_PEEK, 0, 0, 0},      // 5: no dma_done yet
+        {27, Stand::READ, W_STATUS, 0, 0, 0},           // 6: ended at the end of 26
+        {27, Stand::READ, W_EVENTS_PEEK, 0, 0, 0},      // 7: dma_done
+        {27, Stand::READ, W_DMA_DEST_ADDR, 0, 0, 0},    // 8: seven WRITEs on
     };
     PeriphSlotConfig pc;
     pc.tile = 66; pc.controller = true; pc.type[1] = PT_TEST;
     for (int variant = 0; variant < 3; variant++) {
         Rig r(ev, sizeof ev / sizeof ev[0], pc, opts(variant), 1, 20);
         r.m.run_until(15);
-        CHECK_EQ(r.slot().s.test_peripheral(1).taken[0], 4u);      // the input's four places
+        CHECK_EQ(r.slot().s.test_peripheral(1).taken[0], 1u);      // the packet register's one
         r.m.run_until(50);
         Stand& s = r.stand();
-        CHECK_EQ(s.n_reads, 7u);
+        CHECK_EQ(s.n_reads, 9u);
         CHECK_EQ(s.reads[0] & 2, 2u);
         CHECK_EQ(s.reads[1], 0u);
-        CHECK_EQ(s.reads[2], 0x440u);
+        CHECK_EQ(s.reads[2], 0x410u);
         CHECK_EQ(s.reads[3] & 2, 2u);
-        CHECK_EQ(s.reads[4] & 2, 0u);
-        CHECK_EQ(s.reads[5], 2u);
-        CHECK_EQ(s.reads[6], 0x470u);
+        CHECK_EQ(s.reads[4] & 2, 2u);
+        CHECK_EQ(s.reads[5], 0u);
+        CHECK_EQ(s.reads[6] & 2, 0u);
+        CHECK_EQ(s.reads[7], 2u);
+        CHECK_EQ(s.reads[8], 0x470u);
         CHECK_EQ(s.n_dma, 7u);
         for (unsigned k = 0; k < 7 && k < s.n_dma; k++) {
             CHECK_EQ(s.dma_lo[k], uint64_t(k));
             CHECK_EQ(lw::addr(s.dma_h[k]), 0x400u + 16 * k);
-            if (k < 4) CHECK_EQ(s.dma_t[k], 20u + k);              // the four that waited in the input
-            else CHECK(s.dma_t[k] > s.dma_t[k - 1]);               // then the others, at most one a cycle
+            CHECK_EQ(s.dma_t[k], 20u + k);
         }
         CHECK_EQ(r.slot().s.violation_total(), 0u);
+    }
+}
+
+// The RTL's peripheral_dma.veryl: "DMA_START, presented in cycle p, takes effect at the end of p ... and the transfer
+// takes DMA_HDR as it stands, so a store to DMA_HDR during a transfer changes nothing of it." Such a store is UB (17.4),
+// which the simulator flags; the hardware's behaviour is the RTL's. A transfer of 3 WRITEs to tile 1 from queue 0,
+// started in 4, with the router's input not ready before 20: in 10 DMA_HDR is stored with dst 9, mode COUNT, counter 5
+// and a count of 1. The two packets taken after the store still go to tile 1 as WRITEs with no counter, at their
+// addresses, three in all; DMA_HDR reads back what was stored.
+TEST(slot_dma_takes_dma_hdr_at_the_start) {
+    const uint32_t stored = 9u << HDR_DST_LO | lw::M_COUNT << HDR_MODE_LO | 5u << HDR_COUNTER_LO | 1u << DMA_HDR_COUNT_LO;
+    const Stand::Ev ev[] = {
+        {2, Stand::STORE, P_DMA_HDR, 1u << HDR_DST_LO | 3u << DMA_HDR_COUNT_LO, 0, 0},   // dst 1, WRITE, queue 0, 3 packets
+        {3, Stand::STORE, P_DMA_DEST_ADDR, 0x800, 0, 0},
+        {4, Stand::STORE, P_DMA_START, 1, 0, 0},
+        {10, Stand::STORE, P_DMA_HDR, stored, 0, 0},    //    during the transfer
+        {12, Stand::READ, W_DMA_HDR, 0, 0, 0},          // 0: DMA_HDR as stored
+        {30, Stand::READ, W_STATUS, 0, 0, 0},           // 1: ended
+    };
+    PeriphSlotConfig pc;
+    pc.tile = 66; pc.controller = true; pc.type[1] = PT_TEST;
+    for (int variant = 0; variant < 3; variant++) {
+        Rig r(ev, sizeof ev / sizeof ev[0], pc, opts(variant), 1, 20);
+        r.m.run_until(40);
+        Stand& s = r.stand();
+        CHECK_EQ(s.n_reads, 2u);
+        CHECK_EQ(s.reads[0], stored);
+        CHECK_EQ(s.reads[1] & 2, 0u);
+        CHECK_EQ(s.n_dma, 3u);                                     // the count taken at the start, not the stored 1
+        for (unsigned k = 0; k < 3 && k < s.n_dma; k++) {
+            CHECK_EQ(s.dma_t[k], 20u + k);
+            CHECK_EQ(lw::dst(s.dma_h[k]), 1u);
+            CHECK_EQ(lw::mode(s.dma_h[k]), unsigned(lw::M_WRITE));
+            CHECK_EQ(lw::counter(s.dma_h[k]), 0u);
+            CHECK_EQ(lw::addr(s.dma_h[k]), 0x800u + 16 * k);
+        }
+        CHECK_EQ(r.slot().s.violation_total(), 1u);                // the store during the transfer, flagged (UB)
     }
 }
 

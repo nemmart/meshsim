@@ -1,55 +1,64 @@
-// router.h: one tile's router (spec 4.6, 4.7, 4.16; ref's Router.java; AUDIT-M2 3.1). Declarations:
-// the ports and the state; the step comes with stage 1.
+// router.h: the router (machine-spec 16; the RTL's rtl/blocks/router: router.veryl, router_output.veryl), every tile's
+// node of the NoC, a compute tile's and a special tile's. At the packet and the cycle it is the RTL's, which
+// tests/test_router.cpp checks against the RTL's own router under scripted load (tests/routerconf/README.md).
 //
-// PORTS (link words are three words, net.h)
-//   in   in[4]       LinkIn, the mesh links from the neighbours (latency link_latency, wired by the chip), indexed by
-//                    ref's arrival port: FROM_LEFT 0, FROM_RIGHT 1, FROM_UP 2, FROM_DOWN 3. Every arrival is taken.
-//        inj         LinkIn, the injection unit's one packet per cycle (latency intra_tile_latency); src stamped here.
-//        from_cnc    HoldIn, tiles 0-2 only: the C&C endpoint's send holding register (the from-controller route block).
-//   out  out[4]      LinkOut, the mesh links, indexed by direction: TO_RIGHT 0, TO_LEFT 1, TO_DOWN 2, TO_UP 3.
-//        eject       LinkOut to the director (latency intra_tile_latency); the whole header kept.
-//        loop_left   LinkOut, width 0, latency 1, to the injection unit: a token-holding packet left the loopback FIFO
-//                    at t, its token is free from t + 1 (ref: `srq.loopbackLeft(t)`).
-//        to_cnc      FifoOut, tiles 0-2 only: the to-controller output into the endpoint's receive FIFO.
-//        ovf         CountOut, every overflow of the router's FIFOs (ROUTER_OVF, read by the register block).
-//        ovf_ev      LinkOut, width 0, latency 1, to the register block, beside the Count (D29: an overflow that feeds
-//                    ERRORS steps the block): put in the step that counts (t + 1, D28), so the block's endCycle(t + 1)
-//                    runs. Declared when asked (the tile builder always asks; the router's own tests don't).
+// THE HARDWARE'S CYCLES (router.veryl's header). A route block and its queue's write take a cycle: a packet at an
+// input in cycle t is at its queue's head from t + 1, is taken by its output's arbiter in t + 1 when no other
+// queue is served first, and is in the output's register, the first of its link's three stages, in t + 2. A queue
+// is full by its count at the start of a cycle: a push then is lost, even if the head leaves in that cycle, and
+// `overflow` is 1 in the push's cycle (ERRORS.router_overflow is set at its end: 7.4). Each output's arbiter is
+// round-robin over its non-empty queues in their inputs' order, local, west, east, north, south, the attach port, its
+// pointer 0 after the reset; the eject's does not see the loopback queue, which is served only in a cycle when every
+// other eject queue is empty, the pointer staying (16.3).
 //
-// STATE. One FIFO per (output, feeder), ref's `FEEDERS_TILE0` on every tile (every router has the fifth port's FIFOs;
-// `attached`, tiles 0-2, only decides whether the to-controller selector runs). The FIFOs are the router's own (owner,
-// 2026-11-07: as ref first; the Link with a declared depth may replace them later) with `WordFIFO`'s rules: a put at t
-// is visible from t + 1; full is judged against the occupancy at the start of t; an overflowing put is dropped and
-// counted. The round-robin pointers `rr[6]`. (`maybe` is ref's hint, not state.)
+// THE MODEL'S STEP at t: the arbiters, each taking one packet from the queues as they stood at the start of t and
+// putting it on its output (a Link whose first cycle is the output register's: a put of t is in the register in
+// t + 1); then the route blocks, pushing the packets at the inputs in t (delivered at t), which are at their queues'
+// heads from t + 1. The overflows of t's pushes are counted, and `ovf_ev` put, in t.
 //
-// THE STEP AT t (ref's order; it only changes the router's own state): the four link selectors, the eject selector
-// (loopback last), the to-controller selector on tiles 0-2, each taking one word from its FIFOs as they stood at the start
-// of t; then the route blocks (the four links, the injection, from C&C) push into FIFOs, visible t + 1. It asks for the
-// next cycle while any FIFO holds a word.
+// PORTS (link words are three words, net.h). The numbering is ref's (Router.java), kept: inputs FROM_LEFT (west) 0,
+// FROM_RIGHT (east) 1, FROM_UP (north) 2, FROM_DOWN (south) 3, LOOPBACK (local) 4, FROM_CNC (the attach port) 5;
+// outputs TO_RIGHT (east) 0, TO_LEFT (west) 1, TO_DOWN (south) 2, TO_UP (north) 3, EJECT 4, TO_CNC (the attach port) 5.
+//   in   in[4]       LinkIn. A compute tile's: the mesh links from the neighbours (the chip gives them link_latency).
+//                    A special tile's: its peripherals' DMAs (16.4), those of `dma_inputs` (bit 0 west, 1 east,
+//                    2 north, 3 south, as the RTL's DMA_INPUTS): a `packet` interface, below.
+//        inj         LinkIn, the injection point's one packet a cycle (latency intra_tile_latency); src stamped here.
+//        from_cc     LinkIn, the attach port (an attach tile's, 16.1; a special tile's own).
+//        from_cnc    HoldIn, FIFTH_HOLD only: a test bench's endpoint at an attach tile's attach port.
+//   out  out[4]      LinkOut, a compute tile's mesh links.
+//        eject       LinkOut to the traffic director (latency intra_tile_latency); the whole header kept.
+//        loop_left   LinkOut, width 0, latency 1: a token-holding packet left the loopback queue at t (the RTL's
+//                    `eject_loopback` mark, 16.3), its token is free from t + 1.
+//        to_cc       LinkOut, the attach port.
+//        to_cnc      FifoOut, FIFTH_HOLD only: the bench's receive FIFO.
+//        ovf         CountOut, every packet lost to a full queue, counted in its push's cycle.
+//        ovf_ev      LinkOut, width 0, latency 1, to the tile control unit, beside the Count: put in a cycle that lost a
+//                    packet, so that ERRORS.router_overflow is set at that cycle's end (tile_ctl.h). Declared when asked.
+//        dma_room    WireOut, a special tile's with DMA inputs: for DMA input d, bit 2d the eject's queue from it
+//                    has room, bit 2d + 1 the attach output's, by their counts at the start of the cycle.
 //
-// v1.36 (machine-spec 16; the RTL's rtl/blocks/router): the attach tiles are 0, 7 and 15; a special tile's router (below:
-// "a controller's") ejects a packet for its tile and sends every other, from its local input or its peripheral's DMA,
-// out of its attach port, a broadcast included (16.2); a DMA's packet moves only while the queue it enters has room
-// (16.4: the credit FifoIn holds it meanwhile), its src the tile's own id; a packet for a reserved tile id, or for
-// none, is dropped where it is routed, with no error (16.2: `dropped`); the attach links are links like the others
-// (three register stages: the chip's); no host port. FIFTH_HOLD (an endpoint's Hold and Fifo at the attach port) is a
-// test bench's (tests/bench_master.h), FIFTH_LINK the chip's. What is still v1.35's is in PENDING-v1.36.md.
+// A DMA INPUT (16.4; router.veryl: `*_in_ready`). The DMA's packet register offers its packet with `valid`, and the
+// router's `ready` is 1 while the queue the packet goes to has room (the eject's for the tile's own id, the attach
+// output's for any other; a packet for a reserved id, which goes nowhere, is always taken). The packet moves in a
+// cycle with both, into the queue at that cycle's end. Here the DMA reads `dma_room` (a Wire: this cycle's), judges
+// `ready` for its packet by dma_ready() and, in a cycle its packet moves, puts it on the input's Link(1); the router
+// writes it into its queue as the first thing of the next step, before the arbiters, which is the queue's state after
+// that edge. A packet put without room is fatal.
 //
-// M3 (AUDIT-M3 3.4): THE CONTROLLER VARIANT AND THE C&C LINKS.
-//   - A controller's router (`tile` 64-66, ref's `Router.feeders(me >= 64)`, `FEEDERS_CC`, `ccRoute`): the tile's
-//     FIFOs plus one from CC_DMA_IN (FROM_UP) feeding output 0 (the link). Its ports: `in[0]` CC_LINK_IN (the C&C link
-//     from tile c's to-controller output, Link(cc_link_latency)), `host` CC_HOST_IN (FifoIn, cc_host_depth: the host
-//     port), `dma` CC_DMA_IN (a credit FifoIn, cc_dma_depth: the slot's DMA, AUDIT-M3 3.1 S6; C&C 3 only), `out[0]` CC_LINK_OUT
-//     (the C&C link into tile c's from-controller route block), and the tile's `inj`, `eject`, `loop_left`, `ovf`. From
-//     the loopback or the DMA, a packet for this controller is ejected and any other (broadcasts included) leaves on the
-//     link; from the attach link, a packet for this controller is ejected and any other goes nowhere. Outputs 1-3 and the
-//     to-controller output never receive (their FIFOs exist, as in ref, for the fingerprint).
-//   - Tiles 0-2 with C&C as cores (`fifth` FIFTH_LINK): the fifth port is the C&C links, `from_cc` (LinkIn) and `to_cc`
-//     (LinkOut), ref's `WordDelayLine(ccLinkLatency)` each way, in place of M2's endpoint Hold and Fifo.
+// STATE. One queue per (output, input a route can bring to it), ref's `FEEDERS_TILE0` on every router: more than
+// the RTL builds on a tile with no attach port or on a special tile (router.veryl, `feeders_of`), where no route
+// pushes the others. The round-robin pointers `rr[6]`, each the queue last served (the RTL's pointer less one).
+//
+// A special tile's router (`cc`: tiles 64-66) has the eject, with queues from local (the loopback queue), its DMA
+// inputs and its attach port, and its attach output, with queues from local and its DMA inputs: from local or a DMA,
+// a packet for the tile ejects and any other, a broadcast included, leaves by the attach port; from the attach port, a
+// packet for the tile ejects and any other goes nowhere (router.veryl, `route`).
+// FIFTH_HOLD (an endpoint's Hold and Fifo at the attach port) is a test bench's (tests/bench_master.h).
 #pragma once
 
 #include <cstdint>
 
+#include "base/fatal.h"
 #include "sim.h"
 #include "units/net.h"
 
@@ -60,22 +69,15 @@ struct Router {
     enum : unsigned { FROM_LEFT = 0, FROM_RIGHT = 1, FROM_UP = 2, FROM_DOWN = 3, LOOPBACK = 4, FROM_CNC = 5 };
     enum : unsigned { TO_RIGHT = 0, TO_LEFT = 1, TO_DOWN = 2, TO_UP = 3, EJECT = 4, TO_CNC = 5 };
     enum : unsigned { M_RIGHT = 1, M_LEFT = 2, M_DOWN = 4, M_UP = 8, M_EJ = 16, M_CNC = 32 };
-    enum : unsigned { CC_LINK_IN = FROM_LEFT, CC_DMA_IN = FROM_UP, CC_LINK_OUT = TO_RIGHT };   // a special tile's: its attach
-                                                                    // port in and out, its peripheral's DMA
-    enum Fifth : uint8_t { FIFTH_HOLD, FIFTH_LINK };                       // tiles 0-2: M2's endpoint, or the C&C links
-    static constexpr unsigned kOut = 6, kFifos = 28;                       // the most of either table
+    enum Fifth : uint8_t { FIFTH_HOLD, FIFTH_LINK };                       // an attach tile's attach port: a bench's, or a link
+    static constexpr unsigned kOut = 6, kFifos = 27;
+    // Each output's queues, in the arbiter's order (16.3): local, west, east, north, south, the attach port.
     static constexpr uint8_t kFeeders[kOut][6] = {                         // FEEDERS_TILE0, in slot order: 27 FIFOs
         {LOOPBACK, FROM_LEFT, FROM_CNC}, {LOOPBACK, FROM_RIGHT, FROM_CNC},
         {LOOPBACK, FROM_LEFT, FROM_RIGHT, FROM_UP, FROM_CNC}, {LOOPBACK, FROM_LEFT, FROM_RIGHT, FROM_DOWN, FROM_CNC},
         {LOOPBACK, FROM_LEFT, FROM_RIGHT, FROM_UP, FROM_DOWN, FROM_CNC}, {LOOPBACK, FROM_LEFT, FROM_RIGHT, FROM_UP, FROM_DOWN}};
     static constexpr uint8_t kNFeeders[kOut] = {3, 3, 5, 5, 6, 5};
     static constexpr uint8_t kFirst[kOut] = {0, 3, 6, 11, 16, 22};          // output o's first FIFO index
-    static constexpr uint8_t kFeedersCc[kOut][6] = {                       // FEEDERS_CC (28): the DMA's input feeds the link
-        {LOOPBACK, FROM_LEFT, FROM_CNC, FROM_UP}, {LOOPBACK, FROM_RIGHT, FROM_CNC},
-        {LOOPBACK, FROM_LEFT, FROM_RIGHT, FROM_UP, FROM_CNC}, {LOOPBACK, FROM_LEFT, FROM_RIGHT, FROM_DOWN, FROM_CNC},
-        {LOOPBACK, FROM_LEFT, FROM_RIGHT, FROM_UP, FROM_DOWN, FROM_CNC}, {LOOPBACK, FROM_LEFT, FROM_RIGHT, FROM_UP, FROM_DOWN}};
-    static constexpr uint8_t kNFeedersCc[kOut] = {4, 3, 5, 5, 6, 5};
-    static constexpr uint8_t kFirstCc[kOut] = {0, 4, 7, 12, 17, 23};
     static constexpr unsigned kMaxDepth = 64;                              // the loopback FIFO's (read_tokens)
 
     // One of ref's WordFIFOs inside the router. `put_at` and `put_w` keep the last put (accepted or dropped) so the
@@ -92,13 +94,13 @@ struct Router {
     };
 
     // ---- ports ----
-    sim::LinkIn in[4], inj;
+    sim::LinkIn in[4], inj;           // in[d]: a compute tile's links; a special tile's DMA inputs (those of dma_inputs)
     sim::HoldIn from_cnc;             // attached, FIFTH_HOLD only
-    sim::LinkOut out[4], eject, loop_left;
+    sim::LinkOut out[4], eject, loop_left;   // out[d]: a compute tile's links
     sim::FifoOut to_cnc;              // attached, FIFTH_HOLD only
-    sim::LinkIn from_cc;              // attached, FIFTH_LINK only: the C&C link from C&C c's CC_LINK_OUT
-    sim::LinkOut to_cc;               // attached, FIFTH_LINK only: the C&C link into C&C c's CC_LINK_IN
-    sim::FifoIn dma;                  // a special tile's: CC_DMA_IN (with a DMA only)
+    sim::LinkIn from_cc;              // the attach port in: an attach tile's with FIFTH_LINK, a special tile's
+    sim::LinkOut to_cc;               // the attach port out
+    sim::WireOut dma_room;            // a special tile's with DMA inputs: the room of each one's two queues
     sim::CountOut ovf;
     sim::LinkOut ovf_ev;              // ovf_event only
 
@@ -107,10 +109,11 @@ struct Router {
     uint8_t me = 0;
     bool attached = false;            // an attach tile (NetConfig::attach): the fifth port is connected
     uint8_t attach[3] = {0, 7, 15};   // the attach tiles (NetConfig::attach)
-    bool cc = false;                  // a controller's router (me 64-66)
-    bool fifth_link = false;          // attached: the fifth port is the C&C links (C&C as cores)
-    bool has_dma = false;             // a controller's router with CC_DMA_IN connected
-    const uint8_t (*feed)[6] = kFeeders;              // this router's feeder table (kFeeders or kFeedersCc)
+    bool cc = false;                  // a special tile's router (me 64-66)
+    bool fifth_link = false;          // attached: the attach port is a link (the chip's); else a bench's Hold and Fifo
+    uint8_t dma_inputs = 0;           // a special tile's: the link inputs that carry DMAs (bit 0 west, 1 east, 2 north,
+                                      // 3 south: the RTL's DMA_INPUTS)
+    const uint8_t (*feed)[6] = kFeeders;              // the feeder table
     const uint8_t* nfeed = kNFeeders;
     const uint8_t* first = kFirst;
     uint8_t n_fifos = 27;
@@ -126,22 +129,28 @@ struct Router {
     // ---- statistics (ref's counters; not state) ----
     uint64_t injected = 0, routed = 0, ejected = 0, eject_errors = 0, route_errors = 0, from_cnc_words = 0, to_cnc_words = 0;
     uint64_t dropped = 0;             // packets for a reserved tile id or for none, dropped where they were routed (16.2)
-    uint64_t dma_waits = 0;           // cycles a DMA's packet waited for room in the queue it enters (16.4)
+    uint64_t dma_packets = 0;         // packets a special tile's DMA inputs moved in (16.4)
     uint64_t loop_left_at = 0;        // the last cycle a token-holding packet left the loopback FIFO (tests)
 
     // non-empty FIFOs, one bit per FIFO index (exact, unlike ref's `maybe` hint)
     uint32_t occ = 0;
-    // overflows of this cycle's puts, counted on `ovf` at t + 1: a put of t is judged at t + 1 (PORTS.md 3), so the
-    // register block's endCycle(t + 1) is the first to see it. D28: ref counts it lazily, at the FIFO's next touch (a
-    // variable number of cycles late, differently with idle-skip on and off); the framework follows PORTS.md's rule and
-    // references avoid the case.
-    uint32_t ovf_due = 0;
+    // the packets this cycle's pushes lost to full queues: counted on `ovf`, and `ovf_ev` put, as the step ends, in the
+    // push's cycle (router_output.veryl: `overflow` is 1 for that cycle). Always 0 between steps.
+    uint32_t ovf_now = 0;
+    sim::Word room_out = 0xFF;        // dma_room as last driven (its reset value: every queue empty)
 
-    // `tile` 0-63 a mesh tile's router (`fifth`: tiles 0-2's fifth port), 64-66 a controller's (`dma`: CC_DMA_IN).
+    // `tile` 0-63 a compute tile's router (`fifth`: an attach tile's attach port), 64-66 a special tile's (`dma`: its
+    // DMA inputs, the RTL's DMA_INPUTS).
     Router(sim::Ports& p, unsigned tile, const NetConfig& c, const Hops* h, bool overflow_event = false,
-           Fifth fifth = FIFTH_HOLD, bool dma = false);
+           Fifth fifth = FIFTH_HOLD, unsigned dma = 0);
     sim::Wake step(sim::Ctx& c);
-    sim::Wake step_cc(sim::Ctx& c);   // a controller's router (step dispatches to it)
+    sim::Wake step_cc(sim::Ctx& c);   // a special tile's router (step dispatches to it)
+    // 16.4: `ready` of DMA input d (0 west .. 3 south) of tile `me`'s router for a packet to `dst`, from dma_room's
+    // value in that cycle: the room of the queue the packet goes to; a packet that goes nowhere is always taken.
+    static bool dma_ready(sim::Word room, unsigned d, unsigned me, unsigned dst) {
+        if (no_tile(dst)) return true;
+        return (room >> (2 * d + (dst == me ? 0 : 1)) & 1) != 0;
+    }
     uint64_t digest() const;          // the state above (not the statistics, not the pointer)
 
     unsigned fifo_index(unsigned o, unsigned slot) const { return first[o] + slot; }
@@ -167,6 +176,8 @@ private:
     }
     void route_mask(sim::Ctx& c, unsigned mask, unsigned port, uint64_t d, uint64_t a, uint64_t cw, uint32_t taken);
     bool eject_select(sim::Ctx& c, uint32_t& taken);   // the eject selector and its put (both variants)
+    void dma_arrivals(sim::Ctx& c);                    // a special tile's: the DMAs' packets that moved in the cycle before
+    void end_step(sim::Ctx& c, uint32_t taken);        // this cycle's overflows, and dma_room
 };
 
 // ref's routing decisions as pure functions (the router at tile `me`): output masks (Router::M_*).
@@ -213,7 +224,7 @@ inline void Router::push(sim::Ctx& c, unsigned o, unsigned port, const uint64_t*
         q.put_kept = 0;
         q.overflows++;
         if (!q.first_overflow) q.first_overflow = t;   // ref's overflowCycle: the first since a reset cleared it
-        ovf_due++;
+        ovf_now++;
         return;
     }
     q.put_kept = 1;
@@ -260,7 +271,6 @@ inline bool Router::eject_select(sim::Ctx& c, uint32_t& taken) {
 
 inline sim::Wake Router::step(sim::Ctx& c) {
     if (cc) return step_cc(c);
-    if (ovf_due) { c.inc(ovf, ovf_due); if (ovf_event) c.put(ovf_ev); ovf_due = 0; }
     uint32_t taken = 0;
     Sel s;
     // selectors: one word per output, from the FIFOs as at the start of t
@@ -300,41 +310,62 @@ inline sim::Wake Router::step(sim::Ctx& c) {
         from_cnc_words++;
         route(c, FROM_CNC, d, a, cw, taken);
     }
-    // FIFOs that will be selected (the to-controller output only where attached) hold words: look again next cycle
+    // FIFOs that will be selected (the attach output's only where attached) hold words: look again next cycle
     const uint32_t live = attached ? occ : occ & ((1u << first[TO_CNC]) - 1);
-    return live || ovf_due ? c.next() : sim::Wake::none();
+    end_step(c, taken);
+    return live ? c.next() : sim::Wake::none();
 }
 
-// A controller's router (ref's Router.runCycle with me >= 64): the link selector, the eject selector (the to-controller
-// output is never attached); then the route blocks in ref's order: the link (CC_LINK_IN), the host port (CC_HOST_IN),
-// the DMA (CC_DMA_IN), the loopback. ccRoute: from the loopback or the DMA, dst == me is ejected and anything else
-// (broadcasts included) leaves on the link. From the attach link, dst == me is ejected and anything else goes nowhere
-// (16.2 names the packets sent on, those from the local input or a DMA; the RTL's router.veryl, `route`: on a special
-// tile a packet not for it leaves by the attach port only from a port below the attach ports).
+// As the step ends: the packets its pushes lost are counted, in the push's cycle, and a special tile's DMA inputs'
+// room is driven: each queue's count at the start of the cycle (after the arrivals of the cycle before, before this
+// cycle's takes) below its depth (router_output.veryl: `room`, from the queue's registers).
+inline void Router::end_step(sim::Ctx& c, uint32_t taken) {
+    if (ovf_now) { c.inc(ovf, ovf_now); if (ovf_event) c.put(ovf_ev); ovf_now = 0; }
+    if (!dma_inputs) return;
+    sim::Word r = 0;
+    for (unsigned d = 0; d < 4; d++) {
+        if (!(dma_inputs >> d & 1)) continue;
+        if (room(EJECT, d, taken)) r |= sim::Word(1) << (2 * d);
+        if (room(TO_CNC, d, taken)) r |= sim::Word(1) << (2 * d + 1);
+    }
+    if (r != room_out) { room_out = r; c.drive(dma_room, r); }
+}
+
+// A special tile's DMA inputs (16.4): a packet delivered at t moved in t - 1, with valid and ready, and is written
+// into its queue at the edge that ends t - 1: here, before t's arbiters. Its src is the tile's id.
+inline void Router::dma_arrivals(sim::Ctx& c) {
+    for (unsigned d = 0; d < 4; d++) {
+        if (!(dma_inputs >> d & 1) || !c.ready(in[d])) continue;
+        const sim::Word* w = c.peek(in[d]);
+        const uint64_t w3[3] = {w[0], lw::with_src(w[1], me), w[2]};
+        c.take(in[d]);
+        routed++; dma_packets++;
+        const unsigned dst = lw::dst(w3[1]);
+        if (no_tile(dst)) { dropped++; continue; }
+        const unsigned o = dst == me ? unsigned(EJECT) : unsigned(TO_CNC);
+        if (!room(o, d, 0)) FATAL("router %u: DMA input %u moved a packet into a full queue (16.4: its ready was 0)", unsigned(me), d);
+        push(c, o, d, w3, 0);
+        q[first[o] + slot_of[o][d]].put_at = c.now() - 1;
+    }
+}
+
+// A special tile's router (router.veryl, `route` with SPECIAL): the DMAs' packets of the cycle before; the attach
+// output's arbiter and the eject's; then the route blocks: from the attach port, a packet for the tile ejects and any
+// other goes nowhere (16.2 names the packets sent on, those from the local input or a DMA); from local, a packet for
+// the tile ejects and any other, a broadcast included, leaves by the attach port; a reserved dst is dropped.
 inline sim::Wake Router::step_cc(sim::Ctx& c) {
-    if (ovf_due) { c.inc(ovf, ovf_due); if (ovf_event) c.put(ovf_ev); ovf_due = 0; }
+    dma_arrivals(c);
     uint32_t taken = 0;
     Sel s;
-    if (select(CC_LINK_OUT, 0x3F, s, taken)) c.put(out[CC_LINK_OUT], s.w[0], s.w[1], s.w[2]);   // outputs 1-3 stay empty
+    if (select(TO_CNC, 0x3F, s, taken)) { to_cnc_words++; c.put(to_cc, s.w[0], s.w[1], s.w[2]); }
     eject_select(c, taken);
-    if (c.ready(in[CC_LINK_IN])) {
-        const sim::Word* w = c.peek(in[CC_LINK_IN]);
+    if (c.ready(from_cc)) {
+        const sim::Word* w = c.peek(from_cc);
         const uint64_t d = w[0], a = w[1], cw = w[2];
-        c.take(in[CC_LINK_IN]);
-        routed++;
-        if (lw::dst(a) == me) route_mask(c, M_EJ, CC_LINK_IN, d, a, cw, taken);   // any other goes nowhere (router.veryl, `route`)
-    }
-    bool dma_waiting = false;
-    if (has_dma && c.ready(dma)) {                                // 16.4: src the tile's id; it moves only into room
-        const sim::Word* w = c.peek(dma);
-        const uint64_t d = w[0], a = lw::with_src(w[1], me), cw = w[2];
-        const unsigned dst = lw::dst(a), o = dst == me ? unsigned(EJECT) : unsigned(CC_LINK_OUT);
-        if (no_tile(dst)) { c.take(dma); routed++; dropped++; }
-        else if (room(o, CC_DMA_IN, taken)) {
-            c.take(dma);
-            routed++;
-            route_mask(c, dst == me ? M_EJ : M_RIGHT, CC_DMA_IN, d, a, cw, taken);
-        } else { dma_waits++; dma_waiting = true; }
+        c.take(from_cc);
+        routed++; from_cnc_words++;
+        if (no_tile(lw::dst(a))) dropped++;
+        else if (lw::dst(a) == me) route_mask(c, M_EJ, FROM_CNC, d, a, cw, taken);
     }
     if (c.ready(inj)) {
         const sim::Word* w = c.peek(inj);
@@ -342,9 +373,10 @@ inline sim::Wake Router::step_cc(sim::Ctx& c) {
         c.take(inj);
         injected++; routed++;
         if (no_tile(lw::dst(a))) dropped++;
-        else route_mask(c, lw::dst(a) == me ? M_EJ : M_RIGHT, LOOPBACK, d, a, cw, taken);
+        else route_mask(c, lw::dst(a) == me ? M_EJ : M_CNC, LOOPBACK, d, a, cw, taken);
     }
-    return occ || ovf_due || dma_waiting ? c.next() : sim::Wake::none();
+    end_step(c, taken);
+    return occ ? c.next() : sim::Wake::none();
 }
 
 template <class Out>

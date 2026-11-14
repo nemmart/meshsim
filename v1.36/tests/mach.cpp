@@ -93,7 +93,7 @@ const Field kFields[] = {
     F_U("readTokens", read_tokens), F_B("loopbackLast", loopback_last), F_B("loopbackTokens", loopback_tokens),
     F_I("loopbackDepth", loopback_depth), F_U("tsEngineLatency", ts_engine_latency), 
     F_B("testReadClients", test_read_clients), F_U("regLoadLatency", reg_load_latency),
-    F_B("ccCores", special_tiles), F_U("ccDmaDepth", cc_dma_depth),   // (ccCores: v1.3's name of the machine with units 64-66)
+    F_B("ccCores", special_tiles),                                     // (ccCores: v1.3's name of the machine with units 64-66)
     F_U("arriveLatency", arrive_latency), F_U("releaseLatency", release_latency), F_U("errorLatency", error_latency),   // (v1.36's: 18)
     F_U("requestFifoDepth", request_queue_depth), F_U("reqHopLatency", req_hop_latency), F_I("periphType", periph_type),
     F_B("realResponder", real_responder), F_B("coreless", coreless), F_U("goLatency", go_latency),
@@ -133,6 +133,7 @@ const std::vector<std::pair<std::string, std::string>>& MachConfig::dropped() {
         {"writeCombining", "v1.36: no bank request queues, so no write to combine with (15)"},
         {"fifoCountBeforePop", "v1.36: it chose how a bank request queue judged its room; there is none (15)"},
         {"sramReadLatency", "v1.36: READ_LATENCY, take to row (15, 19): readLatency"},
+        {"ccDmaDepth", "v1.36: no FIFO in front of a DMA's router input: its ready is room in the queue its packet enters (16.4)"},
         {"logTrace", "v1.36: no TRACE word (a program reports with a REPORT request: 11.5)"},
     };
     return d;
@@ -193,7 +194,8 @@ struct Chip::Impl {
     std::vector<std::array<int64_t, 5>> reports, requests;
     std::unique_ptr<Checker> checker;                    // the violations (src/check.h; on with SIM_CHECKS)
     // the hardware FIFOs for invariant 1 (each tile's, then the master side's receive FIFOs), in scan order
-    struct Hw { int tile; units::Router* router; unsigned q; const sim::FifoIn* in; bool reported; };
+    // (dir: the gather queue's traffic director, which loses a request for the full queue: director.h)
+    struct Hw { int tile; units::Router* router; unsigned q; const sim::FifoIn* in; bool reported; const units::Director* dir = nullptr; };
     std::vector<Hw> hw;
     void collect_overflows();
     int64_t last_run_at = -1;
@@ -280,7 +282,6 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     nc.read_tokens = c.read_tokens;
     nc.go_latency = c.go_latency; nc.ready_latency = c.ready_latency; nc.cnc_reaction = c.cnc_reaction;
     nc.cnc_rx_depth = c.cnc_rx_depth; nc.skew = c.skew; nc.skew_seed = c.skew_seed;
-    nc.cc_dma_depth = c.cc_dma_depth;
     nc.loopback_last = c.loopback_last; nc.loopback_tokens = c.loopback_tokens; nc.loopback_depth = c.loopback_depth;
     nc.cnc_go_settle = c.cnc_go_settle;
     nc.arrive_latency = c.arrive_latency; nc.release_latency = c.release_latency; nc.error_latency = c.error_latency;
@@ -348,7 +349,7 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
                     m.hw.push_back({int(k), &r, r.first[o] + f, nullptr, false});
                     m.checker->fifo_names.push_back(t + kOutName[o] + "<" + kPortName[r.feed[o][f]]);
                 }
-            m.hw.push_back({int(k), nullptr, 0, &m.sim->unit<units::Gather>(units::tile_unit(k, "gather")).in, false});
+            m.hw.push_back({int(k), nullptr, 0, nullptr, false, &m.sim->unit<units::Director>(units::tile_unit(k, "dir"))});
             m.checker->fifo_names.push_back(t + "gather-q");
         }
         if (!c.special_tiles) {
@@ -402,9 +403,8 @@ void Chip::Impl::collect_overflows() {
         uint64_t first = 0;
         bool flag = false;                                // the FIFO has overflowed
         if (h.router) { first = h.router->q[h.q].first_overflow; flag = first != 0; }
-        // (a machine split over threads: the framework reads a FIFO's overflows in one domain only. Those two FIFOs a tile
-        // are not lost from sight: the write engine's overflow stops the simulator, the gather queue's sets
-        // ERRORS.gather_overflow, whose fact the tile control unit records)
+        else if (h.dir) { first = h.dir->gather_first_overflow; flag = first != 0; }   // the gather queue
+        // (a machine split over threads: the framework reads a FIFO's overflows in one domain only)
         else if (split) continue;
         else { sim::Cycle f = sim::kNoCycle; sim->fifo_overflows(*h.in, &f); first = f; flag = f != sim::kNoCycle; }
         if (!flag) continue;

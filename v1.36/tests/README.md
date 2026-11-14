@@ -63,7 +63,7 @@ pending, and why).
   handshakes: `rwengine/`; the runner's step `rtl-memory`; `tests/rw_engine_teeth.sh` plants bugs in the model, one at
   a time, and requires these tests to fail on each), `test_mach` (the machine harness: the
   boot ROM's pull boot on all 64 tiles, the chip's build, and v1.3's `packets`, `reads` and `a2a` sequences on the
-  coreless machine), `test_router` (against ref up to v1.36's two rules, then `routerconf/v1.36/`), the unit stages'
+  coreless machine), `test_router` (the router against the RTL's own, under scripted random load, cycle by cycle, and every router's routes: `routerconf/README.md`), the unit stages'
   tests (`test_replayer`, `test_replayconf`, `test_replay_lists`, `test_tracer*`), and the tests of the tile's units, each written from
   the specification and, where it leaves a cycle to the implementation, the RTL block's README: `test_ag` (the DMA
   unit's address generator, 8.2–8.5), `test_receive` (the write engine with `PTR` and `HIST`, 12.4, 12.5), `test_mem` (the

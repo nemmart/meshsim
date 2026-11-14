@@ -50,6 +50,8 @@ void wire_unit(sim::Config& cfg, const NetConfig& nc, unsigned k, const ControlI
     rc.present = io.mem.present; rc.gather = io.mem.gather; rc.ag = io.mem.ag;
     rc.read_port_depth = io.mem.read_port_depth; rc.read_latency = io.mem.read_latency; rc.mem_chunks = io.mem.mem_chunks;
     rc.wr_note = rc.gather_note = io.mem.present && io.mem.has_notes;
+    rc.drift = io.mem.present && io.mem.has_drift;
+    rc.gather_wire = io.mem.present && io.mem.gather && io.mem.has_gather_taken;
     rc.send_wire = io.has_send_taken;
     auto& in = cfg.add<Injection>(tile_unit(k, "inj"), k, nc, rc);
     cfg.connect(io.send, in.send);
@@ -61,7 +63,7 @@ void wire_unit(sim::Config& cfg, const NetConfig& nc, unsigned k, const ControlI
     cfg.link(r.loop_left, in.loop_left, nc.intra_tile_latency + 1);
     cfg.link(r.eject, io.eject, nc.intra_tile_latency);
     cfg.connect(r.ovf, io.router_ovf);
-    cfg.link(r.ovf_ev, io.router_ovf_ev, 1);              // D29: the overflow steps the block (counted at t + 1, D28)
+    cfg.link(r.ovf_ev, io.router_ovf_ev, 1);              // the overflow, set in ERRORS at the end of its cycle (7.4)
     if (io.mem.present) {                                 // the read queue's clients, the big SRAM's ends
         if (io.mem.gather) cfg.connect(io.mem.rd_gather, in.rs.client_hold[InjReadSide::GATHER]);
         if (io.mem.ag) cfg.connect(io.mem.rd_ag, in.rs.client_hold[InjReadSide::AG]);
@@ -71,6 +73,8 @@ void wire_unit(sim::Config& cfg, const NetConfig& nc, unsigned k, const ControlI
         cfg.link(io.mem.sram_ret, in.rs.ret, io.mem.read_latency - 1);   // the row, READ_LATENCY after the take (15)
         if (rc.wr_note) { cfg.link(io.mem.wr_note, in.rs.wr_note, 1); cfg.link(io.mem.gather_note, in.rs.gather_note, 1); }
         cfg.connect(in.rs.rp_injected, io.mem.rp_injected);
+        if (rc.ag && rc.drift) cfg.link(in.rs.ag_drift, io.mem.drift, 1);   // set in ERRORS at the end of the refusal's cycle
+        if (rc.gather_wire) cfg.connect(in.rs.gather_taken, io.mem.gather_taken);
     }
     // A send waiting for a loopback token sleeps until the router frees one, which may not be on its way yet (the
     // loopback FIFO drains when the eject selector reaches it): longer than the detector's default.
@@ -103,11 +107,12 @@ SpecialIO special_cycle(sim::Config& cfg, const ChipSpec& spec, unsigned s) {
     const unsigned k = lw::CC1 + s;
     ControlIO io = spec.control(cfg, k, spec.control_ctx);
     if (io.barrier) FATAL("special_cycle: unit %u's control has the barrier's nets: a special tile's are not wired (7.3)", k);
-    auto& r = cfg.add<Router>(tile_unit(k, "router"), k, nc, spec.hops, true, Router::FIFTH_LINK, io.has_dma);
+    // the peripheral's DMA, on the router's west link input (16.4; the RTL's memory_tile and tracer_tile: DMA_INPUTS 1)
+    auto& r = cfg.add<Router>(tile_unit(k, "router"), k, nc, spec.hops, true, Router::FIFTH_LINK, io.has_dma ? 1u : 0u);
     wire_unit(cfg, nc, k, io, r);
-    if (io.has_dma) cfg.connect(io.dma, r.dma);           // the peripheral's DMA, on an input of its own (16.4)
+    if (io.has_dma) { cfg.link(io.dma, r.in[Router::FROM_LEFT], 1); cfg.connect(r.dma_room, io.dma_room); }
     SpecialIO o;
-    o.attach_in = r.in[Router::CC_LINK_IN]; o.attach_out = r.out[Router::CC_LINK_OUT];
+    o.attach_in = r.from_cc; o.attach_out = r.to_cc;
     o.error = io.error; o.slot = io.slot;
     o.req = io.req;                                       // its request unit, both sides
     return o;

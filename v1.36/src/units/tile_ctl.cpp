@@ -99,7 +99,8 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     cfg.connect(c.rp_stores, d.rp_stores);                // the read unit's results outstanding (the overlap check)
     cfg.link(d.we_in, we.in, 1);                          // into the write engine's pipeline: no queue (12.4)
     cfg.connect(d.gather, ga.in);
-    cfg.count_overflows(ga.in, b.gather_ovf);
+    cfg.count_overflows(ga.in, b.gather_ovf);             // (never: the director loses a request for a full queue)
+    cfg.connect(ga.full, d.gather_full);
     cfg.connect(b.dma, we.dma);
     cfg.connect(b.dma, d.dma);
     cfg.connect(b.dma, ag.dma);
@@ -122,9 +123,8 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     cfg.connect(ts.ptr_view, ag.ptr);
     cfg.connect(b.ag_start, ag.start);
     cfg.connect(ag.status, b.ag_status);
-    cfg.link(ag.drift, b.drift, 1);
     cfg.connect(ga.busy, b.gather_busy);
-    cfg.link(ga.ovf, b.gather_ovf_ev, 1);
+    cfg.link(d.gather_ovf, b.gather_ovf_ev, 1);           // set in ERRORS at the end of the lost request's cycle
     cfg.link(d.gather_put, b.gather_put, 1);
     // The peripheral slot (17): the director's region writes, Link(3); the core's window stores and consuming loads,
     // Link(1); its window RegFile, read by the core (loads, stalls) and the tile control unit (EVENTS.peripheral_n,
@@ -152,7 +152,7 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     }
 
     ControlIO io;
-    if (slot && slot->cfg.controller) { io.dma = slot->dma; io.has_dma = true; }
+    if (slot && slot->cfg.controller) { io.dma = slot->dma; io.dma_room = slot->dma_room; io.has_dma = true; }
     io.slot = slot;
     io.send = c.send; io.send_busy = b.send_busy; io.eject = d.in;
     io.has_send_taken = true; io.send_taken = c.send_taken;
@@ -173,6 +173,8 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     io.mem.gather = io.mem.ag = true;                     // the read arbiter's clients 0 and 1
     io.mem.rd_gather = ga.rd; io.mem.rd_ag = ag.rd;
     io.mem.gather_srq_busy = b.gather_srq_busy;
+    io.mem.has_drift = true; io.mem.drift = b.drift;      // ERRORS.drift's pulse, the read arbiter's (ag.h)
+    io.mem.has_gather_taken = true; io.mem.gather_taken = ga.taken;
     // the request unit, wired to the request tree by build_chip
     io.req.present = true;
     io.req.push = c.req_push; io.req.freed = c.req_freed; io.req.freed_ev = b.req_freed_ev;

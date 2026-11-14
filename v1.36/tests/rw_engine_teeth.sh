@@ -80,7 +80,9 @@ BUGS=(
   "the registers: RW_LPDDR_ADDR's upper bits kept~$H~s/case RW_LPDDR_ADDR: config_lpddr = v \& beat_mask(); return 1;/case RW_LPDDR_ADDR: config_lpddr = v; return 1;/"
   "the registers: RW_CONFIG's beats from bit 0~$H~s/case RW_CONFIG: config_kind = v \& 1; config_beats = v >> 1 \& 0x3FF; return 1;/case RW_CONFIG: config_kind = v \& 1; config_beats = v \& 0x3FF; return 1;/"
   "the registers: PARAMS type 3~$H~s/int params() const { return 2; }/int params() const { return 3; }/"
-  "the slot's DMA: the end not waiting for the packet register~$S~/^        if (dma_port \&\& room == 0) return;\$/d"
+  "the slot's DMA: the end not waiting for the packet register~$S~/^        if (d.full) return;\$/d"
+  "the slot's DMA: an entry taken with the packet register full (the router not ready)~$S~s/    if (d.full) { d.waits++; return; }//"
+  "the slot's DMA: the packet leaves without packet_ready~$S~s/    if (d.full \&\& ready) {                                     \/\/ leaving/    if (d.full \&\& (ready || true)) {/"
 )
 miss=0
 printf '%-88s %s\n' "planted bug" "caught by"

@@ -93,8 +93,6 @@ struct NetConfig {
     unsigned cnc_rx_depth = 64;         // C&C's receive FIFO
     bool skew = true;                   // start skew: +0 or +1 per tile on GO, from Java's Random(skew_seed)
     int64_t skew_seed = 1;
-    // a special tile's peripheral's DMA: the credit Fifo that holds its packet in front of the router's input (16.4)
-    unsigned cc_dma_depth = 4;
     unsigned loopback_fifo_depth() const { return loopback_depth > 0 ? unsigned(loopback_depth) : read_tokens; }
 };
 

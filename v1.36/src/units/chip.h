@@ -73,12 +73,13 @@ struct ControlIO {
     sim::LinkOut arrive;          // the tile control unit's BARRIER_ARRIVE (width 0; 18)
     sim::LinkOut error;           // the tile's error line's level, at each change (width 1; 18)
     sim::CountIn router_ovf;      // the router's FIFO overflows (ROUTER_OVF), read `through_last` at endCycle
-    sim::LinkIn router_ovf_ev;    // D29: width 0, Link(1) from the router's `ovf_ev`, put in the step that counts an
-                                  // overflow (t + 1, D28), so the block steps and its endCycle(t + 1) sets ERRORS [0]
+    sim::LinkIn router_ovf_ev;    // D29: width 0, Link(1) from the router's `ovf_ev`, put in the cycle a push is lost
+                                  // (router.h), so the block steps and sets ERRORS [0] at that cycle's end (7.4)
     MemIO mem;                    // (G3, approved 2026-11-08): the read queue's ports, which live in the injection
                                   // unit; tile_cycle wires them when `mem.present` (the clients by its flags)
-    sim::CreditOut dma;           // a special tile's peripheral's DMA (16.4, width 3) -> its router's DMA input, a credit
-    bool has_dma = false;         // Fifo of cc_dma_depth; set when the builder declared it (PeriphSlotConfig::controller)
+    sim::LinkOut dma;             // a special tile's peripheral's DMA (16.4, width 3) -> its router's DMA input (west),
+    sim::WireIn dma_room;         // Link(1), and that router's room for its packet (router.h, A DMA INPUT);
+    bool has_dma = false;         // set when the builder declared them (PeriphSlotConfig::controller)
     ReqIO req;                    // the request unit's send side, and a special tile's receive side
     PeriphSlot* slot = nullptr;   // the slot unit as staged (configuration only: Ingress/Egress's own ports, wired by
                                   // build_chip); null without one

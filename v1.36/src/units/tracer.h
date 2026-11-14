@@ -86,6 +86,21 @@ public:
     // after its request is taken: the RTL's tests' model of the memory system.
     int fill_latency[2] = {0, 0};
 
+    // ================================================================ a harness's own memory system (17.9.14: Open)
+    // The fill port's other side as a test's model of the memory system, in place of `mem`: the RTL chip's tests place
+    // one at the chip's boundary (Snarky One's rtl/chip/test/src/chip_trace_test.rs, `Fill`), and so do the simulator's
+    // (tests/segment_bench.h). Its two request channels' readies, and each request's response: `read` and `write` are
+    // called in the cycle t of the request's handshake and return the cycle of its response, after t. A line's 128
+    // bytes are 16 doublewords, little-endian. A request is presented until its channel is ready.
+    struct FillPort {
+        void* ctx = nullptr;
+        bool (*read_ready)(void* ctx, int64_t t) = nullptr;
+        int64_t (*read)(void* ctx, int64_t t, int32_t root, int depth, int64_t line, MemSystem::Response& r) = nullptr;
+        bool (*write_ready)(void* ctx, int64_t t) = nullptr;
+        int64_t (*write)(void* ctx, int64_t t, int32_t root, int depth, int64_t line, const uint64_t* data, int& status) = nullptr;
+    };
+    FillPort* fill_port = nullptr;
+
     // ================================================================ facts
     // Why an ERRORS bit was set.
     enum : int {

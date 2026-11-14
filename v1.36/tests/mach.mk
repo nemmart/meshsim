@@ -26,3 +26,7 @@ tsan-chip:
 # the request unit and the request tree from the specification (tests/test_request_tree.cpp): the tree's units on a
 # bench, and the registers on the chip
 $(B)/test_request_tree: $(MACH_LINK)
+
+# acceptance C: the segment on the chip, the RTL's images (tests/test_rtl_segment.cpp, tests/segment_bench.h)
+SEGMENT_LINK := $(B)/tests/segment_bench.o $(B)/tests/segment_real.o $(B)/tests/tracerblock/gold.o $(B)/tests/chain.o $(B)/tests/sha256.o $(MACH_LINK)
+$(B)/test_rtl_segment: $(SEGMENT_LINK)

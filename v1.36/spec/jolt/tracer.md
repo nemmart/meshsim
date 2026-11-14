@@ -3,7 +3,7 @@
 *Section 17.9 of the machine specification (`spec/machine-spec.md`), which keeps a stub there. Section numbers are
 the machine specification's. 17.9 and 17.9.1–17.9.12 are the hardware, as the RTL (Snarky One) builds it: its
 specification's text, under its numbers, corrected in the three places where the RTL's sources differ from it
-(`spec/CHANGES-v1.35-to-v1.36.md`, section 9). 17.9.13–17.9.18 are what v1.35's 4.21 has beyond that, kept in v1.36's
+(`spec/CHANGES-v1.35-to-v1.36.md`, section 9.1). 17.9.13–17.9.18 are what v1.35's 4.21 has beyond that, kept in v1.36's
 terms: the overview, the simulator's model of the memory system, the core's loop, the reasons, the timing and cost,
 and the simulator's checks. v1.35's own text is `spec/history/tracer-v1.35.md`.*
 

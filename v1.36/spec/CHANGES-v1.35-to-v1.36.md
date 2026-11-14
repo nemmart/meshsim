@@ -1,6 +1,6 @@
 # The change guide from v1.35 to v1.36
 
-*For whoever brings the simulator and the firmware from v1.35 to v1.36, for the RTL engineer, and for the owner,
+*For whoever reads v1.36's simulator and firmware against v1.35's, for the RTL engineer, and for the owner,
 who has three reversals of recorded rulings (section 4) and a list of new open items (`spec/machine-spec.md` chapter 26) to rule on.*
 
 ## 1. In brief
@@ -13,8 +13,16 @@ contract, with their numbering, names, register layouts and vocabulary, and `spe
 `spec/jolt/tracer.md` are its 17.8 and 17.9. What v1.35's specification has beyond them is kept in the same terms:
 the invariants (20), the timing summary (21), rules and figures only v1.35 stated (22), the deferred memory system
 (23), the budgets (24, 25), the open items under their numbers (26) and the sort (27). **v1.36 is specification
-and simulator:** this guide is what the simulator and the firmware are to change to, unit by unit, and the cycle
-counts they are to reproduce. Nothing in `src/`, `fw/` or `tests/` has changed yet (`README.md`, Status).
+and simulator:** this guide is what the simulator and the firmware changed to, unit by unit, and the cycle
+counts they reproduce. **Every stage of section 2 is done:** the simulator models the RTL at the register, packet
+and cycle level, and runs the RTL's firmware images unmodified at the RTL chip's cycle counts. Sections 2 to 8
+are worded as the plan they were written as ("is to", "to be measured"): each such instruction has been carried
+out, but for what `OPEN-v1.36.md` lists, meshsim's own firmware and the old suites among it. Section 9 is what the
+stages found: where this specification, or the RTL's own, differed from the RTL's sources and was corrected, and
+where the simulator took the RTL's sources because the specification is silent.
+
+**The rule:** the RTL is the truth about the hardware; where specification and RTL differ, the RTL wins and the
+specification is corrected (`spec/GUIDELINES.md`, section 1).
 
 **For the RTL: nothing changes**, except where this guide says the RTL's own documents are wrong or stale
 (section 6.8) and where the owner rules against a reversal (section 4).
@@ -49,6 +57,7 @@ v1.35's own records (its `CHANGES-v1.35.md` and its guide).
 | 6 | errors and contradictions found in v1.35, and their resolution | everyone |
 | 7 | the name table, v1.35 → v1.36 | the firmware, mechanically |
 | 8 | where v1.35's specification went | everyone |
+| 9 | what the simulator's stages found: the corrections against the RTL's sources, and what was taken from them | everyone |
 
 ## 2. For the simulator and the firmware: what to change
 
@@ -77,7 +86,7 @@ behind it:
 - `ERRORS`; 13 bits renumbered; v1.35's [4] and [5] gone; 7.4; v1.35's 8.3; A2.12. Verified.
 - `EVENTS_REQUIRED` removed, and its term in the wake; 1.1, 7.2; v1.35's 8.10; A2.13. Verified.
 - Reset; `WRITE_W0`–`W2` and `REQUEST_OUT_W0`–`W2` are 0 at the reset (v1.35: undefined); 18; v1.35's 8.1; A2.14. Verified.
-- Stores; a window store takes effect at the end of t + 1, a table store at the end of t (v1.35: every store at the end of its cycle, "posted"); 6.4; v1.35's 8.1; B1.1, A3.10. Verified.
+- Stores; a window store takes effect at the end of t + 1, a table store at the end of t, and either is answered in t + 1 (v1.35: every store at the end of its cycle, "posted"); 6.4; v1.35's 8.1; B1.1, A3.10. Verified.
 - `DMA_CONFIG` split into `DMA_CONFIG` (+`gap`), `RECEIVE_CONFIG`, `GATHER_CONFIG`; 8.1, 12.1, 13; v1.35's 8.5, 8.7; A5.1, A5.2. Verified.
 - Read unit; four registers, `READ_DEST_ADDR` a full address, `READ_FREE` 16 bits; 10; v1.35's 8.8; A5.10. Verified.
 - Write unit; `no_increment` at `WRITE_HDR` [15]; 9; v1.35's 8.4; A5.11. Verified.
@@ -85,7 +94,6 @@ behind it:
 - Peripheral window; control block words 3–6 reordered, DMA in block 1; `DMA_HDR` layout; 17.1; v1.35's 8.11; A8.1, A8.2. Verified.
 - IMEM and the boot ROM are fetch-only: a load is an access fault. 5.1; v1.35's 2.2. A2.8.
 - A core access past IMEM's or DMEM's size faults; no aliasing. `spec/core.md` (Data-side address decoder, Instruction-side windows), 6.3 (the sizes are parameters); v1.35's 2.2. A2.15.
-- Tables at 0xFFFF_E000–0xFFFF_F5FF; every table loadable; only fields' bits stored. 5.2, 8.6, 12.5; v1.35's 4.10, 8.9. A2.2–A2.4.
 - `fw/include/mesh.h`, `fw/REGISTERS.md` and the register-table generator (`tools/regs/`) are regenerated from the
   new table; every firmware source is translated by section 7. Counter 7 is the boot ROM's load counter (6.5):
   v1.35's firmware used it as `CTR_FENCE`, which still works inside an image, but an image ends with every
@@ -93,14 +101,13 @@ behind it:
 
 ### 2.2 Stage 2: the control protocol and the boot
 
-- No command block, no "command landed", no uncounted command writes; the reply block is software's. 6.5; v1.35's 4.12; A4.1.
 - Ready = `STATUS.arrived` and the core in the canonical wait; `BARRIER_ARRIVE` pulses the cycle after. The simulator's tile control needs the core's canonical-wait level. 7.3; v1.35's 4.12, 5, 6.3; A4.2.
 - The arrival gate lasts through the cycle after the release. 7.3; v1.35's 4.12; A4.3.
 - The gate does not stop counter events from being set; `ARRIVE` clears `counter_n_done` and `all_counters_done` and neither arms nor disarms them. 7.3, 7.2; v1.35's 4.12; A4.4.
 - A counter's event: "a decrement that leaves the counter at 0 while armed"; a drain in the arming cycle sets it (12.2's next = count + N − dec reaching 0). 7.2, 12.2; v1.35's 4.12; A4.5, A6.11.
 - The release wins over an `ARRIVE` in the same cycle (`STATUS.arrived` cleared). 7.3; v1.35's silent; A4.6.
 - The one tie rule: `DMA_START`'s and `ARRIVE`'s clears win over a set of the same cycle; a consuming load never removes an event it did not return. 7.2; v1.35's 4.12 ("a set and a clear in the same cycle: the clear wins").
-- Commands, the command block, "command landed", parity argument blocks, `wait_for_command()`'s read: removed; a phase is a step of the image's fixed schedule; 6.5, 7.3; v1.35's 6.2, 6.3, 6.6; A4.1, D5. Verified.
+- Commands, the command block, "command landed", the uncounted command writes, parity argument blocks, `wait_for_command()`'s read: removed; a phase is a step of the image's fixed schedule, and the reply block is software's; 6.5, 7.3; v1.35's 4.12, 6.2, 6.3, 6.6; A4.1, D5. Verified.
 - Barrier; every compute tile takes part in every release, the ROM has no guard, a release before all have arrived is UB; 6.5, 7.3; v1.35's 6.1, 6.2; A4.7. Verified.
 - Boot; the ROM branches on `PARAMS.boot_local`, arms counter 7, sends `LOAD`, waits, arrives (if `PARAMS.barrier`), jumps to IMEM's base; the master answers with uncounted `WRITE`s and one `COUNT`; 6.5, 11.5; v1.35's 6.2; A4.8. Verified.
 - Images end by a jump to the reset PC; no overlays, no staging in the scratchpad; 6.5; v1.35's 6.2, 6.5; A4.9. Verified.
@@ -121,9 +128,8 @@ behind it:
 - A3.7 A fetch outside IMEM and the boot ROM is an instruction access fault (cause 1, `mtval` 0) and pulses `core_status.access_fault`, so it sets `ERRORS.access_fault`. New: core.md Instruction-side windows, Core ports; 6.2, 7.4. Old: v1.35's 4.11 ("the fetch and the jump set no `ERRORS` bit").
 - A3.8 `FENCE.I` is illegal (no Zifencei); ordinary `FENCE` drains preceding transactions. New: core.md Memory and reset interface details. Old: none in v1.35's spec; the simulator treats opcode 0x0F with funct3 ≤ 1 as a no-op (confirmed).
 - A3.9 Coprocessor port: custom-0/custom-1 go to it when `coprocessor_present` is 1; in the machine it is tied off until the accelerator is decided (*Open*, 2.2, 6.1), so they are illegal instructions. New: core.md Coprocessor. Old: none (v1.35's spec has no coprocessor or custom opcode: searched).
-- A3.10 No posted stores: every load and store has a completion response; a window store takes the window's load latency and takes effect at the end of t + 1 (B1.1). New: core.md Memory ordering; 6.4. Old: v1.35's 4.11 Timing ("single-cycle and posted").
+- A3.10 No posted stores: every load and store has a completion response; a window store takes effect at the end of t + 1 and is answered in t + 1, a stalling store the cycle after its unit takes it (B1.1; section 9.1, item 1). New: core.md Memory ordering; 6.4. Old: v1.35's 4.11 Timing ("single-cycle and posted").
 - Timing model: replace "one instruction a cycle, +1 taken branch, 3-cycle multiply, load-use 0" by core.md's "The core's cycle costs" table (section 3.1). Lockstep: the canonical wait (asleep in `WFI`, instruction port idle) is reported by `core_status.canonical_wait`, one cycle late; resume at R + 3.
-- IMEM and the boot ROM serve fetches only: any load or store to them is an access fault (inventory A2.8). An address in the part of a window's span past its size faults and never aliases (A2.15). 5.1, 6.3; core.md Data-side address decoder, Instruction-side windows; v1.35's 2.2, 4.11.
 - `mhartid` reads the tile's `hart_id` input (section 5.2.1, item 2: the machine-spec does not say it is the tile id).
 
 ### 2.4 Stage 4: the NoC, the topology and the requests
@@ -135,9 +141,7 @@ behind it:
 - Router: a special tile's router has one attach port, joined to its attach tile's; a packet for the special tile ejects and every other leaves by the attach port; each sending peripheral's DMA enters on an unused link input. Every arbiter's queues are in the order local, west, east, north, south, then the attach ports (master, memory, tracer); the simulator's order under contention is to follow it. 16.1, 16.2, 16.3, 16.4; v1.35's 4.16 ("the controller router's down port"). A1.5.
 - Router: a packet for a reserved tile id, or none as dst, is dropped where it enters, no error; the simulator may still flag it. 16.2; v1.35's 2.1. A1.8.
 - Packet: only the defined bits are carried and stored (182 at 8 × 8). 4.1; v1.35's 3.1. A1.9. Area estimates only.
-- Packet: header block in header registers at [7:0], `dst` [14:8], own fields [31:15]. 5.4; v1.35's 3.1, 8.1. A2.7.
 - No start skew: remove the 0/+1 offset. 7.3, 18; v1.35's 3.2. A1.11.
-- Reset: one reset input (*Open*: hard and soft). 18; v1.35's 2, 6.1. A1.12.
 - Send and receive words separate: `REQUEST_OUT_W0`–`W2`, `REQUEST_SEND` at 0x100–0x10C; `REQUEST_IN_W0`–`W2`, `REQUEST_RECEIVE` at 0x110–0x11C. 11.1; v1.35's 4.18; A7.1.
 - Request queue 4 deep; no room event. 11.1, 19; v1.35's 4.18; A7.2.
 - Receive queues in the receiving tile's request unit, a `request_credit` wire to the root. 11.3; v1.35's 4.18, 3.3; A7.3.
@@ -161,7 +165,6 @@ behind it:
 - The core may store `STREAM`/`GROUP` entries the running transfer does not read. 8.6; v1.35's 4.10. A5.5.
 - `GROUP` is two SRAMs, one for each word of an entry (64 × 30 and 64 × 8 bits); a store to `GROUP` writes its word's SRAM alone. No behaviour changes: nothing for the simulator, the budget's macro table only. 8.6, Appendix A; v1.35's 4.10 (one macro). A5.4.
 - A `DMA_CONFIG` store during a transfer: the RTL latches it at the start (Appendix A); the contract does not say. 8.2, Appendix A; v1.35's 8.5. A5.9: needs a ruling (section 5.2.2, item 7).
-- Four registers: `READ_HDR`, `READ_DEST_ADDR` (32 bits), `READ_SEND`, `READ_FREE`. 10; v1.35's 4.3, 8.8. A5.10.
 - Write unit: `no_increment` is `WRITE_HDR` [15]; a send stalls only while the holding register is full and not
   being injected that cycle; the packet is injected in *t* + 2 at the earliest, for a send store issued in *t*.
   9, 14.3; v1.35's 8.4, 4.11. A5.11, B3.7.
@@ -190,18 +193,14 @@ behind it:
 - A peripheral's `DMA_START` does not clear its `dma_done` (only a load of its `EVENTS` consumes). 17.2; v1.35's 4.17.3 agrees ("no clear pulses").
 - A count-0 DMA transfer is busy for one cycle, then `dma_done`. 17.4; v1.35's 4.17.9 ("does nothing, and DMA done is still posted").
 - DMA src = the tile's own id; its router input has `ready` = room in the queue the packet enters. 16.4; v1.35's 4.16, 4.17.9; A1.6, A1.7.
-- UART: divisor counts the chip's clock, resets to 115,200 baud; receiver and line defined; `UART_STATUS` at word 45 with occupancies [4:0], [12:8], `rx_overrun` [16], `framing_error` [17]. 17.6; v1.35's 4.20; A8.7.
-- Host interface: words 64–72, `STATUS.stream_last`, `stream_in`, `stream_out`. 17.6; v1.35's 4.17.3 (deferred); A8.6.
+- UART: divisor counts the chip's clock, resets to 115,200 baud (v1.35: the reference oscillator, 57,600); receiver and line defined; `UART_STATUS` at word 45 with occupancies [4:0], [12:8], `rx_overrun` [16], `framing_error` [17]. 17.6; v1.35's 4.20; A8.7.
 - Ingress/Egress: `START` UB, no writes to its region, no errors of its own but `tile_error`. 17.6; A8.8.
 - Ingress/Egress; names (`ARRIVALS`, `ARRIVE_EXPECT`, `RELEASE`, `tile_error`, `all_arrived`); host-interface words 64–72, `STATUS.stream_last`, `stream_in`/`stream_out` events; words 46–63 fault; 17.6; v1.35's 6.6, 8.14; A8.6, A8.8. Verified.
-- UART; divisor counts the chip's clock, reset 115,200 baud; 17.6; v1.35's 8.13; A8.7. Verified (v1.35: reference oscillator, 57,600).
 - Watchdog; store of N sets limit and count, expiry at the end of t + 1 + N; 17.6; v1.35's 6.1, 8.14; B4.4. Verified (v1.35 text gives no cycle).
 - RW engine; words 32–36, one job at a time, `lpddr_error`; replaces the simulator's stub; 17.7; v1.35's 6.7, 7; A8.9. Verified (v1.35: "out of scope").
 - Requests to the memory tile; `READ` op 1 and `WRITE` op 2 with fixed layouts; replies 128-bit; a `READ` may ask for a reply; 11.4, 11.5; v1.35's 6.7; A7.5, A7.6. Verified.
 - Write buffer parts replace tag windows; the reply names part and counter; `EVENTS.done` frees it; 11.5, 17.7, 23.4; v1.35's 6.7; A8.10. Verified.
 - `lpddr` an AXI4 master with stated rules; `fill` four channels; `replay_row`; chip-boundary ports; 3; v1.35's 6.7, 7; A8.11, A8.12. Verified.
-- Memory tile's packets' src is its own id; 16.4; v1.35's 6.7 (deferred there), 4.17.9; A1.6. Verified in v1.35's 6.7.
-- Special tiles' scratchpads 4 MiB; 2.2; v1.35's 6.6, 8.2; A1.2. Verified.
 
 ### 2.8 Stage 8: the replayer
 
@@ -233,13 +232,13 @@ behind it:
 - Tracer; the one-line write-back buffer: place freed at the write's response; a requested write is always made; take-back of an unrequested line makes no write; after a state write a requested write still holds the place and no read of its line is requested until it is accepted. New 17.9.5, 17.9.3; old v1.35's 4.21.5 Ordering. A10.4 (E6: v1.35's simulator has no buffer).
 - Tracer; `EXPANSION_OFFSET` is latched when the core-fed expansion is posted and held until the next. New 17.9.1; old v1.35's 4.21.3 (words 33–35). A10.5.
 - Tracer; jump target: key = the 64-bit offset tested ≥ 2³² before the LRU, LRU untouched, `STAT_PROBES` not counted; LRU entry (key 32, base 32); a target at offset 0xFFFF_FFFF is UB. New 17.9.4; old v1.35's 4.21.4. A10.6 (E5, E21).
-- Tracer; spare record bits read 0 through output queue 0 in the RTL (the state word's [127:112]; its README); v1.35's simulator keeps every bit written. v1.36's text says only "spare, 0" for the files word's [127:103]: a mask in the simulator, or a ruling (section 5.2.7, item 7). New 17.9.2, 17.8.2; old v1.35's 4.21.2. A10.7.
+- Tracer; the record's spare bits are not held: the state word's [127:112], the stream word's [127:125] and the files word's [127:103] read 0 through output queue 0, and register 0 reads 0; v1.35's simulator kept every bit written. New 17.9.2, 17.8.2; old v1.35's 4.21.2. A10.7; section 9.1, item 5.
 - Tracer; each log stream ends, and gets its tail credit, when the log scan has given it its own last value. New 17.9.6; old v1.35's 4.21.6. A10.8.
-- Tracer; after a stopping error no counted event is set (`dma_done` included) and the live events are down, from the cycle after; counts already posted stay; an error while idle stops the next run at its `START`. New 17.9.9; old v1.35's 4.21.8. A10.9.
+- Tracer; after a stopping error no counted event is set (`dma_done` included) and the live events are down, from the cycle after; counts already posted stay; the scans and a transfer in progress go on, their events withheld; an error while idle stops the next run at its `START`. New 17.9.9; old v1.35's 4.21.8. A10.9; section 9.1, item 3.
 - Tracer; reset list explicit (17.9.12): zeroes `RUN_CONFIG`, `ROWS_RUN`, `EXPANSION_OFFSET`, `EXPANSION_OPCODE`, length words, hash constants, counters, latch, bitmap, `EVENTS_MASK`; `START` with no state write since reset is UB; `log_k` > 32 UB. New 17.9.12, 17.9.3, 17.9.2; old v1.35's 4.21.8 last paragraph. A10.10.
 - Tracer; parts 1 and 3 of the region are unmapped (v1.35: "unused"); a write of another size or to an unmapped offset is UB as before. New 17.9.2.
 - Tracer; statistics counters follow 17.9.8's attribution (stall cycle = no row in its schedule; fetch stalls include the redirect and a run's first instruction; data/map from the cycle after the schedule would have completed). New 17.9.8; old v1.35's 4.21.3 words 44–51, 4.21.9. C 157.
-- Tracer; pipeline costs beyond the schedule (17.9.17's table): redirect +5, first instruction 6 after `START`'s effect, NOP policy +1, core-fed successor +1, instruction miss fills + ~2, data miss + 5, probe + 4, stream word 2 cycles after the rows' end, `done` ≤ 2 after the last pop. New 17.9.7, 17.9.17; old v1.35's 4.21.9. B6.
+- Tracer; pipeline costs beyond the schedule (17.9.17's table): redirect +5, first instruction 6 after `START`'s effect, NOP policy +2, core-fed successor +1, instruction miss fills + ~2, data miss + 5, probe + 4, stream word 2 cycles after the rows' end, `done` ≤ 2 after the last pop. New 17.9.7, 17.9.17; old v1.35's 4.21.9. B6.
 - Segment firmware (tracer tile, master tile, replay image); handshakes are requests to target 2: `ARMED` after arming the start and totals counters, `STREAMS_ARMED` after arming the stream counter; the tracer tile sends a tile's record pieces only after its `ARMED` (tile 0's window-0 start included) and its streams only after its `STREAMS_ARMED`; no `stage_delay`, no `COUNT` "armed" packet, no command to start the tracer tile (it is loaded by `LOAD`); three releases. New 17.9.10, 17.9.15, 6.5, 11.5; old v1.35's 4.21.10, 4.21.3 loop. A10.11.
 - Segment firmware; the last run's 68 words go to the tracer tile itself with its own id as dst (was dst 66 by number; same thing at 8 × 8), words 1 and 67 forwarded to tile `TILE_COUNT` − 1. New 17.9.10.
 - Simulator parameters: `tr_row_cycles`, `tr_mul_cycles`, `tr_probe_compare` become constants of the contract; `tr_probe_lines` → `MAP_PROBE_LINES`; `stage_delay` removed; `ms_line_hit`/`ms_line_miss` kept. New 17.9.18.
@@ -274,14 +273,15 @@ from its documents or its measurements in simulation (`[meas: RTL]`). **v1.36's 
 kinds**, within what item 163 decides; chapter 21 of `spec/machine-spec.md` is the same table by path, without
 the comparison. *t* is the cycle the core issues a store, *p* the cycle after, when the register interface
 presents it; *L* is `TABLE_LATENCY`; *a* is the cycle the traffic director accepts a packet; R is the cycle a
-wake reaches the core. None of the figures was produced for this guide: nothing was built or run. The v1.35
-figures are from its documents and simulator sources; where one was not re-read, the row says so.
+wake reaches the core. The table was written from the RTL's documents and v1.35's documents and simulator sources,
+before the simulator was changed; where a v1.35 figure was not re-read, the row says so. The stages have since
+reproduced the RTL's column on v1.36's simulator, and the rows they found wrong are corrected (section 9.1).
 
 ### 3.1 The core and the registers (inventory B1.1–B1.7)
 
 | path | v1.36: the RTL's figure, and whether it is contract or the RTL's | v1.35 | sections; source |
 |---|---|---|---|
-| B1.1 window store's effect | end of t + 1 (a store takes the latency of a load from the same place: window 2, table 1 → effect end of t + L − 1); contract (6.4) | end of t ("single-cycle and posted") | 6.4; v1.35's 4.11 Timing |
+| B1.1 window store's effect | end of t + 1 (a store takes effect as a load from the same place takes its side effect, the end of t + L − 1: window 2, table 1), and it is answered in t + 1, in a window as in a table; a store that may stall takes effect at the end of the cycle c its unit takes it and is answered in c + 1; an access fault is answered in t + 1; contract (6.4) | end of t ("single-cycle and posted") | 6.4; v1.35's 4.11 Timing; section 9.1, item 1 |
 | B1.2 load-use | the instruction using a load's result right after it waits 1 cycle; contract (core.md, Core contract: Data) | 0 ("usable by the next instruction") | core.md; v1.35's 4.11 |
 | B1.3 taken branch; JALR other than a ready return | next instruction retires 4 cycles after it (+3); contract (Control transfers) | +1 (`branch_penalty`) | core.md; v1.35's 4.11 |
 | B1.4 JAL; ready return (JALR through x1, x1 committed) | next retires 4 cycles after the jump enters execute: +2 after its retirement, fewer if it waited in execute, at least 1 cycle after; contract | +1 | core.md; v1.35's 4.11 |
@@ -292,7 +292,7 @@ figures are from its documents and simulator sources; where one was not re-read,
 | DMEM load/store | one a cycle, response the next cycle; contract (Data; machine 6.3) | one a cycle | core.md |
 | window / table load | 2 / 1 cycles; contract (6.4) | 2 / 1 | no difference |
 | B1.7 CoreMark | 1.312 cycles per instruction, 2.776 CoreMark/MHz; the RTL's measurement `[meas: RTL]`, unofficial (performance run only) | 1 instruction a cycle model, +1 a taken branch, 3 a multiply | core.md, The core's cycle costs |
-| trap / NMI entry cost | not stated (every trap is terminal) | not stated | core.md, Traps; section 5.2.1, item 3 |
+| trap, NMI, MRET | the handler's first instruction retires 4 cycles after the trap is taken, and the instruction at `mepc` 4 cycles after the MRET retires: a taken branch's cost from the redirect; the RTL's [meas: RTL], not stated by its specification | not stated | core.md, The core's cycle costs; section 9.3 |
 
 ### 3.2 The nets, the barrier and the boot (B1.8–B1.10)
 
@@ -337,7 +337,7 @@ figures are from its documents and simulator sources; where one was not re-read,
 | a → `noc_write` to IMEM, DMEM, a peripheral | `WRITE_PORT_LATENCY` = 2: contract (12.3) | `cm_latency` 2, `rp_latency` 2 | 12.3; v1.35's 4.8 |
 | `LAND_LATENCY` (B3.11) | 8: contract (12.3); the RTL's paths fit for L ≤ 3, 4 refused (receive unit README) | K = 8, formula covers L ≤ 2 | 12.3; v1.35's 4.8 |
 | `GATHER` accepted a → first read taken (B3.12) | a + 2: RTL (gather unit README) | a + 2 | 13; v1.35's 4.4 |
-| Gather rate (B3.13) | none stated; chip uniform-k128 gather steps +2.2 % / +2.5 % over v1.25's simulator: RTL's measurement (inventory; not re-checked) | ≈ 2.0 cycles a value at *k* = 2 | 13, 14.1; v1.35's 4.4 |
+| Gather rate (B3.13) | none stated; chip uniform-k128 gather steps +2.2 % / +2.5 % over v1.25's simulator: RTL's measurement (the RTL chip's README; chapter 27) | ≈ 2.0 cycles a value at *k* = 2 | 13, 14.1; v1.35's 4.4 |
 | Bank request queue (B3.14) | none | depth 8 | 15; v1.35's 4.1 |
 | Table read round trip, `READ_AHEAD` (B3.15) | 2L + 1, 2L + 2: contract (8.5) | same | 8.5; v1.35's 4.2 |
 | Loopback token freed (A6.9) | the cycle the director takes the copy: contract (14.2) | when it leaves the loopback FIFO (about a cycle earlier) | 14.2; v1.35's 4.5 |
@@ -381,10 +381,10 @@ figures are from its documents and simulator sources; where one was not re-read,
 | Tracer row, class S or L / M | 4 / 6: contract | 4 / 6 (`tr_row_cycles`, `tr_mul_cycles`) | 17.9.7 |
 | Row that sets its successor's pc (control transfer, branch taken or not, program's end) | successor fetched only after it completes: contract (17.9.7); +5 cycles, every access a hit: RTL's measurement (was +6 before RTL commit 3fb7a82; the RTL README's synthetic-comparison row still says +6, stale) | 0 | 17.9.7, 17.9.17 |
 | Run's first instruction (not left inside an expansion) | starts 6 cycles after `START`'s effect: RTL's measurement | the cycle after `START` | 17.9.17 |
-| NOP-policy row; core-fed instruction's successor | +1; +1: RTL's measurement | 0; 0 | 17.9.17 |
+| NOP-policy row; core-fed instruction's successor | +2 (the RTL's source; its README says a cycle: section 9.1, item 4); +1: RTL's measurement | 0; 0 | 17.9.17 |
 | Instruction miss / data miss | fills + about 2 / fill + 5: RTL's measurement | fill latency exactly | 17.9.17 |
 | Map probe | 2 cycles a line after its response: contract; +4 around the reads: RTL's measurement | 2 a line (`tr_probe_compare`) | 17.9.7, 17.9.17 |
-| Rows' end → stream word; length words and `state_ready` | 2 cycles after; the cycle after that: RTL's measurement (contract says "when the rows end") | `state_ready` the cycle after the last row, scans from the cycle after that | 17.9.6, 17.9.17 |
+| Rows' end → stream word; length words and `state_ready` | the rows' end is the cycle after the last row completes (17.9.3; section 9.1, item 2); the stream word 2 cycles after it; the others the cycle after that: RTL's measurement (contract says "when the rows end") | `state_ready` the cycle after the last row, scans from the cycle after that | 17.9.6, 17.9.17 |
 | Drain | one FIFO entry a cycle a scan, a packet a cycle: contract; about 54,650 / 53,240 cycles a window (EVM Zone / Cyclone): RTL's measurement | same rule; within 0.02 % | 17.9.7, 17.9.17 |
 | `done` | at most 2 cycles after the DMA's last pop: RTL's measurement | the cycle after | 17.9.17 |
 | Fill latency | the memory system's, Open; RTL tests use 1 (block) and 2–40 (chip) | model: hit 6, miss 80, depth + 1 accesses | 17.9.14 |
@@ -395,7 +395,8 @@ figures are from its documents and simulator sources; where one was not re-read,
 
 The RTL's sort was compared with **v1.25's simulator at net latencies of 1**, not with v1.35's: the sort's sources
 are the same in v1.25 and v1.35, but v1.35's defaults are 8, 8 and 8, and its one committed full-size reference
-is uniform-k128. The comparison is to be run again on v1.36's simulator (item 164). The RTL attributes the gap to
+is uniform-k128. v1.36's simulator gives the RTL's column, step for step (`tests/test_rtl_sort.cpp`); the
+comparison with v1.35's own sort is not run again, its program not being ported (item 164). The RTL attributes the gap to
 the core's timing: the steps the engines drive match within 0.2 %.
 
 | path | v1.36: the RTL's figure, and whether it is contract or the RTL's | v1.35 | sections; source |
@@ -498,7 +499,8 @@ are in seven parts, by the range of v1.35 they cover; an item is cited as "secti
 
 In these lists "S *n*" and "RTL *n*" are section *n* of the RTL's base tile specification, which is v1.36's
 section *n*; `core.md` is the RTL's core specification, which is v1.36's `spec/core.md`; and a README is one of
-the RTL's (Snarky One's) partitions'. Each item gives v1.36's rule and v1.35's.
+the RTL's (Snarky One's) partitions'. Each item gives v1.36's rule and v1.35's. What the simulator's stages
+found after these lists were written, where the contract is silent and the RTL's sources decide, is section 9.4.
 
 #### 5.1.1 The core
 
@@ -568,7 +570,7 @@ the RTL's (Snarky One's) partitions'. Each item gives v1.36's rule and v1.35's.
 5. **A counter sum past 2²⁰ − 1** is UB (12.2); v1.35's 8.7: wraps (the simulator flags). Same class, different words.
 6. **`WATCHDOG` store of 0** stops it, and a store of N sets limit and count (17.6); v1.35's 6.1/8.14 only say "writing N > 0 starts it; a write … restarts it from the last N".
 7. **Words 46–63 of Ingress/Egress and words 10–31 of every peripheral window** are access faults (5.3, 17.6); v1.35's 8.11/8.14: reserved, read 0. (An instance of A2.5, but it changes the "handler reads the same words on every peripheral" assumption: only block 0 words 0–6 and block 1 are safe.)
-8. **A peripheral's `DMA_START` does not clear its `dma_done`** (17.2), unlike the tile's; v1.35's 8.6 says the tile's start clears DMA run done and its 8.11 is silent for a window's. v1.35's 4.17.3 agrees ("no clear pulses").
+8. **A peripheral's `DMA_START` does not clear its `dma_done`**: section 5.1.3, item 8; in this range, v1.35's 8.6 says the tile's start clears DMA run done and its 8.11 is silent for a window's.
 9. **Reports are told apart by number, not by a sequence number** (6.5, 11.5: 24 and 25 the ROM's, an image's from 0); v1.35's 6.1 step 4: "by the first report's sequence number". Extends A7.5/A4.11.
 10. **No "started" handshake and no boot order.** v1.35's 6.2: C&C 1 waits for C&C 2's and C&C 3's "started" requests before loading the tiles. v1.36: the master answers each `LOAD` (the tracer tile's included) and nothing states that the memory tile is up before it is used; the request tree holds requests until popped (11.3).
 11. **`.rodata` in DMEM.** Follows A2.8 but changes every image's link script: v1.35's 6.7 calls program memory "load-only".
@@ -583,7 +585,7 @@ the RTL's (Snarky One's) partitions'. Each item gives v1.36's rule and v1.35's.
 3. **Counter sum.** RTL 12.2: a sum past 2²⁰ − 1 is UB. v1.35's section 9 has no such invariant (new invariant 32).
 4. **IMEM/DMEM collision.** RTL 6.3: a core access and a NoC write to the same word in the same cycle are UB. v1.35's section 9 has no such invariant (new invariant 31).
 5. **Reserved tile ids.** v1.35's invariant 17: no stream has *d* = 67–125 or 127, no stream on a mesh tile has *d* = 126, no packet to 67–125 (the simulator errors). RTL 16.2: a packet for a reserved id is dropped where it enters, no error (A1.8 covers this), and RTL 8.3 allows `dst` = broadcast with no restriction to special tiles: whether a compute tile's stream may broadcast is not stated (kept v1.35's rule, flagged).
-6. **Boot ROM words.** v1.35's section 10: 48 of 64 words used; the RTL's ROM is 44 words (inventory B1.10, CL; not re-verified here).
+6. **Boot ROM words.** v1.35's section 10: 48 of 64 words used; the RTL's ROM is 44 words (inventory B1.10; both confirmed: section 5.2.3's list).
 7. **Read queue entry.** v1.35: 43 bits; v1.36: 58 bits with the full 32-bit destination (A5.10 gives it; noted here because the budget line changes).
 8. **Special tiles' logic budget.** v1.35's section 11 charges an attach (fifth) port to every tile, 0.04–0.07 mm²; v1.36 builds it on attach tiles only (A1.4), which removes the largest single optional line from 61 tiles.
 
@@ -624,7 +626,10 @@ the RTL's (Snarky One's) partitions'. Each item gives v1.36's rule and v1.35's.
 Each part has up to three lists: where the RTL's specification is silent or ambiguous and a simulator
 implementer needs a ruling; what is kept from v1.35 that the RTL's specification does not state; and the
 inventory's items that were not confirmed by reading both sides. A part's numbers run on through its lists. A
-bare number is v1.36's section.
+bare number is v1.36's section. The lists stand as they were written, before the simulator was changed. The
+stages have since answered every question a list puts to the simulator, each the same way: where the RTL's
+specification is silent, the simulator does what the RTL's sources do (section 9.4; `OPEN-v1.36.md`), and what
+is undefined stops it. What a list puts to the owner is still the owner's.
 
 #### 5.2.1 The core
 
@@ -632,7 +637,7 @@ bare number is v1.36's section.
 
 1. core.md "Lockstep regions" describes a generic barrier device (lowers its line on every write to the register; ignores a release with no arrival counted and "flags it in the register"; `barrier_arrived` from a flip-flop). Machine-spec 7.3 defines the tile's device differently in detail: the arrival gate, `EVENTS.release` counted, and a release before every tile has arrived is UB (a pending `EVENTS.release`), with no flag. core.md now says 7.3 is the authority. To rule: confirm that, or have the RTL's core specification drop the generic device's "flags it in the register".
 2. `mhartid`: core.md says the hart id is supplied by the tile and "the tile id meets both" requirements; machine-spec chapters 1–19 never state that `hart_id` = `PARAMS.tile_id` (and the master tile's id is `TILE_COUNT`, compute tile 0's is 0). The simulator needs the value: v1.36 assumes the tile id.
-3. Trap, NMI and MRET entry cost in cycles: not stated by the RTL's spec (every trap is terminal, so only the handler's report timing would see it). The simulator may choose; the proposal is the cost of a taken branch.
+3. Trap, NMI and MRET entry cost in cycles: not stated by the RTL's spec (every trap is terminal, so only the handler's report timing sees it). Settled by the RTL's simulation: 4 cycles from the trap, or from the MRET's retirement, to the next retirement, the cost of a taken branch; `spec/core.md` states it as meshsim's addition (section 9.3).
 4. How exact the simulator's core must be: core.md's cost table gives per-kind costs with "nothing else stalling"; combinations (a JAL that waited in execute "or fewer", a redirect coinciding with a load-use wait, fetch-queue refill after a redirect at an odd halfword) are exact only in a pipeline model. To rule: a per-kind cost table (close) or a four-stage pipeline model (exact). CoreMark 1.312 cycles/instruction is the check either way.
 5. `coprocessor_present` in the machine: the RTL ties the port off (custom-0/1 illegal) until the accelerator is decided; machine-spec 6.1 says "Custom-0 and custom-1 instructions go to the coprocessor port" with what it serves *Open*. The simulator treats them as illegal for now; the owner is to confirm.
 6. MEIP taken as a trap when `mstatus.MIE` = 1: software keeps MIE 0 (6.2); to rule: whether the simulator models the trap (as core.md defines it) or treats MIE = 1 as UB and stops. core.md's is defined behaviour, and the proposal is to model it.
@@ -642,7 +647,7 @@ bare number is v1.36's section.
 **Inventory items not confirmed**
 
 - B1.6's v1.35 side ("same cycle; +1"): taken from the inventory; v1.35's 4.11 says only that `WFI` continues at the next instruction.
-- A3.4's "`mtvec` = 0 at reset" in the simulator: not re-read (the `misa` M bit and the `fence` no-op were confirmed in the simulator's RV32 model).
+- A3.4's "`mtvec` = 0 at reset" in v1.35's simulator: confirmed in its RV32 model (`rv32.h`), with the `misa` M bit and the `fence` no-op.
 
 #### 5.2.2 The packet, the NoC and the tile's units (v1.35's sections 1 to 4.10)
 
@@ -713,12 +718,10 @@ bare number is v1.36's section.
 
 **Inventory items not confirmed**
 
-- B1.9: v1.35's 57 cycles for an empty phase at its defaults: not found in the spec; from its reference log (CL stays).
-- B1.10: v1.35's ROM at 48 words: not checked in `fw/boot/bootrom.S`.
-- B2.5: v1.35 counting a router overflow at t + 1 (D28): simulator not traced.
-- E10 (C&C 1's and C&C 2's DMAs FATAL in the simulator): not found by grep in `src/units/periph_slot.cpp` or `cnc1_periph.h`; unconfirmed.
-- E7 (a GO set in the cycle of a consuming load is lost): `regblock.h:119` applies the consume after the sets of the cycle; plausible, not traced end to end.
-- A3.9: v1.35's 4.11 has no coprocessor port (grep "custom": no hit in the platform spec). Confirmed absent.
+- B1.9: v1.35's 57 cycles for an empty phase at its defaults is not in v1.35's specification: the figure is the inventory's, from v1.35's reference log. The RTL's 35 is its chip README's.
+- E7 (a GO set in the cycle of a consuming load is lost in v1.35's simulator): its register block applies the consume after the sets of the cycle, which fits; the loss was not traced end to end. v1.36's rule is 7.2's either way.
+
+Confirmed since, and no longer open: B1.10 (v1.35's ROM is 48 words, its `fw/boot/bootrom.hex`; the RTL's 44 words and its 26, 27 and 13 cycles are checked by acceptance A, `tests/test_rtl_tile.cpp`); B2.5 (v1.35's router counts an overflow the cycle after the push: v1.36's simulator still has that router, `OPEN-v1.36.md`); E10 (section 6.4); A3.9 (v1.35's 4.11 has no coprocessor port).
 
 #### 5.2.4 Control, the boot, the memory system and the registers (v1.35's 6 to 8)
 
@@ -749,10 +752,10 @@ bare number is v1.36's section.
 
 **Inventory items not confirmed**
 
-- B1.9 "57 at v1.35's defaults" and B1.10 (26 / 13 / 44 words): taken from the inventory and the RTL chip README (35 confirmed at its line 178); not re-derived.
-- B4.4's simulator side (t + N) and D33: v1.35's text gives no expiry cycle.
-- A4.11's "the same 24 reports" is in v1.35's 4.13; 6.1 confirms "24 from an image's handler, 2 from a unit still in its ROM".
-- E10 confirmed in the simulator (`chip.cpp`: "its DMA leads nowhere"); E26's `CTR_FENCE 7` confirmed in `fw/include/mesh.h`; the two fw READMEs not read.
+- B4.4's simulator side (t + N) and D33: v1.35's text gives no expiry cycle, so the figure is the inventory's.
+- B1.9 and B1.10: section 5.2.3's list.
+
+Confirmed in this range: A4.11's "the same 24 reports" (v1.35's 4.13; its 6.1 has "24 from an image's handler, 2 from a unit still in its ROM"); E10 (v1.35's `chip.cpp`: "its DMA leads nowhere"; section 6.4); E26's `CTR_FENCE 7` (v1.35's `fw/include/mesh.h`).
 
 #### 5.2.5 The invariants, the parameters, the open items and the sort (v1.35's 9 to 14)
 
@@ -772,10 +775,8 @@ bare number is v1.36's section.
 
 **Inventory items not confirmed**
 
-- B1.9's "57 at v1.35's defaults": not found in a source read for this part.
-- B1.10 (the boot's figures).
-- B2.1's 11/10: taken from the inventory; the request_tree README confirms "a cycle a node" only.
-- C's "142 kept" in the RTL's receive unit: the specification's 4.2 states the check; the RTL was not read.
+- B1.9 and B1.10: section 5.2.3's list. B2.1's 11/10: section 5.2.2's list.
+- C's "142 kept" in the RTL's receive unit: confirmed. The specification's 4.2 states the check, and the RTL's `receive_unit.veryl` makes it (`error_bad_packet`, a packet of a bad region dropped and uncounted).
 - A1.1's "inv. 12": invariant 12 does not change with the attach tiles. It is withdrawn in v1.35 (a stub); the attach tiles change invariants 1 and 17 instead.
 
 #### 5.2.6 The replayer
@@ -803,7 +804,7 @@ bare number is v1.36's section.
 - B5 "before 2c2c9d6 the RTL was 3.1871 / 3.2215": not checked, not used.
 - E8 "`reset()` leaves three words": the simulator's reset was not traced line by line; `pend`, `low_water()` and `exp_discard_` are present in `src/units/replayer.h` (confirmed).
 - A9.3/A9.5 simulator line numbers were not re-read; the RTL README's "meshsim v1.35" section describes the same behaviours.
-- The +1/+2 inconsistency for the NOP row in the RTL's README: its Results say +2 (fetch reads the template's first word, then ROM word 1); 17.8.16 uses +2.
+- The +1/+2 inconsistency for the NOP row in the RTL's README: its Results say +2 (fetch reads the template's first word, then ROM word 1); 17.8.16 uses +2, which the RTL's source gives, on the Tracer too (section 9.1, item 4).
 
 #### 5.2.7 The Tracer and the segment
 
@@ -818,15 +819,15 @@ bare number is v1.36's section.
 4. 17.9.7 gives no number for the redirect, the first instruction, the NOP policy, the core-fed successor, the miss overheads or the probe's 4 cycles: they are the RTL's measurements (17.9.17). To rule: whether the simulator must match cycle for cycle (items 175 and 163).
 5. 17.9.10: "Their `op` codes are the tracer tile's firmware's" while inventory A7.5 lists `ARMED` 1, `STREAMS_ARMED` 2: confirmed only in the RTL's firmware (`OP_ARMED` 1, `OP_STREAMS_ARMED` 2), not in its spec (item 176).
 6. `fill`: the model's behaviour with a read and a write outstanding together, and when the model answers a write (item 174). v1.35's memory-system model had one request outstanding.
-7. Spare record bits (A10.7: "spare record bits read 0", the state word's [127:112], the files word's [127:103]): the RTL's README says the state word's [127:112] read 0 through output queue 0; 17.9.2 says only "spare, 0" for the files word. Not written into v1.36's text beyond the RTL's; the simulator keeps every bit written. It needs a sentence or a ruling.
+7. Spare record bits (A10.7): settled by the RTL's sources, and written into 17.9.2: the state word's [127:112], the stream word's [127:125] and the files word's [127:103] are not held and read 0 (section 9.1, item 5).
 8. 17.9.3: `START` does not list output queue 0's pointer (v1.35's `PULSE_RUN` reset it).
-9. 17.9.9: "every other error stops the Tracer where it is": whether a DMA transfer in progress at the stop completes (RTL: "drains nothing more", and `dma_done` is not set) is not said packet by packet.
+9. 17.9.9: "every other error stops the Tracer where it is": whether a DMA transfer in progress at the stop completes. Settled by the RTL's sources, and written into 17.9.9: it does, and the scans go on; `dma_done` is not set (section 9.1, item 3).
 10. 17.9.8 says the counters are "as this implementation sees its stalls"; v1.36's text now says the simulator follows that attribution (item 157 closed that way, by v1.35's own "meshsim follows"). The owner is to confirm.
 11. The tile-0 start: 17.9.10 says tile 0's record start comes "from the tracer tile's own copy"; that it too waits for tile 0's `ARMED` follows from "nothing its request has not allowed" and is how the RTL's firmware does it; it is written so in 17.9.15.
 
 **Inventory items not confirmed**
 
-- A10.9 (CL): confirmed on the RTL side (17.9.9 and the README's decision "The stop withdraws every event"); v1.35's `periph_slot.cpp` after a stop not read.
+- A10.9: confirmed on the RTL's side (17.9.9; `tracer_control.veryl`, the events gated by `stopped`); v1.35's simulator's side after a stop is the inventory's.
 - A10.7: the RTL's README only; not in the RTL's specification (item 7 above).
 - B6's meshsim figures are v1.3's Java runs quoted in the RTL's READMEs; not re-run. "Run's first instruction: 7 cycles after `START`" in the inventory is "6 cycles after START's effect" in the RTL README (the same thing counted from the store).
 - B6 "rows' end → stream word +2; `done` ≤ 2 after the last pop": confirmed in the RTL README (lines 677–691).
@@ -877,7 +878,7 @@ section 2 must not carry over.**
 - **E4. A counter's store and decrement in one cycle.** v1.35's 4.12 states `next = count + N − dec`, underflow judged against count + N, and "if the count reaches 0 in the same cycle as an add of N, it ends at N and done doesn't fire". With count 0, N = 1 and a decrement, next = 0 and the rule gives no edge, so the event would never fire; the simulator judged without the store (D27). v1.36: 12.2 keeps the formula; 7.2 defines the event as a decrement that leaves the counter at 0 while armed, and "a counter at 0 in its arming cycle has ended the new wait": the event is set. Confirmed in both texts.
 - **E7. A GO set in the cycle of a consuming load** is lost in v1.35's simulator, against v1.35's 4.12, "an event set after the sample point survives". v1.36: 7.2, "a consuming load never removes an event it did not return". Simulator side not fully traced.
 - **E9. `misa` reports M.** Confirmed: `src/units/rv32.h:465` sets bit 12. v1.36: `spec/core.md`'s CSR list (`misa` = I and C).
-- **E10. C&C 1's and C&C 2's DMAs** are fatal in v1.35's simulator, while its specification gives C&C 1–3 sending engines (v1.35's 4.17.9). Not confirmed in this range; confirmed in section 6.4's. v1.36: 17.6 Ingress/Egress has no DMA; 17.7 the RW engine has one; 17.9 the Tracer has one.
+- **E10. C&C 1's and C&C 2's DMAs** are fatal in v1.35's simulator, while its specification gives C&C 1–3 sending engines (v1.35's 4.17.9). Confirmed in v1.35's simulator (section 6.4). v1.36: 17.6 Ingress/Egress has no DMA; 17.7 the RW engine has one; 17.9 the Tracer has one.
 - **E11. "GO wakes whatever the mask holds" against "the gate lasts until GO".** Confirmed: both are in v1.35's 4.12 (the gate ends at GO, yet GO must wake the core through the gate). v1.36: 7.3: the gate lasts until the cycle after the release, and under it the wake is `EVENTS.release` alone.
 - **E12. READY can pulse before the core is in `WFI`.** Confirmed: v1.35's 5 and 6.3 fire READY on "command landed" and `done`, with no core state. v1.36: 7.3: ready needs the canonical wait.
 - **E16. The memory system's reply** is "32- or 64-bit", from a DMA whose packets are all 128-bit: v1.35's 4.12 (a reply of 32 or 64 bits) against its 4.17.9 (every DMA packet is 128 bits). Confirmed. v1.36: 11.4: a reply is 32, 64 or 128 bits, the memory tile's 128.
@@ -901,7 +902,7 @@ section 2 must not carry over.**
 
 ### 6.4 Control, the boot, the memory system and the registers (v1.35's 6 to 8)
 
-- **E10. C&C 1's and C&C 2's DMAs.** v1.35's 6.6 and 6.7: C&C 1–3 "send through … like any unit", and the memory system's packets enter "from its own router port (4.17.9)"; the simulator makes C&C 1's and C&C 2's DMA packets FATAL ("its DMA leads nowhere", `chip.cpp`). Verified. v1.36: Ingress/Egress has no DMA (17.6); the RW engine has one, on a link input of the memory tile's router (17.7, 16.4), and the simulator models it.
+- **E10. C&C 1's and C&C 2's DMAs.** v1.35's 6.6 and 6.7: C&C 1–3 "send through … like any unit", and the memory system's packets enter "from its own router port (4.17.9)"; v1.35's simulator makes a DMA packet from C&C 1's or C&C 2's peripheral FATAL ("its DMA leads nowhere", its `chip.cpp`). Confirmed there. v1.36: Ingress/Egress has no DMA (17.6); the RW engine has one, on a link input of the memory tile's router (17.7, 16.4), and the simulator models it.
 - **E12. READY before the core waits.** v1.35's 6.3: READY pulses when `done` and "command landed" are both 1; safety is argued from "GO cannot come back sooner than the READY round trip (≈ `ready_latency` + 3)", which fails with short nets. Verified. v1.36: readiness requires the canonical wait (7.3), with no timing argument.
 - **E14. Table loads.** v1.35's 8.9: only `HIST` can be loaded, the rest a bus error, while v1.35's 4.11 lists them as loadable (per the inventory). v1.35's 8.9 verified. v1.36: every table is loadable (5.2, 8.6, 12.5).
 - **E16. The memory system's reply.** v1.35's 6.7: a reply is "a 32- or 64-bit mode-0 write", yet the memory system sends from its DMA, whose packets are all 128-bit (v1.35's 4.17.9). Verified in v1.35's 6.7. v1.36: replies may be 128-bit, and the memory tile's always are (11.4, 11.5, 17.7; 23.2).
@@ -977,7 +978,12 @@ Found in the RTL's (Snarky One's) own documents while this version was written; 
 - **The Tracer's README** still gives "+6 cycles" for a redirect in its synthetic comparison; its schedule and
   its acceptance figures say 5, the figure since the redirect's fetch moved into the cycle its row completes.
 - **The replayer's README** gives the shared NOP row's stall as +1 in one place and +2 in its results; +2 is
-  the figure (17.8.16).
+  the figure (17.8.16). `replayer_fetch.veryl`'s header ("one more under a NOP policy") and the Tracer's README
+  ("a NOP policy costs a cycle") say 1 too, against the source's 2 (section 9.1, item 4).
+- **The base tile specification's 17.9.2, 17.9.3 and 17.9.9** state the files word's spare bits alone, the rows'
+  end in the cycle the last row completes, and a stopped Tracer that "drains nothing more"; the RTL's sources
+  differ in each (section 9.1, items 5, 2 and 3), and v1.36's text follows the sources. Its 6.4 said a store takes
+  the latency of a load from the same place until Snarky One's 076e647 corrected it (item 1).
 - **The request unit's README** says a credit's timing is "as meshsim does": true only of v1.35's simulator
   at its credit latency 0, not at its default 3.
 - **The chip's README** compares the sort with v1.25's simulator at net latencies of 1 (section 3.8), and lists
@@ -1454,7 +1460,10 @@ the hardware changed; or **removed**, because the hardware no longer has it. A l
 part that went a different way, its title's cell beginning with a dash. In the first two columns the numbers and
 titles are v1.35's; in the fourth they are v1.36's. The last column gives the inventory's code or the reason.
 
-**In numbers** (rows, which are finer than sections): 121 replaced, 91 kept, 12 removed. No numbered section of
+**In numbers:** the six tables have 228 rows, which are finer than sections. By the first word of the
+disposition, 121 are replaced, 91 kept and 12 removed; the other four, in section 8.4, are the new invariants, the
+items v1.36 closed, item 118's two halves and invariant 8's (25, 77, 26, 38, 47 and 15 rows in sections 8.1 to
+8.6). No numbered section of
 the platform is removed whole except v1.35's 8.15, the simulator-only words (5.3 makes an undefined word an
 access fault); v1.35's 4.17.7 and 8.12 were already stubs. What is removed inside sections: commands and the command
 block, "command landed", `EVENTS_REQUIRED`, the request queue's room event, the bank request queues and the
@@ -1473,7 +1482,7 @@ stub" gives way, for this one version, to this table. Item and invariant numbers
 | preamble | Markers (*(Proposed)*, *(Open)*, `[meas: …]`) | kept | `machine-spec.md` preamble: the RTL's *Open* in chapters 1–19, v1.35's markers in 20–27; `[meas: v1.35]` etc. | the markers' meaning is unchanged |
 | preamble | How the hardware treats software bugs | replaced | 1.3 (checked or UB); `spec/GUIDELINES.md` section 2 | same two kinds; the "(hardware)"/"(meshsim)" marks become "sets `ERRORS.x`"/"UB (1.3)" |
 | preamble | what v1.35's meshsim does on a broken rule (fatal / silent traps / counted) | kept | 22.2 | "silent traps" removed: A3.2, A3.7 |
-| preamble | How v1.3's text is meant | kept | `spec/GUIDELINES.md` section 1 (already there); the RTL's "How it is written" replaces it in chapters 1–19 | to do: `spec/GUIDELINES.md` section 1 is to say that the RTL is the truth about the hardware |
+| preamble | How v1.3's text is meant | kept | `spec/GUIDELINES.md` section 1 (already there); the RTL's "How it is written" replaces it in chapters 1–19 | `spec/GUIDELINES.md` section 1 states the rule: the RTL is the truth about the hardware |
 | 1 | Conventions | replaced | 1.1 (terms), 5.1, 5.4 (addresses, word addresses); kept remainder in 22.1 | the inventory's F (renames); chunk → word; "8 MB" → 8 MiB; scratchpad size a power of two (A6.10); misaligned load/store traps (A3.5), no misaligned jump target (A3.6) |
 | 2 | System | replaced | 2.1, 2.2, 16.1 (tiles, links), 11 (request tree), 18 (nets, pins) | A1.1 attach tiles 0/7/15; A1.2 special tiles 4 MiB; A1.4 attach ports only on attach tiles; A1.12 one reset (*Open*); item 82 closed |
 | 2.1 | Address space (7 bits) | replaced | 4.1 (tile ids), 16.2 (reserved ids) | A1.3 `TILE_ID_BITS`; A1.8 reserved dst dropped where it enters, no error |
@@ -1641,8 +1650,8 @@ stub" gives way, for this one version, to this table. Item and invariant numbers
 | 10 | Parameter summary | replaced, and mapped | 19, 19.1 | 19 is the contract's table; 19.1 maps every v1.35 row and lists the removed and the simulator's |
 | 11 | Logic budget (per tile, 12 nm estimates) | kept | 24 | lines for removed hardware dropped or marked; mm² are v1.35's estimates, to be redone |
 | 12 | Physical design: the control island | kept | 25 | terms; receive queues in the receiving tile (A7.3) |
-| 13 | Open items | kept | 26 | item numbers unchanged; 19 items closed by the RTL's hardware; 160–173 new |
-| 13, items 2, 3, 4, 5, 6, 63, 67, 82, 83, 84, 117, 120, 121, 122, 126, 129, 133, 142 | | closed in v1.36 | 26, "Closed in v1.36" | inventory C |
+| 13 | Open items | kept | 26 | item numbers unchanged; 22 items closed by the RTL's hardware: the 18 of the next row, item 118's deferred half, the replayer's 123 and 140 and the Tracer's 157; 160–177 new (174–177 the Tracer's) |
+| 13, items 2, 3, 4, 5, 6, 63, 67, 82, 83, 84, 117, 120, 121, 122, 126, 129, 133, 142 | | closed in v1.36 | 26, "Closed in v1.36", which also lists 123, 140 and 157, whose rows are in `spec/jolt/` (sections 8.5 and 8.6) | inventory C |
 | 13, item 118 | DMA src and port | deferred half closed, decided half reversed | 26, item 160 | A1.6, A1.7 |
 | 13, items 1, 7, 8, 28, 48, 60, 61, 64, 107, 119, 124, 125, 128, 130 | | kept, status "informed" or "needs a decision" | 26 | inventory C |
 | 13, items 10, 13, 15, 17–22, 24, 27, 116, 159 | | kept unchanged but for terms | 26 | |
@@ -1700,9 +1709,9 @@ stub" gives way, for this one version, to this table. Item and invariant numbers
 | 8.11 (replayer's part) | The replayer's window | replaced | 17.8.1, 17.1 | A8.1, A9.1; the C struct note is the firmware header's |
 | section 9, invariant 16 (replayer's part) | the replayer's invariants | kept, rewritten | 17.8.24 | error bits by name; new UB rules (A9.9) added |
 | section 10 (replayer's row) | parameter summary | kept, rewritten | 17.8.24 (and 19: `REPLAY_QUEUE_ENTRIES`, `REPLAY_OUTPUT_ROWS`) | A9.8 |
-| Open items | items 137, 59, 113, 140, 35, 38, 39, 42, 56, 57, 36, 115, 123, 158, 139 | kept, updated | "Open items" of `spec/jolt/replayer.md` | 140 and 123 closed; 35, 36, 37, 38, 39, 42, 56, 57 "built as proposed in the RTL"; 115 decided, not built |
+| Open items | items 137, 59, 113, 140, 35, 38, 39, 42, 56, 57, 36, 115, 123, 158, 139 | kept, updated | "Open items" of `spec/jolt/replayer.md` | 140 and 123 closed (v1.36), each with a row there and an entry in chapter 26's index and its "Closed in v1.36" list; 35, 36, 38, 39, 42, 56, 57 "built as proposed in the RTL"; 115 decided, not built |
 
-**In numbers** (the rows above): 20 replaced, 24 kept (5 of them rewritten), 1 removed. Of v1.35's 20 numbered parts (4.19, 4.19.1 to 4.19.15, 8.11, invariant 16, section 10 and the open items), 14 are split between "replaced" (their contract) and "kept" (rationale, measurements, software); 4.19.11, 4.19.12 and 8.11 are replaced whole; 4.19.13, 4.19.14 and the last three are kept whole.
+**In numbers** (the 47 rows above): 20 replaced, 26 kept (four of them rewritten, one updated), 1 removed. Of v1.35's 20 numbered parts (4.19, 4.19.1 to 4.19.15, 8.11, invariant 16, section 10 and the open items), 12 are split between "replaced" (their contract) and "kept" (rationale, measurements, software): 4.19, 4.19.1 to 4.19.10 and 4.19.15; 4.19.11, 4.19.12 and 8.11 are replaced whole; 4.19.13, 4.19.14 and the last three are kept whole. The header's row is the 21st part.
 
 ### 8.6 The Tracer: 4.21, 8.16, its invariant, its parameters and its open items
 
@@ -1724,4 +1733,158 @@ stub" gives way, for this one version, to this table. Item and invariant numbers
 | section 10 (the Tracer's row) | — | kept, mapped | 17.9.18 (for 19.1) | sizes are 17.9's table and 19 |
 | Open items (153, 147, 148) | — | kept, updated | `spec/jolt/tracer.md` Open items | 153 part closed, 157 closed, 144 reversed, four new |
 
-**In numbers** (15 rows): 9 replaced (three of them with a kept part), 4 kept, 1 both replaced and kept (4.21.9), and no section removed whole. Removed inside sections: `stage_delay` staging, the "armed" `COUNT` packet, the reserved gaps in `EVENTS` and `ERRORS`.
+**In numbers** (15 rows): 10 replaced (4.21.3 and 4.21.5 with a kept part, 4.21.10 with a part removed), 4 kept, 1 both replaced and kept (4.21.9), and no section removed whole. Removed inside sections: `stage_delay` staging, the "armed" `COUNT` packet, the reserved gaps in `EVENTS` and `ERRORS`.
+
+## 9. What the simulator's stages found
+
+Sections 2 to 8 were written before the simulator was changed. Bringing it to the RTL (Snarky One), stage by
+stage, until the RTL's firmware images ran on it at the RTL chip's cycle counts, tested this specification
+against the RTL's sources (`rtl/**/src/*.veryl` in Snarky One, at its commit 076e647) more closely than reading
+had. This section records what that found. The rule is `spec/GUIDELINES.md`'s: the RTL is the truth about the
+hardware, so where the text and the RTL differed the text is corrected, here and, for the owner of the RTL, in
+the RTL's own specification, from which chapters 1 to 19, 17.8.1 to 17.8.14 and 17.9.1 to 17.9.12 are taken.
+
+### 9.1 Corrections against the RTL's sources
+
+Each gives the text as it was, the text now, and the source that decides. Items 2, 3 and 5 are still as they
+were in the RTL's base tile specification (Snarky One's, in its partition `rtl/tile/base`): its text is wrong
+there too. A source file is named by its partition of Snarky One and its name.
+
+1. **6.4, a store's answer.** Was: "A store takes the latency of a load from the same place, and takes effect as
+   a load takes its side effect", which gives a window store two cycles. Now: a store takes effect at the end of
+   *t* + 1 in a window and of *t* in a table, and is answered in *t* + 1 in both; a store that may stall takes
+   effect at the end of the cycle *c* its unit takes it and is answered in *c* + 1; an access fault is answered
+   in *t* + 1. Source: the partition `rtl/blocks/register_bus`, `register_bus.veryl`, its header's Timing. The RTL's
+   specification has the same correction, at Snarky One's 076e647, whose text 6.4 takes; the core stage found it,
+   its model matching the boot ROM's cycles only with the RTL's timing. Chapter 21.1, `spec/core.md`'s cost table
+   and this guide's rows B1.1 and A3.10 follow.
+2. **17.9.3, the rows' end.** Was: "the cycle in which the run's last row completes". Now: the cycle after it;
+   `ROWS_RUN` counts a row the cycle after it completes, and no row starts in the rows' end's cycle. Source:
+   the partition `rtl/blocks/tracer_unit`, `tracer_unit.veryl`, "The rows traced, registered": the execution's `row_done`
+   reaches the control through a flip-flop (`row_done_registered`), and `tracer_run.veryl`'s `rows_end` is made
+   from it. 17.9.17's figures count from that rows' end, as they did (the stream word 2 cycles after it, the
+   length words and `state_ready` the cycle after that: `tracer_output.veryl`'s `end_in` and `choosing`).
+3. **17.9.9, after a stopping error.** Was: the Tracer "traces no further row, drains nothing more and posts no
+   event". Now: it traces no further row, its rows end no more, its run never ends and it posts no event, but the
+   drain is not stopped: a scan that is running goes on, and a transfer of the DMA's in progress sends its
+   packets; only their events are withheld. Source: `tracer_run.veryl` (`stopped` gates `tracing`, `rows_end`
+   and `work_end`) and `tracer_control.veryl` (it gates the events' sets and the live levels); `stopped` reaches
+   the control and the execution alone, not `tracer_output` or the peripherals' `peripheral_dma`.
+4. **The NOP policy's cost, 2 cycles.** Was, for the Tracer (17.9.17's table, section 2.9 and section 3.7's row
+   B6): + 1. Now: + 2, as 17.8.16 already had for the replayer. Source:
+   the partition `rtl/blocks/replayer_unit`, `replayer_fetch.veryl`, which both use: the read of ROM[`start`] gives the policy
+   (`send_rom_first`, `arriving_policy`), the fetch can send nothing in the cycle it arrives (`room` is 0 while
+   `rom_pending_word`), and ROM word 1 is read in the next (`send_nop`), so the row word is 5 cycles after the
+   instruction is taken where a ROM instruction's is 3. That file's header and the Tracer's and the replayer's
+   READMEs say "one more" and "a cycle": stale (section 6.8).
+5. **17.9.2, the spare bits.** Was: "spare, 0" of the files word's [127:103] only. Now: the state word's
+   [127:112], the stream word's [127:125] and the files word's [127:103] are not held, and read 0 through output
+   queue 0 whatever was written; register 0 reads 0, so image word 0's [63:0] does. Source:
+   `tracer_record.veryl` (the stream word's and the files word's fields held, `_unused_spare_data`) and
+   `tracer_rows.veryl` (`record_state`, "[127:112] 0"; "Register 0 reads 0").
+
+### 9.2 Checked against the RTL's specification
+
+Chapters 1 to 19 of `spec/machine-spec.md`, 17.8 to 17.8.14 and 17.9 to 17.9.12 were compared again, line by
+line, with the RTL's specification. They are its text at Snarky One's 370e3ac, with meshsim's paths and
+citations, and with its sentences about meshsim turned round (what it calls "not meshsim's" is here the
+implementation's, or the simulator's model's); `GROUP`'s two SRAMs (8.6), which that commit restored, were
+already taken.
+Since then the RTL's specification has changed once, at 076e647 (item 1 above), and its core specification not
+at all. So v1.36's text differs from the RTL's specification in items 2, 3 and 5 above and in nothing else.
+
+### 9.3 The trap's cost, an addition to `spec/core.md`
+
+The RTL's core specification states a trap's and an MRET's redirect and no cost in cycles (section 5.2.1, item
+3). `spec/core.md`'s last section, "The core's cycle costs", which is meshsim's and not the RTL's, now has it:
+the handler's first instruction retires 4 cycles after the cycle the trap is taken (the cycle the instruction
+that takes an exception leaves writeback, or the cycle an interrupt is taken), and the instruction at `mepc` 4
+cycles after the cycle the MRET retires: a taken branch's cost, counted from the redirect.
+Source: the partition `rtl/blocks/core`, `rv32_pipeline.veryl` (`redirect_valid = trap_taken || writeback_returns ||
+redirect_pending`: one redirect path for the three), and the RTL's retire traces of its own programs and of the
+interrupt programs (`tests/core-programs/retire/`): 57 traps and 57 MRETs, each followed by the next retirement
+4 cycles later.
+
+### 9.4 What the stages took from the RTL's sources: the differences the inventory lacked
+
+Where the contract leaves a cycle or a detail to the implementation, the simulator has the RTL's, from its
+sources and its partitions' READMEs. None of these is in the inventory or in section 5.1, and none is a
+correction: the contract is silent, and stays so unless the owner promotes one (items 163, 170 and 175).
+`OPEN-v1.36.md` has each in full, with the file it comes from, and the few paths where the simulator still
+differs from the RTL.
+
+**The core.**
+1. A trap's and an MRET's cost (section 9.3).
+2. The cycle `core_status.canonical_wait` rises after a `WFI`, which no program of the RTL's checks directly.
+
+**The tile's units.**
+3. `READ_LATENCY` is 3; a read taken in *t* is injected in *t* + 3 and is at the router's local input in
+   *t* + 4; the return queues are one line of `READ_LATENCY` stages; the banks a write meets are the aligned
+   `MAX_BANK_BYTES` blocks (Appendix A has these).
+4. A write the director accepts in *a* is in the scratchpad in *a* + 2*L* + 2, with `PTR` and `HIST` read at the
+   end of *a* + *L* and written at the end of *a* + *L* + 1; a core load of `PTR` or `HIST` in the cycle of the
+   engine's write reads the old value.
+5. `STATUS.gather_busy` rises in *a* + 1 and falls the cycle after the last read's take. A gather request leaves
+   the queue in the cycle its first read enters the read register.
+6. The DMA unit: `DMA_CONFIG` is taken at the start; the table reads begin in the cycle the start is presented
+   in; a place is free for a read from the cycle after its visit; a count-0 stream that takes no cycle keeps its
+   place until it passes; the transfer ends the cycle after its walk completes.
+7. The write unit's stall is the holding register full and not injected in that cycle. The live levels reach
+   `meip` and `nmi` a cycle after a load reads them.
+8. The request unit pushes a request and queues `READ_SEND`'s read in the cycle the store is presented in, and
+   judges the stall there.
+
+**The peripherals' blocks, Ingress/Egress and the RW engine.**
+9. A peripheral's DMA takes an entry into its packet register whenever the register is empty or its packet
+   leaves, and offers it until the router takes it; a transfer ends in the cycle its last packet leaves the
+   register, and one of count 0 the cycle after its `DMA_START`'s.
+10. The UART: a byte stored into an empty FIFO has its start bit on the line 2 cycles after the store is
+    presented, frames follow back to back, each direction takes `UART_DIVISOR` at a frame's start, a falling
+    edge on the pin starts a frame 2 cycles later, "full" is the FIFO's count at the start of the cycle, and a
+    pop comes only if the FIFO was not empty at the start of the load's cycle.
+11. The host interface: `lvds_out_tvalid` and `lvds_in_tready` are flip-flops loaded with their FIFO's next
+    state; `STREAM_OUT_W0`–`W2` hold only the words below the beat's top.
+12. The RW engine: its bursts are the job's 64-byte groups; a read's burst is raised only if the beats in flight
+    with it fit output queue 0's free entries at the start of the cycle; `START` presented in *p* gives the
+    first burst on AR or AW from *p* + 2 and a write's first beat from *p* + 3; the write data may run ahead of
+    its address; RREADY and BREADY are 1 and RLAST is not read; EXOKAY sets `lpddr_error` like any response but
+    OKAY; a `START` in the cycle a job ends starts the next; a write past the buffer's end lands within it.
+
+**The replayer.**
+13. The stalls' rules that 17.8.7 leaves to the implementation, beyond 17.8.16's list: when a decoder announces
+    a read-log word, the fetch's two cycles for a NOP policy (section 9.1, item 4), the release of a queue entry
+    when fewer than 66 of its bits are left, and the first row's delay after `START`.
+
+**The Tracer.**
+14. A core-fed instruction costs a cycle before its first row, and its successor's fetch follows its last
+    word's pop by a cycle, which costs nothing when the expansion has several words.
+15. A redirect to pc 0 and a run's first padding row: the padding word is fetched from nowhere, a cycle sooner
+    than a fetch's hit, so 4 cycles past the schedule, and 5 after `START`'s effect. A run's first row inside an
+    expansion starts 3 cycles after `START`'s effect.
+16. An instruction miss costs its fill's latency and 3 cycles, a data miss 5 and the wait for the write-back
+    buffer's place, a probe of *n* lines *n* × (the map's latency + 4) + 2.
+17. A row's rd lands in the register file a cycle late, on the port the next row's rs2 read uses, so a row whose
+    word arrives exactly the cycle after its predecessor's completion starts a cycle later.
+18. A fetch's read waits while a data access or a map read is presented or in progress, and the fill port's one
+    read goes to the data access, then the map, then the fetch. A fill request is presented until its channel is
+    ready.
+19. `done` comes 2 cycles after the DMA's last pop.
+20. What the RTL does on two cases that are UB: a row that moves pc without `next_from_value` runs on
+    sequentially, and a key of 0xFFFF_FFFF matches a free entry and takes its base. The simulator stops on both.
+
+**The segment and the chip.**
+21. The memory system behind the fill port is *Open* (17.9.14): on the chip the tests place the RTL tests' model
+    of it, so the trace's cycles are the RTL chip's only under that model. The simulator's own model serves one
+    access at a time (item 174).
+22. The segment's layout in the scratchpads, the tracer tile's report and the advice a real segment loads are
+    the RTL's firmware's and its tests', not the specification's.
+23. The nets are the RTL chip's placeholders: `BARRIER_ARRIVE` a wire, `BARRIER_RELEASE` one flip-flop, the error
+    lines wires (19.1).
+
+**Where the simulator still differs from the RTL**, none of it showing in the runs of the RTL's firmware images
+(`OPEN-v1.36.md` has each with the RTL's source): `ERRORS.drift` is set two cycles later than the RTL's, which
+sets it at the end of the cycle the read is refused in; an error line's level reaches `ERROR_LINES` a cycle
+later; a router overflow is counted a cycle after the push; the router's queues and arbiters under random load
+are v1.35's with v1.36's rules, not compared with the RTL's; a peripheral's DMA holds up to four packets in front
+of a router input that does not take, where the RTL holds one; and the gather queue holds one request fewer
+while its first read is refused.

@@ -13,7 +13,7 @@
 //   - a write PUT in cycle p is PRESENTED to the scratchpad in p + 1, the write engine's `scratchpad_write` cycle;
 //   - a token return put in p frees its token from p + 1 (the rig's link is 1; the chip's counts from the router).
 // The runner's steps `mem`, `mem-shuf` and `mem-shuf2` run this test in the suite build, the last two with the units of
-// a level stepped in a seeded random order (MEM_SHUFFLE): no result may depend on the order of steps within a cycle.
+// a level stepped in a seeded random order (SIM_SHUFFLE): no result may depend on the order of steps within a cycle.
 #include <cstdint>
 #include <cstdlib>
 #include <vector>
@@ -107,8 +107,8 @@ struct Rig {
     static sim::Sim build(SramBlocks& blocks, std::vector<Stand::Ev> script, uint32_t mem_chunks) {
         NetConfig nc;
         ReadSideConfig rc;
-        sim::Options opt;                                    // the runner's shuffled steps: MEM_SHUFFLE=<seed>
-        if (const char* s = std::getenv("MEM_SHUFFLE")) opt.shuffle_seed = uint64_t(std::strtoull(s, nullptr, 10)) + 1;
+        sim::Options opt;                                    // the runner's shuffled steps: SIM_SHUFFLE=<seed>
+        if (const char* s = std::getenv("SIM_SHUFFLE")) opt.shuffle_seed = uint64_t(std::strtoull(s, nullptr, 10)) + 1;
         rc.present = rc.gather = rc.ag = rc.wr_note = rc.gather_note = rc.send_wire = true;
         rc.read_latency = RL; rc.mem_chunks = mem_chunks;
         sim::Config cfg(opt);

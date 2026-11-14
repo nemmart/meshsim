@@ -15,6 +15,7 @@
 //     w, the walk's last cycle; EVENTS.dma_done is set in w + 1 and STATUS.dma_busy falls at its end (8.2): the
 //     generator's `done` reaches the tile control unit at w + 2, the edge that ends w + 1
 //     an entry is in 2L + 1 cycles after its read's issue, the reads one a cycle from E while a place is free (8.5)
+#include <cstdlib>
 #include <vector>
 
 #include "config.h"
@@ -115,7 +116,9 @@ struct Bench {
         : sim(build(tb, cfg, L, std::move(starts), std::move(refuse), base, tile, cfg2, at2)) {}
     static Sim build(const Tables& tb, uint32_t cfg, unsigned L, std::vector<Cycle> starts, std::vector<Cycle> refuse, uint32_t base, unsigned tile,
                      uint32_t cfg2, Cycle at2) {
-        Config c;
+        Options opt;                                  // the runner's shuffled steps: SIM_SHUFFLE=<seed>
+        if (const char* s = std::getenv("SIM_SHUFFLE")) opt.shuffle_seed = uint64_t(std::strtoull(s, nullptr, 10)) + 1;
+        Config c(opt);
         auto& b = c.add<Blk>("blk", cfg, base, std::move(starts));
         b.cfg2 = cfg2; b.at2 = at2;
         auto& a = c.add<AddrGen>("ag", tile, L, true);

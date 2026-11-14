@@ -38,6 +38,9 @@ PENDING_TESTS += test_checkself test_chip test_sort test_cc_units test_cc_req te
 
 # ---- the other default targets ----
 PENDING_BIN := golden bench_controller replay_shard stageb
+# bench/sort's bench_sort and bench_chip time v1.35's sort images on v1.35's machine (the M1 bench, C&C's commands, the
+# phases from GO): they do not compile, and `make build/<cc>-<mode>/bench_sort` says so (bench/sort/sort.mk).
+PENDING_BIN += bench_sort bench_chip
 
 # $(call live,<targets>): the targets but the pending ones.
 live = $(filter-out $(PENDING_BIN:%=$(B)/%),$(1))

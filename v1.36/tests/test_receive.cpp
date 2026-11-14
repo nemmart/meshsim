@@ -13,6 +13,7 @@
 // cycle would read of one PTR entry and one HIST entry, and whether the engine reads the table in that cycle.
 // The test steps the machine a cycle at a time and looks at the memories between cycles.
 #include <cstdint>
+#include <cstdlib>
 #include <vector>
 
 #include "config.h"
@@ -93,7 +94,9 @@ struct Rig {
     Rig(std::vector<Stand::Ev> script, unsigned L_ = 1, uint32_t receive_config = 0, uint32_t gather_config = 0, unsigned watch_ptr = 9, unsigned watch_hist = 0)
         : m(build(blocks, std::move(script), L_, receive_config, gather_config, watch_ptr, watch_hist)), L(L_) {}
     static sim::Sim build(SramBlocks& blocks, std::vector<Stand::Ev> script, unsigned L, uint32_t rcfg, uint32_t gcfg, unsigned wp, unsigned wh) {
-        sim::Config cfg;
+        sim::Options opt;                                    // the runner's shuffled steps: SIM_SHUFFLE=<seed>
+        if (const char* s = std::getenv("SIM_SHUFFLE")) opt.shuffle_seed = uint64_t(std::strtoull(s, nullptr, 10)) + 1;
+        sim::Config cfg(opt);
         auto& st = cfg.add<Stand>("stand", std::move(script));
         st.receive_config = rcfg; st.gather_config = gcfg; st.watch_ptr = wp; st.watch_hist = wh;
         DirectorConfig dc;

@@ -1,4 +1,4 @@
-// inject.cpp: the injection unit's configuration, InjectionPath's checks and its digest. The step is inline in
+// inject.cpp: the inject unit's configuration, the injection's checks and its digest. The step is inline in
 // inject.h.
 #include "units/inject.h"
 
@@ -19,12 +19,8 @@ Injection::Injection(sim::Ports& p, unsigned tile, const NetConfig& c, const Rea
 
 uint64_t InjReadSide::digest() const {
     if (!cfg.present) return 0;
-    uint64_t h = sim::hash_fields(free_head, free_n, ord_head, ord_n, rp_n, in_flight, last_rd, cur_v, nxt_v, nxt_at, cur_w, nxt_w, busy_out);
-    for (unsigned k = 0; k < free_n; k++) h = sim::hash_mix(h, free_q[(free_head + k) % MAX]);
-    for (unsigned t = 0; t < cap; t++)
-        if (held_slot[t]) h = sim::hash_mix(h, sim::hash_fields(t, reqA[t], reqB[t], issueT[t], readyT[t], lo[t], hi[t], parts[t], cl[t], zero[t]));
-    for (unsigned k = 0; k < 2; k++) for (unsigned i = 0; i < ord_n[k]; i++) h = sim::hash_mix(h, ord[k][(ord_head[k] + i) % MAX]);
-    for (unsigned i = 0; i < rp_n; i++) h = sim::hash_mix(h, sim::hash_fields(rp[i].t, rp[i].tok));
+    uint64_t h = sim::hash_fields(head, n, in_flight, busy_out);
+    for (unsigned k = 0; k < n; k++) { const Read& r = line[(head + k) % LINE]; h = sim::hash_mix(h, sim::hash_fields(r.a, r.b, r.taken_at, r.client, r.zero)); }
     return h;
 }
 

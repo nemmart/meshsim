@@ -61,21 +61,21 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     DirectorConfig dc;
     dc.tile = k; dc.periph_present = periph_present; dc.mem_chunks = g.cfg.mem_chunks;
     dc.g4 = true;
+    dc.gather_note = true;                                // to the read arbiter (inject.h)
     dc.periph_slot = periph_slot;
     const unsigned lookahead = g.cfg.ag_lookahead ? g.cfg.ag_lookahead : 2 * g.cfg.ts_engine_latency + 2;
 
     auto& c = cfg.add<TileCore>(t + "core", core, k, g.cfg.read_port_depth, periph_slot, receiver, bs, g.cfg.request_queue_depth);
     auto& b = cfg.add<TileCtl>(t + "ctl", block, true, periph_slot, receiver);
     auto& d = cfg.add<Director>(t + "dir", dc);
-    auto& we = cfg.add<WriteEngine>(t + "we", g.we_in_depth, g.cfg.ts_engine_latency, g.cfg.mem_chunks);
+    auto& we = cfg.add<WriteEngine>(t + "we", g.we_in_depth, g.cfg.ts_engine_latency, g.cfg.mem_chunks, true);
     auto& ag = cfg.add<AddrGen>(t + "ag", k, lookahead, true, false);
     auto& ga = cfg.add<Gather>(t + "gather", g.gather_depth, k, true);
     auto& ts = cfg.add<TableStore>(t + "ts", true, false);
     auto& hs = cfg.add<HistStore>(t + "hist", false);
     hs.ck_tile = int(k);                                  // invariant 6's fact
     SramConfig sc;
-    sc.mem_chunks = g.cfg.mem_chunks; sc.area_queue_depth = g.cfg.area_queue_depth;
-    sc.write_combining = g.cfg.write_combining; sc.fifo_count_before_pop = g.cfg.fifo_count_before_pop;
+    sc.mem_chunks = g.cfg.mem_chunks;
     sc.running_sum = g.cfg.sram_running_sum;
     auto& sr = cfg.add<BigSram>(t + "sram", sc, g.sram->block(k, g.cfg.mem_chunks), true, false);
 #ifdef SIM_CHECKS
@@ -171,11 +171,12 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     // the read queue's ports (in the inject unit), wired by tile_cycle; the two clients and the tile control unit's
     // gather_srq_busy input with them
     io.mem.present = true;
-    io.mem.read_port_depth = g.cfg.read_port_depth; io.mem.sram_read_latency = g.cfg.sram_read_latency;
+    io.mem.read_port_depth = g.cfg.read_port_depth; io.mem.read_latency = g.cfg.read_latency;
     io.mem.mem_chunks = g.cfg.mem_chunks;
     io.mem.rd_port = c.rd_port; io.mem.rp_injected = c.rp_injected;
     io.mem.sram_rd = sr.rd;
-    for (unsigned a = 0; a < BigSram::AREAS; a++) io.mem.sram_ret[a] = sr.ret[a];
+    io.mem.sram_ret = sr.ret;
+    io.mem.has_notes = true; io.mem.wr_note = we.wr_note; io.mem.gather_note = d.gather_note;
     io.mem.gather = io.mem.ag = true;                     // the read arbiter's clients 0 and 1
     io.mem.rd_gather = ga.rd; io.mem.rd_ag = ag.rd;
     io.mem.gather_srq_busy = b.gather_srq_busy;

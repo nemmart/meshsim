@@ -42,6 +42,7 @@ struct DirectorConfig {
     uint32_t mem_chunks = 1u << 20;    // big SRAM's size, for mode 0 region 0x03's bounds (flagged, invariant 19)
     bool g4 = false;                   // the tile has G4's gather engine wired: `gather_put` is declared
     bool periph_slot = false;          // (M3): the tile has the peripheral slot: `periph` is declared
+    bool gather_note = false;          // the tile has the inject unit's read side: `gather_note` is declared
 };
 
 struct Director {
@@ -55,6 +56,8 @@ struct Director {
     sim::LinkOut bad;          // width 0: a bad packet dropped at t (Conditions.BAD_MODE_OR_SIZE) -> the block, Link(1)
     sim::LinkOut gather_put;   // width 0: a mode-4 put on `gather` at t -> the block, Link(1) (G4: one of STATUS's
                                // three gather-busy inputs: ref's gatherIn.isEmpty counts the pending put); when cfg.g4
+    sim::LinkOut gather_note;  // width 0: the same, to the read arbiter (inject.h: gather_busy in the next cycle), Link(1);
+                               // when cfg.gather_note
     sim::CountIn rp_stores;    // the core's read-port stores (read through t - 1: ref's director runs before the core)
     sim::LinkOut periph;       // (M3): width 3: mode 0 to region 0x04-0x06 -> the peripheral slot (S1), Link(3)
                                // (rp_latency + 1: it lands at the end of t + 2, AUDIT-M3 3.1); when cfg.periph_slot
@@ -82,6 +85,7 @@ struct Director {
         p.out(we_in, "we_in", 3); p.out(gather, "gather", 3);
         p.out(bad, "bad", 0);
         if (cfg.g4) p.out(gather_put, "gather_put", 0);
+        if (cfg.gather_note) p.out(gather_note, "gather_note", 0);
         if (cfg.periph_slot) p.out(periph, "periph", 3);
         p.in(rp_stores, "rp_stores");
     }
@@ -142,6 +146,7 @@ struct Director {
         case lw::M_GATHER:                                                                  // the gather engine (G4)
             c.put(gather, d, h, hi);
             if (cfg.g4) c.put(gather_put);
+            if (cfg.gather_note) c.put(gather_note);
             break;
         default: count_only++; break;                                                       // mode 5: counted only
         }

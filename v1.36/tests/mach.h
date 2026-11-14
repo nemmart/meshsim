@@ -123,8 +123,8 @@ struct MachConfig {
     unsigned ref_cycle = 40;           // core cycles per reference-oscillator cycle (unit 64's UART, cc_cores)
     int ag_lookahead = -1;             // <= 0: 2 ts_engine_latency + 2
     uint32_t mem_chunks = 1u << 20;    // the scratchpad's words
-    unsigned area_queue_depth = 8, sram_read_latency = 2, read_tokens = 64;
-    bool write_combining = false, fifo_count_before_pop = true;
+    unsigned read_latency = 3;         // READ_LATENCY (15, 19): a read's take to its row; the RTL's scratchpad's
+    unsigned read_tokens = 64;         // TOKEN_COUNT (14.2)
     bool test_read_clients = false;    // the read arbiter's clients fed from the harness (Net::rd), no address generator
     bool reqbus_host = false;          // the request tree driven from the test (Chip::reqbus()): its receive queues and
                                        //   the special tiles' inputs on the machine with C&C's model

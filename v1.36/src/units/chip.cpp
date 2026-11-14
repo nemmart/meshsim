@@ -48,12 +48,15 @@ ControlIO stand_in(sim::Config& cfg, unsigned k) {
 void wire_unit(sim::Config& cfg, const NetConfig& nc, unsigned k, const ControlIO& io, Router& r) {
     ReadSideConfig rc;
     rc.present = io.mem.present; rc.gather = io.mem.gather; rc.ag = io.mem.ag;
-    rc.read_port_depth = io.mem.read_port_depth; rc.sram_read_latency = io.mem.sram_read_latency; rc.mem_chunks = io.mem.mem_chunks;
+    rc.read_port_depth = io.mem.read_port_depth; rc.read_latency = io.mem.read_latency; rc.mem_chunks = io.mem.mem_chunks;
+    rc.wr_note = rc.gather_note = io.mem.present && io.mem.has_notes;
     auto& in = cfg.add<Injection>(tile_unit(k, "inj"), k, nc, rc);
     cfg.connect(io.send, in.send);
     cfg.connect(in.send_busy, io.send_busy);
     cfg.link(in.to_router, r.inj, nc.intra_tile_latency);
-    cfg.link(r.loop_left, in.loop_left, 1);
+    // 14.2: a loopback packet's token is freed when the traffic director takes its copy, the eject link after the
+    // router's pop, and is free from the next cycle
+    cfg.link(r.loop_left, in.loop_left, nc.intra_tile_latency + 1);
     cfg.link(r.eject, io.eject, nc.intra_tile_latency);
     cfg.connect(r.ovf, io.router_ovf);
     cfg.link(r.ovf_ev, io.router_ovf_ev, 1);              // D29: the overflow steps the block (counted at t + 1, D28)
@@ -63,7 +66,8 @@ void wire_unit(sim::Config& cfg, const NetConfig& nc, unsigned k, const ControlI
         if (io.mem.gather) cfg.connect(in.rs.gather_srq_busy, io.mem.gather_srq_busy);
         cfg.connect(io.mem.rd_port, in.rs.rp_q);
         cfg.connect(in.rs.sram_rd, io.mem.sram_rd);
-        for (unsigned a = 0; a < InjReadSide::AREAS; a++) cfg.link(io.mem.sram_ret[a], in.rs.ret[a], io.mem.sram_read_latency);
+        cfg.link(io.mem.sram_ret, in.rs.ret, io.mem.read_latency - 1);   // the row, READ_LATENCY after the take (15)
+        if (rc.wr_note) { cfg.link(io.mem.wr_note, in.rs.wr_note, 1); cfg.link(io.mem.gather_note, in.rs.gather_note, 1); }
         cfg.connect(in.rs.rp_injected, io.mem.rp_injected);
     }
     // A send waiting for a loopback token sleeps until the router frees one, which may not be on its way yet (the

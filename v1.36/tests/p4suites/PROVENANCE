@@ -6,9 +6,10 @@ run in a scratch copy of ref/meshsim's layout with fw/images' images
   net-shuf     NetTest 5 quick
   net-shuf2    NetTest 11 quick
   skewtable    NetTest -1 skewtable 40
-  mem          MemTest -1
-  mem-shuf     MemTest 3
-  mem-shuf2    MemTest 8
+  (mem, mem-shuf, mem-shuf2: MemTest's logs, RETIRED in v1.36. MemTest measured v1.35's scratchpad: 16 areas, each with
+   a request queue, write combining, a read latency through that queue. v1.36's has banks with no queue, a write that
+   wins its bank and a fixed READ_LATENCY (machine-spec 15), so no line of those logs can be produced again. The
+   steps of those names run tests/test_mem.cpp, whose expectations are the specification's and the RTL blocks'.)
   engine       EngineTest -1
   eng-shuf     EngineTest 4
   engine-full  EngineTest -1 full

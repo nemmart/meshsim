@@ -88,8 +88,8 @@ const Field kFields[] = {
     F_U("linkLatency", link_latency), F_U("queueDepth", queue_depth), F_U("intraTileLatency", intra_tile_latency),
     F_B("skew", skew), F_L("skewSeed", skew_seed), F_U("weInDepth", we_in_depth), F_U("readPortDepth", read_port_depth),
     F_U("gatherDepth", gather_depth), F_U("cmLatency", cm_latency), F_U("refCycle", ref_cycle),
-    F_U("rpLatency", rp_latency), F_U("K", K), F_U("memChunks", mem_chunks), F_U("areaQueueDepth", area_queue_depth),
-    F_U("sramReadLatency", sram_read_latency), F_B("writeCombining", write_combining), F_B("fifoCountBeforePop", fifo_count_before_pop),
+    F_U("rpLatency", rp_latency), F_U("K", K), F_U("memChunks", mem_chunks),
+    F_U("readLatency", read_latency),
     F_U("readTokens", read_tokens), F_B("loopbackLast", loopback_last), F_B("loopbackTokens", loopback_tokens),
     F_I("loopbackDepth", loopback_depth), F_U("tsEngineLatency", ts_engine_latency), F_I("agLookahead", ag_lookahead),
     F_B("testReadClients", test_read_clients), F_U("regLoadLatency", reg_load_latency),
@@ -127,6 +127,10 @@ const std::vector<std::pair<std::string, std::string>>& MachConfig::dropped() {
         {"doneGate", "v1.36: no DONE and no gate (ARRIVE and the arrival gate: 7.3)"},
         {"strictReplies", "v1.36: no reply block, so no check of it"},
         {"checkCommandRead", "v1.36: no command block, so no check of its reads"},
+        {"areaQueueDepth", "v1.36: the scratchpad has no bank request queues (a write wins its bank: machine-spec 15)"},
+        {"writeCombining", "v1.36: no bank request queues, so no write to combine with (15)"},
+        {"fifoCountBeforePop", "v1.36: it chose how a bank request queue judged its room; there is none (15)"},
+        {"sramReadLatency", "v1.36: READ_LATENCY, take to row (15, 19): readLatency"},
         {"logTrace", "v1.36: no TRACE word (a program reports with a REPORT request: 11.5)"},
     };
     return d;
@@ -259,9 +263,8 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     g.K = c.K; g.cm_latency = c.cm_latency;
     g.ts_engine_latency = c.ts_engine_latency;
     g.ag_lookahead = c.ag_lookahead > 0 ? unsigned(c.ag_lookahead) : 0;
-    g.area_queue_depth = c.area_queue_depth; g.sram_read_latency = c.sram_read_latency;
+    g.read_latency = c.read_latency;
     g.read_port_depth = c.read_port_depth;
-    g.write_combining = c.write_combining; g.fifo_count_before_pop = c.fifo_count_before_pop;
     m.gx.bootrom = m.rom.data(); m.gx.bootrom_words = uint32_t(m.rom.size()); m.gx.bootrom_handler = rom.handler;
     if (c.boot_local) {
         if (c.test_periph_tile >= 0 || c.test_peripheral_tile >= 0)
@@ -544,8 +547,8 @@ bool Chip::parked_untouched() const {                      // ref's: each parked
         TileRef p = const_cast<Chip*>(this)->tile(unsigned(k));
         for (const auto& f : p.unit<units::Router>("router").q) if (f.count) return false;
         const units::Injection& in = p.unit<units::Injection>("inj");
-        if (p.unit<units::AddrGen>("ag").running || p.ts_busy() || in.tok.reads || in.rs.nxt_v || in.rs.cur_v ||
-            p.unit<units::BigSram>("sram").busy || p.unit<units::WriteEngine>("we").count || p.unit<units::Gather>("gather").left)
+        if (p.unit<units::AddrGen>("ag").running || p.ts_busy() || in.tok.reads ||
+            p.unit<units::WriteEngine>("we").count || p.unit<units::Gather>("gather").left)
             return false;
         if (impl_->sim->in_flight_into(units::unit_prefix(unsigned(k)))) return false;   // its ports (the links into it)
     }
@@ -594,8 +597,7 @@ bool Chip::quiescent() const {
         for (const auto& f : p.unit<units::Router>("router").q) if (f.count) return false;   // the router's own FIFOs
         if (p.unit<units::AddrGen>("ag").running || p.ts_busy()) return false;
         const units::Injection& in = p.unit<units::Injection>("inj");
-        if (in.tok.reads || in.rs.nxt_v || in.rs.cur_v) return false;
-        if (p.unit<units::BigSram>("sram").busy) return false;
+        if (in.tok.reads) return false;                   // a read taken, not yet injected (its row on its way)
         if (p.unit<units::WriteEngine>("we").count) return false;
         if (p.unit<units::Gather>("gather").left) return false;
         // the read port (ref's readPort.idle): its results stored and not yet injected (none under the test clients)
@@ -995,10 +997,7 @@ bool TileRef::mem_idle() const {
     const units::WriteEngine& we = unit<units::WriteEngine>("we");
     if (we.count || !port_empty(s, we.in)) return false;
     const units::BigSram& m = unit<units::BigSram>("sram");
-    if (!port_empty(s, m.wr)) return false;
-    for (unsigned a = 0; a < units::BigSram::AREAS; a++)
-        for (unsigned j = 0; j < m.count[a]; j++) if (m.at(a, j).write) return false;   // (the queue wraps at its depth: the F2)
-    return true;
+    return port_empty(s, m.wr);                          // a write is done in the cycle it is presented (15)
 }
 // ts_busy (4.15): either store's pipeline or request FIFOs busy; requests and returns on their way are in the ports
 bool TileRef::ts_busy() const {

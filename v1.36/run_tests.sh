@@ -56,7 +56,7 @@ mkdir -p results
 SUITES="suite_memsys suite_rvc suite_tracer tracer_block"
 EQUIVS="test_core_programs test_core_tile"           # v1.36: the RTL's core (make-check tests, run as steps)
 SUITES="$SUITES suite_replayer"
-SUITES="$SUITES suite_mem"                           # P4: MemTest
+SUITES="$SUITES test_mem"                            # v1.36: the scratchpad and the inject unit (the mem steps)
 SUITES="$SUITES test_rtl_tile test_rtl_sort"         # v1.36: acceptances A and B (the rtl-tile and rtl-sort steps)
 
 if [ "$BUILD" = 1 ]; then
@@ -163,9 +163,10 @@ pending net-shuf "shuffled child order (seed 5)" "$R_NET"
 #   step net-shuf  1 "shuffled child order (seed 5)" tests/p4suites/net-shuf.log -- $S/suite_net 5 quick
 pending net-shuf2 "shuffled child order (seed 11)" "$R_NET"
 #   step net-shuf2 1 "shuffled child order (seed 11)" tests/p4suites/net-shuf2.log -- $S/suite_net 11 quick
-step mem 1 "big SRAM, read and write queues" tests/p4suites/mem.log -- $S/suite_mem -1
-step mem-shuf 1 "shuffled child order (seed 3)" tests/p4suites/mem-shuf.log -- $S/suite_mem 3
-step mem-shuf2 1 "shuffled child order (seed 8)" tests/p4suites/mem-shuf2.log -- $S/suite_mem 8
+check mem "the scratchpad and the inject unit (machine-spec 14, 15; tests/test_mem.cpp; v1.3's MemTest is retired)" -- $S/test_mem
+mem_shuf() { MEM_SHUFFLE=$1 $S/test_mem; }
+check mem-shuf "the same, the units of a level stepped in a shuffled order (seed 3)" -- mem_shuf 3
+check mem-shuf2 "the same (seed 8)" -- mem_shuf 8
 pending engine "address generator, write engine, all-to-all (small)" "$R_ENG"
 #   step engine 1 "address generator, write engine, all-to-all (small)" tests/p4suites/engine.log -- $S/suite_engine -1
 pending eng-shuf "shuffled child order (seed 4)" "$R_ENG"

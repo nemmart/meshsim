@@ -48,6 +48,10 @@ struct WriteEngine {
     sim::LinkOut hist_req;     // width 3: count-on-arrival {OP_ADD_RET, digit, 1}, Link(ts_engine_latency)
     sim::HoldOut to_sram;      // width 3: the big SRAM's write holding register {chunk | n << 21, lo, hi}
     sim::LinkOut ovf_ev;       // width 0, Link(1) to the block: we-in overflowed (judged at this step; D29, WE_IN_OVF)
+    sim::LinkOut wr_note;      // width 1, Link(1), to the read arbiter (inject.h): the word address of the write put on
+                               // to_sram, which the scratchpad does in the next cycle: no read is taken at its bank
+                               // then (15). Declared when `note` (a tile with the inject unit's read side)
+    bool note = false;
 
     // ---- configuration ----
     uint32_t mem_chunks = 1u << 20;
@@ -81,7 +85,8 @@ struct WriteEngine {
     int64_t st_acc[MAX_STAGE] = {};
 #endif
 
-    WriteEngine(sim::Ports& p, unsigned we_in_depth, unsigned ts_engine_latency, uint32_t chunks) : mem_chunks(chunks) {
+    WriteEngine(sim::Ports& p, unsigned we_in_depth, unsigned ts_engine_latency, uint32_t chunks, bool note_ = false)
+        : note(note_), mem_chunks(chunks) {
         if (ts_engine_latency < 1 || 2 * ts_engine_latency + 2 > MAX_STAGE) FATAL("write engine: ts_engine_latency %u", ts_engine_latency);
         cap = 2 * ts_engine_latency + 2;
         p.in(in, "in", 3, we_in_depth);
@@ -91,6 +96,7 @@ struct WriteEngine {
         p.out(hist_req, "hist_req", 3);
         p.out(to_sram, "to_sram", 3);
         p.out(ovf_ev, "ovf_ev", 0);
+        if (note) p.out(wr_note, "wr_note", 1);
         p.overflow_steps(in);                                  // stepped in the cycle an overflow is judged
     }
 
@@ -160,6 +166,7 @@ inline sim::Wake WriteEngine::step(sim::Ctx& c) {
         else {
             last_put[0] = uint64_t(a & 0x1FFFFF) | uint64_t(n) << 21; last_put[1] = lo; last_put[2] = hi;
             c.put(to_sram, last_put[0], lo, hi);
+            if (note) c.put(wr_note, a & 0x1FFFFF);
             written++;
 #ifdef SIM_CHECKS
             if (s1 && s1->on && st_acc[head] >= 0) for (unsigned k = 0; k < n; k++) s1->sram_put(t, a + k, uint64_t(st_acc[head]));   // S1

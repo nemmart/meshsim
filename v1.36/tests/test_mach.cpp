@@ -161,6 +161,47 @@ void a2a_net(int64_t seed, int gap) {
 }
 }  // namespace
 
+// ref's cycles for a scratchpad read, brought to v1.36's hardware. ref's (v1.35's) read is injected 5 cycles after its
+// take and reaches the router in 6; v1.36's READ_LATENCY is 3 and the read reaches the router in 4 (machine-spec 14.3, 15;
+// the RTL's rtl/blocks/inject_unit/README.md states both figures). In `reads` and `a2a` every packet is a read's, one
+// read path each, so every cycle ref printed there is 2 later than v1.36's: the number after "at cycle ", before
+// " cycles" and at the head of an arrival. And the read's token number, which ref carried in the header's
+// simulator-only bits [59:54] (v1.36's tokens are counted, not numbered: 14.2), is 0. Everything else is ref's.
+static std::string refs_reads_at_read_latency_3(const std::string& ref) {
+    std::string o;
+    size_t i = 0;
+    auto number = [&](size_t from, int base, size_t& end) {
+        uint64_t v = 0; end = from;
+        for (; end < ref.size(); end++) {
+            const char ch = ref[end];
+            const int d = ch >= '0' && ch <= '9' ? ch - '0' : base == 16 && ch >= 'a' && ch <= 'f' ? ch - 'a' + 10 : -1;
+            if (d < 0) break;
+            v = v * uint64_t(base) + uint64_t(d);
+        }
+        return v;
+    };
+    auto starts = [&](size_t at, const char* s) { return ref.compare(at, std::strlen(s), s) == 0; };
+    char buf[40];
+    while (i < ref.size()) {
+        size_t e = 0;
+        if (starts(i, "at cycle ")) {                              // "... at cycle N"
+            const uint64_t v = number(i + 9, 10, e);
+            std::snprintf(buf, sizeof buf, "at cycle %llu", (unsigned long long)(v - 2)); o += buf; i = e;
+        } else if (starts(i, ": ") && ref.find(" cycles (", i) != std::string::npos && (number(i + 2, 10, e), e > i + 2) && starts(e, " cycles (")) {
+            std::snprintf(buf, sizeof buf, ": %llu", (unsigned long long)(number(i + 2, 10, e) - 2)); o += buf; i = e;
+        } else if (ref[i] == '[' && i > 0 && ref[i - 1] == ' ') {                              // an arrival: [cycle payload header payload-high]
+            const uint64_t at = number(i + 1, 10, e);
+            size_t p = ref.find(' ', e + 1), h_end = 0;             // past the payload
+            const uint64_t h = number(p + 1, 16, h_end);
+            std::snprintf(buf, sizeof buf, "[%llu", (unsigned long long)(at - 2)); o += buf;
+            o.append(ref, e, p + 1 - e);
+            std::snprintf(buf, sizeof buf, "%llx", (unsigned long long)(h & ~(uint64_t(0x3F) << units::lw::TOKEN_SHIFT))); o += buf;
+            i = h_end;
+        } else o += ref[i++];
+    }
+    return o;
+}
+
 TEST(mach_net_as_refs_Net) {
     out.clear();
     packets(-1); packets(5);
@@ -169,8 +210,12 @@ TEST(mach_net_as_refs_Net) {
     const std::string all = file("tests/mach/netself.out");
     const size_t at = all.find("packets seed -1:");
     CHECK(at != std::string::npos);
-    const std::string want = all.substr(at);                    // NetSelf's last three cases, to the fixture's end
-    CHECK(want.find("a2a seed -1 gap 8: 3240 cycles") != std::string::npos);   // (the tail is what this test believes it is)
+    const size_t rd = all.find("reads: ", at);
+    CHECK(rd != std::string::npos);
+    // NetSelf's last three cases, to the fixture's end: `packets` as ref printed it, `reads` and `a2a` at READ_LATENCY 3
+    const std::string want = all.substr(at, rd - at) + refs_reads_at_read_latency_3(all.substr(rd));
+    CHECK(all.find("a2a seed -1 gap 8: 3240 cycles") != std::string::npos);    // (the tail is what this test believes it is)
+    CHECK(want.find("a2a seed -1 gap 8: 3238 cycles (at cycle 3238)") != std::string::npos);
     if (out != want) std::fprintf(stderr, "---- got\n%s---- want (tests/mach/netself.out, from `packets seed -1`)\n%s", out.c_str(), want.c_str());
     CHECK(out == want);
 }
@@ -310,20 +355,13 @@ TEST(mach_wait_until_releases_the_next_cycle) {
     CHECK_EQ(ran, first_true + 1);
 }
 
-// mem_idle reads an area queue as it wraps, at its configured depth (8), not at the array's (16): a write queued in the
-// slot after the wrap holds mem_idle low; a stale write past the depth doesn't.
-TEST(mach_mem_idle_sees_a_wrapped_queue) {
+// mem_idle (4.1): low while a write is on its way to the scratchpad, where it is done in the cycle it is presented (15: a
+// write wins its bank, no queue holds it). A machine at rest is idle.
+TEST(mach_mem_idle_at_rest) {
     mach::Chip c(mach::MachConfig::defaults());
     mach::TileRef p = c.tile(3);
-    units::BigSram& m = p.unit<units::BigSram>("sram");
-    CHECK_EQ(m.cfg.area_queue_depth, 8u);
     CHECK(p.mem_idle());
-    m.head[5] = 7; m.count[5] = 2;                           // entries in slots 7 and 0
-    m.q[5][7].write = false; m.q[5][0].write = true; m.q[5][8].write = false;
-    CHECK(!p.mem_idle());                                    // the write in slot 0 (not slot 8)
-    m.q[5][0].write = false; m.q[5][8].write = true;         // a stale write past the depth
-    CHECK(p.mem_idle());
-    m.count[5] = 0;
+    CHECK_EQ(p.unit<units::BigSram>("sram").banks(), 8u);     // 4 MiB in banks of 512 KiB (15)
 }
 
 // MachConfig's front end (`cfg.<field>=value`): v1.3's names and types, the dropped fields, the errors; and the defaults
@@ -335,11 +373,10 @@ TEST(mach_config_front_end) {
     CHECK_EQ(k.K, 8u);
     CHECK_EQ(k.cm_latency, 2u);
     std::string err;
-    CHECK(k.set_args({"--x", "cfg.goLatency=10", "cfg.skewSeed=-3", "cfg.writeCombining=true", "cfg.replayerLogEntries=512",
+    CHECK(k.set_args({"--x", "cfg.goLatency=10", "cfg.skewSeed=-3", "cfg.replayerLogEntries=512",
                       "cfg.requestFifoDepth=8"}, err));
     CHECK_EQ(k.go_latency, 10u);
     CHECK_EQ(k.skew_seed, -3);
-    CHECK(k.write_combining);
     CHECK_EQ(k.replayer_log_entries, 512u);
     CHECK_EQ(k.request_queue_depth, 8u);
     CHECK(k.set("checkDisjoint", "TRUE", err) && k.check_disjoint);   // Boolean.parseBoolean: case-insensitive
@@ -347,7 +384,8 @@ TEST(mach_config_front_end) {
     CHECK(!k.set("noSuchField", "1", err) && err == "no Config field noSuchField");
     CHECK(!k.set("idleSkip", "false", err) && err.find("dropped") != std::string::npos);
     // v1.36: the parameters of hardware that is gone are refused, each by name, never silently taken
-    for (const char* gone : {"doneGate", "stageDelay", "runLatency", "counterStoreClearsLatch", "strictReplies", "checkCommandRead", "logTrace"})
+    for (const char* gone : {"doneGate", "stageDelay", "runLatency", "counterStoreClearsLatch", "strictReplies", "checkCommandRead", "logTrace",
+                             "areaQueueDepth", "writeCombining", "fifoCountBeforePop", "sramReadLatency"})
         CHECK(!k.set(gone, "true", err) && err.find("dropped") != std::string::npos && err.find(gone) != std::string::npos);
     CHECK(!k.set("K", "eight", err) && err.find("not a number") != std::string::npos);
     CHECK(!k.set_args({"cfg.K"}, err));

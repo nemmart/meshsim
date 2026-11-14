@@ -2,17 +2,15 @@
 # programs on the harness (tests/mach.h, tests/suite.h), each one's output against ref's log of the same run_tests.sh
 # step (tests/p4suites/, from oracle/ref/p4suites.sh). Included by sim/Makefile (one line).
 #   suite_net   NetTest (steps net, net-shuf, net-shuf2, skewtable)
-#   suite_mem   MemTest (steps mem, mem-shuf, mem-shuf2)
+#   (suite_mem, MemTest, is retired: v1.36's scratchpad has no bank request queues; tests/test_mem.cpp, the steps mem*)
 #   suite_engine EngineTest (steps engine, eng-shuf, engine-full)
 #   suite_search SearchBench (step searchbench)
 #   suite_ag    AgTest (steps agtest, agtest-shuf)
 #   suite_rdport ReadPortGatherTest (steps rdport, rdport-shuf, rdport-full)
 #   suite_agbench AgBench (step agbench)
 #   suite_reqbus RequestBusTest (steps reqbus, reqbus-shuf)
-P4_SUITES := $(B)/suite_reqbus $(B)/suite_net $(B)/suite_mem $(B)/suite_engine $(B)/suite_search $(B)/suite_ag $(B)/suite_rdport $(B)/suite_agbench
+P4_SUITES := $(B)/suite_reqbus $(B)/suite_net $(B)/suite_engine $(B)/suite_search $(B)/suite_ag $(B)/suite_rdport $(B)/suite_agbench
 $(B)/suite_net: $(B)/tests/suite_net.o $(MACH_LINK) $(LIB_OBJ)
-	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
-$(B)/suite_mem: $(B)/tests/suite_mem.o $(MACH_LINK) $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 $(B)/suite_engine: $(B)/tests/suite_engine.o $(MACH_LINK) $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)

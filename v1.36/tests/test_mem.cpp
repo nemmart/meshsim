@@ -1,18 +1,28 @@
-// test_mem.cpp: the memory path's units alone, hand-derived cases the M2 programs don't reach. Exactness
-// against ref is MemConf's (oracle/ref/MemConf.java); these pin the rules: the overflow events (D29), the request FIFO's
-// judgment (PORTS.md 3), the big SRAM's room by the count before the pop (13a), write combining, the write engine's
-// stage and the SRAM Hold's refusal.
-// The `dma` RegFile the write engine reads is v1.36's (DMA_CONFIG, RECEIVE_CONFIG, GATHER_CONFIG: write_engine.h).
+// test_mem.cpp: the scratchpad and the inject unit (machine-spec 14, 15), each rule from the specification or, where it
+// leaves the figure to the implementation, from the RTL's blocks (rtl/blocks/scratchpad/README.md,
+// rtl/blocks/inject_unit/README.md): READ_LATENCY = 3, a read at the router's local input four cycles after its take.
+// No expectation here comes from the simulator's output.
+//
+// THE RIG. A stand plays the inject unit's surroundings from a script: the three read clients (the gather unit's and
+// the address generator's Holds, the read unit's Fifo), the write unit's holding register, the write engine's write
+// with its note, the director's GATHER note, the tokens' returns; and it records every packet the inject unit sends
+// toward the router with the cycle it reaches the router's local input. Cycles count from 1.
+//   - a read PUT in cycle p is OFFERED in p + 1 (the Hold is the client's output register: inject.h);
+//   - a read TAKEN in cycle T is injected in T + READ_LATENCY and at the router's local input in T + READ_LATENCY + 1
+//     (14.3; the RTL: "a read taken in cycle t reaches the router in t + 4");
+//   - a write PUT in cycle p is PRESENTED to the scratchpad in p + 1, the write engine's `scratchpad_write` cycle;
+//   - a token return put in p frees its token from p + 1 (the rig's link is 1; the chip's counts from the router).
+// The runner's steps `mem`, `mem-shuf` and `mem-shuf2` run this test in the suite build, the last two with the units of
+// a level stepped in a seeded random order (MEM_SHUFFLE): no result may depend on the order of steps within a cycle.
 #include <cstdint>
+#include <cstdlib>
 #include <vector>
 
 #include "config.h"
 #include "harness.h"
 #include "units/big_sram.h"
 #include "units/inject.h"
-#include "units/regblock.h"
-#include "units/table_store.h"
-#include "units/write_engine.h"
+#include "units/mem.h"
 
 using namespace units;
 
@@ -20,337 +30,328 @@ static uint32_t init_value(uint32_t i) { uint32_t x = i * 0x9E3779B1u + 1; retur
 
 namespace {
 
-// The write engine's surroundings: a director stand-in putting one mode-1 packet a cycle into we-in from cycle 1 to
-// `until`; PTR returns given only when `ptr_back`; a big-SRAM stand-in taking a write only when `take_sram`.
-struct WeStand {
-    sim::FifoOut we_in;
-    sim::RegFileOut dma;
-    sim::LinkIn ts_req, hist_req, ovf;
-    sim::LinkOut ts_ret;
-    sim::HoldIn sram;
-    uint64_t until = 0;
-    bool ptr_back = false, take_sram = true;
-    std::vector<uint64_t> ovf_at, sram_at;
-    uint32_t ptr = 0x100;
-    WeStand(sim::Ports& p, uint64_t n) : until(n) {
-        p.out(we_in, "we_in", 3); p.out(dma, "dma", DMA_REGS);
-        p.in(ts_req, "ts_req", 3); p.in(hist_req, "hist_req", 3); p.in(ovf, "ovf", 0);
-        p.out(ts_ret, "ts_ret", 3); p.in(sram, "sram", 3);
-    }
-    sim::Wake step(sim::Ctx& c) {
-        const uint64_t t = c.now();
-        if (t == 1) { c.write(dma, DMA_R_CONFIG, 0); c.write(dma, DMA_R_RECEIVE, 0); c.write(dma, DMA_R_GATHER, 0); }
-        if (c.ready(ovf)) { ovf_at.push_back(t); c.take(ovf); }
-        if (c.ready(hist_req)) c.take(hist_req);
-        if (c.ready(ts_req)) {
-            const sim::Word* r = c.peek(ts_req);
-            if (ptr_back) { c.put(ts_ret, r[1] - mem::IDX_PTR, ptr, 0); ptr += uint32_t(r[2]); }
-            c.take(ts_req);
-        }
-        if (take_sram && c.ready(sram)) { sram_at.push_back(t); c.take(sram); }
-        if (t >= 1 && t <= until) c.put(we_in, 0x1234, lw::hdr(5, 0, lw::M_SRC, 0, 0, lw::SIZE_32), 0);
-        return c.next();
-    }
-    uint64_t digest() const { return 0; }
-};
+constexpr unsigned RL = 3;                               // READ_LATENCY: the RTL's scratchpad_pkg
+constexpr unsigned ME = 5;                               // the tile
 
-struct WeRig {
-    static sim::Sim build(uint64_t until, bool ptr_back, bool take_sram) {
-        sim::Config cfg;
-        auto& s = cfg.add<WeStand>("stand", until);
-        s.ptr_back = ptr_back; s.take_sram = take_sram;
-        auto& w = cfg.add<WriteEngine>("we", 4u, 1u, 1u << 20);
-        cfg.connect(s.we_in, w.in);
-        cfg.connect(s.dma, w.dma);
-        cfg.link(w.ts_req, s.ts_req, 1);
-        cfg.link(s.ts_ret, w.ts_ret, 1);
-        cfg.link(w.hist_req, s.hist_req, 1);
-        cfg.connect(w.to_sram, s.sram);
-        cfg.link(w.ovf_ev, s.ovf, 1);
-        cfg.missed_wake_after("we", 1u << 10);          // as add_g1: the stage waits on returns that may never come here
-        return cfg.build();
-    }
-};
-
-}  // namespace
-
-// Cycles start at 1. No PTR ever returns: the stage (2L + 2 = 4) takes the puts of 1-4 (at 2-5), we-in (4) holds the
-// puts of 5-8; the put of 9 meets a full FIFO, judged at 10 (the write engine stepped then, the hook), its event at
-// 11. One event per overflow: the puts of 9-12.
-TEST(write_engine_input_overflow_is_an_event) {
-    sim::Sim m = WeRig::build(12, false, true);
-    m.run(20);
-    const WeStand& s = m.unit<WeStand>("stand");
-    const WriteEngine& w = m.unit<WriteEngine>("we");
-    CHECK_EQ(w.count, 4u);
-    CHECK_EQ(w.ovf_seen, uint64_t(4));
-    CHECK_EQ(s.ovf_at.size(), size_t(4));
-    CHECK_EQ(s.ovf_at[0], uint64_t(11));
-    CHECK_EQ(s.ovf_at[3], uint64_t(14));
-}
-
-// PTR returns (L = 1 each way): a packet taken at t asks at t, the store's stand-in answers at t + 1, the return lands
-// at t + 2 and the write goes into the SRAM Hold at t + 2, taken at t + 3. With the SRAM refusing, the engine retries
-// and its stage fills; nothing is lost.
-TEST(write_engine_ptr_path_and_sram_refusal) {
-    {
-        sim::Sim m = WeRig::build(3, true, true);
-        m.run(12);
-        const WeStand& s = m.unit<WeStand>("stand");
-        CHECK_EQ(s.sram_at.size(), size_t(3));
-        CHECK_EQ(s.sram_at[0], uint64_t(2 + 1 + 1 + 1));   // taken 2, asked 2, answered 3, returned 4, put 4, taken 5
-        CHECK_EQ(m.unit<WriteEngine>("we").written, uint64_t(3));
-    }
-    {
-        sim::Sim m = WeRig::build(6, true, false);
-        m.run(30);
-        const WriteEngine& w = m.unit<WriteEngine>("we");
-        CHECK_EQ(w.written, uint64_t(2));               // the first sits in the Hold; the second is put, refused ever after
-        CHECK(w.stall_cycles > 20);
-        CHECK_EQ(w.count, 4u);
-    }
-}
-
-// PORTS.md 3 on the table store's request FIFOs: a put at t is judged at t + 1 against the occupancy at the start of t.
-TEST(request_fifo_judges_a_put_by_the_start_of_its_cycle) {
-    ReqFifo f;
-    const sim::Word w[3] = {mem::OP_ADD_RET, mem::IDX_PTR + 1, 1};
-    uint64_t t = 1;
-    for (unsigned i = 0; i < ReqFifo::N; i++, t++) { CHECK(!f.commit(t)); f.put(t, w); }
-    CHECK(!f.commit(t));                                // the 16th lands
-    CHECK_EQ(unsigned(f.n), ReqFifo::N);
-    f.pop(t); f.put(t, w);                              // full at the start of t, popped in t: refused
-    CHECK(f.commit(t + 1));
-    CHECK_EQ(f.overflows, uint64_t(1));
-    CHECK_EQ(f.first_overflow, t);
-    f.put(t + 1, w);                                    // 15 at the start of t + 1: lands
-    CHECK(!f.commit(t + 2));
-    CHECK_EQ(unsigned(f.n), ReqFifo::N);
-}
-
-// (v1.35's case `block_sets_we_in_and_table_overflow_conditions_from_events` is not here: it checked that the register
-// block set ERRORS [4] and [5] from the write-engine input FIFO's and the table request FIFOs' overflow events. v1.36's
-// ERRORS has no such bits (machine-spec 7.4), because its write engine and tables have no such FIFOs (12.4, 12.5); while
-// the simulator's units still have them, TileCtl stops the simulator on either event (tile_ctl.h; PENDING-v1.36.md,
-// section 4). The events themselves are still checked above and below.)
-
-namespace {
-// The big SRAM fed directly: writes `w` (chunk, n, lo) at cycles; records its write Hold's refusals.
-struct SramFeed {
-    struct W { uint64_t at; uint32_t chunk, n; uint64_t lo, hi; };   // n: chunks (1, 2, 4), as the write engine puts it
-    sim::HoldOut wr;
-    std::vector<W> ws;
-    size_t next = 0;
-    uint64_t refusals = 0;
-    W last{};
-    SramFeed(sim::Ports& p, std::vector<W> v) : ws(std::move(v)) { p.out(wr, "wr", 3); }
-    sim::Wake step(sim::Ctx& c) {
-        if (c.refused(wr)) { refusals++; c.put(wr, last.chunk | uint64_t(last.n) << 21, last.lo, last.hi); return c.next(); }
-        if (next < ws.size() && ws[next].at <= c.now()) { last = ws[next++]; c.put(wr, last.chunk | uint64_t(last.n) << 21, last.lo, last.hi); }
-        return next < ws.size() ? c.next() : sim::Wake::none();
-    }
-    uint64_t digest() const { return 0; }
-};
-sim::Sim sram_rig(SramBlocks& blocks, std::vector<SramFeed::W> ws, bool combining, unsigned depth) {
-    sim::Config cfg;
-    auto& f = cfg.add<SramFeed>("feed", std::move(ws));
-    SramConfig sc; sc.write_combining = combining; sc.area_queue_depth = depth;
-    auto& s = cfg.add<BigSram>("sram", sc, blocks.block(0, sc.mem_chunks), false);
-    cfg.connect(f.wr, s.wr);
-    return cfg.build();
-}
-}  // namespace
-
-// Writes land at the queue's head the cycle after they enter (a put at t, taken at t + 1, served at t + 2); the sum is
-// kept as the stores land; a write past mem_chunks is dropped.
-TEST(big_sram_writes_and_the_sum) {
-    SramBlocks blocks;
-    sim::Sim m = sram_rig(blocks, {{1, 8, 1, 0xAAAA0001, 0}, {2, 12, 2, 0x0000000200000003ull, 0}, {3, (1u << 20) + 4, 1, 7, 0}}, false, 8);
-    const BigSram& s = m.unit<BigSram>("sram");
-    m.run(2);                                           // cycles 1-2: put at 1, taken at 2
-    CHECK_EQ(s.peek(8), 0u);
-    m.run(1);                                           // cycle 3: the first served
-    CHECK_EQ(s.peek(8), 0xAAAA0001u);
-    m.run(4);
-    CHECK_EQ(s.peek(12), 3u);
-    CHECK_EQ(s.peek(13), 2u);
-    MemSum check(FP_SRAM);
-    check.write(8, 0, 0xAAAA0001); check.write(12, 0, 3); check.write(13, 0, 2);
-    CHECK_EQ(s.sum.sum, check.sum);
-    CHECK_EQ(s.writes_served, uint64_t(3));            // the third (out of range: chunk 2^20) served, nothing stored
-}
-
-// Room by the count before the pop (13a): with depth 1, a queue holding one write at the start of t refuses t's arrival
-// even though it pops at t; one write enters every other cycle. Puts at 1, 2, 3, 4: taken 2, 4, 6, 8; the feed sees two
-// refusals (its puts of 3 and 5, behind an occupied Hold).
-TEST(big_sram_room_by_count_before_pop) {
-    SramBlocks blocks;
-    std::vector<SramFeed::W> ws;
-    for (unsigned i = 0; i < 4; i++) ws.push_back({1 + i, 4 * i, 1, i + 1, 0});   // all in area 0
-    sim::Sim m = sram_rig(blocks, ws, false, 1);
-    m.run(20);
-    CHECK_EQ(m.unit<SramFeed>("feed").refusals, uint64_t(2));
-    CHECK_EQ(m.unit<BigSram>("sram").writes_served, uint64_t(4));
-    for (unsigned i = 0; i < 4; i++) CHECK_EQ(m.unit<BigSram>("sram").peek(4 * i), i + 1);
-}
-// Write combining needs a write behind a read in its area (one arrival of each a cycle): MemConf covers it with P2.
-
-namespace {
-// The table store with the AG's ports: a driver puts PTR RMWs and window stores at given cycles; a reader (a later
-// level, as the AG) records PTR[i] from the view every cycle.
-struct TsDriver {
-    sim::LinkOut req_we, window, req_stream, req_group;
-    sim::LinkIn ret_we, ret_stream, ret_group, ovf;
-    struct Op { uint64_t at; bool rmw; uint32_t idx, v; };
-    std::vector<Op> ops;
-    std::vector<uint64_t> ret_old;
-    TsDriver(sim::Ports& p, std::vector<Op> o) : ops(std::move(o)) {
-        p.out(req_we, "req_we", 3); p.out(window, "window", 2); p.out(req_stream, "req_stream", 3); p.out(req_group, "req_group", 3);
-        p.in(ret_we, "ret_we", 3); p.in(ret_stream, "ret_stream", 3); p.in(ret_group, "ret_group", 3); p.in(ovf, "ovf", 0);
-    }
-    sim::Wake step(sim::Ctx& c) {
-        for (sim::LinkIn* in : {&ret_stream, &ret_group, &ovf}) if (c.ready(*in)) c.take(*in);
-        if (c.ready(ret_we)) { ret_old.push_back(c.peek(ret_we)[1]); c.take(ret_we); }
-        for (const Op& o : ops)
-            if (o.at == c.now()) {
-                if (o.rmw) c.put(req_we, mem::OP_ADD_RET, mem::IDX_PTR + o.idx, o.v);
-                else c.put(window, sim::Word(TBL_PTR) << 32 | o.idx, o.v);
-            }
-        return c.next();
-    }
-    uint64_t digest() const { return 0; }
-};
-struct PtrReader {
-    sim::RegFileIn ptr;
-    sim::RegFileIn view;                   // v1.36: the store's `view` of STREAM and GROUP (5.2), wired, not read here
-    std::vector<uint32_t> seen[3];         // PTR[0..2] at each cycle (index = cycle)
-    explicit PtrReader(sim::Ports& p) { p.in(ptr, "ptr"); p.in(view, "view"); }
-    sim::Wake step(sim::Ctx& c) {
-        for (unsigned i = 0; i < 3; i++) { seen[i].resize(c.now() + 1); seen[i][c.now()] = c.read(ptr, i); }
-        return c.next();
-    }
-    uint64_t digest() const { return 0; }
-};
-}  // namespace
-
-// ref's tile runs the AG before the table store, and the AG reads PTR by a host peek: at t it sees PTR as committed at
-// the end of t - 1, never the write-back of t. An RMW of PTR[0] (+0x10) put at 1 arrives at 2 (L = 1), enters the request
-// FIFO (visible at 3), is read at 3 and written back at 4: the AG sees 0 at 4 and 0x10 from 5. A window store of PTR[1]
-// at 6 (committed at the end of 6): seen from 7. An RMW of PTR[2] (+0x20) put at 7 is written back at 10, and a window
-// store of PTR[2] at 10 is lost (figure 12): the AG sees 0 at 10 and 0x20 from 11.
-TEST(table_store_ptr_view_is_ptr_before_this_cycles_write_back) {
-    sim::Config cfg;
-    auto& d = cfg.add<TsDriver>("drv", std::vector<TsDriver::Op>{{1, true, 0, 0x10}, {6, false, 1, 0x40}, {7, true, 2, 0x20}, {10, false, 2, 0x77}});
-    auto& ts = cfg.add<TableStore>("ts", true);
-    auto& r = cfg.add<PtrReader>("ag");
-    cfg.link(d.req_we, ts.req_we, 1);
-    cfg.link(ts.ret_we, d.ret_we, 1);
-    cfg.link(d.window, ts.window, 1);
-    cfg.link(d.req_stream, ts.req_stream, 1);
-    cfg.link(d.req_group, ts.req_group, 1);
-    cfg.link(ts.ret_stream, d.ret_stream, 1);
-    cfg.link(ts.ret_group, d.ret_group, 1);
-    cfg.link(ts.ovf_ev, d.ovf, 1);
-    cfg.connect(ts.ptr_view, r.ptr);
-    cfg.connect(ts.view, r.view);
-    sim::Sim m = cfg.build();
-    m.run(14);
-    const PtrReader& a = m.unit<PtrReader>("ag");
-    CHECK_EQ(a.seen[0][3], 0u);
-    CHECK_EQ(a.seen[0][4], 0u);                         // the write-back of 4: not yet
-    CHECK_EQ(a.seen[0][5], 0x10u);
-    CHECK_EQ(a.seen[1][6], 0u);
-    CHECK_EQ(a.seen[1][7], 0x40u);                      // the window store of 6
-    CHECK_EQ(a.seen[2][10], 0u);
-    CHECK_EQ(a.seen[2][11], 0x20u);                     // the write-back of 10; the store of 10 lost
-    CHECK_EQ(a.seen[2][13], 0x20u);
-    const TableStore& t = m.unit<TableStore>("ts");
-    CHECK_EQ(t.m.ptr[2], 0x20u);
-    CHECK_EQ(t.pipe.ctrl_writes_lost, uint64_t(1));
-    CHECK_EQ(m.unit<TsDriver>("drv").ret_old.size(), size_t(2));
-}
-
-namespace {
-// The read queue in the injection unit with a real big SRAM behind it: a stand puts read-port requests (client 2) and
-// records what the injection unit puts toward the router.
-struct RqStand {
-    sim::FifoOut rd;
-    sim::HoldOut send;
-    sim::LinkOut loop_left;
+struct Stand {
+    enum Kind { GATHER, AG, RP, SEND, WRITE, GNOTE, TOKEN };
+    struct Ev { uint64_t at; Kind kind; uint64_t a, b, c; };
+    sim::HoldOut gather, ag, send, wr;
+    sim::FifoOut rp;
+    sim::LinkOut wr_note, gather_note, loop_left;
     sim::LinkIn to_router;
-    sim::RegIn send_busy;
-    struct Req { uint64_t at; uint32_t chunk, size, dest; };
-    std::vector<Req> reqs;
+    sim::RegIn send_busy, gather_srq_busy;
+    sim::CountIn rp_injected;
+    std::vector<Ev> script;
     struct Pkt { uint64_t at, lo, h, hi; };
     std::vector<Pkt> out;
-    RqStand(sim::Ports& p, std::vector<Req> r) : reqs(std::move(r)) {
-        p.out(rd, "rd", 2); p.out(send, "send", 3); p.out(loop_left, "loop_left", 0);
-        p.in(to_router, "to_router", 3); p.in(send_busy, "send_busy", 1);
+    // each Hold's producer: the word offered, put again while refused, and the next from the script in order
+    struct Client { std::vector<Ev> q; size_t next = 0; uint64_t held[3] = {}; };
+    Client cl[3];                                        // gather, AG, send
+    Stand(sim::Ports& p, std::vector<Ev> s) : script(std::move(s)) {
+        p.out(gather, "gather", 2); p.out(ag, "ag", 2); p.out(send, "send", 3); p.out(wr, "wr", 3);
+        p.out(rp, "rp", 2); p.out(wr_note, "wr_note", 1); p.out(gather_note, "gather_note", 0); p.out(loop_left, "loop_left", 0);
+        p.in(to_router, "to_router", 3); p.in(send_busy, "send_busy", 1); p.in(gather_srq_busy, "gather_srq_busy", 1);
+        p.in(rp_injected, "rp_injected");
+        for (const Ev& e : script) if (e.kind == GATHER || e.kind == AG) cl[e.kind].q.push_back(e); else if (e.kind == SEND) cl[2].q.push_back(e);
+    }
+    void client(sim::Ctx& c, unsigned k, sim::HoldOut h, unsigned width) {
+        Client& x = cl[k];
+        if (c.refused(h)) { if (width == 2) c.put(h, x.held[0], x.held[1]); else c.put(h, x.held[0], x.held[1], x.held[2]); return; }
+        if (x.next < x.q.size() && x.q[x.next].at <= c.now()) {
+            const Ev& e = x.q[x.next++];
+            x.held[0] = e.a; x.held[1] = e.b; x.held[2] = e.c;
+            if (width == 2) c.put(h, e.a, e.b); else c.put(h, e.a, e.b, e.c);
+        }
     }
     sim::Wake step(sim::Ctx& c) {
         if (c.ready(to_router)) { const sim::Word* w = c.peek(to_router); out.push_back({c.now(), w[0], w[1], w[2]}); c.take(to_router); }
-        for (const Req& r : reqs)
-            if (r.at == c.now()) c.put(rd, mem::req_a(r.chunk, r.size, lw::M_WRITE, 2, 5), mem::req_b(r.dest));
+        client(c, 0, gather, 2); client(c, 1, ag, 2); client(c, 2, send, 3);
+        for (const Ev& e : script) {
+            if (e.at != c.now()) continue;
+            if (e.kind == RP) c.put(rp, e.a, e.b);
+            else if (e.kind == WRITE) { c.put(wr, e.a, e.b, e.c); c.put(wr_note, e.a & 0x1FFFFF); }
+            else if (e.kind == GNOTE) c.put(gather_note);
+            else if (e.kind == TOKEN) c.put(loop_left);
+        }
         return c.next();
     }
     uint64_t digest() const { return 0; }
 };
+
+// A read of `size` at `word`, to tile `dst`, in `mode` with `counter` (the client's request words: mem.h).
+Stand::Ev read(uint64_t at, Stand::Kind k, uint32_t word, unsigned size, unsigned dst = 9, unsigned mode = lw::M_SRC, unsigned counter = 1, uint32_t addr = 0) {
+    return {at, k, mem::req_a(word, size, mode, counter, dst), mem::req_b(addr), 0};
+}
+// A write of `words` words at `word` (the write engine's request: big_sram.h).
+Stand::Ev write(uint64_t at, uint32_t word, unsigned words, uint64_t lo, uint64_t hi = 0) {
+    return {at, Stand::WRITE, uint64_t(word) | uint64_t(words) << 21, lo, hi};
+}
+
+struct Rig {
+    SramBlocks blocks;
+    sim::Sim m;
+    Rig(std::vector<Stand::Ev> script, uint32_t mem_chunks = 1u << 20) : m(build(blocks, std::move(script), mem_chunks)) {}
+    static sim::Sim build(SramBlocks& blocks, std::vector<Stand::Ev> script, uint32_t mem_chunks) {
+        NetConfig nc;
+        ReadSideConfig rc;
+        sim::Options opt;                                    // the runner's shuffled steps: MEM_SHUFFLE=<seed>
+        if (const char* s = std::getenv("MEM_SHUFFLE")) opt.shuffle_seed = uint64_t(std::strtoull(s, nullptr, 10)) + 1;
+        rc.present = rc.gather = rc.ag = rc.wr_note = rc.gather_note = true;
+        rc.read_latency = RL; rc.mem_chunks = mem_chunks;
+        sim::Config cfg(opt);
+        auto& st = cfg.add<Stand>("stand", std::move(script));
+        auto& in = cfg.add<Injection>("inj", ME, nc, rc);
+        SramConfig sc; sc.mem_chunks = mem_chunks;
+        auto& sr = cfg.add<BigSram>("sram", sc, blocks.block(ME, mem_chunks), true);
+        cfg.connect(st.gather, in.rs.client_hold[InjReadSide::GATHER]);
+        cfg.connect(st.ag, in.rs.client_hold[InjReadSide::AG]);
+        cfg.connect(st.rp, in.rs.rp_q);
+        cfg.connect(st.send, in.send);
+        cfg.connect(st.wr, sr.wr);
+        cfg.link(st.wr_note, in.rs.wr_note, 1);
+        cfg.link(st.gather_note, in.rs.gather_note, 1);
+        cfg.link(st.loop_left, in.loop_left, 1);
+        cfg.link(in.to_router, st.to_router, nc.intra_tile_latency);
+        cfg.connect(in.send_busy, st.send_busy);
+        cfg.connect(in.rs.gather_srq_busy, st.gather_srq_busy);
+        cfg.connect(in.rs.rp_injected, st.rp_injected);
+        cfg.connect(in.rs.sram_rd, sr.rd);
+        cfg.link(sr.ret, in.rs.ret, RL - 1);
+        return cfg.build();
+    }
+    BigSram& sram() { return m.unit<BigSram>("sram"); }
+    const std::vector<Stand::Pkt>& out() { return m.unit<Stand>("stand").out; }
+    const Injection& inj() { return m.unit<Injection>("inj"); }
+};
+
+// The cycle a read put at `put` and taken the cycle it is offered reaches the router's local input.
+constexpr uint64_t at_router(uint64_t put) { return put + 1 + RL + 1; }
+
 }  // namespace
 
-// Tile 5, area queues of depth 1 (room by the count before the pop), sram_read_latency 2. N0 (chunk 0x40, area 0) put
-// at 1 issues at 2 on token 0, the SRAM takes it at 3 and serves it at 4, its row lands at 6: released into the
-// read-return hold at 6, injected at 7. N1 (chunk 0x44, area 0) issues at 3 (token 1); the SRAM leaves it in its Hold at
-// 4 (area 0 held N0 at the start of 4), takes it at 5, serves it at 6: ready at 8. Z (chunk 0x100000, past mem_chunks
-// 2^20: zero-width, payload 0) issues at 4 on token 2 without touching the SRAM: ready at 4 + 2 + 2 = 8. Two read-port
-// returns ready at 8: token order, N1 released at 8 (injected 9), Z at 9 (injected 10).
-TEST(read_queue_read_port_returns_and_a_same_cycle_tie) {
-    SramBlocks blocks;
-    NetConfig nc;
-    ReadSideConfig rc; rc.present = true;
-    sim::Config cfg;
-    auto& st = cfg.add<RqStand>("stand", std::vector<RqStand::Req>{{1, 0x40, lw::SIZE_32, 0x100}, {2, 0x44, lw::SIZE_32, 0x104}, {3, 0x100000, lw::SIZE_32, 0x108}});
-    auto& in = cfg.add<Injection>("inj", 5u, nc, rc);
-    SramConfig sc; sc.area_queue_depth = 1;
-    auto& sr = cfg.add<BigSram>("sram", sc, blocks.block(5, sc.mem_chunks), true);
-    cfg.connect(st.rd, in.rs.rp_q);
-    cfg.connect(st.send, in.send);
-    cfg.link(st.loop_left, in.loop_left, 1);
-    cfg.link(in.to_router, st.to_router, 1);
-    cfg.connect(in.send_busy, st.send_busy);
-    cfg.connect(in.rs.sram_rd, sr.rd);
-    for (unsigned a = 0; a < 16; a++) cfg.link(sr.ret[a], in.rs.ret[a], 2);
-    auto& wsink = cfg.add<SramFeed>("feed", std::vector<SramFeed::W>{});
-    cfg.connect(wsink.wr, sr.wr);
-    sim::Sim m = cfg.build();
-    m.unit<BigSram>("sram").poke(0x40, 0xCAFE0040);
-    m.unit<BigSram>("sram").poke(0x44, 0xCAFE0044);
-    m.run(14);
-    const RqStand& s = m.unit<RqStand>("stand");
-    CHECK_EQ(s.out.size(), size_t(3));
-    const uint64_t tags = lw::TAG_FROM_SRQ | lw::TAG_READPORT | lw::TAG_TOKEN;     // dst = me: the token loops
-    const uint64_t at[3] = {7 + 1, 9 + 1, 10 + 1}, lo[3] = {0xCAFE0040, 0xCAFE0044, 0};
-    const uint32_t dest[3] = {0x100, 0x104, 0x108}, tok[3] = {0, 1, 2};
-    for (unsigned i = 0; i < 3 && i < s.out.size(); i++) {
-        CHECK_EQ(s.out[i].at, at[i]);                   // put at 7, 9, 10; Link(1)
-        CHECK_EQ(s.out[i].lo, lo[i]);
-        CHECK_EQ(s.out[i].h, lw::hdr(0, 5, lw::M_WRITE, 2, dest[i], lw::SIZE_32) | uint64_t(tok[i]) << lw::TOKEN_SHIFT | tags);
-    }
-    const Injection& j = m.unit<Injection>("inj");
-    CHECK_EQ(j.tok.reads, 0u);
-    CHECK_EQ(j.tok.loop_held, 3u);
-    CHECK_EQ(j.rs.out_of_range, uint64_t(1));
-    CHECK_EQ(j.rs.free_n, uint8_t(64));
-    CHECK_EQ(unsigned(j.rs.free_q[(j.rs.free_head + 61) % 64]), 0u);   // freed tokens at the tail, in injection order
-    CHECK_EQ(unsigned(j.rs.free_q[(j.rs.free_head + 63) % 64]), 2u);
+// 15, 14.3: each client alone, every size at every aligned word of a row: the read is taken the cycle it is offered,
+// its packet is at the router READ_LATENCY + 1 cycles later, its payload the size's words of the row from its word (the
+// bits above its size 0), its header the read's.
+TEST(a_read_returns_its_words_at_the_fixed_latency) {
+    const Stand::Kind kinds[3] = {Stand::GATHER, Stand::AG, Stand::RP};
+    for (unsigned k = 0; k < 3; k++)
+        for (unsigned size = 0; size < 3; size++)
+            for (unsigned o = 0; o < 4; o += 1u << size) {
+                const uint32_t row = 0x1230 + 4 * k;
+                Rig r({read(3, kinds[k], row + o, size, 9, lw::M_SRC, 3)});
+                const uint32_t w[4] = {0xA0A0A0A0, 0xB1B1B1B1, 0xC2C2C2C2, 0xD3D3D3D3};
+                for (unsigned j = 0; j < 4; j++) r.sram().poke(row + j, w[j]);
+                r.m.run(12);
+                CHECK_EQ(r.out().size(), size_t(1));
+                const Stand::Pkt& p = r.out()[0];
+                CHECK_EQ(p.at, at_router(3));
+                uint64_t lo = 0, hi = 0;
+                for (unsigned j = 0; j < (1u << size); j++) (j < 2 ? lo : hi) |= uint64_t(w[o + j]) << (32 * (j & 1));
+                CHECK_EQ(p.lo, lo);
+                CHECK_EQ(p.hi, hi);
+                CHECK_EQ(lw::dst(p.h), 9u);
+                CHECK_EQ(lw::mode(p.h), unsigned(lw::M_SRC));
+                CHECK_EQ(lw::counter(p.h), 3u);
+                CHECK_EQ(lw::size(p.h), size);
+                CHECK_EQ(r.inj().tok.reads, 0u);         // its token freed at its injection (14.2)
+                CHECK_EQ(r.inj().tok.loop_held, 0u);
+            }
 }
+
+// 15: reads come back in the order taken, one a cycle: three back-to-back reads of one client.
+TEST(reads_return_in_take_order_one_a_cycle) {
+    Rig r({read(1, Stand::AG, 0x100, lw::SIZE_32, 9, lw::M_WRITE, 1, 0x03000000), read(2, Stand::AG, 0x104, lw::SIZE_32, 9, lw::M_WRITE, 1, 0x03000004),
+           read(3, Stand::AG, 0x108, lw::SIZE_32, 9, lw::M_WRITE, 1, 0x03000008)});
+    for (uint32_t i = 0; i < 3; i++) r.sram().poke(0x100 + 4 * i, 0x5000 + i);
+    r.m.run(12);
+    CHECK_EQ(r.out().size(), size_t(3));
+    for (uint32_t i = 0; i < 3; i++) {
+        CHECK_EQ(r.out()[i].at, at_router(1 + i));
+        CHECK_EQ(r.out()[i].lo, uint64_t(0x5000 + i));
+        CHECK_EQ(lw::addr(r.out()[i].h), 0x03000000u + 4 * i);   // the read's address field passed on (4.1)
+    }
+}
+
+// 14.1: the arbiter's fixed priority, the gather unit, then the address generator, then the read unit: three reads
+// offered in one cycle are taken in three cycles in that order.
+TEST(the_arbiter_serves_gather_then_the_address_generator_then_the_read_unit) {
+    Rig r({read(1, Stand::RP, 0x40, lw::SIZE_32, 9, lw::M_WRITE, 3), read(1, Stand::AG, 0x44, lw::SIZE_32, 9, lw::M_SRC, 2),
+           read(1, Stand::GATHER, 0x48, lw::SIZE_64, ME, lw::M_SRC, 1)});
+    r.m.run(12);
+    CHECK_EQ(r.out().size(), size_t(3));
+    for (unsigned i = 0; i < 3; i++) {
+        CHECK_EQ(r.out()[i].at, at_router(1) + i);
+        CHECK_EQ(lw::counter(r.out()[i].h), i + 1);      // 1 the gather unit's, 2 the address generator's, 3 the read unit's
+    }
+}
+
+// 14.1, 13: while the gather unit is busy the address generator takes no read, even in a cycle the gather unit takes
+// none; the read unit gets that cycle. A GATHER accepted in cycle 1 is in the queue, the unit busy, in cycle 2, when
+// it offers no read yet. The address generator's read is taken in cycle 3.
+TEST(the_address_generator_takes_no_read_while_the_gather_unit_is_busy) {
+    Rig r({{1, Stand::GNOTE, 0, 0, 0}, read(1, Stand::AG, 0x44, lw::SIZE_32, 9, lw::M_SRC, 2), read(1, Stand::RP, 0x40, lw::SIZE_32, 9, lw::M_WRITE, 3)});
+    r.m.run(12);
+    CHECK_EQ(r.out().size(), size_t(2));
+    CHECK_EQ(lw::counter(r.out()[0].h), 3u);             // the read unit's, taken in cycle 2
+    CHECK_EQ(r.out()[0].at, at_router(1));
+    CHECK_EQ(lw::counter(r.out()[1].h), 2u);             // the address generator's, in cycle 3
+    CHECK_EQ(r.out()[1].at, at_router(1) + 1);
+    CHECK_EQ(r.inj().rs.gather_gate_cycles, uint64_t(1));
+}
+// The same while the gather unit's own read is offered and not taken (a write at its bank): the address generator's
+// read, at another bank, is not taken either, and the gather unit's goes first in the next cycle.
+TEST(the_address_generator_waits_for_a_gather_read_that_is_refused) {
+    Rig r({write(1, 0x20008, 1, 7), read(1, Stand::GATHER, 0x20100, lw::SIZE_64, ME, lw::M_SRC, 1), read(1, Stand::AG, 0x44, lw::SIZE_32, 9, lw::M_SRC, 2)});
+    r.m.run(12);
+    CHECK_EQ(r.out().size(), size_t(2));
+    CHECK_EQ(lw::counter(r.out()[0].h), 1u);
+    CHECK_EQ(r.out()[0].at, at_router(1) + 1);           // cycle 2: the write at bank 1; taken in 3
+    CHECK_EQ(lw::counter(r.out()[1].h), 2u);
+    CHECK_EQ(r.out()[1].at, at_router(1) + 2);
+}
+
+// 15, 14.1: a write wins its bank. A read that would meet the write at its bank in that cycle is not taken, and a
+// lower client, whose read is at another bank, does not get the cycle. Banks are 512 KiB (2^17 words): the write and the
+// address generator's read in bank 1, the read unit's in bank 0.
+TEST(a_write_wins_its_bank_and_a_lower_client_does_not_get_the_cycle) {
+    Rig r({write(1, 0x20008, 1, 7), read(1, Stand::AG, 0x20100, lw::SIZE_32, 9, lw::M_SRC, 2), read(1, Stand::RP, 0x40, lw::SIZE_32, 9, lw::M_WRITE, 3)});
+    r.m.run(12);
+    CHECK_EQ(r.out().size(), size_t(2));
+    CHECK_EQ(lw::counter(r.out()[0].h), 2u);
+    CHECK_EQ(r.out()[0].at, at_router(1) + 1);           // not taken in cycle 2, taken in 3
+    CHECK_EQ(lw::counter(r.out()[1].h), 3u);
+    CHECK_EQ(r.out()[1].at, at_router(1) + 2);           // the read unit's: not cycle 2 either, then after the generator's
+    CHECK_EQ(r.inj().rs.bank_wait_cycles, uint64_t(1));
+    CHECK_EQ(r.sram().peek(0x20008), 7u);                // the write was done
+}
+// A write at another bank takes nothing from a read: both are done in the one cycle.
+TEST(a_write_at_another_bank_does_not_hold_a_read) {
+    Rig r({write(1, 0x20008, 1, 7), read(1, Stand::AG, 0x1FFFC, lw::SIZE_32, 9, lw::M_SRC, 2)});   // bank 1; bank 0's last word
+    r.m.run(12);
+    CHECK_EQ(r.out().size(), size_t(1));
+    CHECK_EQ(r.out()[0].at, at_router(1));
+    CHECK_EQ(r.inj().rs.bank_wait_cycles, uint64_t(0));
+}
+// The banks are min(SCRATCHPAD_BYTES, 512 KiB): a scratchpad of 512 bytes is one bank, so any write holds any read;
+// at 8 MiB there are 16, and a write in the last bank holds a read there and none in the bank before it.
+TEST(the_banks_follow_the_scratchpad_size) {
+    {
+        Rig r({write(1, 0x08, 1, 7), read(1, Stand::AG, 0x70, lw::SIZE_32, 9, lw::M_SRC, 2)}, 128);
+        CHECK_EQ(r.sram().banks(), 1u);
+        r.m.run(12);
+        CHECK_EQ(r.out().size(), size_t(1));
+        CHECK_EQ(r.out()[0].at, at_router(1) + 1);
+    }
+    {
+        Rig r({write(1, 0x1E0000, 1, 7), read(1, Stand::AG, 0x1FFFFC, lw::SIZE_32, 9, lw::M_SRC, 2), write(5, 0x1E0000, 1, 8),
+               read(5, Stand::AG, 0x1DFFFC, lw::SIZE_32, 9, lw::M_SRC, 2)}, 1u << 21);
+        CHECK_EQ(r.sram().banks(), 16u);
+        r.m.run(16);
+        CHECK_EQ(r.out().size(), size_t(2));
+        CHECK_EQ(r.out()[0].at, at_router(1) + 1);       // bank 15: held a cycle
+        CHECK_EQ(r.out()[1].at, at_router(5));           // bank 14: not held
+    }
+    CHECK_EQ(SramConfig{}.mem_chunks, 1u << 20);         // SCRATCHPAD_BYTES 4 MiB (19): 8 banks
+    CHECK(scratchpad_size_ok(128) && scratchpad_size_ok(1u << 20) && scratchpad_size_ok(1u << 21));
+    CHECK(!scratchpad_size_ok(64) && !scratchpad_size_ok(1u << 22) && !scratchpad_size_ok(3u << 18) && !scratchpad_size_ok(17u << 16));
+}
+// 5.1, 15, 19: SCRATCHPAD_BYTES is a power of two; v1.35's 4.25 MiB (17 areas' worth of words) is refused.
+DEATH_TEST(a_scratchpad_that_is_not_a_power_of_two_is_refused, "SCRATCHPAD_BYTES is a power of two") {
+    SramBlocks blocks;
+    sim::Config cfg;
+    SramConfig sc; sc.mem_chunks = 17u << 16;
+    cfg.add<BigSram>("sram", sc, blocks.block(0, sc.mem_chunks), false);
+}
+
+// 15: a write is in place for every read taken in a later cycle, and a read taken before a write of its row returns
+// the row as it was. Word enables: a 32-bit or a 64-bit write is one access and keeps the row's other words.
+TEST(a_write_is_in_place_for_a_later_read_and_not_for_an_earlier_one) {
+    // the row at 0x300 holds 1, 2, 3, 4. Cycle 2: its 128-bit read A taken. Cycle 3: a 64-bit write of words 2-3.
+    // Cycle 4: its 128-bit read B taken. Cycle 5: a 32-bit write of word 1. Cycle 6: read C taken.
+    Rig r({read(1, Stand::AG, 0x300, lw::SIZE_128), write(2, 0x302, 2, 0x000000BB000000AAull), read(3, Stand::AG, 0x300, lw::SIZE_128),
+           write(4, 0x301, 1, 0xCC), read(5, Stand::AG, 0x300, lw::SIZE_128)});
+    for (uint32_t j = 0; j < 4; j++) r.sram().poke(0x300 + j, j + 1);
+    r.m.run(16);
+    CHECK_EQ(r.out().size(), size_t(3));
+    CHECK_EQ(r.out()[0].at, at_router(1));
+    CHECK_EQ(r.out()[0].lo, 0x0000000200000001ull);
+    CHECK_EQ(r.out()[0].hi, 0x0000000400000003ull);      // A: before the write of cycle 3
+    CHECK_EQ(r.out()[1].at, at_router(3));
+    CHECK_EQ(r.out()[1].lo, 0x0000000200000001ull);      // B: words 0-1 kept by the 64-bit write
+    CHECK_EQ(r.out()[1].hi, 0x000000BB000000AAull);
+    CHECK_EQ(r.out()[2].at, at_router(5));
+    CHECK_EQ(r.out()[2].lo, 0x000000CC00000001ull);      // C: word 1 alone written
+    CHECK_EQ(r.out()[2].hi, 0x000000BB000000AAull);
+    CHECK_EQ(r.sram().writes_served, uint64_t(2));
+}
+
+// 14.2: TOKEN_COUNT = 64. Every read holds a token from its take; a loopback packet's stays held after its injection,
+// until the director takes its copy. 64 reads to the tile itself, one a cycle from cycle 2, are all taken. The 65th,
+// offered from cycle 66, is not: no token. The write unit's loopback packet, offered from 66 too, waits as well. A
+// token returned in cycle 70 is free from 71: the arbiter takes it first, for the read; the write unit's packet goes
+// with the next, returned in 72 and free from 73.
+TEST(sixty_four_tokens_and_the_arbiter_takes_one_before_the_write_unit) {
+    std::vector<Stand::Ev> s;
+    for (uint64_t i = 0; i < 65; i++) s.push_back(read(1 + i, Stand::AG, uint32_t(0x400 + 4 * i), lw::SIZE_32, ME, lw::M_SRC, 2));
+    s.push_back({65, Stand::SEND, 0x77, lw::hdr(0, ME, lw::M_COUNT, 4, 0, lw::SIZE_32), 0});
+    s.push_back({70, Stand::TOKEN, 0, 0, 0});
+    s.push_back({72, Stand::TOKEN, 0, 0, 0});
+    Rig r(s);
+    r.m.run(69);
+    CHECK_EQ(r.out().size(), size_t(64));
+    CHECK_EQ(r.out()[63].at, at_router(64));
+    CHECK_EQ(r.inj().tok.loop_held, 64u);
+    r.m.run(12);
+    CHECK_EQ(r.out().size(), size_t(66));
+    CHECK_EQ(lw::counter(r.out()[64].h), 4u);            // the write unit's: injected in 73, at the router in 74
+    CHECK_EQ(r.out()[64].at, uint64_t(74));
+    CHECK_EQ(lw::counter(r.out()[65].h), 2u);            // the 65th read: taken in 71, at the router in 75
+    CHECK_EQ(r.out()[65].at, uint64_t(75));
+    CHECK_EQ(r.inj().tok.loop_held, 64u);                // 64 - 2 returned + the two new loopback packets
+}
+// With every token held, the write unit's packet to another tile still goes: only a loopback packet takes a token.
+TEST(a_packet_to_another_tile_takes_no_token) {
+    std::vector<Stand::Ev> s;
+    for (uint64_t i = 0; i < 64; i++) s.push_back(read(1 + i, Stand::AG, uint32_t(0x400 + 4 * i), lw::SIZE_32, ME, lw::M_SRC, 2));
+    s.push_back({70, Stand::SEND, 0x77, lw::hdr(0, 6, lw::M_COUNT, 4, 0, lw::SIZE_32), 0});
+    Rig r(s);
+    r.m.run(80);
+    CHECK_EQ(r.out().size(), size_t(65));
+    CHECK_EQ(r.out()[64].at, uint64_t(72));              // offered in 71, injected then, at the router in 72
+    CHECK_EQ(r.inj().tok.loop_held, 64u);
+}
+
+// 14.3: the injection point takes a read return first; the write unit's packet goes in the next cycle with no return.
+TEST(a_read_return_goes_before_the_write_units_packet) {
+    // reads taken in cycles 2 and 3 are injected in 5 and 6; the write unit's packet, offered from 5, goes in 7.
+    Rig r({read(1, Stand::AG, 0x40, lw::SIZE_32, 9, lw::M_SRC, 2), read(2, Stand::AG, 0x44, lw::SIZE_32, 9, lw::M_SRC, 2),
+           {4, Stand::SEND, 0x77, lw::hdr(0, 6, lw::M_COUNT, 4, 0, lw::SIZE_32), 0}});
+    r.m.run(12);
+    CHECK_EQ(r.out().size(), size_t(3));
+    CHECK_EQ(r.out()[0].at, uint64_t(6));
+    CHECK_EQ(r.out()[1].at, uint64_t(7));
+    CHECK_EQ(lw::counter(r.out()[2].h), 4u);
+    CHECK_EQ(r.out()[2].at, uint64_t(8));
+}
+
+namespace {
+// a scratchpad's write port with nobody writing: the contents are the test's pokes
+struct Feed {
+    sim::HoldOut wr;
+    explicit Feed(sim::Ports& p) { p.out(wr, "wr", 3); }
+    sim::Wake step(sim::Ctx&) { return sim::Wake::none(); }
+    uint64_t digest() const { return 0; }
+};
+}  // namespace
 
 // D31: without the running sum the store is plain and data_sum() scans the block; both give the same sum, also after
 // a value is overwritten and a word goes back to zero.
-TEST(big_sram_sum_running_or_scanned_agree) {
+TEST(scratchpad_sum_running_or_scanned_agree) {
     SramBlocks blocks;
     sim::Config cfg;
-    auto& f = cfg.add<SramFeed>("feed", std::vector<SramFeed::W>{});
-    auto& g = cfg.add<SramFeed>("feed2", std::vector<SramFeed::W>{});
+    auto& f = cfg.add<Feed>("feed");
+    auto& g = cfg.add<Feed>("feed2");
     SramConfig on, off; off.running_sum = false;
     auto& a = cfg.add<BigSram>("on", on, blocks.block(0, on.mem_chunks), false);
     auto& b = cfg.add<BigSram>("off", off, blocks.block(1, off.mem_chunks), false);

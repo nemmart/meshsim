@@ -130,7 +130,7 @@ struct Gather {
                 reads++; i++; left--; put = true;
             }
         }
-        const bool b = put || left > 0 || c.ready(in);       // the own half of busy at the end of t
+        const bool b = put;                                  // its half of busy: a read offered in t + 1
         if (b != busy_out) { c.put(busy, b); busy_out = b; }
         return put || c.ready(in) ? c.next() : sim::Wake::none();
     }

@@ -8,9 +8,8 @@
 //   port              kind  from -> to                               words                         latency
 //   gather read       Hold  gather `rd`   -> srq client 0            2: reqA, reqB (below)          (Hold) refused, retried t + 1
 //   AG read           Hold  AG `rd`       -> srq client 1            2: reqA, reqB                  (Hold) refused, retried t + 1
-//   gather srq busy   Reg   srq `gather_srq_busy` -> register block   1: the gather's Hold occupied at the end of t, OR
-//                                                                       SRAMReadQueue.inFlightOf(GATHER) > 0 (one of
-//                                                                       STATUS's three gather-busy inputs, ORed)
+//   gather srq busy   Reg   inject `gather_srq_busy` -> tile control  1: the gather unit's read still offered at the end of t (one
+//                                                                       of STATUS.gather_busy's three inputs, ORed: gather.h)
 //   PTR view          RegFile  table store `ptr` -> the AG             256 registers: PTR as committed at the end of
 //                                                                       t - 1 (ref's AG peeks before the store's
 //                                                                       write-back of t; with_ag only)
@@ -19,10 +18,11 @@
 //   STREAM return     Link  table store -> AG `stream_ret`           3: TableStore.retStream's      ts_engine_latency
 //   GROUP return      Link  table store -> AG `group_ret`            3: TableStore.retGroup's       ts_engine_latency
 //
-// The read queue serves its clients as ref does: priority gather (0), AG (1), read port (2), one issue a cycle while a
-// token is free; a client's Hold is taken when its request issues (so a client sees `refused` when its previous request
-// is still held at the end of the cycle it puts again: PORTS.md 5). Returns are packets through the injection point (no
-// return port between G3 and G4). The read port (client 2) is the core's Fifo(read_port_depth), G3's own.
+// The read arbiter (in the inject unit: inject.h) serves its clients in fixed priority, the gather unit (0), the address
+// generator (1), the read unit (2), one take a cycle while a token is free and no write meets the read at its bank; a
+// client's Hold is taken when its read is taken (so a client sees `refused` when its previous read is still offered at
+// the end of the cycle it puts again: PORTS.md 5). Returns are packets through the injection point. The read unit
+// (client 2) is the core's Fifo(read_port_depth).
 //
 // Wiring: the units of both groups are added by the control builder (the add_g1); the crossing inside a tile is wired
 // there, and the read queue's ports (in the injection unit, the) through `MemIO` below, which tile_cycle connects.
@@ -69,13 +69,16 @@ constexpr unsigned kTsWidth = 3;
 struct MemIO {
     bool present = false;              // false: a network-only tile (no read side)
     bool gather = false, ag = false;   // the clients present (their `rd` Holds declared and given below)
-    unsigned read_port_depth = 64, sram_read_latency = 2;
+    unsigned read_port_depth = 64, read_latency = 3;   // READ_LATENCY (15)
     uint32_t mem_chunks = 1u << 20;
     sim::HoldOut rd_gather;            // the gather `rd` (client 0), width 2
     sim::HoldOut rd_ag;                // the AG `rd` (client 1), width 2
     sim::FifoOut rd_port;              // the core's read port (client 2), width 2, Fifo(read_port_depth)
-    sim::HoldIn sram_rd;               // the big SRAM's read holding register, width 1 (BigSRAM.readReq)
-    sim::LinkOut sram_ret[16];         // the big SRAM's area returns, width 3, Link(sram_read_latency)
+    sim::HoldIn sram_rd;               // the scratchpad's read, width 1 (big_sram.h)
+    sim::LinkOut sram_ret;             // the scratchpad's row, width 2, Link(READ_LATENCY - 1)
+    bool has_notes = false;            // the two below are given (a tile with the write engine and the director)
+    sim::LinkOut wr_note;              // the write engine: its write of the next cycle, width 1, Link(1) (inject.h)
+    sim::LinkOut gather_note;          // the director: a GATHER accepted, width 0, Link(1) (inject.h)
     sim::RegIn gather_srq_busy;        // the register block: gather Hold occupied or a gather read in flight, width 1
     sim::CountIn rp_injected;          // the core: read-port returns injected (ReadPort.injectedAt), read through t - 1
 };

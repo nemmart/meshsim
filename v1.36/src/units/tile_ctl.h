@@ -514,8 +514,8 @@ struct G1Config {
     // the memory path's keys
     unsigned ts_engine_latency = 1;    // TABLE_LATENCY: the engines' Links to and from the table store and HIST
     unsigned ag_lookahead = 0;         // the AG's read-ahead rings; 0: READ_AHEAD = 2 TABLE_LATENCY + 2 (8.5)
-    unsigned area_queue_depth = 8, sram_read_latency = 2, read_port_depth = 64;
-    bool write_combining = false, fifo_count_before_pop = true;
+    unsigned read_latency = 3;         // READ_LATENCY (15, 19): the RTL's scratchpad's
+    unsigned read_port_depth = 64;     // READ_QUEUE_DEPTH (10)
     bool sram_running_sum = true;      // D31: BigSram keeps its fingerprint sum per store; false in timing runs
 };
 

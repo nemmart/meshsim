@@ -444,7 +444,10 @@ struct TileCore {
             const unsigned k = w - Win::OWN0;
             return c.read(u.win, Win::reg(n, base + k / 32)) >> (k % 32) & 1;
         }
-        uint32_t periph_own_load(unsigned n, unsigned w) { return c.read(u.win, Win::reg(n, Win::R_OWN + (w - Win::OWN0))); }
+        uint32_t periph_own_load(unsigned n, unsigned w) {
+            if (own_bit(n, Win::R_POPS, w)) c.put(u.periph, CoreOp::load(n, w));   // a load that pops (17.6), at the end of t
+            return c.read(u.win, Win::reg(n, Win::R_OWN + (w - Win::OWN0)));
+        }
         // A window store made in t: the slot applies it at the end of t (its `core` port, a Link(1)).
         bool periph_control_store(unsigned n, unsigned w, uint32_t v) { c.put(u.periph, CoreOp::store(n, w, v)); return true; }
         bool periph_own_store(unsigned n, unsigned w, uint32_t v) {

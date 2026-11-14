@@ -39,6 +39,8 @@
 //     6 at most (LAND_LATENCY - WRITE_PORT_LATENCY, 19);
 //   - a store made in p (START, a word of blocks 2-7, EVENTS_MASK, the DMA's words): in effect at the end of p
 //     (run(p), write_word(p, ...), called at level 0 of p + 1, before any read of p + 1);
+//   - a load made in p of a word that pops (load_pops: Ingress/Egress's UART_RX and STREAM_RECEIVE): its effect at the
+//     end of p (load_effect(p, w), called at level 0 of p + 1 as a store's is);
 //   - a load made in p reads the end of p - 1; a consuming load of EVENTS takes its counts at the end of p, under the
 //     mask as it was in p, and a set of p survives it, a fill of p sets the depth (peripheral_control.veryl): the
 //     model has stepped p by then, so the slot calls consume_events_late(p, bits), and the same rule holds for
@@ -73,10 +75,12 @@ struct RwEngineStub;
 
 // The core's word on S2/S3 (one per cycle): a store to window word w of peripheral n, or a consuming EVENTS load.
 struct CoreOp {
-    enum : unsigned { STORE = 0, CONSUME = 1 };
+    enum : unsigned { STORE = 0, CONSUME = 1, LOAD = 2 };
     static uint64_t store(unsigned n, unsigned w, uint32_t v) { return uint64_t(STORE) | uint64_t(n) << 2 | uint64_t(w) << 4 | uint64_t(v) << 32; }
     // bits: the value the load returned, under EVENTS_MASK (ref: consumeBits = value & mask)
     static uint64_t consume(unsigned n, uint32_t bits) { return uint64_t(CONSUME) | uint64_t(n) << 2 | uint64_t(P_EVENTS) << 4 | uint64_t(bits) << 32; }
+    // a load of own word w that pops (the peripheral's load_pops: Win::R_POPS), for its effect at the end of the cycle
+    static uint64_t load(unsigned n, unsigned w) { return uint64_t(LOAD) | uint64_t(n) << 2 | uint64_t(w) << 4; }
     static unsigned kind(uint64_t x) { return unsigned(x & 3); }
     static unsigned n(uint64_t x) { return unsigned(x >> 2) & 3; }
     static unsigned word(uint64_t x) { return unsigned(x >> 4) & 0x7F; }
@@ -106,7 +110,9 @@ struct Win {
                                                            //   from the peripheral's writable(w) (all defined if it has none)
     static constexpr unsigned R_MAYSTALL = 115;            // [115, 118): words 32-127 whose store may stall; static, from
                                                            //   the peripheral's may_stall(w) (register_bus.veryl, own_stalling)
-    static constexpr unsigned PER = 118;
+    static constexpr unsigned R_POPS = 118;                // [118, 121): words 32-127 whose load pops; static, from the
+                                                           //   peripheral's load_pops(w) (17.6: UART_RX, STREAM_RECEIVE)
+    static constexpr unsigned PER = 121;
     // the tile's live bits:
     static constexpr unsigned R_LIVE = 3 * PER;            // [2:0] EVENTS [15:13] ((events | done) & mask != 0, per n);
                                                            // [5:3] ERRORS [13:11] (errors != 0, per n)

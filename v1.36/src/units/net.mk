@@ -19,5 +19,11 @@ $(NTB)/test_chip: $(NTB_LINK)
 .PHONY: tsan-chip tsan-chip-one
 tsan-chip-one: $(NTB)/test_chip
 	TSAN_OPTIONS="halt_on_error=1 second_deadlock_stack=1" ./$(NTB)/test_chip form2
+# (pending.mk: while test_chip is pending, so is its TSan run)
+ifeq ($(filter test_chip,$(PENDING_TESTS)),)
 tsan-chip:
 	@set -e; for c in $(COMPILERS); do echo "==== $$c tsan (chip)"; $(MAKE) --no-print-directory CC_NAME=$$c tsan-chip-one; done
+else
+tsan-chip:
+	@echo "==== tsan (chip): PENDING test_chip (pending.mk)"
+endif

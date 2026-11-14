@@ -33,8 +33,14 @@ $(UTB)/test_controllers: $(UTB)/src/units/trace_log.o $(UTB)/src/units/controlle
 .PHONY: tsan-units tsan-units-one
 tsan-units-one: $(UTB)/test_controllers
 	TSAN_OPTIONS="halt_on_error=1 second_deadlock_stack=1" ./$(UTB)/test_controllers
+# (pending.mk: while test_controllers is pending, so is its TSan run)
+ifeq ($(filter test_controllers,$(PENDING_TESTS)),)
 tsan-units:
 	@set -e; for c in $(COMPILERS); do echo "==== $$c tsan (controllers)"; $(MAKE) --no-print-directory CC_NAME=$$c tsan-units-one; done
+else
+tsan-units:
+	@echo "==== tsan (controllers): PENDING test_controllers (pending.mk)"
+endif
 
 # the canonical state fingerprint's C++ side (tests/statefp.*), and its test.
 FP_OBJ := $(B)/tests/statefp.o

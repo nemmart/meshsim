@@ -13,6 +13,9 @@ $(B)/t2: $(B)/tests/t2_main.o $(B)/tests/statefp_m3.o $(B)/tests/statefp.o $(B)/
 # TSan (make check's tsan-one, threads.mk): test_t2_harness's boot on T2's 6-domain split under ThreadSanitizer
 TB_T2_LINK := $(subst $(B)/,$(TB)/,$(T2_LINK) $(B)/src/units/periph_slot.o $(REPLAYER_LINK))
 $(TB)/test_t2_harness: $(sort $(TB_T2_LINK))
+# (pending.mk: while test_t2_harness is pending, so is its TSan run)
+ifeq ($(filter test_t2_harness,$(PENDING_TESTS)),)
 TB_TESTS += $(TB)/test_t2_harness
 tsan-one: $(TB)/test_t2_harness
+endif
 $(B)/test_cc_req: $(T2_LINK)

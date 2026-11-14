@@ -5,11 +5,11 @@ which check is which invariant.* How a unit is written and added is `src/README.
 
 **v1.36 is brought to the RTL's hardware in stages** (`PENDING-v1.36.md`). Done: the core, the replayer and the Tracer
 (each the RTL's block, cycle for cycle), the platform (the register map, the register bus, the tile control unit, the
-units' registers, the boot, the peripheral slot, and the chip: the special tiles, the request tree, the nets), and the
-tile's units of chapters 8-15 (the DMA, write, read, receive, gather and inject units and the scratchpad). Those rows
-below cite v1.36's machine-spec (the RTL's `rtl/tile/base/spec.md`, the same section numbers), marked **v1.36**. The
-router's row and the invariants table are still v1.35's, with v1.35's section numbers (`spec/history/`; 4.19 and 4.21 in
-`spec/jolt/`): `PENDING-v1.36.md`, the platform stage, section 5.
+units' registers, the boot, the peripheral slot, and the chip: the special tiles, the request tree, the nets), the
+tile's units of chapters 8-15 (the DMA, write, read, receive, gather and inject units and the scratchpad), and the
+router (16), compared with the RTL's own cycle by cycle (`tests/routerconf/README.md`). Those rows below cite v1.36's
+machine-spec (the RTL's `rtl/tile/base/spec.md`, the same section numbers), marked **v1.36**. The invariants table is
+still v1.35's, with v1.35's section numbers (`spec/history/`; 4.19 and 4.21 in `spec/jolt/`).
 
 **Where the machine is put together.** `chip.h` builds the chip: `tile_cycle` adds one tile's units, `build_chip` the
 whole chip from a `ChipSpec`. **The machine's settings (`MachConfig`) and the machine itself (`Mach`: the chip, its
@@ -28,7 +28,7 @@ its machine through them.
 | the gather unit | `gather.h` | **v1.36** 13 |
 | the inject unit: the read arbiter (a write at the read's bank, a token, the gather unit busy), the tokens, the return line, the injection point with the write unit's `packet_ready` | `inject.h`, `inject.cpp` | **v1.36** 14 |
 | the read clients' request words, and the ports between a tile's control part and its inject unit | `mem.h` | **v1.36** 14.1 |
-| the router: route blocks, output queues, the attach port (tiles 0, 7, 15), a special tile's router with its DMA input; a reserved dst dropped | `router.h`, `router.cpp` | 4.6, 4.7, 4.16; **v1.36** 16.2, 16.4 |
+| the router: the RTL's `router`: route blocks, each output's queues and round-robin arbiter, the loopback queue, the overflow in the push's cycle, the attach port (tiles 0, 7, 15), a special tile's router with its DMA inputs and their ready | `router.h`, `router.cpp` | **v1.36** 16 |
 | the traffic director: the switch, the counters' delay line, `PTR`'s and `HIST`'s requests in the cycle it accepts a packet | `director.h` | **v1.36** 12.3–12.5 |
 | the write engine: a fixed pipeline of 2L + 2 cycles to the scratchpad's write, never refusing | `write_engine.h` | **v1.36** 12.4 |
 | the table memories: `STREAM` and `GROUP`; `PTR` and `HIST` with their engines' read-modify-write and its bypass, a core store lost in the cycle of the engine's write | `table_store.h` | **v1.36** 8.6, 12.5 |
@@ -38,7 +38,7 @@ its machine through them.
 | the tile control unit as plain code, with the units' registers it holds (`DMA_CONFIG`, `RECEIVE_CONFIG`, the counters, `GATHER_CONFIG`) | `regblock.h` | **v1.36** 7, 8.1, 12.1, 12.2, 13 |
 | the tile control unit as a unit; the core with the register bus and the core's side of the write, read and request units; a tile's control part and its straps | `tile_ctl.h`, `tile_ctl.cpp` | **v1.36** 6, 7, 9, 10, 11.1 |
 | v1.35's M1 bench (v1.35's core, which is deleted, with its register block): not built, kept for the pending tests that include it (`PENDING-v1.36.md`, section 2) | `controller.h`, `controller.cpp` | 4.11 |
-| the peripheral slot: each peripheral's control block and DMA (the RTL's `peripheral_control`, `peripheral_dma`), the write port, and the contract a peripheral's model meets (`periph_slot.h`, "THE CONTRACT") | `periph_slot.h`, `periph_slot.cpp`, `peripheral.h` | **v1.36** 17.1–17.5 |
+| the peripheral slot: each peripheral's control block and DMA (the RTL's `peripheral_control`, `peripheral_dma`, its packet register on the router's DMA input), the write port, and the contract a peripheral's model meets (`periph_slot.h`, "THE CONTRACT") | `periph_slot.h`, `periph_slot.cpp`, `peripheral.h` | **v1.36** 17.1–17.5 |
 | a peripheral's counted events: a consuming load, a set and a fill in one cycle | `event_counts.h` | **v1.36** 7.2, 17.2 |
 | Ingress/Egress, the master tile's peripheral 1 (the nets, `RELEASE`, the watchdog, the UART's transmit side); the RW engine's stand-in on the memory tile, which stops the simulator if used | `ingress_egress.h` | **v1.36** 17.6, 17.7, 18 |
 | (v1.35's behavioural model of C&C and its host port are a test bench's now: `tests/bench_master.*`, `tests/host_port.h`) | | |
@@ -81,7 +81,7 @@ configurations. Fields named as section 10's parameters:
 
 The rest are the simulator's: the machine's shape (`special_tiles`: the chip; `coreless`, `real_responder`, `cc_cores`,
 `test_read_clients`, `reqbus_host`, `test_periph_tile`, `test_peripheral_tile`, `parked`), C&C's model (`ref_cycle`,
-`run_latency`, `cnc_reaction`, `cnc_rx_depth`, `cc_dma_depth`, `done_gate`, `cnc_go_settle`,
+`run_latency`, `cnc_reaction`, `cnc_rx_depth`, `done_gate`, `cnc_go_settle`,
 `counter_store_clears_latch`), the checker (`strict_replies`, `check_*`, `measure_s1`, `max_violation_messages`), the
 debug options (`shuffle_seed`, `step_all`, `instance_major`), the logs and their capacities (`log_trace`,
 `*_capacity`), `image_dirs`, and the split over threads (`threads`,

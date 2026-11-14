@@ -9,6 +9,7 @@
 #include "units/ingress_egress.h"
 #include "units/linkword.h"
 #include "units/replayer.h"
+#include "units/router.h"
 #include "units/test_peripheral.h"
 #include "units/tracer.h"
 
@@ -52,6 +53,7 @@ uint64_t SlotCore::digest() {
     auto mixin = [&](uint64_t x) { h = (h ^ x) * 0x100000001b3ull; h ^= h >> 29; };
     for (unsigned n = 1; n <= 3; n++) {
         mixin(mask[n]); mixin(dma[n].hdr); mixin(dma[n].addr); mixin(dma[n].done); mixin(dma[n].busy); mixin(uint64_t(dma[n].left));
+        mixin(dma[n].taken); mixin(dma[n].full); if (dma[n].full) { mixin(dma[n].pkt.lo); mixin(dma[n].pkt.h); mixin(dma[n].pkt.hi); }
         if (per[n].type == PT_REPLAYER) {
             Replayer& r = replayer(n);
             mixin(r.pc()); mixin(r.instr_idx()); mixin(r.rows_done()); mixin(r.is_running()); mixin(r.row_hash()); mixin(r.rows_sunk());
@@ -257,7 +259,7 @@ void SlotCore::consume(int64_t t, unsigned n, uint32_t bits) {
 }
 
 // ---------------------------------------------------------------- the cycle
-void SlotCore::run_cycle(int64_t t, unsigned dma_room) {
+void SlotCore::run_cycle(int64_t t, sim::Word dma_room) {
     n_out = 0;
     for (unsigned n = 1; n <= 3; n++) {
         if (per[n].type == PT_ABSENT) continue;
@@ -329,20 +331,33 @@ void SlotCore::dma_start(int64_t t, unsigned n) {
         if (qq >= p.out_queues())
             FATAL("slot %u: undefined behavior at %lld: peripheral %u's DMA: a transfer naming output queue %d, which the peripheral doesn't have (17.4)", tile, (long long)t, n, qq);
         d.q = qq; d.left = d.hdr >> DMA_HDR_COUNT_LO & DMA_HDR_COUNT_MASK; d.busy = true; d.started_at = t; d.transfers++;
+        d.taken = d.hdr;                                       // the transfer takes DMA_HDR as it stands
         p.out_start(t, d.q, d.left);                           // a count of 0 too: the peripheral sees every start
     });
 }
 
-// The DMA's cycle t (peripheral_dma.veryl), before the peripheral's step of t: from the cycle after DMA_START's, an
-// entry a cycle while one is to send, the queue's head is there and the router's input has room; the transfer ends
-// the cycle after its last take (the cycle the last packet leaves; with a count of 0, the cycle after the start):
-// dma_done is set then, and dma_busy falls at its end. A stopped peripheral's dma_done is withheld (the Tracer after
-// an error: tracer_control.veryl's event_dma_done_set && !stopped).
-void SlotCore::dma_run(int64_t t, unsigned n, unsigned& room) {
+// The DMA's cycle t (peripheral_dma.veryl), before the peripheral's step of t. From the cycle after DMA_START's:
+//   leaving  the packet register is full and the router's input is ready for its packet (16.4): the packet moves;
+//   taking   a packet is still to send, the register is empty or its packet leaves, and the queue's head is there: the
+//            entry is taken into the register, offered from t + 1;
+//   ending   no packet is still to send and the register is empty or its packet leaves: the cycle the last packet
+//            leaves (with a count of 0, the cycle after the start): dma_done is set, and dma_busy falls at its end.
+// A stopped peripheral's dma_done is withheld (the Tracer after an error: tracer_control.veryl's event_dma_done_set
+// && !stopped). The transfer's header is DMA_HDR as it stood at the start (`taken`).
+void SlotCore::dma_run(int64_t t, unsigned n, sim::Word room) {
     Dma& d = dma[n];
     if (!d.busy || t <= d.started_at) return;
+    const bool ready = !d.full || !dma_port || Router::dma_ready(room, dma_input, tile, lw::dst(d.pkt.h));
+    if (d.full && ready) {                                     // leaving
+        if (n_out == 3) FATAL("slot %u: more than three DMA packets in a cycle", tile);
+        d.pkt.t = t;
+        out[n_out++] = d.pkt;
+        d.packets++;
+        d.full = false;
+    }
     if (d.left == 0) {
-        d.busy = false;
+        if (d.full) return;
+        d.busy = false;                                        // ending
         const bool withheld = visit(n, [&](auto& p) -> bool {
             if constexpr (requires { p.stopped(); }) return p.stopped();
             else return false;
@@ -350,19 +365,17 @@ void SlotCore::dma_run(int64_t t, unsigned n, unsigned& room) {
         if (!withheld) { d.done = 1; d.done_at = t; }
         return;
     }
+    if (d.full) { d.waits++; return; }
     // 17.4: the count in 128-bit packets, every packet one queue entry; a WRITE carries DMA_DEST_ADDR, which then
     // advances by 16; a packet of any other mode carries 0 and leaves it; src is the tile's own id (16.4)
-    bool ready = visit(n, [&](auto& p) { return p.out_ready(t, d.q); });
-    if (!ready) return;
-    if (dma_port && room == 0) return;
+    const bool head = visit(n, [&](auto& p) { return p.out_ready(t, d.q); });
+    if (!head) return;                                         // taking
     uint64_t w[2];
     visit(n, [&](auto& p) { p.out_take(t, d.q, w); });
-    const unsigned dst = hdr_dst(d.hdr), mode = hdr_mode(d.hdr), ctr = hdr_counter(d.hdr);
+    const unsigned dst = hdr_dst(d.taken), mode = hdr_mode(d.taken), ctr = hdr_counter(d.taken);
     const bool write = mode == lw::M_WRITE;
-    if (n_out == 3) FATAL("slot %u: more than three DMA packets in a cycle", tile);
-    out[n_out++] = DmaPacket{t, w[0], lw::hdr(tile, dst, mode, ctr, write ? d.addr : 0, lw::SIZE_128), w[1]};
-    if (room) room--;
-    d.packets++;
+    d.pkt = DmaPacket{t, w[0], lw::hdr(tile, dst, mode, ctr, write ? d.addr : 0, lw::SIZE_128), w[1]};
+    d.full = true;
     if (write) d.addr += 16;
     d.left--;
 }
@@ -375,7 +388,7 @@ PeriphSlot::PeriphSlot(sim::Ports& p, const PeriphSlotConfig& c) : cfg(c) {
     p.in(region, "region", 3);
     p.in(core, "core", 1);
     p.out(window, "window", Win::REGS);
-    if (c.controller) p.out(dma, "dma", 3);
+    if (c.controller) { p.out(dma, "dma", 3); p.in(dma_room, "dma-room"); }
     OwnPortsDecl decl(p, own);
     for (unsigned n = 1; n <= 3; n++) if (s.per[n].type != PT_ABSENT) s.visit(n, [&](auto& q) { q.ports(decl); });
 }
@@ -532,7 +545,7 @@ sim::Wake PeriphSlot::step(sim::Ctx& c) {
     const bool idle_before = s.idle(t);
     publish(c, t);
     // ---- the work of t
-    unsigned room = cfg.controller ? c.credits(dma) : ~0u;
+    const sim::Word room = cfg.controller ? c.read(dma_room) : ~sim::Word(0);
     s.run_cycle(t, room);
     for (unsigned k = 0; k < s.n_out; k++) {
         if (!cfg.controller) { dma_record[dma_recorded++ % DMA_RECORD] = s.out[k]; continue; }   /* ref's dmaOut */

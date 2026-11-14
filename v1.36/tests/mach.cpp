@@ -93,7 +93,7 @@ const Field kFields[] = {
     F_U("readTokens", read_tokens), F_B("loopbackLast", loopback_last), F_B("loopbackTokens", loopback_tokens),
     F_I("loopbackDepth", loopback_depth), F_U("tsEngineLatency", ts_engine_latency), 
     F_B("testReadClients", test_read_clients), F_U("regLoadLatency", reg_load_latency),
-    F_B("ccCores", special_tiles), F_U("ccDmaDepth", cc_dma_depth),   // (ccCores: v1.3's name of the machine with units 64-66)
+    F_B("ccCores", special_tiles),                                     // (ccCores: v1.3's name of the machine with units 64-66)
     F_U("arriveLatency", arrive_latency), F_U("releaseLatency", release_latency), F_U("errorLatency", error_latency),   // (v1.36's: 18)
     F_U("requestFifoDepth", request_queue_depth), F_U("reqHopLatency", req_hop_latency), F_I("periphType", periph_type),
     F_B("realResponder", real_responder), F_B("coreless", coreless), F_U("goLatency", go_latency),
@@ -133,6 +133,7 @@ const std::vector<std::pair<std::string, std::string>>& MachConfig::dropped() {
         {"writeCombining", "v1.36: no bank request queues, so no write to combine with (15)"},
         {"fifoCountBeforePop", "v1.36: it chose how a bank request queue judged its room; there is none (15)"},
         {"sramReadLatency", "v1.36: READ_LATENCY, take to row (15, 19): readLatency"},
+        {"ccDmaDepth", "v1.36: no FIFO in front of a DMA's router input: its ready is room in the queue its packet enters (16.4)"},
         {"logTrace", "v1.36: no TRACE word (a program reports with a REPORT request: 11.5)"},
     };
     return d;
@@ -280,7 +281,6 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     nc.read_tokens = c.read_tokens;
     nc.go_latency = c.go_latency; nc.ready_latency = c.ready_latency; nc.cnc_reaction = c.cnc_reaction;
     nc.cnc_rx_depth = c.cnc_rx_depth; nc.skew = c.skew; nc.skew_seed = c.skew_seed;
-    nc.cc_dma_depth = c.cc_dma_depth;
     nc.loopback_last = c.loopback_last; nc.loopback_tokens = c.loopback_tokens; nc.loopback_depth = c.loopback_depth;
     nc.cnc_go_settle = c.cnc_go_settle;
     nc.arrive_latency = c.arrive_latency; nc.release_latency = c.release_latency; nc.error_latency = c.error_latency;

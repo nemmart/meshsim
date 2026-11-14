@@ -130,7 +130,7 @@ struct MachConfig {
     unsigned go_latency = 8;           // the release's link, from the model's GO to a tile
     unsigned ready_latency = 8;        // a tile's `line` (BARRIER_ARRIVE's pulse, the error line) to the model
     unsigned cnc_reaction = 1;         // every expected tile arrived -> the release
-    unsigned cnc_rx_depth = 64, cc_dma_depth = 4;
+    unsigned cnc_rx_depth = 64;
     bool cnc_go_settle = true;         // the model sends nothing until the release has reached every tile
     // the chip's nets (18, 19): independent, each from 0 up (RELEASE_LATENCY from 1: Ingress/Egress's flip-flop's cycle
     // is its first); the defaults are the RTL chip's, whose nets are wires

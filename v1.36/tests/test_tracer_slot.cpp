@@ -185,14 +185,14 @@ struct Ctl {
 struct Stand {
     sim::LinkOut core, region;
     sim::RegFileIn window;
-    sim::FifoIn dma;
+    sim::LinkIn dma;                 // the DMA's packet, delivered the cycle after it moved (router.h, A DMA INPUT)
     Ctl* ctl = nullptr;
     std::vector<Packet>* got = nullptr;
     Stand(sim::Ports& p, Ctl* c, std::vector<Packet>* g) : ctl(c), got(g) {
         p.out(core, "core", 1);
         p.out(region, "region", 3);
         p.in(window, "window");
-        p.in_credit(dma, "dma", 3, 4);
+        p.in(dma, "dma", 3);
     }
     sim::Wake step(sim::Ctx& c) {
         while (c.ready(dma)) {
@@ -215,6 +215,14 @@ struct Stand {
     }
     uint64_t digest() const { return got->size() * 131 + uint64_t(ctl->np) * 7 + uint64_t(ctl->phase); }
 };
+// The router's side of the DMA's packet interface (16.4): its queues always with room.
+struct RouterSide {
+    sim::WireOut room;
+    explicit RouterSide(sim::Ports& p) { p.out(room, "room", 0xFF); }
+    sim::Wake step(sim::Ctx&) { return sim::Wake::none(); }
+    uint64_t digest() const { return 0; }
+};
+
 
 struct FwRun {
     Ctl ctl;
@@ -234,7 +242,8 @@ struct FwRun {
         cfg.link(st.core, sl.core, 1);
         cfg.link(st.region, sl.region, 3);
         cfg.connect(sl.window, st.window);
-        cfg.connect(sl.dma, st.dma);
+        cfg.link(sl.dma, st.dma, 1);
+        cfg.connect(cfg.add<RouterSide>("router").room, sl.dma_room);
         return cfg.build();
     }
     Tracer& tracer() { return m.unit<PeriphSlot>("slot").s.tracer(1); }

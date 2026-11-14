@@ -18,8 +18,9 @@
 //   S4/S5/S8 window (RegFileOut, WIN_REGS)        -> the core (window loads, the stores that stall), the tile control
 //                                                    unit (EVENTS.peripheral_n, ERRORS.peripheral_n); written only at
 //                                                    level 0: what a load made in t returns (the end of t - 1)
-//   S6 dma (CreditOut, width 3: lo, header, hi)   -> the special tile's router, its DMA input (16.4): room as of the
-//                                                    start of t, one packet a cycle (a peripheral with a DMA only)
+//   S6 dma (LinkOut, width 3: lo, header, hi)     -> the special tile's router, its DMA input (16.4): the packet register's
+//      dma_room (WireIn)                             packet, put in the cycle it moves (valid, and ready by the router's
+//                                                    dma_room in that cycle: router.h, A DMA INPUT)
 //   S7 rows                                       an observer, not a port: the replayer's sink (hash, optional buffer)
 //   + the peripherals' own ports, held in `own` for them (peripheral.h, OWN PORTS: Ingress/Egress's nets)
 //
@@ -44,8 +45,9 @@
 //     model has stepped p by then, so the slot calls consume_events_late(p, bits), and the same rule holds for
 //     dma_done, which is the slot's;
 //   - the DMA (peripheral_dma.veryl): DMA_START made in p: out_start(p, queue, count), count 0 too; from p + 1 one
-//     out_take a cycle while the queue's head is there (out_ready) and the router's input has room, called before
-//     the model's step of that cycle; the transfer ends the cycle after its last take (p + 1 for a count of 0):
+//     out_take a cycle while the queue's head is there (out_ready) and the packet register is empty or its packet
+//     leaves (the router's input ready for it), called before
+//     the model's step of that cycle; the transfer ends the cycle its last packet leaves (p + 1 for a count of 0):
 //     dma_done is set then (not while the peripheral is stopped, if it has `stopped()`: tracer_control.veryl) and
 //     STATUS.dma_busy falls at its end;
 //   - the stores that may stall: the peripheral's static list (may_stall: Win::R_MAYSTALL) for the bus's timing, and
@@ -155,7 +157,10 @@ struct SlotCore {
         bool busy = false;
         int64_t left = 0;
         int q = 0;
-        uint64_t transfers = 0, packets = 0, ignored = 0;
+        uint32_t taken = 0;                                // DMA_HDR as the transfer took it at its start (peripheral_dma.veryl)
+        bool full = false;                                 // the packet register: full, and its packet (offered while full)
+        DmaPacket pkt;
+        uint64_t transfers = 0, packets = 0, ignored = 0, waits = 0;   // waits: cycles the register held a packet back
         bool busy_at(int64_t t) const { return busy && t > started_at; }
         uint32_t done_bit(int64_t t) const { return done > 0 && done_at < t ? 2u : 0u; }
     } dma[4];
@@ -165,7 +170,8 @@ struct SlotCore {
     uint32_t consume_bits[4] = {}, pend_mask[4] = {};
     uint64_t full_seen[4] = {};
     unsigned tile = 0;
-    bool dma_port = false;                                 // a controller: the DMA's packets go to a port with room
+    bool dma_port = false;                                 // a special tile: the DMA's packets go to its router's DMA input
+    unsigned dma_input = 0;                                //   which one (0 west: the memory and tracer tiles', 16.4)
     // statistics (diagnostic): ref's accepted, reservedAccesses; violations: the slot's own flags (violation_total adds
     // the peripherals', which ref's host forwards into one count)
     uint64_t accepted = 0, reserved_accesses = 0, violations = 0;
@@ -197,7 +203,7 @@ struct SlotCore {
     uint32_t event_bits(unsigned n);                                    // EVENTS_MASK's bits: one per event
     uint32_t live_events(int64_t t);
     uint32_t live_errors(int64_t t);
-    void run_cycle(int64_t t, unsigned dma_room = ~0u);                 // dma_room: packets the DMA port takes at t
+    void run_cycle(int64_t t, sim::Word dma_room = ~sim::Word(0));      // dma_room: the router's Wire in t (router.h)
     void end_cycle(int64_t t);
     void consume(int64_t t, unsigned n, uint32_t bits);                 // the consuming load of cycle t, after t's step
     void reset(int64_t t);
@@ -224,7 +230,7 @@ private:
     void violate(int64_t t, uint16_t code, uint32_t a = 0, uint32_t b = 0);
     uint32_t reserved(int64_t t, unsigned n, unsigned w, bool store);
     void dma_start(int64_t t, unsigned n);
-    void dma_run(int64_t t, unsigned n, unsigned& room);
+    void dma_run(int64_t t, unsigned n, sim::Word room);
 };
 
 // The framework unit (AUDIT-M3 3.1): SlotCore behind the ports above.
@@ -233,7 +239,8 @@ struct PeriphSlot {
     sim::LinkIn region;      // S1: width 3, from the director, Link(3)
     sim::LinkIn core;        // S2/S3: width 1 (CoreOp), from the core, Link(1)
     sim::RegFileOut window;  // S4/S5/S8: Win::REGS registers
-    sim::CreditOut dma;      // S6: width 3, into the controller router's CC_DMA_IN (cfg.controller)
+    sim::LinkOut dma;        // S6: width 3, a special tile's (cfg.controller): the DMA's packet, put in the cycle it moves
+    sim::WireIn dma_room;    //   (valid and ready), and the router's room for it in this cycle (router.h, A DMA INPUT)
 
     PeriphSlotConfig cfg;
     SlotCore s;

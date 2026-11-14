@@ -63,7 +63,8 @@ Seen token(uint64_t at, unsigned tile) { return {at, tile, TOKEN, 0, 0, 0}; }
 
 struct Stand {
     sim::LinkOut to_local, to_link[4], to_attach;
-    sim::CreditOut to_dma;
+    sim::LinkOut to_dma;                                     // the DMA's packet, in the cycle it moves (router.h, A DMA INPUT)
+    sim::WireIn dma_room;
     sim::LinkIn from_local, from_link[4], from_attach, from_token;
     sim::CountIn ovf;
     unsigned tile;
@@ -71,13 +72,14 @@ struct Stand {
     std::vector<Ev> script, dma_script;
     size_t next = 0, dma_next = 0;
     std::vector<Seen> out;
-    uint64_t overflows = 0, first_overflow = 0;              // the router's overflow count, and the first cycle it is not 0
+    uint64_t overflows = 0, first_overflow = 0;              // the router's overflow count through the cycle before, and the
+                                                             // first cycle that is not 0
     Stand(sim::Ports& p, unsigned k, bool with_links, bool with_attach, bool with_dma, const std::vector<Ev>& all)
         : tile(k), links(with_links), attach(with_attach), dma(with_dma) {
         p.out(to_local, "to-local", 3); p.in(from_local, "eject", 3); p.in(from_token, "token", 0); p.in(ovf, "ovf");
         if (links) for (unsigned i = 0; i < 4; i++) { p.out(to_link[i], "to-link", 3); p.in(from_link[i], "from-link", 3); }
         if (attach) { p.out(to_attach, "to-attach", 3); p.in(from_attach, "from-attach", 3); }
-        if (dma) p.out(to_dma, "to-dma", 3);
+        if (dma) { p.out(to_dma, "to-dma", 3); p.in(dma_room, "dma-room"); }
         for (const Ev& e : all) if (e.tile == tile) (e.port == DMA ? dma_script : script).push_back(e);
         const auto by_cycle = [](const Ev& a, const Ev& b) { return a.at < b.at; };
         std::stable_sort(script.begin(), script.end(), by_cycle);
@@ -107,8 +109,10 @@ struct Stand {
             const sim::LinkOut p = e.port == LOCAL ? to_local : e.port == ATTACH ? to_attach : to_link[e.port - WEST];
             c.put(p, e.id, e.hdr, ~e.id);
         }
-        // the DMA's packet register: the oldest packet not yet taken, offered from its cycle on (16.4)
-        if (dma_next < dma_script.size() && dma_script[dma_next].at <= t + 1 && c.credits(to_dma) > 0) {
+        // the DMA's packet register: the oldest packet not yet taken, offered from its cycle on (16.4); it moves in a
+        // cycle the router is ready for it, and is in its queue from the next
+        if (dma && dma_next < dma_script.size() && dma_script[dma_next].at <= t &&
+            Router::dma_ready(c.read(dma_room), 0, tile, lw::dst(dma_script[dma_next].hdr))) {
             const Ev& e = dma_script[dma_next++];
             c.put(to_dma, e.id, e.hdr, ~e.id);
         }
@@ -123,14 +127,13 @@ void wire(sim::Config& cfg, Stand& st, Router& r) {
     cfg.link(r.eject, st.from_local, 1);
     cfg.link(r.loop_left, st.from_token, 1);
     cfg.connect(r.ovf, st.ovf);
-    if (st.dma) cfg.connect(st.to_dma, r.dma);
+    if (st.dma) { cfg.link(st.to_dma, r.in[Router::FROM_LEFT], 1); cfg.connect(r.dma_room, st.dma_room); }   // the west input
     if (st.links) {                                          // west, east, north, south (router.h's numbering)
         static const unsigned in_of[4] = {Router::FROM_LEFT, Router::FROM_RIGHT, Router::FROM_UP, Router::FROM_DOWN};
         static const unsigned out_of[4] = {Router::TO_LEFT, Router::TO_RIGHT, Router::TO_UP, Router::TO_DOWN};
         for (unsigned i = 0; i < 4; i++) { cfg.link(st.to_link[i], r.in[in_of[i]], 1); cfg.link(r.out[out_of[i]], st.from_link[i], 1); }
     }
-    if (st.attach && r.cc) { cfg.link(st.to_attach, r.in[Router::CC_LINK_IN], 1); cfg.link(r.out[Router::CC_LINK_OUT], st.from_attach, 1); }
-    if (st.attach && !r.cc) { cfg.link(st.to_attach, r.from_cc, 1); cfg.link(r.to_cc, st.from_attach, 1); }
+    if (st.attach) { cfg.link(st.to_attach, r.from_cc, 1); cfg.link(r.to_cc, st.from_attach, 1); }
 }
 
 struct Result { std::vector<Seen> out; uint64_t overflows = 0, first_overflow = 0; unsigned attached = 0; };
@@ -143,7 +146,7 @@ Result run_router(unsigned tile, const std::vector<Ev>& script, uint64_t cycles)
     const NetConfig nc;
     sim::Config cfg;
     const bool special = tile >= MASTER;
-    auto& r = cfg.add<Router>("router", tile, nc, &h, false, Router::FIFTH_LINK, special);
+    auto& r = cfg.add<Router>("router", tile, nc, &h, false, Router::FIFTH_LINK, special ? 1u : 0u);   // a DMA on its west input
     auto& st = cfg.add<Stand>("stand", tile, !special, special || r.attached, special, script);
     wire(cfg, st, r);
     sim::Sim m = cfg.build();
@@ -163,7 +166,7 @@ Result run_noc(const std::vector<Ev>& script, uint64_t cycles) {
     Router* r[67];
     const auto name = [](const char* what, unsigned k) { return what + std::to_string(k); };
     for (unsigned k = 0; k < 67; k++) {
-        r[k] = &cfg.add<Router>(name("router", k), k, nc, &h, false, Router::FIFTH_LINK, k >= MASTER);
+        r[k] = &cfg.add<Router>(name("router", k), k, nc, &h, false, Router::FIFTH_LINK, k >= MASTER ? 1u : 0u);
         wire(cfg, cfg.add<Stand>(name("stand", k), k, false, false, k >= MASTER, script), *r[k]);
     }
     for (unsigned k = 0; k < 64; k++) {
@@ -173,8 +176,8 @@ Result run_noc(const std::vector<Ev>& script, uint64_t cycles) {
         cfg.link(r[k]->out[Router::TO_UP], r[(k + 56) % 64]->in[Router::FROM_DOWN], 3);
     }
     for (unsigned s = 0; s < 3; s++) {
-        cfg.link(r[kAttachTile[s]]->to_cc, r[MASTER + s]->in[Router::CC_LINK_IN], 3);
-        cfg.link(r[MASTER + s]->out[Router::CC_LINK_OUT], r[kAttachTile[s]]->from_cc, 3);
+        cfg.link(r[kAttachTile[s]]->to_cc, r[MASTER + s]->from_cc, 3);
+        cfg.link(r[MASTER + s]->to_cc, r[kAttachTile[s]]->from_cc, 3);
     }
     sim::Sim m = cfg.build();
     m.run(cycles);
@@ -534,7 +537,9 @@ TEST(push_into_a_full_queue_is_lost_and_counted) {
     const Result r = run_router(5, s, 200);
     CHECK(same(r.out, want));
     CHECK_EQ(r.overflows, 10u);
-    CHECK(r.first_overflow > 40);                            // not before the first packet lost, at the input in cycle 40
+    // `overflow` is 1 in the cycle of the lost push (router_output.veryl): the first packet lost is at the input in
+    // cycle 40, and the stand, which reads the count as at the end of the cycle before, first sees it in 41
+    CHECK_EQ(r.first_overflow, 41u);
 }
 
 // 16.1 and the RTL's README ("Links and timing"): a packet at the local input in cycle t that crosses h links, attach

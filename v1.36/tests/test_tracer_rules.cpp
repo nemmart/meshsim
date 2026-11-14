@@ -929,3 +929,56 @@ DEATH_TEST(a10_10_start_after_a_reset_with_no_state_write_is_ub, "no state write
     g.bench.store(Bench::B_CONTROL, Bench::C_START, 1);
     idle(g, 2);
 }
+
+// A consuming load of EVENTS in the cycle the Tracer posts the same counted event again leaves it set (the RTL's
+// peripheral_control: one less, then one more; 5.4). Two core-fed instructions in a row: the first post is left
+// unconsumed until the cycle of the second.
+namespace {
+// Runs to the second post; `consume_at` (or -1) is the cycle of a consuming load. Returns the second post's cycle and
+// the EVENTS values peeked in the two cycles after it.
+struct TwoPosts { int64_t second = -1; uint32_t after[2] = {0, 0}; uint32_t consumed = 0; };
+TwoPosts two_posts(int64_t consume_at) {
+    TwoPosts out;
+    Prog p(CODE);
+    p.w({CSR, CSR, END});
+    RigP gp = rig(p, {});
+    Rig& g = *gp;
+    start(g, p);
+    g.word(Tracer::W_RUN_CONFIG, 7);
+    g.bench.store(Bench::B_CONTROL, Bench::C_START, 1);
+    const int number = g.tables.lookup(CSR);
+    const std::vector<uint64_t>& words = g.tables.words[size_t(number)];
+    bool fed = false;
+    for (int k = 0; k < 400 && out.second < 0; k++) {
+        const int64_t n = g.t;
+        const uint32_t v = n == consume_at ? g.events() : g.events_peek();
+        if (n == consume_at) out.consumed = v;
+        if ((v & 0x10) && !fed) {   // the first post: its words, rd0 in the first (17.8.13)
+            for (size_t w = 0; 2 * w < words.size(); w++)
+                g.port_add(0x400000, w == 0 ? (words[0] & ~(uint64_t(3) << 46)) | uint64_t(g.tables.rd0[size_t(number)]) << 46 : words[2 * w], words[2 * w + 1]);
+            fed = true;
+        }
+        if (g.tr.new_expansions == 2) out.second = n;
+    }
+    for (uint32_t& v : out.after) {
+        if (g.t == consume_at) v = out.consumed = g.events();
+        else v = g.events_peek();
+    }
+    return out;
+}
+}  // namespace
+TEST(a_consuming_load_in_the_cycle_of_a_post_leaves_the_event_set) {
+    const TwoPosts plain = two_posts(-1);
+    CHECK(plain.second > 0);
+    CHECK_EQ(plain.after[0] & 0x10u, 0x10u);                 // unconsumed: set (the second post found it full)
+    const TwoPosts met = two_posts(plain.second);            // the consuming load in the second post's own cycle
+    CHECK_EQ(met.second, plain.second);
+    CHECK_EQ(met.consumed & 0x10u, 0x10u);                   // it read, and took, the first post's count
+    CHECK_EQ(met.after[0] & 0x10u, 0x10u);                   // one less, then one more: the second post's
+    const TwoPosts early = two_posts(plain.second - 1);      // a cycle earlier: consumed, then posted again
+    CHECK_EQ(early.after[0] & 0x10u, 0x10u);
+    CHECK_EQ(early.after[1] & 0x10u, 0x10u);
+    const TwoPosts late = two_posts(plain.second + 1);       // a cycle later: the load takes the one count there is
+    CHECK_EQ(late.consumed & 0x10u, 0x10u);
+    CHECK_EQ(late.after[1] & 0x10u, 0u);
+}

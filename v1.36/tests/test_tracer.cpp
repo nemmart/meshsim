@@ -75,6 +75,44 @@ struct Life {
     int64_t cycles = 0, skipped = 0;
     bool ok = true;
 };
+// Something in flight while the Tracer is idle: a guest whose last row evicts a dirty line, whose write-back the
+// memory system answers `error` 3,000 cycles after its request, long after the run's end (17.9.9, "while idle"). Only a
+// step takes the response.
+void idle_error(Life& l, bool model, bool lazy, bool fingerprints) {
+    Prog q(CODE);
+    q.w({addi(1, 0, 128), sd(1, 2, 0), addi(2, 2, 128), addi(1, 1, -1), bne(1, 0, -12), sd(2, 2, 0)});
+    Rig h;
+    if (model) h.fill(0, 0);
+    h.bench.skip_idle_steps = lazy;
+    Trace t{&h, fingerprints, {}};
+    h.bench.on_cycle = Trace::hook;
+    h.bench.on_cycle_ctx = &t;
+    Pages pages;
+    pages.poke(CODE - h.lowest, q.bytes());
+    std::vector<int64_t> owned;
+    for (int k = 0; k < 5; k++) {
+        pages.put(DATA - h.lowest + 4096 * k, std::vector<uint64_t>(512, 0));
+        owned.push_back(DATA - h.lowest + 4096 * k);
+    }
+    h.build_image(pages, owned);
+    h.build_map({{q.pc_of(1), h.bases(q)[1]}});
+    h.load_tables();
+    uint64_t regs[128] = {};
+    regs[2] = uint64_t(DATA);
+    h.load_record(CODE, int32_t(h.bases(q)[0]), 0, regs, {});
+    h.ms.fail_write_line = (DATA - h.lowest) / 128;
+    h.ms.fail_write_delay = 3000;
+    WindowOut o;
+    l.ok = h.window(1 + 128 * 4 + 1, 400000, o) && l.ok && h.last.errors == 0 && h.last.status == 0;
+    for (int k = 0; k < 3200; k++) h.step();
+    l.ok = l.ok && h.errors() == 0x200 && h.tr.n_errors_logged == 1;   // the response came, the Tracer idle
+    l.out.push_back(uint64_t(h.tr.error_log[0].t));
+    l.out.push_back(uint64_t(h.t));
+    for (int u = 0; u < Tracer::FP_UNITS; u++) l.out.push_back(fp_of(h.tr, u, h.t - 1));
+    l.trace.insert(l.trace.end(), t.v.begin(), t.v.end());
+    l.skipped += h.bench.steps_skipped;
+}
+
 Life live(bool model, bool lazy, bool fingerprints) {
     const Prog p = guest();
     Life l;
@@ -106,6 +144,7 @@ Life live(bool model, bool lazy, bool fingerprints) {
     l.trace = std::move(t.v);
     l.cycles = g.t;
     l.skipped = g.bench.steps_skipped;
+    idle_error(l, model, lazy, fingerprints);
     return l;
 }
 

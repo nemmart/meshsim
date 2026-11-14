@@ -22,3 +22,7 @@ tsan-chip-one: $(TB)/test_rtl_sort
 	TSAN_OPTIONS="halt_on_error=1 second_deadlock_stack=1" ./$(TB)/test_rtl_sort sort_16_kv32_split
 tsan-chip:
 	@set -e; for c in $(COMPILERS); do echo "==== $$c tsan (chip)"; $(MAKE) --no-print-directory CC_NAME=$$c tsan-chip-one; done
+
+# the request unit and the request tree from the specification (tests/test_request_tree.cpp): the tree's units on a
+# bench, and the registers on the chip
+$(B)/test_request_tree: $(MACH_LINK)

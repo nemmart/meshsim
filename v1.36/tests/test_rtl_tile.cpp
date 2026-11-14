@@ -33,6 +33,18 @@
 //   - The RTL's handshake monitors have no counterpart: the framework's ports have no ready or valid to watch.
 //   - The RTL's test takes the replayer's rows from the row port at a random ready; the simulator's row port is the
 //     replayer's sink, always ready, and the rows are read from its buffer after the pass.
+//
+// The boot ROM's cycles. The RTL states them on its block `core` (Snarky One's rtl/blocks/core/README.md, "The boot
+// ROM's program", lines 204-208: boot_rom_program_test's figures, cycle 0 the first after the reset, each ending at the
+// cycle its store is raised in, the cycle its instruction leaves execute), and the resume after a wake in its core
+// specification (rtl/blocks/core/spec.md, "Resume timing", lines 608-611). Here the core, the register bus, the tile
+// control unit and the request unit are the simulated tile's, so every run checks them on it (`Run::probe`):
+//   - from the reset to the LOAD request's REQUEST_SEND, 26; with boot_local, to the image's first instruction, 27;
+//   - from the release (the cycle of BARRIER_RELEASE's pulse, at whose end the tile sets the event) to the image's
+//     first instruction, 13;
+//   - the wake: MEIP is high from R, the cycle after the release; the instruction after the WFI moves into execute
+//     at the end of R + 1 and, nothing stalling it, leaves it in R + 2 and retires in R + 3. The ROM's is a load of
+//     EVENTS, a register window's: raised in R + 2, answered and retired two cycles later, in R + 4 (6.4).
 // PENDING-v1.36.md, section 1, lists what of the RTL's test is not here (the special tile's program).
 #include <algorithm>
 #include <array>
@@ -81,6 +93,10 @@ constexpr unsigned REQUEST_BEATS = 8;                      // a request's beats 
 // The test's own bounds and waits (base_tile_test.rs's).
 constexpr uint32_t BOOT_TIMEOUT = 20000, REPORT_TIMEOUT = 100000, QUIET_CYCLES = 300, RELEASE_WAIT_MOST = 40, FLOOD_CYCLES = 64;
 constexpr uint64_t ARRIVAL_DELAY_LEAST = 2000;             // the barrier program's delay loop (barrier.S)
+// The boot ROM's cycles (the header): the RTL's figures, and the words they end at (5.5).
+constexpr uint64_t RESET_TO_LOAD_REQUEST = 26, RESET_TO_IMAGE_BOOT_LOCAL = 27, RELEASE_TO_IMAGE = 13;
+constexpr uint64_t WAKE_TO_EXECUTE_END = 2, WAKE_TO_RETIRE = 3, WINDOW_LOAD_CYCLES = 2;
+constexpr uint32_t ADDRESS_EVENTS = 0xFFFFF80C, ADDRESS_REQUEST_SEND = 0xFFFFF90C, ADDRESS_IMEM = 0x01000000;
 
 // The attach tile of special tile `special` (2.1).
 uint32_t attach_tile(uint32_t special) { const uint32_t t[3] = {0, kMeshSize - 1, (2 * kMeshSize - 1) % kTileCount}; return t[special]; }
@@ -266,6 +282,7 @@ struct Run {
     std::vector<std::string> files;
     const Rv32Timing* timing = nullptr;                    // the core's timing knobs, when a test sets them
     uint64_t cycle = 0;
+    uint64_t cycle_of_reset = 0;                           // the first cycle after the machine's reset
     uint32_t tile_id = 0;
     std::vector<unsigned> inputs;                          // the inputs the tile has: the links, and its attach port
     std::deque<Packet> queued[PORTS];
@@ -274,12 +291,21 @@ struct Run {
     std::vector<std::pair<unsigned, Packet>> expected_out;
     std::deque<Report> reports;
     uint32_t loads = 0;
-    bool release = false;
+    bool release = false, rom_release = false;             // the release to drive; it is the boot ROM's wait's
     bool arrive_allowed = false;
     uint32_t arrivals = 0;
     uint64_t arrived_at = 0;
     bool error_allowed = false, error_risen = false, error_line = false;
     Counts counts;
+    // ---- The boot ROM's cycles (the header): the core's data port and stages, read after each cycle ----
+    TileCore* core = nullptr;
+    bool boot_local = false;                               // the machine's strap
+    bool was_outstanding = false;                          // the data port held an access in the cycle before
+    bool was_image = false, request_sent = false, image_run = false, events_load_seen = false;
+    uint32_t last_address = 0; uint64_t last_make_at = 0;
+    int64_t released_at = -1;                              // the boot ROM's release: BARRIER_RELEASE's pulse; -1 none awaited
+    uint64_t retired_at_release = 0;                       // the instructions retired by the release's cycle
+    uint32_t figures[4] = {};                              // how many times each figure was checked
     bool dead = false;                                     // a check failed: the run stops
 
     explicit Run(uint64_t seed) : random(seed), files(rtl_images::program_list("fw/rtl/tile/base_tile", KIND_COUNT)) {}
@@ -315,6 +341,9 @@ struct Run {
         flood = false; expected_out.clear(); reports.clear(); loads = 0;
         arrive_allowed = false; arrivals = 0; error_allowed = false; error_risen = false; error_line = false;
         mach = std::make_unique<Machine>(tile, timing, placed);
+        core = &mach->m.unit<TileCore>(unit_prefix(tile) + "core");
+        boot_local = placed != nullptr;
+        cycle_of_reset = cycle; was_outstanding = was_image = request_sent = image_run = false; released_at = -1;
         bench = &mach->m.unit<Bench>("bench");
         inputs = {WEST, EAST, NORTH, SOUTH};
         if (attached_at(tile) >= 0) inputs.push_back(ATTACH + unsigned(attached_at(tile)));
@@ -338,6 +367,7 @@ struct Run {
         b.release_now = release;
         release = false;
         mach->m.run(1);
+        probe(b.release_now);
         // ---- The request link: a report or a LOAD at a request's last beat ----
         if (b.request_stalled) counts.request_stalls++;
         if (b.request_done) {
@@ -382,6 +412,56 @@ struct Run {
         error_risen = error_line;
         cycle++;
     }
+    // The boot ROM's cycles (the header), after the cycle just run. `since` counts from the reset, 0 its first cycle.
+    void probe(bool released) {
+        if (dead) return;
+        const Rv32& rv = core->rv;
+        const int64_t since = int64_t(cycle - cycle_of_reset);
+        // The data port's access was raised in this cycle: one outstanding now that was not in the cycle before (the
+        // next may be raised as the last is answered: another address, or another cycle to be made in).
+        const bool raised = rv.lsu_out && (!was_outstanding || rv.lsu_addr != last_address || rv.lsu_make_at != last_make_at);
+        was_outstanding = rv.lsu_out; last_address = rv.lsu_addr; last_make_at = rv.lsu_make_at;
+        // The image's first instruction left execute in this cycle: it is in writeback, where it was not before.
+        const bool image = rv.w_valid && rv.w_pc == ADDRESS_IMEM;
+        const bool image_entered = image && !was_image;
+        was_image = image;
+        if (raised && rv.lsu_store && rv.lsu_addr == ADDRESS_REQUEST_SEND && !request_sent) {
+            request_sent = true;
+            if (!boot_local && !image_run) {                      // the boot ROM's LOAD request, the first after the reset
+                if (uint64_t(since) != RESET_TO_LOAD_REQUEST) { fail("the LOAD request's REQUEST_SEND is raised %lld cycles after the reset, the RTL's %llu", (long long)since, (unsigned long long)RESET_TO_LOAD_REQUEST); return; }
+                figures[0]++;
+            }
+        }
+        if (image_entered && !image_run) {
+            image_run = true;
+            if (boot_local) {
+                if (uint64_t(since) != RESET_TO_IMAGE_BOOT_LOCAL) { fail("the image's first instruction leaves execute %lld cycles after the reset, the RTL's %llu", (long long)since, (unsigned long long)RESET_TO_IMAGE_BOOT_LOCAL); return; }
+                figures[1]++;
+            }
+        }
+        if (released && rom_release) {                            // the release the boot ROM waits for, in this cycle
+            rom_release = false;
+            released_at = int64_t(cycle); events_load_seen = false; retired_at_release = rv.instructions;
+            if (!rv.in_wfi || !rv.core_status_canonical_wait) fail("the release finds the core out of the canonical wait");
+            return;
+        }
+        if (released_at < 0) return;
+        const uint64_t after = cycle - uint64_t(released_at);     // R, MEIP's first cycle, is the release's + 1
+        if (raised && !rv.lsu_store && rv.lsu_addr == ADDRESS_EVENTS && !events_load_seen) {
+            events_load_seen = true;
+            if (after != 1 + WAKE_TO_EXECUTE_END) { fail("the load after the wake is raised in R + %llu, the RTL's R + %llu", (unsigned long long)(after - 1), (unsigned long long)WAKE_TO_EXECUTE_END); return; }
+        }
+        if (events_load_seen && rv.instructions == retired_at_release + 1) {   // the load retires: the first since the wake
+            retired_at_release = ~uint64_t(0) - 1;
+            if (after != 1 + WAKE_TO_RETIRE + WINDOW_LOAD_CYCLES - 1) { fail("the load after the wake retires in R + %llu, the RTL's R + %llu", (unsigned long long)(after - 1), (unsigned long long)(WAKE_TO_RETIRE + WINDOW_LOAD_CYCLES - 1)); return; }
+            figures[2]++;
+        }
+        if (image_entered) {
+            if (after != RELEASE_TO_IMAGE) { fail("the image's first instruction leaves execute %llu cycles after the release, the RTL's %llu", (unsigned long long)after, (unsigned long long)RELEASE_TO_IMAGE); return; }
+            figures[3]++;
+            released_at = -1;
+        }
+    }
     template <class Done>
     void step_until(uint32_t timeout, const char* what, Done done) {
         for (uint32_t i = 0; i < timeout && !dead; i++) {
@@ -414,10 +494,10 @@ struct Run {
         step_until(BOOT_TIMEOUT, "landing", [&] { return queued[port].empty(); });
         // The COUNT has been driven: it is ejected and counted within a few cycles, and the tile may arrive from then.
         arrive_allowed = true;
-        wait_and_release();
+        wait_and_release(true);
     }
     // Waits for the BARRIER_ARRIVE, then releases the tile after a random wait.
-    void wait_and_release() {
+    void wait_and_release(bool from_rom = false) {
         const uint32_t before = arrivals;
         step_until(BOOT_TIMEOUT, "BARRIER_ARRIVE", [&] { return arrivals > before; });
         steps(uint32_t(random.below(RELEASE_WAIT_MOST)));
@@ -425,6 +505,7 @@ struct Run {
         if (arrivals != before + 1) { fail("BARRIER_ARRIVE is one cycle's pulse: %u pulses", arrivals - before); return; }
         arrive_allowed = false;
         release = true;
+        rom_release = from_rom;
         step();
     }
     // The arguments' two rows (tile_map.h): argument 0 the kind, then the run's, the rest 0.
@@ -684,7 +765,8 @@ void print_counts(const char* name, const Run& r) {
     for (uint32_t n : r.counts.outputs_seen) std::printf(" %u", n);
     std::printf("; reports %u, loads %u, request stalls %u, rows %u; errors seen", r.counts.reports, r.counts.loads, r.counts.request_stalls, r.counts.rows);
     for (uint32_t n : r.counts.errors_seen) std::printf(" %u", n);
-    std::printf("\n");
+    std::printf("; the boot ROM's cycles checked: reset to LOAD %u, reset to image (boot_local) %u, wake to the load's retirement %u, release to image %u\n",
+                r.figures[0], r.figures[1], r.figures[2], r.figures[3]);
 }
 
 }  // namespace
@@ -714,6 +796,10 @@ TEST(rtl_tile_programs) {
     CHECK(!bench.dead);
     CHECK(bench.counts.request_stalls > 0);
     for (uint32_t error = 0; error < ERROR_BITS; error++) CHECK_EQ(bench.counts.errors_seen[error], 1u);
+    // Every run boots from a reset through the ROM's LOAD and its release: 22 resets, and the barrier runs' second loads.
+    CHECK_EQ(bench.figures[0], 22u);
+    CHECK_EQ(bench.figures[2], 24u);
+    CHECK_EQ(bench.figures[3], 24u);
 }
 
 // The boot strap (6.5): with PARAMS.boot_local 1 the boot ROM jumps to IMEM's base at once, to the image placed in the
@@ -732,6 +818,7 @@ TEST(rtl_tile_boot_local) {
     CHECK(!bench.dead);
     CHECK_EQ(bench.counts.loads, 0u);
     CHECK_EQ(bench.arrivals, 0u);
+    CHECK_EQ(bench.figures[1], 1u);                         // the image's first instruction, 27 cycles after the reset
 }
 
 // The RTL's base_tile_without_attach_ports: the programs but the errors one, at random tiles that are not attach tiles.
@@ -749,4 +836,7 @@ TEST(rtl_tile_programs_at_plain_tiles) {
     bench.check_outputs();
     print_counts("rtl_tile_programs_at_plain_tiles", bench);
     CHECK(!bench.dead);
+    CHECK_EQ(bench.figures[0], 8u);                         // 8 resets, and the barrier runs' second loads
+    CHECK_EQ(bench.figures[2], 10u);
+    CHECK_EQ(bench.figures[3], 10u);
 }

@@ -707,7 +707,10 @@ an instruction with no cost retires one cycle after the one before it.
 | a multiply | two pipelined stages, and no cycle of its own; a multiply whose operand the instruction in writeback is still producing waits 1 cycle, and an instruction that uses its result right after it waits 1 cycle | Multiply |
 | `czero.eqz`, `czero.nez` | as any ALU instruction | Conditional zero |
 | the instruction after any CSR write | held 1 cycle in execute | Pipeline event priority |
-| a load from, or a store to, a window or a table | the machine's fixed latency, `WINDOW_LOAD_LATENCY` or `TABLE_LOAD_LATENCY` (6.4), and a stalling store its stall (9, 11.1, 17.6) | Obligations of the enclosing unit |
+| a load from a window or a table | the machine's fixed latency, `WINDOW_LOAD_LATENCY` or `TABLE_LOAD_LATENCY` (6.4) | Obligations of the enclosing unit |
+| a store to a window or a table | answered the cycle after it is issued, as a store to DMEM; a store that may stall, the cycle after its unit takes it (6.4; 9, 11.1, 17.6) | Obligations of the enclosing unit |
+| an access fault in region 0xFF (5.1) | answered the cycle after the access is issued (6.4) | Obligations of the enclosing unit |
+| a trap, an exception or an interrupt; an MRET | the handler's first instruction, or after an MRET the instruction at `mepc`, retires 4 cycles after the redirect cycle J (Memory and reset interface details): the cycle the instruction that takes the exception leaves writeback, the cycle the interrupt is taken, or the cycle the MRET retires. It is a taken branch's cost, counted from J | Traps, Pipeline event priority |
 | a `WFI` whose wake condition holds as it retires | no wait: with `mstatus.MIE` clear, the next instruction retires 3 cycles after the `WFI`, 2 more | Wait for interrupt (WFI) |
 | a `WFI` that waits, woken in cycle R | with `mstatus.MIE` clear and no NMI to take, the next instruction retires in R + 3 | Lockstep regions |
 | a coprocessor instruction | the coprocessor's: 1 cycle with one that is always ready and answers the next cycle | Coprocessor |
@@ -719,5 +722,15 @@ an instruction with no cost retires one cycle after the one before it.
   2.776 CoreMark/MHz `[meas: RTL]`, with memory answering the next cycle. It is
   an unofficial figure: the performance run alone, in simulation.
 - **Traps.** Every trap is terminal in the machine (6.2), so no program's
-  result or phase timing depends on a trap's entry cost, and this document
-  states none.
+  result or phase timing depends on a trap's entry cost; only the cycle of
+  the handler's reports does (6.5). The RTL's core specification states the
+  redirect (Pipeline event priority, Memory and reset interface details) and
+  no figure: the table's row is meshsim's addition, the RTL's figure
+  `[meas: RTL]`. In the RTL's simulation of its own programs and of the
+  interrupt programs, every exception, machine external interrupt and NMI
+  taken in a cycle J is followed by the handler's first retirement in J + 4,
+  and every MRET retired in J by the retirement of the instruction at `mepc`
+  in J + 4 (`tests/core-programs/retire/`, the RTL's retire traces: a `trap:`
+  line's cycle, or an MRET's, and the next `ret:` line's), with IMEM
+  answering the next cycle and nothing else stalling. The simulator's core
+  model reproduces it (`tests/test_core_programs.cpp`).

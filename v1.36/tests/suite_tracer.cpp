@@ -100,45 +100,6 @@ std::string violations(const Tracer& tr) {
 }
 bool same(const std::vector<uint64_t>& a, const std::vector<uint64_t>& b) { return a == b; }
 
-// A monitor on the fill port: every request's handshake and response (MemSystem::port_log).
-struct PortLog {
-    std::vector<MemSystem::PortCall> calls;
-    MemSystem& ms;
-    explicit PortLog(Rig& g, int cap = 1 << 14) : calls(size_t(cap)), ms(g.ms) {
-        ms.port_log = calls.data();
-        ms.port_log_cap = cap;
-        ms.port_log_n = 0;
-    }
-    ~PortLog() { ms.port_log = nullptr; }
-    int n() const { return ms.port_log_n < ms.port_log_cap ? ms.port_log_n : ms.port_log_cap; }
-    int writes() const { int k = 0; for (int i = 0; i < n(); i++) k += calls[size_t(i)].write; return k; }
-    // 17.9.5: at most one read outstanding, and at most one write
-    bool one_of_each() const {
-        int64_t read_until = INT64_MIN, write_until = INT64_MIN;
-        for (int i = 0; i < n(); i++) {
-            const MemSystem::PortCall& c = calls[size_t(i)];
-            int64_t& until = c.write ? write_until : read_until;
-            if (c.t <= until) return false;
-            until = c.response_at;
-        }
-        return true;
-    }
-    // 17.9.5: a write is requested when no read is outstanding. tracer_fill.veryl: it is raised in the cycle after one
-    // with no read presented, outstanding or granted, so no read's request is in the write's cycle or the cycle before,
-    // and no read is outstanding in the cycle before.
-    bool writes_wait_for_reads() const {
-        for (int i = 0; i < n(); i++) {
-            if (!calls[size_t(i)].write) continue;
-            const int64_t w = calls[size_t(i)].t;
-            for (int k = 0; k < n(); k++) {
-                const MemSystem::PortCall& r = calls[size_t(k)];
-                if (!r.write && r.t <= w && w <= r.response_at + 1) return false;
-            }
-        }
-        return true;
-    }
-};
-
 // The rows' schedules (17.9.7): 4 cycles a row, 6 for an M row.
 int64_t schedules(const Tracer& tr, int64_t rows0 = 0, int64_t rows_m0 = 0) {
     return 4 * (tr.rows - rows0) + 2 * (tr.rows_m - rows_m0);
@@ -411,7 +372,7 @@ void write_back() {
     suite::check(port.writes_wait_for_reads(), "each write-back is requested only when no read is outstanding");
     bool own_line = true;
     for (int k = 0, w = 0; k < port.n(); k++) {
-        const MemSystem::PortCall& c = port.calls[size_t(k)];
+        const MemSystem::PortCall& c = port.at(k);
         if (!c.write) continue;
         own_line = own_line && c.line == (DATA - g.lowest) / 128 + w && c.status == MemSystem::WRITE_OK;
         w++;

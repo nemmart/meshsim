@@ -152,9 +152,15 @@ void Bench::start_transfer(int queue, uint32_t count) {
 }
 
 namespace {
-struct RowTimes { RunOut* out; };
+struct RowTimes {
+    RunOut* out;
+    void (*next)(void*, int64_t, bool);   // the harness's own hook, called after
+    void* next_ctx;
+};
 void on_row(void* ctx, int64_t t, bool start) {
-    RunOut& o = *static_cast<RowTimes*>(ctx)->out;
+    const RowTimes& r = *static_cast<RowTimes*>(ctx);
+    if (r.next) r.next(r.next_ctx, t, start);
+    RunOut& o = *r.out;
     if (start) { if (o.first_row_start < 0) o.first_row_start = t; }
     else o.last_row_done = t;
 }
@@ -163,10 +169,10 @@ void on_row(void* ctx, int64_t t, bool start) {
 void Bench::run(RunOut& out) {
     out = RunOut();
     received_ = out.queue;
-    RowTimes rt{&out};
     void (*const saved)(void*, int64_t, bool) = tr.on_row;
     void* const saved_ctx = tr.on_row_ctx;
-    if (!saved) { tr.on_row = on_row; tr.on_row_ctx = &rt; }
+    RowTimes rt{&out, saved, saved_ctx};
+    tr.on_row = on_row; tr.on_row_ctx = &rt;
     out.start_store = cycle;
     store(B_CONTROL, C_START, 1);
     const int64_t limit = cycle + (limit_per_run > 0 ? limit_per_run : 40 * 65536 + 2000000 + 4 * 65536 * int64_t(tr.fill_latency[0] > tr.fill_latency[1] ? tr.fill_latency[0] : tr.fill_latency[1]) + 400 * 65536);

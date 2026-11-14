@@ -75,7 +75,8 @@ public:
     // this model times it: it serves one access at a time, so a request taken while another is being served
     // starts when that one ends (item 174: the simulator's choice).
     static constexpr int WRITE_OK = 0, WRITE_ERROR = 1;   // write_response.status (spec 3)
-    int64_t fail_write_line = -1;   // a test's fault: the write-back of this line (of any file) answers `error`
+    int64_t fail_write_line = -1;   // a test's fault: the write-back of this line (of any file) answers `error`,
+    int fail_write_delay = 1;       // ... this many cycles after its handshake
     // A test's monitor of the port (null: none): each request in handshake order, with its handshake's cycle, its
     // response's, and its status. Calls past the capacity are counted and not kept.
     struct PortCall {
@@ -110,6 +111,7 @@ public:
         if (walk_.status != FileStore::ST_OK || line == fail_write_line) {
             writes++;
             status = WRITE_ERROR;
+            if (line == fail_write_line) done = t + fail_write_delay;
         } else if (fixed) {
             writes++;
             status = WRITE_OK;

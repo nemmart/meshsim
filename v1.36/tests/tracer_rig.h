@@ -213,4 +213,65 @@ public:
     static std::string mem_summary(const MemSystem& m);
 };
 
+// ================================================================ a monitor on the fill port
+// Every request's handshake and response, in handshake order (MemSystem::port_log), while it lives.
+struct PortLog {
+    std::vector<MemSystem::PortCall> calls;
+    MemSystem& ms;
+    explicit PortLog(Rig& g, int cap = 1 << 14) : calls(size_t(cap)), ms(g.ms) {
+        ms.port_log = calls.data();
+        ms.port_log_cap = cap;
+        ms.port_log_n = 0;
+    }
+    PortLog(const PortLog&) = delete;
+    PortLog& operator=(const PortLog&) = delete;
+    ~PortLog() { ms.port_log = nullptr; }
+    int n() const { return ms.port_log_n < ms.port_log_cap ? ms.port_log_n : ms.port_log_cap; }
+    const MemSystem::PortCall& at(int k) const { return calls[size_t(k)]; }
+    int writes() const { int k = 0; for (int i = 0; i < n(); i++) k += at(i).write; return k; }
+    int reads_of(int32_t root, int64_t line) const {
+        int k = 0;
+        for (int i = 0; i < n(); i++) k += !at(i).write && at(i).root == root && at(i).line == line;
+        return k;
+    }
+    // the k-th write, or the first read or write of a line (null: none)
+    const MemSystem::PortCall* write(int k) const {
+        for (int i = 0; i < n(); i++) if (at(i).write && k-- == 0) return &at(i);
+        return nullptr;
+    }
+    const MemSystem::PortCall* first(bool write, int64_t line) const {
+        for (int i = 0; i < n(); i++) if (at(i).write == write && at(i).line == line) return &at(i);
+        return nullptr;
+    }
+    // 17.9.5: at most one read outstanding, and at most one write
+    bool one_of_each() const {
+        int64_t read_until = INT64_MIN, write_until = INT64_MIN;
+        for (int i = 0; i < n(); i++) {
+            int64_t& until = at(i).write ? write_until : read_until;
+            if (at(i).t <= until) return false;
+            until = at(i).response_at;
+        }
+        return true;
+    }
+    // 17.9.5: a write is requested when no read is outstanding. tracer_fill.veryl: it is raised in the cycle after one
+    // with no read presented, outstanding or granted, so no read's request is in the write's cycle or the cycle before,
+    // and no read is outstanding in the cycle before.
+    bool writes_wait_for_reads() const {
+        for (int i = 0; i < n(); i++) {
+            if (!at(i).write) continue;
+            const int64_t w = at(i).t;
+            for (int k = 0; k < n(); k++)
+                if (!at(k).write && at(k).t <= w && w <= at(k).response_at + 1) return false;
+        }
+        return true;
+    }
+    // a read and a write outstanding together: a read's request while a write awaits its response, or the reverse
+    bool overlap() const {
+        for (int i = 0; i < n(); i++)
+            for (int k = 0; k < n(); k++)
+                if (at(i).write && !at(k).write && at(i).t < at(k).response_at && at(k).t < at(i).response_at) return true;
+        return false;
+    }
+};
+
 }  // namespace tracer_rig

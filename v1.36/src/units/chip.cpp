@@ -50,6 +50,8 @@ void wire_unit(sim::Config& cfg, const NetConfig& nc, unsigned k, const ControlI
     rc.present = io.mem.present; rc.gather = io.mem.gather; rc.ag = io.mem.ag;
     rc.read_port_depth = io.mem.read_port_depth; rc.read_latency = io.mem.read_latency; rc.mem_chunks = io.mem.mem_chunks;
     rc.wr_note = rc.gather_note = io.mem.present && io.mem.has_notes;
+    rc.drift = io.mem.present && io.mem.has_drift;
+    rc.gather_wire = io.mem.present && io.mem.gather && io.mem.has_gather_taken;
     rc.send_wire = io.has_send_taken;
     auto& in = cfg.add<Injection>(tile_unit(k, "inj"), k, nc, rc);
     cfg.connect(io.send, in.send);
@@ -71,6 +73,8 @@ void wire_unit(sim::Config& cfg, const NetConfig& nc, unsigned k, const ControlI
         cfg.link(io.mem.sram_ret, in.rs.ret, io.mem.read_latency - 1);   // the row, READ_LATENCY after the take (15)
         if (rc.wr_note) { cfg.link(io.mem.wr_note, in.rs.wr_note, 1); cfg.link(io.mem.gather_note, in.rs.gather_note, 1); }
         cfg.connect(in.rs.rp_injected, io.mem.rp_injected);
+        if (rc.ag && rc.drift) cfg.link(in.rs.ag_drift, io.mem.drift, 1);   // set in ERRORS at the end of the refusal's cycle
+        if (rc.gather_wire) cfg.connect(in.rs.gather_taken, io.mem.gather_taken);
     }
     // A send waiting for a loopback token sleeps until the router frees one, which may not be on its way yet (the
     // loopback FIFO drains when the eject selector reaches it): longer than the detector's default.

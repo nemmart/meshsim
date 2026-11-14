@@ -88,7 +88,7 @@ struct TileCtl {
     sim::LinkIn gather_put, gather_ovf_ev;     // width 0, Link(1): the director's GATHER put; the gather queue's overflow
     sim::RegIn ag_status;                      // the AG's running | done << 1 at the end of t (ag.h)
     sim::LinkIn req_freed_ev;                  // width 0, Link(1): the request tree took the queue's head at t
-    sim::LinkIn drift;                         // width 0, Link(1): the AG's drift (ERRORS.drift)
+    sim::LinkIn drift;                         // width 0, Link(1): ERRORS.drift's pulse, from the read arbiter (inject.h)
     sim::RegFileIn slot_win;                   // the peripheral slot's window RegFile (its live bits), when `slot`
     sim::RegFileIn recv;                       // the receive queue's head (ReqRecv::R_PENDING), when `receiver`
     // ---- outputs ----

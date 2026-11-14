@@ -44,6 +44,7 @@
 #include "check.h"
 #include "sim.h"
 #include "units/big_sram.h"
+#include "units/mem.h"
 #include "units/net.h"
 
 namespace units {
@@ -70,6 +71,8 @@ struct ReadSideConfig {
     bool present = false;
     bool gather = false, ag = false;   // the clients
     bool wr_note = false, gather_note = false;
+    bool gather_wire = false;          // `gather_taken` is declared (a tile with the gather unit to read it)
+    bool drift = false;                // `ag_drift` is declared (a tile with the tile control unit to take it)
     bool send_wire = false;            // the injection point drives `send_taken` (the tile's core reads it)
     unsigned read_port_depth = 64;
     unsigned read_latency = 3;         // READ_LATENCY (15, 19): the RTL's is 3 (scratchpad_pkg)
@@ -110,6 +113,10 @@ struct InjReadSide {
     sim::LinkIn wr_note;               // width 1, Link(1): the word address of the write engine's write of this cycle
     sim::LinkIn gather_note;           // width 0, Link(1): the director accepted a GATHER the cycle before
     sim::RegOut gather_srq_busy;       // width 1 (with the gather client): its read still offered at the end of t
+    sim::WireOut gather_taken;         // (cfg.gather_wire) to the gather unit: its reads taken so far, this cycle's included: whether
+                                       // its offer register's read leaves in this cycle (gather.h)
+    sim::LinkOut ag_drift;             // width 0, Link(1), to the tile control unit (cfg.drift): ERRORS.drift's pulse (8.4), put in
+                                       // a cycle a group transfer's read (mem::A_GROUP) is offered and not taken
     sim::CountOut rp_injected;         // read-unit returns injected
 
     // ---- configuration ----
@@ -134,6 +141,7 @@ struct InjReadSide {
     uint64_t bank_wait_cycles = 0;     // a read offered and not taken: a write at its bank (15)
     uint64_t token_wait_cycles = 0;    // a read offered and not taken: no token free (14.2); counted in stepped cycles
     uint64_t gather_gate_cycles = 0;   // the address generator offering while the gather unit is busy (14.1)
+    uint64_t drift_cycles = 0;         // a group transfer's read offered and not taken (8.4: ERRORS.drift)
     uint64_t rp_injected_n = 0;        // read-unit returns injected
     uint64_t rp_inj_t = ~0ull, rp_inj_now = 0;   // the cycle of the last read-unit injection and how many then
     uint64_t lat_max[3] = {};          // take to injection: READ_LATENCY for every read (15)
@@ -148,6 +156,8 @@ struct InjReadSide {
         if (cfg.wr_note) p.in(wr_note, "wr-note", 1);
         if (cfg.gather_note) p.in(gather_note, "gather-note", 0);
         if (cfg.gather) p.out(gather_srq_busy, "gather-srq-busy", 1);
+        if (cfg.ag && cfg.drift) p.out(ag_drift, "ag-drift", 0);
+        if (cfg.gather && cfg.gather_wire) p.out(gather_taken, "gather-taken");
         p.out(rp_injected, "rp-injected");
     }
     void configure(const ReadSideConfig& c, unsigned tile, const NetConfig& nc) {
@@ -162,6 +172,7 @@ struct InjReadSide {
 
     void returns(sim::Ctx& c);                             // phase 2: this cycle's return, into cur_w
     void arbitrate(sim::Ctx& c, Tokens& tok);              // phase 3
+    int take_one(sim::Ctx& c, Tokens& tok);                // the arbiter's take: the client served, or -1
     void take(sim::Ctx& c, Tokens& tok, unsigned client, uint64_t a, uint64_t b);
     void injected(sim::Ctx& c, uint64_t h, Tokens& tok);
     void publish_busy(sim::Ctx& c);
@@ -293,7 +304,17 @@ inline void InjReadSide::returns(sim::Ctx& c) {
     if (feed) harness_feed(t);                                // (harness-only): the Net harness's packets
 }
 
+// Phase 3, and ERRORS.drift's pulse (8.4; the RTL's address_generator: `drift = group_valid && !read_request_ready`):
+// a group transfer's read offered in this cycle and not taken in it, whatever held it back (a higher client, the gather
+// unit busy, a write at its bank, no token).
 inline void InjReadSide::arbitrate(sim::Ctx& c, Tokens& tok) {
+    const bool group_read = cfg.ag && cfg.drift && !(feed && feed->clients) && c.ready(client_hold[AG]) &&
+                            (c.peek(client_hold[AG])[0] & mem::A_GROUP) != 0;
+    const int taken = take_one(c, tok);
+    if (group_read && taken != int(AG)) { drift_cycles++; c.put(ag_drift); }
+}
+
+inline int InjReadSide::take_one(sim::Ctx& c, Tokens& tok) {
     // the write of this cycle, if any: its bank
     bool wr = false; uint32_t wr_bank = 0;
     if (cfg.wr_note && c.ready(wr_note)) { wr = true; wr_bank = scratchpad_bank(cfg.mem_chunks, uint32_t(c.peek(wr_note)[0])); c.take(wr_note); }
@@ -317,14 +338,15 @@ inline void InjReadSide::arbitrate(sim::Ctx& c, Tokens& tok) {
         else if (ag && !gbusy) { served = AG; const sim::Word* w = c.peek(client_hold[AG]); a = w[0]; b = w[1]; }
         else if (c.ready(rp_q)) { served = READPORT; const sim::Word* w = c.peek(rp_q); a = w[0]; b = w[1]; }
     }
-    if (served < 0) return;
+    if (served < 0) return -1;
     // taken only if no write meets it at its bank and a token is free; else nothing is taken this cycle (14.1)
-    if (wr && wr_bank == scratchpad_bank(cfg.mem_chunks, uint32_t(a & 0x1FFFFF))) { bank_wait_cycles++; return; }
-    if (!tok.free()) { token_wait_cycles++; return; }
+    if (wr && wr_bank == scratchpad_bank(cfg.mem_chunks, uint32_t(a & 0x1FFFFF))) { bank_wait_cycles++; return -1; }
+    if (!tok.free()) { token_wait_cycles++; return -1; }
     if (feed && feed->clients) { feed->cl[served].pop(); feed->cl[served].vis--; }
     else if (served == READPORT) c.take(rp_q);
     else c.take(client_hold[served]);
     take(c, tok, unsigned(served), a, b);
+    return served;
 }
 
 inline void InjReadSide::take(sim::Ctx& c, Tokens& tok, unsigned client, uint64_t a, uint64_t b) {
@@ -332,6 +354,7 @@ inline void InjReadSide::take(sim::Ctx& c, Tokens& tok, unsigned client, uint64_
     if (n == LINE) FATAL("inject unit: tile %u: the return line is full", me);
     tok.taken++; tok.reads++;
     issued[client]++; in_flight[client]++;
+    if (client == GATHER && cfg.gather_wire) c.drive(gather_taken, issued[GATHER]);
     const unsigned width = unsigned(a >> 21 & 3);
     unsigned words = chunks_of(width);
     const uint32_t addr = uint32_t(a & 0x1FFFFF);

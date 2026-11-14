@@ -63,6 +63,9 @@ struct Director {
     sim::LinkOut bad;          // width 0: a bad packet dropped at t (Conditions.BAD_MODE_OR_SIZE) -> the block, Link(1)
     sim::LinkOut gather_put;   // width 0: a mode-4 put on `gather` at t -> the block, Link(1) (G4: one of STATUS's
                                // three gather-busy inputs: ref's gatherIn.isEmpty counts the pending put); when cfg.g4
+    sim::WireIn gather_full;   // the gather queue holds its depth at the start of this cycle (gather.h); when cfg.g4
+    sim::LinkOut gather_ovf;   // width 0: a GATHER lost to the full queue in t -> the block, Link(1): ERRORS.gather_overflow is
+                               // set at the end of t (13, 7.4; the RTL's gather_unit: the pulse is in the request's cycle); cfg.g4
     sim::LinkOut gather_note;  // width 0: the same, to the read arbiter (inject.h: gather_busy in the next cycle), Link(1);
                                // when cfg.gather_note
     sim::CountIn rp_stores;    // the core's read-port stores (read through t - 1: ref's director runs before the core)
@@ -78,6 +81,8 @@ struct Director {
     }
     // statistics (not state: outside the fingerprint)
     uint64_t accepted = 0, per_mode[lw::N_MODES] = {}, count_only = 0, undefined_size = 0, violations = 0, bad_packets = 0;
+    uint64_t gather_overflows = 0;     // GATHERs lost to a full gather queue (13: ERRORS.gather_overflow)
+    uint64_t gather_first_overflow = 0;   // the cycle of the first (0: none): the checker's fact (invariant 1)
     // read-port results accepted (ReadPort.acceptedAt; the "rdport" fingerprint's outstanding = stores - this) and
     // packets accepted with results outstanding (TrafficDirector.readPortOverlaps: the software rule of 4.3, counted)
     uint64_t rp_accepted = 0, rp_overlaps = 0;
@@ -91,7 +96,7 @@ struct Director {
         p.out(port_b, "port_b", 3); p.out(kline, "kline", 1);
         p.out(we_in, "we_in", 3); p.out(gather, "gather", 3);
         p.out(bad, "bad", 0);
-        if (cfg.g4) p.out(gather_put, "gather_put", 0);
+        if (cfg.g4) { p.out(gather_put, "gather_put", 0); p.in(gather_full, "gather_full"); p.out(gather_ovf, "gather_ovf", 0); }
         if (cfg.gather_note) p.out(gather_note, "gather_note", 0);
         if (cfg.engine) { p.in(dma, "dma"); p.out(ts_req, "ts_req", 3); p.out(hist_req, "hist_req", 3); }
         if (cfg.periph_slot) p.out(periph, "periph", 3);
@@ -187,7 +192,13 @@ struct Director {
             c.put(we_in, d, h, hi); s1_accept(c.now());
             if (cfg.engine) table_requests(c, mode, d, h);
             break;
-        case lw::M_GATHER:                                                                  // the gather engine (G4)
+        case lw::M_GATHER:                                                                  // the gather unit (13)
+            // the queue full at the start of this cycle: the request is lost, even if the head leaves in this cycle
+            if (cfg.g4 && c.read(gather_full) != 0) {
+                if (!gather_overflows++) gather_first_overflow = c.now();
+                c.put(gather_ovf);
+                break;
+            }
             c.put(gather, d, h, hi);
             if (cfg.g4) c.put(gather_put);
             if (cfg.gather_note) c.put(gather_note);

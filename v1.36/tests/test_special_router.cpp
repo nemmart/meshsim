@@ -74,6 +74,7 @@ struct Stand {
     std::vector<Seen> out;
     uint64_t overflows = 0, first_overflow = 0;              // the router's overflow count through the cycle before, and the
                                                              // first cycle that is not 0
+    std::vector<uint64_t> lost_in;                           // each cycle the router lost a packet in (its overflow pulse)
     Stand(sim::Ports& p, unsigned k, bool with_links, bool with_attach, bool with_dma, const std::vector<Ev>& all)
         : tile(k), links(with_links), attach(with_attach), dma(with_dma) {
         p.out(to_local, "to-local", 3); p.in(from_local, "eject", 3); p.in(from_token, "token", 0); p.in(ovf, "ovf");
@@ -102,7 +103,10 @@ struct Stand {
         if (links) for (unsigned i = 0; i < 4; i++) get(c, from_link[i], WEST + i);
         if (attach) get(c, from_attach, ATTACH);
         if (c.ready(from_token)) { out.push_back(token(t, tile)); c.take(from_token); }
-        overflows = c.through_last(ovf);
+        // a packet lost in a cycle is in the count the cycle after (the stand reads it as at the end of the cycle before)
+        const uint64_t through = c.through_last(ovf);
+        if (through != overflows) lost_in.push_back(t - 1);
+        overflows = through;
         if (overflows && !first_overflow) first_overflow = t;
         for (; next < script.size() && script[next].at == t + 1; next++) {
             const Ev& e = script[next];
@@ -136,7 +140,12 @@ void wire(sim::Config& cfg, Stand& st, Router& r) {
     if (st.attach) { cfg.link(st.to_attach, r.from_cc, 1); cfg.link(r.to_cc, st.from_attach, 1); }
 }
 
-struct Result { std::vector<Seen> out; uint64_t overflows = 0, first_overflow = 0; unsigned attached = 0; };
+struct Result {
+    std::vector<Seen> out;
+    uint64_t overflows = 0, first_overflow = 0;
+    unsigned attached = 0;
+    std::vector<std::pair<uint64_t, unsigned>> lost;          // (cycle, tile) of each cycle a router lost a packet in (the NoC)
+};
 
 void sort(std::vector<Seen>& v) { std::sort(v.begin(), v.end(), [](const Seen& a, const Seen& b) { return a.key() < b.key(); }); }
 
@@ -152,7 +161,7 @@ Result run_router(unsigned tile, const std::vector<Ev>& script, uint64_t cycles)
     sim::Sim m = cfg.build();
     m.run(cycles);
     const Stand& s = m.unit<Stand>("stand");
-    Result res{s.out, s.overflows, s.first_overflow, 0};
+    Result res{s.out, s.overflows, s.first_overflow, 0, {}};
     sort(res.out);
     return res;
 }
@@ -186,6 +195,7 @@ Result run_noc(const std::vector<Ev>& script, uint64_t cycles) {
         const Stand& s = m.unit<Stand>(name("stand", k));
         res.out.insert(res.out.end(), s.out.begin(), s.out.end());
         res.overflows += s.overflows;
+        for (uint64_t at : s.lost_in) res.lost.push_back({at, k});
         if (k < 64 && m.unit<Router>(name("router", k)).attached) res.attached++;
     }
     sort(res.out);
@@ -589,4 +599,35 @@ TEST(broadcast_reaches_every_compute_tile_once_and_a_special_tiles_spreads_from_
     const Result r = run_noc(s, t + 48);
     CHECK(same(r.out, want));
     CHECK_EQ(r.overflows, 0u);
+}
+
+// 16.3 on the whole NoC: the fan-in figures for receiver 27 that the RTL's router_test requires of the RTL's NoC
+// (rtl/blocks/router/test/src/router_test.rs, "Fan-in, at 8x8: the figures of meshsim's NetTest for receiver 27"): the
+// two nearest senders, tiles 28 and 35, each sending a burst of 30 packets lose none; of 31, one, to a full queue at
+// tile 27, 34 cycles after the bursts start; and all 63 other tiles sending one packet each lose two, 34 and 35 cycles
+// after. A burst starts in the cycle its first packets are at their routers' local inputs (router_test.rs's step presents
+// a local's packet in the cycle it counts), an event's `at` here: the losses are in `at` + 34 (and + 35).
+TEST(fan_in_at_tile_27_loses_what_the_rtls_noc_loses) {
+    const uint64_t at = 10;
+    for (unsigned burst : {30u, 31u}) {
+        std::vector<Ev> s;
+        for (unsigned i = 0; i < burst; i++) for (unsigned source : {28u, 35u}) s.push_back(ev(at + i, source, LOCAL, ANY, 27));
+        const Result r = run_noc(s, 400);
+        const std::vector<std::pair<uint64_t, unsigned>> want = burst == 30 ? std::vector<std::pair<uint64_t, unsigned>>{}
+                                                                            : std::vector<std::pair<uint64_t, unsigned>>{{at + 34, 27}};
+        CHECK(r.lost == want);
+        CHECK_EQ(r.overflows, uint64_t(want.size()));
+        unsigned ejected = 0;
+        for (const Seen& x : r.out) if (x.tile == 27 && x.port == LOCAL) ejected++;
+        CHECK_EQ(ejected, 2 * burst - unsigned(want.size()));               // every other packet reaches the eject
+    }
+    std::vector<Ev> s;
+    for (unsigned source = 0; source < 64; source++) if (source != 27) s.push_back(ev(at, source, LOCAL, ANY, 27));
+    const Result r = run_noc(s, 400);
+    const std::vector<std::pair<uint64_t, unsigned>> want = {{at + 34, 27}, {at + 35, 27}};
+    CHECK(r.lost == want);
+    CHECK_EQ(r.overflows, 2u);
+    unsigned ejected = 0;
+    for (const Seen& x : r.out) if (x.tile == 27 && x.port == LOCAL) ejected++;
+    CHECK_EQ(ejected, 61u);
 }

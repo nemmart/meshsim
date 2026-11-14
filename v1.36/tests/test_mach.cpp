@@ -38,6 +38,7 @@
 #include "units/ag.h"
 #include "units/big_sram.h"
 #include "units/gather.h"
+#include "units/inject.h"
 #include "bench_master.h"
 #include "units/ingress_egress.h"
 #include "units/periph_slot.h"
@@ -479,4 +480,77 @@ TEST(mach_gather_busy_is_the_queue_or_a_read_not_yet_taken) {
             CHECK_EQ(g.stall_cycles, uint64_t(0));
             CHECK_EQ(log.size(), size_t(requests + reads));   // each read came back as one APPEND to the tile itself
         }
+}
+
+// 8.4 and the RTL's address generator (rtl/blocks/dma_unit/src/address_generator.veryl: `drift = group_valid &&
+// !read_request_ready`; the tile control unit sets an error at the end of its pulse's cycle, 7.4): ERRORS.drift is set
+// at the end of the cycle a group transfer's read is offered and not taken in. On the whole tile: a transfer of 30
+// elements to tile 18, as a group of one stream or as that stream alone, and three GATHERs from tile 18 meanwhile, so
+// that the gather unit is busy and the arbiter takes no read of the address generator (14.1). The cycles the arbiter
+// holds the generator back are read from the arbiter's own count; ERRORS, read between cycles, is the state at the
+// end of the cycle before the one just run (mach.h). A stream transfer's refused read is no drift (8.3).
+TEST(mach_drift_is_set_at_the_end_of_the_cycle_a_group_transfers_read_is_refused) {
+    for (bool group : {true, false}) {
+        mach::MachConfig cf = Net::cfg(-1);
+        cf.real_responder = true;
+        Net n(cf);
+        mach::TileRef p = n.c.tile(17);
+        p.set_gather_config(mach::fields::gather_config(0x4000, 8));     // a value: 4 reads of 128 bits, landing by PTR[17]
+        p.set_ptr(17, 0x20000);
+        p.set_stream(10, 0x100, lw::sram_addr(0x800), mach::fields::stream_hdr(30, lw::SIZE_64, 0, lw::M_WRITE, 18));
+        p.set_group(0, mach::fields::group_w0(30, 10, 1), mach::fields::group_w1(0));
+        p.set_dma_config(group ? mach::fields::dma_config(mach::fields::RUN_GROUPS, 0, 1) : mach::fields::dma_config(mach::fields::RUN_STREAMS, 10, 1));
+        // the GATHERs, from tile 18 (a hop away), injected in 60, 61 and 62: in the gather queue during the transfer
+        for (unsigned i = 0; i < 3; i++) n.at(18, 60 + i, 17, lw::M_GATHER, 0, 0, lw::SIZE_64, uint64_t(i) << 32, 0);
+        const units::InjReadSide& arb = p.unit<units::Injection>("inj").rs;
+        std::vector<uint64_t> refused;
+        std::vector<uint8_t> drift(260);                        // by the cycle just run: ERRORS.drift at the end of the one before
+        for (unsigned c = 0; c < 250; c++) {
+            if (n.c.cycle() == 50) p.dma_start();
+            const uint64_t gated = arb.gather_gate_cycles;
+            n.step();
+            if (arb.gather_gate_cycles != gated) refused.push_back(n.c.cycle());
+            drift[size_t(n.c.cycle())] = uint8_t(p.errors() >> units::ERR_DRIFT & 1);
+        }
+        CHECK(!refused.empty());                                // the generator was held back
+        CHECK_EQ(p.unit<units::AddrGen>("ag").requests, uint64_t(30));
+        if (refused.empty()) return;
+        const uint64_t r = refused[0];
+        if (!group) { for (uint64_t t = 1; t <= 250; t++) CHECK_EQ(unsigned(drift[t]), 0u); continue; }
+        for (uint64_t t = 1; t <= r; t++) CHECK_EQ(unsigned(drift[t]), 0u);       // not before the end of r
+        CHECK_EQ(unsigned(drift[r + 1]), 1u);                   // at the end of r: the refusal's cycle
+    }
+}
+
+// 13, 7.4 and the RTL's gather unit (gather_unit.veryl: "a request then is lost, even if the head leaves in that cycle,
+// and error_gather_overflow is 1 in that cycle"): ERRORS.gather_overflow is set at the end of the cycle the traffic
+// director has a GATHER for a queue that holds GATHER_QUEUE_DEPTH = 64 at that cycle's start. On the whole tile: tile 18
+// sends tile 17 a GATHER a cycle, each a value of four reads, so the queue gains three requests in four cycles until it
+// is full. The cycle of the first lost request is read from the director's own count; ERRORS, read between cycles, is
+// the state at the end of the cycle before the one just run (mach.h).
+TEST(mach_gather_overflow_is_set_at_the_end_of_the_lost_requests_cycle) {
+    mach::MachConfig cf = Net::cfg(-1);
+    cf.real_responder = true;
+    Net n(cf);
+    mach::TileRef p = n.c.tile(17);
+    p.set_gather_config(mach::fields::gather_config(0x4000, 8));
+    p.set_ptr(17, 0x20000);
+    for (unsigned i = 0; i < 120; i++) n.at(18, 60 + i, 17, lw::M_GATHER, 0, 0, lw::SIZE_64, uint64_t(i % 16) << 32, 0);
+    const units::Director& dir = p.unit<units::Director>("dir");
+    uint64_t lost_at = 0;
+    std::vector<uint8_t> ovf(800);
+    for (unsigned c = 0; c < 700; c++) {                    // the last request leaves the queue some 4 x 64 cycles after 180
+        const uint64_t lost = dir.gather_overflows;
+        n.step();
+        if (!lost_at && dir.gather_overflows != lost) lost_at = n.c.cycle();
+        ovf[size_t(n.c.cycle())] = uint8_t(p.errors() >> units::ERR_GATHER_OVERFLOW & 1);
+    }
+    CHECK(lost_at != 0);
+    if (!lost_at) return;
+    // 3 requests in 4 cycles: full after some 85 requests, never before the 64th
+    CHECK(lost_at > 60 + 64);
+    for (uint64_t t = 1; t <= lost_at; t++) CHECK_EQ(unsigned(ovf[t]), 0u);
+    CHECK_EQ(unsigned(ovf[lost_at + 1]), 1u);
+    const units::Gather& g = p.unit<units::Gather>("gather");
+    CHECK_EQ(g.requests + dir.gather_overflows, uint64_t(120));        // every request left the queue or was lost
 }

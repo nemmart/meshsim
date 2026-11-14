@@ -503,6 +503,43 @@ TEST(slot_dma_waits_while_its_router_input_has_no_room) {
     }
 }
 
+// The RTL's peripheral_dma.veryl: "DMA_START, presented in cycle p, takes effect at the end of p ... and the transfer
+// takes DMA_HDR as it stands, so a store to DMA_HDR during a transfer changes nothing of it." Such a store is UB (17.4),
+// which the simulator flags; the hardware's behaviour is the RTL's. A transfer of 3 WRITEs to tile 1 from queue 0,
+// started in 4, with the router's input not ready before 20: in 10 DMA_HDR is stored with dst 9, mode COUNT, counter 5
+// and a count of 1. The two packets taken after the store still go to tile 1 as WRITEs with no counter, at their
+// addresses, three in all; DMA_HDR reads back what was stored.
+TEST(slot_dma_takes_dma_hdr_at_the_start) {
+    const uint32_t stored = 9u << HDR_DST_LO | lw::M_COUNT << HDR_MODE_LO | 5u << HDR_COUNTER_LO | 1u << DMA_HDR_COUNT_LO;
+    const Stand::Ev ev[] = {
+        {2, Stand::STORE, P_DMA_HDR, 1u << HDR_DST_LO | 3u << DMA_HDR_COUNT_LO, 0, 0},   // dst 1, WRITE, queue 0, 3 packets
+        {3, Stand::STORE, P_DMA_DEST_ADDR, 0x800, 0, 0},
+        {4, Stand::STORE, P_DMA_START, 1, 0, 0},
+        {10, Stand::STORE, P_DMA_HDR, stored, 0, 0},    //    during the transfer
+        {12, Stand::READ, W_DMA_HDR, 0, 0, 0},          // 0: DMA_HDR as stored
+        {30, Stand::READ, W_STATUS, 0, 0, 0},           // 1: ended
+    };
+    PeriphSlotConfig pc;
+    pc.tile = 66; pc.controller = true; pc.type[1] = PT_TEST;
+    for (int variant = 0; variant < 3; variant++) {
+        Rig r(ev, sizeof ev / sizeof ev[0], pc, opts(variant), 1, 20);
+        r.m.run_until(40);
+        Stand& s = r.stand();
+        CHECK_EQ(s.n_reads, 2u);
+        CHECK_EQ(s.reads[0], stored);
+        CHECK_EQ(s.reads[1] & 2, 0u);
+        CHECK_EQ(s.n_dma, 3u);                                     // the count taken at the start, not the stored 1
+        for (unsigned k = 0; k < 3 && k < s.n_dma; k++) {
+            CHECK_EQ(s.dma_t[k], 20u + k);
+            CHECK_EQ(lw::dst(s.dma_h[k]), 1u);
+            CHECK_EQ(lw::mode(s.dma_h[k]), unsigned(lw::M_WRITE));
+            CHECK_EQ(lw::counter(s.dma_h[k]), 0u);
+            CHECK_EQ(lw::addr(s.dma_h[k]), 0x800u + 16 * k);
+        }
+        CHECK_EQ(r.slot().s.violation_total(), 1u);                // the store during the transfer, flagged (UB)
+    }
+}
+
 // 17.1: peripheral n has region 0x03 + n and window 12 + n, and the tile's EVENTS.peripheral_n is its own
 // (EVENTS & EVENTS_MASK) != 0 (17.2; 7.2: bits 4-6); an absent peripheral's bits read 0. Peripheral 3 alone: its
 // window's stores and loads, a WRITE into region 0x06, and the tile's third bit.

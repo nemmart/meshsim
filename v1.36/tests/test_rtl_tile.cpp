@@ -96,6 +96,12 @@ constexpr uint64_t ARRIVAL_DELAY_LEAST = 2000;             // the barrier progra
 // The boot ROM's cycles (the header): the RTL's figures, and the words they end at (5.5).
 constexpr uint64_t RESET_TO_LOAD_REQUEST = 26, RESET_TO_IMAGE_BOOT_LOCAL = 27, RELEASE_TO_IMAGE = 13;
 constexpr uint64_t WAKE_TO_EXECUTE_END = 2, WAKE_TO_RETIRE = 3, WINDOW_LOAD_CYCLES = 2;
+// BARRIER_ARRIVE after the wait begins: core_status_canonical_wait is "1 in the cycle after each cycle in which
+// `wfi_sleeping` is 1", the instruction port idle (the core specification's §1, Core ports), and the tile is "ready in a
+// cycle in which STATUS.arrived is set and core_status_canonical_wait is 1 ... barrier_arrive, a flip-flop, is 1 for
+// the one cycle after each cycle in which the tile becomes ready" (the RTL's tile_control_unit.veryl): with
+// `wfi_sleeping` first 1 in cycle w, no earlier than w + 2, and in w + 2 when STATUS.arrived was set before the wait.
+constexpr uint64_t WAIT_TO_ARRIVE = 2;
 constexpr uint32_t ADDRESS_EVENTS = 0xFFFFF80C, ADDRESS_REQUEST_SEND = 0xFFFFF90C, ADDRESS_IMEM = 0x01000000;
 
 // The attach tile of special tile `special` (2.1).
@@ -309,6 +315,9 @@ struct Run {
     int64_t released_at = -1;                              // the boot ROM's release: BARRIER_RELEASE's pulse; -1 none awaited
     uint64_t retired_at_release = 0;                       // the instructions retired by the release's cycle
     uint32_t figures[4] = {};                              // how many times each figure was checked
+    bool was_wfi = false;                                  // wfi_sleeping in the cycle just run
+    uint64_t wfi_from = 0;                                 // the first cycle of the wait the core is in (or was last in)
+    uint32_t arrivals_checked = 0, arrivals_at_the_wait = 0;   // BARRIER_ARRIVEs checked against the wait; in w + 2 exactly
     Replayer* row_port = nullptr;                          // the replayer whose row port the bench takes rows from, in its run
     bool dead = false;                                     // a check failed: the run stops
 
@@ -348,6 +357,7 @@ struct Run {
         core = &mach->m.unit<TileCore>(unit_prefix(tile) + "core");
         boot_local = placed != nullptr;
         cycle_of_reset = cycle; was_outstanding = was_image = request_sent = image_run = false; released_at = -1;
+        was_wfi = false;
         bench = &mach->m.unit<Bench>("bench");
         inputs = {WEST, EAST, NORTH, SOUTH};
         if (attached_at(tile) >= 0) inputs.push_back(ATTACH + unsigned(attached_at(tile)));
@@ -409,6 +419,15 @@ struct Run {
             if (b.line_word & 1) {
                 if (!arrive_allowed) { fail("BARRIER_ARRIVE before the load's COUNT"); return; }
                 arrivals++; arrived_at = cycle;
+                // the pulse's cycle is the one before the bench has it (a Link of 1)
+                const uint64_t pulse = cycle - 1;
+                if (pulse < wfi_from + WAIT_TO_ARRIVE) {
+                    fail("BARRIER_ARRIVE %lld cycles after wfi_sleeping rose, the RTL's %llu at the earliest", (long long)(int64_t(pulse) - int64_t(wfi_from)),
+                         (unsigned long long)WAIT_TO_ARRIVE);
+                    return;
+                }
+                arrivals_checked++;
+                if (pulse == wfi_from + WAIT_TO_ARRIVE) arrivals_at_the_wait++;
             }
             error_line = (b.line_word >> 1 & 1) != 0;
         }
@@ -421,6 +440,9 @@ struct Run {
     void probe(bool released) {
         if (dead) return;
         const Rv32& rv = core->rv;
+        // wfi_sleeping, a register: after a cycle, the model's is the next cycle's (rv32.h)
+        if (rv.in_wfi && !was_wfi) wfi_from = cycle + 1;
+        was_wfi = rv.in_wfi;
         const int64_t since = int64_t(cycle - cycle_of_reset);
         // The data port's access was raised in this cycle: one outstanding now that was not in the cycle before (the
         // next may be raised as the last is answered: another address, or another cycle to be made in).
@@ -774,8 +796,9 @@ void print_counts(const char* name, const Run& r) {
     for (uint32_t n : r.counts.outputs_seen) std::printf(" %u", n);
     std::printf("; reports %u, loads %u, request stalls %u, rows %u; errors seen", r.counts.reports, r.counts.loads, r.counts.request_stalls, r.counts.rows);
     for (uint32_t n : r.counts.errors_seen) std::printf(" %u", n);
-    std::printf("; the boot ROM's cycles checked: reset to LOAD %u, reset to image (boot_local) %u, wake to the load's retirement %u, release to image %u\n",
-                r.figures[0], r.figures[1], r.figures[2], r.figures[3]);
+    std::printf("; the boot ROM's cycles checked: reset to LOAD %u, reset to image (boot_local) %u, wake to the load's retirement %u, release to image %u"
+                "; BARRIER_ARRIVEs %u, %u of them two cycles after the wait began\n",
+                r.figures[0], r.figures[1], r.figures[2], r.figures[3], r.arrivals_checked, r.arrivals_at_the_wait);
 }
 
 }  // namespace
@@ -809,6 +832,10 @@ TEST(rtl_tile_programs) {
     CHECK_EQ(bench.figures[0], 22u);
     CHECK_EQ(bench.figures[2], 24u);
     CHECK_EQ(bench.figures[3], 24u);
+    // Every BARRIER_ARRIVE here follows an ARRIVE stored before the core waits (the boot ROM's, boot_rom.S; the barrier
+    // program's, after its delay loop): STATUS.arrived is set when the wait begins, so the pulse is in w + 2 exactly.
+    CHECK(bench.arrivals_checked >= 24);
+    CHECK_EQ(bench.arrivals_at_the_wait, bench.arrivals_checked);
 }
 
 // The boot strap (6.5): with PARAMS.boot_local 1 the boot ROM jumps to IMEM's base at once, to the image placed in the
@@ -848,4 +875,6 @@ TEST(rtl_tile_programs_at_plain_tiles) {
     CHECK_EQ(bench.figures[0], 8u);                         // 8 resets, and the barrier runs' second loads
     CHECK_EQ(bench.figures[2], 10u);
     CHECK_EQ(bench.figures[3], 10u);
+    CHECK(bench.arrivals_checked >= 10);
+    CHECK_EQ(bench.arrivals_at_the_wait, bench.arrivals_checked);
 }

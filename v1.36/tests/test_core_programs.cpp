@@ -268,3 +268,35 @@ TEST(core_programs_boot_rom_takes_the_rtls_cycles_from_its_waits) {
     const int64_t released = barrier.stimulus(TileBus::RELEASE);
     CHECK_EQ(barrier.until_raised(TileBus::REQUEST_OUT_W1) - released, boot["release_to_image"]);
 }
+
+// The waits (WAITS): `wfi_sleeping` and `core_status_canonical_wait` change in the RTL's cycles. The core specification's
+// §1, Core ports: the canonical wait's level is "1 in the cycle after each cycle in which `wfi_sleeping` is 1", the
+// instruction port idle, "through the first cycle in which `wfi_sleeping` is 0 again"; the tile's BARRIER_ARRIVE rests on
+// its rise (7.3). The model's outputs after a step are the next cycle's (rv32.h).
+TEST(core_programs_wait_in_the_rtls_cycles) {
+    std::map<std::string, std::vector<std::string>> want;
+    size_t lines = 0;
+    for (const auto& row : read_list("WAITS"))
+        if (row.size() == 4) { want[row[0]].push_back(row[1] + " " + row[2] + " " + row[3]); lines++; }
+    CHECK_EQ(lines, 122u);
+    CHECK_EQ(want.size(), 3u);                               // irq_wfi, nmi_wfi and trap_nmi wait; nmi_run never does
+    for (const Program& p : programs()) {
+        const std::string name = stem(p.elf);
+        if (name != "irq_wfi" && name != "nmi_wfi" && name != "nmi_run" && name != "trap_nmi") continue;
+        core_programs::Run r;
+        CHECK(r.boot(kDir + "elf/" + p.elf).empty());
+        std::vector<std::string> got;
+        bool wfi = false, canon = false;
+        while (r.now < p.cycles) {                           // after this step, the levels of cycle r.now
+            r.step();
+            if (r.core.in_wfi == wfi && r.core.core_status_canonical_wait == canon) continue;
+            wfi = r.core.in_wfi; canon = r.core.core_status_canonical_wait;
+            got.push_back(std::to_string(r.now) + " " + (wfi ? "1" : "0") + " " + (canon ? "1" : "0"));
+        }
+        const std::vector<std::string>& w = want[name];
+        for (size_t i = 0; i < w.size() || i < got.size(); i++) {
+            const std::string a = i < w.size() ? w[i] : "(nothing)", b = i < got.size() ? got[i] : "(nothing)";
+            if (a != b) { test::fail(__FILE__, __LINE__, "%s, change %zu: the RTL's '%s', ours '%s'", name.c_str(), i + 1, a.c_str(), b.c_str()); return; }
+        }
+    }
+}

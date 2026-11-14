@@ -194,7 +194,8 @@ struct Chip::Impl {
     std::vector<std::array<int64_t, 5>> reports, requests;
     std::unique_ptr<Checker> checker;                    // the violations (src/check.h; on with SIM_CHECKS)
     // the hardware FIFOs for invariant 1 (each tile's, then the master side's receive FIFOs), in scan order
-    struct Hw { int tile; units::Router* router; unsigned q; const sim::FifoIn* in; bool reported; };
+    // (dir: the gather queue's traffic director, which loses a request for the full queue: director.h)
+    struct Hw { int tile; units::Router* router; unsigned q; const sim::FifoIn* in; bool reported; const units::Director* dir = nullptr; };
     std::vector<Hw> hw;
     void collect_overflows();
     int64_t last_run_at = -1;
@@ -348,7 +349,7 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
                     m.hw.push_back({int(k), &r, r.first[o] + f, nullptr, false});
                     m.checker->fifo_names.push_back(t + kOutName[o] + "<" + kPortName[r.feed[o][f]]);
                 }
-            m.hw.push_back({int(k), nullptr, 0, &m.sim->unit<units::Gather>(units::tile_unit(k, "gather")).in, false});
+            m.hw.push_back({int(k), nullptr, 0, nullptr, false, &m.sim->unit<units::Director>(units::tile_unit(k, "dir"))});
             m.checker->fifo_names.push_back(t + "gather-q");
         }
         if (!c.special_tiles) {
@@ -402,9 +403,8 @@ void Chip::Impl::collect_overflows() {
         uint64_t first = 0;
         bool flag = false;                                // the FIFO has overflowed
         if (h.router) { first = h.router->q[h.q].first_overflow; flag = first != 0; }
-        // (a machine split over threads: the framework reads a FIFO's overflows in one domain only. Those two FIFOs a tile
-        // are not lost from sight: the write engine's overflow stops the simulator, the gather queue's sets
-        // ERRORS.gather_overflow, whose fact the tile control unit records)
+        else if (h.dir) { first = h.dir->gather_first_overflow; flag = first != 0; }   // the gather queue
+        // (a machine split over threads: the framework reads a FIFO's overflows in one domain only)
         else if (split) continue;
         else { sim::Cycle f = sim::kNoCycle; sim->fifo_overflows(*h.in, &f); first = f; flag = f != sim::kNoCycle; }
         if (!flag) continue;

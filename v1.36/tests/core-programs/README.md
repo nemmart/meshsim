@@ -12,6 +12,8 @@ is the RTL test's memory and devices with its ideal timing (`tests/core_programs
 
 - each program's pass;
 - the cycle of its result and the instructions retired by then, equal to the RTL's (`PROGRAMS`);
+- every change of `wfi_sleeping` and of `core_status_canonical_wait` in the interrupt programs in the same cycle as the
+  RTL's (`WAITS`);
 - every instruction retired and every trap taken in the same cycle as the RTL's, with the same address, instruction
   word, cause and `mtval`: each program's whole trace, by its hash (`RETIRE.sha256`), and eight programs' line by line
   (`retire/`), so that a difference names its first cycle;
@@ -31,6 +33,7 @@ is the RTL test's memory and devices with its ideal timing (`tests/core_programs
 | `PROGRAMS` | per program: the cycle of its result and the instructions retired | the RTL's `program_test`, instrumented to print them |
 | `RETIRE.sha256` | per program: the hash of its retire trace | the same run |
 | `retire/*.rtl` | eight programs' retire traces in full | the same run |
+| `WAITS` | the interrupt programs' waits: each cycle `wfi_sleeping` or `core_status_canonical_wait` changes in, with both | the RTL's `program_test`, instrumented to print them (step 5) |
 | `BENCH` | CoreMark's report on the benchmark run | `rtl/blocks/core/baseline/bench.toml` |
 | `elf/boot_rom.elf` | the RTL's boot ROM (`rtl/blocks/core/src/boot_rom.S`) | `mise run core-images` (`build/core-tests/boot_rom.elf`) |
 | `BOOT` | the boot ROM's cycles on the RTL's block `core` | `rtl/blocks/core/README.md`, "The boot ROM's program" (`boot_rom_program_test`'s figures) |
@@ -75,5 +78,11 @@ configuration (32 KiB IMEM and DMEM), with its pinned tools (xPack `riscv-none-e
    -march=rv32ic_zicond_zicsr_zmmul -mabi=ilp32 -nostdlib -nostartfiles -static -Wl,--build-id=none
    -Wl,--defsym=IMEM_BYTES=0x8000 -Wl,--defsym=DMEM_BYTES=0x8000 -T rtl/blocks/core/test/programs/firmware/link.ld`)
    and run by `program_test` as in step 2, with the event trigger.
+
+5. `WAITS` (2026-11-15, Snarky One at `076e647`): `program_test`, changed as in steps 2 and 4 and to print, in every
+   cycle `wfi_sleeping` or `core_status_canonical_wait` differs from the cycle before, the program, the loop's cycle
+   index and both (`PROGRAM_TEST_WAITS`), ran the four interrupt programs in its ideal-timing run. `nmi_run` never
+   waits. In all 31 waits the level rises the cycle after `wfi_sleeping`: at the tile's timing no fetch is outstanding
+   when the wait begins.
 
 **The fixtures can be verified here but not regenerated:** that takes Snarky One, its tools and the two changes above.

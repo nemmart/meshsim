@@ -25,8 +25,8 @@ its machine through them.
 | the request unit's queues, the request tree (a cycle a node, the root's credits) and the receive queues | `reqbus.h` | **v1.36** 11 |
 | the scratchpad: banks of min(size, 512 KiB), a write done in its cycle and winning its bank, a read's row `READ_LATENCY` after its take, no queue | `big_sram.h` | **v1.36** 15 |
 | the DMA unit's address generator: the read-ahead and its places, the lead-ins, the timetable, a refused read shifting every later time, the end | `ag.h` | **v1.36** 8.2–8.5 |
-| the gather unit | `gather.h` | **v1.36** 13 |
-| the inject unit: the read arbiter (a write at the read's bank, a token, the gather unit busy), the tokens, the return line, the injection point with the write unit's `packet_ready` | `inject.h`, `inject.cpp` | **v1.36** 14 |
+| the gather unit: the queue, the offer register (a request leaves the queue when the register takes its first read), the queue's room for the traffic director | `gather.h` | **v1.36** 13 |
+| the inject unit: the read arbiter (a write at the read's bank, a token, the gather unit busy; `ERRORS.drift`'s pulse for a group transfer's read it does not take), the tokens, the return line, the injection point with the write unit's `packet_ready` | `inject.h`, `inject.cpp` | **v1.36** 14 |
 | the read clients' request words, and the ports between a tile's control part and its inject unit | `mem.h` | **v1.36** 14.1 |
 | the router: the RTL's `router`: route blocks, each output's queues and round-robin arbiter, the loopback queue, the overflow in the push's cycle, the attach port (tiles 0, 7, 15), a special tile's router with its DMA inputs and their ready | `router.h`, `router.cpp` | **v1.36** 16 |
 | the traffic director: the switch, the counters' delay line, `PTR`'s and `HIST`'s requests in the cycle it accepts a packet | `director.h` | **v1.36** 12.3–12.5 |

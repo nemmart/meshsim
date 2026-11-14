@@ -37,6 +37,9 @@ constexpr unsigned kReadReqWidth = 2;
 // A client's request words (SRAMReadQueue.reqA/reqB): a = source chunk (21) | width (2) << 21 | mode (3) << 23 |
 // counter (3) << 26 | dst (7) << 29; b = the outgoing packet's 32-bit address (mode 0; otherwise 0). Width is the size
 // code: 0 32 bits, 1 64, 2 128, 3 undefined (a zero-width read: no access, payload 0).
+// A_GROUP, the address generator's alone: the read is a group transfer's, so a cycle it is offered and not taken is
+// drift (8.4; the RTL's address_generator: `drift = group_valid && !read_request_ready`), which the arbiter signals.
+constexpr uint64_t A_GROUP = uint64_t(1) << 36;
 inline uint64_t req_a(uint32_t src_chunk, uint32_t width, uint32_t mode, uint32_t counter, uint32_t dst) {
     return uint64_t(src_chunk & 0x1FFFFF) | uint64_t(width & 3) << 21 | uint64_t(mode & 7) << 23 |
            uint64_t(counter & 7) << 26 | uint64_t(dst & 0x7F) << 29;
@@ -75,6 +78,10 @@ struct MemIO {
     sim::LinkOut wr_note;              // the write engine: its write of the next cycle, width 1, Link(1) (inject.h)
     sim::LinkOut gather_note;          // the director: a GATHER accepted, width 0, Link(1) (inject.h)
     sim::RegIn gather_srq_busy;        // the register block: gather Hold occupied or a gather read in flight, width 1
+    bool has_gather_taken = false;     // the one below is given (a tile with the gather unit)
+    sim::WireIn gather_taken;          // the gather unit: the arbiter's takes of its reads (inject.h, gather.h)
+    bool has_drift = false;            // the one below is given (a tile with the tile control unit)
+    sim::LinkIn drift;                 // the tile control unit: ERRORS.drift's pulse, width 0, Link(1) (inject.h)
     sim::CountIn rp_injected;          // the core: read-port returns injected (ReadPort.injectedAt), read through t - 1
 };
 

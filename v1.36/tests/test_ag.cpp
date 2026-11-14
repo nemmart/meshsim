@@ -4,7 +4,9 @@
 //
 // THE BENCH: stand-ins around the unit: the tile control unit's `dma` RegFile and `start` Wire, the table store's
 // STREAM, GROUP and PTR RegFiles, the read arbiter's client 1 (taking the read offered, or refusing it on the cycles a
-// case names), and the tile control unit's inputs (status, drift).
+// case names), and the tile control unit's input (status). ERRORS.drift's pulse is the read arbiter's, for a read the
+// generator marks a group transfer's (mem::A_GROUP): the mark is checked here, the pulse's cycle on the whole tile
+// (test_mach).
 //
 // THE CYCLES. E is the cycle DMA_START's store is presented in: the cycle before the tile control unit drives `start`
 // (it drives it at the edge that ends E: tile_ctl.h). A store issued in t is presented in E = t + 1 (6.4), so with
@@ -96,14 +98,13 @@ struct Arb {
         return Wake::none();
     }
 };
-// The tile control unit's side of the generator's outputs: each new status with the cycle it is seen, the drift events.
+// The tile control unit's side of the generator's outputs: each new status with the cycle it is seen.
 struct Mon {
-    RegIn status; LinkIn drift;
-    std::vector<std::pair<Cycle, Word>> st; std::vector<Cycle> drift_at;
-    explicit Mon(Ports& p) { p.in(status, "status", 1); p.in(drift, "drift", 0); }
-    uint64_t digest() const { return hash_fields(uint64_t(st.size()), uint64_t(drift_at.size())); }
+    RegIn status;
+    std::vector<std::pair<Cycle, Word>> st;
+    explicit Mon(Ports& p) { p.in(status, "status", 1); }
+    uint64_t digest() const { return hash_fields(uint64_t(st.size())); }
     Wake step(Ctx& c) {
-        if (c.ready(drift)) { drift_at.push_back(c.now()); c.take(drift); }
         if (c.valid(status) && (st.empty() || st.back().second != c.read(status)[0])) st.push_back({c.now(), c.read(status)[0]});
         return Wake::none();
     }
@@ -128,7 +129,7 @@ struct Bench {
         c.connect(b.dma, a.dma); c.connect(b.start, a.start);
         c.connect(t.view, a.view); c.connect(t.ptr, a.ptr);
         c.connect(a.rd, s.in);
-        c.connect(a.status, m.status); c.link(a.drift, m.drift, 1);
+        c.connect(a.status, m.status);
         c.missed_wake_after("arb", 0);
         return c.build();
     }
@@ -176,7 +177,7 @@ TEST(a_stream_transfer_lead_in_elements_gap_and_end) {
         for (size_t j = 0; j < 5; j++) { CHECK_EQ(b.got()[j].a, a0[j]); CHECK_EQ(b.got()[j].b, b0[j]); }
         CHECK(status_is(b.mon(), F + 6));
         CHECK_EQ(b.sim.unit<AddrGen>("ag").violations(), 0u);
-        CHECK(b.mon().drift_at.empty());
+        CHECK_EQ(b.sim.unit<AddrGen>("ag").drift_events, uint64_t(0));   // (a0: a stream transfer's reads are not marked)
     }
 }
 
@@ -293,7 +294,8 @@ TEST(a_group_transfer_lead_in_and_rotations) {
         for (size_t j = 0; j < 4; j++) CHECK_EQ(mem::a_addr(b.got()[j].a), want[j]);
         CHECK_EQ(mem::a_dst(b.got()[0].a), 5u);                     // dst 0: the tile itself
         CHECK(status_is(b.mon(), F + 3));
-        CHECK(b.mon().drift_at.empty());
+        for (const auto& r : b.got()) CHECK((r.a & mem::A_GROUP) != 0);   // a group transfer's reads: a refused one is drift
+        CHECK_EQ(b.sim.unit<AddrGen>("ag").drift_events, uint64_t(0));
     }
 }
 
@@ -356,7 +358,8 @@ TEST(a_refused_read_shifts_every_later_time_in_a_stream_transfer) {
         b.sim.run(80);
         CHECK(taken_at(b.got(), {F, F + 4, F + 7, F + 8}));         // then the gap's two cycles, F + 5 and F + 6
         CHECK(status_is(b.mon(), F + 8));
-        CHECK(b.mon().drift_at.empty());
+        for (const auto& r : b.got()) CHECK((r.a & mem::A_GROUP) == 0);   // a stream transfer's refused read is no drift
+        CHECK_EQ(b.sim.unit<AddrGen>("ag").drift_events, uint64_t(0));
         CHECK_EQ(b.sim.unit<AddrGen>("ag").stall_cycles, uint64_t(3));
     }
 }
@@ -375,7 +378,7 @@ TEST(a_refused_visit_shifts_the_rotations_and_is_drift) {
         b.sim.run(80);
         CHECK(taken_at(b.got(), {F + 2, F + 4, F + 8}));
         CHECK(status_is(b.mon(), F + 8));
-        CHECK_EQ(b.mon().drift_at.size(), size_t(2));               // one for each refused cycle
+        for (const auto& r : b.got()) CHECK((r.a & mem::A_GROUP) != 0);   // each refused cycle of such a read is drift
         CHECK_EQ(b.sim.unit<AddrGen>("ag").drift_events, uint64_t(2));
     }
 }

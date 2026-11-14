@@ -53,12 +53,12 @@ $(B)/test_statefp_core: $(FP_OBJ) $(B)/tests/statefp_g1.o $(UNITS_LINK) $(GOLDEN
 $(B)/test_g1_tile $(B)/test_tile_slot $(B)/test_tileslotconf: $(UNITS_LINK)
 $(B)/test_g1_replay: $(FP_OBJ) $(B)/tests/statefp_g1.o $(UNITS_LINK) $(GOLDEN_OBJ)
 
-# the replayer (src/units/replayer.*), its tests and the conformance tool (tests/replayconf_main.cpp: a
-# ReplayConf script replayed on the C++ replayer; oracle/ref/replayconf.sh writes ref's side).
+# the replayer (src/units/replayer.*), its tests and the conformance tool (tests/replayconf_main.cpp: a replayconf
+# script made, or replayed on the model; the RTL's side is tests/replayer/README.md's).
 REPLAYER_LINK := $(B)/src/units/replayer.o
 $(B)/test_replayer $(B)/test_replayconf: $(REPLAYER_LINK) $(B)/tests/statefp.o
 $(B)/test_replayer: $(B)/src/units/replay_tables.o
-$(B)/replayconf: $(B)/tests/replayconf_main.o $(REPLAYER_LINK) $(B)/tests/statefp.o $(LIB_OBJ)
+$(B)/replayconf: $(B)/tests/replayconf_main.o $(REPLAYER_LINK) $(B)/tests/statefp.o $(B)/src/units/replay_tables.o $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 all: $(B)/replayconf
 # Stage A's C++ driver (tests/replay_delivery_main.cpp): a delivery's windows on the C++ replayer, ref's lines.

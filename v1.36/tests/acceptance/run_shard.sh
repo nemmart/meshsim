@@ -15,8 +15,8 @@
 #     -M  the manifest file (default DELIVERY/manifest.json, else DELIVERY/PROGRAM.manifest.json). The per-program one is
 #         stable while a later writer task rewrites the combined manifest.json
 #     -x  K: also stage F (the full chip) on every window whose index is a multiple of K, its cycles checked against B
-#     -q  512: the 8 KB-log control (v1.25's read-log and write-log queues, replay-8k's controller), for the stall
-#         comparison (V3-12); default 256, v1.26's 4 KB
+#     -q  the log queues' entries: 256 only in v1.36 (REPLAY_QUEUE_ENTRIES; the 512-entry control was v1.35's model's,
+#         and the replayer refuses another size)
 #     -g  N: Stage B fails a window, as starved, when a running pass delivers no row for N cycles (default 50000; CL4).
 #         The largest normal gap measured is ~1,100 cycles (synthetic windows); each window's is in results.csv
 # Every file a window's replay reads is checked against the manifest's SHA-256 first (replay_shard). Writes

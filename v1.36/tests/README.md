@@ -60,8 +60,8 @@ runs on it (`../PENDING-v1.36.md` says which fixtures and tests are pending, and
 | `portconf/`, `routerconf/`, `memconf/`, `engconf/`, `slotconf/`, `cncconf/`, `cnc1conf/` | conformance scripts and observations: the port kinds, the router, the memory path, the engines, the peripheral slot, C&C's model, C&C 1's peripheral |
 | `tileslotconf/` | a tile's controller with its slot: programs and observations |
 | `reqconf/` | the request bus under five loads (calm, drop, fan-in, full, mix) |
-| `tracerconf/`, `tracerparts/` | the Tracer's cases and its parts (the LRU coder, the memory system) |
-| `replayer/` | the replayer's suites: row cases, the ALU sweep and reports |
+| `replayer/` | the replayer's fixtures: the conformance scripts with the RTL's observations of them, the ALU sweep and reports (its `README.md`) |
+| `tracerparts/` | the Tracer's parts (the LRU coder, the memory system, the RVC expansion) |
 | `ctlsuites/`, `p2suites/`, `p4suites/`, `tracersuites/`, `stageb/` | v1.3's suite logs, the references of `run_tests.sh --check`; `PROVENANCE` in each says how they were made |
 | `ctl/` | the control suites' sources (code, not fixtures) |
 | `sort/` | the sort's fingerprints and its kit's references (its `README.md`) |
@@ -79,3 +79,18 @@ Every fixture was generated from v1.3's Java simulator by the scripts of the ora
 frozen copy; they are in the repository's history at the commit that froze this folder
 (`git log --diff-filter=A --format=%h -- v1.35/README.md` names it). `PROVENANCE` files and the `RUNS` lists name each
 fixture's command and `ref`'s commit. **The frozen copy can verify its fixtures but not regenerate them.**
+
+## The Tracer in v1.36
+
+The Tracer is a model of the RTL's (Snarky One's `rtl/blocks/tracer_unit`), so its evidence is the RTL and spec 17.9,
+not v1.3's Java model:
+- **`tracer_block`** (`tests/tracer_block_main.cpp`, `tests/tracerblock/`): real workloads' segments on the RTL
+  acceptance test's bench (`tests/tracer_block.h`), every run's cycles and counters against the RTL's own.
+- **`suite_tracer`** and **`test_tracer_rules`**: hand-built guests on the same bench (`tests/tracer_rig.h`), each
+  expectation from spec 17.9 or, where it gives no number, the RTL's source, as closed forms in the fill port's
+  latency; `test_tracer_rules` holds the rules v1.36 changed and the timing of 17.9.7.
+- **`test_tracer`**: the interface to the slot, the wake rule, `observe()` and the fingerprint.
+- **`tests/tracer_teeth.sh`** plants v1.35's behaviour and timing slips in the Tracer, one at a time, and requires
+  these tests to fail on each.
+The replay of the Java reference Tracer's call logs (the tracerconf fixtures) is retired with the v1.35 hardware it
+modelled.

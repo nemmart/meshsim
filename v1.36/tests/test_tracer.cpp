@@ -1,510 +1,270 @@
-// test_tracer.cpp: the C++ Tracer against `ref`'s, cycle by cycle.
+// test_tracer.cpp: the Tracer's interface to its slot (tracer.h): the landing at t + 2, the settling rule, the static
+// word map; its wake rule (`must_step`); and what a test of state compares, `observe()` and the canonical
+// `fingerprint()`.
 //
-// tests/tracerconf/*.log.gz come from oracle/ref/TracerConf.java (oracle/ref/tracerconf.sh --fixtures): `ref`'s Tracer
-// driven through its Peripheral interface, every call and its result recorded, and its state observed after every cycle.
-// This test replays the calls on the C++ Tracer (with its own FileStore and MemSystem, restored from the log's store
-// dumps) and requires every result, every store check and every observation to be equal. A call `ref` refused with
-// UndefinedBehavior must be FATAL here: it is made in a forked child, and the parent goes on without it.
-//
-// cases.log.gz: TracerTest's ten cases, run by ref's own TracerRig (TracerConf's copies, the Tracer replaced by a
-// recording proxy); TracerTest's 180 assertions pass on ref's side when the fixture is made.
-#include <sys/wait.h>
-#include <unistd.h>
-
-#include <cerrno>
-#include <cstdarg>
+// v1.36: the Tracer is a model of the RTL's (Snarky One's rtl/blocks/tracer_unit), checked against the RTL itself
+// (tracer_block's references, tests/tracerblock/) and against spec 17.9 (suite_tracer, test_tracer_rules). The replay
+// of the Java reference Tracer's call logs that was here (tests/tracerconf/*.log.gz, the v1.35 hardware's, cycle for
+// cycle) is retired with that hardware.
+// Run from v1.36/.
+#include <cstdint>
 #include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <map>
-#include <type_traits>
 #include <memory>
-#include <string>
 #include <vector>
 
-#include "base/alloc_guard.h"
 #include "harness.h"
 #include "statefp.h"
-#include "units/file_store.h"
-#include "units/mem_system.h"
+#include "tracer_rig.h"
 #include "units/tracer.h"
 
-using units::tracer::FileStore;
-using units::tracer::MemSystem;
-using units::tracer::Tracer;
+using namespace tracer_rig;
 
 namespace {
 
-const char* const kObsNames[Tracer::OBS_N] = {
-    "errors", "running", "stopped", "rowsDone", "busyUntil", "waitUntil", "statUntil", "presented", "expansionOffset",
-    "latch", "rqOcc", "rqHalf", "eqOcc", "expDiscard", "q0ptr", "xferLeft", "codeN", "logN", "rows", "instrs", "iMiss",
-    "dMiss", "writebacks", "lruHits", "lruMisses", "probeReads", "stat0", "stat1", "stat2", "stat3", "stat4", "stat5",
-    "stat6", "stat7", "stall.ifetch", "stall.dmiss", "stall.bus", "stall.probe", "stall.advice", "stall.newexp",
-    "stall.exp", "oq1.occ", "oq1.pushed", "oq2.occ", "oq2.pushed", "oq3.occ", "oq3.pushed", "errorLog", "violations",
-    "recHash", "ev0", "ev1", "ev2", "ev3", "ev4", "ev5", "ev6", "ev7", "ev8", "ev9", "ev10"};
-constexpr int kCounterLo = 26, kCounterHi = 40;  // stat[] and stalls[]: masked within a group, compared at its end
+constexpr int64_t CODE = 0x80000000LL, DATA = 0x80001000LL;
+constexpr uint32_t CSR = 0x305090f3;   // CSRRW x1, mtvec, x1: core-fed
+using RigP = std::unique_ptr<Rig>;
 
-uint64_t hx(const std::string& s) { return std::strtoull(s.c_str(), nullptr, 16); }
-int64_t dec(const std::string& s) { return std::strtoll(s.c_str(), nullptr, 10); }
-std::vector<std::string> split(const std::string& s, char sep) {
-    std::vector<std::string> v;
-    size_t a = 0;
-    while (true) {
-        size_t b = s.find(sep, a);
-        v.push_back(s.substr(a, b == std::string::npos ? std::string::npos : b - a));
-        if (b == std::string::npos) break;
-        a = b + 1;
-    }
-    return v;
+// A guest with every kind of work: a core-fed CSR, a loop of stores and loads over 3 lines and its taken branches (a
+// probe, then LRU hits), a DIV with its advice, the end and padding.
+Prog guest() {
+    Prog p(CODE);
+    p.w({CSR, addi(1, 0, 3), sd(1, 2, 0), ld(3, 2, 0), addi(2, 2, 128), addi(1, 1, -1), bne(1, 0, -16),
+         addi(5, 0, 100), addi(6, 0, 7), div(7, 5, 6), END});
+    return p;
+}
+void build(Rig& g, const Prog& p) {
+    Pages pages;
+    pages.poke(CODE - g.lowest, p.bytes());
+    pages.put(DATA - g.lowest, std::vector<uint64_t>(512, 0));
+    g.build_image(pages, {DATA - g.lowest});
+    if (p.parcels.size() > 2) g.build_map({{p.pc_of(2), g.bases(p)[2]}});   // the guests' one target, their third instruction
+    else g.build_map({});
+    g.load_tables();
+}
+void start(Rig& g, const Prog& p) {
+    uint64_t regs[128] = {};
+    regs[2] = uint64_t(DATA);
+    g.load_record(CODE, int32_t(g.bases(p)[0]), 0, regs, {14});
+}
+uint64_t fp_of(const Tracer& tr, int unit, int64_t c) {
+    fp::FpOut o;
+    tr.fingerprint(unit, o, c);
+    return o.done();
 }
 
-// A Tracer call under the allocation hook (D6: the cycle loop and every peripheral call allocate nothing).
-template <class F>
-auto guarded(F f) {
-    sim::begin_run();
-    if constexpr (std::is_void_v<decltype(f())>) {
-        f();
-        sim::end_run();
-    } else {
-        auto r = f();
-        sim::end_run();
-        return r;
+// Every cycle's state, as a list: observe()'s fields hashed, and the fingerprint's units 0-2.
+struct Trace {
+    Rig* g;
+    bool fingerprints;
+    std::vector<uint64_t> v;
+    static void hook(void* ctx, int64_t n) {
+        Trace& t = *static_cast<Trace*>(ctx);
+        int64_t obs[Tracer::OBS_N];
+        t.g->tr.observe(obs);
+        uint64_t h = 17;
+        for (int64_t x : obs) h = h * 31 + uint64_t(x);
+        t.v.push_back(h);
+        if (t.fingerprints)
+            for (int u = 0; u < 3; u++) t.v.push_back(fp_of(t.g->tr, u, n));
     }
-}
-
-struct Rig {
-    std::map<int64_t, std::string> fp_due;  // cycle -> ref's five unit hashes, compared after that cycle
-    std::string fe;                         // the end's check: "c h0 .. h4"
-    std::unique_ptr<FileStore> fs;
-    std::unique_ptr<MemSystem> ms;
-    std::unique_ptr<Tracer> tr;
-    bool dead = false;
-    std::map<int, std::vector<std::string>> dumps;  // dump k: its F line and page lines
 };
-
-uint64_t store_hash(const FileStore& fs) {
-    uint64_t h = 17;
-    for (int64_t a = fs.first(); a < fs.next_free(); a += FileStore::PAGE_UNITS) {
-        h = h * 31 + uint64_t(a);
-        const uint64_t* p = fs.raw_page(int32_t(a));
-        for (int i = 0; i < FileStore::PAGE_WORDS; i++) h = h * 31 + p[i];
-    }
-    return h;
-}
-
-class Replay {
-public:
-    explicit Replay(const char* name) : name_(name) {}
-    bool failed = false;
-    int64_t groups = 0, cycles = 0, calls = 0, ubs = 0;
-
-    void fail(const char* fmt, ...) __attribute__((format(printf, 2, 3))) {
-        char msg[1024];
-        va_list ap;
-        va_start(ap, fmt);
-        std::vsnprintf(msg, sizeof msg, fmt, ap);
-        va_end(ap);
-        ::test::fail(__FILE__, __LINE__, "%s line %zu: %s", name_, line_no_, msg);
-        failed = true;
-    }
-
-    // Reads the log line by line (a file, a pipe or a FIFO being written: logs of real runs are too big to hold).
-    void run(FILE* in) {
-        std::string pending_c;
-        size_t pending_c_no = 0;
-        char* buf = nullptr;
-        size_t cap = 0;
-        ssize_t len;
-        while (!failed && (len = getline(&buf, &cap, in)) >= 0) {
-            std::string line(buf, size_t(len));
-            if (!line.empty() && line.back() == '\n') line.pop_back();
-            line_no_++;
-            if (line.compare(0, 5, "# end") == 0) ended = true;
-            if (line.empty() || line[0] == '#') continue;
-            if (line[0] == 'c') {
-                pending_c = line;
-                pending_c_no = line_no_;
-                continue;
-            }
-            if (line[0] == 'o') {
-                if (pending_c.empty()) { fail("an o line without its group"); return; }
-                const size_t here = line_no_;
-                line_no_ = pending_c_no;
-                group(pending_c, line);
-                line_no_ = here;
-                pending_c.clear();
-                continue;
-            }
-            const auto f = split(line, ' ');
-            Rig& r = rigs_[int(dec(f[1]))];
-            if (f[0] == "N") {
-                r.fs = nullptr;  // the store comes with dump 0
-                r.tr = std::make_unique<Tracer>(int(dec(f[2])), int(dec(f[3])), 1 << 12);
-                r.tr->cold_mem_on_state_write = true;
-                cur_dump_ = nullptr;
-            } else if (f[0] == "F") {
-                cur_dump_ = &r.dumps[int(dec(f[2]))];
-                cur_dump_->push_back(line);
-            } else if (f[0] == "fp") {
-                r.fp_due[dec(f[2])] = line.substr(line.find(' ', line.find(' ', 3) + 1) + 1);
-            } else if (f[0] == "fe") {
-                r.fe = line.substr(line.find(' ', 3) + 1);
-            } else if (f[0] == "P" || f[0] == "Z") {
-                if (!cur_dump_) { fail("a page line outside a dump"); return; }
-                cur_dump_->push_back(line);
-            } else {
-                fail("an unknown line: %.40s", line.c_str());
-                return;
-            }
-        }
-        while (failed && getline(&buf, &cap, in) >= 0) {}  // a writer on a FIFO must not block on a reader that stopped
-        std::free(buf);
-        if (!pending_c.empty() && !failed) fail("a group without its observation at the end");
-        for (auto& [id, r] : rigs_) {
-            if (failed) return;
-            if (!r.fp_due.empty() && !r.dead) { fail("rig %d: a fingerprint at cycle %lld never reached", id, (long long)r.fp_due.begin()->first); return; }
-            if (!r.fe.empty() && !r.dead) {
-                const size_t sp = r.fe.find(' ');
-                if (!check_fp(r, dec(r.fe.substr(0, sp)), r.fe.substr(sp + 1))) return;
-            }
-        }
-    }
-    int64_t fps = 0;
-    bool ended = false;  // the log's "# end" line: ref's run finished (not cut off)
-
-private:
-    // A store dump: dump 0 (the rig's first) builds the store, when the rig's first group runs (its pages follow its F
-    // line); a later one (an F,k token) must agree with every page the store has and adds the pages the harness
-    // allocated since.
-    bool ensure_store(Rig& r) {
-        if (r.fs) return true;
-        auto it = r.dumps.find(0);
-        if (it == r.dumps.end()) { fail("no store dump before the rig's first call"); return false; }
-        const auto f = split(it->second[0], ' ');
-        r.fs = std::make_unique<FileStore>(int32_t(dec(f[3])));
-        r.ms = std::make_unique<MemSystem>(r.fs.get());
-        r.tr->mem = r.ms.get();
-        return load_dump(r, 0, /*fresh=*/true);
-    }
-    bool load_dump(Rig& r, int k, bool fresh) {
-        auto it = r.dumps.find(k);
-        if (it == r.dumps.end()) { fail("store dump %d not found", k); return false; }
-        const auto& lines = it->second;
-        const auto f = split(lines[0], ' ');
-        const int64_t first = dec(f[3]), next = dec(f[4]);
-        if (first != r.fs->first()) { fail("dump %d: first page 0x%llx, ours 0x%x", k, (long long)first, r.fs->first()); return false; }
-        const int64_t old_next = fresh ? first : r.fs->next_free();
-        r.fs->grow_to(next);
-        int64_t expect = first;
-        for (size_t i = 1; i < lines.size(); i++) {
-            const auto p = split(lines[i], ' ');
-            const int64_t addr = dec(p[2]);
-            if (addr != expect) { fail("dump %d: page 0x%llx missing", k, (long long)expect); return false; }
-            expect += FileStore::PAGE_UNITS;
-            uint64_t page[FileStore::PAGE_WORDS] = {};
-            if (p[0] == "P")
-                for (int w = 0; w < FileStore::PAGE_WORDS; w++) page[w] = hx(p[size_t(3 + w)]);
-            uint64_t* ours = r.fs->raw_page(int32_t(addr));
-            if (addr < old_next) {
-                for (int w = 0; w < FileStore::PAGE_WORDS; w++)
-                    if (ours[w] != page[w]) {
-                        fail("dump %d: page 0x%llx word %d: ref 0x%llx, ours 0x%llx", k, (long long)addr, w,
-                             (unsigned long long)page[w], (unsigned long long)ours[w]);
-                        return false;
-                    }
-            } else {
-                std::memcpy(ours, page, sizeof page);
-            }
-        }
-        if (expect != next) { fail("dump %d: pages end at 0x%llx, next free 0x%llx", k, (long long)expect, (long long)next); return false; }
-        r.fs->track_sum(true);  // the dump wrote the pages directly: rescan, then keep it at every write-back
-        return true;
-    }
-
-    // Runs `fn` in a child that must die by SIGABRT with `want` in its stderr ("undefined behaviour" for ref's
-    // UndefinedBehavior, "FATAL" for its IllegalStateException).
-    template <class Fn>
-    bool expect_ub(Fn fn, const char* want = "undefined behaviour") {
-        int pipefd[2];
-        if (pipe(pipefd) != 0) { fail("pipe: %s", std::strerror(errno)); return false; }
-        std::fflush(nullptr);
-        const pid_t pid = fork();
-        if (pid == 0) {
-            close(pipefd[0]);
-            dup2(pipefd[1], 2);
-            fn();
-            _exit(3);
-        }
-        close(pipefd[1]);
-        std::string err;
-        char buf[4096];
-        ssize_t n;
-        while ((n = read(pipefd[0], buf, sizeof buf)) > 0) err.append(buf, size_t(n));
-        close(pipefd[0]);
-        int status = 0;
-        waitpid(pid, &status, 0);
-        if (!WIFSIGNALED(status) || WTERMSIG(status) != SIGABRT || err.find(want) == std::string::npos) {
-            fail("a call ref stopped on (%s) was not FATAL here (status %d): %.200s", want, status, err.c_str());
-            return false;
-        }
-        ubs++;
-        return true;
-    }
-
-    // One token's call at cycle t (its group's cycle). Returns false on a mismatch.
-    bool call(Rig& r, const std::string& tok0, int64_t t) {
-        std::string tok = tok0;
-        const bool ub = !tok.empty() && (tok.back() == '!' || tok.back() == '%');
-        const char* want = !tok.empty() && tok.back() == '%' ? "FATAL" : "undefined behaviour";
-        if (ub) tok.pop_back();
-        std::string lhs = tok, res;
-        const size_t eq = tok.find('=');
-        if (eq != std::string::npos) { lhs = tok.substr(0, eq); res = tok.substr(eq + 1); }
-        auto args = split(lhs, ',');
-        std::string name = args[0];
-        const size_t at = name.find('@');
-        if (at != std::string::npos) { t += dec(name.substr(at + 1)); name = name.substr(0, at); }
-        Tracer& tr = *r.tr;
-        calls++;
-        auto mismatch = [&](const std::string& ours) {
-            fail("cycle %lld, %s: ref %s, ours %s", (long long)t, tok0.c_str(), res.c_str(), ours.c_str());
-            return false;
-        };
-        char b[80];
-        if (ub) {
-            if (name == "st") { r.dead = true; return expect_ub([&] { tr.step(t); }, want); }
-            if (name == "os") return expect_ub([&] { tr.out_start(t, int(dec(args[1])), dec(args[2])); });
-            if (name == "a") return expect_ub([&] { tr.accept(t, int(dec(args[1])), uint32_t(hx(args[2])), int(dec(args[3])), hx(args[4]), hx(args[5])); tr.step(t + 2); tr.step(t + 3); });
-            if (name == "u") { r.dead = true; return expect_ub([&] { tr.run(t); tr.step(t + 1); }); }
-            fail("a UB token %s not handled", tok0.c_str());
-            return false;
-        }
-        if (name == "st") { guarded([&] { tr.step(t); }); return true; }
-        if (name == "u") { guarded([&] { tr.run(t); }); return true; }
-        if (name == "sy") { guarded([&] { tr.sync(t); }); return true; }
-        if (name == "a") {
-            const int src = int(dec(args[1])), size = int(dec(args[3]));
-            const uint32_t off = uint32_t(hx(args[2]));
-            const uint64_t lo = hx(args[4]), hi = hx(args[5]);
-            guarded([&] { tr.accept(t, src, off, size, lo, hi); });
-            return true;
-        }
-        if (name == "ww") {
-            const int w = int(dec(args[1]));
-            const uint32_t x = uint32_t(hx(args[2]));
-            const int v = guarded([&] { return tr.write_word(t, w, x); });
-            return v == dec(res) ? true : mismatch(std::to_string(v));
-        }
-        if (name == "wr") {
-            uint32_t v = 0;
-            const int w = int(dec(args[1]));
-            const bool def = guarded([&] { return tr.word(t, w, v); });
-            std::snprintf(b, sizeof b, "%x", v);
-            const std::string ours = def ? b : "-";
-            return ours == res ? true : mismatch(ours);
-        }
-        if (name == "rn") { const int v = guarded([&] { return tr.running(t); }); return v == dec(res) ? true : mismatch(std::to_string(v)); }
-        if (name == "er") { const int v = guarded([&] { return tr.errors(t); }); return uint64_t(uint32_t(v)) == hx(res) ? true : mismatch(std::to_string(v)); }
-        if (name == "re") { const int v = guarded([&] { return tr.rows_ended(t); }); return v == dec(res) ? true : mismatch(std::to_string(v)); }
-        if (name == "ev") {
-            const uint32_t v = guarded([&] { return tr.events().value(t); });
-            std::snprintf(b, sizeof b, "%x", v);
-            return v == hx(res) ? true : mismatch(b);
-        }
-        if (name == "co") {
-            const uint32_t bits = uint32_t(hx(args[1]));
-            guarded([&] { return tr.consume_events(bits); });
-            return true;
-        }
-        if (name == "wb") { const int n = guarded([&] { return tr.write_back_dirty_untimed(); }); return n == dec(res) ? true : mismatch(std::to_string(n)); }
-        if (name == "os") {
-            const int q = int(dec(args[1]));
-            const int64_t n = dec(args[2]);
-            guarded([&] { tr.out_start(t, q, n); });
-            return true;
-        }
-        if (name == "or") { const int q = int(dec(args[1]));
-            const int v = guarded([&] { return tr.out_ready(t, q); }); return v == dec(res) ? true : mismatch(std::to_string(v)); }
-        if (name == "ot") {
-            uint64_t w[2] = {};
-            const int q = int(dec(args[1]));
-            if (!tr.out_ready(t, q)) return mismatch("(nothing ready)");
-            guarded([&] { tr.out_take(t, q, w); });
-            std::snprintf(b, sizeof b, "%llx,%llx", (unsigned long long)w[0], (unsigned long long)w[1]);
-            return res == b ? true : mismatch(b);
-        }
-        if (name == "H") {
-            const uint64_t h = store_hash(*r.fs);
-            std::snprintf(b, sizeof b, "%llx", (unsigned long long)h);
-            return h == hx(res) ? true : mismatch(b);
-        }
-        if (name == "F") return load_dump(r, int(dec(args[1])), false);
-        if (name == "O") {  // FileStore.setOwnership by the harness (TracerT1): made here too
-            FileStore::File f;
-            f.root = int32_t(dec(args[1]));
-            f.depth = int(dec(args[2]));
-            std::vector<int64_t> pages;
-            for (size_t k = 3; k < args.size(); k++) pages.push_back(dec(args[k]));
-            const int n = r.fs->set_ownership(f, pages);
-            r.fs->track_sum(true);  // set_ownership edits entries directly: rescan
-            return n == dec(res) ? true : mismatch(std::to_string(n));
-        }
-        if (name == "mc") { r.ms->cold(); return true; }
-        if (name == "cs") { for (auto& x : tr.stalls) x = 0; return true; }
-        fail("an unknown token %s", tok0.c_str());
-        return false;
-    }
-
-    // The five units' fingerprints at the end of cycle c against ref's (AUDIT-M3 6.6); tr.files kept incrementally
-    // must equal its scan.
-    bool check_fp(Rig& r, int64_t c, const std::string& want) {
-        const auto h = split(want, ' ');
-        if (h.size() != size_t(Tracer::FP_UNITS)) { fail("a fingerprint of %zu units", h.size()); return false; }
-        if (r.fs->files_sum() != r.fs->scan_sum()) { fail("cycle %lld: tr.files kept incrementally differs from its scan", (long long)c); return false; }
-        for (int u = 0; u < Tracer::FP_UNITS; u++) {
-            fp::FpOut o;
-            r.tr->fingerprint(u, o, c);
-            if (o.done() != hx(h[size_t(u)])) {
-                fail("cycle %lld: fingerprint unit %s: ref %s, ours %llx (dump both sides to find the word)", (long long)c,
-                     Tracer::FP_NAMES[u], h[size_t(u)].c_str(), (unsigned long long)o.done());
-                return false;
-            }
-        }
-        fps++;
-        return true;
-    }
-
-    bool compare_obs(Rig& r, const std::vector<std::string>& o, bool counters, int64_t t) {
-        int64_t ours[Tracer::OBS_N];
-        r.tr->observe(ours);
-        for (int i = 0; i < Tracer::OBS_N; i++) {
-            if (!counters && i >= kCounterLo && i <= kCounterHi) continue;
-            const bool decimal = i >= Tracer::OBS_N - 11;
-            const uint64_t want = decimal ? uint64_t(dec(o[size_t(2 + i)])) : hx(o[size_t(2 + i)]);
-            if (uint64_t(ours[i]) != want) {
-                fail("after cycle %lld: %s ref 0x%llx, ours 0x%llx", (long long)t, kObsNames[i], (unsigned long long)want,
-                     (unsigned long long)ours[i]);
-                return false;
-            }
-        }
-        return true;
-    }
-
-    void group(const std::string& cline, const std::string& oline) {
-        const auto c = split(cline, ' ');
-        const auto o = split(oline, ' ');
-        if (o.size() != size_t(2 + Tracer::OBS_N)) { fail("an observation of %zu fields", o.size() - 2); return; }
-        Rig& r = rigs_[int(dec(c[1]))];
-        if (!r.tr) { fail("a group for a Tracer never announced"); return; }
-        if (r.dead) { fail("a group for a Tracer that stopped on UB"); return; }
-        if (!ensure_store(r)) return;
-        const int64_t t0 = dec(c[2]), n = dec(c[3]);
-        const auto toks = split(c.size() > 4 ? c[4] : std::string(), ';');
-        groups++;
-        for (int64_t i = 0; i < n; i++) {
-            for (const auto& tk : toks)
-                if (!tk.empty() && !call(r, tk, t0 + i)) return;
-            cycles++;
-            if (r.dead) return;  // the step raised UB in ref: its state is no reference any more
-            if (!r.fp_due.empty() && r.fp_due.begin()->first == t0 + i) {
-                if (!check_fp(r, t0 + i, r.fp_due.begin()->second)) return;
-                r.fp_due.erase(r.fp_due.begin());
-            }
-            if (!compare_obs(r, o, i == n - 1, t0 + i)) return;
-        }
-    }
-
-    const char* name_;
-    size_t line_no_ = 0;
-    std::map<int, Rig> rigs_;
-    std::vector<std::string>* cur_dump_ = nullptr;
+// The guest's whole life on a rig: the tables, a segment, three runs (the second cut inside the DIV, the third into
+// padding), idle cycles between them, a new segment and a run of it, idle cycles after.
+struct Life {
+    std::vector<uint64_t> trace, out;
+    int64_t cycles = 0, skipped = 0;
+    bool ok = true;
 };
-
-std::string read_cmd(const std::string& cmd, bool* ok) {
-    std::string r;
-    FILE* f = popen(cmd.c_str(), "r");
-    *ok = f != nullptr;
-    if (!f) return r;
-    char b[1 << 16];
-    size_t n;
-    while ((n = std::fread(b, 1, sizeof b, f)) > 0) r.append(b, n);
-    *ok = pclose(f) == 0;
-    return r;
+// Something in flight while the Tracer is idle: a guest whose last row evicts a dirty line, whose write-back the
+// memory system answers `error` 3,000 cycles after its request, long after the run's end (17.9.9, "while idle"). Only a
+// step takes the response.
+void idle_error(Life& l, bool model, bool lazy, bool fingerprints) {
+    Prog q(CODE);
+    q.w({addi(1, 0, 128), sd(1, 2, 0), addi(2, 2, 128), addi(1, 1, -1), bne(1, 0, -12), sd(2, 2, 0)});
+    Rig h;
+    if (model) h.fill(0, 0);
+    h.bench.skip_idle_steps = lazy;
+    Trace t{&h, fingerprints, {}};
+    h.bench.on_cycle = Trace::hook;
+    h.bench.on_cycle_ctx = &t;
+    Pages pages;
+    pages.poke(CODE - h.lowest, q.bytes());
+    std::vector<int64_t> owned;
+    for (int k = 0; k < 5; k++) {
+        pages.put(DATA - h.lowest + 4096 * k, std::vector<uint64_t>(512, 0));
+        owned.push_back(DATA - h.lowest + 4096 * k);
+    }
+    h.build_image(pages, owned);
+    h.build_map({{q.pc_of(1), h.bases(q)[1]}});
+    h.load_tables();
+    uint64_t regs[128] = {};
+    regs[2] = uint64_t(DATA);
+    h.load_record(CODE, int32_t(h.bases(q)[0]), 0, regs, {});
+    h.ms.fail_write_line = (DATA - h.lowest) / 128;
+    h.ms.fail_write_delay = 3000;
+    WindowOut o;
+    l.ok = h.window(1 + 128 * 4 + 1, 400000, o) && l.ok && h.last.errors == 0 && h.last.status == 0;
+    for (int k = 0; k < 3200; k++) h.step();
+    l.ok = l.ok && h.errors() == 0x200 && h.tr.n_errors_logged == 1;   // the response came, the Tracer idle
+    l.out.push_back(uint64_t(h.tr.error_log[0].t));
+    l.out.push_back(uint64_t(h.t));
+    for (int u = 0; u < Tracer::FP_UNITS; u++) l.out.push_back(fp_of(h.tr, u, h.t - 1));
+    l.trace.insert(l.trace.end(), t.v.begin(), t.v.end());
+    l.skipped += h.bench.steps_skipped;
 }
 
-Replay replay_file(const std::string& path, const char* name) {
-    Replay rp(name);
-    const bool gz = path.size() > 3 && path.compare(path.size() - 3, 3, ".gz") == 0;
-    FILE* f = gz ? popen(("gzip -dc " + path).c_str(), "r") : std::fopen(path.c_str(), "r");
-    if (!f) { ::test::fail(__FILE__, __LINE__, "cannot read %s", path.c_str()); rp.failed = true; return rp; }
-    rp.run(f);
-    const int rc = gz ? pclose(f) : std::fclose(f);
-    if (rc != 0 && !rp.failed) { ::test::fail(__FILE__, __LINE__, "reading %s failed (%d)", path.c_str(), rc); rp.failed = true; }
-    if (!rp.ended && !rp.failed) { ::test::fail(__FILE__, __LINE__, "%s: no '# end' line: ref's run was cut off", path.c_str()); rp.failed = true; }
-    std::printf("  %s: %lld groups, %lld cycles, %lld calls, %lld fatal refusals, %lld fingerprints%s\n", name,
-                (long long)rp.groups, (long long)rp.cycles, (long long)rp.calls, (long long)rp.ubs, (long long)rp.fps,
-                rp.failed ? "" : ", all equal to ref");
-    return rp;
+Life live(bool model, bool lazy, bool fingerprints) {
+    const Prog p = guest();
+    Life l;
+    Rig g;
+    const int rows = g.expansion_length(CSR) + 1 + 3 * 5 + 2 + g.expansion_length(div(7, 5, 6)) + 1;
+    if (model) g.fill(0, 0);
+    g.bench.skip_idle_steps = lazy;
+    Trace t{&g, fingerprints, {}};
+    g.bench.on_cycle = Trace::hook;
+    g.bench.on_cycle_ctx = &t;
+    build(g, p);
+    for (int k = 0; k < 40; k++) g.step();
+    start(g, p);
+    const uint32_t runs[3] = {uint32_t(rows - 6), 3, 9};
+    for (uint32_t r : runs) {
+        WindowOut o;
+        l.ok = g.window(r | Tracer::RC_COMP_CODE, 200000, o) && l.ok;
+        for (const std::vector<uint64_t>* s : {&o.record, &o.code, &o.rlog, &o.wlog}) l.out.insert(l.out.end(), s->begin(), s->end());
+        l.out.push_back(uint64_t(g.last.done_load - g.last.start_store));
+        for (int k = 0; k < 25; k++) g.step();
+    }
+    l.ok = l.ok && g.reg(7) == 14 && g.tr.rec[0] == 0;   // the guest ran to its end
+    start(g, p);
+    WindowOut o;
+    l.ok = g.window(uint32_t(rows), 200000, o) && l.ok;
+    l.out.insert(l.out.end(), o.record.begin(), o.record.end());
+    for (int k = 0; k < 300; k++) g.step();
+    for (int u = 0; u < Tracer::FP_UNITS; u++) l.out.push_back(fp_of(g.tr, u, g.t - 1));
+    l.trace = std::move(t.v);
+    l.cycles = g.t;
+    l.skipped = g.bench.steps_skipped;
+    idle_error(l, model, lazy, fingerprints);
+    return l;
 }
 
 }  // namespace
 
-TEST(tracer_test_cases_equal_ref_every_cycle) {
-    Replay rp = replay_file("tests/tracerconf/cases.log.gz", "cases.log.gz");
-    CHECK(!rp.failed);
-    CHECK(rp.cycles > 1000000);
-    CHECK_EQ(rp.ubs, int64_t(3));
-    CHECK(rp.fps > 1000);
+// Two Tracers given the same calls are in the same state at the end of every cycle: observe() and the fingerprint's
+// units agree cycle by cycle, with the RTL tests' memory system and with the simulator's model.
+TEST(the_same_calls_give_equal_fingerprints_every_cycle) {
+    for (bool model : {false, true}) {
+        const Life a = live(model, false, true), b = live(model, false, true);
+        CHECK(a.ok && b.ok);
+        CHECK(a.cycles > 1500);
+        CHECK_EQ(a.cycles, b.cycles);
+        CHECK(a.trace == b.trace);
+        CHECK(a.out == b.out);
+    }
 }
 
-// TracerConf's seeded guests (tracerconf.sh GENS): the mix family (loops, calls, every width, RVC, MUL, DIV and its
-// advice, templates, errors that stop), the write buffer queued far past its depth (wb), and ref's ring overflow
-// (wbover: FATAL in both at the same call).
-#define GEN_FIXTURE(test_name, file, min_cycles, fatal)                       \
-    TEST(test_name) {                                                         \
-        Replay rp = replay_file("tests/tracerconf/" file, file);              \
-        CHECK(!rp.failed);                                                    \
-        CHECK(rp.cycles > (min_cycles));                                      \
-        CHECK_EQ(rp.ubs, int64_t(fatal));                                     \
-        CHECK(rp.fps > 10);                                                   \
+// The wake rule (tracer.h, must_step): a Tracer stepped only in the cycles it asks for is, at the end of every cycle,
+// the Tracer stepped in all of them: observe() at every cycle, the output, the runs' cycles, the final fingerprints.
+TEST(a_tracer_stepped_only_on_its_wake_rule_is_the_same) {
+    for (bool model : {false, true}) {
+        const Life every = live(model, false, false), lazy = live(model, true, false);
+        CHECK(every.ok && lazy.ok);
+        CHECK_EQ(every.skipped, int64_t(0));
+        CHECK(lazy.skipped > 300);           // the idle cycles between the runs and after the last
+        CHECK_EQ(every.cycles, lazy.cycles);
+        CHECK(every.out == lazy.out);
+        CHECK(every.trace == lazy.trace);
     }
-GEN_FIXTURE(tracerconf_mix_seed1, "mix-s1.log.gz", 10000, 0)
-GEN_FIXTURE(tracerconf_mix_seed3, "mix-s3.log.gz", 10000, 0)
-GEN_FIXTURE(tracerconf_mix_seed4, "mix-s4.log.gz", 3000, 0)
-GEN_FIXTURE(tracerconf_mix_seed5_unimp, "mix-s5.log.gz", 5000, 0)
-GEN_FIXTURE(tracerconf_mix_seed9_store_hole, "mix-s9.log.gz", 3000, 0)
-GEN_FIXTURE(tracerconf_mix_seed16, "mix-s16.log.gz", 10000, 0)
-GEN_FIXTURE(tracerconf_mix_seed21_range, "mix-s21.log.gz", 5000, 0)
-GEN_FIXTURE(tracerconf_wb_seed1_buffer_past_depth, "wb-s1.log.gz", 10000, 0)
-GEN_FIXTURE(tracerconf_wbover_seed1_ring_overflow, "wbover-s1.log.gz", 10000, 1)
-
-// A log as ref writes it (T1 on the runner: a FIFO): TRACERCONF_STREAM=PATH test_tracer stream.
-TEST(stream_from_tracerconf_stream) {
-    const char* path = std::getenv("TRACERCONF_STREAM");
-    if (!path) return;
-    Replay rp = replay_file(path, path);
-    CHECK(!rp.failed);
 }
 
-// Long runs: TRACERCONF_LONG=DIR test_tracer long (tracerconf.sh SEEDS OUT writes them).
-TEST(long_runs_from_tracerconf_long) {
-    const char* dir = std::getenv("TRACERCONF_LONG");
-    if (!dir) return;
-    bool ok = false;
-    const std::string list = read_cmd(std::string("ls ") + dir + "/*.log.gz", &ok);
-    size_t a = 0, n = 0;
-    while (a < list.size()) {
-        size_t b = list.find('\n', a);
-        if (b == std::string::npos) b = list.size();
-        const std::string path = list.substr(a, b - a);
-        a = b + 1;
-        if (path.empty()) continue;
-        Replay rp = replay_file(path, path.c_str());
-        CHECK(!rp.failed);
-        n++;
+// The fingerprint moves when a register its stream holds moves (tracer.h, fingerprint: the registers, the record, the
+// tables, the input queues, the run's state, the latch and the bitmap, the events' counts, the statistics; the caches
+// in units 1 and 2).
+TEST(the_fingerprint_moves_with_each_register) {
+    Prog p(CODE);   // no core-fed instruction: nothing here answers a post
+    p.w({addi(1, 0, 3), addi(1, 1, 1), sd(1, 2, 0), ld(3, 2, 0), jal(0, -8), END});
+    Rig g;
+    build(g, p);
+    start(g, p);
+    uint64_t last = fp_of(g.tr, 0, g.t - 1);
+    int moved = 0;
+    const auto moves = [&](const char* what) {
+        const uint64_t now = fp_of(g.tr, 0, g.t - 1);
+        if (now == last) { ::test::fail(__FILE__, __LINE__, "the fingerprint did not move with %s", what); return false; }
+        last = now;
+        moved++;
+        return true;
+    };
+    g.word(Tracer::W_RUN_CONFIG, 5);                 g.step(); if (!moves("RUN_CONFIG")) return;
+    g.word(Tracer::W_HASH_MUL, 12345);               g.step(); if (!moves("HASH_MUL")) return;
+    g.word(Tracer::W_HASH_STEP, 77);                 g.step(); if (!moves("HASH_STEP")) return;
+    g.word(Tracer::W_HASH_LINES, 3);                 g.step(); if (!moves("HASH_LINES")) return;
+    g.word(Tracer::W_EXP_TEMPLATE, 0x80000000u | 9); g.step(); if (!moves("the template latch and bitmap")) return;
+    g.port_add(16 * 7, 0x1234, 0x5678);              g.drain_port(); if (!moves("a record word")) return;
+    g.port_add(0x1000 + 16 * 3, 1, 2);               g.drain_port(); if (!moves("a decode-table row")) return;
+    g.port_add(0x2000 + 16 * 400, 3, 4);             g.drain_port(); if (!moves("a ROM word")) return;
+    g.port_add(0x200000, 5, 6);                      g.drain_port(); if (!moves("a read-queue entry")) return;
+    g.port_add(0x400000, 7, 8);                      g.drain_port(); if (!moves("an expansion-queue entry")) return;
+    g.load_tables();                                 // the tables and the constants back
+    if (!moves("the tables")) return;
+    start(g, p);                                     // a state write: the queues emptied, the bitmap cleared
+    if (!moves("the state write")) return;
+    const uint64_t caches[2] = {fp_of(g.tr, 1, g.t - 1), fp_of(g.tr, 2, g.t - 1)};
+    g.word(Tracer::W_RUN_CONFIG, 40);
+    g.bench.store(Bench::B_CONTROL, Bench::C_START, 1);
+    g.step();
+    if (!moves("START")) return;
+    uint64_t before = last;
+    int cycles_moved = 0;
+    for (int k = 0; k < 60; k++) {                   // the run: its pipeline's state, the statistics, each cycle
+        g.step();
+        const uint64_t now = fp_of(g.tr, 0, g.t - 1);
+        cycles_moved += now != before;
+        before = now;
     }
-    std::printf("  long runs: %zu logs, all equal to ref\n", n);
-    CHECK(n > 0);
+    CHECK_EQ(cycles_moved, 60);                      // STAT_CYCLES alone moves it every cycle of a run
+    CHECK(fp_of(g.tr, 1, g.t - 1) != caches[0]);     // the instruction cache took a line
+    CHECK(fp_of(g.tr, 2, g.t - 1) != caches[1]);     // and the data cache
+    CHECK_EQ(moved, 13);
+}
+
+// observe()'s fields (tracer.h), on a finished run: where a conformance test reads the control's state, the
+// statistics words and the events.
+TEST(observe_reports_the_state_it_names) {
+    const Prog p = guest();
+    Rig g;
+    build(g, p);
+    start(g, p);
+    WindowOut o;
+    const int rows = 40;
+    CHECK(g.window(uint32_t(rows), 100000, o));
+    int64_t obs[Tracer::OBS_N];
+    g.tr.observe(obs);
+    CHECK_EQ(Tracer::OBS_N, 16 + 10 + 8 + 2 + 6 + 2 + 1 + 9);
+    CHECK_EQ(obs[0], int64_t(0));                    // errors
+    CHECK_EQ(obs[1], int64_t(0));                    // running
+    CHECK_EQ(obs[2], int64_t(0));                    // stopped
+    CHECK_EQ(obs[3], int64_t(rows));                 // ROWS_RUN
+    CHECK_EQ(obs[4], int64_t(0));                    // the rows left
+    CHECK_EQ(obs[14], int64_t(Tracer::REC_WORDS));   // output queue 0's pointer, past word 67
+    CHECK_EQ(obs[16], int64_t(o.sizes[0].values));   // the code FIFO's entries
+    CHECK_EQ(obs[18], int64_t(rows));                // rows
+    for (int k = 0; k < Tracer::STAT_N; k++) CHECK_EQ(obs[26 + k], int64_t(g.last.stat[k]));
+    CHECK_EQ(obs[26 + Tracer::STAT_N], g.tr.stalls[Tracer::S_ADVICE]);
+    CHECK_EQ(obs[26 + Tracer::STAT_N + 1], g.tr.stalls[Tracer::S_EXP]);
+    for (int b = 0; b < 9; b++) CHECK_EQ(obs[Tracer::OBS_N - 9 + b], int64_t(0));   // every event consumed
+    // an error shows in field 0, the stop in field 2
+    Prog bad(CODE);
+    bad.w({jalr(0, 0, 0), END});
+    Rig h;
+    build(h, bad);
+    start(h, bad);
+    CHECK(!h.window(2, 10000, o));
+    h.tr.observe(obs);
+    CHECK_EQ(obs[0], int64_t(1 << 3));
+    CHECK_EQ(obs[1], int64_t(1));
+    CHECK_EQ(obs[2], int64_t(1));
 }
 
 // The slot's timing (the peripheral.h): accept(t) is called at level 0 of t + 3, possibly after the Tracer was settled
@@ -512,7 +272,7 @@ TEST(long_runs_from_tracerconf_long) {
 TEST(late_accept_lands_at_t_plus_2) {
     Tracer early(66), late(66);
     const uint64_t lo = 0x1234, hi = 0x5678;
-    early.accept(10, 74, 0x50, 2, lo, hi);  // record word 5 (x1's image)
+    early.accept(10, 74, 0x50, 2, lo, hi);  // record word 5 (x6's and x7's image)
     late.sync(12);                          // settled through 12: inputs before 12 applied
     late.accept(10, 74, 0x50, 2, lo, hi);   // the slot's call at level 0 of 13
     for (Tracer* t : {&early, &late}) {

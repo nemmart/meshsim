@@ -93,7 +93,6 @@ include src/units/g4.mk
 include src/units/mem.mk
 include src/threads.mk
 include bench/sort/sort.mk
-include bench/tracer/tracer.mk
 
 -include $(shell find build -name '*.d' 2>/dev/null)
 include src/units/cc.mk

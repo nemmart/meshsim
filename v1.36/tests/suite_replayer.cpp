@@ -195,7 +195,8 @@ int main() {
     void (*groups[])() = {decode_index, immediates, decompressors, program, program_compressed, store_log_off, mid_start, pext_any_mask,
                           ld_to_x0, controller_fed, controller_fed_rd0, padding, debug_length, immediate_zero, invalid, write_port, lines,
                           timing, v1261_a, rows_run_past_2_16, working_state, stream_word_layout, underflows, leftovers, padding_anything,
-                          flushes, rd_prev_flag, record_words, queue_sizes};
+                          flushes, rd_prev_flag, record_words, queue_sizes, no_read_log_look_ahead, new_pc_on_the_last_row,
+                          core_fed_nop_at_an_offset, new_undefined_behavior, reset_zeroes, unannounced_read_log_word, event_ties};
     for (auto g : groups) { g(); std::fflush(stdout); }
     convert_record_group();
     convert_determinism_group(self_dir());

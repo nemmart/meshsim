@@ -8,8 +8,15 @@ $(B)/suite_memsys: $(B)/tests/suite_memsys.o $(B)/tests/suite.o $(TRACER_LINK) $
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 $(B)/suite_rvc: $(B)/tests/suite_rvc.o $(B)/tests/suite.o $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
-$(B)/suite_tracer: $(B)/tests/suite_tracer.o $(B)/tests/tracer_rig.o $(B)/tests/suite.o $(TRACER_LINK) $(LIB_OBJ)
+$(B)/suite_tracer: $(B)/tests/suite_tracer.o $(B)/tests/tracer_rig.o $(B)/tests/tracer_block.o $(B)/tests/suite.o $(TRACER_LINK) $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 # the suites are run by test_tracer_suites (order-only: built with it, not linked into it)
 $(B)/test_tracer_suites: | $(TRACER_SUITES)
-$(B)/test_tracer_rig: $(B)/tests/tracer_rig.o $(TRACER_LINK) | $(B)/suite_tracer
+$(B)/test_tracer_rig: $(B)/tests/tracer_rig.o $(B)/tests/tracer_block.o $(TRACER_LINK)
+# the rules v1.36 took from the RTL, on the rig (tests/test_tracer_rules.cpp)
+$(B)/test_tracer_rules: $(B)/tests/tracer_rig.o $(B)/tests/tracer_block.o $(TRACER_LINK)
+# the Tracer at the block level (tests/tracer_block_main.cpp): a real workload's segments against gold's files and the
+# RTL's figures, and a synthetic guest against an interpreter (tests/tracerblock/)
+TRACER_BLOCK := $(B)/tests/tracerblock/gold.o $(B)/tests/tracerblock/guest.o $(B)/tests/tracerblock/report.o
+$(B)/tracer_block: $(B)/tests/tracer_block_main.o $(B)/tests/tracer_block.o $(TRACER_BLOCK) $(B)/tests/chain.o $(B)/tests/sha256.o $(TRACER_LINK) $(LIB_OBJ)
+	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)

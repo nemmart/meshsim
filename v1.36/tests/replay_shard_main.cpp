@@ -114,7 +114,7 @@ int main(int argc, char** argv) {
                              "                    [--full-every K] [--tables DIR] [--replay-build DIR] [--norow N] [--logq Q]\n");
         return 2;
     }
-    std::string dir = argv[1], prog = argv[2], csv = argv[3], stages = "AB", variant, manifest, build = "tests/m3-images";
+    std::string dir = argv[1], prog = argv[2], csv = argv[3], stages = "AB", variant, manifest, build = "tests/m3-images", rtl_path;
     long long stride = 1, phase = 0, first_w = 0, count_w = INT64_MAX, full_every = 0, norow = 50000, logq = 256;
     for (int i = 4; i < argc; i++) {
         std::string a = argv[i];
@@ -131,6 +131,7 @@ int main(int argc, char** argv) {
         else if (a == "--replay-build") build = next();
         else if (a == "--norow") norow = std::atoll(next().c_str());
         else if (a == "--logq") logq = std::atoll(next().c_str());
+        else if (a == "--rtl") rtl_path = next();
         else FATAL("replay_shard: unknown argument %s", a.c_str());
     }
     if (manifest.empty()) manifest = stagea::exists(dir + "/manifest.json") ? dir + "/manifest.json" : dir + "/" + prog + ".manifest.json";
@@ -148,6 +149,14 @@ int main(int argc, char** argv) {
     bo.norow = norow;
     bo.logq = unsigned(logq);
 
+    // Stage A's cycles against the RTL's (tests/stage_a.h, RtlReference): --rtl FILE, else tests/acceptance/rtl/<program>.txt
+    // where it is; "--rtl none" for a delivery the RTL has not run.
+    stagea::RtlReference rtl;
+    bool have_rtl = false;
+    if (rtl_path != "none") {
+        have_rtl = rtl.load(rtl_path.empty() ? "tests/acceptance/rtl/" + prog + ".txt" : rtl_path);
+        if (!have_rtl && !rtl_path.empty()) FATAL("replay_shard: cannot read the RTL's reference %s", rtl_path.c_str());
+    }
     FILE* out = std::fopen(csv.c_str(), "a");
     if (!out) FATAL("replay_shard: cannot append to %s", csv.c_str());
     long long n = 0, failed = 0;
@@ -175,7 +184,7 @@ int main(int argc, char** argv) {
                 stagea::Result r;
                 // B: Stage B on tile 0 alone (the 63 idle tiles parked, checked untouched); F: Stage B on the full chip
                 bo.lone = st == 'B';
-                if (st == 'A') r = stagea::run_window(*tb, pd, we, v, unsigned(logq));
+                if (st == 'A') r = stagea::run_window(*tb, pd, we, v, unsigned(logq), have_rtl ? &rtl : nullptr);
                 else r = stageb::run_window(*im, *tb, pd, we, v, prog, bo);
                 long long ms = (now_ns() - t0) / 1000000;
                 if (st == 'A') std::printf("%s\n", r.line(prog, v).c_str());

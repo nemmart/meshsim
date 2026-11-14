@@ -9,7 +9,8 @@
 #     --check       also compare each log with its reference log (v1.3's, or the oracle's regenerated one: the step's
 #                   REF), timing masked (mask() below); a difference fails the run as a FAIL line would
 #     --no-build    use the binaries as they are
-#   Environment: CC_NAME (default clang); the suites build with MODE=suite (release flags, the checker's facts on:
+#   Environment: CC_NAME (default clang); MESHSIM_INPUTS (default ~/meshsim-inputs: the real workloads' data, for the
+#   step tracer-block, pending without it); the suites build with MODE=suite (release flags, the checker's facts on:
 #   src/check.h), into build/$CC_NAME-suite/.
 #
 # ADDING A STEP (wave 2 and on: each worker adds its own lines, in v1.3's order, and its Makefile include):
@@ -51,7 +52,7 @@ mkdir -p results
 # suite_rdport suite_agbench suite_reqbus (P4), suite_ctrl suite_recipes suite_cond suite_hooks suite_regdoc
 # suite_accounting suite_s1bench suite_cccores suite_ccbench (P5), stageb, sort_test, sweep; the equivalents test_golden
 # and test_tileslotconf.
-SUITES="suite_memsys suite_rvc suite_tracer"
+SUITES="suite_memsys suite_rvc suite_tracer tracer_block"
 EQUIVS="test_core_programs test_core_tile"           # v1.36: the RTL's core (make-check tests, run as steps)
 SUITES="$SUITES suite_replayer"
 SUITES="$SUITES suite_mem"                           # P4: MemTest
@@ -223,6 +224,29 @@ step replayer 1 "the replayer model (v1.25): the opcode table, the ALU against v
 step memsys 1 "the Tracer's memory system (v1.3, B1): FileStore's trees and statuses, the shared cache's timing" tests/tracersuites/memsys.log -- $S/suite_memsys
 step rvc    1 "the Tracer's RVC decompressor against gold's, every 16-bit encoding (v1.3, B1)" tests/tracersuites/rvc.log -- $S/suite_rvc
 step tracer 1 "the Tracer (v1.3, B1): execution, memory, the map, errors, cuts, controller-fed expansions, the output path" tests/tracersuites/tracer.log -- $S/suite_tracer
+# The Tracer at the block level, on the RTL acceptance's bench (tests/tracer_block_main.cpp). A run that stops without
+# its verdict (a FATAL) is a FAIL line too.
+tracer_block_synth() { $S/tracer_block --synthetic || echo "FAIL tracer_block --synthetic: exit $?"; }
+step tracer-block-synth 1 "the Tracer alone on a synthetic RV64IMAC guest, against an interpreter of it: the output, the exact counters, the cycles adding up and by hand" tests/tracerblock/tracer-block-synth.log -- tracer_block_synth
+# The real segments need the workloads' data, outside the repository: MESHSIM_INPUTS, or ~/meshsim-inputs. Without it
+# the step is not run, and says so as a pending step does (no log to compare, with --check or without).
+TB_INPUTS=${MESHSIM_INPUTS:-$HOME/meshsim-inputs}
+tracer_block_real() {   # every segment at both compressions and both latencies against gold's files and the RTL's figures; then on the simulator's memory system, against gold's files
+  local ps p s c f
+  for ps in evm-zone-23:0 evm-zone-23:1 cyclone-22:0; do
+    p=${ps%:*} s=${ps#*:}
+    for c in 0 7; do for f in 1 55,35; do
+      $S/tracer_block --inputs "$TB_INPUTS" --program $p --segment $s --compression $c --fill $f --quiet \
+        --ref tests/tracerblock/rtl/windows-$p-s$s-c$c-l${f/,/-}.txt || echo "FAIL tracer_block $p segment $s, compression $c, fill $f: exit $?"
+    done; done
+    $S/tracer_block --inputs "$TB_INPUTS" --program $p --segment $s --fill model --quiet || echo "FAIL tracer_block $p segment $s, fill model: exit $?"
+  done
+}
+if [ -d "$TB_INPUTS/v1261/evm-zone-23" ] && [ -d "$TB_INPUTS/v1261/cyclone-22" ] && [ -d "$TB_INPUTS/gold-v1.3" ] && [ -d "$TB_INPUTS/w26-jumpmap" ]; then
+  step tracer-block 1 "the Tracer alone on the real segments (EVM Zone 0 and 1, Cyclone 0): every run against gold's files and the RTL's figures, cycle for cycle" tests/tracerblock/tracer-block.log -- tracer_block_real
+else
+  pending tracer-block "the Tracer alone on the real segments, against gold's files and the RTL's figures" "skipped: the workloads' data is not at $TB_INPUTS (MESHSIM_INPUTS)"
+fi
 pending sort-p1 "the sort's local sorts (L1, L2)" "$R_SORT"
 #   step sort-p1 1 "the sort's local sorts (L1, L2)" tests/sort/ref/sort-p1.log -- $S/sort_test -1 p1
 pending sort "the sort, every built-in set at 64 x <= 2,000 (several minutes)" "$R_SORT"

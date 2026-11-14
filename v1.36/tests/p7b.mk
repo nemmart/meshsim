@@ -1,6 +1,6 @@
 # tests/p7b.mk (P7b: Stage B and the replay acceptance kit): the rules for P7b's tests and tools (one
 # `include` line in the Makefile).
-# The replayer's error lists against ref's (tests/replayer/lists.txt; oracle/ref/replaylists.sh).
+# The replayer's error lists on the conformance scripts (tests/replayer/README.md).
 $(B)/test_replay_lists: $(REPLAYER_LINK) $(B)/tests/statefp.o
 # The acceptance kit's replayer (ref's ReplayShard): tests/replay_shard_main.cpp.
 $(B)/replay_shard: $(B)/tests/replay_shard_main.o $(B)/tests/stageb.o $(B)/tests/sha256.o $(B)/tests/statefp.o $(MACH_LINK) $(B)/src/units/replay_tables.o $(LIB_OBJ)
@@ -21,3 +21,8 @@ $(B)/stageb: $(B)/tests/stageb_main.o $(B)/tests/stageb.o $(B)/tests/sha256.o $(
 	$(CXX) $(FLAGS) $(sort $^) -o $@ $(WRAP)
 all: $(call live,$(B)/stageb)
 $(B)/test_stageb: | $(B)/stageb
+# v1.36: the RTL's reference of a delivery's windows, from the RTL acceptance's dumps (tests/acceptance/rtl_left.cpp;
+# tests/replayer/README.md): no simulator code in it.
+$(B)/rtl_left: $(B)/tests/acceptance/rtl_left.o
+	$(CXX) $(FLAGS) $^ -o $@
+all: $(B)/rtl_left

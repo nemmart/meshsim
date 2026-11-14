@@ -68,6 +68,67 @@ public:
         for (int c = 0; c < 4; c++) acc[c] = hits[c] = cycles[c] = 0;
     }
 
+    // ---- The fill port's two channels (spec 3 `fill`, 17.9.5, 17.9.14; v1.36). The Tracer has at most one read and one
+    // write outstanding together. A request's handshake is in cycle t; its response comes in the cycle returned,
+    // after t. With a fixed latency (the RTL's tests' model of the memory system: Snarky One's tracer_unit_test) the
+    // request is answered that many cycles after its handshake and this model's cache is not touched. Otherwise
+    // this model times it: it serves one access at a time, so a request taken while another is being served
+    // starts when that one ends (item 174: the simulator's choice).
+    static constexpr int WRITE_OK = 0, WRITE_ERROR = 1;   // write_response.status (spec 3)
+    int64_t fail_write_line = -1;   // a test's fault: the write-back of this line (of any file) answers `error`,
+    int fail_write_delay = 1;       // ... this many cycles after its handshake
+    // A test's monitor of the port (null: none): each request in handshake order, with its handshake's cycle, its
+    // response's, and its status. Calls past the capacity are counted and not kept.
+    struct PortCall {
+        int64_t t, response_at, line;
+        int32_t root;
+        bool write;
+        int status;
+    };
+    PortCall* port_log = nullptr;
+    int port_log_cap = 0, port_log_n = 0;
+    int64_t port_read(int64_t t, int32_t root, int depth, int64_t line, int fixed_latency, Response& r) {
+        if (fixed_latency > 0) {
+            reads++;
+            store->walk(root, depth, line, walk_);
+            if (walk_.status == FileStore::ST_BEYOND) beyond++;
+            r.status = walk_.status;
+            if (walk_.data_line >= 0) store->read_line(walk_.data_line, r.data);
+            else std::memset(r.data, 0, sizeof r.data);
+            r.ready_at = t + fixed_latency;
+        } else {
+            read(t > busy_until_ ? t : busy_until_, root, depth, line, r);
+            if (r.ready_at <= t) r.ready_at = t + 1;
+        }
+        log_port(t, r.ready_at, line, root, false, r.status);
+        return r.ready_at;
+    }
+    // A write: the line is written at the handshake, when the page is the file's own (status ok on its walk);
+    // otherwise, or at a test's fault, nothing is written and the response is `error` (17.9.5: the line is lost).
+    int64_t port_write(int64_t t, int32_t root, int depth, int64_t line, const uint64_t* data, bool fixed, int& status) {
+        store->walk(root, depth, line, walk_);
+        int64_t done = t + 1;
+        if (walk_.status != FileStore::ST_OK || line == fail_write_line) {
+            writes++;
+            status = WRITE_ERROR;
+            if (line == fail_write_line) done = t + fail_write_delay;
+        } else if (fixed) {
+            writes++;
+            status = WRITE_OK;
+            store->write_line(walk_.data_line, data);
+        } else {
+            status = WRITE_OK;
+            const int64_t d = write(t > busy_until_ ? t : busy_until_, root, depth, line, data);
+            if (d > t) done = d;
+        }
+        log_port(t, done, line, root, true, status);
+        return done;
+    }
+    void log_port(int64_t t, int64_t response_at, int64_t line, int32_t root, bool write, int status) {
+        if (port_log && port_log_n < port_log_cap) port_log[port_log_n] = PortCall{t, response_at, line, root, write, status};
+        if (port_log) port_log_n++;
+    }
+
     // The bus is free at t (one request outstanding).
     bool idle(int64_t t) const { return t >= busy_until_; }
     // The first cycle the bus is free (the end of the request outstanding, or of a write-back).

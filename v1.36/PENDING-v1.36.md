@@ -14,7 +14,95 @@ cycles on it against the RTL's. The stages after it are named below as they are 
 (P6), the special tiles and the request tree (P7), the sort end to end (P8), the units' remaining behaviour (P9), the
 old suites (P11), the register tables and firmware headers (P12), the replayer (17.8) and the Tracer (17.9).
 
-## 1. Acceptance A: what of the RTL's tile test is pending
+## The core stage
+
+
+`src/units/rv32.h` and `rv32_decode.h` are the RTL's `rv32_core` (`tests/core-programs/README.md` says what it is
+checked against). What it leaves out, and what no test in the tree checks:
+
+| what | why | what closes it |
+|---|---|---|
+| The coprocessor port | The tile has no accelerator (the RTL builds none), so custom-0 and custom-1 are illegal instructions, as on a core with `coprocessor_present` 0. The RTL's `program_test` sets it to 1, but none of its programs has a coprocessor instruction. | The field accelerator, when the RTL has one. |
+| An instruction or data port that holds ready low, or answers a fetch later than the next cycle | No memory of the tile does either (IMEM, DMEM, the boot ROM and `register_bus` accept in every cycle), so the model has neither; the RTL's test runs each program a second time with randomly delayed ports, which the model cannot follow. | Nothing in the tile; a unit that needs it. |
+| The core's rules one by one (`test_rv32_rtl`: 62 directed tests of the RTL's core from the contract's sentences) | Written by a sub-agent of the core stage, which could not place the file in `tests/`, so it is not in the tree: it is in the core stage's scratch folder, `build-scratch/rtl-tests/test_rv32_rtl.cpp` (untracked, outside `v1.36/`), written against the core stage's interface (`v135_platform`, v1.35's tile environment), which is gone. What the RTL's programs do not reach and only that file checks: a CSR write to `mcycle` or `minstret`, `minstret` on a trapped instruction, the store-misaligned cause, a data target slower than one cycle on a bus, and the exact cycle `core_status_canonical_wait` rises. The last is not caught by acceptance A either: with the level taken from `wfi_sleeping` alone, `test_rtl_tile` still passes (the barrier program bounds the arrival from below by 2,000 cycles only). | The owner's or coordinator's decision to add the file as `tests/test_rv32_rtl.cpp`, ported to the tile's environment as it is now (`tests/test_core_tile.cpp` shows it), after reviewing it; or the RTL's cycle for the rise of `canonical_wait` after a `WFI`, measured on the RTL, as a check of `test_core_programs`. |
+
+## The replayer stage
+
+The replayer's model is the RTL's `replayer_unit` at the block level: its rows, its cycles and every port's
+observations equal the RTL's (`tests/replayer/README.md`, `tests/acceptance/README.md`).
+
+| what | why | what closes it |
+|---|---|---|
+| `test_slotconf` (`tests/slotconf/seed1-5`) | the slot's conformance replays ref's seeded scripts on a slot with the replayer in it; its reference is ref's observations of v1.35's replayer under them (busy, errors, events and queue occupancies cycle by cycle), which the RTL's replayer does not give | the platform stage's slot (17.1-17.3): a conformance of the new slot, whose replayer side is `test_replayconf`'s |
+| the replayer's window as the slot presents it: `START` at word 6, `EVENTS` at 3, `EVENTS_PEEK`, `EVENTS_MASK` (17.1) | the slot is the platform's; the model keeps v1.35's calls (`run`, `consume_events`, `events`, `write_word`, `word`) and its own words 32-35 | the merge with the platform stage: `Replayer::W_*` are the only word numbers here |
+| the write port's latency in a chip: `accept(t)` presents the packet at `t + RP_LATENCY` | the director's and the slot's links are the platform's (`PERIPHERAL_LATENCY`, 17.3) | the platform stage; `Replayer::write(t, ...)` is the port itself |
+| Stage B and Stage F's cycles (`tests/stageb/stageb.log`, the acceptance kit's B and F) | they run v1.35's `replay_ctl.c` on v1.35's tile with the new replayer in its slot: rows and end state pass; the cycles are a mixture | the platform and firmware stages (17.8.21, 17.8.22), then the RTL chip's figures (3.0875 and 3.1249 a row) |
+| the row port's handshake | the model's consumer is its sink, ready one cycle in `sink_interval` (1: always, as the chip ties it); no unit reads `replay_row` | the materializer, *Open* (17.8.11) |
+| `spec/CHANGES-v1.35-to-v1.36.md` 5.2.6 item 1: the timing rules the specification does not state | the model takes them from the RTL's sources: they are listed in `src/units/replayer.h`'s header and in the stage's report | a ruling: write them down (the guide suggests an appendix), or leave them to the RTL |
+
+## The Tracer stage
+
+
+### Pending
+
+| What | Why | What closes it |
+| --- | --- | --- |
+| `chain` (`tests/chain_main.cpp`) and `t2` (`tests/t2_main.cpp`): the segment on the full chip | They boot the tracer tile's firmware (`fw/tracer/tracer_ctl.c`, `fw/include/mesh.h`'s `TR_EV_*`), which is v1.35's: its `EVENTS` bits are 0, 1, 3, 5, 6, 7–10, the Tracer's are now packed from bit 0 (17.9.1, item 161). Both build; `chain` on EVM Zone's segment 0 stops with 0 rows. They are in no suite (`RUNNING.md`, "by hand"), nor is `tests/freeze/body.sh`'s item 3 and 4, which run them | The platform's register map and the segment's firmware (17.9.10, 17.9.15: the handshakes by requests), the later stage |
+| `tests/golden-m3/` (`RUNS`, `*.chip`, `boot/*.boot.fp.gz`) and `tests/golden-chain/`: T2's and the chain's recorded figures and fingerprints | They are v1.35's Tracer's on the full chip, cycle for cycle (`tr`, `tr.ic`, `tr.dc`, `tr.mem`, `tr.files` at every 100,000 cycles); no test in a suite reads them | Regenerated with the segment's stage, from the RTL's chip figures where it has them |
+| `tracer_block`'s step `tracer-block` without the workloads' data | The real segments are read from `$MESHSIM_INPUTS` (`~/meshsim-inputs`), outside the repository; without it the runner prints the step as PENDING. `tracer-block-synth` always runs | The data on the host |
+| `tools/freeze/strip.sh` line 49 names `bench/tracer/tracer_play.cpp` and `bench/tracer/tracer.mk` | Both are retired (below) | The freeze tool's owner drops the pair |
+| The memory system's model with a read and a write outstanding together (item 174) | Decided here, for the simulator only: the model serves one access at a time, so a request taken while another is being served starts when that one ends (`MemSystem::port_read`, `port_write`); a write to a line that is not the file's own answers `error` a cycle after its handshake | The memory system's design (items 60, 119) |
+
+### Retired, with what replaces it
+
+The Java reference's Tracer (`sim/ref/meshsim`, outside v1.36) modelled v1.35's hardware cycle for cycle, and its logs were
+the Tracer's conformance fixtures. The RTL (Snarky One's `tracer_unit`) is now the hardware, the Java model cannot be made
+to follow it, and the fixtures cannot be regenerated. The RTL's own figures and the specification replace them:
+`tests/tracerblock/rtl/` (the RTL's per-run cycles and counters for three real segments, which `tracer_block` must equal),
+`tests/test_tracer_rules.cpp` (17.9's rules, each from the specification or the RTL's source), and the ported suite.
+
+| Retired | Was |
+| --- | --- |
+| `tests/tracerconf/`: `cases.log.gz`, `mix-s1`, `mix-s3`, `mix-s4`, `mix-s5`, `mix-s9`, `mix-s16`, `mix-s21`, `wb-s1`, `wbover-s1` (`.log.gz`) | TracerConf's call logs of the Java Tracer |
+| `test_tracer.cpp`: `tracer_test_cases_equal_ref_every_cycle`, `tracerconf_mix_seed1`, `_seed3`, `_seed4`, `_seed5_unimp`, `_seed9_store_hole`, `_seed16`, `_seed21_range`, `tracerconf_wb_seed1_buffer_past_depth`, `tracerconf_wbover_seed1_ring_overflow`, `stream_from_tracerconf_stream`, `long_runs_from_tracerconf_long` | The replay of those logs, call by call |
+| `test_tracer_rig.cpp`: `rig_calls_equal_refs_rig`; `RecTracer` and `suite_tracer --calls` | The rig's calls against the Java rig's |
+| `bench/tracer/tracer_play.cpp`, `bench/tracer/tracer.mk` | A replay of the same logs, for speed |
+
+### Notes: what the Tracer's model takes from the RTL where the specification is silent or differs
+
+1. **The rows' end** is the cycle after the last row completes: the control sees `row_done` through a register
+   (`tracer_unit.veryl`); 17.9.3 says "the cycle in which the run's last row completes".
+2. **After a stopping error** the scans and a transfer in progress go on; only the events, the rows' end and the run's end
+   are withheld (`tracer_control.veryl`, `tracer_run.veryl`); 17.9.9 says "drains nothing more".
+3. **A NOP policy** costs 2 cycles before its row (`replayer_fetch.veryl`: the policy's read, then ROM word 1); the RTL's
+   Tracer README and inventory B6 say 1.
+4. **A core-fed instruction** costs a cycle before its first row; its successor's fetch follows its last word's pop, which
+   for an expansion of several words comes rows ahead and costs nothing.
+5. **A redirect to pc 0, and a run's first padding row**: the padding word is fetched from nowhere, a cycle sooner than a
+   fetch's hit (`tracer_instruction.veryl`'s `issue_padding`): 4 past the schedule, and 5 after START's effect.
+6. **A run's first row inside an expansion** starts 3 cycles after START's effect (the fetch holds its words).
+7. **An instruction miss** costs its fill's latency + 3, **a data miss** + 5 (+ the wait for the write-back buffer's
+   place), **a probe** of n lines n × (the map's latency + 4) + 2 (`tracer_fetch.veryl`, `tracer_data.veryl`,
+   `tracer_fill.veryl`, `tracer_memory.veryl`, `tracer_jump_lookup.veryl`).
+8. **The write-back register**: a row's rd lands in the register file a cycle late, on the port the next row's rs2 read
+   uses, so a row whose word arrives exactly the cycle after its predecessor's completion starts a cycle later
+   (`tracer_rows.veryl`, `write_back_pending`).
+9. **`state_ready`** rises 3 cycles after the last row completes (the registered `row_done`, the output's input register,
+   the choice); **done** comes 2 cycles after the DMA's last pop (`peripheral_dma.veryl`'s busy).
+10. **A fetch's read waits** while a data access or a map read is presented or in progress, and the fill port's one read
+    goes to the data access, then the map, then the fetch (`tracer_memory.veryl`, `tracer_fill.veryl`).
+11. **The record's spare bits** are not held: the state word's [127:112], the stream word's [127:125], the files word's
+    [127:103]; register 0 reads 0 (`tracer_record.veryl`, `tracer_rows.veryl`); 17.9.2 says "spare, 0" of the files word only.
+12. **A row that moves pc without `next_from_value`** (UB, 17.8.7) runs on sequentially, as the RTL's ALU; meshsim flags it.
+13. **A row that is not its expansion's last keeps its pc** whatever its opcode (inventory A9.4): gated in `tracer.cpp`,
+    not in the shared `replayer_alu.h`.
+14. **A non-contiguous `VirtualPext`** takes a cycle for each bit of its mask up to the highest set one, + 2
+    (`replayer_alu.veryl`).
+15. **A key of 0xFFFF_FFFF** matches a free entry and takes its base, as v1.35's probe did (`tracer_jump_lookup.veryl`).
+
+## The platform stage
+
+### 1. Acceptance A: what of the RTL's tile test is pending
 
 | what | why | what closes it |
 |---|---|---|
@@ -24,7 +112,7 @@ old suites (P11), the register tables and firmware headers (P12), the replayer (
 | the request link's beats and its handshake monitor; the row port's | the simulator's request unit hands over whole requests; the framework's ports have no ready or valid | the request tree (P7); the row port with the replayer |
 | cycle-exact expectations | `base_tile_test.rs` has none but its bounds (the barrier program's delay, the timeouts), which the test keeps. The test adds the RTL's figures for the boot ROM on the block `core` (`rtl/blocks/core/README.md`, "The boot ROM's program") and the core specification's resume timing, checked on the tile in every run | |
 
-## 2. Tests of `make check` that are not built (`pending.mk`)
+### 2. Tests of `make check` that are not built (`pending.mk`)
 
 `make pending` lists them. What was ported out of this list: `test_mach`, `test_ag`, `test_gather`, `test_mem` (their
 commits say what changed in each); what each of them no longer checks is in the second table.
@@ -52,7 +140,7 @@ Checks that left a ported test, and sources that are in no target any more:
 | `tests/statefp_g1.*`, and with it `Chip::digest()` and `MESHSIM_DIGEST` | ref's `StateFp` of v1.35's state (the core, the register block, the command block) | a fingerprint of v1.36's state, if one is wanted (the timing stage) |
 | `tests/golden_run.*`, `src/units/controller.*` | v1.35's M1 bench and the golden-trace driver: v1.35's core is deleted, so neither compiles again; kept for the pending tests that include them (the first table's first row) | deletion with those tests (P11) |
 
-## 3. Steps of `./run_tests.sh` that are pending
+### 3. Steps of `./run_tests.sh` that are pending
 
 The runner prints each as `PENDING (<reason>)` and counts them (47 in `all`, 36 in `quick`; five more, `stageb-<guest>`,
 with `DELIVERY` set); each keeps its v1.3 `step` line under it in `run_tests.sh`. The steps that run: `layout`, `bus`,
@@ -74,7 +162,7 @@ steps, `replayer`, `memsys`, `rvc` and `tracer` are compared with their v1.3 ref
 | `replay-build`, `stageb`; `stageb-lrd_x0`, `stageb-scd_x0`, `stageb-nop_hint`, `stageb-jalr_self`, `stageb-jalr_zero` (`DELIVERY`) | v1.35's replay controller (`replay_ctl.c`) on v1.35's replayer and map | the replayer (17.8) |
 | `sort-p1`, `sort`, `sort-shuf`; `sort-bt-kv32`, `sort-bt-k128`, `sweep-quick` (*all*) | v1.35's sort firmware under C&C's commands | the sort end to end (P8) |
 
-## 4. Behaviour the simulator still has from v1.35
+### 4. Behaviour the simulator still has from v1.35
 
 Each is a difference from the RTL that acceptance A does not reach, or reaches and survives. Where the old behaviour
 would silently lose what the hardware keeps, the simulator stops (noted).
@@ -93,7 +181,7 @@ would silently lose what the hardware keeps, the simulator stops (noted).
 | the special tiles | the master, memory and tracer tiles (2.1) | v1.35's C&C 1–3 as units 64–66 with their v1.35 peripherals; `default_straps` gives them the specification's straps | P7 |
 | the checker | | v1.35's facts about hardware that is gone are no longer recorded: the command block, the reply block, the stray check, the table-window check of the core | P11 |
 
-## 5. Timing left for the timing stage
+### 5. Timing left for the timing stage
 
 Every latency or ordering where the simulator still differs from the RTL, with the RTL's figure. *q* is the cycle the
 core raises an access in (its instruction leaves execute), *c* a cycle. The core's own cycles and its join to the
@@ -111,13 +199,3 @@ the store is made in, its stall judged there, and the boot ROM's cycles on the t
 | the units behind the tile control unit | the write engine's pipeline, `TABLE_LATENCY`, `READ_LATENCY`, the DMA's lead-ins and the end of a transfer, the gather unit's reads, the router's queues and links | v1.35's (`ts_engine_latency`, `sram_read_latency`, `K` = `LAND_LATENCY` = 8 and `cm_latency` = `WRITE_PORT_LATENCY` = 2 already the RTL's) | `rtl/tile/base/spec.md` 8, 12–16; stages P6 and P9 |
 | the nets | `BARRIER_ARRIVE` a flip-flop's pulse the cycle after the tile is ready; `BARRIER_RELEASE` reaches every tile in the same cycle | the pulse is put on `line` in that cycle; the chip's links for it and for the release are v1.35's (`ready_latency`, `go_latency`, the start skew) | `rtl/tile/base/spec.md` 7.3, 18; P7 |
 
-## 6. The core
-
-`src/units/rv32.h` and `rv32_decode.h` are the RTL's `rv32_core` (`tests/core-programs/README.md` says what it is
-checked against). What it leaves out, and what no test in the tree checks:
-
-| what | why | what closes it |
-|---|---|---|
-| The coprocessor port | The tile has no accelerator (the RTL builds none), so custom-0 and custom-1 are illegal instructions, as on a core with `coprocessor_present` 0. The RTL's `program_test` sets it to 1, but none of its programs has a coprocessor instruction. | The field accelerator, when the RTL has one. |
-| An instruction or data port that holds ready low, or answers a fetch later than the next cycle | No memory of the tile does either (IMEM, DMEM, the boot ROM and `register_bus` accept in every cycle), so the model has neither; the RTL's test runs each program a second time with randomly delayed ports, which the model cannot follow. | Nothing in the tile; a unit that needs it. |
-| The core's rules one by one (`test_rv32_rtl`: 62 directed tests of the RTL's core from the contract's sentences) | Written by a sub-agent of the core stage, which could not place the file in `tests/`, so it is not in the tree: it is in the core stage's scratch folder, `build-scratch/rtl-tests/test_rv32_rtl.cpp` (untracked, outside `v1.36/`), written against the core stage's interface (`v135_platform`, v1.35's tile environment), which is gone. What the RTL's programs do not reach and only that file checks: a CSR write to `mcycle` or `minstret`, `minstret` on a trapped instruction, the store-misaligned cause, a data target slower than one cycle on a bus, and the exact cycle `core_status_canonical_wait` rises. The last is not caught by acceptance A either: with the level taken from `wfi_sleeping` alone, `test_rtl_tile` still passes (the barrier program bounds the arrival from below by 2,000 cycles only). | The owner's or coordinator's decision to add the file as `tests/test_rv32_rtl.cpp`, ported to the tile's environment as it is now (`tests/test_core_tile.cpp` shows it), after reviewing it; or the RTL's cycle for the rise of `canonical_wait` after a `WFI`, measured on the RTL, as a check of `test_core_programs`. |

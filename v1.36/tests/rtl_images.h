@@ -129,3 +129,74 @@ inline std::vector<std::string> program_list(const std::string& dir, unsigned ki
 }
 
 }  // namespace rtl_images
+
+namespace rtl_images {
+
+// A section of an ELF file by name: its address, its size and its file bytes (none for a section without them).
+struct Section {
+    bool found = false;
+    uint32_t address = 0, size = 0;
+    std::string data;
+};
+inline Section section(const std::string& path, const std::string& name) {
+    const std::string file = read_file(path);
+    if (file.size() < 52 || field(file, 0) != 0x464c457f) FATAL("rtl_images: %s is not an ELF file", path.c_str());
+    auto half = [&](size_t at) { return unsigned(uint8_t(file[at])) | unsigned(uint8_t(file[at + 1])) << 8; };
+    const size_t table = field(file, 32);
+    const unsigned entry = half(46), count = half(48), names = half(50);
+    Section s;
+    if (table == 0 || count == 0 || names >= count) return s;
+    const size_t strings = field(file, table + size_t(entry) * names + 16);
+    for (unsigned i = 0; i < count; i++) {
+        const size_t h = table + size_t(entry) * i;
+        const char* n = file.c_str() + strings + field(file, h);
+        if (name != n) continue;
+        s.found = true; s.address = field(file, h + 12); s.size = field(file, h + 20);
+        if (field(file, h + 4) != 8) s.data = file.substr(field(file, h + 16), s.size);   // not SHT_NOBITS
+        return s;
+    }
+    return s;
+}
+// An ELF file's entry point.
+inline uint32_t entry(const std::string& path) { return field(read_file(path), 24); }
+inline std::vector<uint32_t> words(const std::string& bytes) {
+    std::vector<uint32_t> w(bytes.size() / 4);
+    for (size_t i = 0; i < w.size(); i++) w[i] = field(bytes, 4 * i);
+    return w;
+}
+
+}  // namespace rtl_images
+
+namespace rtl_images {
+
+// A program's memory images as a boot strap places them (the RTL's rtl/chip/test/src/bench.rs, memory_images): IMEM's
+// and DMEM's contents, words from each one's base, from the load addresses of the ELF file's loadable segments, each
+// its file bytes and then zeros to its memory size (.bss). Every loaded byte must be in IMEM or DMEM.
+struct MemoryImages { std::vector<uint32_t> imem, dmem; };
+inline MemoryImages memory_images(const std::string& path, uint32_t imem_base, uint32_t dmem_base, uint32_t bytes) {
+    const std::string file = read_file(path);
+    if (file.size() < 52 || field(file, 0) != 0x464c457f) FATAL("rtl_images: %s is not an ELF file", path.c_str());
+    const size_t table = field(file, 28);
+    const unsigned count = uint8_t(file[44]) | unsigned(uint8_t(file[45])) << 8;
+    std::string image[2];
+    for (unsigned index = 0; index < count; index++) {
+        const size_t header = table + 32 * index;
+        const uint32_t kind = field(file, header), offset = field(file, header + 4), start = field(file, header + 12);
+        const uint32_t file_bytes = field(file, header + 16), size = field(file, header + 20);
+        if (kind != 1 || size == 0) continue;                          // PT_LOAD
+        auto within = [&](uint32_t base) { return start >= base && start - base + size <= bytes; };
+        const int which = within(imem_base) ? 0 : within(dmem_base) ? 1 : -1;
+        if (which < 0) FATAL("rtl_images: %s: bytes outside IMEM and DMEM at 0x%x", path.c_str(), start);
+        const uint32_t at = start - (which == 0 ? imem_base : dmem_base);
+        if (image[which].size() < at + size) image[which].resize(at + size, '\0');
+        for (uint32_t i = 0; i < size; i++) image[which][at + i] = i < file_bytes ? file[offset + i] : '\0';
+    }
+    MemoryImages m;
+    for (int which = 0; which < 2; which++) {
+        image[which].resize((image[which].size() + 3) / 4 * 4, '\0');
+        (which == 0 ? m.imem : m.dmem) = words(image[which]);
+    }
+    return m;
+}
+
+}  // namespace rtl_images

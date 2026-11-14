@@ -1403,8 +1403,9 @@ void Mach::place(unsigned unit, uint32_t byte_addr, const std::vector<uint32_t>&
     c.touched(units::unit_prefix(unit) + "core");
 }
 void Mach::place_elf(unsigned unit, const std::string& path) {
-    for (const rtl_images::Row& r : rtl_images::program_rows(path))
-        place(unit, r.address, {uint32_t(r.lo), uint32_t(r.lo >> 32), uint32_t(r.hi), uint32_t(r.hi >> 32)});
+    const rtl_images::MemoryImages im = rtl_images::memory_images(path, units::IMEM_BASE, 0, units::MEM_BYTES);
+    place(unit, units::IMEM_BASE, im.imem);
+    place(unit, 0, im.dmem);
 }
 uint32_t Mach::word(unsigned unit, uint32_t a) const { return const_cast<Chip&>(c).tile(unit).peek_local(a); }
 

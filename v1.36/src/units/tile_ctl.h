@@ -267,7 +267,21 @@ struct TileCore {
         sim::Ctx& c; TileCore& u;
         // ---- the core's inputs and its status (6.2) ----
         uint32_t hart_id() const { return u.tile; }
-        bool meip() const { return c.read(u.wake) != 0; }
+        // A WFI's wake condition is judged in the cycle the WFI retires (the core specification, Wait for interrupt), a
+        // cycle after the instruction before it issued a store, whose effect is then in (6.4): the barrier is `sw ARRIVE;
+        // wfi` back to back, and the WFI must see the arrival gate and ARRIVE's clears (7.2, 7.3), not the wake of the
+        // cycle before. The core's model asks as it executes the WFI, a cycle early: it is told no, enters the wait, and
+        // asks again in the next cycle (TileCore::step), when the tile control unit has applied that store.
+        bool meip() const { return !at_wfi() && c.read(u.wake) != 0; }
+        bool at_wfi() const {                                  // the core is about to execute a WFI, or is executing it
+            if (u.rv.in_wfi) return false;
+            const uint32_t a = u.rv.pc, r = region(a), off = offset(a);
+            const uint32_t* m = r == R_IMEM ? u.rv.imem : r == R_BOOTROM ? u.rv.bootrom : nullptr;
+            const uint32_t n = r == R_IMEM ? uint32_t(MEM_WORDS) : u.rv.bootrom_words;
+            if (!m || (off & 1) || off / 4 + (off & 2 ? 1 : 0) >= n) return false;
+            const uint32_t ins = off & 2 ? m[off / 4] >> 16 | m[off / 4 + 1] << 16 : m[off / 4];
+            return ins == 0x10500073;
+        }
         bool nmi() const { return c.read(u.irq) != 0; }
         void core_status(uint32_t bit) { c.put(u.bus, sim::Word(BUS_STATUS) << 32 | bit, sim::Word(0)); }
         void canonical_wait(bool level) { c.put(u.bus, sim::Word(BUS_CANON) << 32 | uint32_t(level), sim::Word(0)); }
@@ -460,7 +474,9 @@ struct TileCore {
         if (sq_n && sq_put[0] < 0) { c.put(send, sq[0][0], sq[0][1], sq[0][2]); sq_put[0] = int64_t(t); }
         if (coreless) return sim::Wake::none();                  // (harness-only)
         Env e{c, *this};
+        const bool waiting = rv.in_wfi;
         uint64_t next = rv.step(e, t);
+        if (!waiting && rv.in_wfi && t + 1 < next) next = t + 1;   // a WFI entered: its wake condition, from the next cycle
         if ((sq_n || periph_pending) && t + 1 < next) next = t + 1;
         return next == Rv32::kNever ? sim::Wake::none() : sim::Wake::at_cycle(next);
     }

@@ -7,5 +7,7 @@ MACH_LINK := $(MACH_OBJ) $(NET_LINK) $(B)/src/units/trace_log.o $(B)/src/units/t
              $(B)/src/units/replayer.o $(TRACER_LINK)
 
 $(B)/test_mach: $(MACH_LINK)
+# acceptance B: the RTL's sort images on the chip (tests/test_rtl_sort.cpp)
+$(B)/test_rtl_sort: $(MACH_LINK)
 # test_checkself: oracle/ref/CheckSelf.java's sequence (the checker), apart from test_mach
 $(B)/test_checkself: $(MACH_LINK)

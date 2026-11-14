@@ -1,0 +1,25 @@
+tile image (build/sort/tile/sort.elf):
+  IMEM: 16416 of 32768 bytes, 16352 free
+  DMEM: loaded data to 272 bytes, .bss to 10916 bytes, 20828 bytes free for the stack below the reply block at 31744; the largest frame 160 bytes (split_get_cuts)
+memory tile (build/sort/memory-tile/memory.elf): IMEM 528 bytes, DMEM 0 bytes from 0x10
+master, kv32 (build/sort/kv32/master.elf):
+  IMEM: 4916 of 32768 bytes, 27852 free
+  DMEM: 22296 of 32768 bytes (the summary 5568 bytes, the run image 16692 bytes), 10472 free for the stack
+master, k128 (build/sort/k128/master.elf):
+  IMEM: 4916 of 32768 bytes, 27852 free
+  DMEM: 22296 of 32768 bytes (the summary 5568 bytes, the run image 16692 bytes), 10472 free for the stack
+master, kv32-64k (build/sort/kv32-64k/master.elf):
+  IMEM: 4916 of 32768 bytes, 27852 free
+  DMEM: 22296 of 32768 bytes (the summary 5568 bytes, the run image 16692 bytes), 10472 free for the stack
+master, k128-64k (build/sort/k128-64k/master.elf):
+  IMEM: 4916 of 32768 bytes, 27852 free
+  DMEM: 22296 of 32768 bytes (the summary 5568 bytes, the run image 16692 bytes), 10472 free for the stack
+master, memory (build/sort/memory/master.elf):
+  IMEM: 4916 of 32768 bytes, 27852 free
+  DMEM: 5640 of 32768 bytes (the summary 5568 bytes, the run image 36 bytes), 27128 free for the stack
+replay image (build/sort/segment/replay.elf): IMEM 3328 bytes, DMEM 0 bytes loaded from 0x20
+tracer image (build/sort/segment/tracer.elf): IMEM 5760 bytes, DMEM 0 bytes loaded from 0x20
+master, trace (build/sort/trace/master.elf):
+  IMEM: 4916 of 32768 bytes, 27852 free
+  DMEM: 14740 of 32768 bytes (the summary 5568 bytes, the run image 9136 bytes), 18028 free for the stack
+buffers (scratchpad byte addresses): BUF_IN 0x0, BUF_VIN 0x80000, BUF_Y 0x200000, BUF_VS 0x280000

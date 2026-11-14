@@ -10,7 +10,8 @@
 #                ("name/" or `name`); deeper, the nearest README above speaks for it; planning/ needs none
 #   DOC-MISSING  a source file's comment names a document (*.md) that isn't in the tree (by its name: documents keep their
 #                names when they move, rule 7)
-# The history (planning/ and spec/history/, but their own README.md) is kept whole and not checked for paths. A path in
+# The history (planning/ and spec/history/, but their own README.md) and the RTL's firmware sources, another repository's,
+# copied verbatim (fw/rtl/src/), are kept whole and not checked for paths. A path in
 # a command beginning with "cd DIR" is also tried from DIR (and skipped when DIR is not a plain path). Exemptions, by
 # document and cited path: tools/doccheck-exempt.txt (kinds: other-repo, historical, output, cd). Generated
 # paths (build/, results/, fw/build/) and other versions' (v1.x/, ../) aren't checked. Exit 1 on any failure; -v also
@@ -23,7 +24,7 @@ LIST=$(mktemp); trap 'rm -f "$LIST" "$LIST".*' EXIT
 tools/freeze/frozen.sh --untracked > "$LIST"
 # every folder of the tree (for "is it a folder" and the README check)
 awk -F/ '{ p = ""; for (i = 1; i < NF; i++) { p = p (i > 1 ? "/" : "") $i; print p } }' "$LIST" | sort -u > "$LIST.dirs"
-HIST='^(planning|spec/history)/'
+HIST='^(planning|spec/history|fw/rtl/src)/'
 EXT='md|h|hpp|cpp|c|S|s|sh|mk|py|ld|inc|txt|csv|log|json|gz|tgz|hex|bin|sym|java|patch|sha256|out|fp|dig|trace|tb|ref|cfg|html|svg|tsv'
 
 # ---- the exemptions: DOC<TAB>cited path<TAB>kind<TAB>why (tools/doccheck-exempt.txt), by document and path, not line

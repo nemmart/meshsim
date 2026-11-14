@@ -45,7 +45,7 @@
 //   - the wake: MEIP is high from R, the cycle after the release; the instruction after the WFI moves into execute
 //     at the end of R + 1 and, nothing stalling it, leaves it in R + 2 and retires in R + 3. The ROM's is a load of
 //     EVENTS, a register window's: raised in R + 2, answered and retired two cycles later, in R + 4 (6.4).
-// PENDING-v1.36.md, section 1, lists what of the RTL's test is not here (the special tile's program).
+// OPEN-v1.36.md, (b), lists what of the RTL's test is not here (the special tile's program).
 #include <algorithm>
 #include <array>
 #include <cstdarg>

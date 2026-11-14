@@ -54,7 +54,7 @@
 // tile's EVENTS.peripheral_1 (the firmware sleeps on them), the write port from the tile's receive unit into the write
 // buffer, counted on the memory tile's counter (the WRITE's beats), and the DMA's input to the router with the tile's
 // id as src (the answers reach the master by their dst and are counted there). NOT TAKEN, each for want of a one-tile
-// bench for a special tile, which the simulator has not (PENDING-v1.36.md, section 1's `special` row, and section 5):
+// bench for a special tile, which the simulator has not (OPEN-v1.36.md, (b)):
 // its part B's read under a stalled attach output (the DMA waiting for the router's ready, queue 0 holding only what
 // it has room for: test_rw_engine has it at the slot's port, with the router input played; with the simulator's router
 // behind it the cycles would differ, PENDING section 5); part C's 64-bit and 32-bit region WRITEs through the tile

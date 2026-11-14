@@ -629,7 +629,8 @@ Breaking one of these rules is UB (1.3), unless it names an error:
 
 **The rest is software's:** the core's loop, the core-fed set and its key,
 the files and the map, the advice's delivery, and the records' and streams'
-destinations (17.9.15; the firmware is `fw/tracer/tracer_ctl.c`). Every
+destinations (17.9.15; the firmware is the RTL's tracer tile's image, `tracer.rs` in
+`fw/rtl/src/rtl/chip/test/programs/firmware/src/bin/`). Every
 refill and expansion reaches the region as a `WRITE` packet, from the tracer
 tile's DMA unit and write unit, as on the replayer.
 
@@ -722,8 +723,9 @@ of a run that depends on them is the model's (17.9.7).
 
 *Kept from v1.35's 4.21.3 (the controller's loops) and v1.35's 4.21.10 (the sequence), rewritten for v1.36: there are no
 commands, the tracer tile is loaded by its `LOAD` (6.5), and the handshakes are requests (17.9.10). Software only,
-for orientation: the rules are 17.9.3, 17.9.6, 17.9.10 and 17.9.11. The working version is the firmware,
-`fw/tracer/tracer_ctl.c`, `fw/cc/cc1.c` and `fw/replay/replay_ctl.c`, which v1.36 brings to this section. (Not
+for orientation: the rules are 17.9.3, 17.9.6, 17.9.10 and 17.9.11. The working version is the RTL's firmware,
+`tracer.rs`, `master.rs` and `replay.rs` in `fw/rtl/src/rtl/chip/test/programs/firmware/src/bin/`, which runs one
+segment a run on the chip (`tests/test_rtl_segment.cpp`). (Not
 stated by the RTL's specification; kept from v1.35.)*
 
 **What each compute tile receives, and on which counter.** Window *n* goes to compute tile *n*, which keeps it in

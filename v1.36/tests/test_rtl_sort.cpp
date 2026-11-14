@@ -29,7 +29,7 @@
 //     (the README's "the image's start-up 16,033", chip_test.rs's line for release 1), and 16,036 from the load's
 //     release to L1's, which the README does not give: the RTL chip's summary in all four runs (phase 0 arrived at
 //     20,780 and released at 20,784, phase 1 at 36,817 and 36,820), read from the master's DMEM on Snarky One's main at
-//     076e647 (PENDING-v1.36.md, section 6, says how). The figures are the RTL's, written here; the simulator is not
+//     076e647 (OPEN-v1.36.md, "Where the chip's reference figures came from"). The figures are the RTL's, written here; the simulator is not
 //     tuned to them: its units are the specification's.
 //
 // THE RUNS: sort_16_kv32 and sort_16_k128, 16 records a tile, always; sort_64k_kv32 and sort_64k_k128, 65,536 a tile,

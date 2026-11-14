@@ -1,6 +1,6 @@
 # fw/rtl's hash list (sha256, path in fw/rtl/), written by fw/rtl/refresh.sh; fw/check_images.sh rtl checks it.
 # Snarky One 370e3acae6254e9e94ba594dbce293e3fa948ed6
-5f70b8dc52c86bc1d076ca8731f48bd1402d8ad8366c6954c2cd507442c30ccd  boot/README.md
+25f91917cbdb3368de51930b0da5e7175ce84fec494df63cbe70083c50e7b33f  boot/README.md
 eb78f6c13bb3e93253963ab69c4d7d0fb332bd8250de482b4b5251ecfea8cf09  boot/boot_rom.elf
 7b54d8368de1f8ff17cf16cedffd66debaf1d0425e406a41bacea9b389a26ac8  boot/boot_rom.hex
 54658dfd7ca20f4e609fe8f588774de49a47bd6230accb3d8ddd1df809d2abe7  boot/boot_rom.sym

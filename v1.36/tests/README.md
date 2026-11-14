@@ -1,147 +1,78 @@
-# tests: how meshsim is checked against v1.3
+# tests: how meshsim is checked against the RTL
 
-*For anyone who needs to trust or rerun meshsim's results: how exactness against v1.3 is established, and what each
-fixture folder is and how it was made.*
+*For anyone who needs to trust or rerun meshsim's results: what the simulator is compared with, what each test is,
+and what each fixture folder is and where it came from.*
 
-## Three kinds of evidence
+## What the simulator is compared with
 
-v1.35's meshsim reproduces v1.3's Java simulator (`ref`: v1.3's with the trace hooks, outside the frozen copy; v1.3's own is
-`v1.3/meshsim/`): the same results, and the same cycle counts
-except for the deliberate differences (D30; `spec/CHANGES-v1.3-to-v1.35.md`). Each fixture below was made by running
-`ref`; each test compares meshsim with it.
+v1.36's simulator models the RTL's hardware (Snarky One). Every expectation of a test comes from one of four
+places, never from the simulator's own output:
 
-- **Goldens:** what `ref` printed or traced for a whole program or run (a retire trace, a suite's log, a sort's
-  fingerprints), compared line for line. A suite's log is compared with its timing masked (`./run_tests.sh --check`);
-  cycles are never masked.
-- **Conformance drivers:** one unit, or one kind of port, driven by a scripted sequence of inputs every cycle, the same
-  script in `ref` and in meshsim; the observations (`*.obs`, from `*.script`) must be equal. They cover the edges a
-  whole program rarely reaches. The port kinds' rules are `src/PORTS.md`.
-- **Fingerprints:** a canonical hash of the machine's state at fixed points (`*.corefp`, the sort's `fp`, the chains'
-  `*.starts`), so a long run is checked without a full trace. The formats are `TRACE-FORMAT.md`.
+- **The RTL's own simulation.** A reference recorded from the RTL under Verilator: a core program's retirements cycle
+  by cycle, a unit's observations of a scripted run every cycle, a chip run's handshakes, a block's figures on real
+  workloads. Each such folder has a `README.md` with the Snarky One commit, the instrumentation and the command. **A
+  reference made by the RTL is never regenerated from the simulator**; a difference is the simulator's to fix.
+- **The RTL's own tests, ported.** A chip or unit test of Snarky One's rewritten on the simulator, with the RTL's
+  firmware images unmodified (`fw/rtl/`), its stimulus draw for draw, and the figures its chip gives.
+- **The specification** (`spec/`), and, where it leaves a cycle to the implementation, the RTL block's README or
+  source: `OPEN-v1.36.md`, (c), lists those.
+- **`ref`**, v1.3's Java simulator, where v1.36's hardware is unchanged from v1.3's: the framework's port kinds, the
+  request tree's units under load, the replayer's ALU, the Tracer's parts, a few sequences on the coreless machine,
+  the checker's messages. `PROVENANCE` files name each such fixture's command; the scripts that made them are not in
+  this folder (they are in the repository's history, at the commit that froze v1.35).
 
-**v1.36, against the RTL.** The core, the replayer and the Tracer are the RTL's blocks, cycle for cycle, and their
-evidence is the RTL's own: Snarky One's core programs with the cycles, retired instructions and retire traces its
-simulation gave (`core-programs/`, which `test_core_programs` requires of the model exactly), the replayer's recorded
-windows and per-cycle scripts (`replayer/`, `acceptance/rtl/`), the Tracer's per-run figures (`tracerblock/rtl/`).
-The platform around them is checked by the RTL's own firmware, unmodified (`fw/rtl/`): `test_core_tile` checks
-the core's join to the tile's register bus, access by access, in `register_bus`'s cycles; `test_rtl_tile`
-(acceptance A) runs the RTL's tile programs on a tile, with the replayer in its slot, and checks the boot ROM's
-cycles there; `test_rtl_sort` (acceptance B) runs the RTL's sort images end to end on the chip, against an oracle
-written apart from the design, and checks the sort's cycles, step by step, against the RTL chip's published
-figures. `test_rtl_segment` (acceptance C) runs the segment on the chip under the RTL's own firmware, as the RTL's
-chip tests do: a guest traced by the tracer tile's Tracer, each window delivered to its compute tile and replayed there,
-against segments the RTL's test built from its own models, and every cycle against the RTL chip's own figures for the
-same run (`segment/rtl/`); on real workloads' windows, against their recorded files and the RTL chip's published cycles. A reference made by the RTL is never regenerated from the simulator. v1.35's core
-and tile are gone, and with them what below runs on them (`../PENDING-v1.36.md` says which fixtures and tests are
-pending, and why).
+Tests whose plants prove they can fail: `rw_engine_teeth.sh`, `ie_teeth.sh` and `tracer_teeth.sh` each plant slips in
+a model, one at a time, in a scratch copy, and require the unit's tests to fail on each (not in `make check`: a
+rebuild a slip).
 
 ## Tests and suites
 
-- **`make check`** builds and runs every `test_*.cpp` here, in the debug and release builds with gcc and clang
-  (`BUILDING.md`). Most compare against a fixture folder; the `*conf` and `golden*` tests are the conformance drivers
-  and goldens above.
-- **`./run_tests.sh`** runs v1.3's suites, ported, with v1.3's step names and logs; `--check` compares each log with its
-  reference (`RUNNING.md`). The suites' sources are `suite_*.cpp`, `ctl/`, `sort_test.cpp` and the
-  `*.mk` files; `suite.h` is their shared harness, `mach.h` the machine (`src/units/README.md`).
-- **v1.36: what is pending.** The tile is now the RTL's (`spec/CHANGES-v1.35-to-v1.36.md`), and the tests and suites
-  that run v1.35's firmware or drive v1.35's register map have not been ported: `pending.mk` takes those tests out of
-  the build (`make pending` lists them), `./run_tests.sh` prints their steps as `PENDING (<reason>)` and counts them,
-  and `../PENDING-v1.36.md` has a row for each with what closes it. Their sources, fixtures and reference logs stay as
-  they were; nothing was weakened to pass. What runs on v1.36's hardware today: `test_rtl_tile` (acceptance A: the
-  RTL's own tile programs on one compute tile, with the boot ROM's cycles; the runner's step `rtl-tile`),
-  `test_rtl_sort` (acceptance B: the RTL's sort images on the chip, 64 × 16 records always, 64 × 65,536 with
-  `RTL_SORT_64K_KEYS`, and a run split over threads; the steps `rtl-sort` and `rtl-sort-64k`),
-  `test_rtl_segment` (acceptance C: the RTL's trace run, tracer tile's image and replay image on the chip; the RTL test's
-  three generated segments always, the real workloads' windows with `MESHSIM_INPUTS`; the steps `rtl-segment` and
-  `rtl-segment-real`),
-  `test_core_programs` and `test_core_tile` (the RTL's core; the steps `core-programs` and `core-tile`), `test_tile_control`
-  (the tile control unit and the register bus's decode against the specification's text), `test_periph_slot` and
-  `test_tracer_slot` (the peripheral slot: 17.1's blocks and the RTL's cycles of a consuming load and of the DMA,
-  with the test peripheral, the replayer and the Tracer in it), `test_rw_engine` and `test_rtl_memory` (the memory tile:
-  the RW engine against the RTL's unit, the RTL's unit test ported with the RTL's outputs' fingerprints, and the
-  RTL's memory run on the chip with an AXI4 slave, `axi4_slave.h`, on the `lpddr` port, against the RTL chip's
-  handshakes: `rwengine/`; the runner's step `rtl-memory`; `tests/rw_engine_teeth.sh` plants bugs in the model, one at
-  a time, and requires these tests to fail on each), `test_mach` (the machine harness: the
-  boot ROM's pull boot on all 64 tiles, the chip's build, and v1.3's `packets`, `reads` and `a2a` sequences on the
-  coreless machine), `test_router` (the router against the RTL's own, under scripted random load, cycle by cycle, and every router's routes: `routerconf/README.md`), the unit stages'
-  tests (`test_replayer`, `test_replayconf`, `test_replay_lists`, `test_tracer*`), and the tests of the tile's units, each written from
-  the specification and, where it leaves a cycle to the implementation, the RTL block's README: `test_ag` (the DMA
-  unit's address generator, 8.2–8.5), `test_receive` (the write engine with `PTR` and `HIST`, 12.4, 12.5), `test_mem` (the
-  scratchpad and the inject unit, 14, 15; the runner's steps `mem*`), `test_gather` (the gather unit) and `test_mach`'s
-  gather case (13 on the whole tile); and of the chip's parts: `test_special_router` (16.1–16.4: the special tile's
-  router, the attach ports, the reserved ids, the DMA input, the arbiters), `test_request_tree` (chapter 11: the request
-  unit and the tree, against a beat-by-beat model written from the RTL's READMEs), `test_ingress_egress` (17.6: the unit
-  between a core stand, the nets and the far ends of its pins and ports, `ie_far_end.h`: the UART's line bit for bit, the
-  host interface's handshakes, each rule with its cycle) and `test_rtl_stream` (the RTL's `chip_stream_test.rs` and the
-  UART through the master's core, on the chip, at the RTL chip's cycles for the same far ends; the runner's step
-  `rtl-stream`). v1.3's references for those units (MemTest's logs, EngConf's and MemConf's
-  fixtures) measured v1.35's FIFOs and queues and are retired or superseded, never regenerated
-  (`../PENDING-v1.36.md`, the platform stage, sections 3 and 7).
+- **`make check`** builds and runs every `test_*.cpp` here, in the debug and release builds with gcc and clang, and
+  the thread tests and the chip split over threads under ThreadSanitizer (`BUILDING.md`).
+- **`./run_tests.sh`** runs the tests of the hardware as steps, in the suite build (the checker's reports on), and
+  the suites whose logs are compared with reference logs (`RUNNING.md`). The suites' sources are `suite_*.cpp` and
+  `tracer_block_main.cpp`; `suite.h` is their printer, `mach.h` the machine (`src/units/README.md`).
+
+| test | what it checks | against |
+|---|---|---|
+| `test_core_programs` | the core alone: the RTL's 49 programs, CoreMark, the interrupt programs, the boot ROM; every retirement, trap and wait in the RTL's cycle | the RTL (`core-programs/`) |
+| `test_core_tile` | the core's join to the tile's register bus, access by access | the specification (5, 6.4) and `register_bus`'s cycles |
+| `test_regs` | `fw/REGISTERS.md` and `fw/include/mesh.h` | the generator, the simulator's decode, the specification's tables, the RTL firmware's definitions |
+| `test_tile_control` | the tile control unit and the register bus's decode | the specification (5, 7) |
+| `test_ag`, `test_receive`, `test_mem`, `test_gather` | the DMA unit's address generator (8.2–8.5), the write engine with `PTR` and `HIST` (12.4, 12.5), the scratchpad and the inject unit (14, 15), the gather unit (13) | the specification and the RTL blocks' READMEs |
+| `test_mach` | the machine harness; the pull boot on all 64 tiles; v1.3's `packets`, `reads` and `a2a` sequences on the coreless machine; the gather unit and `ERRORS.drift` on the whole tile | the specification; `ref` (`mach/netself.out`) |
+| `test_checker` | the checker's report for packets that break a rule | `ref`'s CheckSelf, for the rules v1.36 keeps; 7.4's names |
+| `test_router`, `test_special_router` | the router under scripted random load, every cycle of every output, and every router's routes; the special tiles' routers, the attach ports, the arbiters | the RTL's router (`routerconf/`); chapter 16 |
+| `test_request_tree`, `test_reqbus` | the request unit and the tree; the tree's units under five loads | chapter 11 and a beat-by-beat model from the RTL's READMEs; `ref` (`reqconf/`) |
+| `test_periph_slot`, `test_tracer_slot` | the peripheral slot: the control block, the counted events, the DMA with its packet register, with the test peripheral, the replayer and the Tracer in it | 17.1–17.4 and the RTL's `peripheral_control` and `peripheral_dma` |
+| `test_ingress_egress` | Ingress/Egress between a core stand, the nets and the far ends of its pins (`ie_far_end.h`): the UART bit for bit, the host interface's handshakes | 17.6 and the RTL's `ingress_egress_unit` |
+| `test_rw_engine` | the RW engine: the RTL's unit test ported, on an AXI4 slave (`axi4_slave.h`) | the RTL unit's outputs' fingerprints (`rwengine/`) |
+| `test_replayer`, `test_replayconf`, `test_replay_lists`, `test_replayer_alu`, `suite_replayer` | the replayer: its unit tests, scripted passes every cycle, the error lists, the ALU | the RTL's observations (`replayer/`); `ref`'s ALU sweep |
+| `test_tracer`, `test_tracer_rules`, `test_tracer_rig`, `test_tracer_parts`, `suite_tracer`, `suite_memsys`, `suite_rvc` | the Tracer: its interface to the slot, 17.9's rules and timing as closed forms in the fill port's latency, its parts | 17.9 and the RTL's source; `ref` (`tracerparts/`, gold's RVC table) |
+| `tracer_block` | the Tracer alone on real segments and on a synthetic guest | gold's files; the RTL's figures run by run (`tracerblock/rtl/`) |
+| `test_rtl_tile` | the RTL's tile programs on one compute tile, the replayer in its slot; the boot ROM's cycles | the RTL's `base_tile_test.rs`; Snarky One's core README |
+| `test_rtl_sort` | the RTL's sort images end to end on the chip, four runs; every tile's error provoked; a run split over threads | an oracle written apart from the design; the RTL chip's cycles, step by step |
+| `test_rtl_segment` | the segment on the chip under the RTL's firmware: generated segments and real workloads' windows | the RTL's own run (`segment/rtl/`); the recorded files and the RTL chip's cycles |
+| `test_rtl_memory`, `test_rtl_stream` | the memory run and the stream run on the chip; the UART through the master's core | the RTL chip's handshakes and cycles |
+| `replay_shard`, `shard_summary`, `replay_delivery` (tools; `test_shard_summary`) | the replayer alone on a delivery's windows: the acceptance kit | the delivery's rows; the RTL's cycles (`acceptance/rtl/`) |
+| `test_cnc` | the behavioural master of the coreless machine (`bench_master.h`), a test bench | `ref` (`cncconf/`) |
+| the others (`test_arena`, `test_base`, `test_bitmap`, `test_bucket`, `test_debug`, `test_digest`, `test_engine`, `test_forms`, `test_kinds`, `test_link_depth`, `test_matrix`, `test_net_headers`, `test_observe`, `test_parallel`, `test_partition`, `test_portconf`, `test_registry`, `test_ring`, `test_threads`, `test_topology`, `test_value_pool`, `test_wide`, `suite_bus`, `test_suite`, `test_statefp`, `test_chain`, `test_delivery_json`, `test_java_format`, `test_suite_replayer`, `test_tracer_suites`) | the framework, its port kinds and threads; the tests' own helpers; the suites run inside `make check` | `ref` for the port kinds (`portconf/`, `p2suites/`); by hand |
 
 ## The fixture folders
 
 | folder | what |
 |---|---|
-| `core-programs/` | the RTL's own core programs (riscv-tests, firmware tests, CoreMark) and what the RTL's simulation measured on each: cycles, retired instructions, retire traces (its `README.md`) |
-| `golden/` | the M1 programs' retire traces (`RUNS` lists each: tile, images, schedule), and their images |
-| `golden-m2/` | M2's references: the programs' outputs and hashes (its `README.md`) |
-| `golden-m3/` | what is left of M3's references (its `README.md`); T2's and the chains' are retired with their tools (`../PENDING-v1.36.md`, the segment's stage) |
-| `fp-m1/` | the core's fingerprints for the M1 programs (`*.corefp`) |
-| `g1-replay/` | one tile's control boundary, cycle by cycle, for two programs |
-| `m3-images/` | M3's controller images (C&C 1-3, the replayer's and Tracer's controls) and their boot references |
-| `portconf/`, `routerconf/`, `memconf/`, `engconf/`, `slotconf/`, `cncconf/`, `cnc1conf/` | conformance scripts and observations: the port kinds, the router, the memory path, the engines, the peripheral slot, C&C's model, C&C 1's peripheral |
-| `tileslotconf/` | a tile's controller with its slot: programs and observations |
-| `reqconf/` | the request bus under five loads (calm, drop, fan-in, full, mix) |
+| `core-programs/` | the RTL's own core programs and what the RTL's simulation measured on each: cycles, retired instructions, retire traces, the waits (its `README.md`) |
+| `routerconf/` | the router against the RTL: scripts of random load, the RTL's observations of them, the RTL's routes, and what made them (its `README.md`) |
 | `replayer/` | the replayer's fixtures: the conformance scripts with the RTL's observations of them, the ALU sweep and reports (its `README.md`) |
-| `rwengine/` | the RW engine against the RTL: the RTL unit's outputs' fingerprints under its own test, the RTL chip's `lpddr` handshakes in `chip_memory_test`, and the instrumentation that printed them (its `README.md`) |
-| `tracerparts/` | the Tracer's parts (the LRU coder, the memory system, the RVC expansion) |
-| `ctlsuites/`, `p2suites/`, `p4suites/`, `tracersuites/` | v1.3's suite logs, the references of `run_tests.sh --check`; `PROVENANCE` in each says how they were made |
-| `ctl/` | the control suites' sources (code, not fixtures) |
-| `sort/` | the sort's fingerprints and its kit's references (its `README.md`) |
-| `acceptance/` | the acceptance kit: build, calibration and its task (its `README.md`) |
-| `segment/` | the segment on the chip: the RTL's chip test's three segments as it built them, with the RTL chip's own figures for each run (`segment/rtl/`, its `README.md`) |
-| `delivery/` | doubles as Java prints them, for the delivery tools' output |
-| `mach/`, `suite/` | the harness's self-tests' expected output |
-| `freeze/` | the freeze check: its body and the task that runs it |
+| `acceptance/` | the acceptance kit (the replayer alone on a delivery), with the RTL's cycles for each window (`acceptance/rtl/`) (its `README.md`) |
+| `rwengine/` | the RW engine against the RTL: the RTL unit's outputs' fingerprints, the RTL chip's `lpddr` handshakes, and the instrumentation that printed them (its `README.md`) |
+| `tracerblock/` | the Tracer alone: the bench's parts (gold's readers, the synthetic guest, the report), the reference logs, and the RTL's figures (`tracerblock/rtl/`, its `README.md`) |
+| `segment/` | the segment on the chip: the RTL's chip test's three segments as it built them, with the RTL chip's own figures (`segment/rtl/`, its `README.md`) |
+| `tracersuites/` | the Tracer suites' reference logs, and gold's RVC table; `PROVENANCE` says how they were made |
+| `tracerparts/` | the Tracer's parts against `ref`: the LRU coder, the memory system, the RVC expansion |
+| `portconf/`, `p2suites/` | the framework's port kinds: conformance scripts and observations, and `suite_bus`'s reference log |
+| `reqconf/`, `cncconf/` | the request tree's units under five loads; the behavioural master: against `ref` |
+| `mach/`, `suite/`, `statefp/`, `delivery/` | expected output of the harness's own tests: `ref`'s sequences on the coreless machine; the suites' printer; three fingerprint files as examples of the format; doubles as Java prints them |
 
-The `p4_*.sh` and `tracer_teeth.sh` scripts are checks run on the suites (debug-build checks, the logs' line counts,
-that the Tracer's tests fail when the Tracer is broken). `ie_teeth.sh` plants slips of the UART and the host interface
-in Ingress/Egress, one at a time, and requires `test_ingress_egress` or `test_rtl_stream` to fail on each.
-
-## How the fixtures were made
-
-Every fixture was generated from v1.3's Java simulator by the scripts of the oracle folder, which is not in this
-frozen copy; they are in the repository's history at the commit that froze this folder
-(`git log --diff-filter=A --format=%h -- v1.35/README.md` names it). `PROVENANCE` files and the `RUNS` lists name each
-fixture's command and `ref`'s commit. **The frozen copy can verify its fixtures but not regenerate them.**
-
-## The Tracer in v1.36
-
-The Tracer is a model of the RTL's (Snarky One's `rtl/blocks/tracer_unit`), so its evidence is the RTL and spec 17.9,
-not v1.3's Java model:
-- **`tracer_block`** (`tests/tracer_block_main.cpp`, `tests/tracerblock/`): real workloads' segments on the RTL
-  acceptance test's bench (`tests/tracer_block.h`), every run's cycles and counters against the RTL's own.
-- **`suite_tracer`** and **`test_tracer_rules`**: hand-built guests on the same bench (`tests/tracer_rig.h`), each
-  expectation from spec 17.9 or, where it gives no number, the RTL's source, as closed forms in the fill port's
-  latency; `test_tracer_rules` holds the rules v1.36 changed and the timing of 17.9.7.
-- **`test_tracer`**: the interface to the slot, the wake rule, `observe()` and the fingerprint.
-- **`tests/tracer_teeth.sh`** plants v1.35's behaviour and timing slips in the Tracer, one at a time, and requires
-  these tests to fail on each.
-The replay of the Java reference Tracer's call logs (the tracerconf fixtures) is retired with the v1.35 hardware it
-modelled.
-
-## The segment in v1.36
-
-The segment on the chip is checked against the RTL's chip, not against v1.3's T2 or its chains, which ran v1.35's
-controllers' firmware and are retired (`../PENDING-v1.36.md`, the segment's stage):
-- **`test_rtl_segment`** (`tests/segment_bench.h`): the chip under the RTL's firmware, unmodified. The master tile's
-  trace run loads the tracer tile's image and the replay image; the Tracer traces the guest window by window and its
-  DMA delivers each window's record and streams to its compute tile; the replayers replay them. The test places the
-  segment as the RTL's test does, plays the memory system on the Tracer's fill port as the RTL's test does (it is Open
-  in the hardware; the model is the test's, draw for draw), and takes every row out of every tile's row port.
-- **The generated segments** (`tests/segment/rtl/`): the RTL test's own three, written by it with its models'
-  expectations and its chip's figures. Every row, delivery, summary word, report word, fill request and row's cycle
-  must be the RTL's.
-- **The real workloads** (`tests/segment_real.h`): EVM Zone's and Cyclone's recorded windows, a host segment of 64 at
-  a time, each window's rows, record and streams from its files; the replay's and the trace's cycles must be the RTL
-  chip's, as its README gives them for the same windows.
+`TRACE-FORMAT.md` is the retire trace's format.

@@ -11,7 +11,7 @@
 // CYCLES. Cycle 0 is the first cycle after the reset, as the RTL bench's count (the simulator's cycle 1). The far ends here are the RTL
 // bench's own, cycle for cycle (the stream test's from the same xorshift32 sequence, verif::Random), so the chip must
 // do in every cycle what the RTL's chip does: the cycles asserted below are the RTL chip's, taken from runs of its
-// model with the same far end (Snarky One at 076e647; PENDING-v1.36.md, the platform stage, section 2, says how).
+// model with the same far end (Snarky One at 076e647; OPEN-v1.36.md, "Where the chip's reference figures came from").
 #include <cstdint>
 #include <cstdio>
 #include <string>

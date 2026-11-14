@@ -1,4 +1,4 @@
-# v1.3's outputs (sim/ref's KeyGen and SplitSets): keys-16384 and keys-65536 uniform as golden-m2/HASHES records them
+# v1.3's outputs (sim/ref's KeyGen and SplitSets): keys-16384 and keys-65536 uniform as v1.35's M2 references recorded them
 # (the sort's reference runs); n2000/ every key set and split set at --n 2000 (run 2026-11-11, oracle/pipeline_crosscheck.sh).
 3db703f3e170ee6fa337eb7ee539800b371a3d6fcf924225baade1a8386aeb40  keys-16384/uniform.keys
 a7636b687a6db39cac8fbf63c2f16f686fd1ce858fe8a7ed5d98621e452c9b7a  keys-65536/uniform.keys

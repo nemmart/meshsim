@@ -28,14 +28,14 @@ library. `mesh.h` is for a program written against v1.36's map here; none is in 
 
 ## What the RTL's firmware is, and what runs it
 
-| the firmware (`rtl/`) | what it does | run by |
+| the firmware (in `fw/`) | what it does | run by |
 |---|---|---|
-| `boot/boot_rom.elf` | the boot ROM's program (6.5): the pull boot by `LOAD`, `boot_local`, the handler | every tile of every test boots through it; `test_rtl_tile` and `test_core_programs` check its cycles |
-| `tile/base_tile/` (`registers`, `noc`, `barrier`, `errors`, `replayer`) | the RTL's tile programs: the tile window's registers, the tile's packets, the barrier, the errors, the replayer's window | `test_rtl_tile` |
-| `sort/tile/sort.elf`, inside each run's `master.elf` | the sort: meshsim v1.25's sort, split and skew planner, on the RTL's port layer (`rtl/src/rtl/chip/test/programs/sort/PORTING.md`) | `test_rtl_sort` |
-| `sort/<run>/master.elf` | the master tile's program: the load, the barriers, the errors, the links' latency | `test_rtl_sort`, `test_rtl_memory`, `test_rtl_segment` |
-| `sort/memory-tile/memory.elf` | the memory tile's program: `READ` and `WRITE` requests served with the RW engine (11.5) | `test_rtl_memory`, and every chip test |
-| `sort/segment/tracer.elf`, `replay.elf`, with `sort/trace/master.elf` | the segment: the tracer tile's image feeds the Tracer and delivers each window; the replay image replays it on a compute tile | `test_rtl_segment` |
+| `rtl/boot/boot_rom.elf` | the boot ROM's program (6.5): the pull boot by `LOAD`, `boot_local`, the handler | every tile of every test boots through it; `test_rtl_tile` and `test_core_programs` check its cycles |
+| `rtl/tile/base_tile/` (`registers`, `noc`, `barrier`, `errors`, `replayer`) | the RTL's tile programs: the tile window's registers, the tile's packets, the barrier, the errors, the replayer's window | `test_rtl_tile` |
+| `rtl/sort/tile/sort.elf`, inside each run's `master.elf` | the sort: meshsim v1.25's sort, split and skew planner, on the RTL's port layer (`rtl/src/rtl/chip/test/programs/sort/PORTING.md`) | `test_rtl_sort` |
+| `rtl/sort/<run>/master.elf` | the master tile's program: the load, the barriers, the errors, the links' latency | `test_rtl_sort`, `test_rtl_memory`, `test_rtl_segment` |
+| `rtl/sort/memory-tile/memory.elf` | the memory tile's program: `READ` and `WRITE` requests served with the RW engine (11.5) | `test_rtl_memory`, and every chip test |
+| `rtl/sort/segment/tracer.elf`, `replay.elf`, with `rtl/sort/trace/master.elf` | the segment: the tracer tile's image feeds the Tracer and delivers each window; the replay image replays it on a compute tile | `test_rtl_segment` |
 
 The core's own programs (riscv-tests, the firmware tests, CoreMark) are with their references, in
 `tests/core-programs/`.

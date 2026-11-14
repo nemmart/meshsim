@@ -76,7 +76,7 @@
 //                the tracer tile's (ERROR_LINES_2 [1], [2]).
 //   release (64) own LinkOuts, width 0, to every compute tile's tile control unit: BARRIER_RELEASE.
 //
-// WHAT IS NOT THE RTL'S YET (PENDING-v1.36.md):
+// WHAT IS NOT THE RTL'S (OPEN-v1.36.md, (a)):
 //   - An error line's level reaches ERROR_LINES a cycle later than ERROR_LATENCY says: the RTL reads the wire in the
 //     cycle the tile's flip-flop drives it; here the level crosses a Link(1 + ERROR_LATENCY).
 #pragma once

@@ -26,7 +26,7 @@
 // which drives the row's wire in the cycle the link delivers; Ingress/Egress, at a later level of that cycle, takes it
 // as an arrival that its reads of that cycle see: ARRIVALS set at the end of the cycle the pulse reached it (17.6). An
 // error line crosses a Link(1 + ERROR_LATENCY) the same way, so ERROR_LINES shows a level one cycle later than the RTL's
-// wire does (PENDING-v1.36.md: a tile control unit learns its flip-flop's value in the cycle it drives it, and a Wire
+// wire does (OPEN-v1.36.md: a tile control unit learns its flip-flop's value in the cycle it drives it, and a Wire
 // cannot cross thread domains). BARRIER_RELEASE is a Link(RELEASE_LATENCY) from Ingress/Egress to each tile.
 //
 // THE PARTITION. Every unit of tile k goes in `domain[k]`; a special tile's with its attach tile's; the request tree's

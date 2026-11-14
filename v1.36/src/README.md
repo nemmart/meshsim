@@ -50,13 +50,12 @@ t + L exactly as in one domain. A Wire across domains is fatal at build. One chi
 **Determinism and its checks.** A run is deterministic, whatever the thread count. The machine's digest (`digest.h`)
 hashes every unit's state and every port's contents, independently of how the build numbered them, so one domain and
 several give the same digest; `make check`'s thread tests compare them (`tests/test_matrix.cpp` splits machines 2, 4
-and 8 ways on 1 to 8 threads, the digest at every checkpoint equal to one domain's). Against v1.3, results are exact and cycle counts
-exact except for the deliberate differences (D30; `spec/CHANGES-v1.3-to-v1.35.md`); `tests/README.md` says how that is
-established.
+and 8 ways on 1 to 8 threads, the digest at every checkpoint equal to one domain's). Against the RTL, results and cycle counts are exact but for what `OPEN-v1.36.md` lists; `tests/README.md` says how that
+is established.
 
-**What the builds check** (`check.h`, `base/fatal.h`): undefined behaviour is fatal in every build; the silent traps
-stop the core in every build; every other invariant is counted in every build and reported by name in the debug and
-suite builds. The checks neither v1.3's simulator nor v1.35's has are listed in `spec/CHANGES-v1.3-to-v1.35.md`.
+**What the builds check** (`check.h`, `base/fatal.h`): undefined behaviour is fatal in every build; every
+other invariant the units check is counted in every build and reported by name in the debug and suite builds
+(`units/README.md`, "The checker and the invariants", says which invariant is checked how).
 
 ## Adding a unit
 
@@ -73,33 +72,25 @@ suite builds. The checks neither v1.3's simulator nor v1.35's has are listed in 
 
 ## Adding a peripheral
 
-A target's own units are peripherals: they plug into a tile's or controller's peripheral slot (spec 4.17,
-`spec/OVERVIEW.md`), which gives them the region, the window, the events, the DMA and the request port. The contract is
+A target's own units are peripherals: they plug into a tile's peripheral slot (machine-spec 17), which gives them
+the region, the window with its control block, the events, the errors and the DMA. The contract is
 `units/peripheral.h`; the slot is `units/periph_slot.h`.
 
 1. Write a class deriving from `PeripheralBase<Self>` and define the methods of `peripheral.h` it needs; the base gives
    the others their defaults. No virtual calls: the slot dispatches on the type.
-2. Give it a type number: `PT_*` in `peripheral.h` (spec 4.17.1).
+2. Give it a type number: `PT_*` in `peripheral.h` (machine-spec 17.1: `PARAMS.type`).
 3. In `units/periph_slot.cpp`, add a case for the type in each switch: the dispatch (`visit`), the destructor
-   (`Ref::~Ref`) and the creation; add an accessor as the others have (`cc_stub(n)`).
+   (`Ref::~Ref`) and the creation; add an accessor as the others have.
 4. Put it in a slot when the chip is built (`units/chip.cpp`), and wire its own ports there if it has any.
 5. If it has state, declare `DIGEST_N` and `digest_words`; return its flags from `violation_count()`.
-6. Tests: as a unit's, plus the slot's tests with it in place (`tests/test_periph_slot.cpp` and
-   `tests/test_tile_slot.cpp` do this for the test peripheral).
+6. Tests: as a unit's, plus the slot's tests with it in place (`tests/test_periph_slot.cpp` does this for the test peripheral,
+   `tests/test_rw_engine.cpp` for the RW engine).
 
-**A worked example: C&C 2's engine stub** (`units/cnc1_periph.h`, `CcStub`, type 2). It is present and typed, never
-runs, raises no events or errors, has no words beyond the standard ones, and flags any write into its region:
-
-- `type()` and `params()` return 2 (3 when it stands for C&C 3's engine);
-- its constructor gives `EventCounts` two events of depth 1;
-- `accept` (a region write) counts a violation, and `violation_count()` returns the count, which the slot forwards to
-  the tile;
-- `running`, `errors`, `step`, `idle` and `reset` are the trivial ones; `consume_events` and `events` hand the slot its
-  counts;
-- it has the four switch cases of step 3 and `cc_stub(n)`, and `build_chip` puts it in C&C 2's slot.
-
-For a peripheral with words, runs, a DMA and output queues, read `units/test_peripheral.h` (the suites' test
-peripheral, type 15) next; then `cnc1_periph.h`'s `Cnc1Peripheral`, which has its own ports.
+**A worked example: the test peripheral** (`units/test_peripheral.h`, `TestPeripheral`, type 15), the smallest one: a
+few words in its window, events it posts when a test tells it to, a region that records what is written into it. The
+RW engine (`units/rw_engine.h`) is the example of a real one: its own words, a job that runs over many cycles, two
+output queues behind the slot's DMA, a port at the chip's boundary that a harness places a model on, and its header
+says which line of the RTL each rule comes from.
 
 ## The tests a unit must pass
 
@@ -108,8 +99,8 @@ peripheral, type 15) next; then `cnc1_periph.h`'s `Cnc1Peripheral`, which has it
 - **The debug build clean:** ASan, UBSan and the missed-wake detector; the allocation guard (any allocation in the
   cycle loop is fatal) holds in every build.
 - **The same digest on one domain and several**, where it can sit on a domain boundary.
-- **Against v1.3,** where it has a counterpart in `ref`: its results and cycles compared with a fixture from v1.3
-  (`tests/README.md`).
+- **Against the RTL:** its results and cycles compared with the specification and with a reference from the RTL's
+  own block (`tests/README.md`).
 
 ## Files
 

@@ -34,7 +34,7 @@
 //   handshake; a stalled store: taken in the first cycle at whose start its FIFO is not full.
 //
 // NOT CHECKED HERE: an error line's cycle through the chip's wiring (a cycle later than ERROR_LATENCY says:
-// PENDING-v1.36.md's row "the nets") is the chip's, not this unit's: here a level is read in the cycle it is driven.
+// OPEN-v1.36.md, (a)) is the chip's, not this unit's: here a level is read in the cycle it is driven.
 // The UART and the host interface through the master's core, on the chip, at the RTL chip's cycles: test_rtl_stream.
 #include <algorithm>
 #include <cstdint>

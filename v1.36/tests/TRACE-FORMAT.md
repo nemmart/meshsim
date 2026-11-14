@@ -1,9 +1,10 @@
 # The retire trace (M1)
 
-The format both sides write for one tile's controller: `ref` (v1.3's simulator with the trace hooks, outside the frozen copy) through its observer (`Observer`,
-driven by the oracle's `TraceRun`, outside the frozen copy) and the C++ controller with its test bench. M1 is accepted when the two traces of a
-program are equal, line for line, from reset to the end (DECISIONS D3). The golden traces are in `tests/golden/`
-(the oracle's golden script makes and checks them).
+The format `src/units/trace_log.h` writes for one tile's core when a test gives it a log. It was made for M1, v1.35's first
+stage, whose controller was accepted when its trace of a program equalled v1.3's simulator's (`ref`'s) line for line. In
+v1.36 no fixture is in this format: the core is the RTL's, and `test_core_programs` compares its retirements with the
+RTL's in the RTL's own form (`core-programs/README.md`). The trace is kept as a tool: a test can still ask for it. What
+below speaks of `ref`, the controller and its test bench describes where each line's cycle rule came from.
 
 Plain text, one line per event, fields separated by one space. Numbers are hexadecimal, lowercase, 8 digits
 (`%08x`), except cycles, register numbers and access sizes, which are decimal. A trace has three parts: the header (`#`
@@ -82,7 +83,7 @@ any difference. Lines in this order:
 
 - `image`: the sha256 of the program-memory image (`.code.bin`, loaded from `0x01000000`) and the data-memory image
   (`.data.bin`, loaded at `data_at`); `entry` is the boot command's jump target (its slot 1).
-- `bootrom`: the sha256 of the boot ROM's words (`fw/boot/bootrom.hex`, little-endian bytes).
+- `bootrom`: the sha256 of the boot ROM's words (little-endian bytes).
 - `config`: the values the controller's behaviour, or the cycles of what the test bench replays, depend on
   (`AUDIT-M1.md` says which matters how):
 

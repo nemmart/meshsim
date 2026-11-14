@@ -614,7 +614,7 @@ names an error:
 **The rest is software's:** the core's loop, the core-fed set and its lookup,
 the template bitmap's use, the tables' and the records' delivery, and the
 resident replay region with its LPDDR staging (17.8.19, 17.8.21 and 17.8.22; the
-firmware, `fw/replay/replay_ctl.c`). Every refill, record and expansion reaches the region
+firmware: the RTL's replay image, `replay.rs` in `fw/rtl/src/rtl/chip/test/programs/firmware/src/bin/`). Every refill, record and expansion reaches the region
 as a `WRITE` packet, on this tile from its DMA unit's stream transfers out of the
 scratchpad (8.3) and its write unit (9): the replayer has no other path to
 the core. The core-fed set's delivery is decided and not built (item 115): the tracer
@@ -888,7 +888,7 @@ The ALU's per-opcode arithmetic is hardwired too, by nature: a new Jolt opcode n
 
 #### 17.8.21 The core's loop
 
-*Kept from v1.35's 4.19.8, 4.19.9 and 4.19.10, rewritten for v1.36's registers and events: software's, for the firmware (`fw/replay/replay_ctl.c`) to follow. v1.35's loop waited for two events at once with `EVENTS_REQUIRED`, which is gone (7.2): this one loops until it has both. (Not stated by the RTL's specification; kept from v1.35.)*
+*Kept from v1.35's 4.19.8, 4.19.9 and 4.19.10, rewritten for v1.36's registers and events: software's, for a replay controller's firmware to follow (the RTL's replay image is `fw/rtl/src/rtl/chip/test/programs/firmware/src/bin/replay.rs`). v1.35's loop waited for two events at once with `EVENTS_REQUIRED`, which is gone (7.2): this one loops until it has both. (Not stated by the RTL's specification; kept from v1.35.)*
 
 **The loop.** Every `WFI` has exactly the sources its mask allows. `rp` is the replayer's window, peripheral 1's; `QUEUES` its credit bits that have something left to send; counter 4, say, the counter the loop counts its refills on; and counter *n* the one that counts the record's reload. A pass runs inside a phase, so no release can come during it (7.3), and `release` is left out of the tile's mask while the loop runs; the program puts it back before it arrives (22.10). v1.35's loop kept GO in the mask throughout.
 
@@ -917,7 +917,7 @@ loop:
     goto loop
 ```
 
-- **The squelch** is a mask setting: while the transfer streams, the replayer's credits accumulate, and only the refill counter's `counter_4_done` and the transfer's `dma_done` can wake the core. Once it has both, the next iteration may rewrite the `STREAM` entries (8.6; as recipe 26 of `fw/RECIPES.md` does). The counter counts each packet `LAND_LATENCY` cycles after the director accepts it, by which time it is in its queue (12.3, 17.8.9), so the inner loop ends when every word has landed.
+- **The squelch** is a mask setting: while the transfer streams, the replayer's credits accumulate, and only the refill counter's `counter_4_done` and the transfer's `dma_done` can wake the core. Once it has both, the next iteration may rewrite the `STREAM` entries (8.6; as v1.35's recipe 26 did). The counter counts each packet `LAND_LATENCY` cycles after the director accepts it, by which time it is in its queue (12.3, 17.8.9), so the inner loop ends when every word has landed.
 - **Waiting on the refill counter's own event, not `all_counters_done`** (owner, 2026-10-26), means a fetch from LPDDR outstanding on another counter (17.8.22) doesn't hold the refill up.
 - **Credits returned during the transfer** stay counted and, the tile's `peripheral_1` being live, make the next `WFI` fall through once the mask is restored.
 - **No other tile writes the replayer's region during a pass** (17.8.13), so the refill counter counts only the loop's own refills.

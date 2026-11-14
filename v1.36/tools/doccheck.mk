@@ -1,6 +1,6 @@
-# doccheck.mk, included by sim/Makefile: the documents' checks (tools/doccheck.sh).
+# doccheck.mk, included by the Makefile: the documents' checks (tools/doccheck.sh).
 #   make doccheck            run them
-#   make check DOCCHECK=1    also run them first in make check; off by default until v1.35's documents are written
+#   make check DOCCHECK=1    also run them first in make check; off by default
 DOCCHECK ?= 0
 .PHONY: doccheck
 doccheck:

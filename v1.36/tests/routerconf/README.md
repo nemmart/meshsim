@@ -9,7 +9,6 @@ again.* `tests/test_router.cpp` reads them.
 | `rtl/<name>.obs.gz` | what the router did with that script, a line a cycle: each output's register, the eject's loopback mark, the overflow pulse, each DMA input offering and not ready | **the RTL's**: Snarky One's `router` (`rtl/blocks/router`) under Verilator, below |
 | `rtl/tables.txt` | every router's routes, tile 0 to 66, as a hash: each input, each src 0 to 66, each dst 0 to 127, the outputs the packet goes to | **the RTL's**, below |
 | `rtl/router_script_test.rs`, `rtl/snarky-one.patch` | what makes the RTL's side | below |
-| `t*.script.gz`, `t*.obs.gz`, `tables.txt` | v1.3's: seeded scripts and what ref's `Router.java` did with them, and ref's routing tables | ref's (v1.3's Java simulator), unchanged |
 
 ## The RTL's fixtures
 
@@ -44,14 +43,3 @@ them (`src/units/router.cpp`).
    `test_router.cpp`'s `kRtlFixtures`.
 
 These were made on 2026-11-15 from Snarky One at 076e647 (`rtl/blocks/router` as of that commit).
-
-## Ref's fixtures
-
-v1.36's router differs from ref's in rules of the RTL's (machine-spec 16.2, 16.4): a packet for a reserved tile id, or
-for none, is dropped where it is routed (ref routes it as tile `dst mod 64`); v1.35's DMA source ids 72–74 do not
-exist; and a packet at a tile its route does not pass is sent the RTL's way. Ref's scripts draw ids at random, so each
-holds such packets from its first cycles on. `test_router` still compares each of ref's ten runs of a tile's router
-with ref's observations for the cycles before its first such packet, and prints how many (1 to 27): little, kept
-because it costs nothing. Ref's three runs of a controller's router (`t64-s1`, `t65-s2`, `t66-s3-dma`) and ref's
-`tables.txt` are not read: they are of v1.35's host port, its DMA without 16.4's flow control and its source ids. The
-RTL's fixtures above replace what they checked.

@@ -24,7 +24,7 @@ struct Internals {
     static Sim::Impl* impl(const Sim& s) { return s.impl_; }
     // (regions.cpp): the machine's memory, structure by structure, with the domain (thread) that owns each: every
     // engine block's carved structures, every unit type's arena, the outboxes' storage (owned by their source), the
-    // observer's and calibration's arrays. For footprint measurements (bench_chip --trace); unit-owned heap memory
+    // observer's and calibration's arrays. For footprint measurements (a benchmark under a memory tracer); unit-owned heap memory
     // (a unit's own allocations) is the unit's to report.
     struct MemRegion { std::string what; const void* base; size_t bytes; int domain; };
     static std::vector<MemRegion> regions(const Sim& s);

@@ -2183,7 +2183,9 @@ behaviour (1.3), and the simulator checks both kinds: undefined behaviour is fat
 with a message naming the access, and the other invariants are counted in every build and, in the debug and suite
 builds, also reported by name while the run goes on. **The exceptions** are the checks v1.35's simulator lacks
 (item 159): invariant 17's limits on outstanding requests, its write-buffer rule and its rule for reads during a
-group transfer, and invariant 18 for `APPEND`, `BUCKET` and `AUGMENT` into the scratchpad. **The hardware checks
+group transfer, and invariant 18 for `APPEND`, `BUCKET` and `AUGMENT` into the scratchpad; and the checks v1.36's
+simulator does not make yet, which `OPEN-v1.36.md` lists (the stray at its acceptance of invariant 9, invariant 22,
+the reply block's convention of invariants 8 and 11, a reserved bit stored, a load's order). **The hardware checks
 none of them as such.** Where it has an error for the same mistake, the invariant names it (**hardware:**
 `ERRORS.name`); every other rule here is software's alone.
 
@@ -3067,7 +3069,7 @@ Kept from v1.35's 4.4. The gather unit is chapter 13.
 - **Arming.** `GATHER` packets are never counted; their counter field passes to the values (4.2). A gather of
   *n* values arms that counter with *n* × (packets per value): *n*·*k* when *k* is odd, *n*·*k*/2 when even.
 - **Alignment.** Gather buffers, source and destination, are aligned to a row whatever *k* is (13). The
-  software convention is that allocations are row-aligned in general (`fw/CONVENTIONS.md`).
+  software convention is that allocations are row-aligned in general (v1.35's page of control conventions said so).
 - **Placement.** The value reads and the values' writes fit within one access a cycle per bank if the index,
   the values and the output sit in three different banks (15).
 - **Rate.** Every value costs its request packet and its value packets through the one injection point and the
@@ -3592,7 +3594,8 @@ Item 144 is closed and reversed (161), and item 153 part closed: their rows are 
 ## 27. Context: the sort these tiles serve
 
 Not part of the hardware specification; it is here because it explains the gather unit and augmenting. The
-program is in `fw/sort/program/` (the split in `fw/sort/split/`, skew handling in `fw/sort/skew/`), and v1.3's
+program is in `fw/rtl/src/rtl/chip/test/programs/sort/sw/`, on the RTL's port layer (the split in `split-bisect/` beside it,
+skew handling in `skew-planner/`), and v1.3's
 measured times are in `v1.3/results/`. Every figure below marked `[meas: …]` or `[model]` for a version before
 v1.36 was made on that version's hardware and simulator. v1.36's simulator runs the RTL's port of the program
 (`fw/rtl/sort/`), and its figures are the RTL's (below; item 164).
@@ -3605,7 +3608,7 @@ For a 32-bit key and a value of *k* records (*k* = 2 for 128-bit values), the so
    packets from the write unit into the receiver's DMEM, and every tile counts by binary searches of its own
    sorted keys through the read unit (10). Exact on all 25 data sets: ≈ 203K cycles on uniform, 246K mean over
    the 24 non-trivial sets, 367K worst, with a seed bracket and an early exit to idle barriers [meas: RV32 ISS].
-   Interface and memory: `fw/sort/split/BINDING.md`.
+   Interface and memory: the split's binding document, in v1.35 (`v1.35/fw/sort/split/BINDING.md`).
 4. **Two all-to-alls,** group transfers on the 16-group schedule (`spec/schedule.md`):
    - **keys,** as `AUGMENT`, with count-on-arrival on at the receiver;
    - **values,** as `APPEND`, with count-on-arrival off.
@@ -3624,7 +3627,7 @@ disappear, nothing is augmented (the first local sort's input pass and the keys 
 a command from the master tile: the image holds the schedule of phases, every compute tile runs it, and the
 arguments of a phase are data in DMEM (6.5).
 
-**Skew handling** (`fw/sort/skew/`). A three-stage switch picks the transfer path for step 4: direct,
+**Skew handling** (`skew-planner/`). A three-stage switch picks the transfer path for step 4: direct,
 loopback-as-local-copy (LB), the one-layer two-hop (TH), or the balanced two-hop (BT), with every tile making
 the same choice from the group maxima. K + V including planning: 215K uniform, 199K sorted and all-equal, 420K
 reverse, 772–786K Zipf and trace, 741K at 99 % one value [model; planner cycles measured on an RV32 ISS].

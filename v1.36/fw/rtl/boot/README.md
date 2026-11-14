@@ -19,7 +19,7 @@ riscv-none-elf-nm build/core-tests/boot_rom.elf | grep -E ' (handler|image|park|
 ```
 
 The RTL holds the same words in `rtl/blocks/core/src/boot_rom_pkg.veryl`, which its `boot_rom_test` checks against this
-ELF file. `fw/boot/` is v1.35's boot ROM, which nothing in v1.36's platform loads any more.
+ELF file. v1.35's own boot ROM is not in v1.36.
 
 SHA-256:
 

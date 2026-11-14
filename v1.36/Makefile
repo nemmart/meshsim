@@ -1,11 +1,10 @@
-# sim/: plain make (DECISIONS D4).
+# v1.36: plain make.
 #
 #   make             the release build with clang (build/clang-release/; D18: release and timing builds use clang -O2)
 #   make debug       the debug build with clang (ASan + UBSan)
 #   make check       the copies from v1.3 (tools/check_copies.sh), then every test, debug and release, with gcc and
 #                    clang (D18: both compilers in both builds)
 #   make run         every test of one build: make run CC_NAME=gcc MODE=debug
-#   (the port-conformance matrix against ref: oracle/conformance.sh, needs a JDK and sim/ref)
 #   make clean
 #
 # The allocation hook (src/base/alloc_guard.cpp) needs our own malloc calls wrapped: WRAP, on every link.
@@ -45,12 +44,10 @@ LIB_OBJ  := $(LIB_SRC:%.cpp=$(B)/%.o)
 TEST_SRC := $(wildcard tests/test_*.cpp)
 TESTS    := $(TEST_SRC:tests/%.cpp=$(B)/%)
 HARNESS  := $(B)/tests/harness.o
-# the stage 1 sketches: compiled in every build (they must build against the API), never linked or run.
-SKETCH   := $(patsubst %.cpp,$(B)/%.o,$(wildcard src/sketch/*.cpp))
 
 .PHONY: all debug run check clean
 .SECONDARY:
-all: $(TESTS) $(SKETCH)
+all: $(TESTS)
 
 debug:
 	@$(MAKE) --no-print-directory MODE=debug all
@@ -66,7 +63,7 @@ $(B)/test_%: $(B)/tests/test_%.o $(HARNESS) $(LIB_OBJ)
 $(B)/test_suite: $(B)/tests/test_suite.o $(B)/tests/suite.o $(HARNESS) $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 
-run: $(TESTS) $(SKETCH)
+run: $(TESTS)
 	@set -e; for t in $(TESTS); do ./$$t; done
 
 check:
@@ -76,8 +73,7 @@ check:
 	  $(MAKE) --no-print-directory CC_NAME=$$c MODE=debug build/$$c-debug/suite_bus && ./build/$$c-debug/suite_bus; done; \
 	echo "==== make check: all passed ($(COMPILERS); debug, release)"
 
-# The conformance tool (the C++ side of PORTS.md 10): the matrix against ref is oracle/conformance.sh (it needs
-# a JDK and sim/ref).
+# The port kinds' conformance tool (the C++ side of src/PORTS.md 10).
 $(B)/portconf: $(B)/tests/portconf_main.o $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 

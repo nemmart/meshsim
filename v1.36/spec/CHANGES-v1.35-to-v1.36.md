@@ -46,7 +46,7 @@ which is v1.36's section *n*. In the tables of sections 7 and 8, a column headed
 item of the inventory that section 2 describes: A is a difference of behaviour or interface, B of timing, C a
 refinement of what v1.35 left open, D what v1.35 specifies and the RTL does not build, E an error or
 contradiction in v1.35, and F a rename. D27, D28, D33, D34 and D47 are not the inventory's: they are entries of
-v1.35's own records (its `CHANGES-v1.35.md` and its guide).
+v1.35's own records (its page of changes, `v1.35/CHANGES-v1.35.md`, and its guide).
 
 | # | section | for |
 |---|---|---|
@@ -220,7 +220,7 @@ behind it:
 - **`START` and a pass of 0 rows**: `STATUS.busy` is 1 for the cycle after the start takes effect (a window store takes effect at the end of t + 1, 6.4) and `EVENTS.done` is posted at its end. When a pass's first row starts is the implementation's. 17.8.10; v1.35's 4.19.9, 4.19.11 ("the first row starts at once"); B1.1.
 - **Stall costs** (to reproduce the RTL's cycles): the shared NOP row of a ROM template +2; a load or advice row whose read-log word its decoder has not announced +2; `VirtualPext`/`VirtualPextSigned` with a mask of two or more runs, a cycle a mask bit up to the highest set bit, plus one (≤ 65 past the schedule); a core-fed expansion's first row waits for the core (4 cycles under an ideal controller); no read-log pre-peek. 17.8.16 (contract: 17.8.7 leaves stalls to the implementation); v1.35's 4.19.7; B5, item 140.
 - **The row port**: `replay_row`, valid/ready, a row a cycle, ready tied to 1 on the chip until the materializer is specified (the simulator's sink). 3, 17.8.11; v1.35's 4.19.12; A8.12.
-- **Firmware** (`fw/replay/replay_ctl.c`): the loop without `EVENTS_REQUIRED` (loop until both `counter_n_done` and `dma_done` are in hand); new names (`START`, `COUNTER_n`, `WRITE_*`, `DMA_START`, tile events `peripheral_1` bit 4, `counter_n_done` bit 6 + n, `dma_done` bit 1); `release` out of the mask during a pass; fetches from LPDDR are `READ` requests to the memory tile; the tables' delivery after the tiles' loads; the core-fed NOP sends one word. 17.8.21, 17.8.22, 17.8.13; v1.35's 4.19.9, 4.19.13; A2.11, A2.13, A4.8, A7.5.
+- **Firmware** (`v1.35/fw/replay/replay_ctl.c`): the loop without `EVENTS_REQUIRED` (loop until both `counter_n_done` and `dma_done` are in hand); new names (`START`, `COUNTER_n`, `WRITE_*`, `DMA_START`, tile events `peripheral_1` bit 4, `counter_n_done` bit 6 + n, `dma_done` bit 1); `release` out of the mask during a pass; fetches from LPDDR are `READ` requests to the memory tile; the tables' delivery after the tiles' loads; the core-fed NOP sends one word. 17.8.21, 17.8.22, 17.8.13; v1.35's 4.19.9, 4.19.13; A2.11, A2.13, A4.8, A7.5.
 - **`spec/jolt/replayer-opcodes.md`**: no content change; section numbers and "controller-fed" only.
 
 ### 2.9 Stage 9: the Tracer and the segment
@@ -448,7 +448,7 @@ specification change together.
   their tables list them." The replayer's `ERRORS` moved down one by the same rule (17.8.1, which closes item
   123). The RTL's documents state no reason beyond the uniform rule.
 - **What it costs.** Code shared between the replayer's and the Tracer's cores can no longer use one set of bit
-  masks for both; `fw/include/mesh.h` gets two sets, and v1.35's `fw/tracer/tracer_ctl.c` is renumbered.
+  masks for both; `fw/include/mesh.h` gets two sets, and v1.35's `v1.35/fw/tracer/tracer_ctl.c` is renumbered.
 - **To rule:** packed (the RTL's, v1.36's text), or item 144's positions restored in the RTL and here.
 
 ### 4.3 The segment's handshakes are requests (item 162, against v1.35's 4.21.10)
@@ -721,7 +721,7 @@ is undefined stops it. What a list puts to the owner is still the owner's.
 - B1.9: v1.35's 57 cycles for an empty phase at its defaults is not in v1.35's specification: the figure is the inventory's, from v1.35's reference log. The RTL's 35 is its chip README's.
 - E7 (a GO set in the cycle of a consuming load is lost in v1.35's simulator): its register block applies the consume after the sets of the cycle, which fits; the loss was not traced end to end. v1.36's rule is 7.2's either way.
 
-Confirmed since, and no longer open: B1.10 (v1.35's ROM is 48 words, its `fw/boot/bootrom.hex`; the RTL's 44 words and its 26, 27 and 13 cycles are checked by acceptance A, `tests/test_rtl_tile.cpp`); B2.5 (v1.35's router counts an overflow the cycle after the push: v1.36's simulator still has that router, `OPEN-v1.36.md`); E10 (section 6.4); A3.9 (v1.35's 4.11 has no coprocessor port).
+Confirmed since, and no longer open: B1.10 (v1.35's ROM is 48 words, its `v1.35/fw/boot/bootrom.hex`; the RTL's 44 words and its 26, 27 and 13 cycles are checked by acceptance A, `tests/test_rtl_tile.cpp`); B2.5 (v1.35's router counts an overflow the cycle after the push: v1.36's simulator still has that router, `OPEN-v1.36.md`); E10 (section 6.4); A3.9 (v1.35's 4.11 has no coprocessor port).
 
 #### 5.2.4 Control, the boot, the memory system and the registers (v1.35's 6 to 8)
 
@@ -788,7 +788,7 @@ Confirmed in this range: A4.11's "the same 24 reports" (v1.35's 4.13; its 6.1 ha
 3. **The reset's undefined decoder state** (17.8.14): the simulator is to treat `START` with no state write as UB (stop), not model an undefined table.
 4. **Item 115, the core-fed set's broadcast**: decided, built nowhere; its proposed mechanics (a size-first command) went with the commands. Until ruled, every tile keeps the whole set (216 KiB).
 5. **The tables' delivery at boot**: v1.35 had C&C 1 broadcast the decode table and ROM at boot; the RTL's spec leaves it to software (17.8.13). 17.8.19 says the master tile's firmware broadcasts them after the tiles' loads: that wording is v1.36's, and software's to settle (the RTL's replay image loads its own tables).
-6. **The core's loop** (17.8.21) is v1.35's adapted to v1.36's events (no `EVENTS_REQUIRED`: an inner loop until both events). The RTL's firmware (its replay image) differs: set-up before the release, a template cache, `ARMED`/`STREAMS_ARMED` requests. To rule: which one v1.36's `fw/replay/replay_ctl.c` follows.
+6. **The core's loop** (17.8.21) is v1.35's adapted to v1.36's events (no `EVENTS_REQUIRED`: an inner loop until both events). The RTL's firmware (its replay image) differs: set-up before the release, a template cache, `ARMED`/`STREAMS_ARMED` requests. To rule: which one v1.36's `v1.35/fw/replay/replay_ctl.c` follows.
 7. **Items 35, 36, 38, 39, 42, 56, 57** are "proposed" in v1.35 and built as proposed in the RTL; the open-items table says so and leaves the status to the owner.
 8. **Item 123** is marked closed (the `ERRORS` positions are the RTL's, by the decision to take the RTL's terms); the owner is to confirm.
 9. **Item 140** is marked closed by the RTL's bit-serial extraction; the contract still says "as many as the implementation's".
@@ -836,7 +836,7 @@ Confirmed in this range: A4.11's "the same 24 reports" (v1.35's 4.13; its 6.1 ha
 
 ## 6. Errors and contradictions found in v1.35, and their resolution in v1.36
 
-Found while comparing v1.35's specification and simulator with the RTL. None is recorded in v1.35's `ERRATA.md` or
+Found while comparing v1.35's specification and simulator with the RTL. None is recorded in v1.35's errata (`v1.35/ERRATA.md`) or
 its guide unless the item says so. E*n* is the inventory's number; an item marked **New** was found while
 writing v1.36. Each item gives v1.35's statement, with how far it was verified, and then v1.36's resolution.
 Sections 6.1 to 6.7 follow the ranges of v1.35 that section 5 uses, so an inventory item that shows in two

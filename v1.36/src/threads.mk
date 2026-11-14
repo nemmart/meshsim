@@ -1,4 +1,4 @@
-# threads.mk: the rules (threads: TSan builds of the thread tests), included by sim/Makefile.
+# threads.mk: the rules (threads: TSan builds of the thread tests), included by the Makefile.
 #
 #   make tsan          the thread tests under ThreadSanitizer, gcc and clang (build/<cc>-tsan/); also run by make check
 #   make tsan-one      one compiler: make tsan-one CC_NAME=gcc

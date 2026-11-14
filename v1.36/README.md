@@ -42,7 +42,7 @@ specification is silent.
 | `spec/` | the machine specification: the platform, the core, the Jolt-specific peripherals, the schedule, the guide from v1.35, and the history |
 | `src/` | the simulator: the framework (`src/`, `src/base/`) and the model of the chip (`src/units/`) |
 | `tests/` | the tests and suites, their fixtures, and the RTL's references they are compared with |
-| `fw/` | the register interface (`include/mesh.h`, `REGISTERS.md`) and the RTL's firmware, sources and images (`rtl/`) |
+| `fw/` | the register interface (`fw/include/mesh.h`, `fw/REGISTERS.md`) and the RTL's firmware, sources and images (`fw/rtl/`) |
 | `data/` | the replayer's tables and the data sets |
 | `pipeline/` | the offline input tools (Java) |
 | `tools/` | helper scripts and tools: the register-table generator, the delivery converters, the documents' check |
@@ -142,7 +142,7 @@ kept running, and is not in this folder; it is all in `../v1.35/`. For a reader 
 | v1.35 had | in v1.36 |
 |---|---|
 | meshsim's own firmware in C and assembly (the boot ROM, the controllers' programs, the M1 programs, the sort, the tile test programs, the replay and Tracer controllers, the riscv-tests images, the firmware's build script and the committed images) | the RTL's firmware, vendored and never built here (`fw/rtl/`): its boot ROM, tile programs, the sort on its port layer, and the chip's Rust firmware (the master's, the memory tile's, the tracer tile's and the replay image) |
-| the recipe book and the control conventions (v1.35's `RECIPES.md` and `CONVENTIONS.md` under `fw/`) | nothing. The conventions a program follows are the specification's (6.5, 7.3, 11.5), and the RTL's firmware is the example (`fw/rtl/src/`) |
+| the recipe book and the page of control conventions, both under v1.35's `fw/` | nothing. The conventions a program follows are the specification's (6.5, 7.3, 11.5), and the RTL's firmware is the example (`fw/rtl/src/`) |
 | the sort's other key sets (sorted, reverse, equal, few, ragged, the trace and Zipf sets), `sort_test`, the sort kit with its 92 runs | nothing beyond the RTL's four runs: uniform keys, 64 × 16 and 64 × 65,536 records, 32- and 128-bit values (`test_rtl_sort`) |
 | the BT path forced (the steps `sort-bt-kv32` and `sort-bt-k128`), the parameter sweep (`sweep`) | nothing |
 | the full-size sort's figure, 1,229,687 cycles | superseded: the RTL chip's table above (64 × 64K k128: 1,306,907 cycles, from L1's release to L2's all arrived) |
@@ -158,7 +158,7 @@ kept running, and is not in this folder; it is all in `../v1.35/`. For a reader 
 | the speed benchmarks of the sort and the chip (`bench_sort`, `bench_chip`) | nothing; `bench_threads` (the framework's) stays |
 | the v1.2 draft header and its comparison with the generated one | nothing: v1.36's header is generated from v1.36's register table and compared with the RTL firmware's own definitions (`test_regs`) |
 | v1.35's freeze tools (the copy from the work folder, the comment strip, the freeze check's task) | `tools/freeze/README.md`: v1.36 is frozen in place |
-| v1.35's `CHANGES-v1.35.md` and `ERRATA.md` | they are v1.35's pages, in `../v1.35/`. v1.36's are the guide (`spec/CHANGES-v1.35-to-v1.36.md`) and `OPEN-v1.36.md` |
+| v1.35's page of changes from v1.3 and its errata | they are v1.35's pages, in `../v1.35/`. v1.36's are the guide (`spec/CHANGES-v1.35-to-v1.36.md`) and `OPEN-v1.36.md` |
 
 ## Glossary
 

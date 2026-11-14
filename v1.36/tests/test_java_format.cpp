@@ -1,5 +1,5 @@
-// test_java_format.cpp: java_format.h against Java's outputs: the values (tests/test_sort_kit.cpp), the
-// and the examples (tests/ctl/ctl.h, and v1.35's Stage B's), and the shapes PhaseLog prints (%.0f, %.1f).
+// test_java_format.cpp: java_format.h against Java's outputs: values and examples from v1.3's logs, and the shapes
+// %.0f and %.1f.
 #include <cstdint>
 
 #include "harness.h"

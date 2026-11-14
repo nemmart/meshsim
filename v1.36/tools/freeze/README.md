@@ -10,7 +10,7 @@
 ## v1.36 is frozen in place
 
 v1.35 was made in a work folder and frozen by copying it, less its oracle and session material, into `v1.35/`; its
-tools for that (the copy, the comment strip, the freeze check's task for the measurement runner) are in `../v1.35/`
+tools for that (the copy, the comment strip, the freeze check's task for the measurement runner) are in `v1.35/`, beside this folder,
 and are not here. v1.36 began as that frozen folder, copied to `v1.36/` on its own branch, and was changed there. So
 there is nothing to copy and nothing to strip: **the freeze is the commit that puts this folder on `main`**, after
 which it is never edited again but for an errata file (`spec/GUIDELINES.md`, 8).

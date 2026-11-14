@@ -15,7 +15,7 @@
 //   - the look-up (tracer_jump_lookup.veryl); the run (tracer_run.veryl); the output (tracer_output.veryl,
 //     tracer_packer.veryl, tracer_credits.veryl).
 // So a run's cycles, its rows' cycles and the statistics counters are the RTL's, given the same memory system and the
-// same core. What the spec does not state and the RTL decides is listed in PENDING-v1.36.md's notes and in each place.
+// same core. What the spec does not state and the RTL decides is listed in OPEN-v1.36.md, (c), and in each place.
 //
 // THE INTERFACE (the peripheral method list, unchanged from v1.35): a member object of the slot, which calls these
 // methods through a switch on the peripheral's type. Inputs (accept, run, write_word) take effect at the end of their

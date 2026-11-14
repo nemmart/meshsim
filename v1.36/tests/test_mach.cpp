@@ -4,26 +4,17 @@
 //   - mach::fields against machine-spec's bit positions (5.4, 8.1, 8.3, 8.4, 12.1, 13), written out here by hand.
 //   - The coreless machine fed from the harness (Net) against v1.3's own run of the same sequences (the tail of
 //     tests/mach/netself.out, ref's NetSelf.java: `packets`, `reads`, `a2a`): the network, the director, the write
-//     engine, the address generator, the tables and the scratchpad, which are still v1.35's units (PENDING-v1.36.md,
-//     section 4), configured through v1.36's layouts and back doors. The cycles are v1.3's.
+//     engine, the address generator, the tables and the scratchpad, configured through v1.36's layouts and back doors.
+//     The values are v1.3's; the cycles are v1.3's where v1.36's units keep them, and where they differ the difference is
+//     the specification's or the RTL block's, stated at the case.
 //   - The machine as specified: the RTL's boot ROM's pull boot (machine-spec 6.5; rtl/blocks/core/src/boot_rom.S) on all
 //     64 tiles, the master side's model standing where the master tile will: each tile's LOAD request, the image and the
 //     COUNT on counter 7 sent to it, its ARRIVE, the release, the image entered. Expectations from 6.5, 7.2, 7.3, 11.5.
 //   - The back doors, the model's wait_until, mem_idle over a wrapped queue, MachConfig's front end; and that the machine
 //     with v1.35's C&C 1-3 as cores builds and steps as mach.h says it does.
 //
-// WHAT v1.35's TEST CHECKED THAT IS NOT HERE, AND WHY (PENDING-v1.36.md, section 2):
-//   - ref's MachSelf.java sequence (tests/mach/machself.out): every case boots a v1.35 image through C&C's commands
-//     (CMD_JUMP, the command block) or C&C 1-3 as cores with cc1.c, and reads SIM_EXIT, TRACE and v1.3's phase log:
-//     hardware and firmware v1.36 does not have. The fixture stays; nothing runs it.
-//   - ref's NetSelf.java cases other than the three above (tests/mach/netself.out, its first 47 lines): `fig12b`,
-//     `figure12`, `core`, `hooks`, `ub`, `test peripheral` drive v1.35's register map through the core from the test
-//     (a test's loads and stores: removed with the map); `drain` and `back-pressure` answer v1.35's RESULT requests
-//     and read its 128-entry request FIFO (v1.36's queue is 4 deep, and op 3 is LOAD); `reqbus`, `on machine`,
-//     `feed`, `phaseDone` and `controllers` print cycles that depend on v1.35's request FIFO depth, its attach tiles
-//     (0, 1, 2) or the register block's view at the end of a cycle; they come back with the request tree (P7) and the
-//     old suites (P11).
-//   - the replayer's row hook (Chip::on_row): the row port comes with the replayer's stage (17.8).
+// WHAT OF REF'S SEQUENCES IS NOT HERE: NetSelf's other cases and MachSelf drive v1.35's register map, commands and
+// firmware, which v1.36 does not have; of tests/mach/netself.out only the three cases' lines are read.
 #include <algorithm>
 #include <cstdarg>
 #include <cstdio>

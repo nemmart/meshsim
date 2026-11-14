@@ -185,14 +185,13 @@ void w_router(const void* p, FpOut& o, const FpCtx& x) {
 // StateFp "inj" and "srq" were ref's fingerprints of v1.35's read queue (its tokens' slots, its free list, its two
 // in-order queues, the read-return holding register, the area returns). v1.36's inject unit has none of them (14, 15:
 // a counted token pool, one return line of READ_LATENCY stages, no holding register), so the two streams cannot be
-// written: the writers stop. Their only users are the pending fingerprint tests (PENDING-v1.36.md, the platform
-// stage, section 3).
+// written: the writers stop. No test calls them.
 void w_inj(const void*, FpOut&, const FpCtx&) {
-    std::fprintf(stderr, "statefp_g2: 'inj': v1.35's read-return holding register is not in v1.36's inject unit (PENDING-v1.36.md)\n");
+    std::fprintf(stderr, "statefp_g2: 'inj': v1.35's read-return holding register is not in v1.36's inject unit\n");
     std::abort();
 }
 void w_srq(const void*, FpOut&, const FpCtx&) {
-    std::fprintf(stderr, "statefp_g2: 'srq': v1.35's read queue is not in v1.36's inject unit (PENDING-v1.36.md)\n");
+    std::fprintf(stderr, "statefp_g2: 'srq': v1.35's read queue is not in v1.36's inject unit\n");
     std::abort();
 }
 

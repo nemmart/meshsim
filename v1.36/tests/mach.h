@@ -73,8 +73,8 @@
 //
 // THE CHECKER. The per-cycle invariant checks (src/check.h's facts, tests/checker.h's rules) are on in the debug and
 // suite builds and compiled out of the timing builds. `violations()`, `violation_messages()` and `violation_report()`
-// report them. v1.35's facts about hardware that is gone (the command block, the reply block, the stray check) are no
-// longer recorded by the units (PENDING-v1.36.md, section 4).
+// report them (tests/test_checker.cpp provokes it). The checks chapter 20 promises that no unit records are listed in
+// OPEN-v1.36.md, (a).
 //
 // THIS IS TEST-SIDE CODE (the configuration regime, D6): std::function, std::vector and strings are fine here.
 #pragma once

@@ -1,4 +1,4 @@
-# tracer.mk: the rules (the Tracer, its memory system and the pieces it shares), included by sim/Makefile.
+# tracer.mk: the rules (the Tracer, its memory system and the pieces it shares), included by the Makefile.
 TRACER_LINK := $(B)/src/units/file_store.o $(B)/src/units/replay_tables.o $(B)/src/units/tracer.o
 $(B)/test_tracer_parts: $(TRACER_LINK) $(B)/tests/sha256.o
 $(B)/test_tracer: $(B)/tests/tracer_rig.o $(B)/tests/tracer_block.o $(TRACER_LINK) $(B)/tests/statefp.o

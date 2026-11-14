@@ -7,8 +7,10 @@
 // thread domains; cut-through; round-robin from input 0 (16.3), a row node in column order and the root in row order,
 // then the master, memory and tracer tiles; the requester written by the row node for a tile and at the root's input for
 // a special tile; a request for target 3-7 dropped at the root; a credit an entry of each target's receive queue (128,
-// 256, 128), taken when the root starts to forward and returned by the pop, usable the cycle after it. The request
-// queue's depth (REQUEST_QUEUE_DEPTH, 4) is ReqBusConfig::fifo_depth. What follows is v1.35's description, whose
+// 256, 128), taken when the root starts to forward and returned by the pop, usable the cycle after it; a request enters
+// its receive queue as its last beat moves, and a load presented from the next cycle reads it (the RTL's request_unit,
+// "Timing": ReqRecv::rtl). The request queue's depth (REQUEST_QUEUE_DEPTH, 4) is ReqBusConfig::fifo_depth.
+// tests/test_request_tree.cpp checks all of it against the specification. What follows is v1.35's description, whose
 // modes 0 and 3 its conformance fixtures (test_reqbus) still run.
 //
 // (v1.35:) the request bus (spec 3.3, 4.18; sim/ref/meshsim/src/RequestBus.java, RequestPort.java; AUDIT-M3 3.4),
@@ -455,6 +457,8 @@ struct ReqRecv {
     sim::LinkIn pop;                  // width 0, from the controller core (Link(1)): a REQUEST_RECEIVE of t - 1
     sim::RegFileOut head;             // to the controller core: the head as a load at t sees it
     unsigned target = 0, depth = 128;
+    bool rtl = false;                 // the RTL's tree (credit_latency 1): a request is read from the cycle after the
+                                      //   one its last beat moves in, which is the cycle its delivery arrives here in
     struct Entry { uint32_t w[4]; int64_t delivered_t, store_t; };
     Entry* q = nullptr;
     unsigned qh = 0, qn = 0;
@@ -464,7 +468,8 @@ struct ReqRecv {
     std::vector<std::array<int64_t, 6>>* dlog = nullptr;   // (harness-only): the deliveries, into the harness's vector
                                                           //   (reserved at configuration: no allocation in the run)
 
-    ReqRecv(sim::Ports& p, unsigned target_, const ReqBusConfig& rc) : target(target_), depth(rc.queue_depth[target_]) {
+    ReqRecv(sim::Ports& p, unsigned target_, const ReqBusConfig& rc)
+        : target(target_), depth(rc.queue_depth[target_]), rtl(rc.credit_latency == 1) {
         p.in(deliver, "deliver", 3);
         p.in(pop, "pop", 0);
         p.out(head, "head", REGS);
@@ -475,7 +480,7 @@ struct ReqRecv {
     ReqRecv(ReqRecv&& o) noexcept { *this = static_cast<ReqRecv&&>(o); }
     ReqRecv& operator=(ReqRecv&& o) noexcept {
         if (this != &o) {
-            deliver = o.deliver; pop = o.pop; head = o.head; target = o.target; depth = o.depth;
+            deliver = o.deliver; pop = o.pop; head = o.head; target = o.target; depth = o.depth; rtl = o.rtl;
             delete[] q; q = o.q; o.q = nullptr;
             qh = o.qh; qn = o.qn; received = o.received; violations = o.violations; dlog = o.dlog;
             for (unsigned i = 0; i < HOST_EXTRA; i++) host_extra[i] = o.host_extra[i];
@@ -501,7 +506,8 @@ struct ReqRecv {
                     h.n = 0; h.at = -1;
                 }
         }
-        // deliveries arriving at t (ref's toReceiver drained at the start of runCycle(t)): visible from t + 1
+        // deliveries arriving at t (ref's toReceiver drained at the start of runCycle(t)): visible from t + 1. The RTL's:
+        // the root's last beat moved in t - 1, when the request entered the queue: visible from t (delivered_t = t - 1)
         while (c.ready(deliver)) {
             const sim::Word* w = c.peek(deliver);
             if (dlog) {                      // (harness-only): ref's delivered list, {deliveredAt, srcTile, w0..w3}
@@ -515,7 +521,7 @@ struct ReqRecv {
             else {
                 Entry& e = q[(qh + qn) % depth];
                 e.w[0] = uint32_t(w[1]); e.w[1] = uint32_t(w[1] >> 32); e.w[2] = uint32_t(w[2]); e.w[3] = uint32_t(w[2] >> 32);
-                e.delivered_t = t; e.store_t = beat_store_t(w[0]);
+                e.delivered_t = rtl ? t - 1 : t; e.store_t = beat_store_t(w[0]);
                 qn++;
             }
             c.take(deliver);

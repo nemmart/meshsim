@@ -1,0 +1,25 @@
+synthetic program 0                      OK      25 rows  pass     236 cycles  9.440 cycles/row (Stage A 3.400)  newexp 0, refills 1  [meas: StageB synthetic]
+synthetic program 1                      OK      25 rows  pass     234 cycles  9.360 cycles/row (Stage A 3.320)  newexp 0, refills 1  [meas: StageB synthetic]
+synthetic program 2                      OK      25 rows  pass     236 cycles  9.440 cycles/row (Stage A 3.400)  newexp 0, refills 1  [meas: StageB synthetic]
+synthetic program 3                      OK      25 rows  pass     234 cycles  9.360 cycles/row (Stage A 3.320)  newexp 0, refills 1  [meas: StageB synthetic]
+synthetic program 4                      OK      25 rows  pass     236 cycles  9.440 cycles/row (Stage A 3.400)  newexp 0, refills 1  [meas: StageB synthetic]
+synthetic program 5                      OK      25 rows  pass     234 cycles  9.360 cycles/row (Stage A 3.320)  newexp 0, refills 1  [meas: StageB synthetic]
+synthetic program 6                      OK      25 rows  pass     236 cycles  9.440 cycles/row (Stage A 3.400)  newexp 0, refills 1  [meas: StageB synthetic]
+synthetic program 7                      OK      25 rows  pass     234 cycles  9.360 cycles/row (Stage A 3.320)  newexp 0, refills 1  [meas: StageB synthetic]
+synthetic program 8                      OK      25 rows  pass     283 cycles  11.320 cycles/row (Stage A 3.400)  newexp 0, refills 1  [meas: StageB synthetic]
+synthetic program 9                      OK      25 rows  pass     281 cycles  11.240 cycles/row (Stage A 3.320)  newexp 0, refills 1  [meas: StageB synthetic]
+synthetic program 10                     OK      25 rows  pass     283 cycles  11.320 cycles/row (Stage A 3.400)  newexp 0, refills 1  [meas: StageB synthetic]
+synthetic program 11                     OK      25 rows  pass     281 cycles  11.240 cycles/row (Stage A 3.320)  newexp 0, refills 1  [meas: StageB synthetic]
+synthetic program 12                     OK      25 rows  pass     283 cycles  11.320 cycles/row (Stage A 3.400)  newexp 0, refills 1  [meas: StageB synthetic]
+synthetic program 13                     OK      25 rows  pass     281 cycles  11.240 cycles/row (Stage A 3.320)  newexp 0, refills 1  [meas: StageB synthetic]
+synthetic program 14                     OK      25 rows  pass     283 cycles  11.320 cycles/row (Stage A 3.400)  newexp 0, refills 1  [meas: StageB synthetic]
+synthetic program 15                     OK      25 rows  pass     281 cycles  11.240 cycles/row (Stage A 3.320)  newexp 0, refills 1  [meas: StageB synthetic]
+synthetic controller-fed                 OK     600 rows  pass    2107 cycles  3.512 cycles/row (Stage A 3.015)  newexp 2, refills 5  [meas: StageB synthetic]
+synthetic controller-fed, mid-sequence   OK     350 rows  pass    1519 cycles  4.340 cycles/row (Stage A 3.026)  newexp 2, refills 3  [meas: StageB synthetic]
+synthetic old queue map (CL4: must fail) FAIL     0 rows  pass   50001 cycles  50001.000 cycles/row (Stage A 3.015)  newexp 1, refills 2  [meas: StageB synthetic]
+    starved: no row for 50000 cycles while a pass ran (pass started at cycle 23566, last row at none, 0 rows so far): is the controller feeding the right queue ports (4.19.10, CL1)? queue occupancy: code 1, read log 0, write log 256, expansion 0; bad writes 0; controller in WFI
+    rows: tile 0, Stage A 600
+    replayer: violations [t0 @23807: queue 2 pushed past the credits taken for it: 1 entries, 0 credits (4.19.8; invariant 16), t0 @23808: queue 2 pushed past the credits taken for it: 2 entries, 0 credits (4.19.8; invariant 16), t0 @23809: queue 2 pushed past the credits taken for it: 3 entries, 0 credits (4.19.8; invariant 16)] ... (256 in all), overruns [], bad writes [], invalid [], underflows [], leftover []
+    meshsim: violations: 256;   cycle 23808 tile 0: queue 2 pushed past the credits taken for it: 1 entries, 0 credits (4.19.8; invariant 16);   cycle 23809 tile 0: queue 2 pushed past the credits taken for it: 2 entries, 0 credits (4.19.8; invariant 16);   cycle 23810 tile 0: queue 2 pushed past the credits taken for it: 3 entries, 0 credits (4.19.8; invariant 16);   cycle 23811 tile 0: queue 2 pushed past the credits taken for it: 4 entries, 0 credits (4.19.8; invariant 16);   cycle 23812 tile 0: queue 2 pushed past the credits taken for it: 5 entries, 0 credits (4.19.8; invariant 16);   cycle 23813 tile ... (5708 chars)
+synthetic old queue map (CL4)            OK   the window failed as starved in 0.4 s
+StageB synthetic: 19 windows, 0 failed

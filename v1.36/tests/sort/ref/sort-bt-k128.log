@@ -1,0 +1,18 @@
+inputs: meshsim.jar=(classes) sw/bootrom.hex=b2165425aef54cb357cf2c1a82e3a5bc7965392c60a4e0c2b92b7f9f060855af image/sort.code.bin=2ab3c746aa6bf2f8d41a637a5ee4bda514754ea54fc3445beab59a50e5762f99 image/sort.data.bin=412d9f3fa18dac9d629472b3935d12acd529a0725f39f848ae270d71fc5c31f7 image/sort.sym=4a742353a535f95a0e2c501743393b55955fed701a12c2edf3f60c006b943a90 hops.txt=a3b90f3c2fbc64f1a93c8c0ff916cfbaf40823aae38c4540811482873741d3da keys-16384/trace10-10.keys=112436cd5dd7cabef0618c39dda6901c92a77ffdee4ded22fc0897e2c2aed193
+sort bt16k-k128 128-bit values [meas: SortTest]: path BT (stage 2 ran); steps (GO -> next GO): L1 121,475; SPLIT 316,241; XB 8,301; RED 4,958; XC 1,313; TH 17,796; SWEEP 55,423; DESC 34,567; K1.0 18,112; K1.1 17,492; K1.2 13,059; K2.0 25,938; K2.1 23,011; K2.2 23,420; V1.0 18,202; V1.1 17,494; V1.2 13,187; V2.0 26,022; V2.1 23,009; V2.2 12,770; L2 104,576; 10 empty commands 658
+    TOTAL 897,024 cycles (L1 GO -> L2 all READY; real split), of which C&C turnaround 96; ready_latency 8; direct-path bound 4*sum(R) = 467,436, V 8*sum(R) = 934,872; GATHER queue peak 1 of 16; stack headroom 20540 B
+    peaks in K1.0: link 5, eject 4, write-engine input 1, area 1
+    peaks in K1.1: link 4, eject 3, write-engine input 1, area 1
+    peaks in K1.2: link 2, eject 1, write-engine input 1, area 1
+    peaks in K2.0: link 5, eject 5, write-engine input 1, area 1
+    peaks in K2.1: link 4, eject 3, write-engine input 1, area 1
+    peaks in K2.2: link 1, eject 1, write-engine input 1, area 1
+    peaks in V1.0: link 5, eject 4, write-engine input 1, area 1
+    peaks in V1.1: link 4, eject 3, write-engine input 1, area 1
+    peaks in V1.2: link 2, eject 2, write-engine input 1, area 1
+    peaks in V2.0: link 5, eject 5, write-engine input 1, area 1
+    peaks in V2.1: link 4, eject 3, write-engine input 1, area 1
+    peaks in V2.2: link 1, eject 1, write-engine input 1, area 1
+    address generator: 1048320 request stall cycles; rotations late 0 on 0 tiles (max 0 cycles); group starts waiting for read-ahead 0 (max 0, timetable); drift between tiles at a group start 0
+    M14: zero-length groups 0 (summed over tiles), of which with a gap 0 (1 + gap since 10 October); group-run stall cycles 0 (drift)
+SortTest: 11 passed, 0 failed

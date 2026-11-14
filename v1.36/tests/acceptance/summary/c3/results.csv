@@ -1,0 +1,5 @@
+syn,2,131072,A:state,OK,65536,200014,8540,"streams rrr  newexp 2, stalls [0, 4, 8, 0, 21, 18, 0]"
+syn,5,327680,A:state,OK,65536,200035,8338,"streams rrr  newexp 5, stalls [0, 4, 8, 0, 21, 18, 0]"
+syn,9,589824,A:state,OK,65536,200063,6019,"streams rrr  newexp 9, stalls [0, 4, 8, 0, 21, 18, 0]"
+syn,5,327680,F:state,OK,65536,200035,4701,"tile 0 only, max row gap 12, 3.479 cycles/row, newexp 2 (slow 1), refills 3, waits image/code/newexp/exp/rlog/wlog/outq 516/2913/4812/281/2504/2977/4581 logq 256"
+syn,9,589824,F:state,OK,65536,200063,7870,"tile 0 only, max row gap 12, 3.479 cycles/row, newexp 2 (slow 1), refills 3, waits image/code/newexp/exp/rlog/wlog/outq 3978/2169/2407/2785/1463/4756/94 logq 256"

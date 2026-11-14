@@ -1,0 +1,6 @@
+# A full-size sample of jobs.txt (WORKER24, Quest 179): one run per path (direct, LB, TH, BT) and a shuffled identity run
+2300	p4	p4/trace100-30-k128	-1	keys=@KEYS@/trace100-30.keys fmt=k128 ready=8
+1750	p4	p4/reverse-k128	-1	keys=@KEYS@/reverse.keys fmt=k128 ready=8
+1550	p4	p4/uniform-k128	-1	keys=@KEYS@/uniform.keys fmt=k128 ready=8
+1550	shuffle	shuf/uniform-k128	4	keys=@KEYS@/uniform.keys fmt=k128 ready=8
+1100	p4	p4/sorted-kv32	-1	keys=@KEYS@/sorted.keys fmt=kv32 ready=8

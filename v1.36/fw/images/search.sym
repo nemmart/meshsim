@@ -1,0 +1,14 @@
+00000010 b P
+0000051c B _bss_end
+00000010 B _bss_start
+00000010 D _data_start
+0000051c B _end
+01000000 T _start
+00000418 B chk
+010003e0 T main
+00000218 B nact
+00000318 B res
+00000118 B results
+00000518 b runs
+01000038 t search0
+0100020c t search1

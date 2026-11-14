@@ -1,0 +1,74 @@
+# state fingerprint v1 (sim/tests/AUDIT-M2.md section 6): cycle unit hash
+# SortFp p1 uniform n=2000 kv32 ready 8 seed -1
+# inputs: meshsim.jar=(classes) sw/bootrom.hex=b2165425aef54cb357cf2c1a82e3a5bc7965392c60a4e0c2b92b7f9f060855af image/sort.code.bin=2ab3c746aa6bf2f8d41a637a5ee4bda514754ea54fc3445beab59a50e5762f99 image/sort.data.bin=412d9f3fa18dac9d629472b3935d12acd529a0725f39f848ae270d71fc5c31f7 image/sort.sym=4a742353a535f95a0e2c501743393b55955fed701a12c2edf3f60c006b943a90 hops.txt=a3b90f3c2fbc64f1a93c8c0ff916cfbaf40823aae38c4540811482873741d3da
+# config hops (Hops)
+# config idleSkip true
+# config linkLatency 3
+# config linkLatencyOverride null
+# config queueDepth 16
+# config intraTileLatency 1
+# config skew true
+# config skewSeed 1
+# config startSkew null
+# config weInDepth 4
+# config readPortDepth 64
+# config gatherDepth 16
+# config cmLatency 2
+# config logTrace false
+# config refCycle 40
+# config rpLatency 2
+# config K 8
+# config memChunks 1048576
+# config areaQueueDepth 8
+# config sramReadLatency 2
+# config writeCombining false
+# config fifoCountBeforePop true
+# config readTokens 64
+# config loopbackLast true
+# config loopbackTokens true
+# config loopbackDepth -1
+# config tsEngineLatency 1
+# config agLookahead -1
+# config streamLookahead 4
+# config testReadClients false
+# config regLoadLatency 2
+# config stageDelay 64
+# config ccCores false
+# config cc3Tracer false
+# config ccDmaDepth 4
+# config ccLinkLatency 1
+# config requestFifoDepth 128
+# config receiveQueueDepth [128, 256, 128]
+# config reqHopLatency 3
+# config periphType 4
+# config periphTypes null
+# config testPeripheral null
+# config realResponder true
+# config coreless false
+# config goLatency 8
+# config runLatency 1
+# config readyLatency 8
+# config cncGoSettle true
+# config cncReaction 1
+# config strictReplies false
+# config counterStoreClearsLatch true
+# config checkReadPortOverlap true
+# config checkCommandRead true
+# config checkDisjoint true
+# config shuffleSeed -1
+# config maxViolationMessages 50
+# config measureS1 true
+# config checkErrors true
+# config checkUnexpected true
+# config doneGate true
+# config errorLatency -1
+# config cncRxDepth 64
+# start skew [1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0]
+14791 1029 9b6c3195da361d79f05e4c6e16da2b13806e3f935456ad05a88d2657056b9f19
+14837 1029 9073db0a3afd9b6eca5ab068944acc097dec9a065c285e356142c40c4d0ec897
+14838 1029 53550d0f8ef51b0a2011c026823931ab34beb585d5e541cf07350e452b0499d5
+31547 1029 dfd211c42ec01dbea6f218c37bc070b2f56acb9667d6a97c675a0247e3d4b2ab
+31548 1029 a4f90cc7419ae10c61c637b96d55ed6d0ff42d081ad3554adc990dadf52e5491
+45745 1029 a2e865cb10e6bb9a410ccee3bdf37d4108aafd182ab4c58fe4d619a3e1bcaf4e
+45746 1029 57e756e12136c06ea686ef18253f8f0732cbcd12724ce32fc40e7a66e44bfd94
+45784 1029 52698fff8d13e3ff89bf91c8ad80eb6c456442ef1342dbafb20129a10cfc7740

@@ -1,0 +1,34 @@
+# tileslotconf observations v1: events.prog
+dmem 100 0
+dmem 104 cc
+dmem 108 1c
+dmem 10c 0
+dmem 110 2000
+dmem 114 da
+dmem 118 1c
+dmem 11c 18
+dmem 120 18
+dmem 124 e5
+dmem 128 18
+dmem 12c 18
+dmem 130 18
+dmem 134 2000
+dmem 138 1a7
+dmem 13c 0
+dmem 140 0
+dmem 144 0
+dmem 148 0
+dmem 14c 0
+dmem 150 0
+dmem 154 0
+dmem 158 0
+dmem 15c 0
+dmem 160 0
+dmem 164 0
+dmem 168 0
+dmem 16c 0
+dmem 170 0
+dmem 174 0
+dmem 178 0
+dmem 17c 0
+bad 0

@@ -1,0 +1,20 @@
+uniform.s64	uniform
+zipf_s0p5.s64	zipf s=0.5
+zipfraw_s0p5.s64	zipfraw s=0.5
+zipf_s0p8.s64	zipf s=0.8
+zipfraw_s0p8.s64	zipfraw s=0.8
+zipf_s1p0.s64	zipf s=1.0
+zipfraw_s1p0.s64	zipfraw s=1.0
+trace_hot10_frac0p10.s64	trace hot=10 frac=0.10
+trace_hot10_frac0p30.s64	trace hot=10 frac=0.30
+trace_hot10_frac0p60.s64	trace hot=10 frac=0.60
+trace_hot100_frac0p10.s64	trace hot=100 frac=0.10
+trace_hot100_frac0p30.s64	trace hot=100 frac=0.30
+trace_hot100_frac0p60.s64	trace hot=100 frac=0.60
+trace_hot10000_frac0p10.s64	trace hot=10000 frac=0.10
+trace_hot10000_frac0p30.s64	trace hot=10000 frac=0.30
+trace_hot10000_frac0p60.s64	trace hot=10000 frac=0.60
+sorted.s64	sorted
+reverse_sorted.s64	reverse sorted
+all_equal.s64	all equal
+99pct_one_value.s64	99% one value

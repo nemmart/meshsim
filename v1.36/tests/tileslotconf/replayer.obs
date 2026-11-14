@@ -1,0 +1,35 @@
+# tileslotconf observations v1: replayer.prog
+dmem 100 4
+dmem 104 0
+dmem 108 0
+dmem 10c 72
+dmem 110 3c
+dmem 114 3d
+dmem 118 0
+dmem 11c 0
+dmem 120 0
+dmem 124 3010000
+dmem 128 8d
+dmem 12c 0
+dmem 130 0
+dmem 134 0
+dmem 138 0
+dmem 13c 0
+dmem 140 0
+dmem 144 0
+dmem 148 0
+dmem 14c 0
+dmem 150 0
+dmem 154 0
+dmem 158 0
+dmem 15c 0
+dmem 160 0
+dmem 164 0
+dmem 168 0
+dmem 16c 0
+dmem 170 0
+dmem 174 0
+dmem 178 0
+dmem 17c 0
+dir 107 2 4000000 0 0
+bad 0

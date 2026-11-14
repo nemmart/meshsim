@@ -1,0 +1,2 @@
+segment,windows,cc3_cycles,trace_rows_cycles,drain_cycles,transfers,dma_packets,replay_cycles_max,rows_checked,chip_cycles,setup_s,wall_s,ok,boot_cycles,boot_s,segment_s
+10,64,28105968,23810180,4264156,15716,1974150,200588,4194304,28319576,8.6,52.2,OK,7222,0.28,51.03

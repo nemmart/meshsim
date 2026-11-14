@@ -1,0 +1,3 @@
+regs: stopped at cycle 869; every tile exited true (all 0); violations 384; r[35] (steps run) on every tile = 0x23, counter wraps 192
+state fingerprint at the end (chip): e6b727afa462b23e
+digest cycle 869 units 64 mcycle 55616 wfi 9503 instructions 38848 violations 384 log 128 hash 167839f9097bf89d

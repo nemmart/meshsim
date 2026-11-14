@@ -1,0 +1,3 @@
+  boot, reset release -> all 64 tiles running 'cmd': cores 886 cycles (C&C 1 running at 253, C&C 2/3 started by 603), the Java model 97
+  error path: errors at 1253; C&C 1 trapped at +10; drain done at +4800 (mcycle); dump done at +770025
+CcCoresTest: 77 passed, 0 failed

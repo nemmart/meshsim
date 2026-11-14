@@ -1,0 +1,95 @@
+# results against results
+
+| run | path | TOTAL new | TOTAL ref | diff | steps that differ |
+|---|---|---|---|---|---|
+| p4_equal-k128 | LB | 81580 | 81580 | 0 | identical |
+| p4_equal-kv32 | LB | 69207 | 69207 | 0 | identical |
+| p4_few5-k128 | direct | 266299 | 266299 | 0 | identical |
+| p4_one99-k128 | LB | 93439 | 93439 | 0 | identical |
+| p4_one99-kv32 | LB | 75141 | 75141 | 0 | identical |
+| p4_ragged-kv32 | direct | 222155 | 222155 | 0 | identical |
+| p4_reverse-k128 | TH | 263840 | 263840 | 0 | identical |
+| p4_reverse-kv32 | TH | 240769 | 240769 | 0 | identical |
+| p4_shaped-k128 | direct | 234291 | 234291 | 0 | identical |
+| p4_sorted-k128 | LB | 229176 | 229176 | 0 | identical |
+| p4_sorted-kv32 | LB | 216803 | 216803 | 0 | identical |
+| p4_trace10-10-k128 | direct | 442725 | 442725 | 0 | identical |
+| p4_trace10-10-kv32 | direct | 373924 | 373924 | 0 | identical |
+| p4_trace10-30-k128 | direct | 418475 | 418475 | 0 | identical |
+| p4_trace10-30-kv32 | direct | 363572 | 363572 | 0 | identical |
+| p4_trace10-60-k128 | direct | 433895 | 433895 | 0 | identical |
+| p4_trace10-60-kv32 | direct | 372207 | 372207 | 0 | identical |
+| p4_trace100-10-k128 | direct | 465922 | 465922 | 0 | identical |
+| p4_trace100-10-kv32 | direct | 386934 | 386934 | 0 | identical |
+| p4_trace100-30-k128 | direct | 449211 | 449211 | 0 | identical |
+| p4_trace100-30-kv32 | direct | 385437 | 385437 | 0 | identical |
+| p4_trace100-60-k128 | direct | 436649 | 436649 | 0 | identical |
+| p4_trace100-60-kv32 | direct | 392282 | 392282 | 0 | identical |
+| p4_trace10000-10-k128 | LB | 433307 | 433307 | 0 | identical |
+| p4_trace10000-10-kv32 | LB | 366921 | 366921 | 0 | identical |
+| p4_trace10000-30-k128 | direct | 446447 | 446447 | 0 | identical |
+| p4_trace10000-30-kv32 | direct | 386080 | 386080 | 0 | identical |
+| p4_trace10000-60-k128 | direct | 430199 | 430199 | 0 | identical |
+| p4_trace10000-60-kv32 | direct | 392451 | 392451 | 0 | identical |
+| p4_uniform-k128 | direct | 243124 | 243124 | 0 | identical |
+| p4_uniform-kv32 | direct | 229721 | 229721 | 0 | identical |
+| p4_zipf05-k128 | direct | 274373 | 274373 | 0 | identical |
+| p4_zipf05-kv32 | direct | 260939 | 260939 | 0 | identical |
+| p4_zipf08-k128 | direct | 309211 | 309211 | 0 | identical |
+| p4_zipf08-kv32 | direct | 295797 | 295797 | 0 | identical |
+| p4_zipf10-k128 | direct | 374920 | 374920 | 0 | identical |
+| p4_zipf10-kv32 | direct | 354643 | 354643 | 0 | identical |
+| p4_zipfraw05-k128 | direct | 231743 | 231743 | 0 | identical |
+| p4_zipfraw05-kv32 | direct | 218377 | 218377 | 0 | identical |
+| p4_zipfraw08-k128 | direct | 233960 | 233960 | 0 | identical |
+| p4_zipfraw08-kv32 | direct | 220517 | 220517 | 0 | identical |
+| p4_zipfraw10-k128 | direct | 221531 | 221531 | 0 | identical |
+| p4_zipfraw10-kv32 | direct | 201400 | 201400 | 0 | identical |
+| shuf_reverse-kv32 | TH | 240769 | 240769 | 0 | identical |
+| shuf_trace100-30-k128 | direct | 449211 | 449211 | 0 | identical |
+| shuf_uniform-k128 | direct | 243124 | 243124 | 0 | identical |
+| sweep_trace100-30-k128_area-queue-16 | direct | 449211 | 449211 | 0 | identical |
+| sweep_trace100-30-k128_area-queue-4 | direct | 449211 | 449211 | 0 | identical |
+| sweep_trace100-30-k128_cm-4 | direct | 449257 | 449257 | 0 | identical |
+| sweep_trace100-30-k128_default | direct | 449211 | 449211 | 0 | identical |
+| sweep_trace100-30-k128_go-run-4 | direct | 448823 | 448823 | 0 | identical |
+| sweep_trace100-30-k128_go-run-8 | direct | 449211 | 449211 | 0 | identical |
+| sweep_trace100-30-k128_link-2 | direct | 448716 | 448716 | 0 | identical |
+| sweep_trace100-30-k128_link-4 | direct | 449706 | 449706 | 0 | identical |
+| sweep_trace100-30-k128_ready-1 | direct | 448532 | 448532 | 0 | identical |
+| sweep_trace100-30-k128_ready-4 | direct | 448823 | 448823 | 0 | identical |
+| sweep_trace100-30-k128_skew-off | direct | 449157 | 449157 | 0 | identical |
+| sweep_trace100-30-k128_skew-seed-2 | direct | 449209 | 449209 | 0 | identical |
+| sweep_trace100-30-k128_skew-seed-3 | direct | 449204 | 449204 | 0 | identical |
+| sweep_trace100-30-k128_skew-seed-4 | direct | 449211 | 449211 | 0 | identical |
+| sweep_trace100-30-k128_skew-seed-5 | direct | 449198 | 449198 | 0 | identical |
+| sweep_trace100-30-k128_skew-seed-6 | direct | 449204 | 449204 | 0 | identical |
+| sweep_trace100-30-k128_sram-read-1 | direct | 448789 | 448789 | 0 | identical |
+| sweep_trace100-30-k128_sram-read-3 | direct | 449651 | 449651 | 0 | identical |
+| sweep_trace100-30-k128_sram-read-4 | direct | 450091 | 450091 | 0 | identical |
+| sweep_trace100-30-k128_ts-latency-2 | direct | 449241 | 449241 | 0 | identical |
+| sweep_uniform-k128_area-queue-16 | direct | 243124 | 243124 | 0 | identical |
+| sweep_uniform-k128_area-queue-4 | direct | 243124 | 243124 | 0 | identical |
+| sweep_uniform-k128_cm-4 | direct | 243210 | 243210 | 0 | identical |
+| sweep_uniform-k128_default | direct | 243124 | 243124 | 0 | identical |
+| sweep_uniform-k128_go-run-4 | direct | 242736 | 242736 | 0 | identical |
+| sweep_uniform-k128_go-run-8 | direct | 243124 | 243124 | 0 | identical |
+| sweep_uniform-k128_link-2 | direct | 242559 | 242559 | 0 | identical |
+| sweep_uniform-k128_link-4 | direct | 243687 | 243687 | 0 | identical |
+| sweep_uniform-k128_ready-1 | direct | 242445 | 242445 | 0 | identical |
+| sweep_uniform-k128_ready-4 | direct | 242736 | 242736 | 0 | identical |
+| sweep_uniform-k128_skew-off | direct | 243091 | 243091 | 0 | identical |
+| sweep_uniform-k128_skew-seed-2 | direct | 243135 | 243135 | 0 | identical |
+| sweep_uniform-k128_skew-seed-3 | direct | 243136 | 243136 | 0 | identical |
+| sweep_uniform-k128_skew-seed-4 | direct | 243131 | 243131 | 0 | identical |
+| sweep_uniform-k128_skew-seed-5 | direct | 243127 | 243127 | 0 | identical |
+| sweep_uniform-k128_skew-seed-6 | direct | 243127 | 243127 | 0 | identical |
+| sweep_uniform-k128_sram-read-1 | direct | 243002 | 243002 | 0 | identical |
+| sweep_uniform-k128_sram-read-3 | direct | 243264 | 243264 | 0 | identical |
+| sweep_uniform-k128_sram-read-4 | direct | 243404 | 243404 | 0 | identical |
+| sweep_uniform-k128_ts-latency-2 | direct | 243154 | 243154 | 0 | identical |
+
+86 identical, 0 differ, 0 not in the reference.
+
+## Differences
+

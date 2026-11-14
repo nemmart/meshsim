@@ -1,0 +1,5 @@
+tests/tracersuites: made by oracle/ref/tracersuites.sh --fixtures from sim/ref at 5d8aaf475593491d6eeacc91c7ad6f169a827fcd
+memsys.log, rvc.log, tracer.log: run_tests.sh's steps of the same names (MemorySystemTest, RvcTest with gold, TracerTest)
+rvc-gold.txt.gz: gold.Decoder.uncompress on every compressed encoding (oracle/ref/GoldRvc.java)
+hashorder.txt: java.util.HashMap's iteration order for Long keys (oracle/ref/JavaHashOrder.java)
+openjdk version "21.0.13.0.3" 2026-10-24

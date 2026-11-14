@@ -1,0 +1,9 @@
+00001788 B _bss_end
+00000010 B _bss_start
+00000010 D _data_start
+00001788 B _end
+01000000 T _start
+00001780 B extra
+01000038 T main
+00000010 B stamp
+000004c0 B words

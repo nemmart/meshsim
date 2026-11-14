@@ -1,0 +1,28 @@
+zipf s=1.0
+  L=2 w=1024 layers 2/2  total - (plan 71.1K, transfers+set-up 0.0K) footprint 1079 ok
+  L=3 w=512 layers 4/4  total 990.9K (plan 98.8K, transfers+set-up 891.9K) footprint 1654 ok
+  L=4 w=342 layers 4/4  total 778.6K (plan 128.2K, transfers+set-up 650.3K) footprint 1718 ok
+  L=5 w=256 layers 5/5  total 830.6K (plan 151.1K, transfers+set-up 679.4K) footprint 2038 ok
+  version 0 selects L=7 w=171 (estimate 552.0K): total -
+  version 1 selects L=4 w=342 (estimate 759.7K): total 778.6K
+trace hot=100 frac=0.30
+  L=2 w=1024 layers 2/2  total 911.6K (plan 71.5K, transfers+set-up 839.7K) footprint 1087 ok
+  L=3 w=512 layers 3/3  total 776.7K (plan 100.4K, transfers+set-up 675.9K) footprint 1401 ok
+  L=4 w=342 layers 4/4  total 778.6K (plan 127.5K, transfers+set-up 650.9K) footprint 1718 ok
+  L=5 w=256 layers 5/5  total 840.1K (plan 159.1K, transfers+set-up 681.0K) footprint 2042 ok
+  version 0 selects L=7 w=171 (estimate 552.0K): total -
+  version 1 selects L=4 w=342 (estimate 759.7K): total 778.6K
+trace hot=10 frac=0.60
+  L=2 w=1024 layers 2/2  total 912.3K (plan 75.1K, transfers+set-up 836.8K) footprint 1074 ok
+  L=3 w=512 layers 3/3  total 773.3K (plan 100.4K, transfers+set-up 672.6K) footprint 1388 ok
+  L=4 w=342 layers 4/4  total 779.2K (plan 131.4K, transfers+set-up 647.6K) footprint 1709 ok
+  L=5 w=256 layers 5/5  total 840.9K (plan 165.2K, transfers+set-up 675.6K) footprint 2029 ok
+  version 0 selects L=7 w=171 (estimate 552.0K): total -
+  version 1 selects L=4 w=342 (estimate 759.7K): total 779.2K
+99% one value
+  L=2 w=1024 layers 2/2  total 878.0K (plan 50.0K, transfers+set-up 827.6K) footprint 1047 ok
+  L=3 w=512 layers 3/3  total 733.5K (plan 68.7K, transfers+set-up 664.5K) footprint 1367 ok
+  L=4 w=342 layers 4/4  total 724.6K (plan 86.1K, transfers+set-up 638.3K) footprint 1686 ok
+  L=5 w=256 layers 5/5  total 773.6K (plan 110.7K, transfers+set-up 662.9K) footprint 2007 ok
+  version 0 selects L=7 w=171 (estimate 552.0K): total -
+  version 1 selects L=4 w=342 (estimate 759.7K): total 724.6K

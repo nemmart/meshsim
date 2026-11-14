@@ -1,0 +1,10 @@
+00000058 B _bss_end
+00000010 B _bss_start
+00000010 D _data_start
+00000058 B _end
+01000000 T _start
+00000030 B arg1s
+00000010 B cmd_words
+01000038 T main
+00000050 B phases
+00000054 B sum

@@ -1,0 +1,8 @@
+syn,0,0,A:state,OK,65536,200000,4207,"streams rrr  newexp 0, stalls [0, 4, 8, 0, 21, 18, 0]"
+syn,1,65536,A:state,OK,65536,200007,5439,"streams rrr  newexp 1, stalls [0, 4, 8, 0, 21, 18, 0]"
+syn,2,131072,A:state,OK,65536,200014,4584,"streams rrr  newexp 2, stalls [0, 4, 8, 0, 21, 18, 0]"
+syn,0,0,B:state,OK,65536,200000,6792,"tile 0 only, max row gap 12, 3.479 cycles/row, newexp 2 (slow 1), refills 3, waits image/code/newexp/exp/rlog/wlog/outq 3792/2366/4098/2921/2849/2243/2831 logq 256"
+syn,1,65536,B:state,OK,65536,200007,8772,"tile 0 only, max row gap 12, 3.479 cycles/row, newexp 2 (slow 1), refills 3, waits image/code/newexp/exp/rlog/wlog/outq 2867/1412/3684/2984/2738/4244/1162 logq 256"
+syn,2,131072,B:state,OK,65536,200014,2915,"tile 0 only, max row gap 12, 3.479 cycles/row, newexp 2 (slow 1), refills 3, waits image/code/newexp/exp/rlog/wlog/outq 1361/1627/2965/3909/2317/645/3413 logq 256"
+syn,0,0,F:state,OK,65536,200000,3304,"tile 0 only, max row gap 12, 3.479 cycles/row, newexp 2 (slow 1), refills 3, waits image/code/newexp/exp/rlog/wlog/outq 4758/4230/3447/2479/4531/2217/226 logq 256"
+syn,2,131072,F:state,OK,65536,200014,7826,"tile 0 only, max row gap 12, 3.479 cycles/row, newexp 2 (slow 1), refills 3, waits image/code/newexp/exp/rlog/wlog/outq 1310/4804/3613/1480/1794/1478/342 logq 256"

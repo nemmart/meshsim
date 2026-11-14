@@ -1,0 +1,10 @@
+a3b90f3c2fbc64f1a93c8c0ff916cfbaf40823aae38c4540811482873741d3da  ./hops.txt
+b2165425aef54cb357cf2c1a82e3a5bc7965392c60a4e0c2b92b7f9f060855af  ./sw/bootrom.hex
+f8169f4499ae45d24444b166bd32f252023b39d1f57e088a04ed02c5c1bd0372  ./sw/build/cc1.code.bin
+1de7181d15eac68cef4d15181a31073b29e25146f26a4dd12807ca9dcb06cd06  ./sw/build/cc1.data.bin
+3f69426156b66717de5b1238d8bf04cc4056e13a4b839ca7c2c3e0a085aa7ed8  ./sw/build/cc23.code.bin
+374708fff7719dd5979ec875d56cd2286f6d3cf7ec317a3b25632aab28ec37bb  ./sw/build/cc23.data.bin
+8d5fad08110f5a8fdc57692b601cb87d63d1a1b316000d67a698ba6c93d607bc  ./sw/replay/build/replay_ctl.code.bin
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  ./sw/replay/build/replay_ctl.data.bin
+72d405c78ab416db8812276812af9913646e1f4c6dc3cf94992b7fcb347340e1  ./sw/tracer/build/tracer_ctl.code.bin
+9ea6abe9db7758a3dd10dea54535ed9e7c1fa554f088210255689eb7ed187f6e  ./sw/tracer/build/tracer_ctl.data.bin

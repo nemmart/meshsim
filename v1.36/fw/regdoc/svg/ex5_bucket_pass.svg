@@ -1,0 +1,246 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1310" viewBox="0 0 1300 1310" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif">
+<defs><marker id="m1D9E75" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1D9E75"/></marker><marker id="m3B6EA5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#3B6EA5"/></marker><marker id="m444441" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#444441"/></marker><marker id="m7F77DD" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7F77DD"/></marker><marker id="mD85A30" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#D85A30"/></marker><marker id="mD9D7CE" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#D9D7CE"/></marker></defs>
+<rect width="1300" height="1310" fill="white"/>
+<text x="24.0" y="34.0" font-size="18" text-anchor="start" font-weight="bold" fill="#444441">Example 5. A bucket pass with count-on-arrival: n records bucketed by digit d, counting digit next</text>
+<text x="24.0" y="56.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#6b6a64">REGISTERS.md 7.5 — the prefix sum sets PTR from HIST; one stream, mode 3 to the tile itself; the write engine lands each record at PTR[digit d] and counts HIST[digit next]</text>
+<rect x="40.0" y="76.0" width="560.0" height="200.0" rx="6" fill="#EEEDFE" stroke="#7F77DD" stroke-width="1.6"/>
+<text x="52.0" y="96.0" font-size="13" text-anchor="start" font-weight="bold" fill="#444441">controller (RV32 core): the program</text>
+<text x="80.0" y="120.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">wait_tables();                  // the tables are free</text>
+<text x="80.0" y="133.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">at = dst;                       // the prefix sum:</text>
+<text x="80.0" y="146.9" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">for t in 0 .. 255 {</text>
+<circle cx="62.0" cy="156.4" r="6.2272727272727275" fill="#7F77DD" stroke="#7F77DD" stroke-width="1.6"/>
+<text x="62.0" y="158.9" font-size="7.161363636363636" text-anchor="middle" font-weight="bold" fill="white">1</text>
+<text x="80.0" y="160.4" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">    PTR[t] = at;  at += 2 * HIST[t];   // bucket t starts here</text>
+<circle cx="62.0" cy="169.8" r="6.2272727272727275" fill="#7F77DD" stroke="#7F77DD" stroke-width="1.6"/>
+<text x="62.0" y="172.3" font-size="7.161363636363636" text-anchor="middle" font-weight="bold" fill="white">2</text>
+<text x="80.0" y="173.8" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">    HIST[t] = 0;                // ready to count digit next</text>
+<text x="80.0" y="187.3" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">}</text>
+<circle cx="62.0" cy="196.7" r="6.2272727272727275" fill="#7F77DD" stroke="#7F77DD" stroke-width="1.6"/>
+<text x="62.0" y="199.2" font-size="7.161363636363636" text-anchor="middle" font-weight="bold" fill="white">3</text>
+<text x="80.0" y="200.7" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">STREAM[0] = {src; n, d 0, mode 3, 64-bit};</text>
+<circle cx="62.0" cy="210.2" r="6.2272727272727275" fill="#7F77DD" stroke="#7F77DD" stroke-width="1.6"/>
+<text x="62.0" y="212.7" font-size="7.161363636363636" text-anchor="middle" font-weight="bold" fill="white">4</text>
+<text x="80.0" y="214.2" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">DMA_CONFIG = stream run 0, count 1, bucket d, hist next;</text>
+<circle cx="62.0" cy="223.6" r="6.2272727272727275" fill="#7F77DD" stroke="#7F77DD" stroke-width="1.6"/>
+<text x="62.0" y="226.1" font-size="7.161363636363636" text-anchor="middle" font-weight="bold" fill="white">5</text>
+<text x="80.0" y="227.6" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">DMA_SRAM_REMAINING = n;</text>
+<circle cx="62.0" cy="237.1" r="6.2272727272727275" fill="#7F77DD" stroke="#7F77DD" stroke-width="1.6"/>
+<text x="62.0" y="239.6" font-size="7.161363636363636" text-anchor="middle" font-weight="bold" fill="white">6</text>
+<text x="80.0" y="241.1" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">DMA_PULSE = start;</text>
+<circle cx="62.0" cy="250.5" r="6.2272727272727275" fill="#7F77DD" stroke="#7F77DD" stroke-width="1.6"/>
+<text x="62.0" y="253.0" font-size="7.161363636363636" text-anchor="middle" font-weight="bold" fill="white">7</text>
+<text x="80.0" y="254.5" font-size="10.5" text-anchor="start" font-weight="normal" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">WFI;                            // returns at step j</text>
+<rect x="624.0" y="76.0" width="270.0" height="70.0" rx="6" fill="#F8F7F3" stroke="#D9D7CE" stroke-width="1"/>
+<text x="759.0" y="107.2" font-size="12.5" text-anchor="middle" font-weight="bold" fill="#BDBBB2">instruction and data memory</text>
+<text x="759.0" y="124.1" font-size="11" text-anchor="middle" font-weight="normal" fill="#BDBBB2">port B writes modes 5, 6, 7</text>
+<rect x="930.0" y="76.0" width="250.0" height="130.0" rx="6" fill="#F1EFE8" stroke="#444441" stroke-width="1.6"/>
+<text x="1055.0" y="95.0" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">router</text>
+<text x="1055.0" y="110.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6b6a64">routes horizontal first, then vertical</text>
+<polyline points="1140.0,206.0 1140.0,134.0 1180.0,134.0" fill="none" stroke="#D9D7CE" stroke-width="1.3" stroke-linejoin="round"/>
+<polyline points="1180.0,134.0 1286.0,134.0" fill="none" stroke="#D9D7CE" stroke-width="1.3" stroke-linejoin="round" marker-end="url(#mD9D7CE)"/>
+<text x="1186.0" y="128.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#BDBBB2">to the mesh</text>
+<polyline points="1286.0,158.0 1180.0,158.0" fill="none" stroke="#D9D7CE" stroke-width="1.3" stroke-linejoin="round"/>
+<polyline points="1180.0,158.0 990.0,158.0 990.0,206.0" fill="none" stroke="#D9D7CE" stroke-width="1.3" stroke-linejoin="round"/>
+<text x="1186.0" y="173.0" font-size="10.5" text-anchor="start" font-weight="normal" fill="#BDBBB2">from the mesh</text>
+<polyline points="990.0,206.0 990.0,310.0 170.0,310.0 170.0,338.0" fill="none" stroke="#444441" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m444441)"/>
+<text x="980.0" y="302.0" font-size="11" text-anchor="end" font-weight="normal" fill="#444441">eject: every packet for this tile</text>
+<polyline points="1140.0,340.0 1140.0,208.0" fill="none" stroke="#1D9E75" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#m1D9E75)"/>
+<text x="1148.0" y="277.0" font-size="11" text-anchor="start" font-weight="normal" fill="#1D9E75">injection</text>
+<polyline points="1140.0,188.0 992.0,188.0" fill="none" stroke="#1D9E75" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#m1D9E75)"/>
+<text x="1065.0" y="184.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#1D9E75">loopback: dst = me</text>
+<circle cx="1055.0" cy="202.0" r="10" fill="white" stroke="#1D9E75" stroke-width="1.6"/>
+<text x="1055.0" y="206.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#1D9E75">e</text>
+<rect x="40.0" y="340.0" width="260.0" height="98.0" rx="6" fill="#F1EFE8" stroke="#444441" stroke-width="1.6"/>
+<text x="170.0" y="363.5" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">traffic director</text>
+<text x="170.0" y="381.1" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">routes each packet by its mode;</text>
+<text x="170.0" y="395.6" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">counts as it accepts:</text>
+<text x="170.0" y="410.1" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">DMA_SRAM_, DMA_CM_,</text>
+<text x="170.0" y="424.6" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">DMA_REPLY_REMAINING</text>
+<circle cx="288.0" cy="352.0" r="10" fill="#7F77DD" stroke="#7F77DD" stroke-width="1.6"/>
+<text x="288.0" y="356.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="white">5</text>
+<rect x="1000.0" y="340.0" width="260.0" height="98.0" rx="6" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1.6"/>
+<text x="1130.0" y="370.8" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">injection point</text>
+<text x="1130.0" y="388.3" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">one packet per cycle:</text>
+<text x="1130.0" y="402.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">1. read returns</text>
+<text x="1130.0" y="417.4" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">2. the send port</text>
+<polyline points="70.0,340.0 70.0,278.0" fill="none" stroke="#D85A30" stroke-width="2.2" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<text x="92.0" y="298.0" font-size="11" text-anchor="start" font-weight="normal" fill="#D85A30">local wake: every counter done → WFI returns</text>
+<circle cx="70.0" cy="324.0" r="10" fill="white" stroke="#D85A30" stroke-width="1.6"/>
+<text x="70.0" y="328.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#D85A30">j</text>
+<polyline points="300.0,370.0 759.0,370.0 759.0,148.0" fill="none" stroke="#D9D7CE" stroke-width="1.3" stroke-linejoin="round" marker-end="url(#mD9D7CE)"/>
+<text x="308.0" y="362.0" font-size="11" text-anchor="start" font-weight="normal" fill="#BDBBB2">port B: modes 5, 6, 7</text>
+<polyline points="510.0,276.0 510.0,420.0 998.0,420.0" fill="none" stroke="#D9D7CE" stroke-width="1.3" stroke-linejoin="round" marker-end="url(#mD9D7CE)"/>
+<text x="990.0" y="412.0" font-size="11" text-anchor="end" font-weight="normal" fill="#BDBBB2">send port: ROUTER_SET_HDR, ROUTER_SET_HI, ROUTER_SEND_LO</text>
+<rect x="40.0" y="570.0" width="400.0" height="104.0" rx="6" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1.6"/>
+<text x="240.0" y="603.8" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">write engine</text>
+<text x="240.0" y="621.3" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">modes 2, 4: at PTR[src];  mode 3: at PTR[bucket digit];  then += 2</text>
+<text x="240.0" y="635.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">mode 4: high 32 bits ← ordinal from DMA_RECORD_BASE_ADDRESS</text>
+<text x="240.0" y="650.4" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">count-on-arrival: HIST[hist digit] += 1</text>
+<rect x="480.0" y="570.0" width="180.0" height="104.0" rx="6" fill="#F8F7F3" stroke="#D9D7CE" stroke-width="1"/>
+<text x="570.0" y="603.7" font-size="12.5" text-anchor="middle" font-weight="bold" fill="#BDBBB2">read port</text>
+<text x="570.0" y="620.5" font-size="11" text-anchor="middle" font-weight="normal" fill="#BDBBB2">≥ 64-entry request queue;</text>
+<text x="570.0" y="635.1" font-size="11" text-anchor="middle" font-weight="normal" fill="#BDBBB2">32-bit reads queued by</text>
+<text x="570.0" y="649.6" font-size="11" text-anchor="middle" font-weight="normal" fill="#BDBBB2">the controller's stores</text>
+<rect x="690.0" y="570.0" width="316.0" height="104.0" rx="6" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1.6"/>
+<text x="848.0" y="603.8" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">address generator</text>
+<text x="848.0" y="621.3" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">walks STREAM (stream runs) or</text>
+<text x="848.0" y="635.9" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">GROUP (group runs);</text>
+<text x="848.0" y="650.4" font-size="11" text-anchor="middle" font-weight="normal" fill="#444441">one request per visit</text>
+<rect x="1036.0" y="570.0" width="196.0" height="104.0" rx="6" fill="#F8F7F3" stroke="#D9D7CE" stroke-width="1"/>
+<text x="1134.0" y="611.1" font-size="13" text-anchor="middle" font-weight="bold" fill="#BDBBB2">GATHER engine</text>
+<text x="1134.0" y="628.6" font-size="11" text-anchor="middle" font-weight="normal" fill="#BDBBB2">mode 1: k reads at</text>
+<text x="1134.0" y="643.1" font-size="11" text-anchor="middle" font-weight="normal" fill="#BDBBB2">base + 2k·ordinal</text>
+<rect x="118.0" y="496.0" width="82.0" height="42.0" rx="4" fill="white" stroke="#7F77DD" stroke-width="1.3"/>
+<text x="159.0" y="514.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">PTR[256]</text>
+<text x="159.0" y="529.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">read-modify-write</text>
+<polyline points="159.0,540.0 159.0,568.0" fill="none" stroke="#7F77DD" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="2 3" marker-end="url(#m7F77DD)" marker-start="url(#m7F77DD)"/>
+<circle cx="122.0" cy="494.0" r="10" fill="#7F77DD" stroke="#7F77DD" stroke-width="1.6"/>
+<text x="122.0" y="498.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="white">1</text>
+<circle cx="175.0" cy="556.0" r="10" fill="white" stroke="#7F77DD" stroke-width="1.6"/>
+<text x="175.0" y="560.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#7F77DD">g</text>
+<rect x="210.0" y="496.0" width="82.0" height="42.0" rx="4" fill="white" stroke="#7F77DD" stroke-width="1.3"/>
+<text x="251.0" y="514.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">HIST[256]</text>
+<text x="251.0" y="529.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">read-modify-write</text>
+<polyline points="251.0,540.0 251.0,568.0" fill="none" stroke="#7F77DD" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="2 3" marker-end="url(#m7F77DD)" marker-start="url(#m7F77DD)"/>
+<circle cx="214.0" cy="494.0" r="10" fill="#7F77DD" stroke="#7F77DD" stroke-width="1.6"/>
+<text x="214.0" y="498.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="white">2</text>
+<circle cx="267.0" cy="556.0" r="10" fill="white" stroke="#7F77DD" stroke-width="1.6"/>
+<text x="267.0" y="560.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#7F77DD">h</text>
+<rect x="302.0" y="496.0" width="132.0" height="42.0" rx="4" fill="#FAEEDA" stroke="#D85A30" stroke-width="1.3"/>
+<text x="368.0" y="514.0" font-size="11" text-anchor="middle" font-weight="bold" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">DMA_CONFIG</text>
+<text x="368.0" y="529.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">bucket, hist digits</text>
+<polyline points="368.0,540.0 368.0,568.0" fill="none" stroke="#D85A30" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<circle cx="306.0" cy="494.0" r="10" fill="#7F77DD" stroke="#7F77DD" stroke-width="1.6"/>
+<text x="306.0" y="498.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="white">4</text>
+<rect x="484.0" y="496.0" width="172.0" height="42.0" rx="4" fill="#F8F7F3" stroke="#D9D7CE" stroke-width="1.3"/>
+<text x="570.0" y="514.0" font-size="10" text-anchor="middle" font-weight="bold" fill="#BDBBB2" font-family="'Courier New', 'Liberation Mono', monospace">SRAM_RD_ADDR_QUEUE</text>
+<text x="570.0" y="529.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#BDBBB2">SRAM_RD_DEST_ADDR</text>
+<polyline points="570.0,540.0 570.0,568.0" fill="none" stroke="#D9D7CE" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD9D7CE)"/>
+<rect x="694.0" y="496.0" width="80.0" height="42.0" rx="4" fill="white" stroke="#7F77DD" stroke-width="1.3"/>
+<text x="734.0" y="514.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#444441">STREAM[256]</text>
+<text x="734.0" y="529.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">stream entries</text>
+<polyline points="734.0,540.0 734.0,568.0" fill="none" stroke="#7F77DD" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="2 3" marker-end="url(#m7F77DD)"/>
+<circle cx="698.0" cy="494.0" r="10" fill="#7F77DD" stroke="#7F77DD" stroke-width="1.6"/>
+<text x="698.0" y="498.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="white">3</text>
+<circle cx="750.0" cy="556.0" r="10" fill="white" stroke="#7F77DD" stroke-width="1.6"/>
+<text x="750.0" y="560.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#7F77DD">a</text>
+<rect x="778.0" y="496.0" width="70.0" height="42.0" rx="4" fill="#F8F7F3" stroke="#D9D7CE" stroke-width="1.3"/>
+<text x="813.0" y="514.0" font-size="10.5" text-anchor="middle" font-weight="bold" fill="#BDBBB2">GROUP[64]</text>
+<text x="813.0" y="529.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#BDBBB2">group entries</text>
+<polyline points="813.0,540.0 813.0,568.0" fill="none" stroke="#D9D7CE" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="2 3" marker-end="url(#mD9D7CE)"/>
+<rect x="852.0" y="496.0" width="80.0" height="42.0" rx="4" fill="#FAEEDA" stroke="#D85A30" stroke-width="1.3"/>
+<text x="892.0" y="514.0" font-size="9.5" text-anchor="middle" font-weight="bold" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">DMA_CONFIG</text>
+<text x="892.0" y="529.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">the run</text>
+<polyline points="892.0,540.0 892.0,568.0" fill="none" stroke="#D85A30" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<circle cx="856.0" cy="494.0" r="10" fill="#7F77DD" stroke="#7F77DD" stroke-width="1.6"/>
+<text x="856.0" y="498.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="white">4</text>
+<rect x="936.0" y="496.0" width="70.0" height="42.0" rx="4" fill="#FAEEDA" stroke="#D85A30" stroke-width="1.3"/>
+<text x="971.0" y="514.0" font-size="9.5" text-anchor="middle" font-weight="bold" fill="#444441" font-family="'Courier New', 'Liberation Mono', monospace">DMA_PULSE</text>
+<text x="971.0" y="529.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#6b6a64">start, done</text>
+<polyline points="971.0,540.0 971.0,568.0" fill="none" stroke="#D85A30" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<circle cx="940.0" cy="494.0" r="10" fill="#7F77DD" stroke="#7F77DD" stroke-width="1.6"/>
+<text x="940.0" y="498.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="white">6</text>
+<rect x="1040.0" y="496.0" width="188.0" height="42.0" rx="4" fill="#F8F7F3" stroke="#D9D7CE" stroke-width="1.3"/>
+<text x="1134.0" y="514.0" font-size="9.5" text-anchor="middle" font-weight="bold" fill="#BDBBB2" font-family="'Courier New', 'Liberation Mono', monospace">DMA_RECORD_BASE_ADDRESS</text>
+<text x="1134.0" y="529.0" font-size="10" text-anchor="middle" font-weight="normal" fill="#BDBBB2">k is in DMA_CONFIG</text>
+<polyline points="1134.0,540.0 1134.0,568.0" fill="none" stroke="#D9D7CE" stroke-width="1.6" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD9D7CE)"/>
+<polyline points="100.0,438.0 100.0,568.0" fill="none" stroke="#3B6EA5" stroke-width="2.2" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<text x="92.0" y="556.0" font-size="11" text-anchor="end" font-weight="normal" fill="#3B6EA5">modes 2–4</text>
+<circle cx="100.0" cy="476.0" r="10" fill="white" stroke="#3B6EA5" stroke-width="1.6"/>
+<text x="100.0" y="480.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#3B6EA5">f</text>
+<polyline points="270.0,438.0 270.0,466.0 1056.0,466.0 1056.0,568.0" fill="none" stroke="#D9D7CE" stroke-width="1.3" stroke-linejoin="round" marker-end="url(#mD9D7CE)"/>
+<text x="1048.0" y="458.0" font-size="11" text-anchor="end" font-weight="normal" fill="#BDBBB2">mode 1</text>
+<polygon points="758.0,722 938.0,722 898.0,770 798.0,770" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1.4"/>
+<text x="848.0" y="760.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#444441">priority mux</text>
+<polyline points="610.0,674.0 610.0,702.0 788.0,702.0 788.0,720.0" fill="none" stroke="#D9D7CE" stroke-width="1.3" stroke-linejoin="round" marker-end="url(#mD9D7CE)"/>
+<polyline points="848.0,674.0 848.0,710.0 848.0,710.0 848.0,720.0" fill="none" stroke="#1D9E75" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m1D9E75)"/>
+<polyline points="1134.0,674.0 1134.0,702.0 908.0,702.0 908.0,720.0" fill="none" stroke="#D9D7CE" stroke-width="1.3" stroke-linejoin="round" marker-end="url(#mD9D7CE)"/>
+<circle cx="832.0" cy="690.0" r="10" fill="white" stroke="#1D9E75" stroke-width="1.6"/>
+<text x="832.0" y="694.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#1D9E75">b</text>
+<text x="788.0" y="739.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#1D9E75">3</text>
+<text x="848.0" y="739.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#1D9E75">2</text>
+<text x="908.0" y="739.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#1D9E75">1</text>
+<text x="748.0" y="736.0" font-size="11" text-anchor="end" font-weight="normal" fill="#1D9E75">SRAM read queue: one request a cycle,</text>
+<text x="748.0" y="750.0" font-size="11" text-anchor="end" font-weight="normal" fill="#1D9E75">fixed priority 1 &gt; 2 &gt; 3</text>
+<rect x="40.0" y="840.0" width="1220.0" height="96.0" rx="8" fill="#F1EFE8" stroke="#888780" stroke-width="1.3"/>
+<text x="54.0" y="862.0" font-size="13.5" text-anchor="start" font-weight="bold" fill="#444441">big SRAM</text>
+<rect x="658.0" y="874.0" width="380.0" height="50.0" rx="4" fill="#E1F5EE" stroke="#1D9E75" stroke-width="1.4"/>
+<text x="848.0" y="895.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">source: n records</text>
+<text x="848.0" y="912.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">src … src + 2n − 1</text>
+<rect x="60.0" y="874.0" width="360.0" height="50.0" rx="4" fill="#E3ECF6" stroke="#3B6EA5" stroke-width="1.4" stroke-dasharray="9 3"/>
+<text x="240.0" y="895.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#444441">destination: 256 buckets, in digit order</text>
+<text x="240.0" y="912.0" font-size="10.5" text-anchor="middle" font-weight="normal" fill="#6b6a64" font-family="'Courier New', 'Liberation Mono', monospace">PTR[0] … PTR[255] at the start</text>
+<polyline points="240.0,674.0 240.0,872.0" fill="none" stroke="#3B6EA5" stroke-width="2.2" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<text x="248.0" y="816.0" font-size="11" text-anchor="start" font-weight="normal" fill="#3B6EA5">SRAM write queue</text>
+<circle cx="240.0" cy="800.0" r="10" fill="white" stroke="#3B6EA5" stroke-width="1.6"/>
+<text x="240.0" y="804.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#3B6EA5">i</text>
+<polyline points="848.0,770.0 848.0,872.0" fill="none" stroke="#1D9E75" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m1D9E75)"/>
+<text x="856.0" y="820.0" font-size="11" text-anchor="start" font-weight="normal" fill="#1D9E75">read requests</text>
+<circle cx="832.0" cy="820.0" r="10" fill="white" stroke="#1D9E75" stroke-width="1.6"/>
+<text x="832.0" y="824.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#1D9E75">c</text>
+<polyline points="1246.0,838.0 1246.0,440.0" fill="none" stroke="#1D9E75" stroke-width="2.6" stroke-linejoin="round" marker-end="url(#m1D9E75)"/>
+<text x="1238.0" y="692.0" font-size="11" text-anchor="end" font-weight="normal" fill="#1D9E75">read returns</text>
+<text x="1238.0" y="706.0" font-size="11" text-anchor="end" font-weight="normal" fill="#1D9E75">become packets,</text>
+<text x="1238.0" y="720.0" font-size="11" text-anchor="end" font-weight="normal" fill="#1D9E75">in request order</text>
+<circle cx="1246.0" cy="762.0" r="10" fill="white" stroke="#1D9E75" stroke-width="1.6"/>
+<text x="1246.0" y="766.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#1D9E75">d</text>
+<rect x="40.0" y="958.0" width="30.0" height="18.0" rx="4" fill="#F1EFE8" stroke="#444441" stroke-width="1.6"/>
+<text x="78.0" y="972.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">used by this example (in colour)</text>
+<rect x="290.0" y="958.0" width="30.0" height="18.0" rx="4" fill="#F8F7F3" stroke="#D9D7CE" stroke-width="1"/>
+<text x="328.0" y="972.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">not used</text>
+<circle cx="400.0" cy="967.0" r="10" fill="#7F77DD" stroke="#7F77DD" stroke-width="1.6"/>
+<text x="400.0" y="971.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="white">1</text>
+<text x="416.0" y="972.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">a register store: the program's line</text>
+<circle cx="690.0" cy="967.0" r="10" fill="white" stroke="#444441" stroke-width="1.6"/>
+<text x="690.0" y="971.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#444441">a</text>
+<text x="706.0" y="972.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">a step of the data flow (below)</text>
+<polyline points="930.0,967.0 960.0,967.0" fill="none" stroke="#1D9E75" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m1D9E75)"/>
+<text x="964.0" y="972.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">read</text>
+<polyline points="1016.0,967.0 1046.0,967.0" fill="none" stroke="#3B6EA5" stroke-width="2.2" stroke-linejoin="round" stroke-dasharray="9 3" marker-end="url(#m3B6EA5)"/>
+<text x="1050.0" y="972.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">write</text>
+<polyline points="1102.0,967.0 1132.0,967.0" fill="none" stroke="#7F77DD" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m7F77DD)"/>
+<text x="1136.0" y="972.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">controller</text>
+<polyline points="1188.0,967.0 1218.0,967.0" fill="none" stroke="#D85A30" stroke-width="2.2" stroke-linejoin="round" stroke-dasharray="4 3" marker-end="url(#mD85A30)"/>
+<text x="1222.0" y="972.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">control</text>
+<text x="40.0" y="1006.0" font-size="13" text-anchor="start" font-weight="bold" fill="#444441">What happens</text>
+<circle cx="52.0" cy="1028.0" r="10" fill="white" stroke="#7F77DD" stroke-width="1.6"/>
+<text x="52.0" y="1032.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#7F77DD">a</text>
+<text x="70.0" y="1032.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">Before the run, the prefix sum (1, 2) has set PTR[t] to bucket t's start and cleared</text>
+<text x="70.0" y="1048.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">HIST. The start pulse begins the run: the address generator reads STREAM[0].</text>
+<circle cx="52.0" cy="1068.0" r="10" fill="white" stroke="#1D9E75" stroke-width="1.6"/>
+<text x="52.0" y="1072.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#1D9E75">b</text>
+<text x="70.0" y="1072.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">It makes one read request per record into the SRAM read queue at priority 2.</text>
+<circle cx="52.0" cy="1092.0" r="10" fill="white" stroke="#1D9E75" stroke-width="1.6"/>
+<text x="52.0" y="1096.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#1D9E75">c</text>
+<text x="70.0" y="1096.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">The big SRAM reads the source records, in order.</text>
+<circle cx="52.0" cy="1116.0" r="10" fill="white" stroke="#1D9E75" stroke-width="1.6"/>
+<text x="52.0" y="1120.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#1D9E75">d</text>
+<text x="70.0" y="1120.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">Each return becomes a mode-3 packet with dst = me (d = 0).</text>
+<circle cx="52.0" cy="1140.0" r="10" fill="white" stroke="#1D9E75" stroke-width="1.6"/>
+<text x="52.0" y="1144.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#1D9E75">e</text>
+<text x="70.0" y="1144.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">The router loops it back: injection straight to eject.</text>
+<circle cx="662.0" cy="1028.0" r="10" fill="white" stroke="#3B6EA5" stroke-width="1.6"/>
+<text x="662.0" y="1032.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#3B6EA5">f</text>
+<text x="680.0" y="1032.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">The traffic director routes mode 3 to the write engine and decrements</text>
+<text x="680.0" y="1048.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">DMA_SRAM_REMAINING.</text>
+<circle cx="662.0" cy="1068.0" r="10" fill="white" stroke="#7F77DD" stroke-width="1.6"/>
+<text x="662.0" y="1072.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#7F77DD">g</text>
+<text x="680.0" y="1072.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">The write engine takes the key's digit d (DMA_CONFIG's bucket digit), lands the record</text>
+<text x="680.0" y="1088.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">at PTR[digit d], then adds 2: equal digits land in arrival order.</text>
+<circle cx="662.0" cy="1108.0" r="10" fill="white" stroke="#7F77DD" stroke-width="1.6"/>
+<text x="662.0" y="1112.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#7F77DD">h</text>
+<text x="680.0" y="1112.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">Count-on-arrival: it adds 1 to HIST[digit next] (DMA_CONFIG's hist digit), ready for the</text>
+<text x="680.0" y="1128.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">next pass's prefix sum.</text>
+<circle cx="662.0" cy="1148.0" r="10" fill="white" stroke="#3B6EA5" stroke-width="1.6"/>
+<text x="662.0" y="1152.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#3B6EA5">i</text>
+<text x="680.0" y="1152.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">The write goes through the SRAM write queue into its bucket in the destination.</text>
+<circle cx="662.0" cy="1172.0" r="10" fill="white" stroke="#D85A30" stroke-width="1.6"/>
+<text x="662.0" y="1176.0" font-size="11.5" text-anchor="middle" font-weight="bold" fill="#D85A30">j</text>
+<text x="680.0" y="1176.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">The last record written: DMA_SRAM_REMAINING = 0 and mem_idle, so the local wake fires</text>
+<text x="680.0" y="1192.0" font-size="12" text-anchor="start" font-weight="normal" fill="#444441">and WFI returns.</text>
+<line x1="24" y1="1234" x2="1276" y2="1234" stroke="#B4B2A9" stroke-width="0.8"/>
+<text x="24.0" y="1256.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">A bucket pass is example 1's run with mode 3: the write engine picks each record's landing pointer by a digit of its key instead of by its source, and counts</text>
+<text x="24.0" y="1272.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">the next digit as it goes. The controller's part is the prefix sum through the table window, before the run, while no engine uses the tables. Four passes on</text>
+<text x="24.0" y="1288.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">digits 1–4 sort by the 32-bit key; PTR[64], C&amp;C's staging pointer, is restored afterwards.</text>
+<text x="24.0" y="1304.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">Source: REGISTERS.md 2.3.1, 3.2, 3.3, 4.2; RECIPES.md 4 (bucket_pass()); spec/machine-spec.md v1.0, §4.9, §4.10, §4.15; the tile map is figure 1.3's.</text>
+</svg>

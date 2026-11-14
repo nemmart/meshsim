@@ -1,0 +1,8 @@
+00000030 B _bss_end
+00000020 B _bss_start
+00000010 D _data_start
+00000030 B _end
+01000000 T _start
+00000010 D magic
+01000038 T main
+00000020 B result

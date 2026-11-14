@@ -1,0 +1,12 @@
+ebreak: lowest_address 0x7fffffe0, code 0x80000000-0x80000010, 4 instructions (5 bytecode rows), 4 segments in ebreak.seg
+cycle-0 image: 1 pages of 4 KB
+run: 2 rows, 0 jumps (lookups), 0 self-jumps, 1 program end
+table: 0 entries (0 static, 0 run, 0 run-only), k=0 (1 lines, 0 KB), load 0.000, fullest line 0, placed 0/1/2 steps 0/0/0; p1=0x9e3779b1 p3=10368899
+acceptance: 0 jumps through frame6.bin's table: 0 map errors, 0 wrong bases; lines read 1/2/3: 0/0/0
+  direct       static       0, run targets missed     0 of 0, jumps missed 0
+  +return      static       0, run targets missed     0 of 0, jumps missed 0
+  +auipc_call  static       0, run targets missed     0 of 0, jumps missed 0
+  +auipc_addr  static       0, run targets missed     0 of 0, jumps missed 0
+  +data        static       0, run targets missed     0 of 0, jumps missed 0
+  +after_ecall static       0, run targets missed     0 of 0, jumps missed 0
+word 66: log2 K 4 (gold's ProofParams, a16z's rule), lowest_address 0x7fffffe0; OK

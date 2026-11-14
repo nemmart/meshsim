@@ -1,0 +1,38 @@
+# golden-m2 runs (sim/tests/golden-m2/README.md). One run per line: NAME WHERE KEEP COMMAND...
+#   WHERE  local: oracle/regen/golden-m2.sh runs it by default; runner: only with ALL=1 (the full-size sort: ~2 min a run plus hooks, 4 GB heap)
+#   KEEP   the run's files kept in git ("git") or recorded by sha256 in HASHES only ("hash"; regenerate to get them)
+#   COMMAND runs in the scratch copy of sim/ref/meshsim; @ is the run's output prefix (NAME), KEYS16K and KEYS64K the
+#           KeyGen key sets (uniform, 64 x 16,384 and 64 x 65,536). Stdout goes to @.out, "timing:" lines removed.
+#           -O: the observer on (-Dmeshsim.observe=on), for trace=.
+# M1's carried programs and the C all-to-all (CtrlTest's runs): per cycle on tile 0 in git; whole chip every 10 / 100 cycles by hash
+regs              local  git   M2Prog regs fp=@.fp fpevery=1 fptiles=0
+regs-chip         local  hash  M2Prog regs fp=@.fp fpevery=10
+regs-t0           local  git   -O M2Prog regs trace=0,@.trace
+regs-t27          local  git   -O M2Prog regs trace=27,@.trace
+regs-t63          local  git   -O M2Prog regs trace=63,@.trace
+wfi               local  git   M2Prog wfi fp=@.fp fpevery=1 fptiles=0
+wfi-chip          local  hash  M2Prog wfi fp=@.fp fpevery=10
+wfi-t0            local  git   -O M2Prog wfi trace=0,@.trace
+wfi-t27           local  git   -O M2Prog wfi trace=27,@.trace
+wfi-t63           local  git   -O M2Prog wfi trace=63,@.trace
+a2a               local  git   M2Prog a2a fp=@.fp fpevery=10 fptiles=0
+a2a-chip          local  hash  M2Prog a2a fp=@.fp fpevery=100
+a2a-t0            local  git   -O M2Prog a2a trace=0,@.trace
+a2a-t27           local  git   -O M2Prog a2a trace=27,@.trace
+a2a-t63           local  git   -O M2Prog a2a trace=63,@.trace
+# the mesh tests as ref runs them (Java-driven stimulus): the log and ref's per-chip digest (-Dmeshsim.digest)
+net               local  git   -D NetTest -1 quick
+engine            local  git   -D EngineTest -1
+# the sort at 64 x 16,384 (uniform, k128, ready 8): its facts, the coverage and PhaseLog in git; fingerprints every
+# 10,000 cycles and at every GO and all-READY, and the three tiles' retire traces, by hash
+sort16k           local  git   M2Sort keys=KEYS16K cover=@.cover.csv phases=@.phases.csv
+sort16k-fp        local  hash  M2Sort keys=KEYS16K fp=@.fp
+sort16k-t0        local  hash  -O M2Sort keys=KEYS16K trace=0,@.trace
+sort16k-t27       local  hash  -O M2Sort keys=KEYS16K trace=27,@.trace
+sort16k-t63       local  hash  -O M2Sort keys=KEYS16K trace=63,@.trace
+# the full sort, p4/uniform-k128 (64 x 65,536): the same set, on the runner
+sort64k           runner git   M2Sort keys=KEYS64K cover=@.cover.csv phases=@.phases.csv
+sort64k-fp        runner hash  M2Sort keys=KEYS64K fp=@.fp
+sort64k-t0        runner hash  -O M2Sort keys=KEYS64K trace=0,@.trace
+sort64k-t27       runner hash  -O M2Sort keys=KEYS64K trace=27,@.trace
+sort64k-t63       runner hash  -O M2Sort keys=KEYS64K trace=63,@.trace

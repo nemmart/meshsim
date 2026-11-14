@@ -1,0 +1,3 @@
+a2a: stopped at cycle 7698; every tile exited true (all 0); violations 0; records misplaced 0; phases (all READY, GO): 97/98 1028/1029 4506/4507 7660/7661
+state fingerprint at the end (chip): 032cb3291ab35a73
+digest cycle 7698 units 64 mcycle 492672 wfi 214751 instructions 255168 violations 0 log 128 hash c66db5d8436b6452

@@ -1,0 +1,10 @@
+00000040 B _bss_end
+00000010 B _bss_start
+00000010 D _data_start
+00000040 B _end
+01000000 T _start
+00000010 B buf
+00000030 B cmds
+01000060 T main
+00000020 B r
+01000038 t spin

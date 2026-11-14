@@ -1,0 +1,4 @@
+inputs: meshsim.jar=(classes) sw/bootrom.hex=b2165425aef54cb357cf2c1a82e3a5bc7965392c60a4e0c2b92b7f9f060855af image/sort.code.bin=2ab3c746aa6bf2f8d41a637a5ee4bda514754ea54fc3445beab59a50e5762f99 image/sort.data.bin=412d9f3fa18dac9d629472b3935d12acd529a0725f39f848ae270d71fc5c31f7 image/sort.sym=4a742353a535f95a0e2c501743393b55955fed701a12c2edf3f60c006b943a90 hops.txt=a3b90f3c2fbc64f1a93c8c0ff916cfbaf40823aae38c4540811482873741d3da
+p1 uniform n=2000 kv32 ready 8 seed -1: path -; boot 14791 cycles; run end at cycle 45784; 4 phases
+GO: cmd 4A@1430 cmd 10@14838 cmd 15@31548 cmd 7F@45746
+verify: keys misplaced 0, receive sizes wrong 0, values wrong 0, every core exited 0 true, violations 0, ERRORS 0: PASS

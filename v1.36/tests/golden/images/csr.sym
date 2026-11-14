@@ -1,0 +1,9 @@
+00000080 B _bss_end
+00000080 B _bss_start
+00000010 D _data_start
+00000080 B _end
+01000000 T _start
+01000144 t handler
+01000128 t load_fault
+00000010 d res
+01000134 t store_fault

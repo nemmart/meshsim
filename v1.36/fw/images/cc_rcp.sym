@@ -1,0 +1,11 @@
+00000020 B __bss_end
+00000010 B __bss_start
+00000020 B _bss_end
+00000010 B _bss_start
+00000010 D _data_start
+00000020 B _end
+01000000 T _start
+00000010 B commands
+01000294 T main
+01000290 t park
+01000034 T trap_handler

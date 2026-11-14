@@ -85,7 +85,7 @@ namespace units {
 enum PeriphType : uint8_t {
     PT_ABSENT = 0,
     PT_INGRESS = 1,   // Ingress/Egress, the master tile's (17.6; ingress_egress.h)
-    PT_RW_STUB = 2,   // the RW engine, the memory tile's (17.7), as a stub that stops the simulator if used (ingress_egress.h)
+    PT_RW = 2,        // the RW engine, the memory tile's (17.7; rw_engine.h)
     PT_TRACER = 3,    // the Tracer, the tracer tile's (17.9; v1.35's behind 17.1's control block)
     PT_REPLAYER = 4,  // the replayer, every mesh tile's peripheral 1 (Replayer)
     PT_TEST = 15,     // the suites' test peripheral (TestPeripheral)

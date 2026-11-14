@@ -29,7 +29,7 @@
 // THE MASTER SIDE.
 //   - THE CHIP (MachConfig::chip(), special_tiles): units::build_chip's (src/units/chip.h): the master, memory and tracer
 //     tiles as units 64-66 ("cc1.*", "cc2.*", "cc3.*"), each the base tile with its straps and its peripheral 1
-//     (Ingress/Egress; the RW engine's stand-in; the Tracer), on its attach tile's attach port; the request tree; the
+//     (Ingress/Egress; the RW engine; the Tracer), on its attach tile's attach port; the request tree; the
 //     nets at the RTL chip's latencies. The master and memory tiles start from the images placed in their IMEM and DMEM
 //     (boot_local: Mach::place_elf), the others from the boot ROM's LOAD. This is the machine every test of v1.36's chip
 //     builds (tests/test_rtl_sort.cpp).

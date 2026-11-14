@@ -9,7 +9,8 @@
 // ROM), releases each barrier of the image's schedule, collects the exit requests, measures the links, provokes and
 // checks every tile's error, and writes a summary into its DMEM, whose done word the test polls every 512 cycles.
 // Nothing here stands in for hardware: the tracer tile waits in its boot ROM for a load the master never answers, the
-// memory tile's RW engine is a stub that stops the simulator if it is used (src/units/ingress_egress.h).
+// memory tile's RW engine is idle, and has no LPDDR controller on its lpddr port (a job would stop the simulator:
+// src/units/rw_engine.h; tests/test_rtl_memory.cpp is the memory run).
 //
 // THE CHECKS, chip_test.rs's, from the specification's values written here:
 //   - the summary: no failure, the run's kind, a release for the load and one at each barrier of the schedule, numbered

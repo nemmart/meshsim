@@ -1,6 +1,6 @@
 // ingress_egress.h: Ingress/Egress, the master tile's peripheral 1 (machine-spec 17.6; the RTL's
-// rtl/blocks/ingress_egress_unit), and the RW engine's stand-in on the memory tile (17.7). Both are peripherals of the
-// slot (units/peripheral.h's method set); the control block and the DMA block (17.1-17.4) are the slot's.
+// rtl/blocks/ingress_egress_unit). It is a peripheral of the slot (units/peripheral.h's method set); the control block
+// (17.1-17.4) is the slot's. (The RW engine, the memory tile's peripheral 1, is units/rw_engine.h.)
 //
 // INGRESS/EGRESS holds the chip's control lines and its external IO: every other tile's error line, the barrier's
 // master side, the watchdog and the toast pin, LED, the UART and the host interface. It does no work and sends
@@ -79,11 +79,6 @@
 // WHAT IS NOT THE RTL'S YET (PENDING-v1.36.md):
 //   - An error line's level reaches ERROR_LINES a cycle later than ERROR_LATENCY says: the RTL reads the wire in the
 //     cycle the tile's flip-flop drives it; here the level crosses a Link(1 + ERROR_LATENCY).
-//
-// THE RW ENGINE'S STAND-IN (RwEngineStub): the memory tile's peripheral 1 with 17.7's PARAMS (type 2, version 0), its
-// words, an idle STATUS, no events and no errors, and the slot's DMA block in front of two output queues that never hold
-// an entry. Whatever would make the engine work stops the simulator, named: START, a store to its own words, a DMA
-// transfer of one packet or more, a WRITE into its region. (EVENTS_MASK and the DMA block's registers are the slot's.)
 #pragma once
 
 #include <cstdint>
@@ -448,43 +443,6 @@ private:
         ev.live(EV_STREAM_IN, in_n > 0);
         ev.live(EV_STREAM_OUT, out_n < STREAM_DEPTH);
     }
-};
-
-// The RW engine's stand-in (header): present, typed, idle; whatever would start it stops the simulator.
-struct RwEngineStub : PeripheralBase<RwEngineStub> {
-    enum : int { RW_CONFIG = 32, RW_LPDDR_ADDR = 33, RW_BUFFER_ADDR = 34, RW_REPLY_W0 = 35, RW_REPLY_SEND = 36 };
-    EventCounts ev;
-    RwEngineStub() {
-        static const uint8_t depth[2] = {1, 1};
-        static const bool flags[2] = {};
-        ev.init(2, depth, flags);
-    }
-    int type() const { return 2; }
-    int params() const { return 2; }                  // type 2, version 0, no constants (17.7)
-    void accept(int64_t t, int src, uint32_t offset, int, uint64_t, uint64_t) {
-        FATAL("the RW engine is a stub (PENDING-v1.36.md): a WRITE into the memory tile's write buffer at %lld (offset 0x%x, from %d)",
-              (long long)t, offset, src);
-    }
-    void run(int64_t t) { FATAL("the RW engine is a stub (PENDING-v1.36.md): START at %lld", (long long)t); }
-    uint32_t consume_events(uint32_t bits) { return ev.consume(bits); }
-    bool running(int64_t) const { return false; }
-    int errors(int64_t) const { return 0; }
-    EventCounts& events() { return ev; }
-    bool word(int64_t, int w, uint32_t& v) { v = 0; return w >= RW_CONFIG && w <= RW_REPLY_SEND; }
-    bool writable(int w) const { return w >= RW_CONFIG && w <= RW_REPLY_SEND; }
-    int write_word(int64_t t, int w, uint32_t v) {
-        FATAL("the RW engine is a stub (PENDING-v1.36.md): a store of 0x%x to its window word %d at %lld", v, w, (long long)t);
-    }
-    // the DMA block's two output queues (17.7: 0 the read's beats, 1 the replies): never an entry
-    int out_queues() const { return 2; }
-    void out_start(int64_t t, int q, int64_t packets) {
-        FATAL("the RW engine is a stub (PENDING-v1.36.md): a DMA transfer of %lld packets from output queue %d at %lld",
-              (long long)packets, q, (long long)t);
-    }
-    void step(int64_t) {}
-    bool idle(int64_t) const { return true; }
-    uint64_t violation_count() const { return 0; }
-    void reset(int64_t) { ev.clear_all(); }
 };
 
 }  // namespace units

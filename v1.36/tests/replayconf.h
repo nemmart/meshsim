@@ -9,7 +9,8 @@
 //   S                     a store to START with bit 0 set (17.2)
 //   C<value>              a store to RUN_CONFIG (17.8.1)
 //   K                     a consuming load of EVENTS, every event in EVENTS_MASK (17.2)
-// The row port is always ready. The replayer starts from its reset, EVENTS_MASK then every event.
+//   N                     the row port is not ready in the cycle (replay_row_ready 0); it is ready in every other
+// The replayer starts from its reset, EVENTS_MASK then every event.
 //
 // The observations: `<cycle>[ <field>=<value>]...[ row=<hash>]`, a line for each cycle in which something changed: the
 // fields as a load presented in the cycle reads them (the state at the end of the cycle before), each printed when it
@@ -85,10 +86,12 @@ inline std::string run(const std::string& script, uint64_t max_rows, units::Repl
                     if (r->write_word(t, R::W_RUN_CONFIG, uint32_t(std::strtoul(q, &q, 16))) != 1) FATAL("replayconf: RUN_CONFIG refused");
                     break;
                 case 'K': consume = true; break;
+                case 'N': r->row_ready = false; break;
                 default: FATAL("replayconf: op '%c' in line %s", op, line.c_str());
             }
         }
         r->step(t);
+        r->row_ready = true;
         if (consume) r->consume_events(events);
         std::string b;
         for (unsigned i = 0; i < N_FIELD; i++)

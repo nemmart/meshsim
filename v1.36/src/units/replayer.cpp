@@ -360,7 +360,7 @@ void Replayer::step(int64_t T) {
 
 // The row port: the output queue's oldest row leaves, when the sink is ready.
 void Replayer::sink(int64_t T) {
-    if (outq_n_ == 0 || T - last_sink_ < int64_t(sink_interval)) return;
+    if (outq_n_ == 0 || !row_ready || T - last_sink_ < int64_t(sink_interval)) return;
     const uint64_t* r = outq_[outq_h_];
     outq_h_ = (outq_h_ + 1) % OUTQ_ROWS; outq_n_--;
     last_sink_ = T;

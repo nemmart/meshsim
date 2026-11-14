@@ -24,6 +24,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -66,6 +67,13 @@ struct ReplayDriver {
     // the same inputs replayed on the RTL's replayer_unit give the RTL's observations of them.
     std::string* script = nullptr;
     std::string ops;                             // this cycle's inputs
+    // The row's consumer: whether the row port is ready in cycle t (always, when null).
+    std::function<bool(int64_t)> ready;
+    // A slower core: whether the port must not yet take entry `index` of queue q (0-2 the streams, 3 the expansion's
+    // words) in cycle t of the pass, START's being 0 (never, when null); and whether it loads EVENTS in every cycle,
+    // its level up or not.
+    std::function<bool(unsigned, size_t, int64_t)> hold;
+    bool eager = false;
 
     explicit ReplayDriver(ReplayWindow& win, uint64_t max_rows = 1u << 17, units::Replayer* rp = nullptr)
         : r(rp), w(win), buf(max_rows * units::Replayer::REC_LONGS), times(max_rows) {
@@ -88,7 +96,10 @@ struct ReplayDriver {
     bool consume = false;
     uint32_t consume_bits = 0;
     void step() {
+        r->row_ready = !ready || ready(t);
+        if (!r->row_ready) note(" N");
         r->step(t);
+        r->row_ready = true;
         if (consume) r->consume_events(consume_bits);
         consume = false;
         if (script) { *script += std::to_string(t) + ops + "\n"; ops.clear(); }
@@ -185,13 +196,13 @@ struct ReplayDriver {
             const uint32_t events = r->events().value(t);
             const bool level = !done && events != 0;
             // the write port: an expansion word first, else the streams' in turn
-            if (exp_released > 0) {
+            if (exp_released > 0 && !(hold && hold(3, exp_next / 2, t - run_at))) {
                 present(PART_EXP, exp_words[exp_next], exp_words[exp_next + 1]);
                 exp_next += 2; exp_released--; expansion_words_sent++;
-            } else {
+            } else if (exp_released == 0) {
                 for (unsigned ahead = 0; ahead < 3; ahead++) {
                     const unsigned s = (turn + ahead) % 3;
-                    if (released[s] == 0) continue;
+                    if (released[s] == 0 || (hold && hold(s, next[s], t - run_at))) continue;
                     const std::vector<uint64_t>& e = stream(s);
                     present(PART_CODE * (s + 1), e[2 * next[s]], e[2 * next[s] + 1]);
                     next[s]++; released[s]--; turn = (s + 1) % 3;
@@ -211,7 +222,7 @@ struct ReplayDriver {
                     exp_released = std::min(size_t(HALF) * exp_credits, exp_words.size() / 2);
                     exp_credits = 0;
                 }
-            } else if (level) {
+            } else if (level || (eager && !done)) {
                 load_events(events);
                 for (unsigned s = 0; s < 3; s++)
                     if (events & 1u << (R::EV_CODE + s)) released[s] += std::min(size_t(HALF), stream(s).size() / 2 - next[s] - released[s]);

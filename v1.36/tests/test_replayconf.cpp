@@ -21,7 +21,8 @@ const char* kTraces[] = {
     "pext", "not-the-last-row", "branch-not-taken", "transfer-then-advice-2", "transfer-then-advice-3",
     "under-code-values", "under-code-words", "under-code-lru", "under-rlog-values", "under-rlog-words", "under-wlog-values",
     "under-transfer", "under-then-pass", "left-code-value", "left-rlog-value", "left-wlog-value", "left-code-word", "left-rlog-entry",
-    "invalid-class-3", "invalid-operand", "invalid-opcode", "invalid-rom-511", "overrun"};
+    "invalid-class-3", "invalid-operand", "invalid-opcode", "invalid-rom-511", "overrun", "slow-consumer", "slow-consumer-program",
+    "late-code", "late-read-log", "late-expansion-word", "eager-loads"};
 
 // The first differing line, for the report.
 void first_difference(const std::string& a, const std::string& b) {
@@ -86,7 +87,8 @@ TEST(the_fixtures_errors_and_rows_are_the_specifications) {
         {"left-code-value", 1 << 5, 25}, {"left-rlog-value", 1 << 5, 25}, {"left-wlog-value", 1 << 5, 25}, {"left-code-word", 1 << 5, 25},
         {"left-rlog-entry", 1 << 5, 25},
         {"invalid-class-3", 1 << 1, 0}, {"invalid-operand", 1 << 1, 2}, {"invalid-opcode", 1 << 1, 2}, {"invalid-rom-511", 1 << 1, 1},
-        {"overrun", 1 << 0, 25}};
+        {"overrun", 1 << 0, 25}, {"slow-consumer", 0, 120}, {"slow-consumer-program", 0, 97},
+        {"late-code", 0, 20 * 12}, {"late-read-log", 0, 18 * 8}, {"late-expansion-word", 0, 18 * 8}, {"eager-loads", 0, 600}};
     CHECK_EQ(sizeof want / sizeof want[0], sizeof kTraces / sizeof kTraces[0]);
     int bad = 0;
     for (const Want& w : want) {

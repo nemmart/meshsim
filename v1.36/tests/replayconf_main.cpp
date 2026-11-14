@@ -290,6 +290,79 @@ const std::vector<Scenario>& scenarios() {
              w->set_code({kIns, kIns, kIns}, false);
              pass(s, *w, 10, 400);
          }},
+        // ---- a slow consumer: the output queue fills, and no row starts while it is full (17.8.11)
+        {"slow-consumer", [](std::string& s) {
+             auto w = core_fed(60, 0);
+             ReplayDriver d(*w);
+             d.script = &s;
+             d.ready = [](int64_t t) { return t % 7 == 0 || (t / 64) % 3 == 1; };   // a row in 7 cycles, and bursts
+             w->rows = 120;
+             d.load();
+             d.pass(20000);
+         }},
+        {"slow-consumer-program", [](std::string& s) {
+             auto w = program_window(true, true, true, true);
+             std::vector<uint32_t> code = prog();
+             code.resize(code.size() + 80, 0);
+             w->set_code(code, true);
+             ReplayDriver d(*w);
+             d.script = &s;
+             d.ready = [](int64_t t) { return t % 11 == 3; };
+             d.after_done = 400;
+             w->rows = 97;
+             d.load();
+             d.pass(20000);
+         }},
+        // ---- a slower core: an entry, or an expansion word, that comes D cycles late, for each D: the pass's wait and
+        // its start again, at every phase of the fetch, the decoders and the row engine
+        {"late-code", [](std::string& s) {
+             auto w = one_template(kIns, {W::op(alu::ADDI).rd(129).rs1(129).rs2(132).fmt(1).report_c()});
+             w->set_code(std::vector<uint32_t>(12, kIns), false);
+             ReplayDriver d(*w);
+             d.script = &s; d.after_done = 6;
+             w->rows = 12;
+             d.load();
+             for (int64_t late = 0; late < 20; late++) {
+                 d.hold = [late](unsigned q, size_t index, int64_t t) { return q == 0 && index == 1 && t < 8 + late; };
+                 d.pass(2000);
+             }
+         }},
+        {"late-read-log", [](std::string& s) {
+             auto w = one_template(kIns, {W::op(alu::LD).rd(129).rs1(130).rs2(128).cnst(0).fmt(0).from_log().report_c()});
+             w->set_code(std::vector<uint32_t>(8, kIns), false);
+             std::vector<LogEvent> ev;
+             for (uint64_t k = 0; k < 8; k++) ev.push_back({true, 100 + k, true, false, 0});
+             w->set_logs(ev, false, false);
+             ReplayDriver d(*w);
+             d.script = &s; d.after_done = 6;
+             w->rows = 8;
+             d.load();
+             for (int64_t late = 0; late < 18; late++) {
+                 d.hold = [late](unsigned q, size_t index, int64_t t) { return q == 1 && index == 1 && t < 8 + late; };
+                 d.pass(2000);
+             }
+         }},
+        {"late-expansion-word", [](std::string& s) {
+             auto w = core_fed(8, 0);
+             w->set_code({kInl}, false);
+             ReplayDriver d(*w);
+             d.script = &s; d.after_done = 6;
+             w->rows = 8;
+             d.load();
+             for (int64_t late = 0; late < 18; late++) {
+                 d.hold = [late](unsigned q, size_t index, int64_t t) { return q == 3 && index == 4 && t < 16 + late; };
+                 d.pass(2000);
+             }
+         }},
+        // ---- a core that loads EVENTS in every cycle: a load in the cycle of a credit's fill and of its return
+        {"eager-loads", [](std::string& s) {
+             auto w = core_fed(300, 0);
+             ReplayDriver d(*w);
+             d.script = &s; d.eager = true;
+             w->rows = 600;
+             d.load();
+             d.pass(20000);
+         }},
         // ---- the queues: an overrun, and pushes before the pass
         {"overrun", [](std::string& s) {
              auto w = program_window(false, false, false, true);

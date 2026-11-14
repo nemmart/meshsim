@@ -79,6 +79,7 @@ fn run(script: &str) -> String {
         ];
         // The inputs.
         let mut access = false;
+        let mut ready = true;
         for op in parts.filter(|op| !op.is_empty()) {
             let (kind, rest) = op.split_at(1);
             match kind {
@@ -90,6 +91,10 @@ fn run(script: &str) -> String {
                     dut.set_noc_write_valid(true);
                     dut.set_noc_write_address(0x0400_0000 | offset);
                     dut.set_noc_write_data(u128::from(hi) << 64 | u128::from(lo));
+                }
+                "N" => {
+                    ready = false;
+                    dut.set_replay_row_ready(false);
                 }
                 "S" | "C" | "K" => {
                     assert!(!access, "two accesses in cycle {t}");
@@ -115,7 +120,7 @@ fn run(script: &str) -> String {
                 last[at] = values[at];
             }
         }
-        if dut.replay_row_valid() {
+        if dut.replay_row_valid() && ready {
             let row: [u32; 20] = dut.replay_row().0;
             let mut h = 0u64;
             for word in 0..10 {
@@ -129,6 +134,7 @@ fn run(script: &str) -> String {
         }
         first = false;
         verif::edge(&mut dut);
+        dut.set_replay_row_ready(true);
     }
     obs + &format!("# end {cycles} cycles, {rows} rows\n")
 }

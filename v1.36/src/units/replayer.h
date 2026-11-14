@@ -26,6 +26,33 @@
 //   accept(t, ...)             the slot's: the director accepted the packet at t, and the port presents it at
 //                              t + RP_LATENCY (units/peripheral.h)
 //
+// WHAT IS THE RTL'S, NOT THE SPECIFICATION'S. 17.8.7 leaves a stall's cost, the first row's start and the entries'
+// release to the implementation; the cycles here are the RTL's by these rules of its sources:
+//   - a decoder decodes into its output register only while it is empty, so it gives a value every two cycles at most;
+//     it takes its queue's head when fewer than 66 of its bits are left and the stream has an entry after it (the last
+//     65 bits go to its tail), and the stream's last entry the cycle after the last value's decode; its table moves
+//     the cycle after a decode; it runs only while STATUS.busy is 1 (the write log's also needs store_log);
+//   - a decode is announced in its cycle (`value_soon`) only when no token's bits decide it: the head there with 66 bits
+//     or more left, or behind the tail. A row starts on a read-log word that is there or announced, so one whose
+//     word is neither starts 2 cycles late (it loses its reads);
+//   - the fetch takes an instruction once the last one's words are in hand and it is within the pass's rows; reads its
+//     decode entry the cycle after; reads a ROM word a cycle before it is the row word, the template's first in the
+//     entry's cycle, and only with room in the row word register; under a NOP policy reads ROM word 1 after the
+//     template's first word (the shared NOP row of a ROM template is 2 cycles late); pops an expansion word into the
+//     row word register; posts a new expansion in the entry's cycle, with the instruction's row offset;
+//   - the row engine reads rs1 and rs2 the cycle before a row's start, in a cycle with no row in flight or the one a
+//     row completes in, and not while a write-back is still to land; a row completes at the ALU's done, cycle 3, or 5
+//     for an M row, or once its control transfer's word is offered; a VirtualPext whose mask has two or more runs is
+//     done 1 + the mask's bit length cycles after cycle 3;
+//   - the pass: busy from the cycle after START's; the end in the cycle of the last row's push (the cycle after
+//     START's with no rows); the leftover check the cycle after the end; an error stop in the cycle the row that is
+//     next asks for a value its stream cannot give, or is an invalid expansion, with no row in flight;
+//   - the events (peripheral_control.veryl): a consuming load takes one, then the cycle's set adds one, up to the
+//     depth; a fill sets the depth whatever they do;
+//   - UB the RTL gives an outcome: a row without next_from_value whose new pc differs from its pc is sequential; a code
+//     miss of 64 bits keeps the low 32; a word left in the expansion queue at a new expansion is that expansion's
+//     first; a register image packet drops a write-back not yet landed.
+//
 // The cycle loop's rules (D6, D24): no STL, no allocation, no virtual calls. Violations (UB the simulator reports,
 // 17.8.24) and errors are recorded as fixed-size facts (a code, the cycle, two words), counted per code, and formatted
 // after the run (`fact_text`). The rows leave through a sink: a running hash of every record always, and an optional
@@ -109,7 +136,7 @@ struct StreamDecoder {
     bool tok_hit = false;
     unsigned tok_index = 0, tok_end = 0;
     uint64_t tok_value = 0;
-    bool tok_compressed = false;
+    bool tok_compressed = false, tok_long = false;   // tok_long: a miss of size 1
     // ---- statistics
     uint64_t values = 0, hits = 0, misses = 0;   // values taken by the consumer; decodes that hit and missed
     uint64_t miss64 = 0;                          // a miss of size 1 (UB for the code stream, 17.8.12)
@@ -201,7 +228,6 @@ struct StreamDecoder {
             else position = tok_end;
         }
     }
-    bool tok_long = false;
 };
 
 class Replayer : public PeripheralBase<Replayer> {
@@ -323,7 +349,7 @@ public:
     uint32_t list_capacity() const { return list_cap_; }
     const char* list_entry(unsigned l, uint32_t i) const { return &list_text_[(size_t(l) * list_cap_ + i) * LIST_TEXT]; }
 
-    // The sink (17.8.11), the row port's consumer: ready one cycle in sink_interval; a running hash of every record
+    // The sink (17.8.11), the row port's consumer: ready one cycle in sink_interval, and only while row_ready; a running hash of every record
     // (h = mix(h ^ word), word 0 first), the records into `buf` if given (capacity in rows; FATAL beyond it), and the
     // cycle each row left the port into `times` if given (the same capacity).
     void set_row_buffer(uint64_t* buf, uint64_t capacity_rows) { row_buf_ = buf; row_cap_ = capacity_rows; }
@@ -337,6 +363,7 @@ public:
     uint64_t row_hash() const { return row_hash_; }
     int64_t last_row_at() const { return last_sink_; }
     unsigned sink_interval = 1;
+    bool row_ready = true;             // replay_row_ready in the cycle step runs next (a test's consumer; the chip ties it to 1)
 
     // ---- state (public for the unit tests) ----------------------------------------------------------------------------
     unsigned me;

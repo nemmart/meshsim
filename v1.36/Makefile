@@ -42,6 +42,7 @@ endif
 B        := build/$(CC_NAME)-$(MODE)
 LIB_SRC  := $(wildcard src/base/*.cpp src/*.cpp)
 LIB_OBJ  := $(LIB_SRC:%.cpp=$(B)/%.o)
+.DEFAULT_GOAL := all   # (pending.mk, included before the first rule, has a target of its own)
 include pending.mk
 TEST_SRC := $(filter-out $(PENDING_TESTS:%=tests/%.cpp),$(wildcard tests/test_*.cpp))
 TESTS    := $(TEST_SRC:tests/%.cpp=$(B)/%)

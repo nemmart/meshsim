@@ -1550,6 +1550,88 @@ void unannounced_read_log_word() {
     }
 }
 
+// 17.8.1, 7.2 (peripheral_control.veryl's count): in a cycle a consuming load takes one from a credit, then its set
+// adds one, up to its depth, and a fill sets it to its depth whatever they do. A load and a fill, or a set at the
+// depth, in one cycle are rare under a core that takes credits as they come, so they are driven here by hand.
+void event_ties() {
+    T::group("v1.36: a consuming load in the cycle of a credit's fill or of its return");
+    const uint32_t code_bit = 1u << Replayer::EV_CODE, exp_bit = 1u << Replayer::EV_EXP;
+    {   // the state write's fill
+        auto rp = fresh();
+        Replayer& r = *rp;
+        int64_t t = 0;
+        r.write(t, 0, 0x0, 0x1000, 1); r.step(t++);
+        r.step(t++);
+        r.consume_events(code_bit);   // a load of the cycle after the state write's
+        T::eq(1, r.events().count_of(Replayer::EV_CODE), "one credit taken");
+        r.sync(t);
+        const uint32_t read = r.events().value(t);
+        r.write(t, 0, 0x0, 0x1000, 1); r.step(t);
+        r.consume_events(read);   // the load of the state write's own cycle
+        t++;
+        r.step(t++);
+        for (unsigned b = Replayer::EV_CODE; b <= Replayer::EV_EXP; b++)
+            T::eq(2, r.events().count_of(b), "credit " + std::to_string(b) + ": the fill sets 2 whatever the load took");
+    }
+    {   // a new expansion's fill of the expansion credit, a load of that cycle taking it
+        ReplayWindow w;
+        w.fixed_rom();
+        uint32_t inl = r_(0, 2, 1, 0, 3, CUSTOM0);
+        w.decode_class(inl, 1);
+        w.template_(inl, {W::op(alu::ADDI).rd(137).rs1(0).rs2(128).cnst(9).fmt(0).report_c()});
+        w.pc = 0x2000; w.instr_idx = 1; w.rows = 1;
+        w.set_code({inl}, false);
+        w.set_logs({}, false, false);
+        ReplayDriver d(w);
+        d.load();
+        d.write_config();
+        d.start(); d.step();
+        d.present(ReplayDriver::PART_CODE, w.code[0], w.code[1]); d.step();
+        Replayer& r = *d.r;
+        bool posted = false;
+        for (int k = 0; k < 20 && !posted; k++) {
+            r.sync(d.t);
+            const uint32_t read = r.events().value(d.t);
+            const uint64_t before = r.new_expansions;
+            r.step(d.t);
+            posted = r.new_expansions != before;
+            if (posted) {
+                T::check((read & exp_bit) != 0, "the load of the post's cycle reads the expansion credit set");
+                T::eq(exp_bit, r.consume_events(exp_bit), "and takes it");
+            }
+            d.t++;
+        }
+        T::check(posted, "the new expansion was posted");
+        T::eq(2, r.events().count_of(Replayer::EV_EXP), "the expansion credit: the new expansion's fill sets 2 whatever the load took");
+    }
+    {   // a credit's return at its depth, 2, with a load of that cycle: 2 - 1 + 1
+        ReplayWindow w;
+        w.fixed_rom();
+        w.rows = 600;
+        w.set_code(std::vector<uint32_t>(600, 0), false);   // 150 entries of padding words
+        w.set_logs({}, false, false);
+        ReplayDriver d(w);
+        d.load();
+        d.write_config();
+        // every entry pushed with no credit taken (an overrun apart, pushing needs none: 17.8.13's rule is software's)
+        for (size_t k = 0; k < w.code.size() / 2; k++) d.write(ReplayDriver::PART_CODE, w.code[2 * k], w.code[2 * k + 1]);
+        Replayer& r = *d.r;
+        d.start(); d.step();
+        bool returned = false;
+        for (int k = 0; k < 3000 && !returned; k++) {
+            const uint64_t before = r.events().full_posts;
+            r.step(d.t++);
+            returned = r.events().full_posts != before;   // the 128th entry left: the return found the credit at 2
+        }
+        T::check(returned, "the code credit returned at its depth");
+        T::eq(code_bit, r.consume_events(code_bit), "a load of that cycle takes one");
+        T::eq(2, r.events().count_of(Replayer::EV_CODE), "and the set, after it, adds one: 2");
+        r.step(d.t++);
+        r.consume_events(code_bit);
+        T::eq(1, r.events().count_of(Replayer::EV_CODE), "a load of the next cycle takes one: 1");
+    }
+}
+
 // Run a group; the TEST fails if any of its checks did.
 bool group_ok(void (*fn)()) {
     int f0 = T::failed;
@@ -1594,6 +1676,7 @@ TEST(unit_core_fed_nop_at_an_offset) { CHECK(group_ok(core_fed_nop_at_an_offset)
 TEST(unit_new_undefined_behavior) { CHECK(group_ok(new_undefined_behavior)); }
 TEST(unit_reset_zeroes) { CHECK(group_ok(reset_zeroes)); }
 TEST(unit_unannounced_read_log_word) { CHECK(group_ok(unannounced_read_log_word)); }
+TEST(unit_event_ties) { CHECK(group_ok(event_ties)); }
 
 // Every check of every group (printed for the record; the groups themselves fail on any failed check).
 TEST(unit_check_count) { std::printf("  the replayer's unit tests: %d checks passed, %d failed (this binary)\n", T::passed, T::failed); CHECK_EQ(T::failed, 0); }

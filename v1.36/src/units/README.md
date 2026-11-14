@@ -25,7 +25,8 @@ its machine through them.
 | the traffic director | `director.h` | 4.8 |
 | the write engine | `write_engine.h` | 4.9 |
 | the table memories | `table_store.h` | 4.10 |
-| the controller's core | `rv32.h` | 4.11, 4.13 |
+| the tile's core: the RTL's `rv32_core`, cycle for cycle, with its decode | `rv32.h`, `rv32_decode.h` | `spec/core.md` §1 |
+| v1.35's core, which `v135_platform` selects while the tile's register block and firmware are v1.35's | `rv32_v135.h` | 4.11, 4.13 |
 | one tile's controller, wired | `controller.h`, `controller.cpp` | 4.11 |
 | the register block, the address map | `regblock.h`, `regmap.h` | 4.12, 4.13, 8 |
 | the tile's control as a unit | `tile_ctl.h`, `tile_ctl.cpp` | 4.12, 8 |

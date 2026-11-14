@@ -45,6 +45,7 @@ mkdir -p results
 SUITES="suite_memsys suite_rvc suite_tracer"
 # The make-check tests standing for a v1.3 suite (equiv steps)
 EQUIVS="test_golden test_tileslotconf"
+EQUIVS="$EQUIVS test_core_programs test_core_m2_rtl"   # v1.36: the RTL's core (make-check tests, run as steps)
 SUITES="$SUITES suite_ccbench suite_cccores suite_hooks suite_regdoc suite_accounting suite_s1bench"
 SUITES="$SUITES suite_replayer stageb"
 SUITES="$SUITES suite_net suite_search suite_agbench suite_engine suite_reqbus suite_mem suite_rdport"
@@ -123,6 +124,11 @@ step eng-shuf 1 "shuffled child order (seed 4)" tests/p4suites/eng-shuf.log -- $
 step ctrl      1 "control and the controller (from C)" tests/ctlsuites/ctrl.log -- $S/suite_ctrl -1
 step ctrl-shuf 1 "shuffled child order (seed 4)" tests/ctlsuites/ctrl-shuf.log -- $S/suite_ctrl 4
 equiv riscv           "riscv-tests rv32ui/rv32um on the controller" "test_golden (every program's retire trace equal to ref's)" -- $S/test_golden
+# v1.36: the RTL's core (src/units/rv32.h with v135_platform off), alone: the RTL's own programs in the RTL's cycles
+# (tests/core-programs/), and its rules one by one, on a bus and on the tile's environment
+step core-programs 1 "the RTL's core programs on the core: each pass, cycle, retirement and trap the RTL's (tests/core-programs/)" - -- $S/test_core_programs
+step core-rules    1 "the RTL's core on the tile's environment: the sends, the table window, the registers' view, SIM_EXIT" - -- $S/test_core_m2_rtl
+pending core-chip "the chip and the sort on the RTL's core" "the platform stage: v1.35's register block, C&C and firmware run v1.35's core, v135_platform (PENDING-v1.36.md)"
 step rdport 1 "read port, GATHER (with fw/tests/rdport.c and gather.c on the machine)" tests/p4suites/rdport.log -- $S/suite_rdport -1
 step accounting 1 "per-phase accounting (from C)" tests/ctlsuites/accounting.log -- bash -c "$S/suite_accounting -1 && { cmp -s results/phases-a2a.csv tests/ctlsuites/phases-a2a.csv || echo 'FAIL results/phases-a2a.csv differs from v1.3s'; }"
 step searchbench 3 "search steps through the read port (microbenchmark, from C)" tests/p4suites/searchbench.log -- $S/suite_search

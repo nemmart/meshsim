@@ -47,9 +47,9 @@ The times are wall times on the runner (an Intel i5-14400F: 6 P cores and 4 E co
 | `net` | both | `build/clang-suite/suite_net -1` (quick: `quick`) | 3 s | `results/net.log` | `tests/p4suites/net.log` (quick: `net-quick.log`) |
 | `net-shuf` | both | `build/clang-suite/suite_net 5 quick` | 3 s | `results/net-shuf.log` | `tests/p4suites/net-shuf.log` |
 | `net-shuf2` | both | `build/clang-suite/suite_net 11 quick` | 2 s | `results/net-shuf2.log` | `tests/p4suites/net-shuf2.log` |
-| `mem` | both | `build/clang-suite/suite_mem -1` | 2 s | `results/mem.log` | `tests/p4suites/mem.log` |
-| `mem-shuf` | both | `build/clang-suite/suite_mem 3` | 1 s | `results/mem-shuf.log` | `tests/p4suites/mem-shuf.log` |
-| `mem-shuf2` | both | `build/clang-suite/suite_mem 8` | 2 s | `results/mem-shuf2.log` | `tests/p4suites/mem-shuf2.log` |
+| `mem` | both | `build/clang-suite/test_mem` | <1 s | `results/mem.log` | the specification's 14 and 15 and the RTL's scratchpad and inject unit, in the test (v1.3's MemTest and its logs are retired: `PENDING-v1.36.md`) |
+| `mem-shuf` | both | `MEM_SHUFFLE=3 build/clang-suite/test_mem` | <1 s | `results/mem-shuf.log` | the same, the units of a level stepped in a shuffled order |
+| `mem-shuf2` | both | `MEM_SHUFFLE=8 build/clang-suite/test_mem` | <1 s | `results/mem-shuf2.log` | the same |
 | `engine` | both | `build/clang-suite/suite_engine -1` | 2 s | `results/engine.log` | `tests/p4suites/engine.log` |
 | `eng-shuf` | both | `build/clang-suite/suite_engine 4` | 2 s | `results/eng-shuf.log` | `tests/p4suites/eng-shuf.log` |
 | `ctrl` | both | `build/clang-suite/suite_ctrl -1` | 1 s | `results/ctrl.log` | `tests/ctlsuites/ctrl.log` |

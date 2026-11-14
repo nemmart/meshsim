@@ -4,12 +4,12 @@
 which check is which invariant.* How a unit is written and added is `src/README.md`.
 
 **v1.36 is brought to the RTL's hardware in stages** (`PENDING-v1.36.md`). Done: the core, the replayer and the Tracer
-(each the RTL's block, cycle for cycle), and the platform: the register map, the register bus, the tile control unit,
-the units' registers, the boot, the peripheral slot, and the chip (the special tiles, the request tree, the nets). Those
-rows below cite v1.36's machine-spec (the RTL's `rtl/tile/base/spec.md`, the same section numbers), marked **v1.36**.
-The other rows (the memory path's units, whose behaviour is still v1.35's: `PENDING-v1.36.md`, the platform stage,
-section 5), the settings table and the invariants table are still v1.35's, with v1.35's section numbers
-(`spec/history/`; 4.19 and 4.21 in `spec/jolt/`), until their stage.
+(each the RTL's block, cycle for cycle), the platform (the register map, the register bus, the tile control unit, the
+units' registers, the boot, the peripheral slot, and the chip: the special tiles, the request tree, the nets), and the
+tile's units of chapters 8-15 (the DMA, write, read, receive, gather and inject units and the scratchpad). Those rows
+below cite v1.36's machine-spec (the RTL's `rtl/tile/base/spec.md`, the same section numbers), marked **v1.36**. The
+router's row and the invariants table are still v1.35's, with v1.35's section numbers (`spec/history/`; 4.19 and 4.21 in
+`spec/jolt/`): `PENDING-v1.36.md`, the platform stage, section 5.
 
 **Where the machine is put together.** `chip.h` builds the chip: `tile_cycle` adds one tile's units, `build_chip` the
 whole chip from a `ChipSpec`. **The machine's settings (`MachConfig`) and the machine itself (`Mach`: the chip, its
@@ -23,15 +23,15 @@ its machine through them.
 | the link word, its helpers | `net.h`, `linkword.h` | 3.1 |
 | the network's configuration: the hops table, the start skews | `net.h`, `net.cpp` | 3.1, 3.2 |
 | the request unit's queues, the request tree (a cycle a node, the root's credits) and the receive queues | `reqbus.h` | **v1.36** 11 |
-| big SRAM | `big_sram.h` | 4.1 |
-| the address generator | `ag.h` | 4.2 |
-| the GATHER engine | `gather.h` | 4.4 |
-| the read queue, return path, injection and loopback tokens | `inject.h`, `inject.cpp` | 4.5 |
-| the memory path's shared ports | `mem.h` | 4.1, 4.5 |
+| the scratchpad: banks of min(size, 512 KiB), a write done in its cycle and winning its bank, a read's row `READ_LATENCY` after its take, no queue | `big_sram.h` | **v1.36** 15 |
+| the DMA unit's address generator: the read-ahead and its places, the lead-ins, the timetable, a refused read shifting every later time, the end | `ag.h` | **v1.36** 8.2–8.5 |
+| the gather unit | `gather.h` | **v1.36** 13 |
+| the inject unit: the read arbiter (a write at the read's bank, a token, the gather unit busy), the tokens, the return line, the injection point with the write unit's `packet_ready` | `inject.h`, `inject.cpp` | **v1.36** 14 |
+| the read clients' request words, and the ports between a tile's control part and its inject unit | `mem.h` | **v1.36** 14.1 |
 | the router: route blocks, output queues, the attach port (tiles 0, 7, 15), a special tile's router with its DMA input; a reserved dst dropped | `router.h`, `router.cpp` | 4.6, 4.7, 4.16; **v1.36** 16.2, 16.4 |
-| the traffic director | `director.h` | 4.8 |
-| the write engine | `write_engine.h` | 4.9 |
-| the table memories | `table_store.h` | 4.10 |
+| the traffic director: the switch, the counters' delay line, `PTR`'s and `HIST`'s requests in the cycle it accepts a packet | `director.h` | **v1.36** 12.3–12.5 |
+| the write engine: a fixed pipeline of 2L + 2 cycles to the scratchpad's write, never refusing | `write_engine.h` | **v1.36** 12.4 |
+| the table memories: `STREAM` and `GROUP`; `PTR` and `HIST` with their engines' read-modify-write and its bypass, a core store lost in the cycle of the engine's write | `table_store.h` | **v1.36** 8.6, 12.5 |
 | the tile's core: the RTL's `rv32_core`, cycle for cycle, with its decode; it reaches region 0xFF through its environment, in `register_bus`'s cycles | `rv32.h`, `rv32_decode.h` | **v1.36** 6; `spec/core.md` §1 |
 | the address map, region 0xFF, the registers' words and bits | `regmap.h` | **v1.36** 5, 7–13, 17.1 |
 | the register bus: the decode of region 0xFF and its access faults | `register_bus.h` | **v1.36** 5 |
@@ -66,11 +66,11 @@ configurations. Fields named as section 10's parameters:
 | `link_latency`, `queue_depth` (router FIFOs), `intra_tile_latency` | the same names |
 | start skew between tiles | `skew`, `skew_seed`, `start_skew` |
 | GATHER request queue | `gather_depth` |
-| `mem_chunks`; area request-queue depth | `mem_chunks`; `area_queue_depth` |
-| big-SRAM array read latency | `sram_read_latency` |
-| tokens and return queues | `read_tokens`, `loopback_depth`, `loopback_tokens` |
-| `ts_engine_latency`, `ag_lookahead` | the same names (`with_ts_latency`, `ag_lookahead_used()`) |
-| write-engine input FIFO; controller read port | `we_in_depth`; `read_port_depth` |
+| `SCRATCHPAD_BYTES` (**v1.36** 15, 19) | `mem_chunks`, its 32-bit words: a power of two, 128 to 2²¹ |
+| `READ_LATENCY` (**v1.36** 15, 19) | `read_latency` (3, the RTL's) |
+| `TOKEN_COUNT`, `LOOPBACK_QUEUE_DEPTH` (**v1.36** 14.2, 16.3) | `read_tokens` (64), `loopback_depth`; `loopback_tokens` |
+| `TABLE_LATENCY` (**v1.36** 8, 19) | `ts_engine_latency` (1; 1 to 3: `with_ts_latency`); `READ_AHEAD` is 2 `TABLE_LATENCY` + 2, not a setting |
+| `READ_QUEUE_DEPTH` (**v1.36** 10) | `read_port_depth` |
 | `cm_latency`, `stage_delay`, `reg_load_latency` | the same names |
 | the nets (**v1.36** 18) | the chip's: `arrive_latency` 0, `release_latency` 1, `error_latency` 0 (the RTL chip's wires and flip-flop); the bench machine's: `ready_latency`, `go_latency` |
 | **K** | `K`; `k_min()` is its formula, and a K below it is fatal at startup |
@@ -84,9 +84,10 @@ The rest are the simulator's: the machine's shape (`special_tiles`: the chip; `c
 `run_latency`, `cnc_reaction`, `cnc_rx_depth`, `cc_dma_depth`, `done_gate`, `cnc_go_settle`,
 `counter_store_clears_latch`), the checker (`strict_replies`, `check_*`, `measure_s1`, `max_violation_messages`), the
 debug options (`shuffle_seed`, `step_all`, `instance_major`), the logs and their capacities (`log_trace`,
-`*_capacity`), `image_dirs`, `write_combining`, `fifo_count_before_pop`, and the split over threads (`threads`,
+`*_capacity`), `image_dirs`, and the split over threads (`threads`,
 `parts`). `MachConfig::set` and `set_args` take `field=value`; `dropped()` lists v1.3's fields v1.35 doesn't have
-(D41; `CHANGES-v1.35.md`).
+(D41; `CHANGES-v1.35.md`) and v1.35's that v1.36 doesn't: the area queues' depth, write combining, the write engine's
+input FIFO, the generator's lookahead among them (`PENDING-v1.36.md`, the platform stage, section 7).
 
 ## The checker and the invariants
 
@@ -96,8 +97,8 @@ builds. The checks neither simulator has are `spec/CHANGES-v1.3-to-v1.35.md`'s l
 
 | invariant | kinds (`src/check.h`) | how |
 |---|---|---|
-| 1 no FIFO overflow | `FIFO_OVERFLOW` | C, R |
-| 2 one access per area per cycle | (by construction: the area queues) | |
+| 1 no FIFO overflow | `FIFO_OVERFLOW` (the router's queues, the gather queue; **v1.36**'s write engine and tables have no FIFO: 12.4, 12.5) | C, R |
+| 2 one access per bank per cycle | (by construction: the read arbiter takes no read at a bank a write is at, **v1.36** 14.1, 15; a read that would is fatal in the scratchpad) | |
 | 3 the timetable holds | `ROTATION_LATE` | C, R |
 | 4 expected arrivals land first | `CTL_DONE_EARLY` | C, R |
 | 5 no bad packets | `DIR_BAD_PACKET`, `INJ_BAD_PACKET`, `DIR_SIZE_UNDEF`, `INJ_SIZE_UNDEF`; a misaligned packet | C, R; F |

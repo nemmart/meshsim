@@ -27,7 +27,8 @@ The platform around them is checked by the RTL's own firmware, unmodified (`fw/r
 the core's join to the tile's register bus, access by access, in `register_bus`'s cycles; `test_rtl_tile`
 (acceptance A) runs the RTL's tile programs on a tile, with the replayer in its slot, and checks the boot ROM's
 cycles there; `test_rtl_sort` (acceptance B) runs the RTL's sort images end to end on the chip, against an oracle
-written apart from the design. A reference made by the RTL is never regenerated from the simulator. v1.35's core
+written apart from the design, and checks the sort's cycles, step by step, against the RTL chip's published
+figures. A reference made by the RTL is never regenerated from the simulator. v1.35's core
 and tile are gone, and with them what below runs on them (`../PENDING-v1.36.md` says which fixtures and tests are
 pending, and why).
 
@@ -53,8 +54,13 @@ pending, and why).
   with the test peripheral, the replayer and the Tracer in it), `test_mach` (the machine harness: the
   boot ROM's pull boot on all 64 tiles, the chip's build, and v1.3's `packets`, `reads` and `a2a` sequences on the
   coreless machine), `test_router` (against ref up to v1.36's two rules, then `routerconf/v1.36/`), the unit stages'
-  tests (`test_replayer`, `test_replayconf`, `test_replay_lists`, `test_tracer*`), and the unit tests whose drivers
-  encode their cases in v1.36's layouts (`test_ag`, `test_gather`, `test_mem`).
+  tests (`test_replayer`, `test_replayconf`, `test_replay_lists`, `test_tracer*`), and the tests of the tile's units, each written from
+  the specification and, where it leaves a cycle to the implementation, the RTL block's README: `test_ag` (the DMA
+  unit's address generator, 8.2–8.5), `test_receive` (the write engine with `PTR` and `HIST`, 12.4, 12.5), `test_mem` (the
+  scratchpad and the inject unit, 14, 15; the runner's steps `mem*`), `test_gather` (the gather unit) and `test_mach`'s
+  gather case (13 on the whole tile). v1.3's references for those units (MemTest's logs, EngConf's and MemConf's
+  fixtures) measured v1.35's FIFOs and queues and are retired or superseded, never regenerated
+  (`../PENDING-v1.36.md`, the platform stage, sections 3 and 7).
 
 ## The fixture folders
 

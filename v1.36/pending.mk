@@ -12,10 +12,10 @@ PENDING_TESTS := test_regblock test_golden test_controllers test_broken_units te
                  test_statefp_g1
 # One tile's control part driven by v1.35's stand (GO, the command block, v1.35's registers).
 PENDING_TESTS += test_g1_tile test_tile_slot test_tileslotconf
-# Unit conformance against v1.3's observations. test_engconf: its four fixtures give 60-81 of their 256 STREAM entries a
-# gap of 1-7 and most of their stream runs cross streams of different gaps; v1.36 has one gap a transfer
-# (DMA_CONFIG.gap), so the scripts cannot be expressed. test_memconf: its observations are v1.3's fingerprint streams
-# through tests/statefp_g1.*, which does not compile (it also writes v1.35's core and register block).
+# Unit conformance against v1.3's observations of v1.35's address generator, gather unit and memory path, cycle by
+# cycle: SUPERSEDED. v1.36's units are the specification's (8-15), so no line of those observations can be produced
+# again; test_ag, test_gather, test_mem and test_receive, written from the specification, stand for them. Kept unbuilt
+# until the old suites are deleted (PENDING-v1.36.md, the platform stage, sections 3 and 7).
 PENDING_TESTS += test_engconf test_memconf
 # v1.35's conformance of C&C 1's peripheral against ref (READY_LINES, PULSE_GO, the row collectors' words, a toast pin on
 # any error line): v1.36's master tile has Ingress/Egress (17.6), which runs on the chip (test_rtl_sort, test_mach) and

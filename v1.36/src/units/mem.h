@@ -1,22 +1,17 @@
-// mem.h: the memory path's ports that other groups meet. DECLARATIONS ONLY: the agreed crossing between
-// G3 (the SRAM read queue in the injection unit, the big SRAM, the write engine, the table store and HIST) and G4
-// the address generator, the GATHER engine), and the words they carry (AUDIT-M2 3.2, 3.5, 3.6; ref's SRAMReadQueue,
-// TableStore, AddressGenerator, GatherEngine).
+// mem.h: the read clients' request words and the ports between a tile's control part and its inject unit (machine-spec
+// 14.1, 15). DECLARATIONS ONLY.
 //
-// THE CROSSING WITH G4 (both ends build to this list; a change goes through the integrator)
-//
-//   port              kind  from -> to                               words                         latency
-//   gather read       Hold  gather `rd`   -> srq client 0            2: reqA, reqB (below)          (Hold) refused, retried t + 1
-//   AG read           Hold  AG `rd`       -> srq client 1            2: reqA, reqB                  (Hold) refused, retried t + 1
+//   port              kind  from -> to                               words                         when
+//   gather read       Hold  gather `rd`   -> the arbiter's client 0   2: reqA, reqB (below)          offered the cycle after its put
+//   AG read           Hold  AG `rd`       -> the arbiter's client 1   2: reqA, reqB                  the same
+//   read unit         Fifo  the core      -> the arbiter's client 2   2: reqA, reqB                  the same
 //   gather srq busy   Reg   inject `gather_srq_busy` -> tile control  1: the gather unit's read still offered at the end of t (one
 //                                                                       of STATUS.gather_busy's three inputs, ORed: gather.h)
-//   PTR view          RegFile  table store `ptr` -> the AG             256 registers: PTR as committed at the end of
-//                                                                       t - 1 (ref's AG peeks before the store's
-//                                                                       write-back of t; with_ag only)
-//   STREAM request    Link  AG `stream_req` -> table store           3: op, index, addend (below)   ts_engine_latency
-//   GROUP request     Link  AG `group_req`  -> table store           3                              ts_engine_latency
-//   STREAM return     Link  table store -> AG `stream_ret`           3: TableStore.retStream's      ts_engine_latency
-//   GROUP return      Link  table store -> AG `group_ret`            3: TableStore.retGroup's       ts_engine_latency
+//   wr_note           Link(1)  write engine -> the arbiter            1: the word address of the write the scratchpad does in
+//                                                                       the next cycle (no read is taken at its bank then)
+//   gather_note       Link(1)  director -> the arbiter                0: a GATHER accepted (the gather unit busy in the next cycle)
+//   PTR view          RegFile  table store `ptr` -> the AG, the core  PTR as committed at the end of t - 1 (table_store.h)
+//   STREAM, GROUP     RegFile  table store `view` -> the AG, the core the tables as committed at the end of t - 1
 //
 // The read arbiter (in the inject unit: inject.h) serves its clients in fixed priority, the gather unit (0), the address
 // generator (1), the read unit (2), one take a cycle while a token is free and no write meets the read at its bank; a
@@ -53,9 +48,9 @@ inline uint32_t a_mode(uint64_t a) { return uint32_t(a >> 23 & 7); }
 inline uint32_t a_counter(uint64_t a) { return uint32_t(a >> 26 & 7); }
 inline uint32_t a_dst(uint64_t a) { return uint32_t(a >> 29 & 0x7F); }
 
-// ---- the table store's request and return words (TableStore) ----
-// Request: a = op, b = index (STREAM + i, GROUP + 2g, PTR + i: index spaces, not addresses), c = addend.
-// Returns: STREAM a = STREAM_SRC[i] | STREAM_DEST[i] << 32 (Fields.streamE0), b = STREAM_COUNT[i], c = the request's index;
+// ---- PTR's and HIST's request and return words (table_store.h; the director sends them, 12.4, 12.5) ----
+// Request: a = op (OP_ADD_RET), b = index (PTR + i, or HIST's digit), c = addend.
+// PTR's return, to the write engine: a = index (0-255), b = the old pointer, c = 0.| STREAM_DEST[i] << 32 (Fields.streamE0), b = STREAM_COUNT[i], c = the request's index;
 //          GROUP  a = the request's index, b = the 64-bit entry, c = 0;
 //          PTR    a = index (0-255), b = the old pointer, c = 0.
 enum : uint32_t { OP_READ64 = 1, OP_ADD_RET = 3 };

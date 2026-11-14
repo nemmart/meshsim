@@ -1,26 +1,45 @@
-// suite_tracer.cpp: v1.3's TracerTest (sim/ref/meshsim/test/TracerTest.java) on the
-// C++ Tracer through TracerRig (tests/tracer_rig.h), on the suite.h: every case, every assertion and printed line in
-// Java's order. Its output must equal v1.3's log of run_tests.sh's step `tracer` (tests/tracersuites/tracer.log, from
-// oracle/ref/tracersuites.sh). Rigs are made where Java makes them (probes included), so a call recorder numbers the
-// Tracers as TracerConf does.
+// suite_tracer.cpp: the Tracer's directed suite (v1.3's TracerTest, ported), on the Tracer through the rig
+// (tests/tracer_rig.h), whose controller is the RTL bench's (tests/tracer_block.h), on the suite.h. Its output must
+// equal tests/tracersuites/tracer.log (run_tests.sh's step `tracer`).
 //
-// The Tracer's directed tests (milestone 1; spec 4.21), on hand-built guests:
+// v1.36: the Tracer is the RTL's (Snarky One's rtl/blocks/tracer_unit), cycle for cycle. Each expectation here is
+// spec 17.9's (`spec/jolt/tracer.md`); where the spec gives no number, the RTL's source or README, named in place.
+// The fill port answers a read 1 cycle after its request (the RTL's tests' memory system) unless a case says
+// otherwise, so the cycle counts are closed forms: L is that latency.
+//   a row's schedule         4 cycles, 6 for an M row (17.9.7)
+//   a run's first instruction: the first row starts 6 cycles after START's effect, 7 after START's store
+//                            (rtl/blocks/tracer_unit/README.md "The rows and their schedule"; its
+//                            tracer_execution_test.rs `what_a_transfer_costs`), all STAT_STALL_FETCH
+//   a redirect               a row that sets its successor's pc: the next row starts 5 cycles past its schedule
+//                            (17.9.7; the same README and test), STAT_STALL_FETCH; 4 when the new pc is 0, the
+//                            program's end before padding, and a run's first row 5 cycles after START's effect when
+//                            it is a padding row: pc 0 is fetched from nowhere, so the fetch's hit, one cycle of
+//                            the 5 and of the 6, is not made (tracer_instruction.veryl, `issue_padding`)
+//   an instruction miss      L + 3 cycles (tracer_fetch.veryl: REQUEST, the request's register, the response after L,
+//                            READ_LINE, against a hit's READ in the look-up's next cycle), STAT_STALL_FETCH
+//   a data miss              L + 5 cycles (tracer_data.veryl: VICTIM, MISS, REQUEST or EVICT, the request's register,
+//                            the response after L, READ_LINE, against a hit's ACCESS in the look-up's next cycle),
+//                            STAT_STALL_DATA
+//   a probe of n lines       n * (L + 4) + 2 cycles (tracer_jump_lookup.veryl: the multiply, the home line, then for
+//                            each line its request, the request's register, the response after L, the memory part's
+//                            register of it, the compare; then the decision), STAT_STALL_MAP
+//   the cycles add up        from START's effect to the last row's completion: the schedules + STAT_STALL_FETCH +
+//                            STAT_STALL_DATA + STAT_STALL_MAP + the waits on the core (17.9.8)
+//
+// The cases, on hand-built guests:
 //  - a loop of stores, loads and a taken branch, ending on JAL x0, 0, then padding: registers, memory, the code FIFO
 //    (one value per native instruction, 0 per padding row), the log FIFO (tags, values, the branch's base from the map,
-//    the end's 0), the stream word, ROWS_RUN, the end state in part 0;
+//    the end's 0), the stream word, ROWS_RUN, the end state in part 0, and its cycles;
 //  - a window cut: the same program in runs that stop mid-way, the totals per window and the state carried;
+//  - dirty victims through the write-back buffer and the fill port's write channel;
 //  - compressed instructions: their code words (decompressed, bit 0 clear) and pc + 2;
-//  - DIV with advice: the advice popped and counted down, the advice credit, a run cut inside the expansion (its code
-//    value again in the next window, the state word's next offset), a wrong quotient failing an assertion ([11]), advice
-//    underflow ([4]);
-//  - the errors that stop: a store to a shared page ([8]), out of range ([10]), misaligned ([12]), both ([10] and [12]
-//    together, Q6), a target not in the map ([7]), JALR to pc 0 ([7]), c.unimp ([2]), a hole in the map ([9]);
-//  - the window words: RUN_CONFIG sticky, read-only words a bus error, more than 65,536 rows UB, a zero-row run (no code
-//    value, Q7), the word-0 write's flag on unconsumed advice;
-//  - the caches' counts and the memory system's walk on a cold start.
-// Tracer::reset() is reached by no case (as in v1.3; inventory B16).
-// Usage: suite_tracer [--calls FILE] (from sim/). --calls writes every Tracer call the rig and the cases make, in
-// TracerConf's format (RecTracer, tracer_rig.h), for test_tracer_rig to compare with ref's rig's (cases.log.gz).
+//  - DIV with advice: the advice popped and counted down, a run cut inside the expansion (its code value again in the
+//    next window, the state word's next offset), a wrong quotient failing an assertion, advice underflow;
+//  - core-fed expansions: a CSR template and an inline, a cut inside the inline;
+//  - the output path: the queues, the credits, the service orders, a slow controller, the transfers that are UB;
+//  - the errors that stop, by 17.9.1's bit numbers;
+//  - the window words; the statistics counters.
+// Usage: suite_tracer (from v1.36/).
 #include <array>
 #include <cstdint>
 #include <cstdio>
@@ -39,15 +58,16 @@ using namespace tracer_rig;
 namespace {
 
 constexpr int64_t CODE = 0x80000000LL, DATA = 0x80001000LL;
+constexpr int L = 1;   // the fill port's read latency in these cases (Rig's default)
 using Regs = std::array<uint64_t, 128>;
 using Targets = std::vector<std::pair<int64_t, int64_t>>;
 using RigP = std::unique_ptr<Rig>;
 
 Regs regs() { return Regs{}; }
-// a value of a vector, 0 past its end (Java would throw there; only a failing run gets there)
+// a value of a vector, 0 past its end (only a failing run gets there)
 uint64_t at(const std::vector<uint64_t>& v, size_t k) { return k < v.size() ? v[k] : 0; }
 int64_t I(uint64_t v) { return int64_t(v); }
-// a window word as Java's Integer (int); FATAL on an undefined word (Java: unboxing null)
+// a window word as a level read (the end of t - 1), signed; FATAL on an undefined word
 int64_t wd(Rig& g, int w, int64_t t) {
     uint32_t v = 0;
     if (!g.tr.word(t, w, v)) FATAL("suite_tracer: word %d reads as undefined", w);
@@ -55,7 +75,7 @@ int64_t wd(Rig& g, int w, int64_t t) {
 }
 int64_t wd(Rig& g, int w) { return wd(g, w, g.t); }
 int64_t stat(Rig& g, int k) { return wd(g, Tracer::W_STAT + k); }
-// the targets of a HashMap<Long, Long> in its iteration order
+// the targets in the order v1.3's rig handed them to the map (a HashMap's)
 Targets hash_targets(const Targets& in) {
     std::vector<int64_t> keys;
     for (const auto& e : in) keys.push_back(e.first);
@@ -65,7 +85,7 @@ Targets hash_targets(const Targets& in) {
             if (e.first == k) { out.push_back(e); break; }
     return out;
 }
-// Java's printing of the Tracer's errorLog and violations (only in a failing line)
+// the Tracer's error log and flags (only in a failing line)
 std::string error_log(const Tracer& tr) {
     std::string s = "[";
     for (int64_t k = 0; k < tr.n_errors_logged && k < Tracer::FACTS; k++)
@@ -79,6 +99,65 @@ std::string violations(const Tracer& tr) {
     return s + "]";
 }
 bool same(const std::vector<uint64_t>& a, const std::vector<uint64_t>& b) { return a == b; }
+
+// A monitor on the fill port: every request's handshake and response (MemSystem::port_log).
+struct PortLog {
+    std::vector<MemSystem::PortCall> calls;
+    MemSystem& ms;
+    explicit PortLog(Rig& g, int cap = 1 << 14) : calls(size_t(cap)), ms(g.ms) {
+        ms.port_log = calls.data();
+        ms.port_log_cap = cap;
+        ms.port_log_n = 0;
+    }
+    ~PortLog() { ms.port_log = nullptr; }
+    int n() const { return ms.port_log_n < ms.port_log_cap ? ms.port_log_n : ms.port_log_cap; }
+    int writes() const { int k = 0; for (int i = 0; i < n(); i++) k += calls[size_t(i)].write; return k; }
+    // 17.9.5: at most one read outstanding, and at most one write
+    bool one_of_each() const {
+        int64_t read_until = INT64_MIN, write_until = INT64_MIN;
+        for (int i = 0; i < n(); i++) {
+            const MemSystem::PortCall& c = calls[size_t(i)];
+            int64_t& until = c.write ? write_until : read_until;
+            if (c.t <= until) return false;
+            until = c.response_at;
+        }
+        return true;
+    }
+    // 17.9.5: a write is requested when no read is outstanding. tracer_fill.veryl: it is raised in the cycle after one
+    // with no read presented, outstanding or granted, so no read's request is in the write's cycle or the cycle before,
+    // and no read is outstanding in the cycle before.
+    bool writes_wait_for_reads() const {
+        for (int i = 0; i < n(); i++) {
+            if (!calls[size_t(i)].write) continue;
+            const int64_t w = calls[size_t(i)].t;
+            for (int k = 0; k < n(); k++) {
+                const MemSystem::PortCall& r = calls[size_t(k)];
+                if (!r.write && r.t <= w && w <= r.response_at + 1) return false;
+            }
+        }
+        return true;
+    }
+};
+
+// The rows' schedules (17.9.7): 4 cycles a row, 6 for an M row.
+int64_t schedules(const Tracer& tr, int64_t rows0 = 0, int64_t rows_m0 = 0) {
+    return 4 * (tr.rows - rows0) + 2 * (tr.rows_m - rows_m0);
+}
+// 17.9.8, "the cycles add up", for the run just made on a rig whose statistics were `before` at its START: the cycles
+// from START's effect (the cycle after its store) to the last row's completion.
+struct Before {
+    int64_t rows, rows_m, fetch, data, map, advice, exp;
+    explicit Before(Rig& g)
+        : rows(g.tr.rows), rows_m(g.tr.rows_m), fetch(stat(g, Tracer::ST_STALL_FETCH)), data(stat(g, Tracer::ST_STALL_DATA)),
+          map(stat(g, Tracer::ST_STALL_MAP)), advice(g.tr.stalls[Tracer::S_ADVICE]), exp(g.tr.stalls[Tracer::S_EXP]) {}
+};
+void cycles_add_up(Rig& g, const Before& b, const char* what) {
+    const int64_t counted = (stat(g, Tracer::ST_STALL_FETCH) - b.fetch) + (stat(g, Tracer::ST_STALL_DATA) - b.data) +
+                            (stat(g, Tracer::ST_STALL_MAP) - b.map);
+    const int64_t core = (g.tr.stalls[Tracer::S_ADVICE] - b.advice) + (g.tr.stalls[Tracer::S_EXP] - b.exp);
+    suite::eq(schedules(g.tr, b.rows, b.rows_m) + counted + core, g.last.last_row_done - g.last.start_store,
+              "%s: the cycles add up (17.9.8): the schedules, the three stall counters, the waits on the core", what);
+}
 
 // A rig with prog at CODE (shared), one owned data page at DATA, and the map holding `targets` (pc -> base).
 RigP rig(const Prog& p, const Targets& targets) {
@@ -99,8 +178,14 @@ Prog loop_prog() {
     p.w({addi(1, 0, 5), add(2, 2, 0), sd(1, 2, 0), ld(3, 2, 0), addi(1, 1, -1), addi(2, 2, 8), bne(1, 0, -16), END});
     return p;
 }
+// The loop's stall cycles (the header's closed forms), for a run of its 28 rows and padding from a cold start:
+//   fetch: the run's first instruction, 6, and its line's fill, L + 3; five branches (four taken, one not), each a
+//          redirect of 5; the end, to pc 0, 4
+//   data:  the one data line's fill, L + 5 (the cache empty: no victim)
+//   map:   the first taken branch's probe, one line: (L + 4) + 2; the other three hit the jump LRU
+constexpr int64_t LOOP_FETCH = 6 + (L + 3) + 5 * 5 + 4, LOOP_DATA = L + 5, LOOP_MAP = (L + 4) + 2;
 
-// The replayer's decoding rule (4.19.15), here for the tests: 16-entry LRU, the write log's E[15] from loads.
+// The replayer's decoding rule (17.8.12), here for the tests: 16-entry LRU, the write log's E[15] from loads.
 uint64_t bits(const std::vector<uint64_t>& w, int64_t pos, int n) {
     uint64_t v = 0;
     for (int k = 0; k < n; k++) {
@@ -154,6 +239,7 @@ void loop() {
     const int real_rows = 2 + 5 * 5 + 1;  // two setup rows, five iterations of five, the end (one row each)
     const int rows = real_rows + 6;
     WindowOut o;
+    const Before before(g);
     const bool ok = g.window(uint32_t(rows), 100000, o);
     suite::check(ok, "the window drained");
     suite::check(!g.tr.stopped(), "no error: %s", error_log(g.tr).c_str());
@@ -186,15 +272,24 @@ void loop() {
     suite::eq(1, g.tr.i_miss, "one instruction line (the program fits one line)");
     suite::eq(1, g.tr.d_miss, "one data line");
     suite::eq(0, g.tr.n_violations, "no meshsim flag: %s", violations(g.tr).c_str());
-    std::printf("  loop: %lld rows, run %lld cycles, stalls %s; %s\n", (long long)g.tr.rows,
-                (long long)(g.tr.rows_end_at - g.tr.run_start_at), suite::jlist(g.tr.stalls, Tracer::S_N).c_str(),
-                Rig::mem_summary(g.ms).c_str());
-    // the cold cost: fetch (3 accesses from LPDDR), the data line (2 index hits, 1 miss), the map (depth 0: 1 miss)
-    suite::eq(3 * 80, g.tr.stalls[Tracer::S_IFETCH], "the first fetch: a cold depth-2 walk, 240 cycles");
-    suite::eq(6 + 6 + 80, g.tr.stalls[Tracer::S_DMISS], "the data line: the index lines hit, the line from LPDDR");
-    suite::eq(80 + 2, g.tr.stalls[Tracer::S_PROBE], "the probe: one map line (depth 0) and the compare");
-    const int64_t cycles = g.tr.rows_end_at - g.tr.run_start_at;
-    suite::eq(1 + 4LL * rows + 240 + 92 + 82 - 1, cycles, "the run: 4 cycles a row, plus the stalls");
+    const int64_t counted[3] = {stat(g, Tracer::ST_STALL_FETCH), stat(g, Tracer::ST_STALL_DATA), stat(g, Tracer::ST_STALL_MAP)};
+    std::printf("  loop: %lld rows, %lld cycles to the last row, stalls %s, waits on the core %s; %s\n", (long long)g.tr.rows,
+                (long long)(g.last.last_row_done - g.last.start_store), suite::jlist(counted, 3).c_str(),
+                suite::jlist(g.tr.stalls, Tracer::S_N).c_str(), Rig::mem_summary(g.ms).c_str());
+    // the cold cost at fill latency L: one fill each of the instruction line, the data line and the map's line
+    suite::eq(3, g.ms.reads, "the fill port: three reads, the instruction line, the data line, the map's line (need, 17.9.5)");
+    suite::eq(0, g.ms.writes, "and no write: nothing evicted");
+    suite::eq(7 + (L + 3), g.last.first_row_start - g.last.start_store,
+              "the first row starts 7 cycles after START's store, and its line's fill later (L + 3)");
+    suite::eq(LOOP_FETCH, counted[0], "STAT_STALL_FETCH: the run's first instruction 6, its fill L + 3, five redirects of 5, the end's 4");
+    suite::eq(LOOP_DATA, counted[1], "STAT_STALL_DATA: the data line's fill, L + 5");
+    suite::eq(LOOP_MAP, counted[2], "STAT_STALL_MAP: the probe of one line, (L + 4) + 2");
+    suite::eq(0, g.tr.stalls[Tracer::S_ADVICE] + g.tr.stalls[Tracer::S_EXP], "no wait on the core");
+    suite::eq(4LL * rows + LOOP_FETCH + LOOP_DATA + LOOP_MAP, g.last.last_row_done - g.last.start_store,
+              "the run: 4 cycles a row, plus the stalls (17.9.8)");
+    cycles_add_up(g, before, "the loop");
+    // tracer_unit.veryl registers row_done: the control's rows' end is the cycle after the last row's completion
+    suite::eq(g.last.last_row_done + 1, g.tr.rows_end_at, "the rows' end reaches the run the cycle after the last row completes");
 
     suite::group("the same loop with an unaligned lowest_address (word 66's I/O size, 66f399e)");
     Rig u;
@@ -231,7 +326,13 @@ void loop() {
     const std::vector<uint64_t> dec = decode_lru(o2.code, int(o2.sizes[0].values), false);
     const std::vector<uint64_t> raw = Rig::stream_values(o.code, int(sz[0].values), 32);
     suite::check(same(dec, raw), "the coded code stream decodes to the raw values");
-    suite::eq(o.sizes[1].words <= o2.sizes[1].words ? 1 : 1, 1, "read log: chosen by size");
+    // 17.9.6's choice, for the read log: coded only if fewer 128-bit words than raw
+    suite::check(o2.sizes[1].compressed ? o2.sizes[1].words < o.sizes[1].words : o2.sizes[1].words == o.sizes[1].words,
+                 "read log: chosen by size");
+    suite::check(same(o2.sizes[1].compressed ? decode_lru(o2.rlog, int(o2.sizes[1].values), false)
+                                             : Rig::stream_values(o2.rlog, int(o2.sizes[1].values), 64),
+                      Rig::stream_values(o.rlog, int(sz[1].values), 64)),
+                 "and it holds the raw run's values");
 }
 
 void cut() {
@@ -247,6 +348,7 @@ void cut() {
     int64_t total = 0, loads = 0, stores = 0;
     for (int n = 0; n < 4; n++) {
         WindowOut o;
+        const Before before(g);
         const bool ok = g.window(7, 100000, o);
         suite::check(ok && !g.tr.stopped(), "window %d drained", n);
         suite::eq(7, o.sizes[0].values, "window %d: seven one-row instructions, seven code values", n);
@@ -254,6 +356,7 @@ void cut() {
         loads += o.sizes[1].values;
         stores += o.sizes[2].values;
         suite::eq(I(at(o.record, 0)), I(g.tr.rec[0]), "window %d: the record's state word is the live state (window n + 1's start)", n);
+        cycles_add_up(g, before, suite::str("window %d", n).c_str());
     }
     (void)loads;
     suite::eq(28, total, "28 rows in four windows: the program's 28");
@@ -261,10 +364,15 @@ void cut() {
     suite::eq(0, I(g.reg(1)), "the same end state as one run");
     suite::eq(0, I(g.tr.rec[0]), "at the end");
     suite::eq(1, g.tr.i_miss, "the caches carry across runs: one instruction miss in all four");
+    // the same stalls as the one run's, and each later run's first instruction: its 6 cycles, with a hit
+    suite::eq(LOOP_FETCH - 5 - 4 + 3 * 6, stat(g, Tracer::ST_STALL_FETCH),
+              "STAT_STALL_FETCH: the one run's, less the two redirects at a run's end (no row after them), and three more runs' first instructions");
+    suite::eq(LOOP_DATA, stat(g, Tracer::ST_STALL_DATA), "STAT_STALL_DATA: the one data line's fill");
+    suite::eq(LOOP_MAP, stat(g, Tracer::ST_STALL_MAP), "STAT_STALL_MAP: the one probe (the jump LRU carries across runs)");
 }
 
 // 130 stores 128 bytes apart (130 lines through a 128-line cache), then loads of the first lines: the dirty victims
-// were written back and come back with their data.
+// went through the write-back buffer and the fill port's write channel, and come back with their data.
 void write_back() {
     suite::group("dirty victims written back and read again");
     Prog p(CODE);
@@ -286,14 +394,33 @@ void write_back() {
     r[2] = uint64_t(DATA);
     r[3] = uint64_t(DATA);
     g.load_record(CODE, int32_t(base[0]), 0, r.data(), {});
+    PortLog port(g);
     WindowOut o;
+    const Before before(g);
     const bool ok = g.window(1 + 130 * 4 + 3, 400000, o);
     suite::check(ok && !g.tr.stopped(), "no error: %s", error_log(g.tr).c_str());
     suite::eq(130, I(g.reg(4)), "the first line's value, after its eviction");
     suite::eq(129, I(g.reg(5)), "the second line's");
-    suite::check(g.tr.writebacks >= 2, "dirty victims were written back (%lld)", (long long)g.tr.writebacks);
+    // lines 128 and 129 evict lines 0 and 1, and the two loads' fills lines 2 and 3: four dirty victims
+    suite::eq(4, g.tr.writebacks, "four dirty victims, each written back through the buffer");
+    suite::eq(4, port.writes(), "four writes on the fill port");
+    suite::eq(132, g.ms.reads - 2, "132 data fills (130 stores' lines and the two loads'), beside the instruction line and the map's");
     suite::eq(128, g.tr.cache_lines(true), "the data cache holds 128 lines");
-    suite::check(g.tr.stalls[Tracer::S_BUS] > 0, "a fill waited for a write-back on the bus");
+    // the old bus wait (v1.35's S_BUS) is the buffer's rules now (17.9.5)
+    suite::check(port.one_of_each(), "at most one read and one write outstanding");
+    suite::check(port.writes_wait_for_reads(), "each write-back is requested only when no read is outstanding");
+    bool own_line = true;
+    for (int k = 0, w = 0; k < port.n(); k++) {
+        const MemSystem::PortCall& c = port.calls[size_t(k)];
+        if (!c.write) continue;
+        own_line = own_line && c.line == (DATA - g.lowest) / 128 + w && c.status == MemSystem::WRITE_OK;
+        w++;
+    }
+    suite::check(own_line, "the victims in LRU order, lines 0 to 3 of the data, each answered ok");
+    suite::eq(0, g.tr.take_backs, "no line taken back: each write was answered before its line was needed again");
+    suite::eq(132 * (L + 5), stat(g, Tracer::ST_STALL_DATA),
+              "STAT_STALL_DATA: 132 fills of L + 5: no victim waited for the buffer's place");
+    cycles_add_up(g, before, "the stores");
 }
 
 void compressed() {
@@ -314,6 +441,9 @@ void compressed() {
     suite::eq(rvc::code_word(0x408D), I(at(code, 0)), "c.li's code word: decompressed, bit 0 clear");
     suite::eq(0, I(at(code, 0) & 1), "the compressed flag");
     suite::eq(END, I(at(code, 3)), "the 32-bit END after three 16-bit instructions at pc + 6");
+    // straight-line code keeps its schedule (17.9.7): 16-bit instructions too
+    suite::eq(4 * 4 + 6 + (L + 3), g.last.last_row_done - g.last.start_store,
+              "four rows of 4 cycles after the run's first instruction and its fill: no other stall");
 }
 
 void division() {
@@ -332,6 +462,7 @@ void division() {
     g.load_record(CODE, int32_t(base[0]), 0, regs().data(), advice);
     const int rows = 2 + div_len + 1;
     WindowOut o;
+    const Before before(g);
     g.window(uint32_t(rows), 100000, o);
     suite::check(!g.tr.stopped(), "no error: %s", error_log(g.tr).c_str());
     suite::eq(14, I(g.reg(7)), "x7 = 100 / 7");
@@ -339,6 +470,9 @@ void division() {
     suite::eq(2, o.sizes[1].values, "read log: the advice value and the end");
     const std::vector<uint64_t> rl = Rig::stream_values(o.rlog, 2, 64);
     suite::eq(14, I(at(rl, 0)), "the advice value, as popped");
+    cycles_add_up(g, before, "DIV");
+    suite::eq(0, g.tr.stalls[Tracer::S_ADVICE], "the advice was in the read queue: no wait on the core");
+    suite::eq(6 + (L + 3), stat(g, Tracer::ST_STALL_FETCH), "straight-line code: the run's first instruction and its fill alone");
 
     suite::group("DIV cut inside its expansion");
     RigP hp = rig(p, {});
@@ -353,22 +487,23 @@ void division() {
     h.window(uint32_t(div_len - 2 + 1), 100000, bw);
     suite::check(!h.tr.stopped(), "no error: %s", error_log(h.tr).c_str());
     const std::vector<uint64_t> code = Rig::stream_values(bw.code, int(bw.sizes[0].values), 32);
-    suite::eq(div(7, 5, 6), I(at(code, 0)), "window 1 starts with DIV's code value again (4.19.2)");
+    suite::eq(div(7, 5, 6), I(at(code, 0)), "window 1 starts with DIV's code value again (17.9.4)");
     suite::eq(14, I(h.reg(7)), "and finishes it");
+    suite::eq(I(g.tr.rec[0]), I(h.tr.rec[0]), "the same end state as the uncut run");
 
-    suite::group("DIV: a wrong quotient fails an assertion [11]; advice underflow [4]");
+    suite::group("DIV: a wrong quotient fails an assertion (ERRORS bit 7); advice underflow (bit 2)");
     RigP bad = rig(p, {});
     bad->load_record(CODE, int32_t(base[0]), 0, regs().data(), {15});
     WindowOut ob;
     bad->window(uint32_t(rows), 100000, ob);
     suite::check(bad->tr.stopped(), "stopped");
-    suite::eq(1 << Tracer::ERR_ASSERT, bad->tr.errors(bad->t), "ERRORS [11] alone");
-    suite::check(bad->tr.running(bad->t), "STATUS [0] stays 1 after an error (item 152)");
+    suite::eq(1 << 7, bad->tr.errors(bad->t), "ERRORS bit 7, failed_assertion, alone");
+    suite::check(bad->tr.running(bad->t), "STATUS.busy stays 1 after an error (17.9.9)");
     RigP none = rig(p, {});
     none->load_record(CODE, int32_t(base[0]), 0, regs().data(), {});
     WindowOut on;
     none->window(uint32_t(rows), 100000, on);
-    suite::eq(1 << Tracer::ERR_ADVICE_UNDER, none->tr.errors(none->t), "an advice row with the field at 0: [4]");
+    suite::eq(1 << 2, none->tr.errors(none->t), "an advice row with the field at 0: bit 2, advice_underflow");
 }
 
 void controller_fed() {
@@ -389,16 +524,21 @@ void controller_fed() {
     g.load_record(CODE, int32_t(base[0]), 0, r.data(), {});
     const int rows = n_csr + n_inl + 1;
     WindowOut o;
+    const Before before(g);
     const bool ok = g.window(uint32_t(rows), 400000, o);
-    suite::check(ok && !g.tr.stopped(), "no error: %s %s", error_log(g.tr).c_str(),
-                 g.no_template ? suite::str("[no template for 0x%x]", g.no_template_w).c_str() : "[]");
+    suite::check(ok && !g.tr.stopped(), "no error: %s", error_log(g.tr).c_str());
     suite::eq(0, g.tr.n_violations, "no flag (EXPANSION_TEMPLATE stored before the inline's first word): %s",
               violations(g.tr).c_str());
     suite::eq(2, g.tr.new_expansions, "two new expansions");
+    suite::eq(2, int64_t(g.last.post_opcode.size()), "each posted to the core once");
+    suite::eq(int32_t(csr), int32_t(g.last.post_opcode.empty() ? 0 : g.last.post_opcode[0]), "EXPANSION_OPCODE at the first post: the CSR's code value");
     suite::eq(rows, g.tr.rows, "every row");
     suite::eq(int64_t(1) << 3, I(at(o.record, 2 * Tracer::REC_BITMAP)),
               "the bitmap: the inline's bit 3 only (CSR templates aren't tracked)");
     suite::eq(0, I(g.tr.rec[0]), "the program ended");
+    cycles_add_up(g, before, "the core-fed run");
+    suite::check(g.tr.stalls[Tracer::S_EXP] > 0, "the rows waited on the core for their words (%lld cycles, in no counter)",
+                 (long long)g.tr.stalls[Tracer::S_EXP]);
 
     suite::group("a window cut inside the inline: the latch sets the next window's bit");
     RigP hp = rig(p, {});
@@ -407,15 +547,18 @@ void controller_fed() {
     WindowOut a;
     h.window(uint32_t(n_csr + 1000), 400000, a);
     suite::eq(1000, int32_t(h.tr.rec[1] >> 32) & 0xFFFF, "the state word's next offset: 1,000 rows of the inline run");
-    suite::eq(1000, wd(h, Tracer::W_EXP_OFFSET), "EXPANSION_OFFSET");
+    suite::eq(0, wd(h, Tracer::W_EXP_OFFSET),
+              "EXPANSION_OFFSET: the row offset at which the inline was posted, 0, held until the next post (17.9.1)");
+    suite::eq(int32_t(inl), wd(h, Tracer::W_EXP_OPCODE), "EXPANSION_OPCODE: the inline's code value, held");
     suite::eq(int64_t(1) << 3, I(at(a.record, 2 * Tracer::REC_BITMAP)), "window 0's bitmap has the inline");
     WindowOut bw;
     const bool bok = h.window(uint32_t(n_inl - 1000 + 1), 400000, bw);
     suite::check(bok && !h.tr.stopped(), "window 1 finishes: %s", error_log(h.tr).c_str());
     suite::eq(int64_t(1) << 3, I(at(bw.record, 2 * Tracer::REC_BITMAP)),
-              "window 1's bitmap has it too (the latch, re-set at PULSE_RUN)");
+              "window 1's bitmap has it too (the latch, set again at START)");
     suite::eq(int32_t(inl), int32_t(at(Rig::stream_values(bw.code, 1, 32), 0)), "window 1's first code value: the inline again");
     suite::eq(2, h.tr.new_expansions, "no new expansion at the cut (a run boundary doesn't present it again)");
+    suite::eq(0, wd(h, Tracer::W_EXP_OFFSET), "EXPANSION_OFFSET still the post's");
     suite::eq(I(g.tr.rec[2 * 66]), I(h.tr.rec[2 * 66]), "the files word unchanged");
     bool eqr = true;
     for (int k = 4; k < 132; k++) eqr &= g.tr.rec[k] == h.tr.rec[k];
@@ -450,14 +593,14 @@ RigP streamy(WindowOut& out, bool& ok, Policy policy, uint32_t rc) {
     return gp;
 }
 void set_order(Rig& g, int a, int b2, int c) {
-    g.has_order = true;
-    g.order[0] = a;
-    g.order[1] = b2;
-    g.order[2] = c;
+    g.bench.has_order = true;
+    g.bench.order[0] = a;
+    g.bench.order[1] = b2;
+    g.bench.order[2] = c;
 }
 
 void output_path() {
-    suite::group("the output path: queues 0-3, credits, service flags, done last (4.21.6)");
+    suite::group("the output path: queues 0-3, credits, service flags, done last (17.9.6)");
     const int rows = 1 + 600 * 5 + 1 + 10;
     WindowOut o;
     bool ok = false;
@@ -476,19 +619,23 @@ void output_path() {
     suite::eq(I(g.tr.rec[0]), I(at(o.record, 0)), "queue 0's word 0: the state word as it stands (window n + 1's start)");
     const int64_t drain = g.tr.drained_at - g.tr.rows_end_at;
     std::printf("  output path: drain %lld cycles, scan stalls %lld, packets %lld\n", (long long)drain,
-                (long long)g.tr.scan_stalls, (long long)g.dma_packets);
-    suite::check(drain >= 2 + 750, "the drain takes at least the code scan (one entry a cycle) after the two-cycle start");
-    suite::eq(int64_t(68 + o.code.size() / 2 + o.rlog.size() / 2 + o.wlog.size() / 2), g.dma_packets,
+                (long long)g.tr.scan_stalls, (long long)g.bench.dma_packets);
+    suite::check(drain >= rows, "the drain takes at least the code scan, one FIFO entry a cycle (17.9.7)");
+    suite::eq(int64_t(68 + o.code.size() / 2 + o.rlog.size() / 2 + o.wlog.size() / 2), g.bench.dma_packets,
               "every packet one 128-bit word");
+    // 17.9.6: done once the rows are traced, both scans ended, every queue empty and the DMA's last transfer ended
+    suite::check(g.tr.drained_at >= g.tr.rows_end_at + 2, "done after the rows' end and the drain");
+    suite::eq(1, g.last.status & 3 ? 0 : 1, "after done: STATUS.busy 0 and the DMA idle");
+    suite::eq(0, g.last.events_peek, "after done: every event consumed, every _ready down");
 
     suite::group("the output path: the same output in any service order, and from a slow controller (no deadlock)");
     const Policy pols[6] = {
         [](Rig& x) { set_order(x, 3, 2, 1); },
         [](Rig& x) { set_order(x, 2, 3, 1); },
-        [](Rig& x) { x.state_last = true; set_order(x, 3, 1, 2); },
-        [](Rig& x) { x.q0_one = true; },
-        [](Rig& x) { x.hold = 97; },
-        [](Rig& x) { x.hold = 500; set_order(x, 1, 2, 3); },
+        [](Rig& x) { x.bench.state_last = true; set_order(x, 3, 1, 2); },
+        [](Rig& x) { x.bench.q0_one = true; },
+        [](Rig& x) { x.bench.hold = 97; },
+        [](Rig& x) { x.bench.hold = 500; set_order(x, 1, 2, 3); },
     };
     for (int k = 0; k < 6; k++) {
         WindowOut o2;
@@ -512,15 +659,14 @@ void output_path() {
     suite::eq(oc.sizes[0].words, int64_t(oc.code.size() / 2), "and is delivered in exactly its words");
     WindowOut ox;
     bool okx = false;
-    RigP bigp = streamy(ox, okx, [](Rig& x) { x.hold = int64_t(1) << 30; }, uint32_t(rows));  // never serves
+    RigP bigp = streamy(ox, okx, [](Rig& x) { x.bench.hold = int64_t(1) << 30; }, uint32_t(rows));  // never serves
     Rig& big = *bigp;
-    suite::check(big.tr.running(big.t), "nothing served: STATUS [0] stays 1 through the drain");
-    suite::check((big.tr.events().value(big.t) & 0b1111u << Tracer::EV_SVC_STATE) != 0, "the service flags stay up");
+    suite::check(!okx && big.tr.running(big.t), "nothing served: STATUS.busy stays 1 through the drain");
+    suite::eq(0xF << 5, big.tr.events().value(big.t) & (0xFu << 5), "the four _ready events, bits 5 to 8, stay up");
     suite::eq(256, big.tr.oq[1].occ, "queue 1 full (two credits, 256 entries), its scan stalled");
-    big.tr.mark_ub();
+    suite::eq(2, big.tr.oq[1].credits, "its two credits");
     suite::ub([&] { big.tr.out_start(big.t, 1, 257); }, {"credits cover"},
               "a transfer from queue 1 for more than its credits cover");
-    big.tr.mark_ub();
     suite::ub([&] { big.tr.out_start(big.t, 0, 69); }, {"past word 67"}, "a transfer from queue 0 past word 67");
 }
 
@@ -537,37 +683,36 @@ Prog prog_w(std::initializer_list<uint32_t> ws) {
     return p;
 }
 
+// ERRORS' bits, by 17.9.1's table: literal numbers.
 void errors() {
     suite::group("errors that stop the Tracer");
     Regs r = regs();
     r[2] = uint64_t(CODE);  // a shared (code) page
-    suite::eq(1 << Tracer::ERR_STORE, errors_of(prog_w({sd(0, 2, 64), END}), {}, r, 2),
-              "a store to a page not owned (the code page): [8]");
+    suite::eq(1 << 4, errors_of(prog_w({sd(0, 2, 64), END}), {}, r, 2),
+              "a store to a page not owned (the code page): bit 4, store_not_writable");
     r = regs();
     r[2] = 0x7FE00000ULL;  // below lowest_address
-    suite::eq(1 << Tracer::ERR_RANGE, errors_of(prog_w({ld(3, 2, 0), END}), {}, r, 2), "a load below lowest_address: [10]");
+    suite::eq(1 << 6, errors_of(prog_w({ld(3, 2, 0), END}), {}, r, 2), "a load below lowest_address: bit 6, out_of_range");
     r = regs();
     r[2] = 0x7FF00000ULL + (uint64_t(8) << 20);  // at 8 K: just outside
-    suite::eq(1 << Tracer::ERR_RANGE, errors_of(prog_w({ld(3, 2, 0), END}), {}, r, 2), "a load at lowest + 8 K: [10]");
+    suite::eq(1 << 6, errors_of(prog_w({ld(3, 2, 0), END}), {}, r, 2), "a load at lowest + 8 K: bit 6");
     r = regs();
     r[2] = uint64_t(DATA + 4);
-    suite::eq(1 << Tracer::ERR_MISALIGNED, errors_of(prog_w({ld(3, 2, 0), END}), {}, r, 2), "LD at a multiple of 4: misaligned [12]");
+    suite::eq(1 << 8, errors_of(prog_w({ld(3, 2, 0), END}), {}, r, 2), "LD at a multiple of 4: bit 8, misaligned");
     r = regs();
     r[2] = uint64_t(DATA + 4);
-    suite::eq(0, errors_of(prog_w({lw(3, 2, 0), END}), {}, r, 8) & (1 << Tracer::ERR_MISALIGNED), "LW at a multiple of 4: aligned");
+    suite::eq(0, errors_of(prog_w({lw(3, 2, 0), END}), {}, r, 8), "LW at a multiple of 4: aligned, no error");
     r = regs();
     r[2] = uint64_t(DATA + 2);
-    suite::eq(1 << Tracer::ERR_MISALIGNED, errors_of(prog_w({lw(3, 2, 0), END}), {}, r, 8) & (1 << Tracer::ERR_MISALIGNED),
-              "LW at a multiple of 2: misaligned [12]");
+    suite::eq(1 << 8, errors_of(prog_w({lw(3, 2, 0), END}), {}, r, 8), "LW at a multiple of 2: bit 8, misaligned");
     r = regs();
     r[2] = 0x7FE00004ULL;
-    suite::eq(1 << Tracer::ERR_RANGE | 1 << Tracer::ERR_MISALIGNED, errors_of(prog_w({ld(3, 2, 0), END}), {}, r, 2),
-              "both: [10] and [12] together (Q6)");
-    suite::eq(1 << Tracer::ERR_MAP, errors_of(prog_w({jal(0, 8), END, END}), {}, regs(), 3), "a jump target not in the map: [7]");
-    suite::eq(1 << Tracer::ERR_MAP, errors_of(prog_w({jalr(0, 0, 0), END}), {}, regs(), 2), "JALR to pc 0: [7] at once");
+    suite::eq(1 << 6 | 1 << 8, errors_of(prog_w({ld(3, 2, 0), END}), {}, r, 2), "both: bits 6 and 8 together (17.9.5)");
+    suite::eq(1 << 3, errors_of(prog_w({jal(0, 8), END, END}), {}, regs(), 3), "a jump target not in the map: bit 3, map_miss");
+    suite::eq(1 << 3, errors_of(prog_w({jalr(0, 0, 0), END}), {}, regs(), 2), "JALR to pc 0: bit 3 at once");
     Prog pc(CODE);
     pc.c(0x0000).c(0x0001).w({END});
-    suite::eq(1 << Tracer::ERR_INVALID, errors_of(pc, {}, regs(), 2), "c.unimp: an invalid expansion [2]");
+    suite::eq(1 << 1, errors_of(pc, {}, regs(), 2), "c.unimp: bit 1, invalid_expansion");
     // a hole in the map: a depth-1 map file whose line 0's page is missing
     const Prog p = prog_w({jal(0, 8), END, END});
     RigP gp = rig(p, {});
@@ -576,7 +721,7 @@ void errors() {
     g.load_record(CODE, 1, 0, regs().data(), {});
     WindowOut o;
     g.window(3, 100000, o);
-    suite::eq(1 << Tracer::ERR_PAGE, g.tr.errors(g.t), "a hole in the jump map: [9]");
+    suite::eq(1 << 5, g.tr.errors(g.t), "a hole in the jump map: bit 5, page_missing");
 }
 
 void words() {
@@ -599,11 +744,14 @@ void words() {
     WindowOut z;
     const bool zok = g.window(0, 1000, z);
     suite::check(zok, "a zero-row run drains its state queue");
-    suite::eq(0, z.sizes[0].values, "and writes no code value (Q7)");
+    suite::eq(0, z.sizes[0].values, "and writes no code value (17.9.3)");
     suite::eq(CODE, I(g.tr.rec[0]), "nothing traced");
+    suite::eq(1, g.tr.rows_end_at - g.tr.run_start_at, "its rows end in the cycle after START's (17.9.3)");
+    suite::eq(0, stat(g, Tracer::ST_STALL_FETCH) + stat(g, Tracer::ST_STALL_DATA) + stat(g, Tracer::ST_STALL_MAP),
+              "with rows 0 no cycle is a stall cycle (17.9.8)");
+    suite::eq(0, stat(g, Tracer::ST_MISS_I), "and nothing is fetched");
     g.word(Tracer::W_RUN_CONFIG, 65537);
-    g.tr.mark_ub();
-    suite::ub([&] { g.tr.run(g.t); g.step(); g.step(); }, {"65,536"}, "more than 65,536 rows");
+    suite::ub([&] { g.bench.store(Bench::B_CONTROL, Bench::C_START, 1); g.step(); g.step(); }, {"65,536"}, "more than 65,536 rows");
     // the word-0 write with advice left: flagged
     RigP hp = rig(p, {});
     Rig& h = *hp;
@@ -616,22 +764,24 @@ void words() {
     suite::check(flagged, "a word-0 write finding advice above 0 is flagged");
 }
 
-// The statistics counters, words 44-51 (4.21.3, 8.16, item 157).
+// The statistics counters, words 44-51 (17.9.8).
 struct Watch {
+    Rig* g = nullptr;
     int64_t last[Tracer::STAT_N] = {};
     bool ok = true;
 };
-void watch(Rig& g, void* ctx) {
+void watch(void* ctx, int64_t n) {
     Watch& w = *static_cast<Watch*>(ctx);
     for (int k = 0; k < Tracer::STAT_N; k++) {
-        const int64_t v = wd(g, Tracer::W_STAT + k, g.t + 1), d = v - w.last[k];
+        const int64_t v = wd(*w.g, Tracer::W_STAT + k, n + 1), d = v - w.last[k];
         if (d < 0 || (k <= Tracer::ST_STALL_OUTPUT && d > 1)) w.ok = false;
         w.last[k] = v;
     }
+    // each stall cycle in one stall counter at most (17.9.8)
 }
 
 void counters() {
-    suite::group("the statistics counters, words 44-51 (item 157)");
+    suite::group("the statistics counters, words 44-51 (17.9.8)");
     const Prog p = loop_prog();
     const std::vector<int64_t> base = Rig().bases(p);
     const Targets targets = hash_targets({{p.pc_of(2), base[2]}});
@@ -643,36 +793,41 @@ void counters() {
     for (int k = 0; k < Tracer::STAT_N; k++) suite::eq(0, stat(g, k), "word %d is 0 after the word-0 write", 44 + k);
     // read every counter every cycle: each moves by at most 1 a cycle (miss counts by the misses), never back
     Watch w;
-    g.on_step = watch;
-    g.on_step_ctx = &w;
+    w.g = &g;
+    g.bench.on_cycle = watch;
+    g.bench.on_cycle_ctx = &w;
     const int rows = 2 + 5 * 5 + 1 + 6;
     WindowOut o;
     const bool ok = g.window(uint32_t(rows), 100000, o);
-    g.on_step = nullptr;
+    g.bench.on_cycle = nullptr;
     suite::check(ok && !g.tr.stopped(), "the window drained: %s", error_log(g.tr).c_str());
     suite::check(w.ok, "read every cycle, each stall and cycle counter moves by at most one a cycle, never back (counted in its own cycle)");
+    // busy from the cycle after START's store through done's cycle
     suite::eq(int32_t(g.tr.drained_at - g.tr.run_start_at), stat(g, Tracer::ST_CYCLES),
-              "STAT_CYCLES: every cycle STATUS [0] was 1, the drain included");
-    const int64_t* s = g.tr.stalls;
-    suite::eq(int32_t(s[Tracer::S_IFETCH]), stat(g, Tracer::ST_STALL_FETCH), "STAT_STALL_FETCH: the instruction-fetch stalls");
-    suite::eq(int32_t(s[Tracer::S_DMISS] + s[Tracer::S_BUS]), stat(g, Tracer::ST_STALL_DATA),
-              "STAT_STALL_DATA: the data misses, the write-back wait included");
-    suite::eq(int32_t(s[Tracer::S_PROBE]), stat(g, Tracer::ST_STALL_MAP), "STAT_STALL_MAP: the map probes' stalls");
-    suite::eq(int32_t(g.tr.i_miss), stat(g, Tracer::ST_MISS_I), "STAT_MISS_I");
-    suite::eq(int32_t(g.tr.d_miss), stat(g, Tracer::ST_MISS_D), "STAT_MISS_D");
-    suite::eq(int32_t(g.tr.lru_misses), stat(g, Tracer::ST_PROBES), "STAT_PROBES: the jump-LRU misses");
-    suite::check(stat(g, Tracer::ST_STALL_FETCH) > 0 && stat(g, Tracer::ST_STALL_DATA) > 0 && stat(g, Tracer::ST_STALL_MAP) > 0,
-                 "a cold start stalls on fetch, data and the map");
-    suite::check(stat(g, Tracer::ST_MISS_I) > 0 && stat(g, Tracer::ST_MISS_D) > 0 && stat(g, Tracer::ST_PROBES) > 0,
-                 "and misses each");
+              "STAT_CYCLES: every cycle STATUS.busy was 1, the drain included");
+    suite::eq(g.last.done_load - 1 - g.last.start_store, stat(g, Tracer::ST_CYCLES),
+              "the same by the controller: done is seen by the load of the cycle after it is posted");
+    suite::eq(LOOP_FETCH, stat(g, Tracer::ST_STALL_FETCH), "STAT_STALL_FETCH: the run's first instruction, its fill, five redirects and the end's");
+    suite::eq(LOOP_DATA, stat(g, Tracer::ST_STALL_DATA), "STAT_STALL_DATA: the data line's fill");
+    suite::eq(LOOP_MAP, stat(g, Tracer::ST_STALL_MAP), "STAT_STALL_MAP: the probe of one line");
+    suite::eq(1, stat(g, Tracer::ST_MISS_I), "STAT_MISS_I: one instruction line");
+    suite::eq(1, stat(g, Tracer::ST_MISS_D), "STAT_MISS_D: one data line");
+    suite::eq(1, stat(g, Tracer::ST_PROBES), "STAT_PROBES: one jump-LRU miss that starts a probe; three hits");
+    suite::eq(0, stat(g, Tracer::ST_STALL_OUTPUT), "STAT_STALL_OUTPUT: no scan waited");
+    for (int k = 0; k < Tracer::STAT_N; k++)
+        suite::eq(int32_t(g.last.stat[k]), stat(g, k), "word %d as the controller loaded it after done", 44 + k);
     const int64_t cyc = stat(g, Tracer::ST_CYCLES), fetch = stat(g, Tracer::ST_STALL_FETCH);
     const int64_t t1 = g.t;
     WindowOut o2;
+    const Before before(g);
     const bool ok2 = g.window(4, 10000, o2);  // padding rows: nothing fetched
     suite::check(ok2, "a second run drains");
     suite::eq(cyc + int32_t(g.tr.drained_at - g.tr.run_start_at), stat(g, Tracer::ST_CYCLES),
-              "PULSE_RUN doesn't clear them: they count across a segment's runs");
-    suite::eq(fetch, stat(g, Tracer::ST_STALL_FETCH), "padding rows fetch nothing");
+              "START doesn't clear them: they count across a segment's runs");
+    suite::eq(1, stat(g, Tracer::ST_MISS_I), "padding rows fetch nothing: no look-up");
+    const int64_t first = stat(g, Tracer::ST_STALL_FETCH) - fetch;
+    suite::eq(5, first, "the run's first row, a padding row: 5 cycles in STAT_STALL_FETCH, a fetched instruction's 6 less the fetch");
+    cycles_add_up(g, before, "the padding run");
     suite::check(g.tr.run_start_at >= t1, "(the second run started after the first)");
     g.load_record(CODE, int32_t(base[0]), 0, r.data(), {});
     int64_t sum = 0;
@@ -683,29 +838,30 @@ void counters() {
     const int orows = 1 + 600 * 5 + 1 + 10;
     WindowOut oh;
     bool okh = false;
-    RigP h = streamy(oh, okh, [](Rig& x) { x.hold = 500; set_order(x, 1, 2, 3); }, uint32_t(orows));
+    RigP h = streamy(oh, okh, [](Rig& x) { x.bench.hold = 500; set_order(x, 1, 2, 3); }, uint32_t(orows));
     const int64_t out = stat(*h, Tracer::ST_STALL_OUTPUT);
-    suite::check(out > 0, "a slow controller: the scans stalled for %lld cycles", (long long)out);
-    suite::check(out <= h->tr.scan_stalls && out >= (h->tr.scan_stalls + 1) / 2,
-                 "counted once a cycle when both scans stall (%lld of %lld scan-stall cycles)", (long long)out,
+    suite::check(okh && out > 0, "a slow controller: the scans stalled for %lld cycles", (long long)out);
+    // one a cycle, whether one scan waits or both: no more than the packers' blocked cycles, nor than the drain's
+    suite::check(out <= h->tr.scan_stalls && out <= h->tr.drained_at - h->tr.rows_end_at,
+                 "counted once a cycle, in the drain (%lld of %lld blocked packer cycles)", (long long)out,
                  (long long)h->tr.scan_stalls);
     WindowOut of;
     bool okf = false;
     RigP f = streamy(of, okf, nullptr, uint32_t(orows));
     suite::eq(0, stat(*f, Tracer::ST_STALL_OUTPUT), "an ideal controller: no output stall");
+    // the stall counters of the rows are the controller's business in neither: the same rows, the same counts
+    suite::eq(stat(*f, Tracer::ST_STALL_FETCH), stat(*h, Tracer::ST_STALL_FETCH), "the rows' stalls don't depend on the drain's controller");
+    // 600 iterations: the first instruction 6 + its fill, 600 branches a redirect each and the end's; the data: the
+    // 600 doublewords are 38 lines (16 a line); the probe once
+    suite::eq(6 + (L + 3) + 600 * 5 + 4, stat(*f, Tracer::ST_STALL_FETCH), "STAT_STALL_FETCH: 600 redirects of 5, the end's 4");
+    suite::eq(38 * (L + 5), stat(*f, Tracer::ST_STALL_DATA), "STAT_STALL_DATA: 38 data lines' fills");
+    suite::eq((L + 4) + 2, stat(*f, Tracer::ST_STALL_MAP), "STAT_STALL_MAP: one probe");
 }
 
 }  // namespace
 
-int main(int argc, char** argv) {
-    std::FILE* calls = nullptr;
-    static char calls_buf[1 << 16];
-    if (argc == 3 && std::strcmp(argv[1], "--calls") == 0) {
-        calls = std::fopen(argv[2], "w");
-        if (!calls) FATAL("suite_tracer: can't write %s", argv[2]);
-        std::setvbuf(calls, calls_buf, _IOFBF, sizeof calls_buf);
-        RecTracer::open_log(calls);
-    } else if (argc != 1) FATAL("usage: suite_tracer [--calls FILE]");
+int main(int argc, char**) {
+    if (argc != 1) FATAL("usage: suite_tracer");
     loop();
     cut();
     write_back();
@@ -716,10 +872,5 @@ int main(int argc, char** argv) {
     errors();
     words();
     counters();
-    const int r = suite::done("TracerTest");
-    if (calls) {
-        RecTracer::close_log();
-        std::fclose(calls);
-    }
-    return r;
+    return suite::done("TracerTest");
 }

@@ -1,30 +1,26 @@
-// tracer_rig.h: TracerRig in C++, ported from `ref`'s test/TracerRig.java (v1.3's
-// test): a hand-built guest in a FileStore (an image owning every page; the Tracer's copy by cow_open with the data
-// pages pre-copied, section 22), a jump-target map built by 4.21.4's hash rule, the universal tables, and an IDEAL
-// CONTROLLER standing in for C&C 3's firmware: it lands every packet through the region port (one a cycle, expansion
-// words first), answers new expansion (EXPANSION_TEMPLATE for an inline, then the template from EXPANSION_OFFSET, the N3
-// rules as the replayer's driver), the expansion and advice credits, and takes each window by an ideal DMA at the state
-// service. A real port (no generation): member for member, call for call, so the Tracer sees the calls `ref`'s rig makes.
+// tracer_rig.h: the Tracer's rig for the suites and tests (v1.36): a hand-built guest in a FileStore (an image owning
+// every page; the Tracer's copy by cow_open with the data pages pre-copied, section 22), a jump-target map built by
+// 17.9.4's hash rule, the universal tables, and THE RTL BENCH'S CONTROLLER (tests/tracer_block.h's Bench, Snarky One's
+// tracer_acceptance_test's bench rule for rule): one register access a cycle, the control block's and the DMA's words,
+// WRITEs one a cycle through the write port, the peripheral DMA's timing. So a guest's cycles here are what the RTL's
+// bench would count on the same guest, given the same memory system on the fill port: fixed read latencies (1 by
+// default, as the RTL's tests), or the simulator's own model (`fill(0, 0)`, 17.9.14).
 //
-// TWO REGIMES (D6). Building the guest, the image, the map and the record (the constructor, build_image, build_map,
-// load_tables' queueing, load_record's queueing, collect) may use the STL. The per-cycle path (step, the window loop,
-// drain_port) uses fixed rings and preallocated buffers only, and runs under the allocation hook.
+// The rig keeps v1.3's TracerRig's builders (an assembler, Pages, the image and the map) and its page order:
 //
-// JAVA'S ITERATION ORDER SETS THE PAGE ADDRESSES. `ref`'s rig keeps the guest's pages in a HashMap<Long, long[]> (filled
+// JAVA'S ITERATION ORDER SETS THE PAGE ADDRESSES. v1.3's rig kept the guest's pages in a HashMap<Long, long[]> (filled
 // by poke's computeIfAbsent and by put) and the pages to pre-copy in a HashSet<Long>, and build_image hands them to
 // FileStore in those collections' iteration order. FileStore allocates pages in the order it is handed them, so that
-// order decides every page's address, and the addresses decide the shared cache's sets (MemSystem: 512 sets by line
-// address), so its conflicts, evictions and every timing that follows. A rig that put the pages in another order (by
-// key, or by insertion) would build a different, equally valid machine whose timings need not be ref's.
-// `JavaLongHashMap` reproduces java.util.HashMap's order for Long keys operation by operation: Long.hashCode and
+// order decides every page's address, and the addresses decide the memory system's model's sets (MemSystem: 512 sets by
+// line address), so its conflicts, evictions and every timing that follows. `JavaLongHashMap` reproduces
+// java.util.HashMap's order for Long keys operation by operation: Long.hashCode and
 // HashMap.hash's spread; put appending a new key to its bin and growing the table after inserting; computeIfAbsent
 // prepending it and growing before; each one's treeifyBin threshold (which resizes a table under 64 bins); a resize
 // splitting each bin in order. A bin that is treeified (9 keys in one bin of a table of 64 or more, e.g. 11 or more
 // consecutive pages of one 64 KB block) iterates in an order that follows its red-black tree: not modelled, so the order
-// is refused (FATAL), never guessed. No TracerTest guest gets near it (6 pages at most).
+// is refused (FATAL), never guessed. No suite's guest gets near it (6 pages at most).
 // Checked against Java itself on 49 cases, 3 of them treeified (tests/tracersuites/hashorder.txt, JavaHashOrder.java;
-// test_tracer_rig). TracerTest's own guests show why it matters: in rig() the data page (computeIfAbsent second) comes
-// before the code page.
+// test_tracer_rig).
 #pragma once
 
 #include <cstdint>
@@ -33,6 +29,7 @@
 #include <utility>
 #include <vector>
 
+#include "tracer_block.h"
 #include "units/file_store.h"
 #include "units/mem_system.h"
 #include "units/replay_tables.h"
@@ -41,6 +38,8 @@
 
 namespace tracer_rig {
 
+using tracer_block::Bench;
+using tracer_block::RunOut;
 using units::tracer::FileStore;
 using units::tracer::MemSystem;
 using units::tracer::ReplayTables;
@@ -138,75 +137,6 @@ private:
     std::vector<uint64_t>& slot(int64_t key);
 };
 
-// ================================================================ the call recorder (TracerConf's format)
-// The Tracer as the rig and the suite see it: every call TracerConf.Rec records (oracle/ref/TracerConf.java) goes through
-// here, and with a log open each is written as Rec writes it, so the rig's calls can be compared with `ref`'s rig's
-// (tests/tracerconf/cases.log.gz; test_tracer_rig). Hiding, not overriding: the Tracer's own code is untouched, and with
-// no log a call costs one test. Ids are given at construction, as Rec's (probes included). Lines: "N id 66 lines",
-// store dumps ("F id k first next" and a "P"/"Z" line per page), "c id t0 n sig" (consecutive equal cycles run
-// together; no observation, unlike Rec's), and "U id": the suite is about to run a UB check in a forked child, whose
-// calls (and the one that stops) are in `ref`'s log and not here. Fixed buffers only: nothing allocates while recording
-// (the window loop runs under the allocation hook).
-class RecTracer : public Tracer {
-public:
-    explicit RecTracer(const FileStore* fs);
-    ~RecTracer();
-    RecTracer(const RecTracer&) = delete;
-    RecTracer& operator=(const RecTracer&) = delete;
-
-    // The log (null: off), for every RecTracer made after it is set; ids from 0 again.
-    static void open_log(std::FILE* f);
-    static void close_log();
-    void mark_ub();  // before a UB check on this Tracer runs in a child
-
-    // ---- the recorded calls (Rec's list)
-    void accept(int64_t t, int src, uint32_t offset, int size, uint64_t lo, uint64_t hi);
-    void run(int64_t t);
-    int write_word(int64_t t, int w, uint32_t v);
-    bool word(int64_t t, int w, uint32_t& v);
-    bool running(int64_t t);
-    int errors(int64_t t);
-    void sync(int64_t t);
-    bool rows_ended(int64_t t);
-    void out_start(int64_t t, int q, int64_t words);
-    bool out_ready(int64_t t, int q);
-    void out_take(int64_t t, int q, uint64_t w[2]);
-    void step(int64_t t);  // ref's runCycle
-    struct Ev {
-        RecTracer& r;
-        uint32_t value(int64_t t);
-        uint32_t consume(uint32_t bits);
-    };
-    Ev events() { return Ev{*this}; }
-
-private:
-    static std::FILE* log_;
-    static int next_id_;
-    const FileStore* fs_;
-    const int id_;
-    bool rec_ = false, started_ = false;
-    int64_t dumped_next_ = -1;
-    int dumps_ = 0;
-    static constexpr int TOKS = 64, TOKLEN = 112, SIGLEN = 8192;
-    int64_t call_t_[TOKS] = {};
-    char call_tok_[TOKS][TOKLEN] = {};
-    int n_tok_ = 0;
-    bool g_open_ = false;
-    char g_sig_[SIGLEN] = {};
-    int64_t g_t0_ = 0, g_n_ = 0;
-    char sig_[SIGLEN] = {};
-
-    void start();
-    int dump();
-    void call(int64_t t, const char* fmt, ...) __attribute__((format(printf, 3, 4)));
-    void app(const char* fmt, ...) __attribute__((format(printf, 2, 3)));
-    void make_sig(int64_t anchor);
-    int64_t anchor() const;
-    void flush_group();
-    void end_cycle(int64_t t);
-    void flush_partial();
-};
-
 // ================================================================ the window's output
 struct WindowOut {
     std::vector<uint64_t> record, code, rlog, wlog;  // {lo, hi} per 128-bit word, as the DMA delivered them
@@ -216,22 +146,26 @@ struct WindowOut {
 // ================================================================ the rig
 class Rig {
 public:
-    static constexpr int SRC = 66;  // C&C 3
+    static constexpr int SRC = Bench::SRC;
     FileStore fs;
-    RecTracer tr{&fs};  // a Tracer(66), its calls recorded when a log is open
+    Tracer tr{66};
     MemSystem ms{&fs};
     const ReplayTables& tables;
+    Bench bench;         // the controller, the write port, the DMA: the RTL bench's
+    int64_t& t;          // the cycle about to run (bench.cycle)
     int64_t lowest = 0x7FF00000LL;
     int log2k = 20;
-    int64_t t = 0;
 
     Rig();
     Rig(const Rig&) = delete;
     Rig& operator=(const Rig&) = delete;
-    ~Rig();
 
     // The tables, loaded once (ReplayTables::default_dir()).
     static const ReplayTables& shared_tables();
+
+    // The fill port (tracer.h's fill_latency): fixed read latencies for the guest's file and the map's, 1 and 1 at
+    // construction, as the RTL's tests' memory system; 0 and 0: the simulator's model of the memory system (`ms`).
+    void fill(int memory, int map) { tr.fill_latency[0] = memory; tr.fill_latency[1] = map; }
 
     // Each instruction's base instr_idx (section 18: 1 + the expansion lengths below it) by the universal tables.
     std::vector<int64_t> bases(const Prog& p) const;
@@ -244,77 +178,39 @@ public:
     // The image: pages (in their HashMap's order), the code pages shared, `owned` (a HashSet's keys, added in the order
     // given) pre-copied in the copy, in that set's order.
     void build_image(const Pages& pages, const std::vector<int64_t>& owned);
-    // The jump map (4.21.4): 2^map_k lines of 16 (key u32, base u32) entries, by the probe's own rule; depth 0 here.
-    // `targets`: pc -> base, in the order ref's Map iterates them.
+    // The jump map (17.9.4): 2^map_k lines of 16 (key u32, base u32) entries, by the probe's own rule; depth 0 here.
+    // `targets`: pc -> base, in the order given.
     void build_map(const std::vector<std::pair<int64_t, int64_t>>& targets);
 
-    // ---- the controller
-    // The service order for the stream queues (has_order false: round-robin from queue 1); state_last serves queue 0
-    // after them; q0_one sends queue 0 as one 68-word transfer; hold delays every service request (a slow C&C 3).
-    int order[3] = {0, 0, 0};
-    bool has_order = false, state_last = false, q0_one = false;
-    int64_t hold = 0;
-    int64_t dma_packets = 0;
-    // Called after each cycle's step (TracerTest's counters: a window word read every cycle). Plain pointer, no STL.
-    void (*on_step)(Rig&, void*) = nullptr;
-    void* on_step_ctx = nullptr;
-
-    void step();
-    void drain_port();
-    void load_tables();
-    void word(int w, uint32_t v);
-    // The segment's record, word 0 first: the state, the advice count, the registers, the files word, the bitmap 0.
+    // ---- the controller: the bench's, a cycle each
+    void step() { bench.idle_cycle(); }                 // a cycle with no access
+    void drain_port() { bench.flush(); }                // until every queued WRITE has landed
+    void load_tables() { bench.setup(map_mul, map_step, uint32_t(map_k)); }
+    void word(int w, uint32_t v) { bench.store(Bench::B_TWO, w - 32, v); }     // a store to word w (32-51)
+    uint32_t load_word(int w) { return bench.load(Bench::B_TWO, w - 32); }     // a load of word w
+    uint32_t status() { return bench.load(Bench::B_CONTROL, Bench::C_STATUS); }
+    uint32_t errors() { return bench.load(Bench::B_CONTROL, Bench::C_ERRORS); }
+    uint32_t events_peek() { return bench.load(Bench::B_CONTROL, Bench::C_EVENTS_PEEK); }
+    uint32_t events() { return bench.load(Bench::B_CONTROL, Bench::C_EVENTS); }  // a consuming load
+    // The segment's record, word 0 first: the state, the advice count, the registers, the files word, the bitmap 0;
+    // then the advice the state write's credits release (Bench::segment). RUN_CONFIG is left 0: window stores it.
     void load_record(int64_t pc, int32_t instr_idx, int offset, const uint64_t regs[128], const std::vector<uint64_t>& advice);
-    // One window: RUN_CONFIG, PULSE_RUN, the controller loop until run done (true, `out` filled), or the Tracer stops,
-    // or max_cycles (false: ref's null).
+    // The record's 136 words as load_record writes them.
+    void record_words(int64_t pc, int32_t instr_idx, int offset, const uint64_t regs[128], size_t advice_values,
+                      uint64_t out[2 * Tracer::REC_WORDS]) const;
+    // One window: RUN_CONFIG, START, the bench's loop until done (true, `out` filled), or the Tracer stops on an
+    // error, or max_cycles (false). `last` is the bench's account of it.
     bool window(uint32_t run_config, int64_t max_cycles, WindowOut& out);
-    // A region packet queued at the port (as ref's `port.add`), for a test's own landings.
-    void port_add(uint32_t offset, uint64_t lo, uint64_t hi);
-
-    // "no template for 0x..." lines (ref's `log`): the count and the last word.
-    int no_template = 0;
-    uint32_t no_template_w = 0;
+    RunOut last;
+    // A WRITE queued at the write port, for a test's own landings.
+    void port_add(uint32_t offset, uint64_t lo, uint64_t hi) { bench.write(offset, lo, hi); }
 
     // ---- reading the output
     uint64_t reg(int r) const { return tr.rec[4 + r]; }
     static std::vector<uint64_t> stream_values(const std::vector<uint64_t>& words, int values, int bits);
 
-    // MemorySystem.summary()'s line (the MemSystem has no summary; its counters are public).
+    // The MemSystem's counters in one line.
     static std::string mem_summary(const MemSystem& m);
-
-private:
-    struct Pkt {
-        uint32_t off;
-        uint64_t lo, hi;
-    };
-    struct Ring {  // a fixed FIFO of packets (ref's ArrayDeque)
-        Pkt* e = nullptr;
-        int cap = 0, head = 0, n = 0;
-        void push(const Pkt& p);
-        Pkt pop();
-    };
-    Ring port_, port_exp_;
-
-    // the ideal DMA (milestone 2): one transfer at a time, one 128-bit packet a cycle, as 4.17.9's
-    int dma_q_ = -1;
-    int64_t dma_left_ = 0;
-    static constexpr int GOT_CAP = 1 << 16;  // 128-bit words per queue
-    uint64_t* got_[4] = {};
-    int got_n_[4] = {};
-    void dma_start(int q, int64_t n);
-
-    std::vector<uint64_t> advice_;
-    int advice_next_ = 0;
-    void send_advice();
-
-    const uint64_t* exp_words_ = nullptr;  // null: ref's expWords == null
-    int exp_len_ = 0, exp_next_ = 0;       // in 64-bit words
-    uint64_t* exp_buf_ = nullptr;          // a template's copy with its offset word's rd0 changed (ref's clone)
-    int exp_buf_cap_ = 0;
-    uint64_t nop_words_[2] = {};
-    void send_exp();
-
-    void collect(WindowOut& o) const;
 };
 
 }  // namespace tracer_rig

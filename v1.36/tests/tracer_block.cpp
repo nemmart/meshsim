@@ -1,6 +1,7 @@
 // tracer_block.cpp: the block-level bench (tracer_block.h).
 #include "tracer_block.h"
 
+#include "base/alloc_guard.h"
 #include "base/fatal.h"
 #include "units/row_core.h"
 
@@ -9,6 +10,7 @@ namespace tracer_block {
 // One cycle (the RTL bench's Bench::cycle): a WRITE queued before it, an expansion word first; the access; the DMA.
 uint32_t Bench::step(const Access& a) {
     const int64_t n = cycle;
+    if (guard_alloc) { sim::begin_run(); tr.sync(n); sim::end_run(); }
     if (!expansion_writes_.empty() || !writes_.empty()) {
         std::deque<Write>& q = !expansion_writes_.empty() ? expansion_writes_ : writes_;
         const Write w = q.front();
@@ -59,6 +61,7 @@ uint32_t Bench::step(const Access& a) {
         tr.out_take(n, dma_queue_, w);
         if (received_) { received_[dma_queue_].push_back(w[0]); received_[dma_queue_].push_back(w[1]); }
         dma_pending_--;
+        dma_packets++;
     }
     if (ending && !tr.stopped() && dma_done_ < 1) dma_done_++;
     dma_busy_ = dma_start || (dma_busy_ && !ending);
@@ -67,7 +70,14 @@ uint32_t Bench::step(const Access& a) {
         dma_pending_ = (dma_hdr_ >> 15) & 0xFFF;
         tr.out_start(n, dma_queue_, dma_pending_);
     }
-    tr.step(n);
+    if (skip_idle_steps && !tr.must_step()) {
+        steps_skipped++;
+    } else {
+        if (guard_alloc) sim::begin_run();
+        tr.step(n);
+        if (guard_alloc) sim::end_run();
+    }
+    if (on_cycle) on_cycle(on_cycle_ctx, n);
     cycle++;
     return rdata;
 }
@@ -79,6 +89,15 @@ void Bench::flush() {
     while (!writes_.empty() || !expansion_writes_.empty()) idle_cycle();
     idle_cycle();
     idle_cycle();
+}
+
+void Bench::reset() {
+    tr.reset(cycle);
+    writes_.clear(); expansion_writes_.clear(); advice_.clear(); expansion_.clear();
+    events_mask_ = 0; dma_done_ = 0;
+    dma_hdr_ = 0; dma_busy_ = false; dma_queue_ = 0; dma_pending_ = 0;
+    transfer_ = false; may_start_at_ = 0;
+    cycle++;
 }
 
 void Bench::setup(uint32_t hash_mul, uint32_t hash_step, uint32_t hash_lines) {
@@ -164,36 +183,46 @@ void Bench::run(RunOut& out) {
             const uint32_t offset = load(B_TWO, Tracer::W_EXP_OFFSET - 32);
             out.post_opcode.push_back(w); out.post_offset.push_back(offset);
             const int number = tb.lookup(w);
-            if (number < 0) FATAL("tracer_block: no core-fed template for 0x%08x", w);
-            if ((tb.table[units::rowcore::decode_index(w)] & 3) == 1)
-                store(B_TWO, Tracer::W_EXP_TEMPLATE - 32, 1u << 31 | uint32_t(number));
-            // the words the core pushes from the offset (17.8.13): rd0 in the first; the shared NOP row alone under a
-            // NOP policy with rd = x0
             expansion_.clear();
-            const uint64_t rd0 = uint64_t(tb.rd0[size_t(number)]) << 46, keep = ~(uint64_t(3) << 46);
-            if (((w >> 7) & 31) == 0 && (tb.rd0[size_t(number)] == 1 || tb.rd0[size_t(number)] == 3)) {
-                expansion_.push_back({0x400000, (tb.rom_lo[1] & keep) | rd0, tb.rom_hi[1]});
+            if (number < 0) {   // nothing to push: the Tracer waits
+                if (!allow_no_template) FATAL("tracer_block: no core-fed template for 0x%08x", w);
+                no_template++; no_template_w = w;
             } else {
-                const std::vector<uint64_t>& words = tb.words[size_t(number)];
-                if (2 * size_t(offset) >= words.size()) FATAL("tracer_block: a post at row offset %u, past the template of 0x%08x", offset, w);
-                for (size_t k = offset; 2 * k < words.size(); k++)
-                    expansion_.push_back({0x400000, k == offset ? (words[2 * k] & keep) | rd0 : words[2 * k], words[2 * k + 1]});
+                if ((tb.table[units::rowcore::decode_index(w)] & 3) == 1)
+                    store(B_TWO, Tracer::W_EXP_TEMPLATE - 32, 1u << 31 | uint32_t(number));
+                // the words the core pushes from the offset (17.8.13): rd0 in the first; the shared NOP row alone under
+                // a NOP policy with rd = x0
+                const uint64_t rd0 = uint64_t(tb.rd0[size_t(number)]) << 46, keep = ~(uint64_t(3) << 46);
+                if (((w >> 7) & 31) == 0 && (tb.rd0[size_t(number)] == 1 || tb.rd0[size_t(number)] == 3)) {
+                    expansion_.push_back({0x400000, (tb.rom_lo[1] & keep) | rd0, tb.rom_hi[1]});
+                } else {
+                    const std::vector<uint64_t>& words = tb.words[size_t(number)];
+                    if (2 * size_t(offset) >= words.size()) FATAL("tracer_block: a post at row offset %u, past the template of 0x%08x", offset, w);
+                    for (size_t k = offset; 2 * k < words.size(); k++)
+                        expansion_.push_back({0x400000, k == offset ? (words[2 * k] & keep) | rd0 : words[2 * k], words[2 * k + 1]});
+                }
             }
         }
         if (events & (1u << Tracer::EV_EXP)) release_expansion();
-        if (events & (1u << Tracer::EV_DMA_DONE)) transfer_ = false;
+        if (events & (1u << Tracer::EV_DMA_DONE)) { transfer_ = false; may_start_at_ = cycle + hold; }
         if (events & (1u << Tracer::EV_RUN_DONE)) { out.done = true; out.done_load = cycle - 1; break; }
         if ((events & ST) && out.state_ready_load < 0) {
             out.state_ready_load = cycle - 1;
+            may_start_at_ = cycle + hold;
             load(B_TWO, Tracer::W_STATE_LENGTH - 32);
             for (int s = 0; s < 3; s++) out.lengths[s] = load(B_TWO, Tracer::W_CODE_LENGTH - 32 + s);
         }
-        if (!transfer_ && out.state_ready_load >= 0) {
-            if (pieces < 4) {
-                if (events & ST) start_transfer(0, kPieces[pieces++]);
+        if (!transfer_ && out.state_ready_load >= 0 && cycle >= may_start_at_) {
+            // output queue 0's pieces first (the RTL bench); with state_last, only when no stream holds a credit
+            const bool streams_ready = (events & (7 * (ST << 1))) != 0;
+            if (pieces < 4 && !(state_last && streams_ready)) {
+                if (events & ST) {
+                    if (q0_one) { start_transfer(0, uint32_t(Tracer::REC_WORDS)); pieces = 4; }
+                    else start_transfer(0, kPieces[pieces++]);
+                }
             } else {
                 for (int k = 0; k < 3; k++) {
-                    const int s = (turn + k) % 3;
+                    const int s = has_order ? order[k] - 1 : (turn + k) % 3;
                     const uint32_t left = out.lengths[s] - sent[s];
                     if (left != 0 && (events & (ST << (s + 1)))) {
                         const uint32_t count = left < uint32_t(Tracer::QHALF) ? left : uint32_t(Tracer::QHALF);

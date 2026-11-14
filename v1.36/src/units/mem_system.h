@@ -76,6 +76,16 @@ public:
     // starts when that one ends (item 174: the simulator's choice).
     static constexpr int WRITE_OK = 0, WRITE_ERROR = 1;   // write_response.status (spec 3)
     int64_t fail_write_line = -1;   // a test's fault: the write-back of this line (of any file) answers `error`
+    // A test's monitor of the port (null: none): each request in handshake order, with its handshake's cycle, its
+    // response's, and its status. Calls past the capacity are counted and not kept.
+    struct PortCall {
+        int64_t t, response_at, line;
+        int32_t root;
+        bool write;
+        int status;
+    };
+    PortCall* port_log = nullptr;
+    int port_log_cap = 0, port_log_n = 0;
     int64_t port_read(int64_t t, int32_t root, int depth, int64_t line, int fixed_latency, Response& r) {
         if (fixed_latency > 0) {
             reads++;
@@ -85,29 +95,36 @@ public:
             if (walk_.data_line >= 0) store->read_line(walk_.data_line, r.data);
             else std::memset(r.data, 0, sizeof r.data);
             r.ready_at = t + fixed_latency;
-            return r.ready_at;
+        } else {
+            read(t > busy_until_ ? t : busy_until_, root, depth, line, r);
+            if (r.ready_at <= t) r.ready_at = t + 1;
         }
-        read(t > busy_until_ ? t : busy_until_, root, depth, line, r);
-        if (r.ready_at <= t) r.ready_at = t + 1;
+        log_port(t, r.ready_at, line, root, false, r.status);
         return r.ready_at;
     }
     // A write: the line is written at the handshake, when the page is the file's own (status ok on its walk);
     // otherwise, or at a test's fault, nothing is written and the response is `error` (17.9.5: the line is lost).
     int64_t port_write(int64_t t, int32_t root, int depth, int64_t line, const uint64_t* data, bool fixed, int& status) {
         store->walk(root, depth, line, walk_);
+        int64_t done = t + 1;
         if (walk_.status != FileStore::ST_OK || line == fail_write_line) {
             writes++;
             status = WRITE_ERROR;
-            return t + 1;
-        }
-        status = WRITE_OK;
-        if (fixed) {
+        } else if (fixed) {
             writes++;
+            status = WRITE_OK;
             store->write_line(walk_.data_line, data);
-            return t + 1;
+        } else {
+            status = WRITE_OK;
+            const int64_t d = write(t > busy_until_ ? t : busy_until_, root, depth, line, data);
+            if (d > t) done = d;
         }
-        const int64_t done = write(t > busy_until_ ? t : busy_until_, root, depth, line, data);
-        return done > t ? done : t + 1;
+        log_port(t, done, line, root, true, status);
+        return done;
+    }
+    void log_port(int64_t t, int64_t response_at, int64_t line, int32_t root, bool write, int status) {
+        if (port_log && port_log_n < port_log_cap) port_log[port_log_n] = PortCall{t, response_at, line, root, write, status};
+        if (port_log) port_log_n++;
     }
 
     // The bus is free at t (one request outstanding).

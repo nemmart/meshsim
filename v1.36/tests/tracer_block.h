@@ -62,6 +62,35 @@ public:
     int64_t cycle = 0;
     int64_t limit_per_run = 0;         // 0: the RTL bench's limit
 
+    // ---- For the suites (tests/tracer_rig.h). Each default is the RTL bench's behaviour, which nothing here changes
+    // unless set.
+    // The streams' service order (has_order false: round-robin from the stream after the last served); state_last
+    // serves output queue 0 only when no stream holds a credit; q0_one sends it as one transfer of 68 entries; hold: a
+    // slow controller, which starts a transfer no earlier than `hold` cycles after the last one's dma_done (or, for the
+    // first, after state_ready) was seen.
+    int order[3] = {1, 2, 3};
+    bool has_order = false, state_last = false, q0_one = false;
+    int64_t hold = 0;
+    int64_t dma_packets = 0;           // the entries the DMA sent
+    // Called at the end of every cycle, after the Tracer's step, with the cycle's number.
+    void (*on_cycle)(void* ctx, int64_t n) = nullptr;
+    void* on_cycle_ctx = nullptr;
+    // The Tracer's cycle under the allocation hook (base/alloc_guard.h): it allocates nothing.
+    bool guard_alloc = false;
+    // A new_expansion whose code value has no core-fed template: counted, and no word pushed (false: FATAL).
+    bool allow_no_template = false;
+    int no_template = 0;
+    uint32_t no_template_w = 0;
+    // The Tracer stepped only in the cycles its wake rule asks for (Tracer::must_step), as a slot may; the cycles
+    // skipped are counted.
+    bool skip_idle_steps = false;
+    int64_t steps_skipped = 0;
+    // The reset (17.9.12), in place of a cycle's access: the Tracer's, the control block's EVENTS_MASK and dma_done, the
+    // DMA, and every WRITE still queued.
+    void reset();
+    bool dma_busy() const { return dma_busy_; }
+    size_t writes_queued() const { return writes_.size() + expansion_writes_.size(); }
+
     Bench(Tracer& t, const ReplayTables& tables) : tr(t), tb(tables) {}
 
     // The reset's first cycles: EVENTS_MASK, the tables, the hash's constants.
@@ -99,6 +128,7 @@ private:
     int dma_queue_ = 0;
     uint32_t dma_pending_ = 0;
     bool transfer_ = false;            // the controller's: a transfer started and its dma_done not yet seen
+    int64_t may_start_at_ = 0;         // `hold`: the first cycle the controller may start its next transfer
     std::vector<uint64_t>* received_ = nullptr;
 };
 

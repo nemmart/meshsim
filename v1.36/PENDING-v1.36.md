@@ -23,8 +23,9 @@ of this page each. Where they stand:
 The tile's units (the DMA, write, read, receive, gather and inject units and the scratchpad) are the specification's
 (8-15), each with a test written from it (`test_ag`, `test_receive`, `test_mem`, `test_gather`, `test_mach`), and the
 sort's cycles on the chip are the RTL chip's, step for step, which `test_rtl_sort` checks. What is left is named below as
-in the plan: the router's conformance, the memory tile's RW engine and the host interface
-(P10), the old suites (P11), meshsim's own firmware (P12), and what is left of the timing.
+in the plan: the router's conformance (P10; the segment on the chip is the RTL's, the segment stage, and so are the
+special tiles' peripherals, the RW engine and Ingress/Egress: sections 8 and 9), the old suites (P11), meshsim's own
+firmware (P12), and what is left of the timing.
 
 ## The core stage
 
@@ -213,21 +214,21 @@ checked against the RTL, replaces them.
 
 | what | why | what closes it |
 |---|---|---|
-| the `special` program (kind 4, `base_tile_special_test.rs`) | a special tile's base alone, with every kind of peripheral interface behind a test peripheral; the simulator's special tiles are built and run only in the chip (acceptance B boots the master's and the memory tile's and loads through the tracer tile's ROM) | a one-tile bench for a special tile (its straps, its receive queue with the root's credit, a peripheral with a DMA) running `fw/rtl/tile/base_tile/special.elf` |
+| the `special` program (kind 4, `base_tile_special_test.rs`) | it tests the base tile's boundary with its peripherals, which the simulator does not have as a boundary: the RTL's bench plays peripherals 1, 2 and 3 as bare `reg` interfaces, each returning a constant of its own for every word, the control block's and the DMA block's among them (`CONTROL_RDATA`, `DMA_RDATA`: `special.S`, checks 10-18), and takes the stores and the write port's packets itself; in the simulator the control block and the DMA block of every peripheral are the slot's own (`periph_slot.h`: `peripheral_control` and `peripheral_dma` are modelled once, in the slot, not per peripheral), so no peripheral of the slot can answer those loads with the bench's constants, and the program's part 5 sends on two DMA inputs (east and north) where the simulator's special tile has one (section 5, the router's row). Looked at again with the RW engine and Ingress/Egress modelled (the peripherals' stage): they do not bring it in reach, since the program wants no peripheral behind the interfaces | a slot whose blocks 0 and 1 a test can replace by a bare interface, and the router's second DMA input (the router's conformance); or nothing: what the program checks of the tile is checked piece by piece on the simulator: the straps and `boot_local` (`test_rtl_sort`, `test_rtl_memory`, `test_rtl_stream`: the master's and the memory tile's images start so), the peripherals' windows through the bus with the stores that stall (`test_core_tile`, `test_periph_slot`, `test_ingress_egress`, `test_rw_engine`), the write port (`test_periph_slot`, `test_rw_engine`), a DMA's packets through the special tile's router (`test_special_router`, `test_rtl_memory`), a request received with its credit (`test_request_tree`, `test_rtl_memory`'s 300 requests) |
 | the RTL's model with all three attach ports at every tile id | a simulated tile has the attach port of its place in the chip (tile 0, 7 or 15: 2.1), so the runs at an attach tile use its one port | nothing: the RTL's model is a 1 × 1 chip's tile; the chip's attach ports are checked at chip level (P6) |
 | the request link's beats and its handshake monitor; the row port's monitor | the simulator's request unit hands over whole requests, and the framework's ports have no ready or valid to watch. The bench takes a request's eight beats one a cycle at the RTL test's random ready, and the replayer's rows leave the row port at its random ready | nothing in the simulator's ports; the request tree's beats are the chip's (11.3) |
 | cycle-exact expectations | `base_tile_test.rs` has none but its bounds (the barrier program's delay, the timeouts), which the test keeps. The test adds the RTL's figures for the boot ROM on the block `core` (`rtl/blocks/core/README.md`, "The boot ROM's program") and the core specification's resume timing, checked on the tile in every run | |
 
 ### 2. Acceptance B: what of the RTL's chip tests is pending
 
-`tests/test_rtl_sort.cpp` is `chip_test.rs` (the sort, four runs), and `tests/test_rtl_segment.cpp` is `chip_trace_test.rs`
-and `chip_replay_test.rs` (the segment stage). The RTL's other chip tests have no counterpart:
+`tests/test_rtl_sort.cpp` is `chip_test.rs` (the sort, four runs), `tests/test_rtl_segment.cpp` is `chip_trace_test.rs`
+and `chip_replay_test.rs` (the segment stage), and `tests/test_rtl_memory.cpp` is `chip_memory_test.rs` (the master's
+requests to the memory tile and LPDDR: every check of the RTL's, and every handshake on the `lpddr` port and the done
+word's cycle equal to the RTL chip's, `tests/rwengine/`). The RTL's last chip test:
 
 | what | why | what closes it |
 |---|---|---|
-| `chip_memory_test`: the master's requests to the memory tile and LPDDR | the memory tile's peripheral 1 is a stand-in that stops the simulator if it is started, written or made to send (`RwEngineStub`, `src/units/ingress_egress.h`): the RW engine (17.7), its write buffer and its AXI4 port are not modelled | the RW engine's model (P10), with the RTL's AXI4 slave model's timing |
-| `chip_stream_test`: the master echoing beats on its AXI4-Stream ports | Ingress/Egress's host interface (17.6) is not modelled: its receive side reads empty and a store to its transmit side stops the simulator; the UART has a transmit FIFO only | the host interface's and the UART's receive side in `IngressEgress` (P10) |
-| the image's start-up, from the load's release to L1's release | 16,036 cycles here, 16,033 on the RTL's chip: printed, not checked (every step of the sort, the total, the load and the link's latency are checked equal to the RTL's) | the timing stage (section 6) |
+| `chip_stream_test`: the master echoing beats on its AXI4-Stream ports | CLOSED: `tests/test_rtl_stream.cpp` (the step `rtl-stream`) is the RTL's test, its program instruction for instruction and its LVDS IO block from the same xorshift32 sequence, with every check it makes; and every handshake's cycle (12 on `lvds_in`, 13 on `lvds_out`) and the done word's (513 cycles) equal to the RTL chip's, taken from a run of the RTL's test with its `Bench::cycle` printing them (Snarky One 076e647: `cargo test -p chip chip_stream_test -- --nocapture`). The same file runs the UART through the master's core (what `master_tile_test.rs`'s part 6 adds: 20 bytes stored back to back at a divisor of 20, the last three stores stalled on a full TX FIFO; four bytes polled in `UART_RX`), at the RTL chip's cycles for the same program and line (a scratch test of the RTL chip, `chip_uart_ref`, written beside `chip_stream_test` in a scratch worktree and not landed: the first start bit in cycle 34; the led pin's 20 changes, one after each store, the stalled ones' at 237, 437 and 637; `UART_STATUS` in DMEM after 643 cycles; the done word after 5,210). So a stalled `UART_TX` store through the core and `register_bus` is the RTL's to the cycle. Of `master_tile_test.rs` the rest is not ported: its parts 0–5 and 8 are the tile's and the nets' (`test_rtl_tile`, `test_request_tree`, `test_ingress_egress`, `rtl-sort`'s errors), and its part 7, the six beats with the fifth stalled, is `test_ingress_egress`'s stream cases at the unit and `chip_stream`'s on the chip | nothing |
 
 ### 3. Tests of `make check` that are not built (`pending.mk`)
 
@@ -242,7 +243,7 @@ of them no longer checks is in the second table.
 | `test_engconf` (`tests/engconf/`) | SUPERSEDED, kept unbuilt. ref's EngConf scripts and observations are of v1.35's address generator and gather unit, cycle by cycle: per-stream gaps (60–81 of each fixture's 256 `STREAM` entries), v1.35's request FIFOs in front of the tables, its offers through a holding register and its lead-ins. v1.36's DMA unit is the specification's (8.2–8.5), so no line of them can be produced again | nothing: `test_ag` (8.2–8.5 from the specification and the RTL's unit), `test_gather` and `test_mach` (13) stand for it; deletion with the old suites (P11) |
 | `test_memconf` (`tests/memconf/`) | SUPERSEDED, kept unbuilt. ref's MemConf observations are v1.3's fingerprint streams of v1.35's memory path (`srq`, `inj`, `sram`, `we`, `ts`, `hist`): the read queue's token slots, the area queues, write combining, the write engine's input FIFO and the tables' request FIFOs, none of which v1.36's hardware has (12.4, 12.5, 14, 15). Its writer, `tests/statefp_g1.*`, does not compile, and `tests/statefp_g2.cpp`'s `inj` and `srq` writers now stop if called | nothing: `test_mem` (14, 15) and `test_receive` (12.4, 12.5) stand for it; deletion with the old suites (P11) |
 | `test_checkself` | ref's `CheckSelf.java` sequence provokes the checker kind by kind through v1.35's commands, replies, strays and a test's stores to v1.35's map (`Cc::command`, `TileRef::store`, `Mach::boot`: removed from `tests/mach.h`) | the checker's rules for v1.36's hardware, with the old suites (P11) |
-| `test_cnc1_periph` (`tests/cnc1conf/`) | SUPERSEDED, kept unbuilt. v1.35's conformance of C&C 1's peripheral against ref (`READY_LINES`, `PULSE_GO`, the row collectors' words, a toast pin on any error line); v1.36's master tile has Ingress/Egress (17.6) | nothing: `test_ingress_egress` (17.6 from the specification and the RTL's `ingress_egress_unit`: the arrivals, `RELEASE`, the watchdog and its ties, the error lines, the toast pin, the LED, the window's map, the UART's transmit side) stands for it; deletion with the old suites (P11) |
+| `test_cnc1_periph` (`tests/cnc1conf/`) | SUPERSEDED, kept unbuilt. v1.35's conformance of C&C 1's peripheral against ref (`READY_LINES`, `PULSE_GO`, the row collectors' words, a toast pin on any error line); v1.36's master tile has Ingress/Egress (17.6) | nothing: `test_ingress_egress` (17.6 from the specification and the RTL's `ingress_egress_unit`: the arrivals, `RELEASE`, the watchdog and its ties, the error lines, the toast pin, the LED, the window's map, the UART and the host interface) stands for it; deletion with the old suites (P11) |
 | `test_slotconf` | the replayer stage's first row | there |
 | `test_chip`, `test_sort`, `test_cc_units`, `test_cc_req`; `test_p4suites`, `test_ctl_suites`, `test_sort_suites` | v1.3's goldens and suites of the chip: v1.35's images under C&C's commands, C&C 1–3 as cores with `cc1.c`, v1.3's fingerprints of v1.35's state; the last three run the suite programs that `./run_tests.sh` has pending. What they checked of the chip end to end is checked on v1.36's by `test_rtl_sort` | each test ported to v1.36's chip or deleted (P11) |
 | `fw/mesh-v1.2-draft.h`, `tools/regs/header_diff.sh`, `tests/test_header_diff.sh` | v1.35's comparison of its generated header with its v1.2 draft; it means nothing for v1.36's map (the files are kept, unused) | deletion at the firmware port (P11) |
@@ -265,7 +266,8 @@ Checks that left a ported test, and sources that are in no target any more:
 Every step of v1.3's runner is still printed, in v1.3's order under v1.3's name, as one of three:
 - it **runs** (ported, or v1.36's own): `layout`, `bus`, `rtl-images`, `rtl-tile` (acceptance A), `rtl-sort`
   (acceptance B: the 16-record runs and the run split over threads; `rtl-sort-64k` in `all`), `rtl-segment` (acceptance
-  C: the generated segments; `rtl-segment-real` in `all`), `mem`, `mem-shuf`,
+  C: the generated segments; `rtl-segment-real` in `all`), `rtl-stream` (the master's host interface and UART on the
+  chip), `rtl-memory` (the RW engine and the memory run on the chip), `mem`, `mem-shuf`,
   `mem-shuf2` (`test_mem`: v1.3's MemTest is retired, section 7), `core-programs` and `core-tile` (the RTL's core),
   `replayer`, `memsys`, `rvc`, `tracer`, `tracer-block-synth`, `tracer-block`; with `--check`, `bus`, `replayer`,
   `memsys`, `rvc`, `tracer` and the two `tracer-block` steps are compared with their reference logs and equal them;
@@ -327,8 +329,9 @@ unit, the inject unit and the scratchpad are the specification's (`src/units/REA
 | what | the RTL | the simulator | closes |
 |---|---|---|---|
 | the router under random load | the arbiters and queues of 16.3 | v1.35's router with v1.36's rules: the attach ports on tiles 0, 7 and 15, a reserved dst dropped, a special tile's router (its DMA input with the tile's own id and 16.4's flow control, an attach arrival for another tile dropped, its eject's order). `test_special_router` checks from the specification the routes of all 67 × 67 pairs at four cycles a link, the broadcast, the arbiters' round-robin order, the loopback queue's rule, a full queue's loss, and those rules; what no test compares with the RTL is a router under random many-to-one load (`test_router`'s references past a reserved id are the simulator's own, section 3). The overflow is counted a cycle after the lost push (the RTL signals it in the push's cycle); a special tile has one DMA input (the RTL allows four) | a conformance against the RTL's router |
-| the memory tile | the RW engine (17.7): its region, its DMA's two queues, LPDDR over AXI4 | a stand-in with 17.7's `PARAMS` and words, idle; **a `START`, a store to its words, a transfer or a `WRITE` into its region stops the simulator** | P10 |
-| Ingress/Egress | the UART both ways, the host interface (AXI4-Stream) both ways, the LED and the toast pin (17.6) | the nets, `RELEASE`, the watchdog (a store or a `RELEASE` in the expiry's cycle wins), the LED, the toast pin, the UART's transmit FIFO; the UART's and the host interface's receive sides read empty; **a store to the host interface's transmit words stops the simulator** | P10 |
+| the memory tile's RW engine under a stalled router input | the DMA's packet register holds one packet in front of the router, so a read's beats stay in output queue 0, whose room the read's next burst waits for (17.7; `peripheral_dma.veryl`) | the engine is the RTL's (`rw_engine.h`; section 9), and the slot's DMA ends a transfer as the RTL's does, but its packets go into the router's DMA input, a queue of `cc_dma_depth` (4): with the router not taking, up to 4 packets leave queue 0 where the RTL holds one, so a read may raise its next burst earlier. No difference while the router takes a packet a cycle (`test_rtl_memory`: equal to the RTL's chip, cycle for cycle); at the slot's port, with the router input played as the RTL's register, the engine equals the RTL under every stall (`test_rw_engine`) | with the router |
+| the memory tile alone | `memory_tile_test`: the tile with a program of the test's: a read under a stalled attach output (the DMA waiting for the router), region `WRITE`s of 64 and 32 bits through the tile, an LPDDR error to `ERRORS.peripheral_1`, the NMI, the reports 24 and 25 and the error line | the tile's composition is checked in the chip (`test_rtl_memory`: the straps, the requests and their credits, the registers, the write port, the DMA's input, the events), and those three at the unit only (`test_rw_engine`: the room under a stall with the router input played, the three sizes, the engine's error bit and the slot's live bit); no one-tile bench for a special tile | the bench of section 1's `special` row |
+| Ingress/Egress | the UART both ways, the host interface (AXI4-Stream) both ways, the LED and the toast pin (17.6) | the same, register for register (`uart.veryl`, `ingress_egress_unit.veryl`; section 8's note 10): the UART's line at the pins, both FIFOs, the stalls, the line errors, the host interface's FIFOs and ports at `STREAM_BYTES` 1 to 16. The serial line's far end and the LVDS IO block are not chip hardware: a test bench plays them through the model's per-cycle boundary (`IngressEgress::boundary`; `tests/ie_far_end.h`), and without one the inputs are idle, as the RTL chip's tests' `idle_inputs`. What is left is the nets' (section 6: an error line's level a cycle late) | closed (`test_ingress_egress`, `test_rtl_stream`, `tests/ie_teeth.sh`) |
 | the tracer tile's memory system | *Open* behind the `fill` port (17.9.14); the RTL's chip tests place a model of it | on the chip the tests place the RTL test's model on the Tracer's fill port (`Tracer::FillPort`; the segment stage); the simulator's own `MemSystem` over a `FileStore` is the block-level tests'; a run with neither stops the simulator | the memory system's design |
 | the peripheral's DMA under a full router input | the packet register takes an entry whenever it is empty or its packet leaves, and offers it until the router takes it (`peripheral_dma.veryl`) | an entry is taken only in a cycle the router's input has room (the credit); the same packets a cycle apart at most, and the transfer's end the same | with the router |
 | the gather queue's count while a read is refused | a request leaves the queue in the cycle its first read enters the read register, which is empty or taken then (`gather_unit.veryl`) | the request leaves the queue when its first read is put, a cycle before the register is known to take it: with a read refused, the queue holds one request fewer than the RTL's for those cycles. Only an overflow at exactly 64 queued sees it, which the address generator alone cannot produce (13) | the timing stage |
@@ -368,7 +371,8 @@ Cycles, a step from its release to the next step's, the total from L1's release 
 | | 64 × 16 kv32 | 64 × 16 k128 | 64 × 64K kv32 | 64 × 64K k128 |
 |---|---|---|---|---|
 | from the reset to the load's release | 20,784 | 20,784 | 20,784 | 20,784 |
-| the image's start-up, to L1's release (**the RTL's: 16,033**) | 16,036 | 16,036 | 16,036 | 16,036 |
+| the image's start-up: from the load's release to every tile's arrival, as the master records it | 16,033 | 16,033 | 16,033 | 16,033 |
+| the same, to L1's release | 16,036 | 16,036 | 16,036 | 16,036 |
 | L1 | 7,518 | 7,646 | 335,118 | 475,646 |
 | SPLIT | 118,367 | 118,367 | 259,473 | 259,473 |
 | XB | 9,856 | 10,176 | 9,856 | 10,176 |
@@ -380,7 +384,16 @@ Cycles, a step from its release to the next step's, the total from L1's release 
 | total | 150,261 | 153,013 | 952,154 | 1,306,907 |
 | the link's latency at tile 0, as the master measures it | 36 | 36 | 36 | 36 |
 
-Every figure but the start-up's is the RTL's. How they came to be, each change a unit brought to the specification and
+Every figure is the RTL's, the start-up's two among them, and `test_rtl_sort` checks each. **The start-up was never 3
+cycles off:** the RTL's README gives "the image's start-up 16,033", which is `chip_test`'s line for release 1, from the
+load's release to the master's record of every tile's arrival; this page compared it with the simulator's 16,036 from
+the load's release to L1's release. The RTL's chip gives both: its master's summary in each of the four runs holds
+phase 0 arrived at 20,780 and released at 20,784, phase 1 arrived at 36,817 and released at 36,820, the simulator's
+words exactly (Snarky One's main at 076e647, a scratch test that runs `chip_test`'s set-up and reads the summary from
+the master's DMEM; `BARRIER_RELEASE`'s flip-flop is 1 in the RTL's cycles 20,784 and 36,820, a cycle sooner than the
+simulator numbers them). In the kv32 run of 16 records, every retirement of the master's core and of tiles 0, 27 and
+63's, 52,810 in the first 39,990 cycles, is at the same pc in the same cycle in both (the RTL's `rvfi_valid` and
+`rvfi_pc_rdata`, the simulator's retire trace). How the steps' figures came to be, each change a unit brought to the specification and
 none made for a figure (the 64 × 16 kv32 total and the 64 × 64K k128 total, the RTL's 150,261 and 1,306,907): before
 the units, 150,378 and 1,288,415; the scratchpad and the inject unit (`READ_LATENCY` 3, a write winning its bank, the
 arbiter), 150,238 at 16 records; the write engine's pipeline and `PTR`'s and `HIST`'s timing, no change (a phase waits
@@ -393,7 +406,6 @@ What still differs:
 
 | what | the RTL | the simulator | the RTL's source |
 |---|---|---|---|
-| the image's start-up, from the load's release to L1's release | 16,033 cycles | 16,036 (16,035 before the live levels' cycle): not traced to a unit. The request unit and tree are checked against the RTL's timing in every cycle (`test_request_tree`: a receive queue's read was a cycle late and is fixed, which did not move this figure), which leaves the master's UART as the candidate | `rtl/chip/README.md`, Results |
 | `ERRORS.drift` | set at the end of the cycle a group transfer's read is refused in | set two cycles later: the generator learns of the refusal the cycle after (the Hold), and its pulse crosses a Link(1) | `rtl/blocks/dma_unit/src/address_generator.veryl` (`drift`) |
 | a write's landing in a peripheral | within `PERIPHERAL_LATENCY` (at most `LAND_LATENCY` − `WRITE_PORT_LATENCY` = 6) of the write port, which presents it `WRITE_PORT_LATENCY` = 2 cycles after the director takes it; the replayer and the Tracer land it at the end of the port's cycle | the same (the slot's `region`, a Link of `WRITE_PORT_LATENCY` + 1; `accept(t)` presenting in *t* + 2). The director's acceptance cycle on the tile is the RTL's for a loopback packet (injected in T, accepted in T + 3: `test_mach`'s gather case) | `rtl/tile/base/spec.md` 12.3, 17.3; `rtl/blocks/replayer_unit/src/replayer_unit.veryl` line 47, `rtl/blocks/tracer_unit/src/tracer_control.veryl` line 53 |
 | the nets | `BARRIER_ARRIVE` a flip-flop's pulse the cycle after the tile is ready, a wire to Ingress/Egress; `BARRIER_RELEASE` a flip-flop of Ingress/Egress, in every tile in the same cycle; the error lines wires | the chip's nets at those latencies (`arrive_latency` 0, `release_latency` 1, `error_latency` 0), but an error line's level reaches `ERROR_LINES` a cycle later than the RTL's wire (a Link of 1 + `error_latency`: a Wire cannot cross thread domains) | `rtl/tile/base/spec.md` 7.3, 18; `rtl/chip/src/chip.veryl` |
@@ -441,3 +453,67 @@ v1.36, and they are not regenerated: tests written from the specification and th
    stall"; `src/write_unit.veryl`).
 9. **The live levels** (`EVENTS.request_pending`, a peripheral's event and error) reach `meip` and `nmi` a cycle after a
    load reads them (`rtl/blocks/tile_control_unit/README.md`, "Timing").
+10. **Ingress/Egress's UART and host interface** (17.6 gives the frames, the FIFOs and the rules, and no cycle; all of
+    these are `rtl/blocks/ingress_egress_unit`'s: `src/uart.veryl`, `src/ingress_egress_unit.veryl`, `README.md`,
+    "Timing" and "Decisions"):
+    - the transmitter's idle point is no frame or the last cycle of a stop bit; a byte is popped at the end of a cycle
+      at an idle point with the TX FIFO not empty, and its start bit is on `uart_tx` from the next cycle: *p* + 2 for a
+      store presented in *p* into an empty FIFO; frames are back to back, 10 *D* apart; `uart_tx` is a flip-flop;
+    - each direction takes `UART_DIVISOR` at a frame's start, as it stands at the start of that cycle (the pop's cycle;
+      the cycle the receiver sees the falling edge in); a divisor of 0, UB, wraps the counters (16 bits; the
+      receiver's 17);
+    - the receiver: two synchronising flip-flops and a third for the line's last value, so a falling edge on the pin in
+      *c* starts a frame in *e* = *c* + 2; bit *k* is sampled in *e* + *k D* + ⌊*D* / 2⌋; the frame ends at the stop
+      bit's sample, and the receiver is idle again from the next cycle; the start bit is not sampled;
+    - "full" for `rx_overrun` and for both stalls is the FIFO's count at the start of the cycle, a pop in that cycle
+      notwithstanding (the library's `queue`); a stalled store is taken in the first cycle at whose start its FIFO
+      has room (`register_bus` presents it in every cycle; `lines_ready`, `stream_ready` from registers);
+    - a line error raised at the end of a clearing store's cycle stays set; `UART_STATUS`'s TX count is the FIFO's
+      alone (the byte on the line has left it);
+    - a pop (`UART_RX`, `STREAM_RECEIVE`) is at the end of the load's cycle and only if the FIFO was not empty at its
+      start: a byte or a beat entering at that cycle's end stays;
+    - `lvds_out_tvalid` and `lvds_in_tready` are flip-flops loaded with the FIFO's next state: `tvalid` from *p* + 1
+      for a send presented in *p* into an empty FIFO, the next beat (or 0) the cycle after a handshake; `tready` 0 in
+      the first cycle after the reset, and the cycle after a handshake fills the FIFO, 1 the cycle after a pop;
+      `lvds_out_tdata` and `_tlast` are the FIFO's head register; a beat in is read from the cycle after its handshake;
+    - `STREAM_OUT_W0`–`W2` hold only the words below the beat's top; a store at or above the top, and the top word's
+      bits past TDATA, change nothing; `STREAM_BYTES` is the chip's 4 (`Veryl.toml`), a setting of the model (1–16).
+    In the simulator a load that pops is new to the slot: the peripheral's `load_pops` and `load_effect`, the window's
+    static bits `Win::R_POPS` and the core's `CoreOp::LOAD` (`periph_slot.h`, `peripheral.h`, `tile_ctl.h`).
+
+### 9. Notes: what the RW engine's model takes from the RTL where the specification is silent
+
+`src/units/rw_engine.h` is the RTL's `rw_engine_unit` (`rtl/blocks/rw_engine_unit/src/rw_engine_unit.veryl`, its
+README's Timing and Decisions), on the slot's control block and DMA (`rtl/blocks/peripheral`). 17.7 leaves these to
+the implementation, and the model takes the RTL's:
+
+1. **The bursts** are the job's 64-byte groups: each burst runs from the job's next beat to the end of that beat's
+   aligned group of 4 beats, or to the job's last beat (17.7: "their lengths are the implementation's").
+2. **A read's room** (17.7: "only while the queue has room for every beat in flight"): a burst of *L* beats is
+   raised only if the beats raised and not yet received, with *L*, fit in output queue 0's free entries at the start
+   of the cycle; the entry the DMA takes in a cycle is still counted as held in that cycle.
+3. **The cycles**: `START` presented in *p* takes the job's registers at the end of *p*; `STATUS.busy` from *p* + 1;
+   the first burst raised at the end of *p* + 1, on AR or AW from *p* + 2, and a next burst at the edge after the
+   address channel frees; a write's first beat on W in *p* + 3 and a beat a cycle while WREADY is 1 (the buffer's row
+   read in every cycle, the pending one again until the W register takes it); a job of 0 beats ends in *p* + 1; a
+   read ends in the cycle its last beat comes and a write in the cycle of its last response, `EVENTS.done` posted
+   then. 21.5's row gives the first three of these.
+4. **The write data may run ahead of its address**, and the writes outstanding have no bound of their own; AR and AW
+   share their address and length register; RREADY and BREADY are 1 and RLAST is not read.
+5. **The write port** lands a `WRITE` at the edge that ends the cycle the port presents it (the RTL's README counts
+   that as 1 of `PERIPHERAL_LATENCY`'s 6); a write past the buffer's end lands at its row within the buffer, a misaligned
+   one lands aligned, one of the reserved size writes nothing (all UB: the model also flags them).
+6. **The reply**: `RW_REPLY_W0` is a register, 0 at the reset; a store to `RW_REPLY_SEND` pushes at the end of its
+   cycle, into room at its start, and clears `RW_REPLY_W0`; a push to a full queue 1 (UB) is lost, `RW_REPLY_W0`
+   cleared all the same (flagged). Queue 1 holds one entry.
+7. **`lpddr_error`** is set by any response but OKAY, EXOKAY among them, at the end of its cycle.
+8. **A `START` in the cycle a job ends** starts the next (the RTL's test does it); a `START` while busy otherwise is
+   UB and stops the simulator. `RW_CONFIG`, `RW_LPDDR_ADDR` and `RW_BUFFER_ADDR` are 0 before their first store and
+   keep their values through a reset (the RTL does not reset them: undefined, 17.7).
+9. **The slot's DMA** (`peripheral_dma.veryl`): a transfer ends in the cycle its last packet leaves the packet
+   register, so its end, like a take, waits for the router input's room (`dma_run`); with a count of 0 it ends the
+   cycle after `DMA_START`'s, if the register is empty or its packet leaves.
+10. **The LPDDR controller is not chip hardware**: the `lpddr` port is the simulator's boundary, a harness places an
+    AXI4 slave on it (`LpddrSlave`), and a job that raises a burst with none stops the simulator. The reset is not
+    the port's: a harness that resets the engine resets its slave (3: "the LPDDR controller, which shares the
+    reset").

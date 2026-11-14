@@ -1,0 +1,78 @@
+diff --git i/rtl/chip/test/src/chip_memory_test.rs w/rtl/chip/test/src/chip_memory_test.rs
+index f3b14f0..fd85efa 100644
+--- i/rtl/chip/test/src/chip_memory_test.rs
++++ w/rtl/chip/test/src/chip_memory_test.rs
+@@ -125,7 +125,13 @@ impl Lpddr {
+ 
+ /// One cycle: the slave's outputs, the chip's eval, the handshakes, the edge.
+ fn cycle(chip: &mut Chip, lpddr: &mut Lpddr, now: u32, reset: bool) {
+-    let ready = [lpddr.random.below(4) != 0, lpddr.random.below(4) != 0, lpddr.random.below(4) != 0];
++    // meshsim v1.36: MS136_FIXED=<latency> makes the slave deterministic (every ready 1, one latency, no draw).
++    let fixed: Option<u32> = std::env::var("MS136_FIXED").ok().map(|v| v.parse().unwrap());
++    let ready = if fixed.is_some() {
++        [true; 3]
++    } else {
++        [lpddr.random.below(4) != 0, lpddr.random.below(4) != 0, lpddr.random.below(4) != 0]
++    };
+     let beat =
+         lpddr.reads.front().filter(|read| read.1 <= now && !reset).map(|&(burst, _, sent)| {
+             (lpddr.word((burst.beat + u64::from(sent)) % LPDDR_BEATS), sent + 1 == burst.beats)
+@@ -161,27 +167,32 @@ fn cycle(chip: &mut Chip, lpddr: &mut Lpddr, now: u32, reset: bool) {
+     if !reset {
+         if beat.is_some() && chip.lpddr_rready() {
+             let read = lpddr.reads.front_mut().expect("a burst");
++            println!("MEMEV {now} R {:x} {}", read.0.beat + u64::from(read.2), u8::from(read.2 + 1 == read.0.beats));
+             read.2 += 1;
+             if read.2 == read.0.beats {
+                 lpddr.reads.pop_front();
+             }
+         }
+         if response && chip.lpddr_bready() {
++            println!("MEMEV {now} B 0 0");
+             lpddr.responses.pop_front();
+         }
+         if chip.lpddr_arvalid() && ready[2] {
+             let burst = Burst { beat: ar.0 >> 4, beats: ar.1, size: ar.2, kind: ar.3 };
+             lpddr.bursts.push((false, burst));
+-            let due = now + 1 + lpddr.random.below(LATENCY);
++            println!("MEMEV {now} A {:x} {}", burst.beat, burst.beats);
++            let due = now + 1 + match fixed { Some(latency) => latency, None => lpddr.random.below(LATENCY) };
+             let due = lpddr.reads.back().map_or(due, |read| due.max(read.1));
+             lpddr.reads.push_back((burst, due, 0));
+         }
+         if chip.lpddr_awvalid() && ready[0] {
+             let burst = Burst { beat: aw.0 >> 4, beats: aw.1, size: aw.2, kind: aw.3 };
+             lpddr.bursts.push((true, burst));
++            println!("MEMEV {now} W {:x} {}", burst.beat, burst.beats);
+             lpddr.writes.push_back(burst);
+         }
+         if chip.lpddr_wvalid() && ready[1] {
++            println!("MEMEV {now} D {:x} {}", w.0 as u64, u8::from(w.2));
+             lpddr.pending.push_back(w);
+         }
+         // Each beat taken, once its burst's address is in (AXI4 lets a beat come before it).
+@@ -201,7 +212,7 @@ fn cycle(chip: &mut Chip, lpddr: &mut Lpddr, now: u32, reset: bool) {
+             if lpddr.written == burst.beats {
+                 lpddr.writes.pop_front();
+                 lpddr.written = 0;
+-                lpddr.responses.push_back(now + 1 + lpddr.random.below(LATENCY));
++                lpddr.responses.push_back(now + 1 + match fixed { Some(latency) => latency, None => lpddr.random.below(LATENCY) });
+             }
+         }
+     }
+@@ -260,10 +271,15 @@ fn chip_memory_test() {
+     let done_address = master.summary_address + 4 * SUMMARY_DONE as u32;
+     let mut now = 0;
+     let mut done = false;
++    let mut first_done = false;
+     while !done && now < CYCLE_LIMIT {
+         for _ in 0..64 {
+             cycle(&mut chip, &mut lpddr, now, false);
+             now += 1;
++            if !first_done && dmem_words(&mut chip, MASTER, done_address, 1)[0] == DONE {
++                first_done = true;
++                println!("MEMDONE {now}");
++            }
+         }
+         done = dmem_words(&mut chip, MASTER, done_address, 1)[0] == DONE;
+     }

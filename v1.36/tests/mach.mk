@@ -9,6 +9,10 @@ MACH_LINK := $(MACH_OBJ) $(NET_LINK) $(B)/src/units/trace_log.o $(B)/src/units/t
 $(B)/test_mach: $(MACH_LINK)
 # acceptance B: the RTL's sort images on the chip (tests/test_rtl_sort.cpp)
 $(B)/test_rtl_sort: $(MACH_LINK)
+# the master tile's external IO on the chip: the RTL's chip_stream_test, and the UART through the core (tests/test_rtl_stream.cpp)
+$(B)/test_rtl_stream: $(MACH_LINK)
+# the memory tile in the chip: the RTL's memory run, an AXI4 slave on the lpddr port (tests/test_rtl_memory.cpp)
+$(B)/test_rtl_memory: $(MACH_LINK)
 # test_checkself: oracle/ref/CheckSelf.java's sequence (the checker), apart from test_mach
 $(B)/test_checkself: $(MACH_LINK)
 

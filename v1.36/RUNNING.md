@@ -28,7 +28,7 @@ pending steps by reason and ends with `N steps REPLACED …; M steps PENDING` (2
 the 64K key file; 22 and 14 in `quick`), and the run exits 0 when every step that runs passed. `PENDING-v1.36.md` (the
 platform stage, section 4) has both tables, and what each replacement does not cover; in `run_tests.sh` a replaced
 or pending step keeps its v1.3 `step` line under it as a comment. The steps that run: `layout`, `bus`, `rtl-images`,
-`rtl-tile`, `rtl-sort` (and `rtl-sort-64k` in `all`), `rtl-segment` (and `rtl-segment-real` in `all`), `mem`, `mem-shuf`, `mem-shuf2`, `core-programs`, `core-tile`,
+`rtl-tile`, `rtl-sort` (and `rtl-sort-64k` in `all`), `rtl-segment` (and `rtl-segment-real` in `all`), `rtl-stream`, `rtl-memory`, `mem`, `mem-shuf`, `mem-shuf2`, `core-programs`, `core-tile`,
 `replayer`, `memsys`, `rvc`, `tracer`, `tracer-block-synth` and `tracer-block`. Those with no v1.3 step are v1.36's own, with no reference log: a
 failing test fails the run. `rtl-tile`, right after `bus`, is acceptance A: the RTL's tile programs on one compute
 tile (`build/clang-suite/test_rtl_tile`); what the test itself leaves pending is counted apart. `rtl-sort` is
@@ -54,6 +54,8 @@ The times are wall times on the runner (an Intel i5-14400F: 6 P cores and 4 E co
 | `rtl-tile` | both | `build/clang-suite/test_rtl_tile` | <1 s | `results/rtl-tile.log` | the RTL's `base_tile_test.rs`'s verdicts and the boot ROM's cycles, in the test |
 | `rtl-sort` | both | `build/clang-suite/test_rtl_sort sort_oracle`, then `… sort_16` | 5 s | `results/rtl-sort.log` | the RTL's `chip_test.rs`'s checks against the oracle, in the test; the split runs' digests against one domain's |
 | `rtl-segment` | both | `build/clang-suite/test_rtl_segment segment_` | 3 s | `results/rtl-segment.log` | the RTL's `chip_trace_test.rs`'s checks against the RTL's models' segments, and every cycle against the RTL chip's own figures (`tests/segment/rtl/`), in the test |
+| `rtl-stream` | both | `build/clang-suite/test_rtl_stream` | <1 s | `results/rtl-stream.log` | the RTL's `chip_stream_test.rs`'s checks, and the RTL chip's cycles for the same far ends (the host interface's handshakes, the UART's frames through the core), in the test |
+| `rtl-memory` | both | `build/clang-suite/test_rw_engine`, then `…/test_rtl_memory` | 2 s | `results/rtl-memory.log` | the RTL's `rw_engine_unit_test.rs` ported, with the RTL's outputs' fingerprints (`tests/rwengine/unit.fp`), and the RTL's `chip_memory_test.rs`'s checks with the RTL chip's handshakes on `lpddr` (`tests/rwengine/chip-memory-*.ev`), in the tests |
 | `net` | both | `build/clang-suite/test_router`, then `…/test_special_router` | <1 s | `results/net.log` | **replaced**: v1.3's NetTest cannot run; ref's router observations with v1.36's two rules, and 16.2–16.4, in the tests |
 | `net-shuf` | both | — | <1 s | `results/net-shuf.log` | **replaced**: in the step `net` (`test_router`'s own shuffled and instance-major runs) |
 | `net-shuf2` | both | — | <1 s | `results/net-shuf2.log` | **replaced**: in the step `net` |

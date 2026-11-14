@@ -437,3 +437,38 @@ TEST(mach_chip_builds_and_steps) {
     }
     CHECK_EQ(m.c.tile(66).reg(units::PARAMS) & 0x7Fu, 66u);
 }
+
+// 13, 14.1 and the RTL's gather unit (rtl/blocks/gather_unit/README.md, "Timing"), on the whole tile: the director, the
+// gather unit, the read arbiter and the tile control unit. For a GATHER the director accepts in cycle a (its own log
+// gives a), with every read taken the cycle it is offered:
+//     STATUS.gather_busy 1 from a + 1 (the request is in the queue);
+//     its first read offered and taken in a + 2, the value's next reads and the next value's first one a cycle;
+//     STATUS.gather_busy 0 from the cycle after the last read's take.
+// busy is "the queue holds a request or a request's last read is not yet taken": the reads taken, whose rows and
+// packets are still on their way (READ_LATENCY and the loopback), are not in it. A value of k records is k / 2
+// 128-bit reads when k is even and k 64-bit reads when it is odd. The records are in bank 0 and PTR[me], where the
+// values land, in bank 1, so no write meets a read.
+TEST(mach_gather_busy_is_the_queue_or_a_read_not_yet_taken) {
+    for (unsigned k : {1u, 3u, 4u, 8u})
+        for (unsigned requests : {1u, 2u, 5u}) {
+            mach::MachConfig cf = Net::cfg(-1);
+            cf.real_responder = true;
+            Net n(cf);
+            mach::TileRef p = n.c.tile(17);
+            p.set_gather_config(mach::fields::gather_config(0x4000, k));
+            p.set_ptr(17, 0x20000);
+            for (unsigned i = 0; i < requests; i++) n.at(17, 60 + i, 17, lw::M_GATHER, 0, 0, lw::SIZE_64, uint64_t(i) << 32, 0);
+            std::vector<uint8_t> busy(200);
+            for (unsigned c = 0; c < 150; c++) { n.step(); busy[size_t(n.c.cycle())] = uint8_t(p.status() >> units::ST_GATHER_BUSY & 1); }
+            const auto log = n.log(17);
+            CHECK(log.size() >= requests);
+            const uint64_t a = log[0][0];
+            for (unsigned i = 0; i < requests; i++) CHECK_EQ(log[i][0], a + i);   // accepted one a cycle
+            const unsigned reads = requests * (k % 2 ? k : k / 2);
+            for (uint64_t t = 1; t <= 150; t++) CHECK_EQ(unsigned(busy[t]), t >= a + 1 && t <= a + 1 + reads ? 1u : 0u);
+            const units::Gather& g = p.unit<units::Gather>("gather");
+            CHECK_EQ(g.reads, uint64_t(reads));
+            CHECK_EQ(g.stall_cycles, uint64_t(0));
+            CHECK_EQ(log.size(), size_t(requests + reads));   // each read came back as one APPEND to the tile itself
+        }
+}

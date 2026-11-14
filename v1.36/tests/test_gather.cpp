@@ -146,7 +146,9 @@ TEST(gather_busy_half_rises_with_the_first_put_and_falls_the_cycle_after_the_las
     Sim sim = Bench::make({{4, 1, 0}}, mc(1), 0, 1, 0);
     sim.run(20);
     auto& b = sim.unit<Blk>("blk");
-    // the request is delivered at 5: taken, one read put at 5 (busy put at 5, seen 6); at 6 nothing: busy 0 (seen 7)
+    // its half of STATUS.gather_busy is "a read put this cycle", which is offered in the next (gather.h): the request is
+    // delivered at 5: taken, one read put at 5 (seen by the tile control unit at 6); at 6 nothing put: 0 (seen 7). The whole
+    // level, with the director's and the read arbiter's halves, is test_mach's mach_gather_busy_is_the_queue_or_a_read_not_yet_taken
     bool rose = false, fell = false;
     for (auto& [at, v] : b.busy_at) { if (v && at == 6) rose = true; if (!v && at == 7) fell = true; }
     CHECK(rose);

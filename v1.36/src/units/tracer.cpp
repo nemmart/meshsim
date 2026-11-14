@@ -1276,8 +1276,13 @@ void Tracer::out_start(int64_t t, int q, int64_t words) {
     if (xfer_left_ > 0) FATAL("Tracer: a transfer started at %lld with one in progress", (long long)t);
     if (q == 0) {
         if (q0ptr_ + words > REC_WORDS) ub(t, "a transfer from output queue 0 past word 67 (17.9.6)", uint64_t(words), uint64_t(q0ptr_));
-    } else if (words > oq[q].occ + int64_t(QHALF) * 2) {
-        ub(t, "a transfer from an output queue of more entries than it can hold (17.9.6)", uint64_t(words), uint64_t(oq[q].occ));
+    } else {
+        // what the queue's credits cover (tracer_credits.veryl): 128 entries a credit, less those already read of the
+        // credit being taken; once the stream has ended, every entry the queue holds
+        const OutQueue& x = oq[q];
+        const int64_t covered = x.ended && x.ended_at < t ? int64_t(x.occ) : int64_t(x.credits) * QHALF - x.popped_part;
+        if (words > covered)
+            ub(t, "a transfer from an output queue of more entries than its credits cover (17.9.6)", uint64_t(words), uint64_t(covered));
     }
     xfer_queue_ = q; xfer_left_ = words;
     dma_busy_from_ = t + 1; dma_last_take_ = t;

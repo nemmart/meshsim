@@ -27,18 +27,51 @@ old suites (P11), the register tables and firmware headers (P12), the replayer (
 
 ## 2. Tests of `make check` that are not built (`pending.mk`)
 
+`make pending` lists them. What was ported out of this list: `test_mach`, `test_ag`, `test_gather`, `test_mem` (their
+commits say what changed in each); what each of them no longer checks is in the second table.
+
 | what | why | what closes it |
 |---|---|---|
 | `test_rv32`, `test_regblock`, `test_golden`, `test_controllers`, `test_broken_units`, `test_statefp_core`, `test_g1_replay`, `test_core_m2`, `test_statefp_g1`; the tools `golden`, `bench_controller` | v1.35's M1 bench (`src/units/controller.h`: v1.35's core with v1.35's register block) and its goldens: retire traces and fingerprints of v1.35's images, on v1.35's ISA, traps and map | the core stage (`v1.36-core`): the core's tests against the RTL's programs (riscv-tests and the core's own, built by `mise run core-images`); `controller.h` goes with it |
-| `test_g1_tile`, `test_tile_slot`, `test_tileslotconf` | one tile's control part driven by v1.35's stand: GO, the command block, v1.35's registers and programs | superseded by `test_rtl_tile` for the tile; the slot's part with the peripherals (P7) |
-| `test_ag`, `test_gather`, `test_mem`, `test_engconf`, `test_memconf` | the units driven directly against v1.3's observations; their drivers hold v1.35's `DMA_CONFIG`, record base and table layouts | the units' behaviour stage (P9), which changes these units' timing and so their references |
-| `test_mach`, `test_checkself`, `test_chip`, `test_sort`, `test_cc_units`, `test_cc_req`, `test_t2_harness`, `test_stageb`, `test_p4suites`, `test_ctl_suites`, `test_sort_suites`; the tools `replay_shard`, `stageb` | the machine (`tests/mach.h`) as v1.3's suites drive it: C&C's model or C&C 1–3 as cores, GO and DONE, commands, v1.35's images | the chip (P6–P8): the machine with the master, memory and tracer tiles and the RTL's images; then each test ported or replaced (P11) |
+| `test_g1_tile`, `test_tile_slot`, `test_tileslotconf` | one tile's control part driven by v1.35's stand: GO, the command block, v1.35's registers and boot-ROM programs | superseded by `test_rtl_tile` for the tile; the slot's part with the peripherals (P7) |
+| `test_engconf` | its four fixtures (`tests/engconf/t5-s1`, `t0-s2`, `t27-s3`, `t63-s4`) give 60–81 of their 256 `STREAM` entries a gap of 1–7 at random, and 38–51 of each fixture's 45–61 stream runs of two or more streams cross streams of different gaps; v1.36 has one gap a transfer (`DMA_CONFIG.gap`), so the scripts cannot be expressed in its layouts | the units' behaviour stage (P9), which changes these units' timing and needs new references in any case |
+| `test_memconf` | its observations are v1.3's fingerprint streams (`srq`, `inj`, `sram`, `sram.data`, `we`, `ts`, `hist`) through `tests/statefp_g1.*`, which no longer compiles: the same file writes v1.35's core and register block (`w_core`, `w_ctl`, `w_cmem`, `w_req`, the M1 bench's). The memory path's units and the script are not the obstacle (its `DMA_CONFIG` digits and record base would be written as `RECEIVE_CONFIG` and `GATHER_CONFIG`) | `statefp_g1.*` cut to the writers of units that are still v1.35's, then the driver's `dma` words; or P9 with new references |
+| `test_checkself` | ref's `CheckSelf.java` sequence provokes the checker kind by kind through v1.35's commands, replies, strays and a test's stores to v1.35's map (`Cc::command`, `TileRef::store`, `Mach::boot`: removed from `tests/mach.h`) | the checker's rules for v1.36's hardware, with the old suites (P11) |
+| `test_chip`, `test_sort`, `test_cc_units`, `test_cc_req`, `test_t2_harness`; `test_stageb`, `test_p4suites`, `test_ctl_suites`, `test_sort_suites`; the tools `replay_shard`, `stageb` | v1.3's goldens and suites of the chip: v1.35's images under C&C's commands, C&C 1–3 as cores with `cc1.c`, v1.3's fingerprints of v1.35's state; the last four run the suite programs that `./run_tests.sh` has pending | the chip (P6–P8): the master, memory and tracer tiles and the RTL's images; then each test ported or replaced (P11) |
 | `test_regs` | the register-table generator's tables are v1.35's map | P12 |
+
+Checks that left a ported test, and sources that are in no target any more:
+
+| what | why | what closes it |
+|---|---|---|
+| `test_mach`: ref's `MachSelf.java` sequence (`tests/mach/machself.out`) | every case boots a v1.35 image through C&C's commands or C&C 1–3 as cores, and reads `SIM_EXIT`, `TRACE` and v1.3's phase log | the chip's boot with the master tile (P7, P8); the fixture stays |
+| `test_mach`: ref's `NetSelf.java` cases but `packets`, `reads` and `a2a` (the first 47 lines of `tests/mach/netself.out`) | they drive v1.35's map through the core from the test, answer v1.35's `RESULT` requests, or print cycles that depend on v1.35's 128-entry request FIFO, its attach tiles 0–2 or the register block's view at the end of a cycle | the request tree (P7), the old suites (P11) |
+| `test_mach`: the replayer's row hook (`Chip::on_row`) | v1.35's replayer's row listener | the replayer's row port (17.8) |
+| `test_mem`: the case `block_sets_we_in_and_table_overflow_conditions_from_events` | `ERRORS` [4] and [5] of v1.35's register block; v1.36's `ERRORS` has no such bits (7.4), and `TileCtl` stops the simulator on those overflows (section 4) | P9: the FIFOs go |
+| `tests/phase_log.*` (v1.3's per-phase accounting, `Chip::phases()`) | its phases are C&C's GO stores named by command words, its counters v1.35's (the command block's overwrites, the send's stalls in the core), its CSV v1.3's byte for byte | the accounting suite (P11) |
+| `tests/statefp_g1.*`, and with it `Chip::digest()` and `MESHSIM_DIGEST` | ref's `StateFp` of v1.35's state (the core, the register block, the command block) | a fingerprint of v1.36's state, if one is wanted (the timing stage) |
+| `tests/golden_run.*`, `src/units/controller.*` | v1.35's M1 bench and the golden-trace driver | the core stage |
 
 ## 3. Steps of `./run_tests.sh` that are pending
 
-Listed by the runner itself; each is a suite built on the machine above, on v1.35's firmware, or a build check of v1.35's
-images. The steps that run: `layout`, `bus`, `rtl-tile` (acceptance A), `replayer`, `memsys`, `rvc`, `tracer`.
+The runner prints each as `PENDING (<reason>)` and counts them (47 in `all`, 36 in `quick`; five more, `stageb-<guest>`,
+with `DELIVERY` set); each keeps its v1.3 `step` line under it in `run_tests.sh`. The steps that run: `layout`, `bus`,
+`rtl-tile` (acceptance A), `mem`, `mem-shuf`, `mem-shuf2`, `replayer`, `memsys`, `rvc`, `tracer`; with `--check`, `bus`,
+the three `mem` steps, `replayer`, `memsys`, `rvc` and `tracer` are compared with their v1.3 references and equal them.
+
+| steps | why | what closes it |
+|---|---|---|
+| `sw-build`, `sort-build`, `cc-build`, `recipes-build` | build checks of v1.35's firmware images, which v1.36's tile does not run | the RTL's images (vendored in `fw/rtl/`) for the sort end to end (P8); the firmware headers (P12) |
+| `net`, `net-shuf`, `net-shuf2`; `skewtable` (*all*) | `suite_net`: NetTest checks v1.35's unexpected-packet and command conditions and its C&C attach tiles 0–2 | the NoC and topology (P6), then the old suites (P11) |
+| `engine`, `eng-shuf`, `rdport`, `rdport-shuf`, `searchbench`, `agtest`, `agtest-shuf`; `rdport-full`, `agbench`, `engine-full` (*all*) | their suites drive v1.35's `DMA_CONFIG`, record base, pulses and read port through harness hooks that went with them | the units' behaviour (P9), then the old suites (P11) |
+| `ctrl`, `ctrl-shuf`, `accounting`, `recipes`, `recipes-shuf`, `cond`, `cond-shuf`, `hooks`, `hooks-shuf`; `accounting-full`, `s1bench`, `ctrl-full` (*all*) | their suites run v1.35 firmware under C&C's commands (GO, DONE, the command block) | the sort end to end (P8), then the old suites (P11) |
+| `riscv` | `test_golden`: the M1 goldens of v1.35's core | the core stage (`v1.36-core`) |
+| `regdoc` | `REGISTERS.md` and `mesh.h` are v1.35's register map | the register tables and firmware headers (P12) |
+| `periph`, `periph-shuf` | `test_tileslotconf`: boot-ROM programs on v1.35's map and peripheral window | the peripherals (P7) |
+| `reqbus`, `reqbus-shuf` | `suite_reqbus`: v1.35's 128-entry request FIFO and its receive protocol through the harness | the request tree (P7) |
+| `cccores`, `cccores-shuf`; `ccbench` (*all*) | v1.35's C&C 1–3 as cores with `cc1.c` and `cc23.c` | the special tiles (P7) |
+| `replay-build`, `stageb`; `stageb-lrd_x0`, `stageb-scd_x0`, `stageb-nop_hint`, `stageb-jalr_self`, `stageb-jalr_zero` (`DELIVERY`) | v1.35's replay controller (`replay_ctl.c`) on v1.35's replayer and map | the replayer (17.8) |
+| `sort-p1`, `sort`, `sort-shuf`; `sort-bt-kv32`, `sort-bt-k128`, `sweep-quick` (*all*) | v1.35's sort firmware under C&C's commands | the sort end to end (P8) |
 
 ## 4. Behaviour the simulator still has from v1.35
 

@@ -49,6 +49,7 @@ can't share a process with ASan.
 | one program, including the drivers `make` leaves out (`t2`, `chain`) | `make build/clang-release/<name>` |
 | everything, and check it: v1.3's copied files unchanged, the TSan thread tests, then every test in the debug and release builds with gcc and clang | `make check` |
 | every test of one build, run | `make run CC_NAME=gcc MODE=debug` |
+| the tests and tools that are not built yet in v1.36, listed | `make pending` |
 | the thread tests under TSan, gcc and clang | `make tsan` |
 | the firmware images, rebuilt and checked against the committed copies | `fw/build.sh --check` |
 | the firmware images, rewritten into `fw/images/` | `fw/build.sh` |
@@ -57,3 +58,8 @@ can't share a process with ASan.
 | the speed benchmarks | `bench/README.md` |
 
 `make clean` removes `build/`.
+
+**v1.36: what is not built.** `pending.mk` names the tests and tools that are still on v1.35's hardware or firmware and do
+not compile or cannot pass against v1.36's; `make`, `make check` and `make run` leave them out (`make check`'s TSan runs
+of three of them print `PENDING` or are left out), and `make pending` lists them. `PENDING-v1.36.md`, section 2, has
+each one's reason and what closes it. A test leaves `pending.mk` in the commit that ports it.

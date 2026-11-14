@@ -13,6 +13,16 @@ difference fails the run. An *equivalent* step runs the `make check` test that s
 verdict. `CC_NAME=gcc` uses gcc. With `DELIVERY=DIR` (a tracer delivery's replay inputs), five more Stage B steps run
 on its guest windows (`stageb-lrd_x0`, `scd_x0`, `nop_hint`, `jalr_self`, `jalr_zero`), unchecked.
 
+**v1.36: most steps are pending.** The move to the RTL's hardware has not reached the suites that run v1.35's firmware or
+drive v1.35's register map, so the runner prints and logs each such step as `PENDING (<reason>)` instead of running
+it, in v1.3's order under v1.3's name; its summary counts them by reason and ends with `N steps PENDING` (47 in `all`,
+36 in `quick`), and the run exits 0 when every step that runs passed. `PENDING-v1.36.md`, section 3, lists them and what
+closes each; in `run_tests.sh` a pending step keeps its `step` line under it as a comment. The steps that run: `layout`,
+`bus`, `rtl-tile`, `mem`, `mem-shuf`, `mem-shuf2`, `replayer`, `memsys`, `rvc` and `tracer`. `rtl-tile` is v1.36's
+own, right after `bus`: acceptance A, the RTL's tile programs on one compute tile (`build/clang-suite/test_rtl_tile`),
+with no reference log: a failing test fails the run, and what the test itself leaves pending is counted apart. The rows
+below for the pending steps, and the times, are v1.35's.
+
 The times are wall times on the runner (an Intel i5-14400F: 6 P cores and 4 E cores, 16 threads), from the freeze check (Quest 195: `./run_tests.sh all --check`, 712 s in all; Quests 194 and 196 for the kit and `make check`); `planning/TIMES-V135.md` has them all.
 
 | step | in | command | time | writes | checked against |

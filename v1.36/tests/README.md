@@ -27,6 +27,14 @@ except for the deliberate differences (D30; `spec/CHANGES-v1.3-to-v1.35.md`). Ea
 - **`./run_tests.sh`** runs v1.3's suites, ported, with v1.3's step names and logs; `--check` compares each log with its
   reference (`RUNNING.md`). The suites' sources are `suite_*.cpp`, `ctl/`, `stageb.cpp`, `sort_test.cpp` and the
   `*.mk` files; `suite.h` is their shared harness, `mach.h` the machine (`src/units/README.md`).
+- **v1.36: what is pending.** The tile is now the RTL's (`spec/CHANGES-v1.35-to-v1.36.md`), and the tests and suites
+  that run v1.35's firmware or drive v1.35's register map have not been ported: `pending.mk` takes those tests out of
+  the build (`make pending` lists them), `./run_tests.sh` prints their steps as `PENDING (<reason>)` and counts them,
+  and `../PENDING-v1.36.md` has a row for each with what closes it. Their sources, fixtures and reference logs stay as
+  they were; nothing was weakened to pass. What runs on v1.36's hardware today: `test_rtl_tile` (acceptance A: the
+  RTL's own tile programs on one compute tile; the runner's step `rtl-tile`), `test_mach` (the machine harness: the
+  boot ROM's pull boot on all 64 tiles, and v1.3's `packets`, `reads` and `a2a` sequences on the coreless machine), and
+  the unit tests whose drivers encode their cases in v1.36's layouts (`test_ag`, `test_gather`, `test_mem`).
 
 ## The fixture folders
 

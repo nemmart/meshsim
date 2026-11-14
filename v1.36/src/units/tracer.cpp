@@ -337,8 +337,9 @@ void Tracer::land(int64_t t, int, uint32_t offset, int size, uint64_t lo, uint64
 // line dropped (a write already requested still holds the buffer's place until its response); the template latch and
 // the bitmap cleared. The execution starts over from the state word: no row in flight, the next instruction at its pc.
 void Tracer::state_write(int64_t t) {
-    // word 0 lands before word 1 (state first), so the advice field is still the last segment's leftover here
-    if (advice_left() > 0) violate(t, V_ADVICE_UNCONSUMED, advice_left());
+    // word 0 lands before word 1 (state first), so the advice field is still the last segment's leftover here. The
+    // reset ends a segment and keeps the stream word (17.9.12): the first state write after it rewrites nothing.
+    if (state_written_ && advice_left() > 0) violate(t, V_ADVICE_UNCONSUMED, advice_left());
     state_written_ = true;
     rq_head_ = rq_occ_ = rq_half_ = rq_popped_ = 0; eq_head_ = eq_occ_ = eq_popped_ = 0;
     code_n = log_n = 0; rlog_values_ = wlog_values_ = 0;

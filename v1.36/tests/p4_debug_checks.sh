@@ -2,10 +2,11 @@
 # p4_debug_checks.sh: every P4 suite under the framework's debug options (p4_debug.h): --step-all and
 # --instance-major must print exactly what the plain run prints (and, for the steps equal to v1.3's, its log), at each
 # step's seeds. B: the build directory (default build/clang-suite). Run from sim/.
+# (v1.36: suite_mem, MemTest, is retired with v1.35's area queues: PENDING-v1.36.md; the steps mem* run tests/test_mem.cpp.)
 set -u
 B=${1:-build/clang-suite}
 fail=0
-for cmd in "suite_net -1 quick" "suite_net 5 quick" "suite_net 11 quick" "suite_net -1" "suite_mem -1" "suite_mem 3" "suite_mem 8" \
+for cmd in "suite_net -1 quick" "suite_net 5 quick" "suite_net 11 quick" "suite_net -1" \
            "suite_engine -1" "suite_engine 4" "suite_ag -1" "suite_ag 4" "suite_rdport -1" "suite_rdport 4" "suite_search" \
            "suite_reqbus -1" "suite_reqbus 4" "suite_agbench"; do
   "$B"/$cmd > /tmp/p4dc.plain 2>&1

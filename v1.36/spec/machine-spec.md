@@ -662,11 +662,14 @@ requires only these:
   load issued in cycle *t* with latency *L* returns the state at the end of
   *t* + *L* − 2, its **sample point**, and takes its side effect (an `EVENTS`
   load's consumption, a pop) at the end of *t* + *L* − 1.
-- **Stores.** A store takes the latency of a load from the same place, and
-  takes effect as a load takes its side effect: a store issued in cycle *t*
-  takes effect at the end of *t* + *L* − 1, the end of *t* + 1 in a window and
-  of *t* in a table. The state at the end of a cycle includes what takes effect
-  then, so a load issued after a store sees it.
+- **Stores.** A store takes effect as a load from the same place takes its side
+  effect: a store issued in cycle *t* takes effect at the end of
+  *t* + *L* − 1, the end of *t* + 1 in a window and of *t* in a table, and is
+  answered in *t* + 1 in both. A store that may stall (9, 11.1, 17.6) takes
+  effect at the end of the cycle *c* its unit takes it, *t* + 1 at the
+  earliest, and is answered in *c* + 1. The state at the end of a cycle
+  includes what takes effect then, so a load issued after a store sees it.
+- **An access fault** (5.1) is answered in *t* + 1, a load's or a store's.
 - **Lockstep.** Cores that leave the canonical wait (7.3) at the same `WFI` in
   the same cycle, and run identical code, retire identically, cycle for cycle.
   A phase's synchronised start relies on this.
@@ -2337,9 +2340,11 @@ an attach link included, in four cycles: three register stages and one for the r
 |---|---|---|---|---|
 | a load from a window | `WINDOW_LOAD_LATENCY` = 2 cycles; it returns the state at the end of *t*, and takes its side effect at the end of *t* + 1 | contract | 6.4 | the same |
 | a load from a table | `TABLE_LOAD_LATENCY` = 1; it returns the state at the end of *t* − 1 | contract | 6.4 | the same |
-| a store to a window | takes effect at the end of *t* + 1 | contract | 6.4 | the end of *t* |
-| a store to a table | takes effect at the end of *t* | contract | 6.4 | the same |
-| a store that stalls | `WRITE_SEND_32`, `_64`, `_128`, `REQUEST_SEND`, and Ingress/Egress's `UART_TX`, `STREAM_SEND` and `STREAM_SEND_LAST`: held until its owner takes it; no other store or load waits | contract | 9, 11.1, 17.6 | the same three, without the host interface's |
+| a store to a window | takes effect at the end of *t* + 1, and is answered in *t* + 1: a store costs the core one cycle, as a DMEM store | contract | 6.4 | the end of *t* |
+| a store to a table | takes effect at the end of *t*, and is answered in *t* + 1 | contract | 6.4 | the same |
+| a store that stalls | `WRITE_SEND_32`, `_64`, `_128`, `REQUEST_SEND`, and Ingress/Egress's `UART_TX`, `STREAM_SEND` and `STREAM_SEND_LAST`: held until its owner takes it, in a cycle *c*, *t* + 1 at the earliest, at whose end it takes effect; answered in *c* + 1; no other store or load waits | contract | 6.4, 9, 11.1, 17.6 | the same three, without the host interface's |
+| an access fault in region 0xFF | answered in *t* + 1, a load's or a store's | contract | 6.4, 5.1 | — |
+| a trap or an `MRET` | the handler's first instruction, or the one at `mepc`, retires 4 cycles after the trap is taken or the `MRET` retires `[meas: RTL]` | the RTL's | the core specification's "The core's cycle costs" | not stated |
 | a DMEM load or store | answered the next cycle; an instruction that uses a load's result right after it waits one cycle | contract | the core specification's Core contract | load-use 0 |
 | a taken branch, or a `JALR` that is not a ready return | the next instruction retires 4 cycles after it (3 more than after one not taken) | contract | the core specification's Core contract | 1 more |
 | a `JAL`, or a ready return | 3 cycles after it retires, or fewer if it waited in execute | contract | the core specification's Core contract | 1 more |

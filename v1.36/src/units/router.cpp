@@ -50,6 +50,10 @@ Router::Router(sim::Ports& p, unsigned tile, const NetConfig& c, const Hops* h, 
         }
         rr[o] = uint8_t(nfeed[o] - 1);
     }
+    // 16.3: the queues in their inputs' order, the links' (a special tile's DMA is on one) before the attach port's,
+    // the pointer 0 at the reset. FEEDERS_CC has the attach port's queue before the DMA's: the same round, which the
+    // eject's arbiter enters past the attach port's, so that the DMA's is its first (router_output.veryl).
+    if (cc) rr[EJECT] = slot_of[EJECT][CC_LINK_IN];
     if (base * 3 > sizeof store / sizeof store[0]) FATAL("router t%u: FIFO storage", tile);
 }
 

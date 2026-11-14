@@ -19,12 +19,17 @@ except for the deliberate differences (D30; `spec/CHANGES-v1.3-to-v1.35.md`). Ea
 - **Fingerprints:** a canonical hash of the machine's state at fixed points (`*.corefp`, the sort's `fp`, the chains'
   `*.starts`), so a long run is checked without a full trace. The formats are `TRACE-FORMAT.md`.
 
-**v1.36, against the RTL.** The core model is the RTL's core, not v1.3's (`src/units/rv32.h`), and its evidence is
-the RTL's own: Snarky One's core programs with the cycles, retired instructions and retire traces its simulation
-gave (`core-programs/`), which `test_core_programs` requires of the model exactly. Every tile runs it: `test_core_tile`
-checks its join to the tile's register bus, access by access, in `register_bus`'s cycles, and `test_rtl_tile` runs the
-RTL's tile programs on a tile and checks the boot ROM's cycles there. v1.35's core is gone, and with it what below
-runs on it (`../PENDING-v1.36.md` says which fixtures and tests are pending, and why).
+**v1.36, against the RTL.** The core, the replayer and the Tracer are the RTL's blocks, cycle for cycle, and their
+evidence is the RTL's own: Snarky One's core programs with the cycles, retired instructions and retire traces its
+simulation gave (`core-programs/`, which `test_core_programs` requires of the model exactly), the replayer's recorded
+windows and per-cycle scripts (`replayer/`, `acceptance/rtl/`), the Tracer's per-run figures (`tracerblock/rtl/`).
+The platform around them is checked by the RTL's own firmware, unmodified (`fw/rtl/`): `test_core_tile` checks
+the core's join to the tile's register bus, access by access, in `register_bus`'s cycles; `test_rtl_tile`
+(acceptance A) runs the RTL's tile programs on a tile, with the replayer in its slot, and checks the boot ROM's
+cycles there; `test_rtl_sort` (acceptance B) runs the RTL's sort images end to end on the chip, against an oracle
+written apart from the design. A reference made by the RTL is never regenerated from the simulator. v1.35's core
+and tile are gone, and with them what below runs on them (`../PENDING-v1.36.md` says which fixtures and tests are
+pending, and why).
 
 ## Tests and suites
 
@@ -40,10 +45,16 @@ runs on it (`../PENDING-v1.36.md` says which fixtures and tests are pending, and
   and `../PENDING-v1.36.md` has a row for each with what closes it. Their sources, fixtures and reference logs stay as
   they were; nothing was weakened to pass. What runs on v1.36's hardware today: `test_rtl_tile` (acceptance A: the
   RTL's own tile programs on one compute tile, with the boot ROM's cycles; the runner's step `rtl-tile`),
+  `test_rtl_sort` (acceptance B: the RTL's sort images on the chip, 64 × 16 records always, 64 × 65,536 with
+  `RTL_SORT_64K_KEYS`, and a run split over threads; the steps `rtl-sort` and `rtl-sort-64k`),
   `test_core_programs` and `test_core_tile` (the RTL's core; the steps `core-programs` and `core-tile`), `test_tile_control`
-  (the tile control unit and the register bus's decode against the specification's text), `test_mach` (the machine harness: the
-  boot ROM's pull boot on all 64 tiles, and v1.3's `packets`, `reads` and `a2a` sequences on the coreless machine), and
-  the unit tests whose drivers encode their cases in v1.36's layouts (`test_ag`, `test_gather`, `test_mem`).
+  (the tile control unit and the register bus's decode against the specification's text), `test_periph_slot` and
+  `test_tracer_slot` (the peripheral slot: 17.1's blocks and the RTL's cycles of a consuming load and of the DMA,
+  with the test peripheral, the replayer and the Tracer in it), `test_mach` (the machine harness: the
+  boot ROM's pull boot on all 64 tiles, the chip's build, and v1.3's `packets`, `reads` and `a2a` sequences on the
+  coreless machine), `test_router` (against ref up to v1.36's two rules, then `routerconf/v1.36/`), the unit stages'
+  tests (`test_replayer`, `test_replayconf`, `test_replay_lists`, `test_tracer*`), and the unit tests whose drivers
+  encode their cases in v1.36's layouts (`test_ag`, `test_gather`, `test_mem`).
 
 ## The fixture folders
 

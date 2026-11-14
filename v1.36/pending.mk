@@ -1,9 +1,9 @@
-# pending.mk: what v1.36's platform stage broke and nobody has ported yet. NOT BUILT: each of these tests and tools is
-# on v1.35's register map, control protocol (GO, DONE, commands), core or firmware images, which v1.36 replaces with the
-# RTL's (spec/CHANGES-v1.35-to-v1.36.md). Nothing here is deleted or weakened: the sources stay, and
-# PENDING-v1.36.md has a row for each (what, why, what closes it). `make pending` lists them; `./run_tests.sh` prints
-# its pending steps and counts them in its summary. An item leaves this file when it is ported: by the test's own
-# commit.
+# pending.mk: what v1.36's move to the RTL's hardware broke and nobody has ported yet. NOT BUILT: each of these tests and
+# tools is on v1.35's register map, control protocol (GO, DONE, commands), core, tile or firmware images, which v1.36
+# replaces with the RTL's (spec/CHANGES-v1.35-to-v1.36.md). Nothing here is deleted or weakened: the sources and the
+# reference logs stay, and PENDING-v1.36.md has a row for each (what, why, what closes it; the platform stage, section
+# 3, and the replayer's and the Tracer's stages). `make pending` lists them; `./run_tests.sh` prints its pending steps
+# and counts them in its summary. An item leaves this file when it is ported: by the test's own commit.
 
 # ---- make check's tests (tests/test_<name>.cpp) ----
 # v1.35's M1 bench (src/units/controller.h: the core with v1.35's register block and test bench) and its goldens: retire
@@ -18,19 +18,23 @@ PENDING_TESTS += test_g1_tile test_tile_slot test_tileslotconf
 # through tests/statefp_g1.*, which does not compile (it also writes v1.35's core and register block).
 PENDING_TESTS += test_engconf test_memconf
 # v1.35's conformance of C&C 1's peripheral against ref (READY_LINES, PULSE_GO, the row collectors' words, a toast pin on
-# any error line): v1.36's master tile has Ingress/Egress (17.6), whose own test is test_ingress_egress.
+# any error line): v1.36's master tile has Ingress/Egress (17.6), which runs on the chip (test_rtl_sort, test_mach) and
+# has no test of its own yet.
 PENDING_TESTS += test_cnc1_periph
 # ref's SlotConf scripts store and load v1.35's control-block words (the run and DMA pulses at 3 and 4, EVENTS at 5-7, the
-# DMA at 8 and 9) and reserved words at random, and their observations hold v1.35's DMA: an address that advances for
-# packets that are not WRITEs. v1.36's control and DMA blocks are tested from the specification in test_periph_slot.
+# DMA at 8 and 9) and reserved words at random, on a slot with the replayer in it, and their observations are ref's of
+# v1.35's replayer and DMA. v1.36's control and DMA blocks are tested from the specification and the RTL's
+# peripheral_control and peripheral_dma in test_periph_slot; a conformance against the RTL's blocks closes it.
 PENDING_TESTS += test_slotconf
 # What v1.3's suites and goldens drive on the chip: v1.35's images under C&C's commands, C&C 1-3 as cores, v1.3's
-# fingerprints. (tests/mach.h itself is ported: test_mach.) test_checkself: ref's CheckSelf sequence, which provokes
+# fingerprints. (tests/mach.h itself is ported: test_mach; the chip end to end is test_rtl_sort.) test_checkself: ref's
+# CheckSelf sequence, which provokes
 # the checker through v1.35's commands, replies and strays. test_p4suites, test_ctl_suites, test_sort_suites,
-# test_stageb run the suite programs that run_tests.sh has pending.
+# test_stageb run the suite programs that run_tests.sh has pending; test_stageb, stageb and replay_shard run v1.35's
+# replay controller on v1.35's tile (they passed on the replayer stage's branch, whose tile was still v1.35's);
+# test_t2_harness boots v1.35's C&C 3 with v1.35's tracer firmware.
 PENDING_TESTS += test_checkself test_chip test_sort test_cc_units test_cc_req test_t2_harness test_stageb \
                  test_p4suites test_ctl_suites test_sort_suites
-# The register-table generator's tables (tools/regs): v1.35's map.
 
 # ---- the other default targets ----
 PENDING_BIN := golden bench_controller replay_shard stageb

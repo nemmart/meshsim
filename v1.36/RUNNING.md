@@ -14,18 +14,25 @@ verdict. `CC_NAME=gcc` uses gcc. With `DELIVERY=DIR` (a tracer delivery's replay
 on its guest windows (`stageb-lrd_x0`, `scd_x0`, `nop_hint`, `jalr_self`, `jalr_zero`), unchecked.
 The step `tracer-block` reads the real workloads' data from `MESHSIM_INPUTS` (`~/meshsim-inputs` by default), outside the
 repository; without it the step is not run and is printed and counted as `PENDING`, with or without `--check`.
+The step `rtl-sort-64k` (*all*) reads the RTL's 64K key file, which `RTL_SORT_64K_KEYS` names (16 MiB, not vendored:
+`fw/rtl/README.md`; Snarky One's `mise run sort-images` writes it as `build/sort/sort-64k.keys`); without it the step is
+printed and counted as `PENDING` too.
 
-**v1.36: most steps are pending.** The move to the RTL's hardware has not reached the suites that run v1.35's firmware or
-drive v1.35's register map, so the runner prints and logs each such step as `PENDING (<reason>)` instead of running
-it, in v1.3's order under v1.3's name; its summary counts them by reason and ends with `N steps PENDING` (47 in `all`,
-36 in `quick`), and the run exits 0 when every step that runs passed. `PENDING-v1.36.md`, section 3, lists them and what
-closes each; in `run_tests.sh` a pending step keeps its `step` line under it as a comment. The steps that run: `layout`,
-`bus`, `rtl-tile`, `mem`, `mem-shuf`, `mem-shuf2`, `core-programs`, `core-tile`, `replayer`, `memsys`, `rvc` and `tracer`.
-`core-programs` and `core-tile` are v1.36's own too: the RTL's core programs on the core in the RTL's cycles
-(`test_core_programs`) and the core's join to the tile's register bus (`test_core_tile`), no reference logs. `rtl-tile` is v1.36's
-own, right after `bus`: acceptance A, the RTL's tile programs on one compute tile (`build/clang-suite/test_rtl_tile`),
-with no reference log: a failing test fails the run, and what the test itself leaves pending is counted apart. The rows
-below for the pending steps, and the times, are v1.35's.
+**v1.36: most of v1.3's steps are pending.** The suites that run v1.35's firmware or drive v1.35's register map have
+not been ported to the RTL's hardware, so the runner prints and logs each such step as `PENDING (<reason>)` instead of
+running it, in v1.3's order under v1.3's name; its summary counts them by reason and ends with `N steps PENDING` (48
+in `all`, 47 with the 64K key file; 36 in `quick`), and the run exits 0 when every step that runs passed.
+`PENDING-v1.36.md` (the platform stage, section 4) lists them and what closes each; in `run_tests.sh` a pending step
+keeps its `step` line under it as a comment. The steps that run: `layout`, `bus`, `rtl-tile`, `rtl-sort` (and
+`rtl-sort-64k` in `all`), `mem`, `mem-shuf`, `mem-shuf2`, `core-programs`, `core-tile`, `replayer`, `memsys`, `rvc`,
+`tracer`, `tracer-block-synth` and `tracer-block`. Those with no v1.3 step are v1.36's own, with no reference log: a
+failing test fails the run. `rtl-tile`, right after `bus`, is acceptance A: the RTL's tile programs on one compute
+tile (`build/clang-suite/test_rtl_tile`); what the test itself leaves pending is counted apart. `rtl-sort` is
+acceptance B: the RTL's sort images end to end on the chip (`build/clang-suite/test_rtl_sort`), 64 × 16 records with
+32-bit and with 128-bit values and the first split over 2 and 8 threads; `rtl-sort-64k` the same at 64 × 65,536.
+`core-programs` and `core-tile` are the RTL's core programs on the core in the RTL's cycles (`test_core_programs`) and
+the core's join to the tile's register bus (`test_core_tile`). The rows below for the pending steps, and their
+times, are v1.35's.
 
 The times are wall times on the runner (an Intel i5-14400F: 6 P cores and 4 E cores, 16 threads), from the freeze check (Quest 195: `./run_tests.sh all --check`, 712 s in all; Quests 194 and 196 for the kit and `make check`); `planning/TIMES-V135.md` has them all.
 
@@ -35,6 +42,8 @@ The times are wall times on the runner (an Intel i5-14400F: 6 P cores and 4 E co
 | `sw-build` | both | `fw/build.sh --check` for boot tests m1 m3 replay tracer, or `fw/check_images.sh` without the toolchain | 4 s | `results/sw-build.log` | none (a build step) |
 | `sort-build` | both | `fw/build.sh --check` for sort, or `fw/check_images.sh` without the toolchain | <1 s | `results/sort-build.log` | none (a build step) |
 | `bus` | both | `build/clang-debug/suite_bus` | 2 s | `results/bus.log` | `tests/p2suites/bus.log` |
+| `rtl-tile` | both | `build/clang-suite/test_rtl_tile` | <1 s | `results/rtl-tile.log` | the RTL's `base_tile_test.rs`'s verdicts and the boot ROM's cycles, in the test |
+| `rtl-sort` | both | `build/clang-suite/test_rtl_sort sort_oracle`, then `… sort_16` | 5 s | `results/rtl-sort.log` | the RTL's `chip_test.rs`'s checks against the oracle, in the test; the split runs' digests against one domain's |
 | `net` | both | `build/clang-suite/suite_net -1` (quick: `quick`) | 3 s | `results/net.log` | `tests/p4suites/net.log` (quick: `net-quick.log`) |
 | `net-shuf` | both | `build/clang-suite/suite_net 5 quick` | 3 s | `results/net-shuf.log` | `tests/p4suites/net-shuf.log` |
 | `net-shuf2` | both | `build/clang-suite/suite_net 11 quick` | 2 s | `results/net-shuf2.log` | `tests/p4suites/net-shuf2.log` |
@@ -78,6 +87,7 @@ The times are wall times on the runner (an Intel i5-14400F: 6 P cores and 4 E co
 | `sort-p1` | both | `build/clang-suite/sort_test -1 p1` | 7 s | `results/sort-p1.log` | `tests/sort/ref/sort-p1.log` |
 | `sort` | both | `build/clang-suite/sort_test -1 sort` | 46 s | `results/sort.log` | `tests/sort/ref/sort.log` |
 | `sort-shuf` | both | `build/clang-suite/sort_test 4 sort` | 49 s | `results/sort-shuf.log` | `tests/sort/ref/sort-shuf.log` |
+| `rtl-sort-64k` | all, with the key file | `RTL_SORT_64K_KEYS=FILE build/clang-suite/test_rtl_sort sort_64k` | 44 s | `results/rtl-sort-64k.log` | as `rtl-sort`, at 64 × 65,536 records |
 | `sort-bt-kv32` | all | `build/clang-suite/sort_test -1 run … fmt=kv32 ready=8 force=bt` on `tests/sort/keys.sh 16384 trace10-10` | 22 s | `results/sort-bt-kv32.log` | `tests/sort/ref/sort-bt-kv32.log` |
 | `sort-bt-k128` | all | `build/clang-suite/sort_test -1 run … fmt=k128 ready=8 force=bt` on `tests/sort/keys.sh 16384 trace10-10` | 28 s | `results/sort-bt-k128.log` | `tests/sort/ref/sort-bt-k128.log` |
 | `rdport-full` | all | `build/clang-suite/suite_rdport -1 full` | 20 s | `results/rdport-full.log` | `tests/p4suites/rdport-full.log` |

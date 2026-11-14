@@ -61,6 +61,7 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     DirectorConfig dc;
     dc.tile = k; dc.periph_present = periph_present; dc.mem_chunks = g.cfg.mem_chunks;
     dc.g4 = true;
+    dc.engine = true;                                     // PTR's and HIST's requests are the director's (12.4, 12.5)
     dc.gather_note = true;                                // to the read arbiter (inject.h)
     dc.periph_slot = periph_slot;
     const unsigned lookahead = g.cfg.ag_lookahead ? g.cfg.ag_lookahead : 2 * g.cfg.ts_engine_latency + 2;
@@ -68,11 +69,11 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     auto& c = cfg.add<TileCore>(t + "core", core, k, g.cfg.read_port_depth, periph_slot, receiver, bs, g.cfg.request_queue_depth);
     auto& b = cfg.add<TileCtl>(t + "ctl", block, true, periph_slot, receiver);
     auto& d = cfg.add<Director>(t + "dir", dc);
-    auto& we = cfg.add<WriteEngine>(t + "we", g.we_in_depth, g.cfg.ts_engine_latency, g.cfg.mem_chunks, true);
+    auto& we = cfg.add<WriteEngine>(t + "we", g.cfg.ts_engine_latency, g.cfg.mem_chunks, true);
     auto& ag = cfg.add<AddrGen>(t + "ag", k, lookahead, true, false);
     auto& ga = cfg.add<Gather>(t + "gather", g.gather_depth, k, true);
-    auto& ts = cfg.add<TableStore>(t + "ts", true, false);
-    auto& hs = cfg.add<HistStore>(t + "hist", false);
+    auto& ts = cfg.add<TableStore>(t + "ts", true);
+    auto& hs = cfg.add<HistStore>(t + "hist");
     hs.ck_tile = int(k);                                  // invariant 6's fact
     SramConfig sc;
     sc.mem_chunks = g.cfg.mem_chunks;
@@ -97,11 +98,11 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     cfg.link(d.kline, b.kline, g.cfg.K + 1);
     cfg.link(d.bad, b.bad, 1);
     cfg.connect(c.rp_stores, d.rp_stores);                // the read unit's results outstanding (the overlap check)
-    cfg.connect(d.we_in, we.in);
-    cfg.count_overflows(we.in, b.we_in_ovf);
+    cfg.link(d.we_in, we.in, 1);                          // into the write engine's pipeline: no queue (12.4)
     cfg.connect(d.gather, ga.in);
     cfg.count_overflows(ga.in, b.gather_ovf);
     cfg.connect(b.dma, we.dma);
+    cfg.connect(b.dma, d.dma);
     cfg.connect(b.dma, ag.dma);
     cfg.connect(b.dma, ga.dma);
     cfg.link(c.tables, ts.window, 1);
@@ -109,18 +110,14 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     cfg.connect(hs.out, c.hist);
     cfg.connect(ts.view, c.tview);                        // 5.2: every table is loadable
     cfg.connect(ts.ptr_view, c.ptrv);
-    // the write engine's PTR read-modify-writes, count-on-arrival, and its writes into the scratchpad
-    cfg.link(we.ts_req, ts.req_we, g.cfg.ts_engine_latency);
-    cfg.link(ts.ret_we, we.ts_ret, g.cfg.ts_engine_latency);
-    cfg.link(we.hist_req, hs.req, g.cfg.ts_engine_latency);
+    // the write engine's PTR read-modify-writes and count-on-arrival, sent by the director in the cycle it accepts the
+    // packet (a), read at a + L and written at a + L + 1; the old pointer at the engine's last stage, a + 2L + 1; its
+    // write in the scratchpad at a + 2L + 2 (12.4; the RTL's receive unit, "Timing")
+    cfg.link(d.ts_req, ts.req_we, g.cfg.ts_engine_latency);
+    cfg.link(ts.ret_we, we.ts_ret, g.cfg.ts_engine_latency + 1);
+    cfg.link(d.hist_req, hs.req, g.cfg.ts_engine_latency);
     cfg.connect(we.to_sram, sr.wr);
-    // A full pointer stage waits for PTR's return, which sits in the table store's request FIFO (unit state, not a port)
-    // between its request's arrival and its service: the write engine sleeps with we-in non-empty and nothing on its
-    // way to it. Longer than the detector's default (a request FIFO holds 16).
-    cfg.missed_wake_after(t + "we", 1u << 10);
-    cfg.link(we.ovf_ev, b.we_ovf, 1);
     cfg.link(ts.ovf_ev, b.ts_ovf, 1);
-    cfg.link(hs.ovf_ev, b.hist_ovf, 1);
     // the DMA unit's table reads and the PTR view, its start and status, drift; the gather unit's busy half and its
     // queue's overflow; the director's GATHER put (STATUS.gather_busy is the OR of three inputs, gather.h)
     cfg.link(ag.stream_req, ts.req_stream, g.cfg.ts_engine_latency);

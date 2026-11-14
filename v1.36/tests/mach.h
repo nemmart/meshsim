@@ -112,7 +112,6 @@ struct MachConfig {
     bool skew = true;                  // v1.35's start skew: +0 or +1 a tile on the release's link
     int64_t skew_seed = 1;
     // ---- the receive side, the memories, the units (8-15) ----
-    unsigned we_in_depth = 4;          // v1.35's write-engine input FIFO (v1.36's engine has none: PENDING-v1.36.md)
     unsigned read_port_depth = 64;     // the read unit's queue (READ_FREE's reset value)
     unsigned gather_depth = 64;        // GATHER_QUEUE_DEPTH (13)
     unsigned cm_latency = 2;           // WRITE_PORT_LATENCY (12.3)

@@ -1,17 +1,20 @@
-// table_store.h: the table memories (sim/ref/meshsim/src/TableStore.java: TableStore and HistStore; AUDIT-M2 3.5).
-// Configuration part: the memories with their incremental fingerprint sums (memsum.h), written by the
-// controller through the table window (Controller.window). Behaviour: the engines' request Links into
-// 16-entry request FIFOs (ReqFifo), one STREAM read, one GROUP read and one PTR read-modify-write a cycle (TableStore),
-// HIST's count-on-arrival (HistStore), the RMW pipe with its bypass (Rmw), and the window's figure-12 rule: a
-// controller store on a write-back cycle is lost, a HIST load on one returns the engine's value.
+// table_store.h: the table memories (machine-spec 8.6, 12.5): STREAM and GROUP (TableStore), PTR (TableStore) and HIST
+// (HistStore), with their incremental fingerprint sums (memsum.h).
 //
-// ref's controller store at t is a macro port write committed at the end of t (a load at t + 1 sees it); here the core
-// puts it on `window`, a Link(1), and the store applies it at its step at t + 1, before any reader of t + 1 (HIST: the
-// core reads `hist`, a RegFile, at a later level), unless a write-back was done at t.
-//   TableStore: STREAM_SRC, STREAM_DEST, STREAM_COUNT (256 x 32), GROUP (64 x 64 bits: 128 words), PTR (256 x 21).
-//   HistStore:  HIST (256 x 17); the only table the controller loads (one-cycle loads, through `hist`).
-// The window's word {table << 32 | index, value}; values already masked by the core as ref's window masks them (PTR 21
-// bits, HIST 17 bits, the rest 32).
+// PTR AND HIST (12.5; the RTL's receive_table): a two-port memory each, which its engine's read-modify-write uses, the
+// read port in the cycle its request arrives and the write port in the next, with a bypass, so no update to one entry
+// is lost at any spacing and no queue holds an update back. The core shares the two ports: in a cycle the engine uses a
+// port the engine wins, so a core STORE in the cycle of the engine's write is lost, and a core LOAD in the cycle of
+// the engine's read is undefined (the core's side stops the simulator: tile_ctl.h).
+//
+// The core's store at t is committed at the end of t (a load at t + 1 sees it): the core puts it on `window`, a Link(1),
+// and the store applies it at its step at t + 1, before any reader of t + 1 (the core reads the tables' RegFiles at a
+// later level), unless the engine wrote the table at t. The engine's write at t is seen by a load at t + 1 too.
+//   TableStore: STREAM_SRC, STREAM_DEST, STREAM_HDR (256 x 32), GROUP (64 x 2 words), PTR (256 x 21); the address
+//               generator's STREAM and GROUP reads still pass v1.35's request FIFOs (PENDING-v1.36.md).
+//   HistStore:  HIST (256 x 17).
+// The window's word {table << 32 | index, value}; values already masked by the core (PTR 21 bits, HIST 17 bits, the
+// rest 32).
 #pragma once
 
 #include <cstdint>
@@ -51,6 +54,8 @@ inline uint32_t table_mask(uint32_t table, uint32_t index) {
 // The store's `view` RegFile, for the core's loads (5.2: every table is loadable): STREAM_SRC_ADDR, STREAM_DEST_ADDR,
 // STREAM_HDR (256 each) and GROUP's 128 words, as the core's stores left them (nothing else writes them).
 enum : unsigned { TV_STREAM_SRC = 0, TV_STREAM_DEST = 256, TV_STREAM_HDR = 512, TV_GROUP = 768, TV_REGS = 896 };
+// The store's `ptr` RegFile: PTR[0..255], then PTR_RMW_AT (TableStore::ptr_view).
+enum : unsigned { PTR_RMW_AT = 256, PTR_REGS = 257 };
 inline unsigned table_view_index(uint32_t table, uint32_t i) {
     return table == TBL_STREAM_SRC ? TV_STREAM_SRC + (i & 255) : table == TBL_STREAM_DEST ? TV_STREAM_DEST + (i & 255)
            : table == TBL_STREAM_HDR ? TV_STREAM_HDR + (i & 255) : TV_GROUP + (i & 127);
@@ -108,10 +113,9 @@ struct ReqFifo {
     }
 };
 
-// PTR's and HIST's read-modify-write (TableStore.java's RmwPipe; figure 12): read on port A at t, the new value written
-// back on port B at t + 1, with a bypass (the RMW at t sees the write-back of t). One RMW a cycle, so at most one write-back
-// is pending; the store steps at its due cycle. A controller store on a write-back cycle is lost; a controller load on one
-// returns the engine's value (at the engine's index).
+// PTR's and HIST's read-modify-write (12.5): read on the read port at t, the new value written on the write port at
+// t + 1, with a bypass (the read at t sees the write of t). One a cycle, so at most one write is pending; the store
+// steps at its due cycle. A core store in the cycle of a write is lost.
 struct Rmw {
     bool valid = false;
     uint64_t due = 0;
@@ -128,28 +132,27 @@ struct Rmw {
 struct TableStore {
     // ---- ports ----
     sim::LinkIn window;        // width 2, from the core: a table-window store of t (Link(1))
-    sim::LinkIn req_we;        // width 3, the write engine's PTR RMWs, Link(ts_engine_latency)
-    sim::LinkOut ret_we;       // width 3, their returns {i, old, 0}
+    sim::LinkIn req_we;        // width 3, from the director: PTR's read-modify-writes, Link(TABLE_LATENCY)
+    sim::LinkOut ret_we;       // width 3, to the write engine: the old pointers {i, old, 0}, Link(TABLE_LATENCY + 1)
     sim::LinkIn req_stream, req_group;      // width 3, the AG's (with_ag: G4)
     sim::LinkOut ret_stream, ret_group;     // width 3, to the AG (with_ag)
-    sim::LinkOut ovf_ev;       // width 0, Link(1) to the block: a request FIFO overflowed (D29, TABLE_OVF)
-    // PTR as the AG reads it at t (with_ag; the gather alignment check, Tile.checkGatherAlignment): ref's AG runs
-    // before the table store in the tile's cycle and reads PTR through a host peek, so it sees PTR as committed at the
-    // end of t - 1 (the controller's store of t - 1 and the write-back of t - 1), never the write-back of t. A RegFile is
-    // read at a later level of the same cycle, so the write-back of t is published at the store's step at t + 1.
+    sim::LinkOut ovf_ev;       // width 0, Link(1) to the block: a STREAM or GROUP request FIFO overflowed (D29)
+    // PTR as the core's loads and the AG read it (with_ag): entry i as committed at the end of t - 1, the core's store
+    // of t - 1 and the engine's write of t - 1 included; and PTR_RMW_AT, t + 1 in a cycle t the engine reads PTR in
+    // (12.5: a core load of that cycle is undefined).
     sim::RegFileOut ptr_view;
     sim::RegFileOut view;      // (v1.36, 5.2) STREAM and GROUP for the core's loads (TV_*), when with_ag
     bool with_ag = false;
-    bool pub = false;          // a write-back of an earlier cycle not yet in ptr_view
+    bool pub = false;          // the engine's write of the cycle before, not yet in ptr_view
     uint32_t pub_idx = 0, pub_val = 0;
 
     // ---- state ----
     TableMems m;
-    ReqFifo q_stream, q_group, q_we;
+    ReqFifo q_stream, q_group;
     Rmw pipe;
     uint64_t table_reads = 0, rmws = 0;
-    // (harness-only; P2): a harness poke of PTR (ref's TableStore.poke, between cycles) reaches `ptr_view` at the
-    // store's next step, as committed before it. `host_poke` is set by the harness only; `host_ptr` marks the indices.
+    // (harness-only; P2): a harness poke of PTR (between cycles) reaches `ptr_view` at the store's next step, as
+    // committed before it. `host_poke` is set by the harness only; `host_ptr` marks the indices.
     bool host_poke = false;
     uint64_t host_ptr[4] = {};
     void poke_host(uint32_t table, uint32_t i, uint32_t v) {   // between cycles; the harness wakes the store
@@ -159,22 +162,12 @@ struct TableStore {
 
     uint64_t digest() const {
         return sim::hash_fields(m.s_src.sum, m.s_dest.sum, m.s_count.sum, m.s_group.sum, m.s_ptr.sum) ^
-               q_stream.digest() * 3 ^ q_group.digest() * 5 ^ q_we.digest() * 7 ^ pipe.digest() * 11 ^
+               q_stream.digest() * 3 ^ q_group.digest() * 5 ^ pipe.digest() * 11 ^
                sim::hash_fields(pub, pub_idx, pub_val) * 13;
     }
 
-    // (the checker, SIM_CHECKS only): ref's ts.ptrBusy as the core's table-window check reads it (tile_ctl.h,
-    // TileCore::table_check): driven at the store's step at t when PTR is busy at t (a write-engine request arriving at
-    // t, one queued at the start of t, an RMW scheduled at t or t - 1; the store steps at every such cycle), t + 1, with
-    // bit 63 set when it was busy at t - 1 too (a test's store at t sees ref's flag as left by t - 1).
-    sim::WireOut busy_ptr;
-    bool busy_wire = false;
     S1Tile* s1 = nullptr;              // S1 (s1.h), SIM_CHECKS only (add_g1)
-    uint64_t busy_last = ~0ull;
-    explicit TableStore(sim::Ports& p, bool ag = false, bool busy_wire_ = false) : with_ag(ag), busy_wire(busy_wire_) {
-#ifdef SIM_CHECKS
-        if (busy_wire) p.out(busy_ptr, "busy_ptr");
-#endif
+    explicit TableStore(sim::Ports& p, bool ag = false) : with_ag(ag) {
         p.in(window, "window", 2);
         p.in(req_we, "req_we", 3);
         p.out(ret_we, "ret_we", 3);
@@ -182,14 +175,13 @@ struct TableStore {
         if (with_ag) {
             p.in(req_stream, "req_stream", 3); p.in(req_group, "req_group", 3);
             p.out(ret_stream, "ret_stream", 3); p.out(ret_group, "ret_group", 3);
-            p.out(ptr_view, "ptr", 256);
+            p.out(ptr_view, "ptr", PTR_REGS);
             p.out(view, "view", TV_REGS);
         }
     }
     sim::Wake step(sim::Ctx& c) {
         const uint64_t t = c.now();
-        [[maybe_unused]] const bool wb_pending = pipe.valid;   // an RMW scheduled at t - 1
-        if (pub) { c.write(ptr_view, pub_idx, pub_val); pub = false; }   // the write-back of t - 1 (with_ag)
+        if (pub) { c.write(ptr_view, pub_idx, pub_val); pub = false; }   // the engine's write of t - 1 (with_ag)
         if (host_poke) {                                       // (harness-only): the harness's pokes
             for (unsigned w = 0; w < 4; w++)
                 for (uint64_t b = host_ptr[w]; b; b &= b - 1) {
@@ -198,7 +190,7 @@ struct TableStore {
                 }
             host_ptr[0] = host_ptr[1] = host_ptr[2] = host_ptr[3] = 0;
         }
-        if (c.ready(window)) {                                 // the controller's store of t - 1 (lost on a write-back)
+        if (c.ready(window)) {                                 // the core's store of t - 1: lost if the engine wrote PTR then
             const sim::Word* w = c.peek(window);
             const uint32_t table = uint32_t(w[0] >> 32);
             if (table == TBL_PTR && pipe.last_wb == t - 1) pipe.ctrl_writes_lost++;
@@ -209,28 +201,21 @@ struct TableStore {
             }
             c.take(window);
         }
-        if (pipe.valid && pipe.due <= t) {                     // the write-back of t (scheduled at t - 1)
-            if (pipe.due != t) FATAL("table store: PTR's write-back due at %llu done at %llu", (unsigned long long)pipe.due, (unsigned long long)t);
+        if (pipe.valid && pipe.due <= t) {                     // the engine's write of t (its read was at t - 1)
+            if (pipe.due != t) FATAL("table store: PTR's write due at %llu done at %llu", (unsigned long long)pipe.due, (unsigned long long)t);
             m.write(TBL_PTR, pipe.idx, pipe.val);
             pipe.valid = false; pipe.last_wb = t;
 #ifdef SIM_CHECKS
-            if (s1 && s1->on) s1->written_back(0, t, pipe.idx);   // S1 (TableStore.java:116)
+            if (s1 && s1->on) s1->written_back(0, t, pipe.idx);   // S1
 #endif
             if (with_ag) { pub = true; pub_idx = pipe.idx; pub_val = pipe.val; }
         }
-        const bool o1 = q_stream.commit(t), o2 = q_group.commit(t), o3 = q_we.commit(t);
-        if (o1 || o2 || o3) c.put(ovf_ev);                    // judged at t, the put's t - 1 (PORTS.md 3)
+        const bool o1 = q_stream.commit(t), o2 = q_group.commit(t);
+        if (o1 || o2) c.put(ovf_ev);                           // judged at t, the put's t - 1 (PORTS.md 3)
         if (with_ag) {
             if (c.ready(req_stream)) { q_stream.put(t, c.peek(req_stream)); c.take(req_stream); }
             if (c.ready(req_group)) { q_group.put(t, c.peek(req_group)); c.take(req_group); }
         }
-#ifdef SIM_CHECKS
-        if (busy_wire && (c.ready(req_we) || q_we.n || wb_pending)) {                          // ptrBusy at t
-            c.drive(busy_ptr, (t + 1) | (busy_last + 1 == t ? (uint64_t(1) << 63) : 0));
-            busy_last = t;
-        }
-#endif
-        if (c.ready(req_we)) { q_we.put(t, c.peek(req_we)); c.take(req_we); }
         if (q_stream.n) {
             const uint64_t idx = q_stream.front()[1];
             q_stream.pop(t); table_reads++;
@@ -244,16 +229,19 @@ struct TableStore {
             if (i + 1 >= 128) FATAL("table store: GROUP read at word %u", i);
             c.put(ret_group, idx, uint64_t(m.group[i]) | uint64_t(m.group[i + 1]) << 32, 0);
         }
-        if (q_we.n) {
-            const uint64_t* r = q_we.front();
+        // the engine's read-modify-write (12.5): the entry read in the cycle its request arrives, t, with the write of
+        // t in (the bypass); written in t + 1. No queue: one request a cycle at most (the director's one packet).
+        if (c.ready(req_we)) {
+            const sim::Word* r = c.peek(req_we);
             const uint32_t idx = uint32_t(r[1] - mem::IDX_PTR), add = uint32_t(r[2]);
-            q_we.pop(t); rmws++;
-            if (idx >= 256) FATAL("table store: PTR RMW at index %u", idx);
-            const uint32_t old = m.ptr[idx];                     // the write-back of t is in (the bypass)
+            c.take(req_we); rmws++;
+            if (idx >= 256) FATAL("table store: PTR read-modify-write at index %u", idx);
+            const uint32_t old = m.ptr[idx];
             pipe.schedule(t, idx, (old + add) & 0x1FFFFF);
             c.put(ret_we, idx, old, 0);
+            if (with_ag) c.write(ptr_view, PTR_RMW_AT, uint32_t(t + 1));
         }
-        return pipe.valid || pub || q_stream.n || q_group.n || q_we.n || q_stream.pend || q_group.pend || q_we.pend ? c.next() : sim::Wake::none();
+        return pipe.valid || pub || q_stream.n || q_group.n || q_stream.pend || q_group.pend ? c.next() : sim::Wake::none();
     }
 };
 
@@ -267,19 +255,18 @@ struct HistMem {
     }
 };
 
-// HIST's RegFile (the core's one-cycle window loads): HIST[0..255], then the write-back of this cycle: register
-// HIST_WB_AT holds its cycle + 1 (low 32 bits; 0: none yet) and HIST_WB_VAL its value, so a load at t returns the
-// engine's value when HIST_WB_AT == t + 1 (RmwPipe.ctrlRead), else HIST[i] as committed at the end of t - 1.
-enum : unsigned { HIST_WB_AT = 256, HIST_WB_VAL = 257, HIST_REGS = 258 };
+// HIST's RegFile (the core's loads): HIST[0..255] as committed at the end of t - 1, then HIST_RMW_AT, t + 1 in a cycle
+// t count-on-arrival reads HIST in (12.5: a core load of that cycle is undefined).
+enum : unsigned { HIST_RMW_AT = 256, HIST_REGS = 257 };
 
 struct HistStore {
     sim::LinkIn window;        // width 2, from the core: a HIST store through the window, of t (Link(1))
-    sim::LinkIn req;           // width 3, the write engine's count-on-arrival {OP_ADD_RET, i, addend}, Link(ts_engine_latency)
-    sim::RegFileOut out;       // HIST as the core's one-cycle loads read it (HIST_REGS registers)
-    sim::LinkOut ovf_ev;       // width 0, Link(1) to the block: its request FIFO overflowed (D29, TABLE_OVF)
+    sim::LinkIn req;           // width 3, from the director: count-on-arrival {OP_ADD_RET, i, addend}, Link(TABLE_LATENCY)
+    sim::RegFileOut out;       // HIST as the core's loads read it (HIST_REGS registers)
     HistMem m;
-    ReqFifo q;
     Rmw pipe;
+    bool pub = false;          // the engine's write of the cycle before, not yet in `out`
+    uint32_t pub_idx = 0, pub_val = 0;
     uint64_t rmws = 0;
     bool hist_overflow = false;        // a count past 17 bits (invariant 6)
     int ck_tile = -1;                  // the checker's tile (add_g1); -1 records nothing
@@ -287,67 +274,49 @@ struct HistStore {
     bool host_poke = false;
     uint64_t host_hist[4] = {};
     void poke_host(uint32_t i, uint32_t v) { m.write(i, v); host_hist[(i & 255) >> 6] |= 1ull << (i & 63); }
-    uint64_t digest() const { return m.s_hist.sum ^ q.digest() * 3 ^ pipe.digest() * 5 ^ uint64_t(hist_overflow); }
+    uint64_t digest() const { return m.s_hist.sum ^ pipe.digest() * 5 ^ uint64_t(hist_overflow) ^ sim::hash_fields(pub, pub_idx, pub_val) * 7; }
 
-    // (the checker, SIM_CHECKS only): ref's hist.busy as the core's table-window check reads it, as TableStore's
-    // busy_ptr: t + 1 driven at the store's step at t when HIST is busy at t (a request arriving at t, one queued at the
-    // start of t, an RMW scheduled at t or t - 1), bit 63 set when it was busy at t - 1 too.
-    sim::WireOut busy_hist;
-    bool busy_wire = false;
     S1Tile* s1 = nullptr;              // S1 (s1.h), SIM_CHECKS only (add_g1)
-    uint64_t busy_last = ~0ull;
-    explicit HistStore(sim::Ports& p, bool busy_wire_ = false) : busy_wire(busy_wire_) {
-        p.in(window, "window", 2); p.in(req, "req", 3); p.out(out, "hist", HIST_REGS); p.out(ovf_ev, "ovf_ev", 0);
-#ifdef SIM_CHECKS
-        if (busy_wire) p.out(busy_hist, "busy_hist");
-#endif
+    explicit HistStore(sim::Ports& p) {
+        p.in(window, "window", 2); p.in(req, "req", 3); p.out(out, "hist", HIST_REGS);
     }
     sim::Wake step(sim::Ctx& c) {
         const uint64_t t = c.now();
-        [[maybe_unused]] const bool wb_pending = pipe.valid;   // an RMW scheduled at t - 1
+        if (pub) { c.write(out, pub_idx, pub_val); pub = false; }   // the engine's write of t - 1
         if (host_poke) {                                       // (harness-only): the harness's pokes
             for (unsigned w = 0; w < 4; w++)
                 for (uint64_t b = host_hist[w]; b; b &= b - 1) { const unsigned i = 64 * w + unsigned(__builtin_ctzll(b)); c.write(out, i, m.hist[i]); }
             host_hist[0] = host_hist[1] = host_hist[2] = host_hist[3] = 0;
         }
-        if (c.ready(window)) {                                 // the controller's store of t - 1 (lost on a write-back)
+        if (c.ready(window)) {                                 // the core's store of t - 1: lost if the engine wrote HIST then
             const sim::Word* w = c.peek(window);
             const uint32_t i = uint32_t(w[0]), v = uint32_t(w[1]);
             if (pipe.last_wb == t - 1) pipe.ctrl_writes_lost++;
             else { m.write(i, v); c.write(out, i, v); }
             c.take(window);
         }
-        if (pipe.valid && pipe.due <= t) {
-            if (pipe.due != t) FATAL("HIST: write-back due at %llu done at %llu", (unsigned long long)pipe.due, (unsigned long long)t);
+        if (pipe.valid && pipe.due <= t) {                     // the engine's write of t (its read was at t - 1)
+            if (pipe.due != t) FATAL("HIST: write due at %llu done at %llu", (unsigned long long)pipe.due, (unsigned long long)t);
             m.write(pipe.idx, pipe.val);
-            c.write(out, pipe.idx, pipe.val);
-            c.write(out, HIST_WB_AT, uint32_t(t + 1));
-            c.write(out, HIST_WB_VAL, pipe.val);
+            pub = true; pub_idx = pipe.idx; pub_val = pipe.val;
             pipe.valid = false; pipe.last_wb = t;
 #ifdef SIM_CHECKS
-            if (s1 && s1->on) s1->written_back(1, t, pipe.idx);   // S1 (TableStore.java:181)
+            if (s1 && s1->on) s1->written_back(1, t, pipe.idx);   // S1
 #endif
         }
-        if (q.commit(t)) c.put(ovf_ev);                        // judged at t (D29)
-#ifdef SIM_CHECKS
-        if (busy_wire && (c.ready(req) || q.n || wb_pending)) {                        // hist.busy at t
-            c.drive(busy_hist, (t + 1) | (busy_last + 1 == t ? (uint64_t(1) << 63) : 0));
-            busy_last = t;
-        }
-#endif
-        if (c.ready(req)) { q.put(t, c.peek(req)); c.take(req); }
-        if (q.n) {
-            const uint64_t* r = q.front();
+        if (c.ready(req)) {                                    // count-on-arrival: read in t (the bypass), written in t + 1
+            const sim::Word* r = c.peek(req);
             const uint32_t idx = uint32_t(r[1]) & 0xFF, add = uint32_t(r[2]);
-            q.pop(t); rmws++;
+            c.take(req); rmws++;
             const uint32_t nv = m.hist[idx] + add;
             if (nv & ~0x1FFFFu) {
                 hist_overflow = true;
                 if (ck_tile >= 0) sim::check::record(t, ck_tile, sim::check::Kind::HIST_OVERFLOW);   // invariant 6 (once a tile)
             }
             pipe.schedule(t, idx, nv & 0x1FFFF);
+            c.write(out, HIST_RMW_AT, uint32_t(t + 1));
         }
-        return pipe.valid || q.n || q.pend ? c.next() : sim::Wake::none();
+        return pipe.valid || pub ? c.next() : sim::Wake::none();
     }
 };
 

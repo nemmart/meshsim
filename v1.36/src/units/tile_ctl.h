@@ -32,8 +32,8 @@
 //   kline       Link(LAND_LATENCY + 1), width 1, from the director: a counter's decrement due (12.3)
 //   bad, ovf, drift, gather_ovf_ev  width 0, Link(1): the errors' pulses of the receive unit, the router, the DMA unit
 //               and the gather unit (7.4)
-//   we_ovf, ts_ovf, hist_ovf        width 0, Link(1): overflows of v1.35's write-engine and table FIFOs, which v1.36's
-//               hardware does not have (12.4, 12.5): fatal, named (PENDING-v1.36.md)
+//   ts_ovf      width 0, Link(1): an overflow of v1.35's STREAM and GROUP request FIFOs, which v1.36's hardware does not
+//               have (8.5): fatal, named (PENDING-v1.36.md)
 //   req_freed_ev  width 0, Link(1): the request queue's head left
 //   gather_busy, gather_srq_busy (Regs), gather_put (Link(1)): STATUS.gather_busy's inputs (gather.h)
 //   ag_status   Reg: the address generator's running | done << 1
@@ -84,8 +84,8 @@ enum : uint32_t {
 struct TileCtl {
     // ---- inputs ----
     sim::LinkIn bus, canon, side, release, kline, bad, ovf;
-    sim::LinkIn we_ovf, ts_ovf, hist_ovf;
-    sim::CountIn router_ovf, we_in_ovf, gather_ovf;   // the overflow Counts (statistics: the events above carry them)
+    sim::LinkIn ts_ovf;
+    sim::CountIn router_ovf, gather_ovf;   // the overflow Counts (statistics: the events above carry them)
     sim::RegIn send_busy;                      // the inject unit's holding-register status (v1.36 has no STATUS bit for it)
     sim::RegIn gather_busy, gather_srq_busy;   // the gather's own half; the read queue's (through MemIO)
     sim::LinkIn gather_put, gather_ovf_ev;     // width 0, Link(1): the director's GATHER put; the gather queue's overflow
@@ -115,7 +115,7 @@ struct TileCtl {
         if (slot) p.in(slot_win, "slot_win");
         if (receiver) p.in(recv, "recv");
         p.in(ovf, "ovf", 0);
-        p.in(we_ovf, "we_ovf", 0); p.in(ts_ovf, "ts_ovf", 0); p.in(hist_ovf, "hist_ovf", 0);
+        p.in(ts_ovf, "ts_ovf", 0);
         if (g4) {
             p.in(gather_busy, "gather_busy", 1); p.in(gather_srq_busy, "gather_srq_busy", 1);
             p.in(gather_put, "gather_put", 0); p.in(gather_ovf_ev, "gather_ovf_ev", 0);
@@ -127,7 +127,7 @@ struct TileCtl {
         p.in(req_freed_ev, "req_freed_ev", 0);
         p.in(send_busy, "send_busy", 1);
         p.in(bad, "bad", 0);
-        p.in(router_ovf, "router_ovf"); p.in(we_in_ovf, "we_in_ovf"); p.in(gather_ovf, "gather_ovf");
+        p.in(router_ovf, "router_ovf"); p.in(gather_ovf, "gather_ovf");
         p.out(regs, "regs", TILE_REGS); p.out(dma, "dma", DMA_REGS); p.out(wake, "wake"); p.out(irq, "irq");
         p.out(error, "error", 1);
     }
@@ -141,12 +141,11 @@ struct TileCtl {
         if (c.ready(bad)) { c.take(bad); in.error_pulses |= 1u << ERR_BAD_PACKET; }
         if (c.ready(req_freed_ev)) { c.take(req_freed_ev); in.freed = true; }
         if (c.ready(ovf)) { c.take(ovf); in.error_pulses |= 1u << ERR_ROUTER_OVERFLOW; }
-        // v1.35's FIFOs in front of the write engine, PTR and HIST: v1.36's write engine is a fixed pipeline that never
-        // refuses, and its tables have no request FIFOs (12.4, 12.5). Until the simulator's engines are rebuilt, an
-        // overflow there is a packet lost that the hardware would have written: stop.
-        if (c.ready(we_ovf) || c.ready(ts_ovf) || c.ready(hist_ovf))
-            FATAL("tile %u, cycle %llu: the simulator's write-engine or table request FIFO overflowed (v1.35's FIFOs: v1.36's "
-                  "write engine never refuses, machine-spec 12.4, 12.5; PENDING-v1.36.md)", s.straps.tile_id, (unsigned long long)t);
+        // v1.35's request FIFOs in front of STREAM and GROUP, which v1.36's address generator does not have (8.5): an
+        // overflow there is a table read lost that the hardware would have made: stop.
+        if (c.ready(ts_ovf))
+            FATAL("tile %u, cycle %llu: the simulator's STREAM or GROUP request FIFO overflowed (v1.35's FIFOs: machine-spec "
+                  "8.5; PENDING-v1.36.md)", s.straps.tile_id, (unsigned long long)t);
         if (c.ready(bus)) {
             const sim::Word* m = c.peek(bus);
             const uint32_t op = uint32_t(m[0] >> 32), arg = uint32_t(m[0]);
@@ -301,8 +300,8 @@ struct TileCore {
             switch (d.target) {
             case bus::Target::TABLE: {
                 const TableAddr ta = table_addr(a);
-                if (ta.table == TBL_HIST) return hist(ta.index);
-                if (ta.table == TBL_PTR) return c.read(u.ptrv, ta.index & 255);
+                if (ta.table == TBL_HIST) { engine_idle(c.read(u.hist, HIST_RMW_AT), "HIST"); return c.read(u.hist, ta.index & 255); }
+                if (ta.table == TBL_PTR) { engine_idle(c.read(u.ptrv, PTR_RMW_AT), "PTR"); return c.read(u.ptrv, ta.index & 255); }
                 return c.read(u.tview, table_view_index(ta.table, ta.index));
             }
             case bus::Target::TILE: return tile_load(d.word);
@@ -424,10 +423,14 @@ struct TileCore {
             c.inc(u.rp_stores);
             if (const uint64_t used = u.rp_stored - c.through_last(u.rp_injected); used > u.rp_peak) u.rp_peak = used;
         }
-        // HIST (12.5): on a write-back cycle the engine wins, and the load returns the engine's value
-        uint32_t hist(uint32_t i) const {
-            if (c.read(u.hist, HIST_WB_AT) == uint32_t(c.now() + 1)) return c.read(u.hist, HIST_WB_VAL);
-            return c.read(u.hist, i & 255);
+        // PTR and HIST (12.5): the core shares its engine's two ports, and in a cycle the engine reads the table the
+        // engine wins: the load's value is undefined. A program uses PTR or HIST only while its engine is idle
+        // (EVENTS.counter_n_done says so), so this is a program's error: stop, as for every undefined behaviour.
+        void engine_idle(uint32_t rmw_at, const char* table) const {
+            if (rmw_at == uint32_t(c.now() + 1))
+                FATAL("tile %u, cycle %llu: a load of %s in a cycle its engine reads it: the value is undefined "
+                      "(machine-spec 12.5: a program uses PTR and HIST only while their engines are idle)",
+                      u.tile, (unsigned long long)c.now(), table);
         }
 
         // ---- a peripheral's window (17.1), the peripheral slot's (periph_slot.h): its control and DMA blocks, and
@@ -529,7 +532,7 @@ struct G1Ctx {
     uint32_t* mem = nullptr;           // units x 2 x MEM_WORDS words (DMEM, IMEM per unit); outlives the machine (the boot
                                        // fills them through the NoC port; a boot_local tile's are placed before the run)
     unsigned units = 64;               // the units `mem` holds: 64 compute tiles, or 67 with the special tiles as 64-66
-    unsigned we_in_depth = 4, gather_depth = 64;   // v1.35's write-engine FIFO; GATHER_QUEUE_DEPTH = TOKEN_COUNT (13)
+    unsigned gather_depth = 64;        // GATHER_QUEUE_DEPTH = TOKEN_COUNT (13)
     SramBlocks* sram = nullptr;        // the tiles' scratchpads (one per tile, mapped at configuration); outlives the machine
     // The straps of unit k (2.1, 7.1), when the builder's default (a compute tile's: peripheral 1, no receive side, the
     // barrier wired, boot_local 0, its attach bits) is not it: null, or a function of k.

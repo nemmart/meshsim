@@ -86,7 +86,7 @@ struct Field { const char* name; char kind; size_t off; };   // kind: 'u' unsign
 #define F_B(n, m) {n, 'b', offsetof(MachConfig, m)}
 const Field kFields[] = {
     F_U("linkLatency", link_latency), F_U("queueDepth", queue_depth), F_U("intraTileLatency", intra_tile_latency),
-    F_B("skew", skew), F_L("skewSeed", skew_seed), F_U("weInDepth", we_in_depth), F_U("readPortDepth", read_port_depth),
+    F_B("skew", skew), F_L("skewSeed", skew_seed), F_U("readPortDepth", read_port_depth),
     F_U("gatherDepth", gather_depth), F_U("cmLatency", cm_latency), F_U("refCycle", ref_cycle),
     F_U("rpLatency", rp_latency), F_U("K", K), F_U("memChunks", mem_chunks),
     F_U("readLatency", read_latency),
@@ -127,6 +127,7 @@ const std::vector<std::pair<std::string, std::string>>& MachConfig::dropped() {
         {"doneGate", "v1.36: no DONE and no gate (ARRIVE and the arrival gate: 7.3)"},
         {"strictReplies", "v1.36: no reply block, so no check of it"},
         {"checkCommandRead", "v1.36: no command block, so no check of its reads"},
+        {"weInDepth", "v1.36: the write engine is a fixed pipeline with no input FIFO (machine-spec 12.4)"},
         {"areaQueueDepth", "v1.36: the scratchpad has no bank request queues (a write wins its bank: machine-spec 15)"},
         {"writeCombining", "v1.36: no bank request queues, so no write to combine with (15)"},
         {"fifoCountBeforePop", "v1.36: it chose how a bank request queue judged its room; there is none (15)"},
@@ -272,7 +273,7 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         m.gx.straps = boot_local_straps;
     }
     m.gx.mem = m.mem.data(); m.gx.units = m.nunits; m.gx.sram = &m.sram;
-    m.gx.we_in_depth = c.we_in_depth; m.gx.gather_depth = c.gather_depth;
+    m.gx.gather_depth = c.gather_depth;
 
     units::NetConfig nc;
     nc.link_latency = c.link_latency; nc.queue_depth = c.queue_depth; nc.intra_tile_latency = c.intra_tile_latency;
@@ -347,8 +348,6 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
                     m.hw.push_back({int(k), &r, r.first[o] + f, nullptr, false});
                     m.checker->fifo_names.push_back(t + kOutName[o] + "<" + kPortName[r.feed[o][f]]);
                 }
-            m.hw.push_back({int(k), nullptr, 0, &m.sim->unit<units::WriteEngine>(units::tile_unit(k, "we")).in, false});
-            m.checker->fifo_names.push_back(t + "we-in");
             m.hw.push_back({int(k), nullptr, 0, &m.sim->unit<units::Gather>(units::tile_unit(k, "gather")).in, false});
             m.checker->fifo_names.push_back(t + "gather-q");
         }
@@ -658,11 +657,10 @@ void Chip::reset_stats() {
         units::Injection& in = p.unit<units::Injection>("inj");
         in.injected = in.from_read = in.from_send = in.send_wait_cycles = 0;
         units::WriteEngine& we = p.unit<units::WriteEngine>("we");
-        we.taken = we.written = we.stall_cycles = 0;
+        we.taken = we.written = 0;
         units::TableStore& ts = p.unit<units::TableStore>("ts");
         ts.table_reads = ts.rmws = 0;
         if (sim::check::kOn) {                            // the framework FIFOs' peaks (kept under SIM_CHECKS: the)
-            impl_->sim->fifo_restart_peak(we.in);
             impl_->sim->fifo_restart_peak(p.unit<units::Gather>("gather").in);
         }
     }
@@ -974,10 +972,13 @@ bool TileRef::req_idle() const {                            // fifo.isEmpty(), a
 namespace {
 void we_req(TileRef& p, Chip& c, unsigned k, unsigned line, int64_t t, uint32_t op, uint32_t idx, uint32_t add) {
     if (t != c.cycle() + 1) FATAL("mach: tile %u: a write-engine request at cycle %lld: the next cycle only", k, (long long)t);
-    units::WriteEngine& we = p.unit<units::WriteEngine>("we");
-    if (we.host_req[line][0]) FATAL("mach: tile %u: a second write-engine request on one line in a cycle", k);
-    we.host_req[line][0] = uint64_t(t); we.host_req[line][1] = op; we.host_req[line][2] = idx; we.host_req[line][3] = add;
-    c.touched(units::tile_unit(k, "we"));
+    // the lines are the director's (12.4: it sends PTR's and HIST's requests); PTR's old pointer comes back to the
+    // write engine, which drops it
+    units::Director& d = p.unit<units::Director>("dir");
+    if (d.host_req[line][0]) FATAL("mach: tile %u: a second write-engine request on one line in a cycle", k);
+    d.host_req[line][0] = uint64_t(t); d.host_req[line][1] = op; d.host_req[line][2] = idx; d.host_req[line][3] = add;
+    if (line == 0) p.unit<units::WriteEngine>("we").host_rets++;
+    c.touched(units::tile_unit(k, "dir"));
 }
 }  // namespace
 void TileRef::we_ts_req(int64_t t, uint32_t op, uint32_t idx, uint32_t add) { we_req(*this, *c_, k_, 0, t, op, idx, add); }
@@ -987,11 +988,10 @@ void TileRef::we_hist_req(int64_t t, uint32_t op, uint32_t idx, uint32_t add) { 
 
 
 namespace {
-bool port_empty(sim::Sim& s, const sim::FifoIn& p) { sim::PortEntry e[64]; const sim::PortView v = s.observe(p, e, 64); return v.n == 0 && !v.put; }
 bool port_empty(sim::Sim& s, const sim::HoldIn& p) { sim::PortEntry e[1]; const sim::PortView v = s.observe(p, e, 1); return v.n == 0 && !v.put; }
+bool port_empty(sim::Sim& s, const sim::LinkIn& p) { sim::PortEntry e[8]; return s.observe(p, e, 8).n == 0; }   // nothing visible or in flight
 }  // namespace
-// mem_idle (4.1; ref's Tile.memIdle): the write engine's input FIFO and its stage empty, nothing on its way into big
-// SRAM, no write queued at any area (reads queued don't hold it low)
+// mem_idle: the write engine's pipeline empty and nothing on its way into it or into the scratchpad (12.4, 15)
 bool TileRef::mem_idle() const {
     sim::Sim& s = c_->sim();
     const units::WriteEngine& we = unit<units::WriteEngine>("we");
@@ -1003,8 +1003,8 @@ bool TileRef::mem_idle() const {
 bool TileRef::ts_busy() const {
     const units::TableStore& t = unit<units::TableStore>("ts");
     const units::HistStore& h = unit<units::HistStore>("hist");
-    return t.pipe.valid || t.pub || t.q_stream.n || t.q_group.n || t.q_we.n || t.q_stream.pend || t.q_group.pend || t.q_we.pend ||
-           h.pipe.valid || h.q.n || h.q.pend;
+    return t.pipe.valid || t.pub || t.q_stream.n || t.q_group.n || t.q_stream.pend || t.q_group.pend ||
+           h.pipe.valid || h.pub;
 }
 namespace {
 uint32_t link_after(sim::Sim& s, const sim::LinkIn& p, uint64_t c) {   // a Link's words arriving after c (still in flight)

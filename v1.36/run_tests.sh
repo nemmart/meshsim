@@ -44,7 +44,7 @@ rm -f results/*.log
 # The programs the steps run (targets of the Makefile).
 SUITES="test_core_programs test_core_tile test_regs test_tile_control"                      # the core, the map, the tile control unit
 SUITES="$SUITES test_router test_special_router test_request_tree test_reqbus"              # the router, the request tree
-SUITES="$SUITES test_mem test_ag test_receive test_gather test_mach"                        # the tile's units, and the tile
+SUITES="$SUITES test_mem test_ag test_receive test_gather test_mach test_checker"                     # the tile's units, and the tile
 SUITES="$SUITES test_periph_slot test_ingress_egress test_rw_engine"                        # the peripherals
 SUITES="$SUITES test_rtl_tile test_rtl_sort test_rtl_stream test_rtl_memory test_rtl_segment"   # the RTL's firmware on the tile and the chip
 SUITES="$SUITES suite_replayer suite_memsys suite_rvc suite_tracer tracer_block"            # the replayer and the Tracer
@@ -117,6 +117,7 @@ check units "the DMA unit (8.2-8.5: test_ag), the write engine with PTR and HIST
 units_shuf() { SIM_SHUFFLE=4 $S/test_ag && SIM_SHUFFLE=4 $S/test_receive; }
 check units-shuf "test_ag and test_receive, the units of a level stepped in a shuffled order (seed 4)" -- units_shuf
 check mach "the tile and the machine harness: the pull boot on all 64 tiles, the chip's build, packets, reads, an all-to-all, the gather unit on the tile (tests/test_mach.cpp)" -- $S/test_mach
+check checker "the checker's report: packets that break a rule, each named once at its sender and at its receiver; ERRORS bits by machine-spec 7.4's names (tests/test_checker.cpp)" -- $S/test_checker
 
 # ---- the peripherals ----
 check periph "the peripheral slot: the control block and the DMA (machine-spec 17.1-17.4, the RTL's peripheral_control and peripheral_dma; tests/test_periph_slot.cpp)" -- $S/test_periph_slot

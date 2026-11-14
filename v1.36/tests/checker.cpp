@@ -61,9 +61,6 @@ std::string why_bad(uint64_t h) {
 std::string Checker::text(const Fact& f) const {
     const uint64_t* a = f.a;
     switch (f.kind) {
-    // ---- the router (Chip.checkInvariants; CcCores.check says "unit") ----
-    case Kind::EJECT_WRONG_TILE: return f.tile >= 64 ? "packet ejected at the wrong unit" : "packet ejected at the wrong tile";
-    case Kind::ILLEGAL_FORWARD: return "illegal forward in a route block";
     // ---- InjectionPath.violate ----
     case Kind::INJ_BAD_PACKET: return "bad packet sent (" + why_bad(a[2]) + "; 3.1, invariant 5): " + describe(a[1], a[2], a[3]);
     case Kind::INJ_SIZE_UNDEF: return "packet with size 11, undefined, sent (3.1, invariant 5): " + describe(a[1], a[2], a[3]);
@@ -85,35 +82,7 @@ std::string Checker::text(const Fact& f) const {
     case Kind::DIR_PAST_SRAM:
         return fmt("mode-0 write at or past the end of big SRAM (chunk 0x%" PRIx64 "): undefined (2.2; invariant 19): ", a[0]) + describe(a[1], a[2], a[3]);
     case Kind::FIFO_OVERFLOW: return "FIFO overflow " + fifo_names.at(size_t(a[0])) + " (invariant 1)";
-    case Kind::DIR_UNEXPECTED:
-        return fmt("unexpected arrival (a stray, at acceptance): WRITE_COUNTER_%" PRIu64 " has nothing armed for it (invariant 9; the error follows at its decrement, K = %u cycles later): ", a[0], sw_.K) + describe(a[1], a[2], a[3]);
-    case Kind::DIR_UNCOUNTED_MODE:
-        return fmt("uncounted mode-%u packet: modes 1-3 are always counted (3.1, invariant 22): ", unsigned(lw::mode(a[2]))) + describe(a[1], a[2], a[3]);
-    case Kind::DIR_UNCOUNTED_REGION:
-        return fmt("uncounted write to region 0x%" PRIx64 ": big-SRAM data and peripheral writes are always counted (3.1, 6.2; invariant 22): ", a[0]) + describe(a[1], a[2], a[3]);
-    case Kind::DIR_UNCOUNTED_SRC:
-        return fmt("uncounted write into controller memory from unit %" PRIu64 ": only commands and boot overlays, from C&C 1-3, are uncounted (3.1; invariant 22): ", a[0]) + describe(a[1], a[2], a[3]);
-    case Kind::DIR_OVERLAY_AFTER_COMMAND:
-        return "an overlay write landed after the unit's command and before its start (6.2: the overlays and the first command are of one kind, the command last): " + describe(a[1], a[2], a[3]);
-    case Kind::DIR_PAST_CMEM:
-        return std::string("write past the end of ") + (a[0] == 0 ? "data" : "program") + " memory: the high offset bits are ignored and it aliases (2.2; invariant 19): " + describe(a[1], a[2], a[3]);
-    case Kind::DIR_RESERVED_BYTES: return "write into data memory's reserved first 16 bytes (2.2; invariant 22): " + describe(a[1], a[2], a[3]);
-    case Kind::DIR_COMMAND_BLOCK: return "write into the command block other than an uncounted one from C&C 1-3 inside it (4.12; invariant 11): " + describe(a[1], a[2], a[3]);
-    case Kind::DIR_REPLY_BLOCK:
-        return "write into the reply block other than a 32- or 64-bit reply at the sender's own pair, REPLY + 8 x " + std::to_string(lw::src(a[2])) + " (4.12; invariant 11): " + describe(a[1], a[2], a[3]);
-    case Kind::DIR_COMMAND_KIND:
-        return std::string("a command (") + (a[0] == 2 ? "broadcast" : "unicast") + ") after overlays of the other kind: the mesh orders packets only within a kind (6.2; invariant 25): " + describe(a[1], a[2], a[3]);
-    // ---- TileControl.violate (the register block; its store checks happen at the core's store in C++) ----
-    case Kind::CTL_WFI_WOKEN:
-        return "a WFI woken by an event other than GO with done set (wait_for_command()): only GO wakes the core between done and GO (the done gate, spec 4.12)";
-    case Kind::CTL_RESERVED_BITS:
-        return fmt("%s stored with reserved bits set (0x%" PRIx64 "): ignored, read 0 (8.1; invariant 21)", units::reg_info(unsigned(a[0])).name, a[1]);
-    case Kind::CTL_RECORD_BASE_ODD: return fmt("DMA_RECORD_BASE_ADDRESS 0x%" PRIx64 " not aligned to a record (two chunks; 8.7; invariant 20)", a[0]);
-    case Kind::CTL_RD_DEST_SIZE: return "SRAM_RD_DEST_ADDR with the reserved size 11 (8.8; invariant 21)";
-    case Kind::CTL_RESERVED_ACCESS:
-        return fmt("%s the reserved register-block word 0x%" PRIx64 ": reads 0, stores ignored (8.1)", a[0] ? "store to" : "load of", a[1]);
-    case Kind::CTL_DONE_GO_MASKED:
-        return "done pulsed (wait_for_command()) with GO clear in EVENTS_MASK: the GO it waits for would not be consumed (4.12)";
+    // ---- the tile control unit and the request unit ----
     case Kind::CTL_COUNTER_WRAP: return fmt("WRITE_COUNTER_%" PRIu64 " written past 2^20 - 1: the count wraps (4.12)", a[0]);
     case Kind::CTL_DONE_EARLY: {
         std::string b;
@@ -121,31 +90,7 @@ std::string Checker::text(const Fact& f) const {
             if (a[0] >> c & 1) b += fmt(" WRITE_COUNTER_%u %u", c, unsigned(a[1 + (c - 1) / 3] >> (20 * ((c - 1) % 3)) & 0xFFFFF));
         return "done pulsed before every expected arrival landed (invariant 4; done early, ERRORS [8]):" + b;
     }
-    // ---- the core's checks through the block (Controller.java: stopLoudly, mret, memWord, store) ----
-    case Kind::CTL_HALT: {
-        static const char* const kHalt[9] = {"running", "illegal instruction", "ecall", "ebreak", "bus error", "SIM_EXIT",
-                                             "fetch outside program memory and the boot ROM", "misaligned jump target", "a trap inside the handler"};
-        const unsigned why = unsigned(a[0]);
-        const std::string m = why == 6 ? fmt(", fetch at 0x%x", unsigned(a[1])) : why == 7 ? fmt(", to 0x%x", unsigned(a[1]))
-                             : why == 8 ? fmt(", cause %d inside the handler", int(int32_t(a[1]))) : std::string();
-        return fmt("tile %d: %s", f.tile, kHalt[why < 9 ? why : 0]) + m + ": a trap that sets no ERRORS bit; meshsim stops (4.13)";
-    }
-    case Kind::CTL_MRET: return fmt("tile %d: mret: every trap is terminal, the handler never returns (4.13)", f.tile);
-    case Kind::CTL_ALIAS:
-        return fmt("access at 0x%x, past the end of %s memory: the high offset bits are ignored and it aliases (2.2; invariant 19)",
-                   unsigned(a[0]), lw::region(uint32_t(a[0])) == lw::R_DMEM ? "data" : "program");
     case Kind::CTL_REQ_FULL: return "SIMULATOR: a request pushed into a full request FIFO";
-    case Kind::CTL_TABLE_BUSY: {
-        static const char* const kTbl[4] = {"STREAM_SRC", "STREAM_DEST", "STREAM_COUNT", "GROUP"};
-        if (a[0] == 5) return fmt("table window: HIST[%u] accessed while count-on-arrival is using HIST (4.10)", unsigned(a[1]));
-        if (a[0] == 4) return fmt("table window: PTR[%u] accessed while the write engine is using PTR (4.10)", unsigned(a[1]));
-        return fmt("table window: %s accessed while the address generator is running, its lead-in included (4.10)", kTbl[a[0] & 3]);
-    }
-    case Kind::CTL_DMEM_RESERVED: return fmt("core store into data memory's reserved first 16 bytes, at 0x%x (2.2; invariant 22; W4-02)", unsigned(a[0]));
-    // ---- ControllerMemories (invariant 8 strict, the command slot) ----
-    case Kind::CMEM_REPLY_OVERWRITE:
-        return fmt("a reply or read-port result overwrote an unread one at data word 0x%x (invariant 8, strict): ", unsigned(a[0])) + describe(a[1], a[2], 0);
-    case Kind::CMEM_COMMAND_UNREAD: return "a command landed in command slot 0 before the core read the previous one (6.3): " + describe(a[1], a[2], a[3]);
     // ---- AddressGenerator.checkEntry ----
     case Kind::AG_SIZE_UNDEF: return "stream with read size 11, undefined (3.1, 4.2)";
     case Kind::AG_AUG128: return "mode-3 stream with read size 128: its packets are bad packets (3.1, 4.2)";
@@ -199,8 +144,6 @@ std::string Checker::text(const Fact& f) const {
         return fmt("tile %u: %s[%u] complete %" PRIu64 " cycles after acceptance, past K = %u (invariant 24)", unsigned(a[1]),
                    a[0] == 1 ? "PTR" : "HIST", unsigned(a[2]), a[3], sw_.K);
     case Kind::HIST_OVERFLOW: return "a counter exceeded 17 bits (invariant 6)";
-    case Kind::ROTATION_LATE: return "address generator: a rotation started late (invariant 3; drift, see agReport)";
-    case Kind::READ_RETURN_REFUSED: return "SIMULATOR: a read return was refused by the injection point";
     // ---- the request bus (RequestBus.runCycle), the endpoints (Endpoint.send) ----
     case Kind::REQBUS_QUEUE_OVERFLOW: return fmt("SIMULATOR: target %u's receive queue overflowed (the root's credits should prevent it)", unsigned(a[0]));
     case Kind::REQBUS_NO_RECEIVER:
@@ -224,7 +167,7 @@ Checker::Checker(uint32_t capacity, unsigned max_messages, const CheckSwitches& 
 void Checker::install() {
     // drop the facts of kinds this checker's switches hold off (enabled() is false for them, so none is ever judged)
     for (uint64_t& w : sink_.off) w = 0;
-    for (Kind k : {Kind::DIR_READPORT_OVERLAP, Kind::DIR_UNEXPECTED, Kind::CMEM_COMMAND_UNREAD, Kind::CMEM_REPLY_OVERWRITE, Kind::DISJOINT})
+    for (Kind k : {Kind::DIR_READPORT_OVERLAP, Kind::DISJOINT})
         if (!enabled(k)) sink_.off[unsigned(k) >> 6] |= uint64_t(1) << (unsigned(k) & 63);
     sim::check::sink = sim::check::kOn ? &sink_ : nullptr;
 }
@@ -237,7 +180,7 @@ void Checker::report(int64_t t, int tile, const std::string& m) {   // Chip.viol
 
 namespace {
 // ref's order within a cycle: the slot; the cores' facts (tile 64-66) in CORES, by unit, then by their own check order
-int rank(const Fact& f) { return f.tile >= 64 && sim::check::slot_of(f.kind) >= Slot::EJECT && sim::check::slot_of(f.kind) <= Slot::REFUSAL
+int rank(const Fact& f) { return f.tile >= 64 && sim::check::slot_of(f.kind) >= Slot::INJ && sim::check::slot_of(f.kind) <= Slot::WRITER
                                      ? int(Slot::CORES) : int(sim::check::slot_of(f.kind)); }
 }  // namespace
 
@@ -247,21 +190,18 @@ int rank(const Fact& f) { return f.tile >= 64 && sim::check::slot_of(f.kind) >= 
 bool Checker::enabled(Kind k) const {
     switch (k) {
     case Kind::DIR_READPORT_OVERLAP: return sw_.read_port_overlap;
-    case Kind::DIR_UNEXPECTED: return sw_.unexpected;
-    case Kind::CMEM_COMMAND_UNREAD: return sw_.command_read;
-    case Kind::CMEM_REPLY_OVERWRITE: return sw_.strict_replies;
     case Kind::DISJOINT: return sw_.disjoint;
     default: return true;
     }
 }
 
 namespace {
-const char* const kCondName[15] = {"router overflow", "bad packet", "unexpected arrival", "drift", "write-engine input overflow",
-                                   "table request overflow", "GATHER queue overflow", "read-port error", "done early", "bus error",
-                                   "illegal instruction", "peripheral 1", "peripheral 2", "peripheral 3", "receive underflow"};
+const char* const kCondName[13] = {"router overflow", "bad packet", "counter underflow", "drift", "gather overflow", "read overflow",
+                                   "early arrival", "access fault", "illegal instruction", "receive underflow", "peripheral 1",
+                                   "peripheral 2", "peripheral 3"};   // machine-spec 7.4, bit by bit
 std::string cond_names(uint32_t bits) {                 // Conditions.names
     std::string sb;
-    for (unsigned i = 0; i < 15; i++) if (bits >> i & 1) sb += (sb.empty() ? "" : ", ") + std::string(kCondName[i]);
+    for (unsigned i = 0; i < 13; i++) if (bits >> i & 1) sb += (sb.empty() ? "" : ", ") + std::string(kCondName[i]);
     return sb.empty() ? "none" : sb;
 }
 std::string binary(uint32_t v) {                         // Integer.toBinaryString
@@ -304,7 +244,7 @@ void Checker::process(int64_t now, bool scan, bool final) {
         const int64_t ta = at(a), tb = at(b);
         if (ta != tb) return ta < tb;
         // ref's checkInvariants walks the tiles, each tile's checks in turn (tile-major within the per-tile slots)
-        auto major = [](int r) { return r >= int(Slot::EJECT) && r <= int(Slot::REFUSAL) ? int(Slot::EJECT) : r; };
+        auto major = [](int r) { return r >= int(Slot::INJ) && r <= int(Slot::WRITER) ? int(Slot::INJ) : r; };
         const int ra = rank(a), rb = rank(b);
         if (major(ra) != major(rb)) return major(ra) < major(rb);
         if (a.kind == Kind::FIFO_OVERFLOW && b.kind == Kind::FIFO_OVERFLOW) return a.a[0] < b.a[0];   // ref's scan order
@@ -346,8 +286,6 @@ void Checker::process(int64_t now, bool scan, bool final) {
         bool say = true;                                     // ref's once-only rules (Chip.checkInvariants)
         switch (sim::check::slot_of(last.kind)) {
         case Slot::HIST17: if (u) { say = !u->hist; u->hist = true; } break;
-        case Slot::ROTATION: if (u) { say = u->rotation_run != int64_t(last.a[0]); u->rotation_run = int64_t(last.a[0]); } break;   // once a run
-        case Slot::REFUSAL: if (u) { say = !u->refusal; u->refusal = true; } break;
         case Slot::DISJOINT: if (u) { say = u->disjoint_phase != int64_t(last.a[3]); u->disjoint_phase = int64_t(last.a[3]); } break;
         default: break;
         }

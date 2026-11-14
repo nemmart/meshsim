@@ -42,13 +42,12 @@ namespace sim::check {
 // cycle's facts slot by slot in this order, tile by tile (ascending) inside each per-tile slot.
 enum class Slot : uint8_t {
     // before checkInvariants (Chip.runCycle)
-    CC1_PERIPH,     // tile -1: C&C 1's peripheral (cc1p's callback)
     S1_LATE,        // tile -1: S1's measurement (s1.lastLate)
     ERRORS,         // per tile: ERRORS bits newly set while any error line is high (invariant 15; cfg.checkErrors)
     // checkInvariants(t): the overflow scan first when t % 16 == 0 (OVERFLOW facts; also whenever the harness scans)
     OVERFLOW,       // per tile, then the chip's (cnc.rx, memsub.rx, cc3.rx), once per FIFO, at the overflow's own cycle
-    // per tile 0-63, ref's seen[i][0..7], s2[i][0..5], refusalReported[i]
-    EJECT, ROUTE, INJ, DIR, DISJOINT, HIST17, ROTATION, CTL, CMEM, READPORT, AG, SRQ, WRITER, REFUSAL,
+    // per tile 0-63 (ref's per-tile checks; the slots of checks whose hardware v1.36 does not have are gone)
+    INJ, DIR, DISJOINT, HIST17, CTL, READPORT, AG, WRITER,
     // the cores (CcCores.check), then the chip's
     CORES, REQBUS, RX_LOST, ENDPOINT,
     COUNT
@@ -60,15 +59,11 @@ enum class Kind : uint16_t {
     // ---- ERRORS (Chip.runCycle; TileControl) ----
     ERRORS_SET,                 // a0 the ERRORS bits now set (the harness applies ref's condSeen)
     ERROR_LINE,                 // a0 1/0: the tile's error line rose or fell (no message; drives condSeen's clearing)
-    // ---- C&C 1's peripheral, S1 ----
-    CC1_PERIPH,                 // a0 an index into checker.cpp's table of cc1p messages, a1-a3 its arguments
+    // ---- S1 ----
     S1_LATE,                    // a0 what (0 big SRAM's ordering point, 1 PTR, 2 HIST: s1.h), a1 the tile, a2 the chunk or
                                 //   index, a3 the latency (s1.lastLate's text, checker.cpp)
     // ---- invariant 1 ----
     FIFO_OVERFLOW,              // a0 the FIFO's id in the harness's table of ref's names (checker.cpp), at its cycle
-    // ---- the router ----
-    EJECT_WRONG_TILE,           // (no arguments)
-    ILLEGAL_FORWARD,            // (no arguments)
     // ---- the injection path (InjectionPath.violate) ----
     INJ_BAD_PACKET,             // a0 the reason's index (LinkWord.bad), a1 d, a2 h, a3 hi
     INJ_SIZE_UNDEF,             // a1 d, a2 h, a3 hi
@@ -82,50 +77,21 @@ enum class Kind : uint16_t {
     DIR_SIZE_UNDEF,             // a1 d, a2 h, a3 hi
     DIR_COUNT_CTR0,             // a1 d, a2 h, a3 hi
     DIR_PAST_SRAM,              // a0 the chunk, a1 d, a2 h, a3 hi
-    DIR_UNEXPECTED,             // a0 the counter, a1 d, a2 h, a3 hi (K from the harness's config)
-    DIR_UNCOUNTED_MODE,         // a1 d, a2 h, a3 hi
-    DIR_UNCOUNTED_REGION,       // a0 the region, a1 d, a2 h, a3 hi
-    DIR_UNCOUNTED_SRC,          // a0 the source unit, a1 d, a2 h, a3 hi
-    DIR_OVERLAY_AFTER_COMMAND,  // a1 d, a2 h, a3 hi
-    DIR_PAST_CMEM,              // a0 the region (0 data, else program), a1 d, a2 h, a3 hi
-    DIR_RESERVED_BYTES,         // a1 d, a2 h, a3 hi
-    DIR_COMMAND_BLOCK,          // a1 d, a2 h, a3 hi
-    DIR_REPLY_BLOCK,            // a1 d, a2 h, a3 hi
-    DIR_COMMAND_KIND,           // a0 the kind (2 broadcast, else unicast), a1 d, a2 h, a3 hi
     // ---- big SRAM (invariant 2) ----
     DISJOINT,                   // a0 the chunk, a1 what it did (0 read, 1 written), a2 what it was (0 read, 1 written),
                                 //   a3 the phase (the harness reports once per tile and phase, as ref)
-    // ---- the HIST store, the AG's rotations ----
+    // ---- the HIST store ----
     HIST_OVERFLOW,              // (no arguments; once per tile)
-    ROTATION_LATE,              // a0 the AG's run number (ref reports the first late rotation of each run: its counter
-                                //   restarts at a run's load, Chip.checkInvariants' s[7])
     // ---- the register block (TileControl.violate) ----
-    CTL_WFI_WOKEN,              // (no arguments)
-    CTL_RESERVED_BITS,          // a0 the register's index (checker.cpp's names), a1 the reserved bits set
-    CTL_RECORD_BASE_ODD,        // a0 the value
-    CTL_RD_DEST_SIZE,           // (no arguments)
-    CTL_RESERVED_ACCESS,        // a0 the access's index in checker.cpp's table, a1 its address
-    CTL_DONE_GO_MASKED,         // (no arguments)
     CTL_COUNTER_WRAP,           // a0 the counter
     CTL_DONE_EARLY,             // a0 a mask of counters still expecting arrivals, a1-a3 their counts (checker.cpp)
-    // the core's checks, through the block (Controller.java's ctl.violate)
-    CTL_HALT,                   // a0 the halt (Controller.HALT_*: ecall 2, ebreak 3, fetch 6, jump 7, trap inside the
-                                //   handler 8), a1 its detail (fetch: the pc; jump: the target; trap: the cause)
-    CTL_MRET,                   // (no arguments)
-    CTL_ALIAS,                  // a0 the (word) address past the end of data or program memory
-    CTL_DMEM_RESERVED,          // a0 the store's address (into data memory's first 16 bytes)
     CTL_REQ_FULL,               // (no arguments) a request pushed into a full request FIFO (RequestPort.send; harness only)
-    CTL_TABLE_BUSY,             // a0 the table (table_store.h: STREAM_SRC 0, DEST 1, COUNT 2, GROUP 3, PTR 4, HIST 5), a1 the
-                                //   word index: the window accessed while its engine uses it (Controller.window, 4.10)
     SLOT_VIOLATION,             // the peripheral slot's own (PeripheralSlot.violate): a0 its code (periph_slot.h F_*),
                                 //   a1, a2 its arguments, a3 a full post's depth; F_PERIPHERAL: a1 n, a2 the peripheral's type
     TRACER_VIOLATION,           // the Tracer's (Tracer.violate through its slot): a0 its code (tracer.h V_*), a1, a2 its
                                 //   arguments (V_UNDEFINED: a2 the ALU's text, a static string)
     PERIPH_VIOLATION,           // a peripheral's violation through its slot to the block (ref's Peripheral.Host.violate):
                                 //   the replayer's (F2): a0 its code, a1-a3 its arguments (units/replayer.h)
-    // ---- the controller's memories (ControllerMemories) ----
-    CMEM_COMMAND_UNREAD,        // a1 d, a2 h, a3 hi (cfg.checkCommandRead)
-    CMEM_REPLY_OVERWRITE,       // a0 the data word, a1 d, a2 h, a3 hi (cfg.strictReplies)
     // ---- the read port ----
     RP_SIZE_UNDEF,              // (no arguments)
     RP_QUEUE_FULL,              // a0 the address
@@ -138,13 +104,8 @@ enum class Kind : uint16_t {
     AG_BROADCAST_ON_TILE,       // a0 the tile
     AG_GATHER_DEST,             // a0 d
     AG_COUNT_CTR0,              // (no arguments)
-    AG_START_WHILE_RUNNING,     // (as ref's AG: checker.cpp)
-    AG_TABLE_WRAP,              // (as ref's AG: checker.cpp)
-    // ---- the read queue, the write engine ----
-    SRQ_PAST_SRAM,              // a0 the client, a1 the chunk
+    // ---- the write engine ----
     WE_PAST_SRAM,               // a0 the chunk, a1 d, a2 h, a3 hi
-    // ---- the read-return register ----
-    READ_RETURN_REFUSED,        // (no arguments; once per tile)
     // ---- the chip ----
     REQBUS_QUEUE_OVERFLOW,      // a0 the target
     REQBUS_NO_RECEIVER,         // a0 the source unit, a1 the target
@@ -160,28 +121,21 @@ enum class Kind : uint16_t {
 constexpr Slot slot_of(Kind k) {
     switch (k) {
     case Kind::ERRORS_SET: case Kind::ERROR_LINE: return Slot::ERRORS;
-    case Kind::CC1_PERIPH: return Slot::CC1_PERIPH;
     case Kind::S1_LATE: return Slot::S1_LATE;
     case Kind::FIFO_OVERFLOW: return Slot::OVERFLOW;
-    case Kind::EJECT_WRONG_TILE: return Slot::EJECT;
-    case Kind::ILLEGAL_FORWARD: return Slot::ROUTE;
     case Kind::DISJOINT: return Slot::DISJOINT;
     case Kind::HIST_OVERFLOW: return Slot::HIST17;
-    case Kind::ROTATION_LATE: return Slot::ROTATION;
-    case Kind::CMEM_COMMAND_UNREAD: case Kind::CMEM_REPLY_OVERWRITE: return Slot::CMEM;
     case Kind::RP_SIZE_UNDEF: case Kind::RP_QUEUE_FULL: case Kind::RP_DEST_ALIGN: return Slot::READPORT;
-    case Kind::SRQ_PAST_SRAM: return Slot::SRQ;
     case Kind::WE_PAST_SRAM: return Slot::WRITER;
-    case Kind::READ_RETURN_REFUSED: return Slot::REFUSAL;
     case Kind::REQBUS_QUEUE_OVERFLOW: case Kind::REQBUS_NO_RECEIVER: return Slot::REQBUS;
     case Kind::CNC_RX_LOST: return Slot::RX_LOST;
     case Kind::EP_BAD_PACKET: case Kind::EP_SIZE_UNDEF: case Kind::EP_RESERVED_MODE: return Slot::ENDPOINT;
     default: break;
     }
     if (k >= Kind::INJ_BAD_PACKET && k <= Kind::INJ_COUNT_CTR0) return Slot::INJ;
-    if (k >= Kind::DIR_READPORT_OVERLAP && k <= Kind::DIR_COMMAND_KIND) return Slot::DIR;
-    if (k >= Kind::CTL_WFI_WOKEN && k <= Kind::PERIPH_VIOLATION) return Slot::CTL;   // (a peripheral's: the block's, ref's)
-    if (k >= Kind::AG_SIZE_UNDEF && k <= Kind::AG_TABLE_WRAP) return Slot::AG;
+    if (k >= Kind::DIR_READPORT_OVERLAP && k <= Kind::DIR_PAST_SRAM) return Slot::DIR;
+    if (k >= Kind::CTL_COUNTER_WRAP && k <= Kind::PERIPH_VIOLATION) return Slot::CTL;   // (a peripheral's: the block's, ref's)
+    if (k >= Kind::AG_SIZE_UNDEF && k <= Kind::AG_COUNT_CTR0) return Slot::AG;
     return Slot::COUNT;
 }
 

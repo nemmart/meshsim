@@ -43,3 +43,9 @@
   turn (the container restarts between turns; /tmp and the checkout persist): runs resumable by marker files.
 - One CPU: a full four-build pass is long; test_p4suites (17 cases) and test_sort_suites run case by case with the
   test framework's filter (`./build/X/test_p4suites CASE`) when a command's 300 s limit is near.
+
+## The end
+
+- Quests 190-192 (three parts from 3e5b90ab), the few5-k128 diagnosis and fix, the STATUS lines: WORKER27-REPORT.md.
+  The integrator closed v1.35 with his own version of the fix and ran the accepted freeze check (Quests 193-196); my
+  later local commits (the fix, the STATUS lines, times.md) were superseded and not pushed.

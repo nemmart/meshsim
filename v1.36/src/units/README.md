@@ -40,13 +40,14 @@ its machine through them.
 | v1.35's M1 bench (v1.35's core, which is deleted, with its register block): not built, kept for the pending tests that include it (`PENDING-v1.36.md`, section 2) | `controller.h`, `controller.cpp` | 4.11 |
 | the peripheral slot: each peripheral's control block and DMA (the RTL's `peripheral_control`, `peripheral_dma`, its packet register on the router's DMA input), the write port, and the contract a peripheral's model meets (`periph_slot.h`, "THE CONTRACT") | `periph_slot.h`, `periph_slot.cpp`, `peripheral.h` | **v1.36** 17.1–17.5 |
 | a peripheral's counted events: a consuming load, a set and a fill in one cycle | `event_counts.h` | **v1.36** 7.2, 17.2 |
-| Ingress/Egress, the master tile's peripheral 1 (the nets, `RELEASE`, the watchdog, the UART's transmit side); the RW engine's stand-in on the memory tile, which stops the simulator if used | `ingress_egress.h` | **v1.36** 17.6, 17.7, 18 |
+| Ingress/Egress, the master tile's peripheral 1 (the nets, `RELEASE`, the watchdog; the UART and the host interface as the RTL's `uart.veryl` and `ingress_egress_unit.veryl`, cycle for cycle at the pins and the AXI4-Stream ports, which a test bench plays through its per-cycle `boundary`) | `ingress_egress.h` | **v1.36** 17.6, 17.7, 18 |
+| the RW engine, the memory tile's peripheral 1: the RTL's (Snarky One's `rw_engine_unit`), cycle for cycle: its words, the job and its bursts, the write buffer, the reply, both output queues behind the slot's DMA, and the `lpddr` port, an AXI4 master, which is the model's boundary: a harness places the LPDDR controller on it (`LpddrSlave`; the tests' are `tests/axi4_slave.h`), and a job that raises a burst without one stops the simulator | `rw_engine.h` | **v1.36** 17.7, 3, 19 |
 | (v1.35's behavioural model of C&C and its host port are a test bench's now: `tests/bench_master.*`, `tests/host_port.h`) | | |
 | the replayer, as the RTL's `replayer_unit` builds it: its queues, decoders, fetch, row engine, pass and output queue, cycle for cycle | `replayer.h`, `replayer.cpp`, `replayer_alu.h`, `stream_word.h` | 17.8 (`spec/jolt/replayer.md`) |
 | the replayer's expansion tables as delivered | `replay_tables.h`, `replay_tables.cpp` | 4.19; `data/REPLAY-INPUT-REQUIREMENTS.md` |
 | what the replayer and the Tracer share | `row_core.h` | 4.19, 4.21 |
 | the Tracer: the RTL's (Snarky One's `tracer_unit`), cycle for cycle | `tracer.h`, `tracer.cpp`, `rvc.h`, `lru_coder.h`, `lru_index.h` | 17.9 (`spec/jolt/tracer.md`) |
-| the memory system behind the fill port, and the memory as files, as the Tracer sees them | `mem_system.h`, `file_store.h`, `file_store.cpp` | 17.9.5, 17.9.14 |
+| the memory system behind the fill port, and the memory as files, as the Tracer sees them: the simulator's own model (17.9.14 is *Open*). A harness may place its own model on the fill port instead (`Tracer::FillPort`: the two request channels' readies and each request's answer), as the RTL's chip tests do; the chip's tests place the RTL test's (`tests/segment_bench.h`) | `mem_system.h`, `file_store.h`, `file_store.cpp`; `tracer.h` | 17.9.5, 17.9.14 |
 | S1's measurement | `s1.h` | 4.8, 4.10; invariant 24 |
 | the retire trace | `trace_log.h`, `trace_log.cpp` | 8.15; `tests/TRACE-FORMAT.md` |
 | a memory's part of the state fingerprint | `memsum.h` | (simulator only) |

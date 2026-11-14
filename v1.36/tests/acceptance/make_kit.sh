@@ -2,7 +2,7 @@
 # make_kit.sh -- builds the acceptance kit (v1.35, v1.3's acceptance/make_kit.sh) from the
 # committed sim/ at HEAD (commit first): the sources the kit's programs build from (Makefile, src/, tools/, tests/'s
 # top-level sources and makefiles, tests/acceptance/, bench/'s makefiles, which the Makefile includes), the data they read (data/tables with its manifest, data/hops.txt,
-# the boot ROM, the replay controller's images: tests/m3-images/replay_ctl, fw/images/log8k and oldmap), and the
+# the RTL's references of Stage A's cycles: tests/acceptance/rtl), and the
 # scripts (run_shard.sh, calibrate.sh, build.sh, README.md) at the top. No jar: the runner builds it (./build.sh).
 #   tests/acceptance/make_kit.sh OUT.tgz
 set -eu
@@ -13,11 +13,11 @@ TOP=$(git rev-parse --show-toplevel); REV=$(git rev-parse --short HEAD)
 [ -z "$(git status --porcelain -- . | grep -v '^??')" ] || echo "make_kit.sh: uncommitted changes in sim/ are not in the kit (HEAD $REV)" >&2
 K=$(mktemp -d); trap 'rm -rf "$K"' EXIT
 mkdir -p "$K/w25-kit"
-( cd "$TOP" && git archive --format=tar HEAD -- sim/Makefile sim/src sim/tools sim/data/tables sim/data/hops.txt sim/fw/boot/bootrom.hex \
-    sim/fw/images/log8k sim/fw/images/oldmap ':(glob)sim/tests/*.cpp' ':(glob)sim/tests/*.h' ':(glob)sim/tests/*.mk' sim/tests/acceptance \
-    ':(glob)sim/tests/m3-images/replay_ctl.*' ':(glob)sim/bench/**/*.mk' ) | tar -xf - -C "$K/w25-kit"
+( cd "$TOP" && git archive --format=tar HEAD -- sim/Makefile sim/src sim/tools sim/data/tables sim/data/hops.txt \
+    ':(glob)sim/tests/*.cpp' ':(glob)sim/tests/*.h' ':(glob)sim/tests/*.mk' sim/tests/acceptance \
+    ':(glob)sim/bench/**/*.mk' ) | tar -xf - -C "$K/w25-kit"
 for need in sim/Makefile sim/tests/replay_shard_main.cpp sim/tests/acceptance/shard_summary.cpp sim/tools/delivery/synthetic_delivery.cpp \
-            sim/data/tables/manifest.json sim/data/tables/replayer/decode_table.bin sim/tests/m3-images/replay_ctl.code.bin sim/fw/images/log8k/replay_ctl.code.bin; do
+            sim/data/tables/manifest.json sim/data/tables/replayer/decode_table.bin sim/tests/acceptance/rtl/synthetic.txt; do
   [ -e "$K/w25-kit/$need" ] || { echo "make_kit.sh: the kit lacks $need" >&2; exit 1; }
 done
 cp tests/acceptance/run_shard.sh tests/acceptance/calibrate.sh tests/acceptance/build.sh tests/acceptance/README.md "$K/w25-kit/"

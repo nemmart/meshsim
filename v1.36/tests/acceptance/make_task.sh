@@ -13,7 +13,7 @@ SHA=$(sha256sum "$KIT" | cut -d' ' -f1)
 cat <<HDR
 #!/bin/bash
 # Task $NAME -- meshsim v1.35 acceptance kit. The kit (sim/'s
-# sources for replay_shard, shard_summary and synthetic_delivery, built here with clang; the replay controller's images;
+# sources for replay_shard, shard_summary and synthetic_delivery, built here with clang;
 # the universal replayer tables; run_shard.sh, calibrate.sh) is embedded below as a base64 tgz, SHA-256 checked.
 # Runs: $CMD
 # Commits only results (CSV, summaries, logs); deliveries are only read, or generated into scratch and deleted.

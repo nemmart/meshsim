@@ -4,7 +4,7 @@
 // every detail line of a failing window (the row count, the first mismatching row with its fields, ref's describe and
 // diag.bin lines and the two rows before it, the streams' consumption, the end state, the replayer's errorReport and
 // the ideal controller's missing-template log). Also the delivery's reading (ref's tablesFor, the manifest's window
-// entries) and consumedExactly, which Stage B shares. Configuration-regime test code (D6).
+// entries) and consumedExactly. Configuration-regime test code (D6).
 #pragma once
 
 #include <cstdarg>

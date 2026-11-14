@@ -23,7 +23,7 @@
 #include "replay_window.h"
 #include "replayconf.h"
 
-// The unit tests' windows and encoders, compiled in unchanged (as suite_replayer and stageb do).
+// The unit tests' windows and encoders, compiled in unchanged (as suite_replayer does).
 #undef TEST
 #define TEST(name) [[maybe_unused]] static void name()
 namespace unit {

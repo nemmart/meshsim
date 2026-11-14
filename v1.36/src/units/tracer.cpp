@@ -376,7 +376,7 @@ void Tracer::do_run(int64_t t) {
     if (!state_written_) ub(t, "START with no state write since the reset (17.9.3)");
     const int n = int(run_config_ & RC_ROWS);
     if (n > MAX_ROWS) ub(t, "RUN_CONFIG.rows above 65,536 (17.9.1)", uint64_t(n));
-    if (!mem) FATAL("Tracer (%d): START at %lld without a memory system (own_memory, or mem, before the run)", me_, (long long)t);
+    if (!mem && !fill_port) FATAL("Tracer (%d): START at %lld without a memory system (own_memory, mem or fill_port, before the run)", me_, (long long)t);
     running_ = true; rows_ended_ = false; done_ = false; started_ = true;
     rows_left_ = n; rows_done_ = 0; runs++; run_start_at = t;
     rows_.run_first = true;
@@ -779,12 +779,15 @@ void Tracer::cycle(int64_t T) {
         f.read_root = map ? map_root() : mem_root();
         f.read_depth = map ? map_depth() : mem_depth();
         f.read_line = data_read_granted ? int64_t(xd.line) : map ? xj.line : int64_t(xf.line);
-    } else if (f.read_request_valid) {   // its handshake: the memory system is always ready
+    } else if (f.read_request_valid && (!fill_port || fill_port->read_ready(fill_port->ctx, T))) {
+        // its handshake: `mem` is always ready, a harness's model (fill_port) as it says
         f.read_request_valid = false;
         f.read_outstanding = true;
         const bool map = f.read_owner == OWNER_MAP;
         MemSystem* m = map && map_mem ? map_mem : mem;
-        f.read_response_at = m->port_read(T, f.read_root, f.read_depth, f.read_line, fill_latency[map ? 1 : 0], f.response);
+        f.read_response_at = fill_port ? fill_port->read(fill_port->ctx, T, f.read_root, f.read_depth, f.read_line, f.response)
+                                       : m->port_read(T, f.read_root, f.read_depth, f.read_line, fill_latency[map ? 1 : 0], f.response);
+        if (f.read_response_at <= T) FATAL("Tracer: a fill read answered at %lld, not after its handshake at %lld", (long long)f.read_response_at, (long long)T);
         if (map) probe_reads++;
     }
     if (read_response_valid) f.read_outstanding = false;
@@ -794,11 +797,13 @@ void Tracer::cycle(int64_t T) {
     if (request_write) {
         f.write_request_valid = true;
         f.write_root = mem_root(); f.write_depth = mem_depth();
-    } else if (f.write_request_valid) {   // its handshake: the line is written as it is taken
+    } else if (f.write_request_valid && (!fill_port || fill_port->write_ready(fill_port->ctx, T))) {
+        // its handshake: the line is written as it is taken
         f.write_request_valid = false;
         f.write_outstanding = true;
-        f.write_response_at = mem->port_write(T, f.write_root, f.write_depth, int64_t(f.write_line), f.write_data,
-                                              fill_latency[0] > 0, f.write_status);
+        f.write_response_at = fill_port ? fill_port->write(fill_port->ctx, T, f.write_root, f.write_depth, int64_t(f.write_line), f.write_data, f.write_status)
+                                        : mem->port_write(T, f.write_root, f.write_depth, int64_t(f.write_line), f.write_data,
+                                                          fill_latency[0] > 0, f.write_status);
         writebacks++;
     }
     // the map's reads (tracer_memory.veryl): one at a time, the response registered

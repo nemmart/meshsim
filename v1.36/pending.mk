@@ -29,15 +29,13 @@ PENDING_TESTS += test_slotconf
 # What v1.3's suites and goldens drive on the chip: v1.35's images under C&C's commands, C&C 1-3 as cores, v1.3's
 # fingerprints. (tests/mach.h itself is ported: test_mach; the chip end to end is test_rtl_sort.) test_checkself: ref's
 # CheckSelf sequence, which provokes
-# the checker through v1.35's commands, replies and strays. test_p4suites, test_ctl_suites, test_sort_suites,
-# test_stageb run the suite programs that run_tests.sh has pending; test_stageb, stageb and replay_shard run v1.35's
-# replay controller on v1.35's tile (they passed on the replayer stage's branch, whose tile was still v1.35's);
-# test_t2_harness boots v1.35's C&C 3 with v1.35's tracer firmware.
-PENDING_TESTS += test_checkself test_chip test_sort test_cc_units test_cc_req test_t2_harness test_stageb \
-                 test_p4suites test_ctl_suites test_sort_suites
+# the checker through v1.35's commands, replies and strays. test_p4suites, test_ctl_suites and test_sort_suites run the
+# suite programs that run_tests.sh has pending.
+PENDING_TESTS += test_checkself test_chip test_sort test_cc_units test_cc_req test_p4suites test_ctl_suites \
+                 test_sort_suites
 
 # ---- the other default targets ----
-PENDING_BIN := golden bench_controller replay_shard stageb
+PENDING_BIN := golden bench_controller
 # bench/sort's bench_sort and bench_chip time v1.35's sort images on v1.35's machine (the M1 bench, C&C's commands, the
 # phases from GO): they do not compile, and `make build/<cc>-<mode>/bench_sort` says so (bench/sort/sort.mk).
 PENDING_BIN += bench_sort bench_chip

@@ -1,14 +1,18 @@
 // ingress_egress.h: Ingress/Egress, the master tile's peripheral 1 (machine-spec 17.6; the RTL's
-// rtl/blocks/ingress_egress_unit), and the RW engine's stand-in on the memory tile (17.7). Both are peripherals of the
-// slot (units/peripheral.h's method set); the control block and the DMA block (17.1-17.4) are the slot's.
+// rtl/blocks/ingress_egress_unit). It is a peripheral of the slot (units/peripheral.h's method set); the control block
+// (17.1-17.4) is the slot's. (The RW engine, the memory tile's peripheral 1, is units/rw_engine.h.)
 //
-// INGRESS/EGRESS holds the chip's control lines: every other tile's error line, the barrier's master side, the watchdog
-// and the toast pin, LED, the UART and the host interface. It does no work and sends nothing: a START and a WRITE into
-// its region are UB (17.6), and stop the simulator.
+// INGRESS/EGRESS holds the chip's control lines and its external IO: every other tile's error line, the barrier's
+// master side, the watchdog and the toast pin, LED, the UART and the host interface. It does no work and sends
+// nothing: a START and a WRITE into its region are UB (17.6), and stop the simulator. The UART and the host interface
+// are the RTL's uart.veryl and ingress_egress_unit.veryl, register for register, cycle for cycle at the pins.
 //
-// TIMING (the slot's rule, periph_slot.h): a store the core issues in t takes effect at the end of t + 1 (6.4): the slot
-// calls write_word(t + 1, ...) at level 0 of t + 2, before the reads of t + 2; step(u) is the edge that ends u.
-//   - RELEASE: its effect at the end of p = t + 1 clears ARRIVALS but an arrival that reached Ingress/Egress in p, sets
+// TIMING (the slot's rule, periph_slot.h): a store the core issues in t is presented in p = t + 1 and takes effect at
+// the end of p (6.4): the slot calls write_word(p, ...) at level 0 of p + 1, before the reads of p + 1. A load
+// presented in p reads the state at the end of p - 1, and one that pops (UART_RX, STREAM_RECEIVE) pops at the end of
+// p: load_effect(p, w), called the same way. step(u) is the edge that ends u, without the core's access of u, which
+// the slot applies after it: every rule below that reads "at the start of the cycle" is kept across the two calls.
+//   - RELEASE: its effect at the end of p clears ARRIVALS but an arrival that reached Ingress/Egress in p, sets
 //     the watchdog's count to its limit, and BARRIER_RELEASE's flip-flop is 1 in p + 1: put in end(p + 1) on the 64
 //     `release` links, whose latency is RELEASE_LATENCY (the flip-flop's cycle is its first: 18, the RTL's chip.veryl).
 //   - ARRIVALS: bit i is set at the end of the cycle in which tile i's BARRIER_ARRIVE reaches Ingress/Egress: the row
@@ -20,6 +24,51 @@
 //     step(p) has run when the store of p is applied, so the store takes that expiry back (unexpire).
 //   - The toast pin: set at the end of a cycle in which the master tile's own error line is 1, or the watchdog expires.
 //
+// THE UART (17.6; uart.veryl). Frames: a start bit, 0; 8 data bits, the least significant first; a stop bit, 1; the
+// line 1 while idle; each bit D cycles, D the divisor a frame takes at its start (UART_DIVISOR as it stands at the
+// start of the frame's first cycle), so a UART_DIVISOR store takes effect at each direction's next idle point. A
+// divisor of 0 is UB (17.6); here, as in the RTL, the counters wrap (a bit of 65,536 cycles; samples 131,072 apart).
+//   - The TX FIFO (UART_FIFO_DEPTH = 16): a UART_TX store presented in p with the FIFO not full at the start of p
+//     pushes its byte at the end of p; with it full the store stalls (store_stalls: the reg interface's ready), a pop
+//     in that cycle notwithstanding, and is taken in the first cycle the FIFO starts not full.
+//   - The transmitter: a frame starts in a cycle at an idle point (no frame, or the last cycle of a stop bit) with the
+//     TX FIFO not empty: the head is popped at the end of that cycle, and the start bit is on uart_tx from the next.
+//     So a byte pushed into an empty FIFO in p, the transmitter idle, is popped at the end of p + 1 and its start bit
+//     is on the pin from p + 2; frames follow back to back, 10 D cycles apart. uart_tx is a flip-flop.
+//   - The receiver: two flip-flops synchronise uart_rx and a third holds the line's last value, so a level on the pin
+//     in cycle c is the line the receiver reads in c + 2. A frame starts in a cycle e in which the receiver is idle and
+//     the line is 0 after 1; bit k (1-8 data, 9 the stop bit) is sampled in e + k D + floor(D / 2); the start bit is
+//     not sampled. At the stop bit's sample the frame ends: a stop bit of 0 drops it and sets framing_error; else the
+//     RX FIFO full at the start of that cycle (a pop in it notwithstanding) drops the byte and sets rx_overrun; else
+//     the byte enters the RX FIFO at the end of that cycle. The receiver is idle again from the next cycle.
+//   - UART_RX reads [7:0] the RX FIFO's head and [8] valid, 0 while it is empty; a load pops the head at the end of its
+//     cycle if the FIFO was not empty at its start. UART_STATUS: [4:0] the TX FIFO's bytes (the byte on the line has
+//     left it), [12:8] the RX FIFO's, [16] rx_overrun, [17] framing_error; a store clears each line error it writes 1,
+//     but one raised at the end of the store's own cycle stays set.
+//
+// THE HOST INTERFACE (17.6, 3; ingress_egress_unit.veryl): lvds_in and lvds_out, AXI4-Stream, TDATA of STREAM_BYTES
+// bytes (`stream_bytes`, 1-16; the chip's is 4) and TLAST, each behind a FIFO of STREAM_DEPTH = 4 beats. A beat is
+// STREAM_BEAT_WORDS = ceil(STREAM_BYTES / 4) words, its top word the last; a word's bits past TDATA and the words past
+// the beat are ignored on a store and read 0.
+//   - Out: STREAM_OUT_Ww holds word w below the top; STREAM_SEND or STREAM_SEND_LAST presented in p with the transmit
+//     FIFO not full at the start of p pushes the beat (its top word the store's, TLAST 0 or 1) and clears
+//     STREAM_OUT_W0-W2 at the end of p; with it full the store stalls. lvds_out_tvalid is 1 in a cycle at whose start
+//     the FIFO holds a beat (from p + 1 for a push into an empty FIFO), with the head's TDATA and TLAST, held until
+//     the handshake: the head leaves at the end of a cycle in which lvds_out_tvalid and lvds_out_tready are 1.
+//   - In: lvds_in_tready is 1 in a cycle at whose start the receive FIFO is not full, but 0 in the first cycle after
+//     the reset (a flip-flop). A beat enters at the end of a cycle in which lvds_in_tvalid and lvds_in_tready are 1,
+//     and is read from the next. STREAM_IN_Ww reads word w below the top of the oldest beat and STREAM_RECEIVE its
+//     top word, 0 while the FIFO is empty; a STREAM_RECEIVE load pops the beat at the end of its cycle if the FIFO was
+//     not empty at its start. STATUS [2] stream_last is the oldest beat's TLAST, 0 while there is none.
+//   - EVENTS, live, from the registers a load of the cycle reads: [4] uart_rx, a byte in the RX FIFO; [5] uart_tx, room
+//     in the TX FIFO; [6] stream_in, a beat in the receive FIFO; [7] stream_out, room in the transmit FIFO.
+//
+// THE PINS AND THE PORTS (18, 3) are the chip's boundary: the serial line's far end and the LVDS IO block are not chip
+// hardware. A test bench plays them through `boundary`, called once in every cycle t, in step(t), with the outputs'
+// levels in t (every one a flip-flop: Pins::Out) and the inputs' it gives for t (Pins::In). Without one the inputs
+// are idle, the RTL chip's tests' idle_inputs: uart_rx 1, no beat offered on lvds_in, lvds_out_tready 0. With one the
+// peripheral steps in every cycle (idle() is false). `out()` is the outputs' levels in the next cycle to step.
+//
 // THE NETS, through the peripheral's own ports (peripheral.h, OWN PORTS; wired by the chip, chip.cpp):
 //   rows (8)     own WireIns, from the chip's NetRow units (chip.h): [7:0] the row's tiles whose BARRIER_ARRIVE reaches
 //                Ingress/Egress in this cycle, [15:8] the row's error lines' levels.
@@ -30,17 +79,6 @@
 // WHAT IS NOT THE RTL'S YET (PENDING-v1.36.md):
 //   - An error line's level reaches ERROR_LINES a cycle later than ERROR_LATENCY says: the RTL reads the wire in the
 //     cycle the tile's flip-flop drives it; here the level crosses a Link(1 + ERROR_LATENCY).
-//   - The UART: the transmitter takes a byte from the TX FIFO every 10 bits of UART_DIVISOR cycles and logs it
-//     (serial_out); the line itself, the divisor's change at an idle point and the receiver are not modelled: RX has no
-//     source, so UART_RX reads 0 and pops nothing.
-//   - The host interface (words 64-72): the receive side reads empty, as with the LVDS IO block offering no beat (the
-//     chip's tests' idle inputs); a store to STREAM_OUT_W0-W2, STREAM_SEND or STREAM_SEND_LAST stops the simulator: the
-//     transmit FIFO and the lvds ports are not modelled.
-//
-// THE RW ENGINE'S STAND-IN (RwEngineStub): the memory tile's peripheral 1 with 17.7's PARAMS (type 2, version 0), its
-// words, an idle STATUS, no events and no errors, and the slot's DMA block in front of two output queues that never hold
-// an entry. Whatever would make the engine work stops the simulator, named: START, a store to its own words, a DMA
-// transfer of one packet or more, a WRITE into its region. (EVENTS_MASK and the DMA block's registers are the slot's.)
 #pragma once
 
 #include <cstdint>
@@ -61,13 +99,34 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
     enum : unsigned { EV_DONE = 0, EV_DMA_DONE = 1, EV_ALL_ARRIVED = 2, EV_WATCHDOG = 3, EV_UART_RX = 4, EV_UART_TX = 5,
                       EV_STREAM_IN = 6, EV_STREAM_OUT = 7 };
     static constexpr unsigned FIFO = 16, kSerial = 4096;      // UART_FIFO_DEPTH (19)
-    static constexpr int DIGEST_N = 3;
+    static constexpr unsigned STREAM_DEPTH = 4;               // (19)
+    static constexpr int DIGEST_N = 5;
+
+    // ---- the pins and the ports (header, THE PINS AND THE PORTS): a cycle's levels ----
+    struct Pins {
+        struct Out {
+            bool uart_tx = true, toast = false, led = false;
+            bool lvds_in_tready = false;
+            bool lvds_out_tvalid = false, lvds_out_tlast = false;
+            uint32_t lvds_out_tdata[4] = {};                 // word w: TDATA's bits [32w + 31 : 32w]; the head's (a register)
+        };
+        struct In {                                          // the idle inputs
+            bool uart_rx = true;
+            bool lvds_in_tvalid = false, lvds_in_tlast = false;
+            uint32_t lvds_in_tdata[4] = {};
+            bool lvds_out_tready = false;
+        };
+    };
+    using Boundary = void (*)(void* far_end, int64_t t, const Pins::Out& out, Pins::In& in);
+    Boundary boundary = nullptr;       // the far ends, a test bench's (null: the idle inputs)
+    void* far_end = nullptr;
 
     // ---- the own ports' indices in the slot's storage (peripheral.h, OWN PORTS) ----
     unsigned row0 = 0, line0 = 0, release0 = 0;
 
-    // ---- configuration ----
+    // ---- configuration (set before the run; reset() takes it) ----
     uint32_t reset_divisor = 8681;     // UART_RESET_DIVISOR (19): the chip's, its clock over 115,200 (the RTL chip's default)
+    unsigned stream_bytes = 4;         // STREAM_BYTES (19), 1-16: the chip's (the RTL's Veryl.toml)
 
     // ---- state ----
     EventCounts ev;
@@ -80,14 +139,32 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
     bool wd_posted = false, wd_toasted = false;
     bool toast = false; int64_t toast_at = -1;   // the toast pin; the cycle at whose end it was set
     uint32_t led = 0;
-    uint8_t tx[FIFO] = {}; unsigned tx_head = 0, tx_n = 0;
-    uint32_t divisor = 0;
-    int64_t tx_busy_until = INT64_MIN;
-    bool rx_overrun = false, framing = false;
     bool release_due = false;          // a RELEASE applied at level 0 of this cycle: BARRIER_RELEASE is put in end()
+    // the UART (uart.veryl's registers, by its names)
+    uint32_t divisor = 0;              // UART_DIVISOR [15:0]
+    uint8_t tx[FIFO] = {}; unsigned tx_head = 0, tx_n = 0;
+    bool tx_busy = false, tx_line = true;           // a frame on the line; uart_tx
+    uint16_t tx_cycles_left = 0, tx_bit_divisor = 0, tx_bits = 0;   // the bit's cycles from this one on; the frame's D; the bits to send
+    bool rx_meta = true, rx_line = true, rx_line_last = true;       // the synchroniser, and the line's last value
+    bool rx_busy = false;
+    uint8_t rx_bit = 0, rx_data = 0;                // the bit sampled next (1-8 data, 9 the stop bit); the data bits sampled
+    uint32_t rx_cycles_left = 0;                    // 17 bits: the cycles to its sample, the sample's included
+    uint16_t rx_bit_divisor = 0;
+    uint8_t rx[FIFO] = {}; unsigned rx_head = 0, rx_n = 0;
+    bool rx_overrun = false, framing = false;
+    int64_t overrun_at = INT64_MIN, framing_at = INT64_MIN;   // the cycle at whose end each was last raised
+    // the host interface
+    struct Beat { uint32_t w[4]; bool last; };
+    Beat out_q[STREAM_DEPTH] = {}; unsigned out_head = 0, out_n = 0;   // the transmit FIFO
+    Beat in_q[STREAM_DEPTH] = {}; unsigned in_head = 0, in_n = 0;      // the receive FIFO
+    uint32_t out_low[3] = {};          // STREAM_OUT_W0-W2
+    bool in_ready_ff = false;          // lvds_in_tready's flip-flop out of its reset value: 1 from the first edge
+    // the cycle last stepped, and the RX and receive FIFOs' counts at its start: what a popping load of it saw
+    int64_t stepped_at = INT64_MIN;
+    unsigned rx_n_start = 0, in_n_start = 0;
     // ---- statistics and logs (not state) ----
     uint64_t releases = 0, last_release_at = 0;
-    char serial_out[kSerial] = {}; unsigned serial_n = 0;
+    char serial_out[kSerial] = {}; unsigned serial_n = 0;   // the bytes the transmitter took, each as its frame starts
 
     IngressEgress() {
         static const uint8_t depth[8] = {1, 1, 0, 1, 0, 0, 0, 0};
@@ -99,6 +176,10 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
     // ---- identity ----
     int type() const { return 1; }
     int params() const { return 1; }                  // type 1, version 0, no constants (17.6)
+    // a beat (17.6): its words, its top word's index, the top word's bits of TDATA
+    unsigned beat_words() const { return (stream_bytes + 3) / 4; }
+    unsigned top_word() const { return beat_words() - 1; }
+    uint32_t top_mask() const { const unsigned bits = 8 * stream_bytes - 32 * top_word(); return bits == 32 ? ~0u : (1u << bits) - 1; }
 
     // ---- the framework hooks ----
     void ports(OwnPortsDecl& d) {
@@ -141,8 +222,9 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
     }
     void run(int64_t t) { FATAL("Ingress/Egress: undefined behavior at %lld: a START (17.6: it has no work)", (long long)t); }
     uint32_t consume_events(uint32_t bits) { return ev.consume(bits); }
-    // 1 written, 0 read-only (an access fault, the core's), -1 undefined. A UART_TX store never arrives with the FIFO
-    // full: the core retried it while R_STALL was set (store_stalls).
+    // The store presented in t, after step(t): 1 written, 0 read-only (an access fault, the core's), -1 undefined. A
+    // store that stalls never arrives: the core holds it while R_STALL is set (store_stalls), the FIFO's count at the
+    // start of the cycle.
     int write_word(int64_t t, int w, uint32_t v) {
         switch (w) {
         case 37: expect = (expect & ~0xFFFFFFFFull) | v; return 1;
@@ -154,18 +236,41 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
             if (tx_n >= FIFO) FATAL("Ingress/Egress: UART_TX stored at %lld with the TX FIFO full", (long long)t);
             tx[(tx_head + tx_n++) % FIFO] = uint8_t(v); return 1;
         case UART_DIVISOR: divisor = v & 0xFFFF; return 1;
-        case UART_STATUS: if (v >> 16 & 1) rx_overrun = false; if (v >> 17 & 1) framing = false; return 1;
-        case 64: case 65: case 66: case STREAM_SEND: case STREAM_SEND_LAST:
-            FATAL("Ingress/Egress: a store to window word %d at %lld: the host interface's transmit side is not modelled "
-                  "(17.6; PENDING-v1.36.md)", w, (long long)t);
+        case UART_STATUS:                              // a line error raised at the end of the store's cycle stays set
+            if ((v >> 16 & 1) && overrun_at != t) rx_overrun = false;
+            if ((v >> 17 & 1) && framing_at != t) framing = false;
+            return 1;
+        case 64: case 65: case 66:                     // a word at or above the beat's top holds nothing
+            if (unsigned(w - STREAM_OUT_W0) < top_word()) out_low[w - STREAM_OUT_W0] = v;
+            return 1;
+        case STREAM_SEND: case STREAM_SEND_LAST: {
+            if (out_n >= STREAM_DEPTH) FATAL("Ingress/Egress: a send stored at %lld with the transmit FIFO full", (long long)t);
+            Beat& b = out_q[(out_head + out_n++) % STREAM_DEPTH];
+            const unsigned top = top_word();
+            for (unsigned k = 0; k < 4; k++) b.w[k] = k < top ? out_low[k] : k == top ? v & top_mask() : 0;
+            b.last = w == STREAM_SEND_LAST;
+            out_low[0] = out_low[1] = out_low[2] = 0;
+            return 1;
+        }
         case 32: case 33: case 34: case 35: case 36: case UART_RX: case 69: case 70: case 71: case STREAM_RECEIVE: return 0;
         default: return -1;
+        }
+    }
+    // The loads that pop (17.6), and the pop of one presented in t, after step(t): the head as the load read it leaves
+    // at the end of t, if the FIFO was not empty at the start of t (a byte or a beat that entered at the end of t stays).
+    bool load_pops(int w) const { return w == UART_RX || w == STREAM_RECEIVE; }
+    void load_effect(int64_t t, int w) {
+        if (w == UART_RX) {
+            if ((stepped_at == t ? rx_n_start : rx_n) > 0) { rx_head = (rx_head + 1) % FIFO; rx_n--; }
+        } else if (w == STREAM_RECEIVE) {
+            if ((stepped_at == t ? in_n_start : in_n) > 0) { in_head = (in_head + 1) % STREAM_DEPTH; in_n--; }
         }
     }
 
     // ---- level reads (the end of t - 1, with the nets as begin(t) took them) ----
     bool running(int64_t) const { return false; }
     int errors(int64_t) const { return (err_line[0] | err_line[1]) ? 1 : 0; }   // [0] tile_error, live
+    uint32_t status_bits(int64_t) const { return in_n > 0 && in_q[in_head].last ? 1u << 2 : 0; }   // [2] stream_last
     EventCounts& events() { return ev; }
     void sync(int64_t t) { set_live(t); }
     bool word(int64_t t, int w, uint32_t& v) {
@@ -179,16 +284,21 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
         case 38: v = uint32_t(expect >> 32); return true;
         case WATCHDOG: v = uint32_t(wd_count); return true;
         case LED: v = led; return true;
-        case UART_RX: v = 0; return true;                       // the RX FIFO is always empty (header)
+        case UART_RX: v = rx_n > 0 ? 1u << 8 | rx[rx_head] : 0; return true;
         case UART_DIVISOR: v = divisor; return true;
-        case UART_STATUS: v = tx_n | (rx_overrun ? 1u << 16 : 0) | (framing ? 1u << 17 : 0); return true;
+        case UART_STATUS: v = tx_n | rx_n << 8 | (rx_overrun ? 1u << 16 : 0) | (framing ? 1u << 17 : 0); return true;
+        case 69: case 70: case 71:                               // a word at or above the top reads 0
+            v = in_n > 0 && unsigned(w - STREAM_IN_W0) < top_word() ? in_q[in_head].w[w - STREAM_IN_W0] : 0; return true;
+        case STREAM_RECEIVE: v = in_n > 0 ? in_q[in_head].w[top_word()] : 0; return true;
         case RELEASE: case UART_TX: case 64: case 65: case 66: case STREAM_SEND: case STREAM_SEND_LAST:   // W: a load reads 0
-        case 69: case 70: case 71: case STREAM_RECEIVE:           // the receive FIFO is always empty (header)
             v = 0; return true;
         default: return false;
         }
     }
-    bool store_stalls(int64_t, int w) const { return w == UART_TX && tx_n >= FIFO; }
+    // The stores that stall now: the FIFO full at the start of the cycle (lines_ready, stream_ready).
+    bool store_stalls(int64_t, int w) const {
+        return (w == UART_TX && tx_n >= FIFO) || ((w == STREAM_SEND || w == STREAM_SEND_LAST) && out_n >= STREAM_DEPTH);
+    }
     // The stores that may stall (the RTL's register_bus, own_stalling: block 2 word 10, block 4 words 3 and 4): UART_TX
     // while the TX FIFO is full, the sends while the host interface's transmit FIFO is (17.6).
     bool may_stall(int w) const { return w == UART_TX || w == STREAM_SEND || w == STREAM_SEND_LAST; }
@@ -197,36 +307,67 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
         return (w >= ARRIVE_EXPECT_0 && w <= UART_TX) || w == UART_DIVISOR || w == UART_STATUS || (w >= STREAM_OUT_W0 && w <= STREAM_SEND_LAST);
     }
 
-    // ---- the edge that ends t ----
+    // The outputs' levels in the next cycle to step: every one a flip-flop (18).
+    Pins::Out out() const {
+        Pins::Out o;
+        o.uart_tx = tx_line; o.toast = toast; o.led = led != 0;
+        o.lvds_in_tready = in_ready_ff && in_n < STREAM_DEPTH;
+        o.lvds_out_tvalid = out_n > 0;
+        if (out_n > 0) { for (unsigned k = 0; k < 4; k++) o.lvds_out_tdata[k] = out_q[out_head].w[k]; o.lvds_out_tlast = out_q[out_head].last; }
+        return o;
+    }
+
+    // ---- the edge that ends t (without the core's access of t: write_word(t, ...) and load_effect(t, ...) follow) ----
     void step(int64_t t) {
+        const Pins::Out o = out();
+        Pins::In in;
+        if (boundary) boundary(far_end, t, o, in);
+        stepped_at = t; rx_n_start = rx_n; in_n_start = in_n;
         if (wd_count > 0 && --wd_count == 0) {                 // the expiry, unless a store or a RELEASE of t sets the count
             wd_expired_at = t; wd_posted = ev.count_of(EV_WATCHDOG) == 0; wd_toasted = !toast;
             ev.post(t, EV_WATCHDOG);
             if (!toast) { toast = true; toast_at = t; }
         }
-        if (t >= tx_busy_until && tx_n > 0) {
-            const uint8_t b = tx[tx_head]; tx_head = (tx_head + 1) % FIFO; tx_n--;
-            if (serial_n < kSerial) serial_out[serial_n] = char(b);
-            serial_n++;
-            tx_busy_until = t + int64_t(10) * (divisor ? divisor : 1);
+        step_transmitter();
+        step_receiver(t, in.uart_rx);
+        // the host interface: the head out leaves at a handshake; a beat in enters at one
+        if (o.lvds_out_tvalid && in.lvds_out_tready) { out_head = (out_head + 1) % STREAM_DEPTH; out_n--; }
+        if (in.lvds_in_tvalid && o.lvds_in_tready) {
+            Beat& b = in_q[(in_head + in_n++) % STREAM_DEPTH];
+            const unsigned top = top_word();
+            for (unsigned k = 0; k < 4; k++) b.w[k] = k < top ? in.lvds_in_tdata[k] : k == top ? in.lvds_in_tdata[k] & top_mask() : 0;
+            b.last = in.lvds_in_tlast;
         }
+        in_ready_ff = true;
     }
 
     // ---- wake ----
-    bool idle(int64_t) const { return wd_count == 0 && tx_n == 0; }
+    bool idle(int64_t) const {
+        return wd_count == 0 && tx_n == 0 && !tx_busy && !rx_busy && rx_meta && rx_line && rx_line_last && in_ready_ff && !boundary;
+    }
     uint64_t violation_count() const { return 0; }
     void digest_words(int64_t* out) const {
         out[0] = int64_t(sim::hash_fields(err_line, arrived_at, cleared_at, expect, wd_count, wd_limit, toast, toast_at, led));
-        out[1] = int64_t(sim::hash_fields(tx, tx_head, tx_n, divisor, tx_busy_until, rx_overrun, framing));
+        out[1] = int64_t(sim::hash_fields(tx, tx_head, tx_n, divisor, tx_busy, tx_line, tx_cycles_left, tx_bit_divisor, tx_bits));
         out[2] = int64_t(sim::hash_fields(ev.count, ev.live_bits, ev.last_post_at));
+        out[3] = int64_t(sim::hash_fields(rx, rx_head, rx_n, rx_meta, rx_line, rx_line_last, rx_busy, rx_bit, rx_data, rx_cycles_left,
+                                          rx_bit_divisor, rx_overrun, framing));
+        out[4] = int64_t(sim::hash_fields(out_head, out_n, in_head, in_n, out_low, in_ready_ff));
     }
     void reset(int64_t) {
+        if (stream_bytes < 1 || stream_bytes > 16) FATAL("Ingress/Egress: STREAM_BYTES must be 1 to 16 (19): %u", stream_bytes);
+        if (reset_divisor < 1 || reset_divisor > 65535) FATAL("Ingress/Egress: UART_RESET_DIVISOR must be 1 to 65535 (19): %u", reset_divisor);
         std::memset(err_line, 0, sizeof err_line);
         for (auto& r : arrived_at) r = INT64_MIN;
         cleared_at = INT64_MIN; expect = 0; wd_count = wd_limit = 0; toast = false; toast_at = -1; led = 0;
         wd_expired_at = INT64_MIN; wd_posted = wd_toasted = false;
-        tx_head = tx_n = 0; divisor = reset_divisor; tx_busy_until = INT64_MIN;
-        rx_overrun = framing = false; release_due = false;
+        release_due = false;
+        divisor = reset_divisor;
+        tx_head = tx_n = 0; tx_busy = false; tx_line = true; tx_cycles_left = tx_bit_divisor = tx_bits = 0;
+        rx_meta = rx_line = rx_line_last = true; rx_busy = false; rx_bit = rx_data = 0; rx_cycles_left = 0; rx_bit_divisor = 0;
+        rx_head = rx_n = 0; rx_overrun = framing = false; overrun_at = framing_at = INT64_MIN;
+        out_head = out_n = in_head = in_n = 0; out_low[0] = out_low[1] = out_low[2] = 0; in_ready_ff = false;
+        stepped_at = INT64_MIN; rx_n_start = in_n_start = 0;
         ev.clear_all();
         ev.live_bits = 0;
         ev.live(EV_UART_TX, true); ev.live(EV_STREAM_OUT, true);   // room in the TX FIFO and in the transmit FIFO
@@ -238,6 +379,48 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
     bool all_arrived(int64_t t) const { return expect != 0 && (arrivals(t) & expect) == expect; }
 
 private:
+    // The transmitter's edge (uart.veryl, "The TX FIFO and the transmitter"), from the registers at the cycle's start.
+    void step_transmitter() {
+        const bool bit_ends = tx_cycles_left == 1;
+        const bool frame_ends = tx_busy && tx_bits == 0 && bit_ends;   // the stop bit, the last sent, in its last cycle
+        const bool pop = (!tx_busy || frame_ends) && tx_n > 0;         // an idle point, the TX FIFO not empty
+        if (pop) {
+            const uint8_t b = tx[tx_head]; tx_head = (tx_head + 1) % FIFO; tx_n--;
+            if (serial_n < kSerial) serial_out[serial_n] = char(b);
+            serial_n++;
+            tx_busy = true; tx_line = false;                           // the start bit
+            tx_cycles_left = tx_bit_divisor = uint16_t(divisor);
+            tx_bits = uint16_t(0x100 | b);                             // the data bits, then the stop bit
+        } else if (frame_ends) {
+            tx_busy = false; tx_line = true;
+        } else if (tx_busy && bit_ends) {
+            tx_line = tx_bits & 1;                                     // the next bit: data bits 1-8, then the stop bit
+            tx_cycles_left = tx_bit_divisor; tx_bits >>= 1;
+        } else {
+            tx_cycles_left--;                                          // 16 bits: a divisor of 0 wraps (header)
+        }
+    }
+    // The receiver's edge (uart.veryl, "The receiver and the RX FIFO"), with the pin's level in t.
+    void step_receiver(int64_t t, bool pin) {
+        const bool frame_starts = !rx_busy && rx_line_last && !rx_line;
+        const bool sample = rx_busy && rx_cycles_left == 1;
+        const bool frame_ends = sample && rx_bit == 9;
+        if (frame_ends && !rx_line) { framing = true; framing_at = t; }          // a stop bit of 0: dropped
+        else if (frame_ends && rx_n >= FIFO) { rx_overrun = true; overrun_at = t; }   // full at the cycle's start: dropped
+        else if (frame_ends) rx[(rx_head + rx_n++) % FIFO] = rx_data;
+        if (frame_starts) {
+            rx_busy = true; rx_bit = 1;
+            rx_cycles_left = divisor + (divisor >> 1);                 // the first data bit's middle
+            rx_bit_divisor = uint16_t(divisor);
+        } else if (sample) {
+            if (rx_bit != 9) rx_data = uint8_t((rx_line ? 0x80 : 0) | rx_data >> 1);   // the latest at bit 7
+            else rx_busy = false;
+            rx_bit++; rx_cycles_left = rx_bit_divisor;
+        } else {
+            rx_cycles_left = (rx_cycles_left - 1) & 0x1FFFF;           // 17 bits
+        }
+        rx_line_last = rx_line; rx_line = rx_meta; rx_meta = pin;      // the synchroniser
+    }
     // RELEASE's effect at the end of p: the arrivals seen through p are cleared (one whose pulse reached Ingress/Egress
     // in p is first seen by the reads of p + 1, and kept), the watchdog restarts, BARRIER_RELEASE's flip-flop is set.
     void release(int64_t p) {
@@ -255,48 +438,11 @@ private:
     }
     void set_live(int64_t t) {
         ev.live(EV_ALL_ARRIVED, all_arrived(t));
-        ev.live(EV_UART_RX, false);
+        ev.live(EV_UART_RX, rx_n > 0);
         ev.live(EV_UART_TX, tx_n < FIFO);
-        ev.live(EV_STREAM_IN, false);
-        ev.live(EV_STREAM_OUT, true);
+        ev.live(EV_STREAM_IN, in_n > 0);
+        ev.live(EV_STREAM_OUT, out_n < STREAM_DEPTH);
     }
-};
-
-// The RW engine's stand-in (header): present, typed, idle; whatever would start it stops the simulator.
-struct RwEngineStub : PeripheralBase<RwEngineStub> {
-    enum : int { RW_CONFIG = 32, RW_LPDDR_ADDR = 33, RW_BUFFER_ADDR = 34, RW_REPLY_W0 = 35, RW_REPLY_SEND = 36 };
-    EventCounts ev;
-    RwEngineStub() {
-        static const uint8_t depth[2] = {1, 1};
-        static const bool flags[2] = {};
-        ev.init(2, depth, flags);
-    }
-    int type() const { return 2; }
-    int params() const { return 2; }                  // type 2, version 0, no constants (17.7)
-    void accept(int64_t t, int src, uint32_t offset, int, uint64_t, uint64_t) {
-        FATAL("the RW engine is a stub (PENDING-v1.36.md): a WRITE into the memory tile's write buffer at %lld (offset 0x%x, from %d)",
-              (long long)t, offset, src);
-    }
-    void run(int64_t t) { FATAL("the RW engine is a stub (PENDING-v1.36.md): START at %lld", (long long)t); }
-    uint32_t consume_events(uint32_t bits) { return ev.consume(bits); }
-    bool running(int64_t) const { return false; }
-    int errors(int64_t) const { return 0; }
-    EventCounts& events() { return ev; }
-    bool word(int64_t, int w, uint32_t& v) { v = 0; return w >= RW_CONFIG && w <= RW_REPLY_SEND; }
-    bool writable(int w) const { return w >= RW_CONFIG && w <= RW_REPLY_SEND; }
-    int write_word(int64_t t, int w, uint32_t v) {
-        FATAL("the RW engine is a stub (PENDING-v1.36.md): a store of 0x%x to its window word %d at %lld", v, w, (long long)t);
-    }
-    // the DMA block's two output queues (17.7: 0 the read's beats, 1 the replies): never an entry
-    int out_queues() const { return 2; }
-    void out_start(int64_t t, int q, int64_t packets) {
-        FATAL("the RW engine is a stub (PENDING-v1.36.md): a DMA transfer of %lld packets from output queue %d at %lld",
-              (long long)packets, q, (long long)t);
-    }
-    void step(int64_t) {}
-    bool idle(int64_t) const { return true; }
-    uint64_t violation_count() const { return 0; }
-    void reset(int64_t) { ev.clear_all(); }
 };
 
 }  // namespace units

@@ -22,6 +22,11 @@
 //                 void sync(int64_t t); EventCounts& events()     the slot calls sync(t) before events().value(t)
 //                 bool word(int64_t t, int w, uint32_t& v)        w 32-127; false: undefined (reads 0, flagged)
 //                 bool store_stalls(int64_t t, int w)             a store to w must retry (C&C 1's UART_TX)
+//   static map    bool load_pops(int w) const                     (optional) a word 32-127 whose load has an effect at the
+//                                                                 end of its cycle (17.6: UART_RX and STREAM_RECEIVE pop):
+//                                                                 the core tells the slot of such a load (CoreOp::LOAD)
+//                 void load_effect(int64_t t, int w)              that effect, for the load presented in cycle t, applied
+//                                                                 after step(t): the slot's call
 //   static map    bool may_stall(int w) const                     (optional) a word 32-127 whose store may stall (the
 //                                                                 RTL's register_bus, own_stalling: Ingress/Egress's
 //                                                                 UART_TX, STREAM_SEND and STREAM_SEND_LAST): the bus
@@ -80,7 +85,7 @@ namespace units {
 enum PeriphType : uint8_t {
     PT_ABSENT = 0,
     PT_INGRESS = 1,   // Ingress/Egress, the master tile's (17.6; ingress_egress.h)
-    PT_RW_STUB = 2,   // the RW engine, the memory tile's (17.7), as a stub that stops the simulator if used (ingress_egress.h)
+    PT_RW = 2,        // the RW engine, the memory tile's (17.7; rw_engine.h)
     PT_TRACER = 3,    // the Tracer, the tracer tile's (17.9; v1.35's behind 17.1's control block)
     PT_REPLAYER = 4,  // the replayer, every mesh tile's peripheral 1 (Replayer)
     PT_TEST = 15,     // the suites' test peripheral (TestPeripheral)
@@ -135,6 +140,8 @@ struct PeripheralBase {
     uint32_t consume_events_late(int64_t t, uint32_t bits) { return static_cast<Self*>(this)->events().consume_late(t, bits); }
     bool may_stall(int) const { return false; }
     bool store_stalls(int64_t, int) const { return false; }
+    bool load_pops(int) const { return false; }
+    void load_effect(int64_t, int) {}
     int out_queues() const { return 0; }
     bool out_ready(int64_t, int) const { return false; }
     void out_take(int64_t, int, uint64_t*) { FATAL("peripheral: out_take without an output queue"); }

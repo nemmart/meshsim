@@ -10,7 +10,7 @@
 //     each special tile's router and its attach tile's: three register stages each, a hop of four with the route block;
 //   - the master tile (unit 64, "cc1.*"), the memory tile (65, "cc2.*") and the tracer tile (66, "cc3.*"): the base tile
 //     with its straps (tile_ctl.h's default_straps), its router a special tile's (router.h), its peripheral 1 in its slot:
-//     Ingress/Egress, the RW engine's stand-in, the Tracer (ingress_egress.h, tracer.h); the memory and tracer tiles'
+//     Ingress/Egress, the RW engine, the Tracer (ingress_egress.h, rw_engine.h, tracer.h); the memory and tracer tiles'
 //     peripherals' DMAs enter their routers (16.4);
 //   - the request tree (11.3; reqbus.h): every tile's sending side, the row nodes and the root, each special tile's
 //     receive queue with its credit;

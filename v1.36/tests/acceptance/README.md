@@ -1,27 +1,29 @@
 # The acceptance kit (v1.35)
 
 v1.3's acceptance kit (`meshsim/acceptance/`, WORKER11; v1.26 WORKER20; v1.26.1 WORKER25) on the C++ meshsim
-(sim/ WORKER25, P7b; inventory E5): **every window of a delivery, replayed by the replayer model (Stage A) and by the
-replay controller on a meshsim tile (Stage B), matches the delivery's rows row for row**, on the Quest runner. Its
-outputs are v1.3's: `results.csv` byte-identical but for the wall-time column, `VERDICT.txt` byte-identical,
-`SUMMARY.txt`'s non-timing lines equal.
+(sim/ WORKER25, P7b; inventory E5): **every window of a delivery, replayed by the replayer model (Stage A), matches the delivery's rows row for row**,
+on the Quest runner. Its outputs are v1.3's for Stage A: `results.csv` byte-identical but for the wall-time column,
+`VERDICT.txt` byte-identical, `SUMMARY.txt`'s non-timing lines equal.
+
+v1.3's kit had a second stage, the replay controller (`replay_ctl.c`) on a meshsim tile (Stage B on tile 0 alone, F on
+the full chip). v1.36 retired it with v1.35's firmware: the RTL's replay image on v1.36's chip is acceptance C
+(`tests/test_rtl_segment.cpp`), not this kit's. `shard_summary` still sums B and F lines as v1.3's Python did (its
+test's cases hold them), but nothing writes them.
 
 ## What it runs
 
-`run_shard.sh -d DELIVERY -p PROGRAM -f FIRST -n COUNT [-j JOBS] [-s AB] [-m MANIFEST_SHA256] OUTDIR` (options as
+`run_shard.sh -d DELIVERY -p PROGRAM -f FIRST -n COUNT [-j JOBS] [-m MANIFEST_SHA256] OUTDIR` (options as
 v1.3's; the script's header lists them). The manifest's SHA-256 is checked first. JOBS processes (`replay_shard`, v1.3's
-JVMs running ReplayShard) then take every JOBS-th window of FIRST..FIRST+COUNT-1. Per window and stage:
+JVMs running ReplayShard) then take every JOBS-th window of FIRST..FIRST+COUNT-1. Per window:
 - every file the replay reads (the state record, the three streams its stream word names, `rows.bin`, `end.bin`)
   against the manifest's SHA-256 (a mismatch is CORRUPT, not a replay failure);
 - **Stage A**: the replayer model fed by the ideal controller (`tests/stage_a.h`, v1.3's ReplayDelivery);
-- **Stage B**: the replay controller (`fw/replay/replay_ctl.c`, prebuilt) on a meshsim tile feeding its replayer
-  (v1.3's StageB): B tile 0 alone, F the full chip;
 - every row compared byte for byte with the reference, the streams consumed exactly, the end state equal, the
-  replayer and meshsim free of conditions and violations.
+  replayer free of conditions and violations.
 
-Output (OUTDIR only): `results.csv` (program, window, first row, stage:variant, verdict, rows, cycles, wall ms, detail),
-`SUMMARY.txt` (rows per process-second per stage, windows per hour; v1.3's wording: "JVM-s"), `VERDICT.txt` (PASS only
-if every window of the range is in the manifest and matched in every stage), `jvm-*.log` (one per process; v1.3's
+Output (OUTDIR only): `results.csv` (program, window, first row, `A`:variant, verdict, rows, cycles, wall ms, detail),
+`SUMMARY.txt` (rows per process-second, windows per hour; v1.3's wording: "JVM-s"), `VERDICT.txt` (PASS only
+if every window of the range is in the manifest and matched), `jvm-*.log` (one per process; v1.3's
 names). The summary step is `shard_summary` (v1.3's inline Python, in C++).
 
 `calibrate.sh OUTDIR [SCRATCH]`: a 128-window synthetic delivery (`synthetic_delivery`, seed 11; D42, D43) in scratch,
@@ -73,6 +75,3 @@ adds the first row that left in another cycle.
   in the three record variants. Every one of the 960 passes equals the RTL's.
 - **`-q 512` is gone.** Every input queue is `REPLAY_QUEUE_ENTRIES` = 256 (19); the 8 KB-log control was v1.35's
   model's, and the replayer refuses another size.
-- **Stages B and F** are v1.35's firmware on v1.35's tile with this replayer in its slot: they pass, rows and end
-  state, and their cycles are neither v1.35's nor the RTL chip's until the platform and firmware stages reach them
-  (`PENDING-v1.36.md`).

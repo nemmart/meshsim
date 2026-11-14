@@ -36,6 +36,12 @@
 //                    cycle's included. It is `packet_ready` for the write unit's stall (9: a send stalls only while
 //                    the holding register is full and is not being injected that cycle): a send made in cycle t is
 //                    taken iff every packet the write unit put before is injected by the end of t (tile_ctl.h).
+//   and the read side's (InjReadSide, below), among them two the arbiter drives in the cycle of its decision:
+//        ag_drift      LinkOut, width 0, Link(1), to the tile control unit: ERRORS.drift's pulse (8.4), put in a cycle a
+//                      group transfer's read (mem::A_GROUP) is offered and not taken, so that the error is set at that
+//                      cycle's end (the RTL's address_generator: drift = group_valid && !read_request_ready).
+//        gather_taken  WireOut, to the gather unit: its reads taken so far, this cycle's included: whether its offer
+//                      register's read leaves in this cycle (gather.h).
 #pragma once
 
 #include <cstdint>

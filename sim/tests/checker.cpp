@@ -178,7 +178,7 @@ std::string Checker::text(const Fact& f) const {
                                   : fmt("a write into a stub engine's region (type %u)", unsigned(a[2]));
         }
     }
-    case Kind::TRACER_VIOLATION: {                         // the Tracer's text (Tracer.violate, the)
+    case Kind::TRACER_VIOLATION: {                         // the Tracer's text (Tracer.violate)
         char b[300];
         units::tracer::Tracer::violation_text(int(a[0]), a[1], a[2], b, sizeof b);
         return b;

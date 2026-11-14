@@ -35,11 +35,16 @@ undone or unchecked. This file is the only addition to v1.35/ since the freeze; 
    `run_tests.sh quick --check` passed inside it.
 7. **The checker's fact sink** (the fix that lets the sort kit's few5-k128 complete at full size: `src/check.h`,
    `src/check.cpp`, `tests/checker.h`, `tests/checker.cpp`) was verified by the runner's runs (194, 196: CheckSelf's
-   strict-reply cases included) and not by a CheckSelf case of its own.
+   strict-reply cases included) and not by a CheckSelf case of its own. A review against the original design found no case missed (switches changed
+   between install and a run, CheckSelf's strict-reply cases, other readers of the fact list).
+
+8. **The strip left one comment garbled**: `tests/checker.cpp`'s TRACER_VIOLATION case reads "(Tracer.violate, the)"
+   for "(Tracer.violate)" (a worker name removed from "W14's"). Fixed in sim/. Others like it may exist; the strip's
+   report (`build/strip-report/`) lists every edit.
 
 ## The record
 
-8. **`planning/sessions/WORKER27/REPORT.md` is a partial report**, and WORKER27 has no row in
-   `planning/sessions/README.md`. The complete report is in the repository's `sim/planning/sessions/`.
-9. **`planning/PLAN-V135.md` doesn't record the freeze**: it ends with "what remains is the freeze sequence". The
+9. **`planning/sessions/WORKER27/REPORT.md` is a partial report**, and WORKER27 has no row in
+   `planning/sessions/README.md`. The complete report is the repository's `sim/planning/sessions/WORKER27-REPORT.md`.
+10. **`planning/PLAN-V135.md` doesn't record the freeze**: it ends with "what remains is the freeze sequence". The
    freeze check is Quests 194-196 (193 found item 4's edit).

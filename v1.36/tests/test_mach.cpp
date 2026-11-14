@@ -9,7 +9,8 @@
 //   - The machine as specified: the RTL's boot ROM's pull boot (machine-spec 6.5; rtl/blocks/core/src/boot_rom.S) on all
 //     64 tiles, the master side's model standing where the master tile will: each tile's LOAD request, the image and the
 //     COUNT on counter 7 sent to it, its ARRIVE, the release, the image entered. Expectations from 6.5, 7.2, 7.3, 11.5.
-//   - The back doors, the model's wait_until, mem_idle over a wrapped queue, MachConfig's front end.
+//   - The back doors, the model's wait_until, mem_idle over a wrapped queue, MachConfig's front end; and that the machine
+//     with v1.35's C&C 1-3 as cores builds and steps as mach.h says it does.
 //
 // WHAT v1.35's TEST CHECKED THAT IS NOT HERE, AND WHY (PENDING-v1.36.md, section 2):
 //   - ref's MachSelf.java sequence (tests/mach/machself.out): every case boots a v1.35 image through C&C's commands
@@ -349,4 +350,29 @@ TEST(mach_config_front_end) {
     CHECK(!k.set("K", "eight", err) && err.find("not a number") != std::string::npos);
     CHECK(!k.set_args({"cfg.K"}, err));
     CHECK(!mach::MachConfig::dropped().empty());
+}
+
+// The machine with v1.35's C&C 1-3 as cores (mach.h, THE MASTER SIDE): it builds and steps with the special tiles'
+// straps and the RTL's boot ROM, and no image. Units 64 and 65 have boot_local (6.5), so their ROM enters an empty
+// IMEM: the all-zero word is an illegal instruction, which sets ERRORS.illegal_instruction (7.4). Unit 66 and the
+// compute tiles have armed COUNTER_7 and wait for a load nobody sends. The host port's write lands in unit 64's IMEM.
+TEST(mach_cores_machine_builds_and_steps) {
+    Mach m(Mach::cores_cfg(-1));
+    m.c.run(20);
+    m.c.host_load(0, units::IMEM_BASE + 0x100, {0x11111111u, 0x22222222u, 0x33333333u, 0x44444444u});
+    m.c.run(400);
+    for (unsigned i = 0; i < 4; i++) CHECK_EQ(m.word(64, units::IMEM_BASE + 0x100 + 4 * i), 0x11111111u * (i + 1));
+    CHECK_EQ(m.word(65, units::IMEM_BASE + 0x100), 0u);
+    for (unsigned u : {64u, 65u}) {
+        CHECK(m.c.tile(u).errors() >> units::ERR_ILLEGAL_INSTRUCTION & 1);
+        CHECK_EQ(m.c.tile(u).reg(units::PARAMS) >> 18 & 1u, 1u);            // boot_local
+        CHECK_EQ(m.c.tile(u).reg(units::PARAMS) >> 17 & 1u, 0u);            // no barrier
+    }
+    for (unsigned u : {66u, 0u, 37u, 63u}) {
+        CHECK_EQ(m.c.tile(u).errors(), 0u);
+        CHECK_EQ(m.c.tile(u).remaining(7), 1u);
+        CHECK(m.c.tile(u).in_wfi());
+        CHECK_EQ(m.c.tile(u).reg(units::PARAMS) >> 18 & 1u, 0u);
+    }
+    CHECK_EQ(m.c.tile(66).reg(units::PARAMS) & 0x7Fu, 66u);
 }

@@ -1,15 +1,15 @@
 # Appendix: Replayer opcode semantics
 
-*Part of the machine specification, v1.35, linked from `spec/jolt/replayer.md` 4.19 (4.19.7, item 112). **Derived from jolt-cpp `821e1bd`** as copied into the standalone tracer of `github.com/quarky93/jolt-asic-planning`, branch `tracer-standalone-main` (PR #2), from the harness outputs WORKER9 regenerated there (`v1.3/tools/replayer-opcodes/out-821e1bd/`). v1.2's appendix was derived at `4f36b3d` (PR #1). File references are to `tracer/src/tracer/`. **Section 2's source column, section 6's emit sites and every reference marked 821e1bd are at `821e1bd`; the other file:line references were taken at `4f36b3d` and name the same code, whose line numbers may have moved** (`machine-spec.md` item 137).*
+*Part of the machine specification, v1.36, linked from `spec/jolt/replayer.md` 17.8 (17.8.7, 17.8.20; item 112). **Derived from jolt-cpp `821e1bd`** as copied into the standalone tracer of `github.com/quarky93/jolt-asic-planning`, branch `tracer-standalone-main` (PR #2), from the harness outputs WORKER9 regenerated there (`v1.3/tools/replayer-opcodes/out-821e1bd/`). v1.2's appendix was derived at `4f36b3d` (PR #1). File references are to `tracer/src/tracer/`. **Section 2's source column, section 6's emit sites and every reference marked 821e1bd are at `821e1bd`; the other file:line references were taken at `4f36b3d` and name the same code, whose line numbers may have moved** (item 137).*
 
 **What v1.25 changed here** (`spec/history/CHANGES-v1.25.md`): the opcodes are renumbered (six inserted at 110–115, three removed, so codes shift by +6, +4 or +3 by position; 61 row opcodes change, section 2.0); `VirtualLoadB/H/W` and `VirtualStoreB/H/W` are new (section 2 G, section 3); `VirtualAlignAddr`, `VirtualAssertHalfwordAlignment` and `VirtualAssertWordAlignment` are gone; `VirtualShiftData…` reads the base register plus `shift_offset`; `VirtualHostIO` has no operands; `VirtualPext` and `VirtualPextSigned` are required for any mask; the signed-immediate set adds the narrow memory rows and `VirtualShiftData…`; sections 6–9 are regenerated.
 
 **Status** (owner, 2026-10-26, part F):
-- **Sections 1–5 are normative for what each row computes:** its slots, its rd value, its control transfer, its log word and LD's and SD's memory fields. `machine-spec.md` 4.19.7 keeps the classes, the schedules and the pc and `instr_idx` rules, and 4.19.12 the record layout.
+- **Sections 1–5 are normative for what each row computes:** its slots, its rd value, its control transfer, its log word and LD's and SD's memory fields. `spec/jolt/replayer.md` 17.8.7 keeps the classes, the schedules and the pc and `instr_idx` rules, and 17.8.11 the row's layout.
 - **Sections 6–9 are informative:** the producers of each slot form, the source-only and never-occurring opcodes, and the test vectors (for meshsim's ALU tests).
-- **One deliberate narrowing** (4.19.7, invariant 16): the masks reaching `VirtualSRL`, `VirtualSRLI`, `VirtualSRA` and `VirtualSRAI` are non-zero; the result for a zero mask is undefined, and meshsim flags it. **v1.2's second narrowing, contiguous masks for `VirtualPext` and `VirtualPextSigned`, is withdrawn** (v1.25; DECISIONS-v1.25 section 1): both are required for any mask, as defined below, at full speed only for contiguous ones.
-- **Flags F1–F6 (section 4) are resolved by part F;** the flag text records the state before it. F1 (JAL with imm 0): `imm0_pc0` is set in every JAL word, ROM or controller-fed (4.19.3, 4.19.7's pc table, item 56). F2 (EBREAK): its one word is `JAL v40, 0` with `imm0_pc0` and `next_from_value`, a ROM template at v1.25 (4.19.6, 4.19.9). F3 (a new pc of 0): ends the program from any row (4.19.7's pc table, item 57) *(pending the upstream check, item 113)*. F4 (LD to x0): LD's memory value comes from rd (4.19.7, 4.19.12); it arises only from LR.D with rd = x0, which depends on item 113's LR/SC question. F5 (the W forms): 4.19.7 defers to this file's per-opcode extension. F6 (zero shift masks): undefined, flagged by meshsim (4.19.7, invariant 16). F7–F12 need no change outside this file.
-- **Ground truth** (`machine-spec.md` 4.19 and item 113; DECISIONS-v1.3 section 17, v1.3): the trace is **a16z's Jolt's**, the verifier's source being `a16z/jolt` at `7189216` (jolt-cpp `88dca85`'s submodule), so a16z decides where jolt-cpp differs; **gold is the Java emulator** in `pipeline/gold/`; jolt-cpp is the pin (`88dca85`, checked identical to `821e1bd` on both workloads; its `isa/` unchanged since `821e1bd`, from which this file is derived) and is checked against as data. Where a16z and jolt-cpp differ, the owner rules and this file is corrected. *(v1.26.1: `LayerZero-Research/jolt` `735355e` was the ground truth and jolt-cpp the gold standard.)*
+- **One deliberate narrowing** (17.8.7, invariant 16): the masks reaching `VirtualSRL`, `VirtualSRLI`, `VirtualSRA` and `VirtualSRAI` are non-zero; the result for a zero mask is undefined, and meshsim flags it. **v1.2's second narrowing, contiguous masks for `VirtualPext` and `VirtualPextSigned`, is withdrawn** (v1.25; DECISIONS-v1.25 section 1): both are required for any mask, as defined below, at full speed only for contiguous ones.
+- **Flags F1–F6 (section 4) are resolved by part F;** the flag text records the state before it. F1 (JAL with imm 0): `imm0_pc0` is set in every JAL word, ROM or core-fed (17.8.4, 17.8.7's pc table, item 56). F2 (EBREAK): its one word is `JAL v40, 0` with `imm0_pc0` and `next_from_value`, a ROM template at v1.25 (17.8.6, 17.8.19). F3 (a new pc of 0): ends the program from any row (17.8.7's pc table, item 57) *(pending the upstream check, item 113)*. F4 (LD to x0): LD's memory value comes from rd (17.8.7, 17.8.11); it arises only from LR.D with rd = x0, which depends on item 113's LR/SC question. F5 (the W forms): 17.8.7 defers to this file's per-opcode extension. F6 (zero shift masks): undefined, flagged by meshsim (17.8.7, invariant 16). F7–F12 need no change outside this file.
+- **Ground truth** (17.8.15 and item 113; DECISIONS-v1.3 section 17, v1.3): the trace is **a16z's Jolt's**, the verifier's source being `a16z/jolt` at `7189216` (jolt-cpp `88dca85`'s submodule), so a16z decides where jolt-cpp differs; **gold is the Java emulator** in `pipeline/gold/`; jolt-cpp is the pin (`88dca85`, checked identical to `821e1bd` on both workloads; its `isa/` unchanged since `821e1bd`, from which this file is derived) and is checked against as data. Where a16z and jolt-cpp differ, the owner rules and this file is corrected. *(v1.26.1: `LayerZero-Research/jolt` `735355e` was the ground truth and jolt-cpp the gold standard.)*
 - **The harness** that produced sections 6 and 9 is in the package at **`v1.3/tools/replayer-opcodes/`**, with instructions for regenerating the tables against a later tracer commit; its `821e1bd` outputs and the edited `vec.cpp` (new vectors for the narrow memory rows, `ShiftData…` with offsets, and non-contiguous PEXT masks) are in `v1.3/tools/replayer-opcodes/out-821e1bd/`.
 
 This appendix defines, for every opcode that occurs in a replayer row, exactly what the row computes: the value written to rd, the control transfer, what it takes from the log and the memory fields of its record. An ALU designer or simulator author should be able to implement the replayer's datapath from it without reading the tracer. Where the tracer and the spec disagree, or the spec is incomplete, the point is flagged (F1–F12, section 4) rather than resolved.
@@ -41,9 +41,9 @@ Where each opcode keeps its immediate:
 | **rs1** | JAL, LUI, AUIPC (`emit_u`, `isa/virtual.cpp:205–215`; decoder `isa/decoder.cpp:1187–1197`), and `VirtualAdvice` (0, with rs2 also immediate 0) |
 | **rd** | the branches BEQ–BGEU, SD, `VirtualStoreB/H/W`, `VirtualAssertEQ`, `VirtualAssertLTE`, `VirtualAssertValidDiv0`, `VirtualAssertValidUnsignedRemainder`, `VirtualAssertMulUNoOverflow` (`emit_b`, `emit_s`) |
 | **all three** | FENCE (all 0, `isa/virtual.cpp:1093–1097`), and at `821e1bd` `VirtualHostIO` (all 0, `isa/decoder.cpp:1264`, 821e1bd) |
-| **none** | `VirtualShiftDataB/H/W` at `821e1bd`: all three slots are registers, and the row's immediate is its `shift_offset` (`imm_raw`, `trace_owner.hpp:168–177`, 821e1bd; spec 4.19.3) |
+| **none** | `VirtualShiftDataB/H/W` at `821e1bd`: all three slots are registers, and the row's immediate is its `shift_offset` (`imm_raw`, `trace_owner.hpp:168–177`, 821e1bd; spec 17.8.4) |
 
-**Signed immediates** (v1.25). Jolt reports a row's immediate as 128 bits (`RiscCycle::imm()`, `trace_owner.hpp:63–66`, 821e1bd): the 64-bit immediate sign-extended for `isa::signed_immediate` opcodes (`isa/riscv.hpp:209`, 821e1bd), zero-extended for the rest. At `821e1bd` the signed set is the load and store rows (LD, SD, the six narrow ones), the conditional branches and `VirtualShiftDataB/H/W`; at `4f36b3d` it was loads, stores and branches. The table builder records it as the expansion word's `sign_imm`, and the row as `imm_signed` (spec 4.19.3, 4.19.12). The 64-bit values below are unaffected.
+**Signed immediates** (v1.25). Jolt reports a row's immediate as 128 bits (`RiscCycle::imm()`, `trace_owner.hpp:63–66`, 821e1bd): the 64-bit immediate sign-extended for `isa::signed_immediate` opcodes (`isa/riscv.hpp:209`, 821e1bd), zero-extended for the rest. At `821e1bd` the signed set is the load and store rows (LD, SD, the six narrow ones), the conditional branches and `VirtualShiftDataB/H/W`; at `4f36b3d` it was loads, stores and branches. The table builder records it as the expansion word's `sign_imm`, and the row as `imm_signed` (spec 17.8.4, 17.8.11). The 64-bit values below are unaffected.
 
 **A slot's kind never varies for an opcode.** Over every emission site the R/I pattern of each opcode is the same; forms differ only in whether a register is x0 (section 6). So operand decode can be a fixed per-opcode property, as the spec's operand codes already allow.
 
@@ -80,11 +80,11 @@ Each row's record is formed around `execute_instruction` (`trace_owner.cpp:880�
 
 ## 2. The row opcodes
 
-94 opcodes occur in rows at `821e1bd` (NOP among them, in padding); the replayer executes 88 of them (the six DIV/REM advice opcodes are written as `VirtualAdvice`, spec 4.19.7). **Class** and cycles are 4.19.7's; the source agrees with all of them (F9). **Last row** says whether the opcode is always, never or sometimes its expansion's last row, which decides whether `pc_increment` is 0 (section 6 lists, for "sometimes", which source instructions end with it). **Source** is the `execute_instruction` case.
+94 opcodes occur in rows at `821e1bd` (NOP among them, in padding); the replayer executes 88 of them (the six DIV/REM advice opcodes are written as `VirtualAdvice`, spec 17.8.7). **Class** and cycles are 17.8.7's; the source agrees with all of them (F9). **Last row** says whether the opcode is always, never or sometimes its expansion's last row, which decides whether `pc_increment` is 0 (section 6 lists, for "sometimes", which source instructions end with it). **Source** is the `execute_instruction` case.
 
 ### 2.0 Renumbering from v1.2
 
-The codes are jolt-cpp's `OpCode` enum, which `821e1bd` changed: six opcodes inserted at 110–115, two removed at v1.2's 112–113 and one at v1.2's 154. **So a code's shift depends on where it sits** (`machine-spec.md` 4.19.7):
+The codes are jolt-cpp's `OpCode` enum, which `821e1bd` changed: six opcodes inserted at 110–115, two removed at v1.2's 112–113 and one at v1.2's 154. **So a code's shift depends on where it sits** (`machine-spec.md` 17.8.7):
 
 | v1.2 codes | v1.25 codes | shift | opcodes |
 |---|---|---|---|
@@ -166,7 +166,7 @@ The codes are jolt-cpp's `OpCode` enum, which `821e1bd` changed: six opcodes ins
 
 | code | name | class | slots rd·rs1·rs2 | writes rd | rd = | control (new pc) | log | last row | source |
 |---|---|---|---|---|---|---|---|---|---|
-| 0 | `NOP` | S 3 | x0·I·I (all 0) | no (rd slot is register x0) | nothing: a padding row is never interpreted (no `execute_instruction` case; it would reach `default:` → `unreachable()`) | pc and `instr_idx` held (`hold`, spec 4.19.6); the record is all zeros | — | — (padding) | `trace_owner.hpp:161–163` |
+| 0 | `NOP` | S 3 | x0·I·I (all 0) | no (rd slot is register x0) | nothing: a padding row is never interpreted (no `execute_instruction` case; it would reach `default:` → `unreachable()`) | pc and `instr_idx` held (`hold`, spec 17.8.6); the record is all zeros | — | — (padding) | `trace_owner.hpp:161–163` |
 | 1 | `ADD` | S 3 | R·R·R | yes | (rs1 + rs2) mod 2⁶⁴ | — | — | sometimes | `trace_owner.cpp:161–166` |
 | 2 | `ADDI` | S 3 | R·R·I; R·x0·I; x0·x0·I | yes (the NOP form writes x0: dropped) | (rs1 + imm) mod 2⁶⁴; imm is the slot's 64-bit value (sign-extended when the row was built). Load-immediate form `ADDI rd, x0, imm`: rd = imm. NOP form `ADDI x0, x0, 0`: nothing | — | — | sometimes | `trace_owner.cpp:161–166` |
 | 3 | `SUB` | S 3 | R·R·R; R·x0·R | yes | (rs1 − rs2) mod 2⁶⁴; with rs1 = x0 (BLAKE2): (0 − rs2) mod 2⁶⁴ | — | — | sometimes | `trace_owner.cpp:173–177` |
@@ -245,13 +245,13 @@ The codes are jolt-cpp's `OpCode` enum, which `821e1bd` changed: six opcodes ins
 | 156 | `VirtualWindowMaskB` | S 3 | R·R·I | yes | 0xFF << 8·(a mod 8), a = (rs1 + imm) mod 2⁶⁴ | — | — | never | `trace_owner.cpp:456–461` |
 | 157 | `VirtualWindowMaskH` | S 3 | R·R·I | yes | 0xFFFF << 8·(a ∧ 6), a = rs1 + imm (bit 0 of a ignored) | — | — | never | `trace_owner.cpp:462–467` |
 | 145 | `VirtualWindowMaskW` | S 3 | R·R·I | yes | 0xFFFF_FFFF << 32·a[2], a = rs1 + imm (bits [1:0] of a ignored) | — | — | never | `trace_owner.cpp:448–455` |
-| 158 | `VirtualShiftDataB` | S 3 | R·R·R | yes | (rs1 ∧ 0xFF) << 8·(a mod 8), a = (rs2 + `shift_offset`) mod 2⁶⁴: rs2 is the access's **base register** and `shift_offset` the access's immediate or 0 (spec 4.19.3; v1.2: rs2 was the computed address). The record's imm is `shift_offset`, signed | — | — | never | `trace_owner.cpp:468–473` |
+| 158 | `VirtualShiftDataB` | S 3 | R·R·R | yes | (rs1 ∧ 0xFF) << 8·(a mod 8), a = (rs2 + `shift_offset`) mod 2⁶⁴: rs2 is the access's **base register** and `shift_offset` the access's immediate or 0 (spec 17.8.4; v1.2: rs2 was the computed address). The record's imm is `shift_offset`, signed | — | — | never | `trace_owner.cpp:468–473` |
 | 159 | `VirtualShiftDataH` | S 3 | R·R·R | yes | (rs1 ∧ 0xFFFF) << 8·(a ∧ 6), a = rs2 + `shift_offset`, as for B | — | — | never | `trace_owner.cpp:474–479` |
 | 160 | `VirtualShiftDataW` | S 3 | R·R·R | yes | (rs1 ∧ 0xFFFF_FFFF) << 8·(a ∧ 4), a = rs2 + `shift_offset`, as for B: by 0 or 32 | — | — | never | `trace_owner.cpp:480–485` |
-| 155 | `VirtualPext` | S 3 | R·R·R | yes | pext(rs1, rs2): the bits of rs1 at the 1-bits of rs2, packed into rd from bit 0 up, in ascending bit order; rs2 = 0 gives 0. **Correct for any mask** (spec 4.19.7, v1.25); with a contiguous mask, which is every mask `821e1bd` emits, it is (rs1 ∧ rs2) >> tz(rs2) | — | — | always | `trace_owner.cpp:491–495` |
+| 155 | `VirtualPext` | S 3 | R·R·R | yes | pext(rs1, rs2): the bits of rs1 at the 1-bits of rs2, packed into rd from bit 0 up, in ascending bit order; rs2 = 0 gives 0. **Correct for any mask** (spec 17.8.7, v1.25); with a contiguous mask, which is every mask `821e1bd` emits, it is (rs1 ∧ rs2) >> tz(rs2) | — | — | always | `trace_owner.cpp:491–495` |
 | 146 | `VirtualPextSigned` | S 3 | R·R·R; x0·R·R | yes (dropped when rd = x0, as in LR.W) | as VirtualPext, giving n = popcount(rs2) bits; then if the bit of rs1 at the highest set bit of rs2 (the last bit placed) is 1 and n < 64, bits [63:n] are set; rs2 = 0 gives 0. Correct for any mask (`utils::pext_signed`) | — | — | sometimes | `trace_owner.cpp:496–500` |
 
-**The masks VirtualPext receives.** At `821e1bd`, `expand_load` and `expand_narrow_store` (`isa/virtual.cpp:239–262`, 821e1bd) always feed VirtualPext and VirtualPextSigned the rd of the window-mask row just before them: `0xFF << 8k` (LB, LBU), `0xFFFF << 16k` (LH, LHU), or `0xFFFF_FFFF << 32k` (LW, LWU, LR.W, SC.W and the 32-bit AMOs). Every mask emitted today is contiguous and non-zero, so the general pext reduces to (rs1 ∧ m) >> tz(m), and the signed form sign-extends from bit 8, 16 or 32 of the result. **v1.25 requires the general definition above for any mask** (spec 4.19.7, revising v1.2's narrowing, item 43): the hardware promises full speed only for contiguous masks, and meshsim reports a non-contiguous one as a statistic.
+**The masks VirtualPext receives.** At `821e1bd`, `expand_load` and `expand_narrow_store` (`isa/virtual.cpp:239–262`, 821e1bd) always feed VirtualPext and VirtualPextSigned the rd of the window-mask row just before them: `0xFF << 8k` (LB, LBU), `0xFFFF << 16k` (LH, LHU), or `0xFFFF_FFFF << 32k` (LW, LWU, LR.W, SC.W and the 32-bit AMOs). Every mask emitted today is contiguous and non-zero, so the general pext reduces to (rs1 ∧ m) >> tz(m), and the signed form sign-extends from bit 8, 16 or 32 of the result. **v1.25 requires the general definition above for any mask** (spec 17.8.7, revising v1.2's narrowing, item 43): the hardware promises full speed only for contiguous masks, and meshsim reports a non-contiguous one as a statistic.
 
 ### F. Control flow and pc-relative
 
@@ -288,7 +288,7 @@ The codes are jolt-cpp's `OpCode` enum, which `821e1bd` changed: six opcodes ins
 | 169 | `VirtualAdviceDivW` | L 3 | R·R·R | yes (as VirtualAdvice) | tracer, on the low words: 2⁶⁴ − 1 if rs2[31:0] = 0; 0x0000_0000_8000_0000 (**zero-extended**) if INT32_MIN / −1; else sx32(trunc(s32 / s32)). Replayer: the log word | — | 1 read-log word | never | `trace_owner.cpp:576–588` |
 | 170 | `VirtualAdviceRemW` | L 3 | R·R·R | yes (as VirtualAdvice) | tracer, on the low words: 0 if rs2[31:0] = 0; 0x8000_0000 zero-extended if INT32_MIN / −1; else zx32(\|trunc(s32 / s32)\|), the quotient's magnitude. Replayer: the log word | — | 1 read-log word | never | `trace_owner.cpp:589–601` |
 
-**The advice opcodes.** The tracer computes the six DIV/REM advice values from registers (rows `isa/virtual.cpp:322–480`), but the replayer never does: the template builder writes those rows as `VirtualAdvice rd, 0, 0` with `from_log` set (spec 4.19.7, item 56), and the value comes from the read log. Their formulas are given so the tracer's log content is defined; the replayer's datapath needs none of them.
+**The advice opcodes.** The tracer computes the six DIV/REM advice values from registers (rows `isa/virtual.cpp:322–480`), but the replayer never does: the template builder writes those rows as `VirtualAdvice rd, 0, 0` with `from_log` set (spec 17.8.7, item 56), and the value comes from the read log. Their formulas are given so the tracer's log content is defined; the replayer's datapath needs none of them.
 
 ### H. Assertions (never evaluated by the replayer)
 
@@ -300,7 +300,7 @@ The codes are jolt-cpp's `OpCode` enum, which `821e1bd` changed: six opcodes ins
 | 129 | `VirtualAssertValidUnsignedRemainder` | S 3 | I·R·R | no | —; rs1 the remainder, rs2 the divisor: checks rs2 = 0 or rs1 <ᵤ rs2 | — | — | never | `trace_owner.cpp:635–639` |
 | 134 | `VirtualAssertMulUNoOverflow` | S 3 | I·R·R | no | —; checks rs1 · rs2 < 2⁶⁴ (unsigned, `__builtin_mul_overflow`) | — | — | never | `trace_owner.cpp:337–344` |
 
-The replayer doesn't evaluate assertions (spec 4.19.7): the tracer aborts on a failing one (`release_assert`), so a traced program never contains one that fails. Each writes nothing and moves pc only as a sequential row. The checks are given for completeness and for a simulator that wants to re-check a trace.
+The replayer doesn't evaluate assertions (spec 17.8.7): the tracer aborts on a failing one (`release_assert`), so a traced program never contains one that fails. Each writes nothing and moves pc only as a sequential row. The checks are given for completeness and for a simulator that wants to re-check a trace.
 
 ### I. Miscellaneous
 
@@ -325,26 +325,26 @@ The narrow rows' address formula is `memory_address` (`isa/riscv.hpp:241–253`,
 - **Alignment:** jolt-cpp rejects a misaligned access while tracing (`checked_memory_address`, `isa/riscv.hpp:257–268`, 821e1bd: the address must be a multiple of 8 after the formula, for LD and SD too), so a traced program never contains one, and every address above is the doubleword's. With the log it doesn't check, and neither does the replayer; meshsim flags one (spec invariant 16).
 - **LD with rd = x0** (only in LR.D's expansion with rd = x0): the log word is consumed but dropped, so rd stays 0 and **the record's pre- and post-values are 0**, not the memory value (F4). The narrow loads always write a temporary.
 - **A store's pre-value** is the log word in the record (`mem_log[mem_log_idx − 1]`); the derived helper in `trace_owner.hpp` reads it from "the rd lane", which carries the same value in the GPU layout.
-- **The write log's last-load entry** (spec 4.19.15): every load row, the narrow ones included, copies the doubleword it loads into it; each narrow store's pre-value is the doubleword its own `VirtualLoad…` row loaded just before.
+- **The write log's last-load entry** (spec 17.8.12): every load row, the narrow ones included, copies the doubleword it loads into it; each narrow store's pre-value is the doubleword its own `VirtualLoad…` row loaded just before.
 
 ## 4. Flags: where the tracer, the spec and a reimplementation can disagree
 
 *The flags record what was found at `4f36b3d`, with their file references there; a v1.25 note follows each one that `821e1bd` changes.*
 
-- **F1.** **JAL with imm = 0 always ends the program.** `execute_instruction` sets new_pc = 0 whenever a JAL's immediate is 0 (`trace_owner.cpp:280–281`), with no flag. The spec (4.19.7's pc table, 4.19.3's `imm0_pc0`) makes it conditional on a template bit. They agree only if **every JAL template word sets `imm0_pc0`** (JAL's own template and EBREAK's, F2). Suggested spec text: "JAL: new pc = pc + imm, or 0 if imm = 0. Every JAL row behaves this way; `imm0_pc0` is set in every JAL word", or drop the flag.
-- **F2.** **EBREAK is one row, `JAL v40, 0`** (`isa/virtual.cpp:1164–1192`), so in the bytecode it ends the program (F1) and links pc + `pc_increment` into v40. At run time the JIT still aborts on EBREAK (`transcode.cpp`), and no current guest reaches one. The spec lists EBREAK as controller-fed; its template is this single JAL. *(v1.25: EBREAK's word is a ROM template, spec 4.19.6.)*
-- **F3.** **A new pc of 0 ends the program for every opcode,** not only JAL: `finish_instruction` tests new_pc = 0 before anything else (`trace_owner.cpp:117–119`), so a JALR whose target is 0, or a branch whose pc + imm wraps to 0, also sets pc = 0 and `instr_idx` = 0. 4.19.7 says "a new pc of 0 has the log word 0", which covers it; the pc table could say so for JALR and the branches too.
-- **F4.** **LD with rd = x0 reports zero memory values.** The record's pre- and post-values are taken from rd after the row (`trace_owner.cpp:922–925`), so an LD whose rd is x0 (only LR.D with rd = x0, an exempt instruction, section 5) consumes its read-log word but reports pre = post = 0 and rd = 0. The replayer must form them the same way: from the value written, not the log word. 4.19.7 and 4.19.12 don't say this. *(v1.25: the same holds for the narrow loads, whose rd is always a temporary, so only LD can report it.)*
-- **F5.** **"The W forms sign-extend their low 32 bits" (4.19.7) is too broad.** Sign-extending: ADDW, ADDIW, SUBW, MULW, `VirtualMULIW`, `VirtualSRLW`, `VirtualSRLIW` (a *logical* word shift whose result is then sign-extended), `VirtualSRAW`, `VirtualSRAIW`, `VirtualSignExtendWord`. **Zero-extending:** `VirtualPow2W`, `VirtualShiftRightBitmaskW`, `VirtualROTRIW`, all seven `VirtualXORROTW…`, `VirtualZeroExtendWord`, and among the advice values `VirtualAdviceDivUW`, `VirtualAdviceRemW` and `VirtualAdviceDivW`'s INT32_MIN / −1 case (0x0000_0000_8000_0000).
+- **F1.** **JAL with imm = 0 always ends the program.** `execute_instruction` sets new_pc = 0 whenever a JAL's immediate is 0 (`trace_owner.cpp:280–281`), with no flag. The spec (v1.35's 4.19.7's pc table, v1.35's 4.19.3's `imm0_pc0`) makes it conditional on a template bit. They agree only if **every JAL template word sets `imm0_pc0`** (JAL's own template and EBREAK's, F2). Suggested spec text: "JAL: new pc = pc + imm, or 0 if imm = 0. Every JAL row behaves this way; `imm0_pc0` is set in every JAL word", or drop the flag.
+- **F2.** **EBREAK is one row, `JAL v40, 0`** (`isa/virtual.cpp:1164–1192`), so in the bytecode it ends the program (F1) and links pc + `pc_increment` into v40. At run time the JIT still aborts on EBREAK (`transcode.cpp`), and no current guest reaches one. The spec lists EBREAK as core-fed; its template is this single JAL. *(v1.25: EBREAK's word is a ROM template, v1.35's 4.19.6.)*
+- **F3.** **A new pc of 0 ends the program for every opcode,** not only JAL: `finish_instruction` tests new_pc = 0 before anything else (`trace_owner.cpp:117–119`), so a JALR whose target is 0, or a branch whose pc + imm wraps to 0, also sets pc = 0 and `instr_idx` = 0. v1.35's 4.19.7 says "a new pc of 0 has the log word 0", which covers it; the pc table could say so for JALR and the branches too.
+- **F4.** **LD with rd = x0 reports zero memory values.** The record's pre- and post-values are taken from rd after the row (`trace_owner.cpp:922–925`), so an LD whose rd is x0 (only LR.D with rd = x0, an exempt instruction, section 5) consumes its read-log word but reports pre = post = 0 and rd = 0. The replayer must form them the same way: from the value written, not the log word. v1.35's 4.19.7 and v1.35's 4.19.12 don't say this. *(v1.25: the same holds for the narrow loads, whose rd is always a temporary, so only LD can report it.)*
+- **F5.** **"The W forms sign-extend their low 32 bits" (v1.35's 4.19.7) is too broad.** Sign-extending: ADDW, ADDIW, SUBW, MULW, `VirtualMULIW`, `VirtualSRLW`, `VirtualSRLIW` (a *logical* word shift whose result is then sign-extended), `VirtualSRAW`, `VirtualSRAIW`, `VirtualSignExtendWord`. **Zero-extending:** `VirtualPow2W`, `VirtualShiftRightBitmaskW`, `VirtualROTRIW`, all seven `VirtualXORROTW…`, `VirtualZeroExtendWord`, and among the advice values `VirtualAdviceDivUW`, `VirtualAdviceRemW` and `VirtualAdviceDivW`'s INT32_MIN / −1 case (0x0000_0000_8000_0000).
 - **F6.** **tz(0) = 64 in the 64-bit right shifts is undefined in the tracer.** `VirtualSRL`, `VirtualSRLI`, `VirtualSRA` and `VirtualSRAI` shift by tz(rs2), and a shift by 64 is undefined behaviour in C++ (the harness, on x86, returns rs1 unchanged). It can't arise: every mask comes from `VirtualShiftRightBitmask` (never 0) or from the expansion (2⁶⁴ − 2^shamt, never 0). The word shifts mask tz to 5 bits, so they are defined for 0 (shift 0), and `VirtualROTRI`'s `std::rotr` by 64 is the identity. Suggest: the spec states the masks are never 0 and leaves the result for 0 undefined, and meshsim flags a zero mask.
 - **F7.** **`VirtualAdviceRem` and `VirtualAdviceRemW` compute the quotient's magnitude, not the remainder** (`trace_owner.cpp:574–584`, `598–610`), and the dead `VirtualAdviceRemU` case computes the quotient. That is what Jolt's REM expansions consume (the remainder is rebuilt from it), so the names mislead but the log content is right. The replayer is unaffected: it takes the log word.
 - **F8.** **Immediates live in different slots by opcode** (section 1.2): rs1 for JAL, LUI and AUIPC; rd for branches, SD and five assertions; rs2 for the rest. The kind of each slot is fixed per opcode across every emission site (checked for all 90 emitted opcodes; *v1.25: all 93 at `821e1bd`, the narrow loads keeping it in rs2 and the narrow stores in rd, `VirtualHostIO` in all three, `VirtualShiftData…` in none*), so no opcode's operand can be either a register or an immediate. Only *which* register varies, including x0 in nine forms (section 6).
-- **F9.** **No class disagreements.** Every opcode's class in 4.19.7 matches what its case computes: the five M opcodes are the only ones that need a 64 × 64 product; `VirtualAssertMulUNoOverflow` multiplies only to check and is never evaluated, so S is right; the L opcodes are exactly those that pop a log word (LD, SD, `VirtualAdvice`, and the six advice opcodes written as `VirtualAdvice`; *v1.25: and the six narrow memory opcodes*). MULH and MULHSU never reach a row (`isa/virtual.cpp:485–503`), as 4.19.7 says.
-- **F10.** **NOP is never executed.** It has no `execute_instruction` case (it would reach `unreachable()`); padding rows are the zero-filled tail of the trace once pc reaches 0 (`trace_owner.cpp:881–883`; `trace_owner.hpp:161–163`). The rd = x0 rewrite produces `ADDI x0, x0, 0`, not opcode 0 (`isa/virtual.cpp:307–311`). The replayer's padding row (4.19.6) is therefore pure data.
+- **F9.** **No class disagreements.** Every opcode's class in v1.35's 4.19.7 matches what its case computes: the five M opcodes are the only ones that need a 64 × 64 product; `VirtualAssertMulUNoOverflow` multiplies only to check and is never evaluated, so S is right; the L opcodes are exactly those that pop a log word (LD, SD, `VirtualAdvice`, and the six advice opcodes written as `VirtualAdvice`; *v1.25: and the six narrow memory opcodes*). MULH and MULHSU never reach a row (`isa/virtual.cpp:485–503`), as v1.35's 4.19.7 says.
+- **F10.** **NOP is never executed.** It has no `execute_instruction` case (it would reach `unreachable()`); padding rows are the zero-filled tail of the trace once pc reaches 0 (`trace_owner.cpp:881–883`; `trace_owner.hpp:161–163`). The rd = x0 rewrite produces `ADDI x0, x0, 0`, not opcode 0 (`isa/virtual.cpp:307–311`). The replayer's padding row (v1.35's 4.19.6) is therefore pure data.
 - **F11.** **`VirtualHostIO` writes rd's own value back** (`trace_owner.cpp:294–299`), so the register file doesn't change; rd_prev = rd in the record. Its source rd = x0 is remapped to v40 first (section 5), so the row never names x0. *(v1.25: at `821e1bd` `VirtualHostIO` has no operands and writes nothing, `trace_owner.cpp:294–297`, 821e1bd; there is no rd to remap.)*
 - **F12.** **AUIPC uses the source instruction's pc on every row,** including ECALL's AUIPC row, which is not its expansion's last (`trace_owner.cpp:156–160`; ECALL `isa/virtual.cpp:1098–1115`).
 
-## 5. The rd = x0 cross-check against spec 4.19.4
+## 5. The rd = x0 cross-check against v1.35's 4.19.4 (v1.36: 17.8.5 and 17.8.18)
 
 **What the source does** (`isa/virtual.cpp:19–120`, `300–320`):
 
@@ -359,14 +359,14 @@ The narrow rows' address formula is `memory_address` (`isa/riscv.hpp:241–253`,
 
 So the link is **written, not dropped**: v40 receives pc + `pc_increment`, and the record shows rd_reg = 40, rd_prev = v40's old value and rd = the link. v40 is not an inline temporary (it is below `num_stateful_regs` = 48, so `normalize_inline_vregs` never zeroes it, `trace_owner.cpp:128–140`), so the value stays in v40 until the next instruction that writes it, and a later rd_prev of v40 shows it.
 
-**What 4.19.4 says.** It lists JAL, JALR, LD and `VirtualHostIO` among the remap instructions with one-word templates ("rd becomes 40; e.g. `ret` becomes `JALR v40, ra, 0`"), and notes that their own throwaway-register paths never arise after the generic remap and give rd = 40 anyway. **That matches the source exactly.** EBREAK is handled internally, but its one row is `JAL v40, 0` all the same (F2), because the case allocates v40 itself.
+**What v1.35's 4.19.4 says.** It lists JAL, JALR, LD and `VirtualHostIO` among the remap instructions with one-word templates ("rd becomes 40; e.g. `ret` becomes `JALR v40, ra, 0`"), and notes that their own throwaway-register paths never arise after the generic remap and give rd = 40 anyway. **That matches the source exactly.** EBREAK is handled internally, but its one row is `JAL v40, 0` all the same (F2), because the case allocates v40 itself.
 
-**What 4.19.4 should add** (none of it changes the mechanism):
+**What v1.35's 4.19.4 should add** (none of it changes the mechanism):
 
 - *"The remapped rd is written like any register: a JAL or JALR with rd = x0 leaves its link in v40, which is not an inline temporary and keeps that value across instructions; the record shows rd = 40 and the link."* Today the text could be read as the write being thrown away.
-- *"Exempt instructions may produce rows that name x0 as rd: `LD x0` (LR.D), `VirtualPextSigned x0` (LR.W) and `XORI x0` (SC.W, SC.D). Register 0 drops the write (4.19.7), and an LD to x0 reports zero memory values (F4)."*
+- *"Exempt instructions may produce rows that name x0 as rd: `LD x0` (LR.D), `VirtualPextSigned x0` (LR.W) and `XORI x0` (SC.W, SC.D). Register 0 drops the write (v1.35's 4.19.7), and an LD to x0 reports zero memory values (F4)."*
 - *"EBREAK's one row is `JAL v40, 0`, which ends the program (F1)."*
-- The line references in 4.19.4 still hold at 4f36b3d (`:19–55`, `:57–102`, `:104–106`, `:140`, `:148–153`, `:183`, `:307–319`, `:1195–1226`).
+- The line references in v1.35's 4.19.4 still hold at 4f36b3d (`:19–55`, `:57–102`, `:104–106`, `:140`, `:148–153`, `:183`, `:307–319`, `:1195–1226`).
 
 ## 6. Slot forms and their producers
 
@@ -480,7 +480,7 @@ NOP 0 has no producer: it is the zero-filled padding row (F10).
 
 ## 7. Opcodes that occur only as source instructions (74)
 
-Each is replaced by its expansion (a ROM template or, for the CSR instructions and the inlines, controller-fed words) and never appears in a row. Rows: the expansion's length for a representative instance (rd ≠ x0), from the harness. Where `execute_instruction` has a case for the opcode, it is dead code for rows.
+Each is replaced by its expansion (a ROM template or, for the CSR instructions and the inlines, core-fed words) and never appears in a row. Rows: the expansion's length for a representative instance (rd ≠ x0), from the harness. Where `execute_instruction` has a case for the opcode, it is dead code for rows.
 
 | code | name | rows | reason |
 |---|---|---|---|
@@ -543,21 +543,21 @@ Each is replaced by its expansion (a ROM template or, for the CSR instructions a
 | 89 | AMOMINU_D | 7 | load, operation, store through LD and SD (`virtual.cpp:750–1017`) |
 | 90 | AMOMAXU_W | 13 | the old word by `VirtualLoadW`, the window mask and `VirtualPextSigned`, the operation, the new word placed by ANDN, `VirtualShiftDataW` (offset 0) and ADD, stored by `VirtualStoreW`; result `ADDI rd, old, 0` (rs2 sign-extended by `VirtualSignExtendWord`, which keeps unsigned order for 32-bit values) (821e1bd) |
 | 91 | AMOMAXU_D | 7 | load, operation, store through LD and SD (`virtual.cpp:750–1017`) |
-| 92 | KECCAK256 | 3087 | an inline: controller-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
-| 93 | KECCAK256_ABSORB_PERMUTE | 3121 | an inline: controller-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
-| 94 | SHA256_INLINE | 1900 | an inline: controller-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
-| 95 | SHA256_INIT_INLINE | 1864 | an inline: controller-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
-| 96 | BLAKE2_INLINE | 1067 | an inline: controller-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
-| 97 | BLAKE3_INLINE | 648 | an inline: controller-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
-| 98 | BLAKE3_KEYED64_INLINE | 646 | an inline: controller-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
-| 99 | BIGINT256_MUL_INLINE | 141 | an inline: controller-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
-| 100 | SECP256K1_MULQ_INLINE | 186 | an inline: controller-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
-| 101 | SECP256K1_SQUAREQ_INLINE | 167 | an inline: controller-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
-| 102 | SECP256K1_DIVQ_INLINE | 194 | an inline: controller-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
-| 103 | SECP256K1_MULR_INLINE | 232 | an inline: controller-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
-| 104 | SECP256K1_SQUARER_INLINE | 213 | an inline: controller-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
-| 105 | SECP256K1_DIVR_INLINE | 240 | an inline: controller-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
-| 106 | SECP256K1_GLVR_ADV_INLINE | 13 | an inline: controller-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
+| 92 | KECCAK256 | 3087 | an inline: core-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
+| 93 | KECCAK256_ABSORB_PERMUTE | 3121 | an inline: core-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
+| 94 | SHA256_INLINE | 1900 | an inline: core-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
+| 95 | SHA256_INIT_INLINE | 1864 | an inline: core-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
+| 96 | BLAKE2_INLINE | 1067 | an inline: core-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
+| 97 | BLAKE3_INLINE | 648 | an inline: core-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
+| 98 | BLAKE3_KEYED64_INLINE | 646 | an inline: core-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
+| 99 | BIGINT256_MUL_INLINE | 141 | an inline: core-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
+| 100 | SECP256K1_MULQ_INLINE | 186 | an inline: core-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
+| 101 | SECP256K1_SQUAREQ_INLINE | 167 | an inline: core-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
+| 102 | SECP256K1_DIVQ_INLINE | 194 | an inline: core-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
+| 103 | SECP256K1_MULR_INLINE | 232 | an inline: core-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
+| 104 | SECP256K1_SQUARER_INLINE | 213 | an inline: core-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
+| 105 | SECP256K1_DIVR_INLINE | 240 | an inline: core-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
+| 106 | SECP256K1_GLVR_ADV_INLINE | 13 | an inline: core-fed template from `inlines/` (`virtual.cpp:1018–1092`) |
 
 ## 8. Opcodes that never occur (3)
 

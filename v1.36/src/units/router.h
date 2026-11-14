@@ -42,7 +42,7 @@
 //     port), `dma` CC_DMA_IN (a credit FifoIn, cc_dma_depth: the slot's DMA, AUDIT-M3 3.1 S6; C&C 3 only), `out[0]` CC_LINK_OUT
 //     (the C&C link into tile c's from-controller route block), and the tile's `inj`, `eject`, `loop_left`, `ovf`. From
 //     the loopback or the DMA, a packet for this controller is ejected and any other (broadcasts included) leaves on the
-//     link; every other input is ejected (the eject selector counts one not for this controller). Outputs 1-3 and the
+//     link; from the attach link, a packet for this controller is ejected and any other goes nowhere. Outputs 1-3 and the
 //     to-controller output never receive (their FIFOs exist, as in ref, for the fingerprint).
 //   - Tiles 0-2 with C&C as cores (`fifth` FIFTH_LINK): the fifth port is the C&C links, `from_cc` (LinkIn) and `to_cc`
 //     (LinkOut), ref's `WordDelayLine(ccLinkLatency)` each way, in place of M2's endpoint Hold and Fifo.
@@ -308,7 +308,9 @@ inline sim::Wake Router::step(sim::Ctx& c) {
 // A controller's router (ref's Router.runCycle with me >= 64): the link selector, the eject selector (the to-controller
 // output is never attached); then the route blocks in ref's order: the link (CC_LINK_IN), the host port (CC_HOST_IN),
 // the DMA (CC_DMA_IN), the loopback. ccRoute: from the loopback or the DMA, dst == me is ejected and anything else
-// (broadcasts included) leaves on the link; every other input is ejected.
+// (broadcasts included) leaves on the link. From the attach link, dst == me is ejected and anything else goes nowhere
+// (16.2 names the packets sent on, those from the local input or a DMA; the RTL's router.veryl, `route`: on a special
+// tile a packet not for it leaves by the attach port only from a port below the attach ports).
 inline sim::Wake Router::step_cc(sim::Ctx& c) {
     if (ovf_due) { c.inc(ovf, ovf_due); if (ovf_event) c.put(ovf_ev); ovf_due = 0; }
     uint32_t taken = 0;
@@ -320,7 +322,7 @@ inline sim::Wake Router::step_cc(sim::Ctx& c) {
         const uint64_t d = w[0], a = w[1], cw = w[2];
         c.take(in[CC_LINK_IN]);
         routed++;
-        route_mask(c, M_EJ, CC_LINK_IN, d, a, cw, taken);
+        if (lw::dst(a) == me) route_mask(c, M_EJ, CC_LINK_IN, d, a, cw, taken);   // any other goes nowhere (router.veryl, `route`)
     }
     bool dma_waiting = false;
     if (has_dma && c.ready(dma)) {                                // 16.4: src the tile's id; it moves only into room

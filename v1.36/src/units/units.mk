@@ -1,57 +1,12 @@
-# units.mk: the rules (the controller's units in src/units/, the golden-trace harness), included by sim/Makefile.
-#
-#   make bench_controller   the controller's speed (tests/bench_controller.cpp): pin it (taskset -c $(tools/machine.sh cpus p1 1): D21)
-#   make tsan-units   the threads test (test_controllers) under TSan, gcc and clang; also run by make check
-#   make golden       every golden trace (tests/golden/RUNS) on the engine, with the debug checks, and on the direct driver
+# units.mk: the rules (the tile's units in src/units/ and their tests), included by the Makefile.
 
-UNITS_LINK  := $(B)/src/units/trace_log.o $(B)/src/units/controller.o $(B)/src/units/tile_ctl.o \
-               $(B)/src/units/periph_slot.o $(B)/src/units/replayer.o $(TRACER_LINK)   # tile_ctl builds the slot (M3)
-GOLDEN_OBJ  := $(B)/tests/golden_run.o $(B)/tests/sha256.o
-
-$(B)/test_regblock $(B)/test_golden $(B)/test_controllers $(B)/test_broken_units: $(UNITS_LINK) $(GOLDEN_OBJ)
 # the RTL's own core programs on the core alone (tests/core-programs/, tests/core_programs.h)
 $(B)/test_core_programs: $(B)/src/units/trace_log.o $(B)/tests/sha256.o
 $(B)/test_core_tile: $(B)/src/units/trace_log.o
 
-$(B)/golden: $(B)/tests/golden_main.o $(GOLDEN_OBJ) $(UNITS_LINK) $(LIB_OBJ)
-	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
-
-$(B)/bench_controller: $(B)/tests/bench_controller.o $(GOLDEN_OBJ) $(UNITS_LINK) $(LIB_OBJ)
-	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
-
-all: $(call live,$(B)/golden $(B)/bench_controller)
-
-.PHONY: golden
-golden: $(B)/golden
-	./$(B)/golden --direct
-	./$(B)/golden --engine
-
-.PHONY: bench_controller
-bench_controller: $(B)/bench_controller
-	./$(B)/bench_controller
-
-# The threads test under ThreadSanitizer (the build/<cc>-tsan/ and its rules in threads.mk): make tsan-units; in make check.
-UTB := build/$(CC_NAME)-tsan
-$(UTB)/test_controllers: $(UTB)/src/units/trace_log.o $(UTB)/src/units/controller.o $(UTB)/tests/golden_run.o $(UTB)/tests/sha256.o
-.PHONY: tsan-units tsan-units-one
-tsan-units-one: $(UTB)/test_controllers
-	TSAN_OPTIONS="halt_on_error=1 second_deadlock_stack=1" ./$(UTB)/test_controllers
-# (pending.mk: while test_controllers is pending, so is its TSan run)
-ifeq ($(filter test_controllers,$(PENDING_TESTS)),)
-tsan-units:
-	@set -e; for c in $(COMPILERS); do echo "==== $$c tsan (controllers)"; $(MAKE) --no-print-directory CC_NAME=$$c tsan-units-one; done
-else
-tsan-units:
-	@echo "==== tsan (controllers): PENDING test_controllers (pending.mk)"
-endif
-
 # the canonical state fingerprint's C++ side (tests/statefp.*), and its test.
 FP_OBJ := $(B)/tests/statefp.o
 $(B)/test_statefp: $(FP_OBJ)
-$(B)/test_statefp_g1: $(FP_OBJ) $(B)/tests/statefp_g1.o
-$(B)/test_statefp_core: $(FP_OBJ) $(B)/tests/statefp_g1.o $(UNITS_LINK) $(GOLDEN_OBJ)
-$(B)/test_g1_tile $(B)/test_tile_slot $(B)/test_tileslotconf: $(UNITS_LINK)
-$(B)/test_g1_replay: $(FP_OBJ) $(B)/tests/statefp_g1.o $(UNITS_LINK) $(GOLDEN_OBJ)
 
 # the replayer (src/units/replayer.*), its tests and the conformance tool (tests/replayconf_main.cpp: a replayconf
 # script made, or replayed on the model; the RTL's side is tests/replayer/README.md's).
@@ -67,12 +22,9 @@ $(B)/replay_delivery: $(B)/tests/replay_delivery_main.o $(REPLAYER_LINK) $(B)/sr
 all: $(B)/replay_delivery
 # the peripheral slot (src/units/periph_slot.*), with the replayer and the test peripheral it dispatches to.
 SLOT_LINK := $(B)/src/units/periph_slot.o $(REPLAYER_LINK) $(TRACER_LINK)   # TRACER_LINK: tracer.mk, included first
-$(B)/test_slotconf $(B)/test_periph_slot: $(SLOT_LINK) $(B)/tests/statefp.o
+$(B)/test_periph_slot: $(SLOT_LINK) $(B)/tests/statefp.o
 # Ingress/Egress in the master tile's slot (tests/test_ingress_egress.cpp)
 $(B)/test_ingress_egress: $(SLOT_LINK)
-$(B)/slotconf: $(B)/tests/slotconf_main.o $(SLOT_LINK) $(LIB_OBJ)
-	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
-all: $(B)/slotconf
 
 # the RW engine in the memory tile's slot (tests/test_rw_engine.cpp; tests/rw_engine_teeth.sh plants its bugs)
 $(B)/test_rw_engine: $(SLOT_LINK)

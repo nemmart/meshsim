@@ -1,4 +1,2 @@
-# mem.mk: the rules (G3: the memory path's tests), included by sim/Makefile.
+# mem.mk: the rules (the memory path's tests), included by the Makefile.
 $(B)/test_mem: $(B)/src/units/inject.o $(B)/src/units/net.o
-# P2d: the memory path against ref (oracle/ref/MemConf.java, memconf.sh; fixtures in tests/memconf/)
-$(B)/test_memconf: $(NET_LINK) $(B)/tests/statefp.o $(B)/tests/statefp_g1.o $(B)/tests/statefp_g2.o $(UNITS_LINK) $(GOLDEN_OBJ)

@@ -13,8 +13,6 @@ $(B)/test_rtl_sort: $(MACH_LINK)
 $(B)/test_rtl_stream: $(MACH_LINK)
 # the memory tile in the chip: the RTL's memory run, an AXI4 slave on the lpddr port (tests/test_rtl_memory.cpp)
 $(B)/test_rtl_memory: $(MACH_LINK)
-# test_checkself: oracle/ref/CheckSelf.java's sequence (the checker), apart from test_mach
-$(B)/test_checkself: $(MACH_LINK)
 
 # The chip on several threads under ThreadSanitizer (build/<cc>-tsan/, its rules in src/threads.mk): make tsan-chip; in
 # make check. Acceptance B's 16-record run split over 2 and over 8 threads (the nets and the request tree cross

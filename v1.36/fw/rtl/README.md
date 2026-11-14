@@ -4,7 +4,7 @@
 
 v1.36's simulator models the RTL's hardware, so the RTL's own firmware images run on it unmodified. This folder holds
 that firmware as Snarky One built it, sources and images, copied verbatim. **Nothing here is built by meshsim:** not
-by the `Makefile`, not by `fw/build.sh`. The images are built in Snarky One, by its own pinned toolchain, and
+by the `Makefile` or by any script here. The images are built in Snarky One, by its own pinned toolchain, and
 `refresh.sh` copies them.
 
 ## Where it came from
@@ -53,7 +53,7 @@ Snarky One's `build/sort/`. It is SortTest's built-in `uniform` set (`sort_image
 `java.util.Random` at the seed 11 + `"uniform".hashCode()`, 65,536 keys a tile), in SortTest's key file format, which
 `tests/sort_input.h`'s `read_keys` reads. Check a copy with `sha256sum -c sort-64k.keys.sha256` beside it, and keep it
 outside `fw/rtl/`, whose check lists every file. The core's own 49 programs (riscv-tests, the firmware test and
-CoreMark, `build/core-tests/elf/`) are not copied either: nothing here runs them yet.
+CoreMark, `build/core-tests/elf/`) are not here: `tests/core-programs/` holds them, with what the RTL's simulation measured on each.
 
 ## The sources
 

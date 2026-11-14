@@ -1,4 +1,4 @@
-// test_statefp.cpp: the fingerprint library (statefp.h) against ref's own files (sim/tests/golden-m2) and by hand.
+// test_statefp.cpp: the fingerprint library (statefp.h) against ref's own files (tests/statefp/: three of its M2 runs of v1.35's machine, kept as examples of the file format) and by hand.
 #include <cstring>
 #include <string>
 #include <vector>
@@ -31,7 +31,7 @@ TEST(hash_matches_ref_on_known_streams) {
 }
 
 TEST(golden_regs_loads_and_every_chip_line_combines) {
-    fp::FpGolden g = fp::FpGolden::load("tests/golden-m2/regs.fp");
+    fp::FpGolden g = fp::FpGolden::load("tests/statefp/regs.fp");
     CHECK(g.error.empty());
     CHECK_EQ(g.points.size(), size_t(872));
     STR_EQ(g.config.at("readyLatency"), "8");
@@ -43,7 +43,7 @@ TEST(golden_regs_loads_and_every_chip_line_combines) {
         for (size_t i = 0; i + 1 < p.lines.size(); i++) h.push_back(p.lines[i].hash);
         CHECK_EQ(fp::combine(h.data(), h.size()), p.lines.back().hash);
     }
-    for (const char* f : {"tests/golden-m2/wfi.fp", "tests/golden-m2/a2a.fp"}) {
+    for (const char* f : {"tests/statefp/wfi.fp", "tests/statefp/a2a.fp"}) {
         fp::FpGolden w = fp::FpGolden::load(f);
         CHECK(w.error.empty());
         for (const fp::FpPoint& p : w.points) {
@@ -78,7 +78,7 @@ TEST(memsum_incremental_equals_full_scan) {
 }
 
 TEST(header_check_refuses_naming_the_difference) {
-    fp::FpGolden g = fp::FpGolden::load("tests/golden-m2/regs.fp");
+    fp::FpGolden g = fp::FpGolden::load("tests/statefp/regs.fp");
     CHECK(g.error.empty());
     std::vector<std::string> ours = g.header;
     STR_EQ(g.check_header(ours), "");
@@ -96,7 +96,7 @@ TEST(header_check_refuses_naming_the_difference) {
 }
 
 TEST(compare_names_the_first_differing_cycle_and_unit) {
-    fp::FpGolden g = fp::FpGolden::load("tests/golden-m2/regs.fp");
+    fp::FpGolden g = fp::FpGolden::load("tests/statefp/regs.fp");
     CHECK(g.error.empty());
     const fp::FpPoint& p = g.points[100];
     std::vector<fp::FpLine> ours = p.lines;

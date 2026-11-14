@@ -70,7 +70,7 @@ current answer, not a proof: anyone may reopen one with a reason [owner].*
 | one source to every tile | a broadcast load, the replayers' expansions | a broadcast can't overflow a queue; a full-rate one has the mesh to itself |
 | one source to one or a few tiles | a traced window's delivery, file reads | the source paces it |
 | many tiles to one sink that always drains | file writes | the elastic regime (proposed) |
-| a few words from many tiles to one | each round's reduction | the program's pacing, inside the fan-in limits (22) |
+| a few words from many tiles to one | each round's reduction | the program's pacing, inside the fan-in limits (22.24) |
 | many tiles to many | the sort's all-to-all | strict rotation: the 16-group schedule |
 
   Bulk traffic from many tiles to many outside the sort is the one shape nothing covers; a kernel that needs it

@@ -690,7 +690,8 @@ A branch on per-core data ends the region; the next barrier starts a new one.
 
 The contract above fixes these costs. They are gathered here for the
 simulator, whose core model reproduces them, so that a program takes the same
-cycles on meshsim as on the RTL. Each holds with IMEM and DMEM as the machine
+cycles on meshsim as on the RTL. The last column names the row of the Core
+contract table, or the section, that states each. Each holds with IMEM and DMEM as the machine
 has them: ready in every cycle, each response the cycle after its request
 (6.3, Lockstep regions), and with no other stall. "After" counts retirements:
 an instruction with no cost retires one cycle after the one before it.
@@ -707,8 +708,8 @@ an instruction with no cost retires one cycle after the one before it.
 | `czero.eqz`, `czero.nez` | as any ALU instruction | Conditional zero |
 | the instruction after any CSR write | held 1 cycle in execute | Pipeline event priority |
 | a load from, or a store to, a window or a table | the machine's fixed latency, `WINDOW_LOAD_LATENCY` or `TABLE_LOAD_LATENCY` (6.4), and a stalling store its stall (9, 11.1, 17.6) | Obligations of the enclosing unit |
-| a `WFI` whose wake condition holds as it retires | no wait: the next instruction retires 3 cycles after the `WFI`, 2 more | Wait for interrupt (WFI) |
-| a `WFI` that waits, woken in cycle R | the next instruction retires in R + 3 | Lockstep regions |
+| a `WFI` whose wake condition holds as it retires | no wait: with `mstatus.MIE` clear, the next instruction retires 3 cycles after the `WFI`, 2 more | Wait for interrupt (WFI) |
+| a `WFI` that waits, woken in cycle R | with `mstatus.MIE` clear and no NMI to take, the next instruction retires in R + 3 | Lockstep regions |
 | a coprocessor instruction | the coprocessor's: 1 cycle with one that is always ready and answers the next cycle | Coprocessor |
 
 - **No other cost.** There is no branch predictor, cache, divider or

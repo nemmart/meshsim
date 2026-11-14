@@ -45,7 +45,7 @@ GROUP_OFFSETS = [[1,29,35,63], [2,30,34,62], [3,31,33,61], [5,23,41,59], [6,22,4
                  [14,18,46,50], [16,20,44,48], [17,19,45,47], [0,4,32,60]]
 T   = [4] * 16      # one packet per visit, for 64-bit keys and 128-bit values alike (v1.1)
 GAP = 0             # cycles after each group; 4 for phases that run every stream at the full
-                    # window (the two-hop layers TH and BT), spec/machine-spec.md 27
+                    # window (the two-hop layers TH and BT), spec/machine-spec.md 22.14
 ```
 
 **In the tables.** Each group is one `GROUP` entry with `streams` = t − 1 = 3, `gap` = `GAP`, and `first_stream` = the first of its four consecutive `STREAM` entries, one per offset with `STREAM_HDR.dst` = the offset (`spec/machine-spec.md` 8.3, 8.4). Only R changes from pass to pass. R is `rotations`, in the entry's word 0 with `first_stream` and `streams`, so a store of a new R writes all three.
@@ -78,7 +78,7 @@ GAP = 0             # cycles after each group; 4 for phases that run every strea
 - **Measured** [meas: meshsim, full size, on uniform, Zipf-raw, trace and 99 % one value; v1.0 measurement; to be re-measured in v1.1]:
   - the link queues peak at 4 of 16, the eject's at 3–4, and v1.0's write queue, which v1.36 does not have (`spec/machine-spec.md` 12.4), at 4 (against 5 and 8 for a nine-group schedule);
   - no late rotations, stalls or overflows.
-- **Gap 0.** With no gap between groups, the queue peaks are the same as with gap 4 on uniform and on all the skewed sets, with no drift [meas: meshsim] (`spec/machine-spec.md` 8.4).
+- **Gap 0.** With no gap between groups, the queue peaks are the same as with gap 4 on uniform and on all the skewed sets, with no drift [meas: v1.35] (`spec/machine-spec.md` 22.14).
 
 ## 6. Cost
 

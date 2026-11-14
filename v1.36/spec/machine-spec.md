@@ -2095,9 +2095,9 @@ row, and lists what the simulator sets beside it. Three kinds of value appear:
 | link word | 256 bits, stored in full | the packet (4.1) | 256 bits in format; only the defined bits are carried and stored, 168 + 2·`TILE_ID_BITS` (182 at 8 × 8) |
 | mesh | 8 × 8, fixed | `MESH_SIZE`, `TILE_COUNT`, `TILE_ID_BITS` | 1–8, 8 by default; `MESH_SIZE`²; 7 at 8 × 8 |
 | `link_latency` | 3; a hop 4 cycles | a link's register stages (16.1) | 3, a hop 4 cycles: contract, and the attach links' too (v1.35's simulator had `cc_link_latency` 1) |
-| `mem_chunks` | 1,048,576 (4 MB); any multiple of 256 KB up to 8 MB | `SCRATCHPAD_BYTES` | 4 MiB by default; a power of two from 512 B to 8 MiB (item 107) |
-| areas of at most 512 KB | 8 areas at the default | `MAX_BANK_BYTES` | 512 KiB |
-| controller memories | 32 KB + 32 KB | `IMEM_BYTES`, `DMEM_BYTES` | 32 KiB each by default |
+| `mem_chunks` | 1,048,576 (4 MiB); any multiple of 256 KiB up to 8 MiB | `SCRATCHPAD_BYTES` | 4 MiB by default; a power of two from 512 B to 8 MiB (item 107) |
+| areas of at most 512 KiB | 8 areas at the default | `MAX_BANK_BYTES` | 512 KiB |
+| controller memories | 32 KiB + 32 KiB | `IMEM_BYTES`, `DMEM_BYTES` | 32 KiB each by default |
 | boot ROM | 256 bytes, 48 words used | `BOOT_ROM_BYTES` | 256; the ROM's program is 6.5's, 44 words in the RTL `[meas: RTL]` |
 | big-SRAM engine pointers | 21-bit chunk addresses | `WORD_ADDRESS_BITS` | 21 |
 | `reg_load_latency` | 2 (register block, windows), 1 (table window) | `WINDOW_LOAD_LATENCY`, `TABLE_LOAD_LATENCY` | 2, 1; a store takes effect at the end of *t* + *L* − 1 (6.4), a cycle later in a window than v1.35's |
@@ -2151,7 +2151,7 @@ row, and lists what the simulator sets beside it. Three kinds of value appear:
 |---|---|---|
 | `intra_tile_latency` | 1 per stage | the simulator's; the paths' cycle counts are chapter 21's |
 | load-use penalty | 0 | 1 cycle `[meas: RTL]` (`spec/core.md`) |
-| taken-branch penalty (`branch_penalty`) | 1 | by kind `[meas: RTL]`: 3 after a taken branch or a `JALR` other than a ready return; 2 or fewer after a `JAL` or a ready return (`spec/core.md`, Control transfers) |
+| taken-branch penalty (`branch_penalty`) | 1 | by kind `[meas: RTL]`: 3 after a taken branch or a `JALR` other than a ready return; 2 or fewer after a `JAL` or a ready return (`spec/core.md`, Core contract, the Control transfers row) |
 | multiply latency | 3 | two pipelined stages, with their interlocks `[meas: RTL]` (`spec/core.md`) |
 | wake to the next instruction | the same cycle | the instruction after the `WFI` retires 3 cycles after the wake; a `WFI` with a wake pending costs 2 (the core specification's Lockstep regions, `spec/core.md`) |
 | the request tree's `hop_latency` | 3 a hop; 17 cycles unloaded, 18 to loadable | a cycle a node, its links wires: a request is loadable at its target 11 cycles after its `REQUEST_SEND` store from a compute tile, 10 from a special tile `[meas: RTL]`. The links' pipeline stages come with a floorplan (item 61) |
@@ -2239,9 +2239,12 @@ Invariants 27 to 34 are new in v1.36: rules the machine states as UB that v1.35 
     - no `READ` is outstanding and no write into the write buffer is in flight while a group transfer runs on any
       tile. *(Not stated by the RTL's specification; kept from v1.35.)*;
     - no `STREAM_HDR.dst`, `WRITE_HDR.dst` or `DMA_HDR.dst` names a reserved tile id, `TILE_COUNT` + 3 up to the
-      one below broadcast, or none (4.1); such a packet is dropped where it enters the NoC, with no error (16.2).
+      one below broadcast, or none (4.1). A packet for a reserved tile id is dropped where it enters the NoC, with
+      no error (16.2); none as a dst is an encoding the specification does not define, UB (1.3).
       No stream on a compute tile broadcasts: only the special tiles broadcast from streams. *(The second rule is
-      not stated by the RTL's specification; kept from v1.35.)*;
+      not stated by the RTL's specification, whose hardware sends a compute tile's broadcast like any loopback
+      packet (8.3, 14.2); kept from v1.35 as a convention, 22.13, and a question for the owner in
+      `spec/CHANGES-v1.35-to-v1.36.md`.)*;
     - every request names target 0, 1 or 2 (a request for 3–7 is dropped at the root, 11.2), carries an `op` its
       target defines (11.5), and has 0 in its requester field (11.3);
     - no load of `REQUEST_RECEIVE` finds the receive queue empty (11.1). **Hardware:**
@@ -2255,8 +2258,8 @@ Invariants 27 to 34 are new in v1.36: rules the machine states as UB that v1.35 
 19. **Everything stays in bounds** (5.1, 15): no packet and no load, store or fetch of a core addresses past the
     end of its memory, and no auto-advancing address (`STREAM_DEST_ADDR`, `WRITE_DEST_ADDR`, `READ_DEST_ADDR`, a
     peripheral's `DMA_DEST_ADDR`, the units' word addresses, a `READ` request's deliveries) passes the end. A
-    `READ_DEST_ADDR` is in DMEM (10). An RW engine job stays inside LPDDR and the write buffer (17.7). The
-    hardware does not check: an address past the end of its memory is UB.
+    `READ_DEST_ADDR` is in DMEM (10). An RW engine job stays inside LPDDR and the write buffer (17.7). No transfer
+    walks past the end of its table (1.3). The hardware does not check: an address past the end of its memory is UB.
 20. **Pointers and transfers stay aligned** (5.4, 8.3, 12.4, 13, 15, 17.4): `STREAM_SRC_ADDR` and
     `STREAM_DEST_ADDR` to the stream's size; a `PTR` entry to the size of the writes through it, a record for
     `AUGMENT`; `GATHER_CONFIG.record_base` and the gather's `PTR[me]` to a row, whatever *k* is; `READ_DEST_ADDR`
@@ -2269,8 +2272,8 @@ Invariants 27 to 34 are new in v1.36: rules the machine states as UB that v1.35 
     `ERRORS.access_fault`. *(v1.35's simulator-only trace and exit words are gone: such a word is unmapped. A
     program's result is a request to the master tile.)*
 22. **Uncounted traffic is `WRITE` only:** `APPEND`, `BUCKET` and `AUGMENT` packets are always counted, and so is
-    every write into the scratchpad. *(Not stated by the RTL's specification; kept from v1.35.)* The only
-    uncounted `WRITE`s are a load's (6.5). And **no write lands in DMEM's first 16 bytes** (6.3), which catches a
+    every write into the scratchpad. The only uncounted `WRITE`s are a load's (6.5). *(Neither rule is stated by
+    the RTL's specification; kept from v1.35.)* And **no write lands in DMEM's first 16 bytes** (6.3), which catches a
     C null-pointer store and an all-zero header alike.
 23. **No traps** (6.2): no `ecall` or `ebreak`, no misaligned load or store, no illegal instruction, no access
     fault, a fetch's included, and no trap after the first. Every trap goes to the handler, which reports to the
@@ -2342,7 +2345,7 @@ an attach link included, in four cycles: three register stages and one for the r
 | a `JAL`, or a ready return | 3 cycles after it retires, or fewer if it waited in execute | contract | the core specification's Core contract | 1 more |
 | a multiply | two pipelined stages; one cycle's wait for an operand still in writeback, and one for an instruction that uses its result right after it | contract | the core specification's Core contract | 3 cycles |
 | a wake | an event set at the end of cycle *e* is on `meip` in *e* + 1, cycle R; the instruction after the `WFI` retires in R + 3 | contract | 6.2, the core specification's Lockstep regions | wakes in *e* + 1 |
-| a `WFI` whose wake is already pending | the next instruction retires 3 cycles after the `WFI` | contract | the core specification's Wait for interrupt | 1 cycle more than an ordinary instruction |
+| a `WFI` whose wake is already pending | the next instruction retires 3 cycles after the `WFI` | contract | the core specification's Wait for interrupt (WFI) | 1 cycle more than an ordinary instruction |
 | a live event or a peripheral's error, to the wake or the NMI | one cycle later than a counted event: a live level of cycle *e* is on `meip` or `nmi` in *e* + 1 | the RTL's | 7.2, 17.2 | "aims to be current by the next instruction" |
 | the core's other cycle costs | the core specification's "The core's cycle costs"; 1.312 cycles an instruction on CoreMark `[meas: RTL]` | the RTL's | `spec/core.md` | one instruction a cycle |
 
@@ -2776,9 +2779,10 @@ A stream transfer reads the scratchpad only. Values the core computes in DMEM go
 - **Reserved encodings are errors wherever they appear,** even at count 0: a stream with size 11, mode 6 or 7,
   a reserved tile id or none as `dst`, a `GATHER` stream whose `dst` is not the tile itself, an `AUGMENT` stream
   at 128 bits, or a source or a `WRITE` destination not aligned to the stream's size. None has a check at the
-  sender; all are UB (1.3), and the simulator reports them.
+  sender: a packet for a reserved tile id is dropped where it enters the NoC, with no error (16.2), a 128-bit
+  `AUGMENT` is a bad packet at its receiver (4.2), the others are UB (1.3), and the simulator reports them all.
 - **Broadcast streams.** The hardware sends a stream to the broadcast id like any other: its read holds a token
-  until the tile's own copy is taken (14.2). By convention only the master tile broadcasts from streams, and the
+  until the tile's own copy is taken (14.2). By convention only the special tiles broadcast from streams, and the
   simulator errors on a broadcast stream from a compute tile.
   *(Not stated by the RTL's specification; kept from v1.35.)*
 - **A start is the only way a transfer begins:** the release starts none. A synchronised start is the same
@@ -3332,7 +3336,7 @@ firmware's** (11.5): the file system's requests, their layouts and their replies
 - **The Updater and the Binder** (applying updates, binding) are not part of the RW engine (17.7) and are
   deferred with the file system *(item 60)*.
 - **Debug output.** Each tile is to open **log files through the file system** and `printf` into them; when the
-  chip fails, the file system flushes their tails to LPDDR (22). The protocol is the file system's.
+  chip fails, the file system flushes their tails to LPDDR (22.28). The protocol is the file system's.
 - **Mounting existing state** after a soft reset, so that the wreckage can be read: deferred, with the soft
   reset itself *(Open, item 124)*.
 
@@ -3424,7 +3428,7 @@ not used here.
 | the peripherals' interface (17.1–17.3): the three windows' decode, the tile's live event and error bits, the write ports; a DMA only where a peripheral sends, on a special tile (17.4) | | ≈ 0.003 mm² |
 | the replayer (17.8), peripheral 1 on every compute tile: ALU and comparator, the 128 × 64-bit true dual-port register file, two adders, the operand resolution, the decode index, four queue readers and credit counters, three decoders and their size counters; with its memories (queues, ROM, decode table, register file, output queue) | ≈ 256 Kbit of SRAM | ≈ 0.09–0.14 mm² (`spec/jolt/replayer.md`) |
 | **total per compute tile** | | **≈ 0.52–0.61 mm² in v1.35,** with the replayer and an attach port, about 35–40 % of the per-tile logic budget. v1.36's changes all reduce it but the core's two extensions and the read and gather queues' entries. Still inside 1.5 mm² |
-| the special tiles (2.1) | tile instances with the compute tile's scratchpad, `SCRATCHPAD_BYTES`, each a tile's logic plus its peripheral and, with a sending peripheral, its DMA | not estimated here. v1.35 gave them 2 MB of big SRAM each |
+| the special tiles (2.1) | tile instances with the compute tile's scratchpad, `SCRATCHPAD_BYTES`, each a tile's logic plus its peripheral and, with a sending peripheral, its DMA | not estimated here. v1.35 gave them 2 MiB of big SRAM each |
 | once per die: the request tree's nodes (11.3), `MESH_SIZE` row nodes and the root, a 16-byte buffer per input, their arbiters and the root's credit counters; the three receive queues, 128, 256 and 128 × 128 bits at 8 × 8, each in its receiving tile's request unit; the tree's wiring (18 wires a link: 16 data, valid, ready) and a credit wire from each receiving tile | ≈ 74 Kbit | ≈ 0.03 mm² plus wiring |
 
 Rule of thumb: tables go in SRAM (cheap); comparators, multiplexers and per-entry flop state are what spend the

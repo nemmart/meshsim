@@ -20,6 +20,24 @@ lists.
 `mesh-v1.2-draft.h` is the draft that v1.35's header was compared with (`tools/regs/header_diff.sh`); v1.36's header
 is not its successor and is not compared with it.
 
+### meshsim's own programs: what replaces each, and what waits
+
+Nothing here is ported in the platform stage: the host has no `riscv64-unknown-elf-gcc` (`fw/build.sh`'s pinned
+toolchain), and the hardware these programs were written for (C&C's commands, GO and DONE, the reply and command
+blocks, v1.35's map) is gone. Where the RTL's own firmware does the job on v1.36's hardware, it replaces the program;
+where nothing does yet, the program waits for a firmware stage (`../PENDING-v1.36.md`, the platform stage, section 3).
+
+| meshsim's (v1.35's) | on v1.36 | status |
+|---|---|---|
+| `boot/` (the boot ROM: staging by C&C's commands) | `rtl/boot/boot_rom.elf`, the RTL's ROM: the pull boot by `LOAD`, `boot_local` (6.5). Every tile of every test boots through it; `test_rtl_tile` checks its cycles | **replaced** |
+| `sort/` (the sort in C under C&C's commands, its split and planner) | `rtl/sort/`: meshsim's own sort, vendored by the RTL on a port layer (`rtl/src/.../sort/PORTING.md`), as `tile/sort.elf` inside each run's `master.elf`; `test_rtl_sort` runs it end to end, against an oracle, in the RTL chip's cycles | **replaced** for the four runs the RTL builds (64 × 16 and 64 × 64K, 32- and 128-bit values); the other key sets of `tests/sort_main.cpp` wait |
+| `cc/cc1.c`, `cc23.c`, `cc_bad.c`, `cc_rcp.c` (C&C 1–3's firmware) | the RTL's chip firmware: `rtl/sort/<run>/master.elf` (the master tile's program: the load, the barriers, the errors, the links' latency) and `rtl/sort/memory-tile/memory.elf`; the tracer tile's and the replay image are vendored and not run (the segment, P10) | **replaced** for the master and the memory tile; the tracer tile's waits for the segment |
+| `m1/` and `riscv-tests/` (the core's programs: CSRs, interrupts, timers, `WFI`, riscv-tests) | the RTL's core programs, `tests/core-programs/` (riscv-tests, the firmware tests, CoreMark, the interrupt programs), in the RTL's cycles: `test_core_programs` | **replaced** |
+| `tests/` (the tile's test programs in C: the read port, gather, the search benchmark, accounting, the peripheral window) | the RTL's tile programs, `rtl/tile/base_tile/` (`registers`, `barrier`, `errors`, `noc`, `replayer`): `test_rtl_tile`. The units themselves are tested without firmware (`test_mem`, `test_receive`, `test_ag`, `test_gather`) | **replaced** where the RTL has a program; `rdport.c`, `gather.c`, the search benchmark and the accounting programs wait for a firmware stage |
+| `recipes/` and `RECIPES.md` (the v1.2 recipe book) | nothing: the recipes are written against v1.35's header and conventions | **waits** for a firmware stage (the book rewritten for v1.36's map) |
+| `replay/replay_ctl.c` (the replay controller) | the RTL's `replay.elf` (vendored, not run) | **waits** for the segment on the chip (P10) |
+| `tracer/` (the tracer tile's controller) | the RTL's `tracer.elf` (vendored, not run) | **waits** for the segment on the chip (P10) |
+
 ## The docs
 
 | file | what |

@@ -63,7 +63,7 @@ std::string hash_of(const std::vector<std::string>& lines) {
 
 TEST(core_programs_fixtures_are_the_listed_files) {
     const auto sums = read_list("SHA256SUMS");
-    CHECK_EQ(sums.size(), 54u);
+    CHECK_EQ(sums.size(), 55u);                              // the 54 programs, and the boot ROM
     for (const auto& row : sums) {
         CHECK_EQ(row.size(), 2u);
         std::ifstream in(kDir + "elf/" + row[1], std::ios::binary);
@@ -144,4 +144,74 @@ TEST(core_programs_coremark_reports_the_rtls_baseline) {
         test::fail(__FILE__, __LINE__, "CoreMark reports %s ticks, %s instructions, %s iterations; the RTL's baseline %s, %s, %s",
                    report["Total ticks"].c_str(), report["Instructions"].c_str(), report["Iterations"].c_str(),
                    bench["cycles"].c_str(), bench["instructions"].c_str(), bench["iterations"].c_str());
+}
+
+// ------------------------------------------------------------------------------------------- the tile's bus
+// The RTL's boot ROM (rtl/blocks/core/src/boot_rom.S, built by mise run core-images) on the core in the tile's map,
+// with the register bus's timing as the RTL's register_bus has it (rv32.h's header): a window load answered two
+// cycles after it is raised, a window store the cycle after, in the cycle it is made, REQUEST_SEND's store, which
+// may stall, the cycle after it is made. The RTL's boot_rom_program_test measures the ROM's cycles on its block
+// `core` (rtl/blocks/core/README.md, "The boot ROM's program"; tests/core-programs/BOOT): each is the cycle in which
+// the named store is raised on the system port, cycle 0 the first after reset.
+namespace {
+
+struct TileBus {
+    static constexpr uint32_t IMEM = 0x01000000, ROM = 0x02000000, ROM_BYTES = 256, WINDOW = 0xFFFFF800,
+                              PARAMS = 0xFFFFF800, REQUEST_OUT_W1 = 0xFFFFF904, REQUEST_SEND = 0xFFFFF90C;
+    std::vector<uint32_t> rom = std::vector<uint32_t>(ROM_BYTES / 4, 0), imem = std::vector<uint32_t>(16, 0);
+    uint32_t params = 0;
+    uint64_t now = 0;
+    struct Raised { uint64_t cycle; uint32_t address; };
+    std::vector<Raised> raised;                              // every data access, in the cycle it is raised
+    uint32_t bus_fetch(uint32_t a, bool& err) const {
+        err = false;
+        if (a - ROM < ROM_BYTES) return rom[(a - ROM) >> 2];
+        if (a - IMEM < 0x8000) return a - IMEM < 4 * imem.size() ? imem[(a - IMEM) >> 2] : 0;
+        err = true;
+        return 0;
+    }
+    uint32_t bus_route(uint32_t a) { raised.push_back({now, a}); return a >= WINDOW ? 2 : a < 0x8000 ? 1 : 0; }
+    bool bus_store_at_once(uint32_t a) const { return a != REQUEST_SEND; }
+    bool bus_access(uint64_t, uint32_t a, bool store, uint32_t, uint32_t, uint32_t& rdata) {
+        rdata = !store && a == PARAMS ? params : 0;
+        return true;
+    }
+    bool meip() const { return false; }
+    bool nmi() const { return false; }
+};
+
+// The cycle in which the store to `address` is raised, running the ROM from reset; -1: not within 200 cycles.
+int64_t boot_rom_cycle(uint32_t params, uint32_t address) {
+    TileBus bus;
+    bus.params = params;
+    const std::string error = core_programs::read_elf(kDir + "elf/boot_rom.elf", [&](uint32_t a, uint8_t byte) {
+        if (a - TileBus::ROM < TileBus::ROM_BYTES) core_programs::place_byte(bus.rom, a - TileBus::ROM, byte);
+        return true;                                         // (the segment starts with the file's own header)
+    });
+    if (!error.empty()) return -1;
+    bus.imem[0] = 0x90002223;                                // the image's first instruction: sw zero, REQUEST_OUT_W1(zero)
+    bus.imem[1] = 0x0000006F;                                // j .
+    std::vector<uint32_t> dmem(units::MEM_WORDS, 0), imem(units::MEM_WORDS, 0);
+    units::Rv32 core;
+    core.v135_platform = false;
+    core.pc = TileBus::ROM;
+    core.dmem = dmem.data(); core.imem = imem.data();
+    for (uint64_t c = 0; c < 200; c++) {
+        bus.now = c;
+        core.step(bus, c + 1);
+        for (const TileBus::Raised& r : bus.raised) if (r.address == address) return int64_t(r.cycle);
+    }
+    return -1;
+}
+
+}  // namespace
+
+TEST(core_programs_boot_rom_takes_the_rtls_cycles) {
+    std::map<std::string, std::string> boot;
+    for (const auto& row : read_list("BOOT")) if (row.size() == 2) boot[row[0]] = row[1];
+    CHECK_EQ(boot.size(), 2u);
+    // a loaded tile (PARAMS.boot_local 0): from the reset to the LOAD request's REQUEST_SEND
+    CHECK_EQ(boot_rom_cycle(0, TileBus::REQUEST_SEND), std::stoll(boot["reset_to_load_request_send"]));
+    // PARAMS.boot_local (bit 18) 1: from the reset to the image's first instruction, a store
+    CHECK_EQ(boot_rom_cycle(1u << 18, TileBus::REQUEST_OUT_W1), std::stoll(boot["reset_to_image_boot_local"]));
 }

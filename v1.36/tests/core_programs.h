@@ -106,8 +106,11 @@ struct Bus {
     }
 };
 
-// An ELF file's loadable segments into the bus's memories (program_test.rs's memory_images). Returns an error, or "".
-inline std::string load_elf(const std::string& path, Bus& bus) {
+// An ELF file's loadable segments, byte by byte: `place(address, byte)` for each byte of each segment at its load
+// address, its file bytes and then zeros to its memory size (.bss); false from `place` refuses the file. Returns an
+// error, or "".
+template <class Place>
+std::string read_elf(const std::string& path, Place place) {
     FILE* f = std::fopen(path.c_str(), "rb");
     if (!f) return path + ": cannot open";
     std::vector<uint8_t> d;
@@ -124,17 +127,26 @@ inline std::string load_elf(const std::string& path, Bus& bus) {
         const uint32_t type = u32(p), off = u32(p + 4), paddr = u32(p + 12), filesz = u32(p + 16), memsz = u32(p + 20);
         if (type != 1 || memsz == 0) continue;               // PT_LOAD
         if (off + filesz > d.size() || filesz > memsz) return path + ": a bad segment";
-        std::vector<uint32_t>* m = paddr - IMEM_BASE < BYTES && paddr - IMEM_BASE + memsz <= BYTES ? &bus.imem
-                                 : paddr - DMEM_BASE < BYTES && paddr - DMEM_BASE + memsz <= BYTES ? &bus.dmem : nullptr;
-        if (!m) return path + ": a segment outside IMEM and DMEM";
-        const uint32_t base = m == &bus.imem ? IMEM_BASE : DMEM_BASE;
-        for (uint32_t k = 0; k < memsz; k++) {               // the file's bytes, then zeros (.bss)
-            const uint32_t a = paddr - base + k, sh = (a & 3) * 8;
-            uint32_t& w = (*m)[a >> 2];
-            w = (w & ~(0xFFu << sh)) | uint32_t(k < filesz ? d[off + k] : 0) << sh;
-        }
+        for (uint32_t k = 0; k < memsz; k++)
+            if (!place(paddr + k, k < filesz ? d[off + k] : uint8_t(0))) return path + ": a byte outside the memories";
     }
     return "";
+}
+// A byte into a memory of words.
+inline void place_byte(std::vector<uint32_t>& words, uint32_t offset, uint8_t byte) {
+    const uint32_t sh = (offset & 3) * 8;
+    uint32_t& w = words[offset >> 2];
+    w = (w & ~(0xFFu << sh)) | uint32_t(byte) << sh;
+}
+// An ELF file's loadable segments into the bus's memories (program_test.rs's memory_images): every byte is in IMEM
+// or DMEM.
+inline std::string load_elf(const std::string& path, Bus& bus) {
+    return read_elf(path, [&](uint32_t a, uint8_t byte) {
+        if (a - IMEM_BASE < BYTES) place_byte(bus.imem, a - IMEM_BASE, byte);
+        else if (a - DMEM_BASE < BYTES) place_byte(bus.dmem, a - DMEM_BASE, byte);
+        else return false;
+        return true;
+    });
 }
 
 // One run: the core out of reset at IMEM's base on the bus, until the program reports a result or `limit` cycles pass.

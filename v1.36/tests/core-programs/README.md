@@ -15,7 +15,10 @@ is the RTL test's memory and devices with its ideal timing (`tests/core_programs
 - every instruction retired and every trap taken in the same cycle as the RTL's, with the same address, instruction
   word, cause and `mtval`: each program's whole trace, by its hash (`RETIRE.sha256`), and eight programs' line by line
   (`retire/`), so that a difference names its first cycle;
-- CoreMark's own report on the benchmark run, equal to the RTL's baseline (`BENCH`).
+- CoreMark's own report on the benchmark run, equal to the RTL's baseline (`BENCH`);
+- the RTL's boot ROM, on the core in the tile's map behind the register bus's timing (a window load answered two
+  cycles after it is raised, a window store the next cycle, in the cycle it is made, `REQUEST_SEND`'s the cycle after
+  it is made), reaching its `LOAD` request and an image in the RTL's cycles (`BOOT`).
 
 ## The files
 
@@ -28,6 +31,8 @@ is the RTL test's memory and devices with its ideal timing (`tests/core_programs
 | `RETIRE.sha256` | per program: the hash of its retire trace | the same run |
 | `retire/*.rtl` | eight programs' retire traces in full | the same run |
 | `BENCH` | CoreMark's report on the benchmark run | `rtl/blocks/core/baseline/bench.toml` |
+| `elf/boot_rom.elf` | the RTL's boot ROM (`rtl/blocks/core/src/boot_rom.S`) | `mise run core-images` (`build/core-tests/boot_rom.elf`) |
+| `BOOT` | the boot ROM's cycles on the RTL's block `core` | `rtl/blocks/core/README.md`, "The boot ROM's program" (`boot_rom_program_test`'s figures) |
 
 A retire trace has one line per instruction retired, `ret: CYCLE PC INSN`, and one per trap taken, `trap: CYCLE CAUSE
 PC MTVAL` (`CYCLE` decimal, the rest hexadecimal without leading zeros; `INSN` a 16-bit instruction's 16 bits), in

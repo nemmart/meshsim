@@ -38,7 +38,10 @@
 //
 // A bus (tests/core_programs.h: the RTL's test memory and devices), which gives the whole map:
 //   uint32_t bus_fetch(a, err)       the instruction word at a; err: a is in no fetch window
-//   uint32_t bus_route(a)            a data access's latency at a (made the cycle before its answer), 0: in no data window
+//   uint32_t bus_route(a)            a data access's latency L at a, asked once, in the cycle q it is raised in: it is
+//                                    made in q + L - 1 and answered in q + L; 0: a is in no data window
+//   bool bus_store_at_once(a)        optional: a store at a is answered in the cycle it is made in, q + L - 1 (a
+//                                    register window's that cannot stall)
 //   bool bus_access(t, a, store, mask, wdata, rdata)   the access, made in cycle t; false: answered with an error
 //   bool meip(), bool nmi()          the interrupt inputs at t
 //
@@ -201,6 +204,7 @@ struct Rv32 {
     uint32_t redir_target = 0;
     // ---- the load/store unit (lsu.veryl): the one outstanding access ----
     bool lsu_out = false, lsu_store = false, lsu_made = false, lsu_err = false;
+    bool lsu_fault = false;                // its address is in no window: answered with an error, and never made
     uint32_t lsu_addr = 0, lsu_size = 0, lsu_wdata = 0, lsu_rdata = 0;
     uint64_t lsu_make_at = 0, lsu_resp_at = 0;   // the cycle the access is made in (the first it may be), and its answer's
     uint8_t lsu_answer = 1;                      // the answer comes this many cycles after the access is made (0 or 1)
@@ -362,7 +366,7 @@ struct Rv32 {
             w_valid ? uint64_t(w_exc) | uint64_t(w_ready) << 1 | uint64_t(w_cause) << 8 | uint64_t(w_next_pc) << 32 : 0,
             redir_pending ? uint64_t(redir_cancels) | uint64_t(redir_target) << 32 : 0,
             lsu_out ? uint64_t(lsu_addr) | uint64_t(lsu_wdata) << 32 : 0,
-            lsu_out ? uint64_t(lsu_store) | uint64_t(lsu_made) << 1 | uint64_t(lsu_err) << 2 | uint64_t(lsu_size) << 8 |
+            lsu_out ? uint64_t(lsu_store) | uint64_t(lsu_made) << 1 | uint64_t(lsu_err) << 2 | uint64_t(lsu_fault) << 3 | uint64_t(lsu_size) << 8 |
                           uint64_t(lsu_rdata) << 32 : 0,
             lsu_out ? lsu_make_at << 1 | lsu_answer : 0, lsu_out && lsu_made ? lsu_resp_at : 0,
         };
@@ -576,7 +580,7 @@ struct Rv32 {
             lsu_out = true; lsu_made = false; lsu_err = false;
             lsu_store = x_dec.cls == STORE; lsu_addr = x_result; lsu_size = 1u << (x_dec.f3 & 3); lsu_wdata = x_b;
             const DataRoute r = route(e, lsu_addr, lsu_store);
-            lsu_make_at = t + r.make; lsu_answer = r.answer; stall_reg_load += r.make + r.answer - 1;
+            lsu_make_at = t + r.make; lsu_answer = r.answer; lsu_fault = r.fault; stall_reg_load += r.make + r.answer - 1;
         } else if (lsu_done) lsu_out = false;
 
         // ---- writeback
@@ -741,15 +745,20 @@ struct Rv32 {
 
     // ================================================================ the ports: the data port
     // When the data access at `a`, raised in cycle q, is made and answered (the header's table): made in q + make, or the
-    // first later cycle it can be, and answered `answer` cycles after that (0 or 1; 1 if make is 0).
-    struct DataRoute { uint32_t make, answer; };
+    // first later cycle it can be, and answered `answer` cycles after that (0 or 1; 1 if make is 0). `fault`: in no
+    // window, so answered with an error and never made. (The tile's map here finds a fault only as it makes the access.)
+    struct DataRoute { uint32_t make, answer; bool fault; };
     template <class Env>
     DataRoute route(Env& e, uint32_t a, bool store) const {
-        if constexpr (requires { e.bus_route(a); }) { const uint32_t l = e.bus_route(a); return {l ? l - 1 : 0, 1}; }
-        else {
-            if (in_tables(a)) return {timing.table_load_latency - 1, 1};
-            if (region(a) != 0xFF) return {0, 1};             // DMEM, or no window (data_decoder.veryl)
-            return {timing.reg_load_latency - 1, !store || may_stall(e, a) ? 1u : 0u};
+        if constexpr (requires { e.bus_route(a); }) {
+            const uint32_t l = e.bus_route(a);
+            if (l == 0) return {0, 1, true};
+            if constexpr (requires { e.bus_store_at_once(a); }) { if (store && l > 1 && e.bus_store_at_once(a)) return {l - 1, 0, false}; }
+            return {l - 1, 1, false};
+        } else {
+            if (in_tables(a)) return {timing.table_load_latency - 1, 1, false};
+            if (region(a) != 0xFF) return {0, 1, false};      // DMEM, or no window (data_decoder.veryl)
+            return {timing.reg_load_latency - 1, !store || may_stall(e, a) ? 1u : 0u, false};
         }
     }
     // A store to `a` in the register windows may stall (register_bus: it is answered the cycle after its owner takes it).
@@ -772,8 +781,9 @@ struct Rv32 {
     bool make_access(Env& e, uint64_t t) {
         const uint32_t ea = lsu_addr, sh = (ea & 3) * 8;
         const uint32_t mask = (lsu_size == 4 ? 0xFFFFFFFFu : lsu_size == 2 ? 0xFFFFu : 0xFFu) << sh;
+        if (lsu_fault) { lsu_err = true; lsu_rdata = 0; return true; }
         if constexpr (requires { e.bus_route(ea); }) {
-            lsu_err = e.bus_route(ea) == 0 || !e.bus_access(t, ea, lsu_store, mask, lsu_wdata << sh, lsu_rdata);
+            lsu_err = !e.bus_access(t, ea, lsu_store, mask, lsu_wdata << sh, lsu_rdata);
             return true;
         } else {
             if (lsu_store) {

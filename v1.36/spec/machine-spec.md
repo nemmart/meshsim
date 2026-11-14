@@ -2077,3 +2077,1669 @@ has the master tile's pins:
 | `REPLAY_OUTPUT_ROWS` | 32 | the replayer's output queue, in rows | 17.8.11 |
 | `TRACER_WINDOW_ROWS` | 65,536 | each of the Tracer's FIFOs, in entries, and a run's largest `rows` | 17.9.6 |
 | `MAP_PROBE_LINES` | 3 | the most lines a probe of the jump-target map reads | 17.9.4 |
+
+### 19.1 The simulator's parameters
+
+The table above is the machine's. This section maps v1.35's parameter summary (v1.35's section 10) onto it, row by
+row, and lists what the simulator sets beside it. Three kinds of value appear:
+- **contract:** the value is the table's, and the simulator has no choice;
+- **the implementation's:** the contract leaves it to the implementation, and the simulator takes the RTL's
+  (Snarky One's) value, marked `[meas: RTL]`, which Appendix A also lists;
+- **the simulator's:** a value only the model has. v1.36's simulator is to reproduce the RTL's cycle counts
+  (chapter 21), within what item 163 decides.
+
+**Mapped onto chapter 19.**
+
+| v1.35 parameter | v1.35 value | v1.36 | v1.36 value |
+|---|---|---|---|
+| link word | 256 bits, stored in full | the packet (4.1) | 256 bits in format; only the defined bits are carried and stored, 168 + 2·`TILE_ID_BITS` (182 at 8 × 8) |
+| mesh | 8 × 8, fixed | `MESH_SIZE`, `TILE_COUNT`, `TILE_ID_BITS` | 1–8, 8 by default; `MESH_SIZE`²; 7 at 8 × 8 |
+| `link_latency` | 3; a hop 4 cycles | a link's register stages (16.1) | 3, a hop 4 cycles: contract, and the attach links' too (v1.35's simulator had `cc_link_latency` 1) |
+| `mem_chunks` | 1,048,576 (4 MB); any multiple of 256 KB up to 8 MB | `SCRATCHPAD_BYTES` | 4 MiB by default; a power of two from 512 B to 8 MiB (item 107) |
+| areas of at most 512 KB | 8 areas at the default | `MAX_BANK_BYTES` | 512 KiB |
+| controller memories | 32 KB + 32 KB | `IMEM_BYTES`, `DMEM_BYTES` | 32 KiB each by default |
+| boot ROM | 256 bytes, 48 words used | `BOOT_ROM_BYTES` | 256; the ROM's program is 6.5's, 44 words in the RTL `[meas: RTL]` |
+| big-SRAM engine pointers | 21-bit chunk addresses | `WORD_ADDRESS_BITS` | 21 |
+| `reg_load_latency` | 2 (register block, windows), 1 (table window) | `WINDOW_LOAD_LATENCY`, `TABLE_LOAD_LATENCY` | 2, 1; a store takes effect at the end of *t* + *L* − 1 (6.4), a cycle later in a window than v1.35's |
+| `ts_engine_latency` | 1 (1–4 measured) | `TABLE_LATENCY` | 1 by default |
+| `ag_lookahead` | 2·`ts_engine_latency` + 2 | `READ_AHEAD` | 2·`TABLE_LATENCY` + 2 |
+| address-generator lead-in | 4L + 3 (group), 2L + 2 (stream) after the start store | the lead-in (8.2) | the same, and the group transfer's whatever its first entry holds (v1.35's simulator started an R = 0 first group at 2L + 2) |
+| big-SRAM array read latency | 2 in meshsim, *(Open)* | `READ_LATENCY` | the implementation's: 3 from the read arbiter's take to the row `[meas: RTL]` (item 170). It includes what v1.35 counted as queueing: there is none |
+| **K** | 8 | `LAND_LATENCY` | 8: contract. The RTL's slowest write path is 2·`TABLE_LATENCY` + 2 cycles after the acceptance, so 8 covers `TABLE_LATENCY` ≤ 3 `[meas: RTL]` (item 128) |
+| `cm_latency` | 2 | `WRITE_PORT_LATENCY` | 2 |
+| `rp_latency` | 2 for every peripheral *(Proposed)*, at most K | `PERIPHERAL_LATENCY` | a bound, at most `LAND_LATENCY` − `WRITE_PORT_LATENCY`; every peripheral specified lands at 2 from the acceptance (item 48) |
+| write counters | seven, 20 bits | `COUNTER_BITS` | 20 |
+| `HIST` count | 17 bits | `HIST_BITS` | 17 |
+| tokens | 64 | `TOKEN_COUNT` | 64 |
+| GATHER request queue | 16 | `GATHER_QUEUE_DEPTH` | `TOKEN_COUNT`, 64 (item 169) |
+| `queue_depth` | 16; the loopback FIFO at least 64 | `ROUTER_QUEUE_DEPTH`, `LOOPBACK_QUEUE_DEPTH` | 16; at least `TOKEN_COUNT` |
+| controller read port's request queue | at least 64 entries of 43 bits | `READ_QUEUE_DEPTH` | 64 to 2¹⁶ − 1; an entry is 58 bits, with its full 32-bit destination (10) |
+| request FIFO | 128 × 128 bits | `REQUEST_QUEUE_DEPTH` | 4 (item 64) |
+| request bus's receive queues | 128, 256, 128, at the root | `RECEIVE_QUEUE_DEPTH` | the same depths at 8 × 8, in the receiving tile's request unit (11.3) |
+| `ready_latency`, `go_latency`, `error_latency` | 8 each; the physical values *(Open)* | `ARRIVE_LATENCY`, `RELEASE_LATENCY`, `ERROR_LATENCY` | the chip's (below) |
+| UART | 16-byte FIFOs *(Proposed)*; reset divisor round(`f_ref` / 57,600), of a reference oscillator | `UART_FIFO_DEPTH`, `UART_RESET_DIVISOR` | 16; the chip clock's frequency over 115,200 (item 172) |
+| `STREAM`, `GROUP` | three 256 × 32-bit arrays; 64 entries of 64 bits | the tables (8.6) | 256 entries, 21, 32 and 25 + `TILE_ID_BITS` bits; 64 entries of 38 bits |
+| GATHER value size *k* | 1–8 | `GATHER_CONFIG.value_size` (13) | *k* − 1, *k* 1–8 |
+| events | 16 bits used | the tile's events (7.2) | 14 bits, at new positions |
+| peripherals | ten standard words; DMA count up to 4,095 128-bit words | the control block and the DMA block (17.1, 17.4) | seven words and three; the count unchanged |
+| replayer, Tracer | in their documents | `REPLAY_QUEUE_ENTRIES`, `REPLAY_OUTPUT_ROWS`, `TRACER_WINDOW_ROWS`, `MAP_PROBE_LINES` (v1.35's `tr_probe_lines`) | 256, 32, 65,536, 3 |
+| digit-all-to-all group gap | 0; 4 for the two-hop layers | software's (27, `spec/schedule.md`) | unchanged |
+| eject priority | the loopback FIFO last | the loopback queue (16.3) | unchanged |
+| keep-alive watchdog | off at reset | `WATCHDOG` (17.6) | unchanged; a store of *N* in cycle *t* expires at the end of *t* + 1 + *N* |
+
+**New in chapter 19, with no v1.35 parameter:** `STREAM_BYTES` and `STREAM_DEPTH` (the host interface, 17.6),
+`LPDDR_ADDRESS_BITS`, `RW_QUEUE_BEATS` and `RW_BUFFER_BYTES` (the RW engine, 17.7).
+
+**Removed with their hardware.**
+
+| v1.35 parameter | v1.35 value | why it is gone |
+|---|---|---|
+| area request-queue depth | 8 in meshsim, *(Open)* | no bank has a queue: a write wins its bank and a colliding read is not taken (14.1, 15); items 2 and 4 |
+| area tie order | writes first | the same rule, now the only one (15) |
+| write-engine input FIFO | 4 | the write engine is a fixed pipeline and refuses nothing (12.4) |
+| `PTR`, `HIST` request FIFOs | 16 each | the updates have a bypass and no queue (12.5) |
+| pointer stage depth | 2·`ts_engine_latency` + 2 | the implementation's: the contract is `LAND_LATENCY` (12.3) |
+| `stage_delay` | 64 cycles, a software constant | no announced staging: a tile's load follows its `LOAD` request (6.5), and the segment's deliveries follow requests (17.9.10; item 162) |
+| start skew between tiles | 0 or +1 cycle | none: the release reaches every compute tile in the same cycle (7.3, 18; item 171) |
+| command block | 16 words at the top of data memory | no commands: a phase is the image's schedule (6.5). The reply block stays, as a software convention, its address the image's (22.18) |
+| `mtime`, load from program memory | | the core has `mcycle` alone, and IMEM and the boot ROM are fetch-only (6.1, 5.1) |
+| flush wait before a soft reset | about 0.1 ms | the hard and soft reset are *Open* (18; item 124) |
+
+**The simulator's.** Values only the model has. Each is set so that the simulator reproduces the RTL's figure.
+
+| v1.35's simulator | v1.35 value | v1.36's simulator |
+|---|---|---|
+| `intra_tile_latency` | 1 per stage | the simulator's; the paths' cycle counts are chapter 21's |
+| load-use penalty | 0 | 1 cycle `[meas: RTL]` (`spec/core.md`) |
+| taken-branch penalty (`branch_penalty`) | 1 | by kind `[meas: RTL]`: 3 after a taken branch or a `JALR` other than a ready return; 2 or fewer after a `JAL` or a ready return (`spec/core.md`, Control transfers) |
+| multiply latency | 3 | two pipelined stages, with their interlocks `[meas: RTL]` (`spec/core.md`) |
+| wake to the next instruction | the same cycle | the instruction after the `WFI` retires 3 cycles after the wake; a `WFI` with a wake pending costs 2 (the core specification's Lockstep regions, `spec/core.md`) |
+| the request tree's `hop_latency` | 3 a hop; 17 cycles unloaded, 18 to loadable | a cycle a node, its links wires: a request is loadable at its target 11 cycles after its `REQUEST_SEND` store from a compute tile, 10 from a special tile `[meas: RTL]`. The links' pipeline stages come with a floorplan (item 61) |
+| the request tree's credit and ready latency | 3 | a node's ready in the same cycle; a returned credit usable the next cycle `[meas: RTL]` |
+| `cc_link_latency` | 1 | none: an attach link is a link, 3 stages (16.1) |
+| `cc_dma_depth` | a 4-deep credit FIFO | none: a peripheral DMA's `ready` is room in the router queue its packet enters (16.4) |
+| `strict_replies` | off | unchanged: the simulator's check of the reply block's convention (22.18; invariant 8), with the block's address from the image |
+| Tracer and replayer stall costs | the models' | chapter 21, `spec/jolt/replayer.md` and `spec/jolt/tracer.md`; how exact, item 163 |
+
+**The global nets.** `ARRIVE_LATENCY`, `RELEASE_LATENCY` and `ERROR_LATENCY` are the chip's, and their physical
+values are *(Open)* (item 8). Nothing in the machine depends on their values but the cycle counts.
+- **The RTL's chip** holds placeholders: `BARRIER_ARRIVE` and the error lines are wires from the tiles'
+  flip-flops (latency 0), and `BARRIER_RELEASE` is one flip-flop (`RELEASE_LATENCY` 1) `[meas: RTL]`. Its empty
+  phase, from one release to the next, is 35 cycles `[meas: RTL]`.
+- **v1.35's simulator** defaulted all three to 8, refused a `ready_latency` below 3, and tied `error_latency` to
+  `ready_latency`. v1.36's simulator takes each of the three on its own, from 0 up, so that it can run at the
+  RTL chip's values and at a floorplan's.
+
+## 20. Invariants (checked by the simulator)
+
+**Every invariant is a meshsim check.** A rule a program must keep is checked by the hardware or is undefined
+behaviour (1.3), and the simulator checks both kinds: undefined behaviour is fatal in every build, the run ending
+with a message naming the access, and the other invariants are counted in every build and, in the debug and suite
+builds, also reported by name while the run goes on. **The exceptions** are the checks v1.35's simulator lacks
+(item 159): invariant 17's limits on outstanding requests, its write-buffer rule and its rule for reads during a
+group transfer, and invariant 18 for `APPEND`, `BUCKET` and `AUGMENT` into the scratchpad. **The hardware checks
+none of them as such.** Where it has an error for the same mistake, the invariant names it (**hardware:**
+`ERRORS.name`); every other rule here is software's alone.
+
+Numbers are v1.35's and are never reused: an invariant whose subject is gone keeps its number as a one-line stub.
+Invariants 27 to 34 are new in v1.36: rules the machine states as UB that v1.35 did not have.
+
+1. **No queue overflow:** the router's queues, an attach tile's attach-port queues included (16.3; the loopback
+   queue cannot overflow by design, 14.2), and the gather queue (13). **Hardware:** `ERRORS.router_overflow`,
+   `ERRORS.gather_overflow`. *(v1.35's write-engine input FIFO and `PTR` and `HIST` request FIFOs are gone, 12.4
+   and 12.5, and with them v1.35's `ERRORS` [4] and [5].)*
+2. **No buffer is both read and written within one transfer** (15). The hardware keeps each bank to one access a
+   cycle by itself: a write wins its bank, and a read that would meet it is not taken (14.1). The simulator checks
+   that its model does.
+3. **The timetable holds:** every stream, group and rotation starts on its scheduled cycle and never earlier, and
+   read-ahead waits are part of the timetable, identical on every tile (8.3, 8.4, 8.5). **Hardware:**
+   `ERRORS.drift`, when the read arbiter refuses a group transfer's read (8.4).
+4. **Every expected arrival lands first:** a tile's counters are all at 0 when its core stores to `ARRIVE` (7.3).
+   **Hardware:** `ERRORS.early_arrival`.
+5. **No bad packets** (4.2): no `WRITE` to the boot ROM, to region 0xFF, to an unmapped region or to an absent
+   peripheral, and no `AUGMENT` at 128 bits. **Hardware:** `ERRORS.bad_packet`, the packet dropped uncounted. No
+   packet is misaligned to its size, and none has size 11 (UB, the simulator only).
+6. **No `HIST` count exceeds `HIST_BITS`,** 17 bits (12.5).
+7. *(Withdrawn in v1.2: there is no RUN/HALT line. See `spec/history/CHANGES-v1.2.md`.)*
+8. **No `READ_SEND` store finds the read queue full** (10). **Hardware:** `ERRORS.read_overflow`. And, in the
+   simulator's `strict_replies` mode, no reply-block word is overwritten unread: a check of the reference
+   firmware's convention (22.18), not of the hardware, which has no reply block.
+9. **No counter underflow:** no counted packet's decrement finds its counter at 0, so counted data reaches a tile
+   only when it has armed for it (12.2). **Hardware:** `ERRORS.counter_underflow`, at the decrement; the simulator
+   also reports the stray at its acceptance, naming it.
+10. **Gathers are local:** a `GATHER` packet is only ever sent to the tile itself (4.2).
+11. **A reply lands where its request named:** in the requester's DMEM, aligned to its size, and nowhere else
+    (11.4); a reply by the reference firmware's convention is 32 or 64 bits at the sender's own pair of the
+    receiver's reply block (22.18). *(v1.35's rules for the command block are removed in v1.36: there are no
+    commands, 6.5. Its rule that every other `WRITE` to DMEM or IMEM stays inside its memory is invariant 19's,
+    and the load's writes are invariant 25's.)*
+12. *(Withdrawn, 2026-10-26: replies land in the reply block, so a reply can no longer address the command block.)*
+13. *(Withdrawn, 2026-10-26: replies could no longer address a word outside data memory; 11 now covers every write.)*
+14. **Read-unit results and incoming traffic do not overlap:** no packet from outside the tile arrives while the
+    tile has read-unit reads outstanding (queued by `READ_SEND` and not yet accepted back by the traffic director).
+    Checked as actual overlap in time. *(Not stated by the RTL's specification; kept from v1.35. Item 116.)*
+15. **No errors:** every tile's `ERRORS` and every peripheral's stay 0 (7.4, 17.2). A program error the hardware
+    can see shows up here, on the tile's error line and on the toast pin (17.6, 18).
+16. **The peripherals' invariants** (17):
+    - every peripheral's: no `START` while it is busy (17.2); no `DMA_START` while its DMA is busy, no transfer
+      naming an output queue it does not have or more entries than that queue will hold, and no store to `DMA_HDR`
+      or `DMA_DEST_ADDR` during a transfer (17.4); no store to block 1 of a peripheral without a DMA (17.1); no
+      credit returned to a full counter; every write into its region landing within `PERIPHERAL_LATENCY` of its
+      write port, and so by `LAND_LATENCY` (17.3, 17.5). Its region may be written from any source (17.3), with
+      only the writes its section allows;
+    - the replayer's and the Tracer's: in `spec/jolt/replayer.md` (17.8.13) and `spec/jolt/tracer.md` (17.9.11);
+    - Ingress/Egress's and the RW engine's: invariant 34.
+17. **The request contract is kept** (11):
+    - a request names its data's and its reply's counters and its reply's address, and its data and reply arrive
+      only when the requester has armed those counters (11.4);
+    - a tile has at most 1, 3 and 1 requests outstanding to the master, memory and tracer tiles; error reports are
+      exempt (11.3);
+    - a part of the write buffer is written only as the memory tile's reply to a `WRITE` directs, exactly its
+      `beats` packets on the counter the reply names, one writer in flight or paced (11.5, 17.7);
+    - no `READ` is outstanding and no write into the write buffer is in flight while a group transfer runs on any
+      tile. *(Not stated by the RTL's specification; kept from v1.35.)*;
+    - no `STREAM_HDR.dst`, `WRITE_HDR.dst` or `DMA_HDR.dst` names a reserved tile id, `TILE_COUNT` + 3 up to the
+      one below broadcast, or none (4.1); such a packet is dropped where it enters the NoC, with no error (16.2).
+      No stream on a compute tile broadcasts: only the special tiles broadcast from streams. *(The second rule is
+      not stated by the RTL's specification; kept from v1.35.)*;
+    - every request names target 0, 1 or 2 (a request for 3–7 is dropped at the root, 11.2), carries an `op` its
+      target defines (11.5), and has 0 in its requester field (11.3);
+    - no load of `REQUEST_RECEIVE` finds the receive queue empty (11.1). **Hardware:**
+      `ERRORS.receive_underflow`.
+18. **One source per order-placed destination** (14.4, 17.3): a tile never has two sending units (the address
+    generator, the gather unit, the write unit, a peripheral's DMA) sending `APPEND`, `BUCKET` or `AUGMENT` packets
+    through the same `PTR` entry of the same receiver at once, or writes into the same ordered port of a
+    peripheral (a replayer queue). And a peripheral's ordered port takes one source at a time: since its region
+    may be written from any source, no two tiles feed the same port at once. The simulator flags overlapping use
+    in time.
+19. **Everything stays in bounds** (5.1, 15): no packet and no load, store or fetch of a core addresses past the
+    end of its memory, and no auto-advancing address (`STREAM_DEST_ADDR`, `WRITE_DEST_ADDR`, `READ_DEST_ADDR`, a
+    peripheral's `DMA_DEST_ADDR`, the units' word addresses, a `READ` request's deliveries) passes the end. A
+    `READ_DEST_ADDR` is in DMEM (10). An RW engine job stays inside LPDDR and the write buffer (17.7). The
+    hardware does not check: an address past the end of its memory is UB.
+20. **Pointers and transfers stay aligned** (5.4, 8.3, 12.4, 13, 15, 17.4): `STREAM_SRC_ADDR` and
+    `STREAM_DEST_ADDR` to the stream's size; a `PTR` entry to the size of the writes through it, a record for
+    `AUGMENT`; `GATHER_CONFIG.record_base` and the gather's `PTR[me]` to a row, whatever *k* is; `READ_DEST_ADDR`
+    and every `READ_SEND` address to the read's size; a peripheral's `DMA_DEST_ADDR` to 16 bytes. **Hardware:**
+    nothing for a packet or a unit, where a misaligned access is UB. The core's own misaligned load or store traps
+    (6.2; invariant 23).
+21. **No reserved encodings:** no packet in mode 6 or 7 (UB), and no `COUNT` packet with counter 0 (it does
+    nothing); no `RECEIVE_CONFIG` digit 5–7 (12.5); no 1 stored in a reserved bit; no access to a word a block
+    does not define or to a block a window does not use (5.3). **Hardware**, for the last:
+    `ERRORS.access_fault`. *(v1.35's simulator-only trace and exit words are gone: such a word is unmapped. A
+    program's result is a request to the master tile.)*
+22. **Uncounted traffic is `WRITE` only:** `APPEND`, `BUCKET` and `AUGMENT` packets are always counted, and so is
+    every write into the scratchpad. *(Not stated by the RTL's specification; kept from v1.35.)* The only
+    uncounted `WRITE`s are a load's (6.5). And **no write lands in DMEM's first 16 bytes** (6.3), which catches a
+    C null-pointer store and an all-zero header alike.
+23. **No traps** (6.2): no `ecall` or `ebreak`, no misaligned load or store, no illegal instruction, no access
+    fault, a fetch's included, and no trap after the first. Every trap goes to the handler, which reports to the
+    master tile and parks (6.5). **Hardware:** `ERRORS.access_fault` and `ERRORS.illegal_instruction`, which raise
+    the tile's error line; the other traps raise no error, so only the handler's reports and the master tile's
+    watchdog show them (17.6). *(v1.35's misaligned jump target cannot occur, 6.2, and its fetch outside program
+    memory is now an access fault.)*
+24. **`LAND_LATENCY` covers the write path** (12.3): it is at or above the implementation's slowest write path,
+    and no read taken after a counter's decrement overtakes a write that counter counted, a core load of `PTR` or
+    `HIST` whose sample point follows the decrement included. The simulator measures the margin across workloads
+    (item 128).
+25. **A load keeps its order** (6.5): every packet of a tile's load, its `COUNT` included, comes from one sending
+    unit of the master tile and is of one kind, or the other units are fenced before the `COUNT`; no packet of a
+    load arrives after its `COUNT`; the master tile starts a load only once that tile's `LOAD` has reached it; and
+    from a tile's `LOAD` until its jump to IMEM's base nothing but the load writes its IMEM or DMEM. *(v1.35's
+    overlays, "command landed" and `stage_delay` staging are gone.)*
+26. **No ignored start:** no `DMA_START` while the tile's transfer is in progress (8.2).
+
+**New in v1.36.**
+
+27. **Every compute tile takes part in every release** (7.3): the master tile stores to `RELEASE` only when every
+    compute tile has arrived.
+28. **Only a tile on the barrier arrives:** no `ARRIVE` on a tile whose `PARAMS.barrier` is 0 (7.3).
+29. **A table is the core's only while its engine does not use it:** no core store to a `STREAM` or `GROUP` entry
+    the running transfer reads (8.6), and no core load or store of `PTR` or `HIST` in a cycle its engine uses a
+    port (12.5): a program uses them only once the arrivals' counters are done.
+30. **`GATHER_CONFIG` is static while it is read** (13): no store to it while the gather unit is busy, or while
+    an `AUGMENT` that reads it has not yet decremented its counter.
+31. **No collision in a core's memories** (6.3): no core access and NoC write to the same word of IMEM or DMEM in
+    the same cycle. Code written into IMEM is fetched only after it has landed.
+32. **Counters stay in range** (12.2): no store brings a counter past 2²⁰ − 1.
+33. **An image keeps the core's conventions** (6.2, 6.5): `mstatus.MIE` stays 0; a handler of its own stays in
+    place until the image ends; and a loaded image ends by jumping to the reset PC with every counter at 0.
+34. **Ingress/Egress's and the RW engine's rules** (17.6, 17.7): no `START` on Ingress/Egress and no `WRITE` to
+    the master tile's region 0x04; no `UART_DIVISOR` of 0; no push into the RW engine's full output queue 1; the
+    transfers from its output queue 0 take exactly the beats its reads put there; no `WRITE` packet into a beat
+    of the write buffer a running write reads, and none past the buffer's end.
+
+## 21. Timing summary
+
+Every latency a program or the simulator relies on, in one place. Each row names the section that defines it, and
+is one of two kinds:
+
+- **contract:** stated by chapters 1–19 or by the core specification (`spec/core.md`). Every implementation keeps it.
+- **the RTL's:** the contract leaves it to the implementation, and the figure is the RTL's (Snarky One's), marked
+  `[meas: RTL]` where it was measured there. v1.36's simulator reproduces it. Software must not depend on it, except
+  through lockstep (6.4): it is the same on every tile.
+
+*t* is the cycle in which the core issues a store or a load (6.4), *L* is `TABLE_LATENCY` (1 by default), and *a* is
+the cycle in which the traffic director accepts a packet (12.3). Where v1.35's simulator differs, its figure is in the
+last column; `spec/CHANGES-v1.35-to-v1.36.md` has the full table.
+
+**The NoC.** A packet injected in cycle *i* (14.3) is at the router's local input in *i* + 1, and crosses each link,
+an attach link included, in four cycles: three register stages and one for the route block and its queue's write
+(16.1). With no queueing, a packet that crosses *h* links is ejected to the traffic director in cycle
+*i* + 4*h* + 3. Queueing adds a bounded amount (22.24).
+
+### 21.1 The core and the registers
+
+| Path | Timing | Kind | Section | v1.35 |
+|---|---|---|---|---|
+| a load from a window | `WINDOW_LOAD_LATENCY` = 2 cycles; it returns the state at the end of *t*, and takes its side effect at the end of *t* + 1 | contract | 6.4 | the same |
+| a load from a table | `TABLE_LOAD_LATENCY` = 1; it returns the state at the end of *t* − 1 | contract | 6.4 | the same |
+| a store to a window | takes effect at the end of *t* + 1 | contract | 6.4 | the end of *t* |
+| a store to a table | takes effect at the end of *t* | contract | 6.4 | the same |
+| a store that stalls | `WRITE_SEND_32`, `_64`, `_128`, `REQUEST_SEND`, and Ingress/Egress's `UART_TX`, `STREAM_SEND` and `STREAM_SEND_LAST`: held until its owner takes it; no other store or load waits | contract | 9, 11.1, 17.6 | the same three, without the host interface's |
+| a DMEM load or store | answered the next cycle; an instruction that uses a load's result right after it waits one cycle | contract | the core specification's Core contract | load-use 0 |
+| a taken branch, or a `JALR` that is not a ready return | the next instruction retires 4 cycles after it (3 more than after one not taken) | contract | the core specification's Core contract | 1 more |
+| a `JAL`, or a ready return | 3 cycles after it retires, or fewer if it waited in execute | contract | the core specification's Core contract | 1 more |
+| a multiply | two pipelined stages; one cycle's wait for an operand still in writeback, and one for an instruction that uses its result right after it | contract | the core specification's Core contract | 3 cycles |
+| a wake | an event set at the end of cycle *e* is on `meip` in *e* + 1, cycle R; the instruction after the `WFI` retires in R + 3 | contract | 6.2, the core specification's Lockstep regions | wakes in *e* + 1 |
+| a `WFI` whose wake is already pending | the next instruction retires 3 cycles after the `WFI` | contract | the core specification's Wait for interrupt | 1 cycle more than an ordinary instruction |
+| a live event or a peripheral's error, to the wake or the NMI | one cycle later than a counted event: a live level of cycle *e* is on `meip` or `nmi` in *e* + 1 | the RTL's | 7.2, 17.2 | "aims to be current by the next instruction" |
+| the core's other cycle costs | the core specification's "The core's cycle costs"; 1.312 cycles an instruction on CoreMark `[meas: RTL]` | the RTL's | `spec/core.md` | one instruction a cycle |
+
+### 21.2 The barrier, the nets and the boot
+
+| Path | Timing | Kind | Section | v1.35 |
+|---|---|---|---|---|
+| ready → `BARRIER_ARRIVE` | a one-cycle pulse, in the cycle after the tile becomes ready: `STATUS.arrived` set and the core in the canonical wait | contract | 7.3 | READY when "command landed" and `done` were both 1 |
+| `BARRIER_ARRIVE` → `ARRIVALS` | the bit is set at the end of the cycle in which the pulse reaches Ingress/Egress, `ARRIVE_LATENCY` after the tile sent it | contract; `ARRIVE_LATENCY` the chip's | 17.6, 18 | `ready_latency` + 2 to readable |
+| `RELEASE` → the release | the store takes effect at the end of *t* + 1; the pulse is on every compute tile's `BARRIER_RELEASE` `RELEASE_LATENCY` cycles later, in the same cycle on every tile, with no skew | contract; `RELEASE_LATENCY` the chip's | 17.6, 18 | `go_latency`, with a random skew of 0 or 1 |
+| the release → the core | `EVENTS.release` is set and `STATUS.arrived` cleared at the end of the pulse's cycle; the core resumes as at any wake (21.1) | contract | 7.3 | wakes the next cycle |
+| the arrival gate | from `ARRIVE` until the end of the cycle after the release | contract | 7.3 | until the release |
+| an error → `ERROR_LINES` | a tile's line is high while its `ERRORS` is non-zero; its bit follows `ERROR_LATENCY` later | contract; `ERROR_LATENCY` the chip's | 17.6, 18 | `error_latency` |
+| the nets' latencies | the RTL's chip: `ARRIVE_LATENCY` 0 (a wire), `RELEASE_LATENCY` 1 (Ingress/Egress's flip-flop), `ERROR_LATENCY` 0. Placeholders: their physical values are *(Open)* (item 8) | the RTL's | 19 | 8, 8, 8 by default; no value below 3 can be set |
+| an empty phase | 35 cycles from one release to the next, with those nets `[meas: RTL]` | the RTL's | 7.3 | 57 at its defaults `[meas: v1.35]` |
+| the watchdog | a store of *N* > 0 issued in *t*, with nothing after it, expires at the end of *t* + 1 + *N* | contract | 17.6 | *t* + *N* |
+| the toast pin | set at the end of a cycle in which the master tile's own error line is high or the watchdog expires | contract | 17.6 | — |
+| the boot ROM | 44 words. From the reset to its `LOAD`'s `REQUEST_SEND` 26 cycles; from the `COUNT`'s decrement of counter 7 to the `ARRIVE` 9, or with no barrier to the image's first instruction 17; from the release to the image's first instruction 13; from the reset to it with `boot_local` 27 `[meas: RTL]` | the RTL's | 6.5 | another ROM (48 words), another protocol |
+| the reset | from outside; every core then starts at 0x0200_0000, in its boot ROM | contract | 18, 6.5 | hard or soft *(Open, item 124)* |
+
+### 21.3 The tile's units
+
+| Path | Timing | Kind | Section | v1.35 |
+|---|---|---|---|---|
+| `DMA_START` → a stream transfer's first cycle | 2*L* + 2 cycles after the start store | contract | 8.2 | the same |
+| `DMA_START` → a group transfer's first cycle | 4*L* + 3, whatever its first entry holds | contract | 8.2 | 2*L* + 2 when the first group has R = 0 |
+| an offer → the take | the read arbiter takes an offered read in the cycle it is offered, unless it refuses it | the RTL's | 14.1 | one cycle later |
+| the start store → a stream's first packet at the router's local input | 2*L* + 6, nothing refused | the RTL's (derived) | 8.2, 14.3, 15 | 2*L* + 9 |
+| `EVENTS.dma_done` | set, with `STATUS.dma_busy` falling, in the cycle after the walk completes; an empty transfer is busy for one cycle | contract (the empty transfer); the RTL's (the cycle) | 8.2 | three offsets, by case |
+| a table entry read ahead | in 2*L* + 1 cycles after its read is issued; `READ_AHEAD` = 2*L* + 2 places | contract | 8.5 | the same |
+| a send store → injection | the holding register is loaded at the end of *t* + 1 and the packet is injected in *t* + 2 at the earliest | contract (the store's effect); the RTL's (the injection) | 6.4, 9, 14.3 | *t* + 1 |
+| `READ_SEND` → offered | queued at the end of *t* + 1, offered to the read arbiter from *t* + 2 | the RTL's | 10 | *t* + 1 |
+| a scratchpad read, take → its row | `READ_LATENCY`: 3 in the RTL, the same for every bank and every tile | contract (fixed); the RTL's (3) | 15 | 5; its spec said 4, *(Open)* |
+| a read, take → injection → the router's local input | take + 3, take + 4 | the RTL's | 14.3 | take + 6 at the router |
+| acceptance → a write presented to DMEM, IMEM or a peripheral | *a* + `WRITE_PORT_LATENCY` = *a* + 2; DMEM and IMEM write at the end of that cycle | contract | 12.3 | the same (`cm_latency`) |
+| a write's landing in a peripheral | within `PERIPHERAL_LATENCY` of its write port, at most `LAND_LATENCY` − `WRITE_PORT_LATENCY` = 6; every peripheral built lands at the end of the cycle it is presented | contract (the bound); the RTL's | 17.3 | `rp_latency` = 2, fixed |
+| acceptance → the scratchpad write | presented to its bank in *a* + 2*L* + 2 | the RTL's | 12.4 | in its area's queue by *a* + 2*L* + 4 |
+| acceptance → `PTR` and `HIST` | read at the end of *a* + *L*, written at the end of *a* + *L* + 1 | the RTL's | 12.5 | complete by *a* + *L* + 4 |
+| acceptance → the decrement | the end of *a* + `LAND_LATENCY` = *a* + 8; every write is in place by then, for *L* ≤ 3 | contract | 12.3 | 8; its formula covered *L* ≤ 2 |
+| a `GATHER` accepted → its first read | offered, and taken if nothing refuses it, in *a* + 2 | the RTL's | 13 | the same |
+| a loopback packet's token | freed in the cycle the traffic director takes its copy | contract | 14.2 | when it left the loopback queue |
+| a router overflow | `ERRORS.router_overflow` is set at the end of the cycle of the push | the RTL's | 16.3 | counted a cycle later |
+
+### 21.4 Requests
+
+| Path | Timing | Kind | Section | v1.35 |
+|---|---|---|---|---|
+| `REQUEST_SEND` → the tree | the request is pushed at the end of *t* + 1, and its first beat is offered in *t* + 2 | contract (the store's effect); the RTL's | 11.1 | *t* + 1 |
+| a beat through the tree | one beat a cycle on each link; a cycle a node, the links wires, so two cycles from a compute tile to its target and one from a special tile. Link stages are added where a floorplan needs them *(Open, item 61)* | the RTL's | 11.3 | `hop_latency` 3 |
+| a request, send store → loadable at its target | on an idle tree, a load of the target's `REQUEST_IN` words issued in *t* + 11 returns it for a compute tile's request, in *t* + 10 for a special tile's: its eighth beat enters the receive queue at the end of that cycle | the RTL's | 11.3 | 18 (17 on the tree and 1) |
+| the tree's back-pressure | `ready` is each buffer's room at the start of the cycle | the RTL's | 11.3 | a credit seen 3 cycles late |
+| a credit's return | pulsed in the cycle of the `REQUEST_RECEIVE`'s pop; the root may use it from the next | the RTL's | 11.3 | 3 by default |
+| the root's rate | one request per 8 cycles for the whole chip, with no cycle between two | contract (8 beats); the RTL's | 11.3 | the same rate |
+
+### 21.5 Peripherals
+
+| Path | Timing | Kind | Section | v1.35 |
+|---|---|---|---|---|
+| `START` → `STATUS.busy` | 1 from the end of *t* + 1 | contract | 17.2, 6.4 | the end of *t* |
+| `DMA_START` → the first packet | `STATUS.dma_busy` from the end of *t* + 1; the first packet is offered to the router's input in *t* + 3 if its entry is in the queue | contract (the store's effect); the RTL's | 17.4 | in the DMA's queue from *t* + 2 |
+| a DMA's pace | one packet a cycle while its queue keeps up and its router input has room (`ROUTER_QUEUE_DEPTH`) | contract | 17.4, 16.4 | a 4-deep credit queue |
+| a UART frame | 10 × `UART_DIVISOR` cycles of the chip's clock: 86,810 at 1 GHz and 115,200 baud | contract | 17.6 | 10 × the divisor × the reference oscillator's cycle; 57,600 baud |
+| `UART_TX` → the line | a byte pushed into an empty FIFO has its start bit on `uart_tx` from *t* + 3 | the RTL's | 17.6 | no line modelled |
+| `uart_rx` | the falling edge is seen two cycles after the pin's; bit *k* is sampled *k* · *D* + ⌊*D* / 2⌋ cycles after that, *D* the divisor | the RTL's | 17.6 | no receiver |
+| the host interface | a beat sent is in the transmit FIFO at the end of *t* + 1, and `lvds_out_tvalid` rises the next cycle if it was empty; a beat received is readable the cycle after its handshake | the RTL's | 17.6 | not modelled |
+| the RW engine | a `START` issued in *t* raises the job's first burst address on AR or AW from *t* + 3, and a write's first beat on W from *t* + 4; then a beat a cycle while the port takes them. A read ends in the cycle its last beat comes, a write in the cycle its last burst is answered | the RTL's | 17.7 | no model |
+| the replayer | 3 cycles a row, 5 for a multiply, plus stalls | contract (the schedules); the RTL's (the stalls) | 17.8.7 (`spec/jolt/replayer.md`) | the same schedules |
+| the Tracer | 4 cycles a row, 6 for a multiply, plus stalls and the memory system's waits | contract (the schedules); the RTL's (the stalls) | 17.9.7 (`spec/jolt/tracer.md`) | the same schedules; no pipeline costs |
+
+### 21.6 Events
+
+A counted event is set at the end of the cycle its cause happens. A load whose sample point is that cycle or later
+returns it (6.4), and it is on the core's `meip` in the next cycle (21.1). A live event follows its source; the
+tile's `EVENTS.peripheral_n` and `EVENTS.request_pending` reach the wake one cycle after a load could read them, so a
+live event that falls may leave the wake up for one more cycle, and software re-checks after every wake (17.2).
+
+## 22. Rules and figures kept from v1.35
+
+What v1.35's specification states and chapters 1–19 do not: the rules a program keeps on top of the hardware's,
+the conventions of the reference firmware, the reasons behind some choices, and measured figures. Each section
+names the chapter it supplements and the section of v1.35 it comes from, rewritten in v1.36's terms and corrected
+where the hardware changed. Where it and a chapter of 1–19 differ, the chapter is the authority.
+
+- A rule marked "*(Not stated by the RTL's specification; kept from v1.35.)*" is one the RTL's specification is
+  silent on: it stands as v1.35 decided it, and is listed in `spec/CHANGES-v1.35-to-v1.36.md` for the owner.
+- A figure marked `[meas: v1.35]` or with an earlier version was measured on that version's simulator, on v1.35's
+  hardware, and is to be measured again on v1.36's simulator (item 164). The driver each label names is in
+  `spec/history/CHANGES-v1.3-to-v1.35.md`.
+- What v1.35 stated and the hardware no longer has is not here: `spec/CHANGES-v1.35-to-v1.36.md` lists it.
+
+### 22.1 Conventions of the kept text (supplements 1)
+
+Kept from v1.35's section 1. Chapters 1–19 define their terms in 1.1; the kept chapters also use these.
+
+- **Record.** 64 bits, 2 words: one (key, ordinal) pair, or one of the *k* parts of a value (12.4, 13). Record
+  *i* of a buffer is at word address 2*i* from its base. (The replayer's and the Tracer's **record**, a window's
+  checkpoint, is another thing: 17.8.2. The sort's text never means it.)
+- **Row.** 128 bits, 4 words: one access of a scratchpad bank (15).
+- **`me`.** A compute tile's own tile id. A relative offset *d* names tile (`me` + *d*) mod `TILE_COUNT`; *d* = 0
+  is the tile itself (8.3).
+- **Naturally aligned.** A 64-bit access at a byte address that is a multiple of 8 (an even word address), a
+  128-bit access at a multiple of 16 (a word address that is a multiple of 4). Every access in every region is
+  naturally aligned (5.4, 15).
+- `x mod n` is the non-negative remainder. Bits are written [*hi*:*lo*].
+
+### 22.2 How the simulator treats a broken rule (supplements 1)
+
+Kept from v1.35's preamble ("How the hardware treats software bugs" and what v1.35's meshsim does). The two
+kinds of rule are 1.3's. What the simulator does with each:
+
+- **Undefined behaviour is fatal** in every build: the run ends with a message naming the access. Chapters 1–19
+  mark a rule UB by "UB (1.3)"; the kept chapters also write "(meshsim)" where v1.35 did.
+- **A checked rule** sets its `ERRORS` bit, as the hardware does, and the run goes on to the handler.
+- **Every other invariant of chapter 20 is counted** in every build and, in the debug and suite builds, also
+  reported by name while the run goes on, so a test fails on a violation it does not expect.
+- **The test for a new hardware check** is unchanged: would simulation catch this on our firmware? If so, it is
+  UB (`spec/GUIDELINES.md`).
+
+The traps that set no `ERRORS` bit, and what the simulator does on each, are 22.7's.
+
+### 22.3 Counted and uncounted traffic (supplements 4)
+
+Kept from v1.35's 3.1. The packet's fields, modes and bad packets are 4.1 and 4.2; these are the rules a program
+keeps on top of them.
+
+- **Anything whose landing matters is counted.** A program sends no uncounted `APPEND`, `BUCKET` or `AUGMENT`,
+  and no uncounted write into a scratchpad: scratchpad data is always counted, staging included (invariants,
+  chapter 20).
+- **Uncounted traffic is `WRITE` only,** at explicit addresses: the master tile's load of a tile's image and
+  arguments (6.5). v1.35's other uncounted traffic, the commands, is gone (6.5).
+- **There is no invalid header.** An all-zero header (a `STREAM_HDR` entry, `WRITE_HDR` or `DMA_HDR` left at 0)
+  is a valid, uncounted `WRITE` to address 0, in the reserved first 16 bytes of DMEM (6.3). The simulator flags
+  it.
+- **A counted packet in a reserved mode** (6, 7) is UB (4.2). On hardware it would leave its counter short, and
+  the program would wait for ever with no error.
+- **A `COUNT` with counter 0** does nothing at all (4.2). The simulator flags it.
+- **A `COUNT` from a stream** reads its source as any element does, and its payload is discarded at the
+  receiver. A `COUNT` of any size is valid; the smallest is the natural choice.
+- **The fence in a group transfer** goes in the stream that ends last (4.2, 8.4).
+- **Where the address is unused,** the hardware sends 0 (4.1): software need not clear a `_DEST_ADDR` for a
+  mode that ignores it.
+
+**Two principles shape the modes.**
+- **At most one streaming reader of the scratchpad per tile at a time,** plus the dependent single reads of the
+  gather unit and the read unit. There are no remote pulls: gathers are local (13), and a core reads only its
+  own scratchpad (10).
+- **Bulk movement is a push.** Anything larger than one word is asked for with a small descriptor and delivered
+  by its owner's DMA: a tile's read of LPDDR is a request on the request tree (11.5), answered by the memory
+  tile's push (11.4).
+
+### 22.4 Staying in bounds (supplements 5)
+
+Kept from v1.35's 2.2. An address past the end of its memory is UB (5.1).
+
+- **Auto-advancing past the end of a memory is a software bug.** `STREAM_DEST_ADDR`'s elements,
+  `WRITE_DEST_ADDR`, `READ_DEST_ADDR`, a peripheral's `DMA_DEST_ADDR` and the engines' word addresses
+  (`STREAM_SRC_ADDR`, a `PTR` entry, the gather unit's reads) advance by plain addition. What happens past the
+  end (a wrap, an alias, a carry into the next region) is undefined. The simulator errors on every out-of-bounds
+  access, a packet's or a core's.
+- **The core's own accesses** past IMEM's or DMEM's size fault (`spec/core.md`); v1.35's aliasing of the high
+  offset bits is gone.
+- **The reserved first 16 bytes of DMEM** (6.3): the linker places nothing there, and an image's load starts at
+  0x10. The simulator flags any write to 0x00–0x0F after the load.
+- **A C pointer is the packet address,** with no shifts: one map serves both (5.1).
+
+### 22.5 Register conventions and the C header (supplements 5)
+
+Kept from v1.35's 8.1. The map, the windows, the blocks and the access rules are 5.1–5.5; these are the rules
+beside them.
+
+- **Configuration registers are static during a phase.** `DMA_CONFIG` is stored once per transfer, before its
+  `DMA_START` (a store during the transfer does not change it, 8.2 and Appendix A); `RECEIVE_CONFIG` and
+  `GATHER_CONFIG` are not stored while a phase's arrivals are still landing, since the write engine and the
+  gather unit read them as packets arrive (12.5, 13). A one-barrier local phase rewrites them between passes.
+  *(13 makes a `GATHER_CONFIG` store while it is in use UB; for `RECEIVE_CONFIG` the rule is not stated by the
+  RTL's specification; kept from v1.35.)*
+- **Actions act in program order.** One register, one action (1.2): two actions are two stores.
+- **Every start is start only.** No engine has a resume: a `DMA_START` during a transfer (8.2, invariant 26), a
+  peripheral's `START` while it is busy (17.2) and its `DMA_START` during its transfer (17.4) are UB.
+- **Programs wait on events.** `STATUS` is diagnostic: no program needs to poll it (7.1, 7.2).
+- **The C header.** The tile window and each peripheral's window are declared as C structs overlaid on their
+  addresses, one member per word, each `volatile uint32_t` and accessed one word at a time; access is through a
+  pointer to the struct, so a whole-window copy, which would consume events and pop requests, has to be written
+  out. `fw/include/mesh.h` and `fw/REGISTERS.md` are generated from the simulator's register table and must match
+  chapters 5, 7–13 and 17. **Both are v1.35's until the simulator's register table is brought to this
+  specification** (`spec/CHANGES-v1.35-to-v1.36.md`): every address but the peripheral windows' bases and words
+  32 and up moves, and every header register's layout changes (5.4).
+- **An undefined word is an access fault** (5.3), where v1.35's read 0. So a struct's padding must never be
+  loaded or stored, and the simulator-only exit and trace words of v1.35's 8.15 are gone: a tile's result is a
+  request to the master tile (11.5, its firmware's `op`), and a trace mark is the simulator's own facility,
+  outside the map.
+
+### 22.6 Programs and the toolchain (supplements 6)
+
+Kept from v1.35's 4.11 and 4.17.4. *(Not stated by the RTL's specification; kept from v1.35.)*
+
+- **Programs are C, built bare-metal:** `gcc` for `riscv64-unknown-elf`, with `-march=rv32ic_zmmul_zicsr_zicond
+  -mabi=ilp32` (6.1; v1.35's was `rv32i_zmmul_zicsr`), `WFI` and the CSR accesses from inline assembly, a start-up
+  file, a linker script and the generated register header `fw/include/mesh.h`. There is no divide: a C `/` or `%` by
+  a non-power of two compiles to a library call.
+- **Constants and initialised data** (`.rodata`, `.data`) **live in DMEM.** IMEM is fetched only (5.1), so v1.35's
+  choice of keeping them in program memory is gone, and the load writes them into DMEM (6.5).
+- **Register accesses.** Each register is one `lw` or `sw` relative to `x0` (5.2). Through the header's struct
+  pointers a compiler may add one base-address instruction, the same on every tile.
+- **The C header.** Each window is declared as a C struct overlaid on its address, one member per defined word, every
+  member `volatile uint32_t`, and a type per peripheral ending in `Regs`. Access is through pointers, never a
+  whole-struct copy: a copy would consume events, and in v1.36 it would also load the words a block does not define,
+  an access fault (5.3). The register-table generator emits the structs from the register table, which must match
+  5.5, 7–13 and 17.
+
+### 22.7 Traps the hardware does not report (supplements 6)
+
+Kept from v1.35's 4.13, corrected to 6.2.
+
+Only an access fault and an illegal instruction set a bit in `ERRORS` (6.2). **Every other trap is silent:** `ecall`,
+`ebreak`, a misaligned load or store, and any trap taken inside the handler. v1.35's other two silent traps are
+gone: a fetch outside IMEM and the boot ROM is an access fault, which sets `ERRORS.access_fault`, and no jump target
+can be misaligned (6.2).
+
+- **A silent trap** goes to `mtvec` like any trap, so the handler reports and parks (6.5), but the tile's error line
+  stays low and the toast pin does not rise. After it the core takes no NMI (6.2), so a later error on that tile
+  raises its error line and no trap.
+- **A trap inside the handler** restarts the handler at `mtvec`. It is still terminal.
+- **They are software bugs, caught in simulation:** the simulator stops on each. The hardware adds nothing for them;
+  on hardware the master tile sees the reports, and its watchdog is the backstop (17.6).
+  *(Not stated by the RTL's specification; kept from v1.35.)*
+
+### 22.8 The handler's conventions (supplements 6)
+
+Kept from v1.35's 4.13. The boot ROM's handler and its two reports are 6.5's. A loaded image may install a handler of
+its own, which sends its own reports, numbered from 0 (6.5, 11.5). **The hardware fixes no report set for it.**
+v1.35 fixed one, 24 reports, as a constant of its protocol; in v1.36 it is the reference firmware's convention.
+*(Not stated by the RTL's specification; kept from v1.35.)*
+
+The conventions every handler keeps:
+- **It reads `EVENTS_PEEK`, never `EVENTS`,** in the tile window and in each peripheral's: a load of `EVENTS` would
+  consume the state it is reporting. It does not read the write-only words, which read 0.
+- **It reads `PARAMS.peripherals` before a peripheral's window:** any word of an absent peripheral's window is an
+  access fault (17.1), which would trap inside the handler. A peripheral without a DMA reads 0 in its block 1 (17.1),
+  so the handler reads the same words on every peripheral present.
+- **It assumes no interface is clean.** A register sequence the main code left half done (`WRITE_W0`–`W2`,
+  `REQUEST_OUT_W0`–`W2`) is never completed, since nothing resumes, so the handler stores every word of each request
+  it sends.
+- **Each report is one `REPORT` request** (11.5), which asks for no reply and is exempt from the per-tile limits
+  (11.3). The request queue holds `REQUEST_QUEUE_DEPTH` = 4 requests, so a handler that sends more is stalled at its
+  `REQUEST_SEND`s while the tree drains them (11.1).
+- **It never executes `mret`,** and parks in a plain jump to itself (6.5).
+
+**The reference image's set** is v1.35's 24 reports, in v1.36's names, three data words each:
+
+| Reports | Data words |
+|---|---|
+| 0–9 | x1–x30, three registers each, in order |
+| 10 | x31, `mepc`, `mcause` |
+| 11 | `mtval`, `PARAMS`, `STATUS` |
+| 12 | `ERRORS`, `EVENTS_PEEK`, `COUNTER_1` |
+| 13 | `COUNTER_2`–`COUNTER_4` |
+| 14 | `COUNTER_5`–`COUNTER_7` |
+| 15–17 | peripheral 1's window: `PARAMS`, `STATUS`, `ERRORS`; `EVENTS_PEEK`, `EVENTS_MASK`, `DMA_HDR`; `DMA_DEST_ADDR`, 0, 0 |
+| 18–20 | peripheral 2's window, likewise |
+| 21–23 | peripheral 3's window, likewise |
+
+An absent peripheral's three reports carry zeros. A report's number is in word 0's `number` field (11.5), and a
+tile's first report tells the master tile which set is coming: 0 starts an image's, 24 the ROM's two.
+
+### 22.9 The load, as software sees it (supplements 6)
+
+Kept from v1.35's 6.2, where it is still true of 6.5's load.
+
+- **An image's packets.** The master tile sends an image into IMEM and DMEM as 128-bit `WRITE`s, four words a
+  packet, the address advancing by 16. An image's length is padded to whole packets, so up to three zero words
+  land just past its end, and nothing may be placed there before the load.
+- **One kind.** The load's packets are all unicast or all broadcast (6.5), since the NoC orders packets only
+  within a kind (14.4). One image for every compute tile may go as a broadcast from the master tile, once every tile's `LOAD` has
+  reached it (6.5); a load of one tile, the tracer tile's among them, is
+  unicast.
+- **Read-only data lives in DMEM.** The core only fetches from IMEM (5.1), so an image's `.rodata` is linked,
+  and loaded, into DMEM. v1.35's images could load from program memory.
+- **The image enables nothing.** The ROM has set `mtvec` and `mie.MEIE` (6.5), and an image keeps
+  `mstatus.MIE` at 0 (6.2). v1.35's "boot part 2", which enabled interrupts, is gone: the NMI needs no enable.
+- **Counted data comes only after its counter is armed.** Scratchpad data and every other counted delivery
+  reaches a tile only once the tile has armed the counter it decrements; a packet that beats its counter sets
+  `ERRORS.counter_underflow` (12.2), so a violation cannot go unnoticed. The sender knows the counter is armed in
+  one of two ways:
+  - **by lockstep:** the receivers armed in the start path of the same phase, identical code from the same
+    release (6.4), before any tile's transfer can deliver (22.12);
+  - **by a request:** the receiver arms, then tells the sender with a request (the boot ROM's `LOAD`, 6.5; the
+    segment's `ARMED` and `STREAMS_ARMED`, 17.9.10), and the sender sends only after it has popped it.
+  v1.35 closed this window by timing, the sender waiting `stage_delay` = 64 cycles after its release store. No
+  timing constant is assumed in v1.36, and `stage_delay` is gone. *(Later, item 125: signed counters, so that an
+  arrival before the arming just goes negative. The requests make it unnecessary at the load and in the segment.)*
+- **Staged images and overlays are gone.** v1.35 staged later images in the scratchpad and copied them into a
+  running tile's memory. In v1.36 an image ends by jumping to the reset PC, and the ROM asks for the next load
+  (6.5); nothing is written into a running image's code. A block copy into DMEM remains (22.15).
+- **The ROM's size.** `BOOT_ROM_BYTES` is 256 (19). The RTL (Snarky One)'s ROM, the boot path and the handler's
+  two reports, is 44 words [meas: RTL]; v1.35's simulator ROM was 48 [meas: v1.35].
+
+### 22.10 Waiting: what a program keeps (supplements 7)
+
+Kept from v1.35's 4.12 and 4.13. The events, the wake and the arrival gate are 7.2 and 7.3; these are the rules
+software keeps on top of them. *(Not stated by the RTL's specification; kept from v1.35.)*
+
+- **Programs wait on events.** `STATUS` is diagnostic: no program needs to poll it.
+- **A wake consumes nothing** (7.2), so a program consumes or masks an event before its next `WFI`, or that `WFI`
+  falls straight through. The wait helpers of `fw/include/mesh.h` follow every `WFI` with a load of `EVENTS`, and act
+  only on *value* & *mask*, the events that load consumed. The load is the same code on every tile, so a
+  synchronised start is unaffected (6.4).
+- **Keep `release` in `EVENTS_MASK`.** The arrival gate lets the release wake the core whatever the mask holds
+  (7.3), but only a load with `release` in the mask consumes it. A release left pending ends the tile's next arrival
+  gate at once (item 79).
+- **Waiting for several events.** `EVENTS_MASK` wakes the core on any one of its events. A program that needs all of
+  a set (a counter's drain and `dma_done`, a peripheral's event and a counter's) masks them, and after each wake
+  loads `EVENTS`, keeps what it has seen, and waits again until it has seen them all. v1.35's `EVENTS_REQUIRED`,
+  which made that one `WFI`, is gone.
+- **A phase that arms counters ends with a wait for `all_counters_done` before it arrives.** That wait proves the
+  arrivals are in (invariant 4); an `ARRIVE` with a counter non-zero is `ERRORS.early_arrival` (7.3).
+- **A count of 0 arms nothing** (12.2), so no event follows it: a phase that expects nothing does not wait for
+  `all_counters_done`.
+- **`all_counters_done` waits for every counter.** To sleep on one batch while another is outstanding, a tile waits on
+  that counter's own `counter_n_done`. Within a phase a program may poll one counter to 0 and act on it, then `WFI`
+  for the rest.
+
+**Uses.**
+- A copy or a receiving phase: arm a counter, start, wait for `all_counters_done`.
+- A search step through the read unit (10): arm the reads' counter with the number of reads, then wait.
+- The tables after a transfer: the arrivals' `counter_n_done` (12.5) and `dma_done` (8.6), both seen.
+- A request with data (11.4): arm a counter for its packets, send the request, wait for the counter's event. A
+  store adds, so other traffic on that counter may be in flight.
+- A request with a reply (11.4): arm the reply's counter with 1 and name it, with the reply's address, in the
+  request; then wait for its event.
+- A received request (`request_pending`), and a peripheral's events (`peripheral_n`).
+
+### 22.11 What earns an error (supplements 7)
+
+Kept from v1.35's 4.13 and its preamble. *(Not stated by the RTL's specification; kept from v1.35.)*
+
+- **An error exists for a mistake that would otherwise go unnoticed, or surface far from its cause:** silent
+  corruption or lost data (early arrival, counter underflow, every overflow, drift, a bad packet). A mistake that
+  simulation catches on our firmware is UB (1.3): misalignment, a start while a transfer is in progress, a `START`
+  while a peripheral is busy. A mistake that stops the machine needs no error: the master tile's `ARRIVALS` and its
+  watchdog catch a tile that hangs (17.6).
+- **`ERRORS` is never information.** On a correct program and correct hardware it reads 0 for ever; anything
+  informational belongs in the simulator's reports.
+- **An error raised in a cycle of the reset is lost:** the reset wins.
+
+### 22.12 The phase, as software sees it (supplements 7)
+
+Kept from v1.35's 6.3 and 6.4. The barrier's hardware is 7.3 and 17.6, and the lockstep contract 6.4 and the core
+specification's Lockstep regions (`spec/core.md`). There are no commands (6.5): a phase is a step of a fixed
+schedule in the image, the same on every compute tile, and what v1.35 passed in a command's arguments is data in
+DMEM, written in the load.
+
+**The barrier, on a compute tile** is three instructions with nothing between them: the store to `ARRIVE`, the
+`WFI`, and a load of `EVENTS`, which consumes the release. v1.35's `wait_for_command()` was the same without the
+command's read.
+- The tile is ready, and its `BARRIER_ARRIVE` pulses, only once the core is asleep in that `WFI` (7.3). So the
+  release always finds the core in the canonical wait, whatever the nets' latencies; v1.35 relied on the round
+  trip being longer than the core's way into `WFI`.
+- `ARRIVE` stays an explicit store rather than "being in `WFI`": a tile also uses `WFI` to wait for arrivals,
+  which must not look finished to the master tile.
+- Under the arrival gate only the release wakes the core, whatever `EVENTS_MASK` holds (7.3).
+- Every `WFI` in a program is followed at once by a load of `EVENTS`: a wake consumes nothing (7.2).
+
+**A phase with one barrier** (a local sort, a gather): the tile finishes its previous work and arrives; when
+every expected tile has arrived (the master tile's live `EVENTS.all_arrived`, 17.6), the master tile stores
+`RELEASE`; every core wakes in the same cycle and runs the phase.
+
+**A phase whose engines must start together** (an all-to-all) is two steps with a barrier between them:
+1. **configure:** the tile writes its tables and `DMA_CONFIG` for the transfer, then arrives;
+2. **start:** on the release, the tile stores its counters, then `DMA_START`.
+
+Every core leaves the `WFI` in the same cycle and runs the same code to the start store, so the transfers start
+in the same cycle on every tile, and the lead-in (8.2) is the same everywhere. **The path from the `WFI` to the
+start store must be identical code on every tile,** its loads and stores those of DMEM, the tile window and the
+tables, at their fixed latencies (6.4).
+
+**A phase that receives:**
+- **Arm in the start path, after the release: store the counters first** (each store adds; at a phase's start
+  the count is 0), **then `DMA_START`.** Arming them during "configure" would set `ERRORS.early_arrival` at
+  configure's `ARRIVE` (7.3, invariant 4); storing them before the start store means no arrival of the phase can
+  beat its counter.
+- **Every expected arrival must have landed before the tile arrives** (invariant 4). The counters' events
+  guarantee it: by `LAND_LATENCY`, every counted write is in place (12.3).
+- **A tile that only sends** in a phase still counts its own loopback writes, if it has any, and waits for them
+  before it arrives.
+- **From the release to the first read.** v1.35's simulator measured, from the master's release store to every
+  tile's first read, 12–13 cycles for a stream transfer started by a counter store then the start, and 20–21
+  for a group transfer on the all-to-all's longer start path [meas: v1.35], with a start skew of 0 or +1. Both
+  move in v1.36: the core's timing is the RTL's (`spec/core.md`; 21), a window store takes effect a cycle later
+  (6.4), and there is no start skew: the release reaches every compute tile in the same cycle (7.3). To be
+  re-measured on v1.36's simulator.
+
+**A traced segment** uses three releases, sequenced by the master tile, with the handshakes between as requests
+to the tracer tile (17.9.10). The tracer tile takes no part in the barrier (7.3).
+
+**Cost.** A phase that does nothing costs 35 cycles from its release to the next on the RTL (Snarky One)'s chip,
+whose global nets are a wire, one flip-flop and a wire [meas: RTL]; v1.35's simulator took `ready_latency` + 3
+plus the master's loop, ≈ 11 cycles a command at its 8-cycle nets by its estimate, 57 release to release at its
+defaults [meas: v1.35]. The figure scales with `ARRIVE_LATENCY` and `RELEASE_LATENCY` (19), which are the chip's.
+
+### 22.13 The DMA unit's transfers: uses and conventions (supplements 8)
+
+Kept from v1.35's 4.2. The tables, the timetable and the read-ahead are 8.1–8.6.
+
+**What a stream transfer is used for.**
+- A copy into the tile's own DMEM or IMEM: a one-stream `WRITE` transfer to `dst` = 0 on a compute tile. At 128
+  bits a cycle a 1,024-word image takes about 256 cycles plus the lead-in [estimate].
+- A copy into a peripheral: a `WRITE` transfer into its region (17.3).
+- A local scratchpad copy: an `APPEND` transfer with `PTR[me]` as the destination, or a `WRITE` transfer at an
+  explicit address in region 0x03.
+- The local sort's scatter passes: `BUCKET` transfers to the tile itself.
+- Gather streams: `GATHER` transfers to the tile itself (13).
+- One-word exchanges (below).
+- Writes at explicit addresses into another tile's memory or a peripheral's region, the RW engine's write buffer
+  among them (17.7).
+
+A stream transfer reads the scratchpad only. Values the core computes in DMEM go from the write unit (9).
+
+**Conventions.**
+- **Receiver-placed destinations.** For `APPEND`, `BUCKET` and `AUGMENT` the receiver chooses where the data
+  lands, through `PTR` (12.4), so the senders need no destination addresses.
+- **Relative destinations** make every stream's `dst`, mode and size the same on every compute tile for the
+  all-to-all schedule, which is defined in offsets (`spec/schedule.md`). Packets on the NoC carry the absolute
+  dst.
+- **What changes every round** is a stream's source and its count: one store each, to `STREAM_SRC_ADDR` and to
+  `STREAM_HDR`, the latter with the stream's fixed fields (the header block and `dst`) ORed in.
+- **Count is 17 bits** because the full-size sort's local streams have exactly 65,536 elements. Longer moves are
+  split into several streams.
+- **Padding.** A count-0 stream sends nothing (8.3). A lockstep round that must keep a fixed shape sends dummy
+  elements instead.
+- **Reserved encodings are errors wherever they appear,** even at count 0: a stream with size 11, mode 6 or 7,
+  a reserved tile id or none as `dst`, a `GATHER` stream whose `dst` is not the tile itself, an `AUGMENT` stream
+  at 128 bits, or a source or a `WRITE` destination not aligned to the stream's size. None has a check at the
+  sender; all are UB (1.3), and the simulator reports them.
+- **Broadcast streams.** The hardware sends a stream to the broadcast id like any other: its read holds a token
+  until the tile's own copy is taken (14.2). By convention only the master tile broadcasts from streams, and the
+  simulator errors on a broadcast stream from a compute tile.
+  *(Not stated by the RTL's specification; kept from v1.35.)*
+- **A start is the only way a transfer begins:** the release starts none. A synchronised start is the same
+  `DMA_START` store, executed by every compute tile in the same cycle after the release wakes it (6.4, 7.3).
+- **Packets trail the timetable by a constant.** The timetable (8.3, 8.4) gives the cycles the reads are taken;
+  each packet is injected `READ_LATENCY` cycles after its read (14.3, 15).
+
+**A one-word exchange of scratchpad data** is `TILE_COUNT` − 1 streams of count 1, their `dst` in the schedule's
+offset order, with `DMA_CONFIG.gap` = 4: a round takes about 63 × 5 ≈ 315 cycles at 8 × 8, with loads far below
+any overflow [derived]. v1.35 set the gap on each stream; the one per-transfer gap serves it unchanged.
+
+**The gapless form** *(Open)* would run the streams back to back in about 63 cycles. Every tile sends to the
+same offset in the same cycle, so each step is a permutation, and each 4-stream window has link loads of at most
+4 in each direction. It relies on the links' uniform latency (16.1) and on the release reaching every compute
+tile in the same cycle (7.3). The queue peaks at window boundaries are still to be confirmed in simulation
+(chapter 26).
+
+### 22.14 Group transfers and the all-to-all schedule (supplements 8)
+
+Kept from v1.35's 4.2. `GROUP`, the rotations and drift are 8.4; the schedule itself is `spec/schedule.md`.
+
+- **Groups name their own streams,** so groups can share streams and several programs can sit in the tables at
+  once (the keys' and the values' all-to-alls, or a 64-bit and a 128-bit form), each started by its number.
+- **Each pass rewrites one word per group:** word 0, which holds R. The store also writes `first_stream` and
+  `streams`, which share the word, so a program ORs them in. (v1.35 kept R alone in its low word.)
+- **R is a global maximum:** every tile uses the same R for a group, so a zero-length group is zero-length on
+  every tile, and its one cycle (8.4) is the same everywhere.
+- **One stream per destination per group.** The schedule's link-load bound assumes a tile sends at most one
+  element a rotation to each destination.
+- **A longer period** is made with padding streams.
+- **Sizes may differ within a group** *(Proposed, item 27)*: every visit takes one cycle whatever its size.
+  *(Not stated by the RTL's specification; kept from v1.35.)*
+- **Very short groups.** `READ_AHEAD` = 2·`TABLE_LATENCY` + 2 keeps a group's entries in before its start when
+  every group lasts at least 2 cycles [meas: v1.35, `TABLE_LATENCY` 1–4]. Groups of a single one-cycle visit
+  back to back wait for their entries (8.5): the wait is part of the timetable, the same on every tile. No group
+  of the sort is that short, and one-word exchanges are stream transfers.
+
+**The digit all-to-all schedule.** 16 groups of 4 streams, every group with a period of 4 for every value size,
+with loads of at most 4 in all four directions; the periods sum to 64, the lower bound at 8 × 8.
+- **Gap 0 between groups.** Gap 0 gives the same queue peaks as gap 4 on uniform and on all the skewed sets,
+  with no drift [meas: v1.35], and saves about 60 cycles an all-to-all.
+- **Exception:** phases that run every stream at the full window (the two-hop layers TH and BT, chapter 27) need
+  a gap of 4 after each group, or the receivers' eject queues overflow at group boundaries [meas: v1.0; peaks 6
+  on links and 4 at the eject with gap 4].
+- **Against a nine-group schedule** [meas: v1.0]: uniform −3.5 %, trace −11.7 %, 99 % one value −24.5 %.
+- **A tile's stream to itself** has its own place in the schedule, which leaves its eject room for it: no token
+  waits were measured (item 62). The eject arbiter serves the loopback queue last (16.3), so a self-stream gets
+  only the eject cycles its links leave free; that this causes no drift in group transfers is to be confirmed in
+  simulation *(Open, item 70)*.
+
+### 22.15 Block copy into DMEM or IMEM (supplements 8)
+
+Kept from v1.35's 6.5, without its overlays. A tile copies a block of its scratchpad into its own DMEM (a
+table, staged data) with a loopback stream transfer:
+
+1. Write the `STREAM` entry, one store per array that changes: `STREAM_SRC_ADDR` the source, aligned to the
+   size; `STREAM_DEST_ADDR` the destination's byte address in region 0x00; `STREAM_HDR` the count, size 128 bits
+   (or 64 or 32), a counter *n*, mode `WRITE` and `dst` 0, the tile itself.
+2. Store the number of packets to `COUNTER_n`, which adds it to the count (0 here) and arms the counter (12.2).
+3. Store `DMA_CONFIG`: a stream transfer of one stream, starting at that entry.
+4. Store `DMA_START`.
+5. Wait for `counter_n_done` (or `all_counters_done`): it is set `LAND_LATENCY` cycles after the director
+   accepts the last packet, when it is in DMEM (12.3).
+
+The copy runs at up to 128 bits a cycle through the loopback, with no polling and no traffic on the NoC. A copy
+whose length is not a whole number of rows ends with a smaller-size stream, or is padded.
+
+**Into IMEM** the same transfer works (region 0x01), and code written there runs the next time it is fetched
+(6.3). The code doing the copy must sit outside what it overwrites, and the core must not be fetching a word in
+the cycle it is written (6.3: a collision is UB). v1.35's stage overlays, which the master tile broadcast into
+running tiles between commands, are gone: an image is replaced whole, by the next load (6.5).
+
+### 22.16 The read unit in use (supplements 10)
+
+Kept from v1.35's 4.3. The registers, the queue and the return are chapter 10.
+
+- **Why it exists.** The core queues reads by stores and never stalls on the scratchpad; the results land in
+  DMEM as `WRITE` packets to the tile itself, through the loopback and the traffic director, counted
+  `LAND_LATENCY` after the director accepts them (12.3). The read unit has no path of its own into DMEM.
+- **Its reads rank last** at the read arbiter (14.1), so they never delay the address generator's timetable or
+  the gather unit. During an all-to-all they wait.
+- **No stalls.** The queue holds at least 64 entries (10), so a whole round of one search per owner (63 reads at
+  8 × 8) can always be issued at once into an empty queue. `READ_FREE` gives the free entries, and the counter
+  the program armed gives the results still outstanding.
+- **Free is not landed.** An entry is freed when its packet is injected. When the reads' counter is done, every
+  result is readable and the queue is empty. The converse does not hold: a full `READ_FREE` says every return
+  has left, and the last results can still be in the loopback. Only the counter says they have landed.
+- **A dropped read** (`ERRORS.read_overflow`) sends no packet, so its counter stays short; the error says why.
+- **Never between the wake and a start store.** The path from the release to a synchronised `DMA_START` is
+  identical on every tile (6.4): read-unit traffic belongs before the `ARRIVE` or after the start.
+
+**Reads against arriving traffic.** *(Not stated by the RTL's specification; kept from v1.35, where it is a
+candidate to relax: item 116.)* Results return through the tile's injection point, loopback queue and eject,
+which they share with the tile's other returns and with every packet arriving from the links. The NoC has no
+flow control (16.3).
+
+**Software rule: a tile issues no read-unit reads while packets are arriving for it, and starts no phase that
+receives packets while read-unit results are outstanding.** In practice:
+- read-unit reads run in steps of their own;
+- before a search step, every expected arrival has landed (its counter is done);
+- before the next exchange, every result has landed (its counter is done).
+
+The simulator checks it: a packet from another tile arriving while the tile has read-unit results outstanding
+is a violation (invariant 14). v1.35's exception, the master tile's command writes, is gone with the commands
+(6.5). The memory tile's deliveries (11.4) are arriving traffic like any other.
+
+What the hardware tolerates: the loopback queue cannot overflow (14.2, 16.3) and the eject serves arriving
+packets before the loopback, and v1.35's simulator measured **no loss** when read-unit reads overlapped an
+all-to-all or a full-rate stream [meas: v1.35, its part M], where v1.0 lost packets (15 results against a
+full-rate stream, 32 against a half-rate one, before the loopback was protected) [meas: v1.0]. The rule stands
+until it is ruled on (item 116); if the NoC ever gains flow control it is to be revisited.
+
+**The search loop** (the split), in v1.36's names:
+
+```c
+while (READ_FREE < 64) ;                 // once, before the first step: never stalls (below)
+for each step, while searches are active:
+    COUNTER_2      = n_active;           // at most 63
+    READ_HDR       = SIZE_32 | COUNTER(2);
+    READ_DEST_ADDR = (uint32_t)results;  // in DMEM
+    for each active search: READ_SEND = its midpoint;
+    wait for counter_2_done;             // WFI, then a load of EVENTS, until it returns the bit (7.2)
+    for each active search: compare results[i], update its bracket;
+```
+
+Each step issues at most 63 reads into an empty queue, so the loop needs no free-count checks. The first poll
+is the only one, and it never stalls: any earlier reads were in a phase that armed a counter for them and
+waited for it before it arrived. Converged searches drop out. Results may land in any order (10), so a loop
+that needs particular results waits for its whole batch.
+
+Costs, on v1.35's simulator, to be re-measured: a search step's fixed cost through the loopback 27.9 cycles,
+2 more than a direct path into DMEM would cost; +0.12 % on a uniform split; the split's search loop 12.35
+cycles a search on uniform data [meas: v1.35; 1-cycle register loads].
+
+### 22.17 The request tree: rates and the limits' arithmetic (supplements 11)
+
+Kept from v1.35's 3.3. The tree, its credits and the per-tile limits are 11.3.
+
+- **Every compute tile is a leaf at the same depth,** two nodes from the root, and every node round-robins over
+  its inputs, so under full load each of the root's inputs gets an equal share, and each tile its share of its
+  row's: fair and starvation-free.
+- **Throughput.** The root passes one beat a cycle, so the chip issues at most one request every 8 cycles
+  [derived].
+- **Why the depths.** `TILE_COUNT` tiles at the per-tile limits fill 64, 192 and 64 entries at 8 × 8, and the
+  special tiles' own requests to each other fit in the 64 entries left at each target. So in normal operation
+  no target runs out of credits, the root never skips an input, and no row stalls behind one.
+- **Outstanding is deliberately conservative.** In hardware a request holds an entry of its target's receive
+  queue only from its arrival until the target pops it, well before any answer, and the requester cannot see
+  the pop. The software convention (11.3) implies the bound.
+- **The limits are a software rule;** the simulator checks them (invariant 17). The hardware only counts
+  credits.
+- **Error reports are the exception** (11.3): a failed tile's handler sends its reports with no replies and no
+  limit. In a mass failure they can fill the master tile's queue and stall rows behind it, and with a request
+  queue of `REQUEST_QUEUE_DEPTH` = 4 a handler's `REQUEST_SEND` then stalls its core (11.1); the chip is going
+  down, and the master tile drains them one by one.
+- **Back-pressure end to end.** A target with no credit stops the root for its requests, the root stops the row
+  node, the row node the tile's request queue, and a full request queue stalls the `REQUEST_SEND` (11.1).
+  Nothing is dropped anywhere on the tree, except a request for a reserved target, at the root (11.2); the
+  simulator flags that one.
+
+### 22.18 The reply block (supplements 11)
+
+Kept from v1.35's 4.11 and 4.12. A software convention, with no hardware of its own: a request names its own reply
+address, anywhere in the requester's DMEM (11.4), and the reply block is the default place for replies between
+compute tiles. *(Not stated by the RTL's specification; kept from v1.35.)*
+
+- **Layout.** 256 words of DMEM, two for each of the 128 tile ids: the pair for source *s* is at `REPLY` + 8*s*.
+  v1.35 placed `REPLY` at 0x0000_7BC0, below its command block; the command block is gone (6.5), and the address is
+  now the image's. The stack grows down from below it.
+- **A reply** is a 32- or 64-bit `WRITE` to the receiver's reply block at the sender's own pair, counted on the
+  counter the receiver armed for it. A 32-bit reply writes word 0 of the pair, and a 64-bit reply both. A 128-bit
+  reply, the memory tile's (11.4), does not fit a pair: its requester names a 16-byte buffer of its own.
+- **One address in every receiver.** A sender stores `WRITE_DEST_ADDR` once, sets `WRITE_HDR.no_increment` (9), and
+  changes only `WRITE_HDR.dst` per reply: one header store and one send a reply.
+- **No collisions between sources.** Two replies from one source to one tile overwrite each other, so a sender has at
+  most one reply outstanding to each receiver until the receiver has read it. Which counter a reply uses is agreed
+  by the two programs.
+- **That a sender writes only its own pair is software's to keep.** The simulator checks that a write into the reply
+  block is 32 or 64 bits at the sender's own pair (invariant 11).
+
+### 22.19 Requests: what a program keeps (supplements 11)
+
+Kept from v1.35's 4.18. *(Not stated by the RTL's specification; kept from v1.35.)*
+
+- **No acknowledgement for issuing.** A request's effect shows only through its answer (11.4).
+- **A burst stalls its sender.** The request queue holds 4 requests (v1.35's held 128, for bursts of debug
+  messages), and there is no event for room in it: a `REQUEST_SEND` on a full queue stalls the core until an entry
+  leaves (11.1). Heavy use stalls only the tile that sends.
+- **`STATUS.request_full`** at 0 means one request can be pushed without a stall.
+
+### 22.20 Scratchpad writes in use: `PTR`, `HIST` and augmenting (supplements 12)
+
+Kept from v1.35's 4.8–4.10. The traffic director, the write engine and the tables are 12.3–12.5.
+
+- **The receiver decides where each sender's data lands.** For an all-to-all it sets `PTR[p]` from the counts
+  it already has (prefix sums).
+- **One user per phase:** `PTR[src]` (`APPEND` and `AUGMENT`, which may mix) or `PTR[t]` (`BUCKET`), never both.
+  *(Not stated by the RTL's specification; kept from v1.35.)*
+- **`PTR[me]`** is where a tile's own packets and its gather values land. A tile's own stream into `PTR[me]`
+  and its gather values never run at once (14.4).
+- **Stepping by size is general.** A value sent as several `APPEND` packets from one sending unit lands
+  contiguously, whatever their sizes (14.4).
+- **Keeping a pointer aligned.** A `PTR` entry stays aligned (12.4) only if every write through it has the same
+  size, or if the sizes descend from an aligned start (128s, then a 64, then a 32). A transfer that continues
+  where another stopped needs the earlier one's length to be a multiple of its own size.
+- **`WRITE` to the scratchpad** makes no `PTR` access and is not counted in `HIST` (12.4): the memory tile's
+  deliveries (11.4) and staged data land this way, and a core can write a chosen address from the write unit
+  without touching `PTR[me]`.
+- **No hardware clear.** The core clears `HIST`, and sets `PTR`, by stores (5.2), while their engine is idle
+  (12.5).
+
+**Count-on-arrival in use.** In a `BUCKET` pass the pointer's and the count's updates happen in the same cycle,
+so a pass buckets by the current digit and counts the next at one payload a cycle [meas: v1.35]. In an
+all-to-all the receiver counts the first digit of its next sort while the keys arrive, which saves one full
+counting pass a sort.
+
+**Augmenting in use.**
+- **The ordinal is a position in the buffer, not an arrival count** (12.4). With `APPEND` and `AUGMENT` each
+  sender's keys land in a run of their own at `PTR[src]`, and that sender's values land in the same order in the
+  value buffer, so key *i*'s value is value *i* only if *i* counts buffer positions. Packets from different
+  senders interleave on arrival.
+- The keys' all-to-all sends `AUGMENT`, so keys arrive as (key, *i*), ready to sort; the values' sends
+  `APPEND`.
+- **Step 1** (local keys): raw 32-bit keys are streamed to the tile itself at 32 bits in `AUGMENT`, each landing
+  as a 64-bit record, with `PTR[me]` = `GATHER_CONFIG.record_base` = a new buffer. One pass, a key a cycle.
+- **`BUCKET` has no augmented form:** augmenting stamps the landing position, which in a bucket write is the
+  position after bucketing. An arrival-order form is a possible later addition (chapter 26).
+- **One base serves a transfer:** none both augments and gathers (13).
+
+**Waiting for the tables.** Software waits by events, as for everything else (7.2):
+- **the arrival side** (packets updating `PTR` and `HIST`, gather values landing at `PTR[me]`) is covered by
+  the counter the program armed for them (12.5);
+- **the local side** (the address generator reading `STREAM` and `GROUP`) is covered by `EVENTS.dma_done`
+  (8.6). The counters alone are not enough: a tile's arrivals can finish before its own transfer.
+
+v1.35's `EVENTS_REQUIRED` is gone (1.1): a program that needs both waits in a loop until a load of `EVENTS` has
+returned both. A helper that must work without knowing what ran before may poll `STATUS.dma_busy`, a level;
+otherwise `STATUS` is diagnostic. A table access right after a counter's done is safe by `LAND_LATENCY` alone
+(12.3); the simulator checks that no core access to `PTR` or `HIST` after a counter's done precedes a pending
+update.
+
+**One `LAND_LATENCY` for every destination, deliberately.** Writes to DMEM, IMEM and a peripheral land sooner
+than scratchpad writes, but their counters also decrement at `LAND_LATENCY`. On v1.35's simulator a read-unit
+search step cost 35.9 + 37.42 cycles per active search, against 29.8 + 37.43 when those writes were counted at
+landing [meas: v1.35]: the extra is per step, about a hundred cycles a split. A shorter delay for those
+destinations is not adopted.
+
+### 22.21 Counters: what a program keeps (supplements 12)
+
+Kept from v1.35's 4.12 and 4.14. *(Not stated by the RTL's specification; kept from v1.35.)*
+
+- **One counter per thing a program waits for separately.** A store adds (12.2), so one counter waits for the union
+  of what was added to it. To learn that batch A has landed while B is outstanding, put them on different counters.
+  Which counter is the program's choice, whatever the source.
+- **A stray packet is caught late.** Underflow is judged at the decrement, `LAND_LATENCY` after acceptance (12.2,
+  12.3). A stray counted packet accepted at count 0, whose decrement comes after the program arms *N*, uses up one of
+  the *N*: the event fires one packet early, and the batch's last real packet then sets `ERRORS.counter_underflow`.
+  The error is caught, naming the last packet rather than the stray; only a second, cancelling bug would hide it.
+  The simulator models the hardware exactly, and also reports the stray at its acceptance, as a diagnostic.
+- **There is no flush.** A tile knows a write has landed only by its counter (12.3), or, for an uncounted write, by
+  a counted packet that follows it from the same sending unit (4.2, 14.4).
+
+### 22.22 Gathers in use (supplements 13)
+
+Kept from v1.35's 4.4. The gather unit is chapter 13.
+
+1. The address generator streams the sorted (key, ordinal) records to the tile itself as `GATHER`, at 64 bits:
+   the ordinal is in bits [63:32], where augmenting put it (12.4), and the gather unit keeps its bits [51:32].
+   *(The `GATHER` packet's size is not stated by the RTL's specification; kept from v1.35.)*
+2. The gather unit reads each value and sends it to the tile itself as `APPEND`s (13).
+3. The values land at `PTR[me]`, which the core set to the start of the reorder buffer. The index arrives in
+   sorted order, so value *i* lands at the output's start + 2*k*·*i* words, with no addresses.
+
+- **Arming.** `GATHER` packets are never counted; their counter field passes to the values (4.2). A gather of
+  *n* values arms that counter with *n* × (packets per value): *n*·*k* when *k* is odd, *n*·*k*/2 when even.
+- **Alignment.** Gather buffers, source and destination, are aligned to a row whatever *k* is (13). The
+  software convention is that allocations are row-aligned in general (`fw/CONVENTIONS.md`).
+- **Placement.** The value reads and the values' writes fit within one access a cycle per bank if the index,
+  the values and the output sit in three different banks (15).
+- **Rate.** Every value costs its request packet and its value packets through the one injection point and the
+  one eject: about (packets per value + 1) cycles a value, 2.0 at *k* = 2 [meas: v1.25, the full-size sort's
+  uniform-k128]. While the unit is busy the address generator now takes no read at all (14.1), where v1.35's
+  took one whenever no gather read was waiting: the rate is to be re-measured on v1.36's simulator. The RTL's
+  full-size uniform-k128 gather steps run 2.2 % and 2.5 % over v1.25's simulator [meas: RTL].
+- **Overflow.** With the address generator as the only source the queue cannot overflow (13). `GATHER`s from
+  the write unit can fill it, so `ERRORS.gather_overflow` is a program error (7.4), where v1.35 classed it a
+  hardware-fault detector.
+- **Why gathers are local.** A remote gather would work mechanically, but its values would land grouped by
+  owner at `PTR[owner]`, not in one sorted sequence, and the owner's address generator would stall, breaking
+  its timetable (invariant 10).
+- A gather phase sends only to the tile itself, so no NoC timetable is disturbed by its waits.
+
+### 22.23 Scratchpad placement and coherence (supplements 15)
+
+Kept from v1.35's 4.1. The scratchpad's contract is chapter 15.
+
+- **Throughput comes from placement.** Buffers that one phase uses together sit in different banks: a bank does
+  one access a cycle, and a write wins it (15). A bank asked for a read and a write in one cycle costs time,
+  never data: the read waits, and in a group transfer that wait is drift (8.4). A sequential stream stays in one
+  bank at up to 4 words an access.
+- **What follows the no-coherence rule** (15): the local sort's passes, which alternate between two buffers; the
+  gathers (index and values in, output out); the all-to-alls (send buffer out, receive buffer in); the split's
+  searches through the read unit, which read sorted keys nothing writes during the split.
+- **The rule is per transfer, not per phase:** a local phase may run several passes, each reading what the one
+  before wrote, after those writes' counters are done.
+- **There is no flush, no merge logic and no line state.**
+- **The placement rules** that keep each phase's traffic within one access a cycle per bank are *(Open)*
+  (chapter 26). Placement rules and measurements that depend on the banks assume 8 banks of 512 KiB at 4 MiB:
+  in a word address, bits [19:17] the bank (bit 20 is 0 at 4 MiB), [16:2] the row and [1:0] the word in the row.
+
+### 22.24 The links and fan-in (supplements 16)
+
+Kept from v1.35's 3.2 and 4.5. The router is chapter 16; order is 14.4 and 16.2.
+
+- **Why every link is three stages** (16.1). Shorter links are padded with register stages; the longest must
+  fit in three, which is a physical-design check. Uniform latency keeps every tile's packets in lockstep, so the
+  schedule's per-window load bounds hold exactly.
+- **Unicast and broadcast take different paths** between some pairs (16.2): at 8 × 8, offsets 33–39, 44, 52 and
+  60 [meas: v1.35]. So a sender's packets that must arrive in order go all unicast or all broadcast.
+- **Between sending units there is no order** (14.4), even in one tile: a write-unit packet stored after
+  `EVENTS.dma_done` can be injected before the transfer's last read returns.
+- **Injection never stalls.** The injection point's packets enter the router whatever its queues hold: a full
+  output queue is `ERRORS.router_overflow` (16.3).
+
+**Fan-in.** The NoC has no flow control, so many-to-one traffic is the program's to pace (16.3). Measured limits
+[meas: v1.0; to be re-measured on v1.36's simulator], every sender bursting W packets to one compute tile in the
+same cycle; the limits are in packets:
+
+| Senders | Largest safe W per sender, nearest senders, no start skew | With v1.35's 0/+1 start skew, the minimum over five sender sets |
+| --- | --- | --- |
+| 63 | none: 63 × 1 is not safe | none |
+| 32–48 | 1 | 1 |
+| 24 | 2 | 2 |
+| 16 | 3 | 2 |
+| 12 | 5 | 3 |
+| 8 | 5 | 5 |
+| 6 | 10 | 7 |
+| 4 | 20 | 15 |
+| 3 | 23 | 15 |
+| 2 | 30 | 30 |
+| 1 | no overflow | no overflow |
+
+- v1.36 has no start skew: the release reaches every compute tile in the same cycle (7.3). The second column is
+  kept as the margin v1.35 measured.
+- 63 × 1 overflows in every case measured. A queue is full by its count before the cycle's pop (7.4), so a push
+  into a full queue is lost even in a cycle that pops it. The first queue to overflow is one of the receiver's
+  eject queues.
+- Schedule-ordered exchanges (stream transfers in the schedule's offset order) are permutations, so they do
+  not fan in.
+
+### 22.25 Pacing the special tiles' traffic (supplements 16)
+
+Kept from v1.35's 4.16. *(Not stated by the RTL's specification; kept from v1.35.)*
+
+- **Pacing is policy.** A packet a special tile sends enters the mesh at its attach tile through a route of its own,
+  and does not wait behind that tile's injection point (16.1, 16.2). So every packet a special tile sends during an
+  all-to-all adds load to its attach tile's links that the schedule's queue bounds do not count: one broadcast per
+  64 cycles raised tile 0's link queues to 12 of 16 `[meas: v1.35]`. The special tiles send bulk data between
+  passes, or pace it.
+- **Into a special tile** there is no flow control either: an attach output takes one packet a cycle (16.3). Several
+  tiles writing into the memory tile's write buffer at once fan in at its attach tile, so writers are one at a time,
+  or paced (17.7).
+
+### 22.26 Peripherals: what a program keeps (supplements 17)
+
+Kept from v1.35's 4.17.3. *(Not stated by the RTL's specification; kept from v1.35.)*
+
+- **Act on every bit a load returns.** A load of a peripheral's `EVENTS` consumes one count from every counted bit it
+  returns set and `EVENTS_MASK` selects (7.2, 17.2). So a program acts on every such bit, or masks only what it is
+  about to service.
+- **A queue of items** is not an event kind. *(Deferred, item 119: an event kind for a queue of items, for the host
+  interface.)* The RW engine returns a part of its write buffer by `EVENTS.done` (17.7).
+
+### 22.27 The master tile's sequencing (supplements 17)
+
+Kept from v1.35's 6.6: the master tile's software conventions around 17.6's registers.
+
+- **The phase loop.** Store `ARRIVE_EXPECT_0`–`1`; sleep with `all_arrived` selected in Ingress/Egress's
+  `EVENTS_MASK` and `peripheral_1` in the tile's own; then store `RELEASE`. `all_arrived` is live and needs
+  `ARRIVE_EXPECT` ≠ 0, so the master tile cannot miss it whatever order it writes the two words in (17.6).
+- **Every compute tile is expected at every release** (7.3). v1.35's one-at-a-time bring-up, by `READY_EXPECT`
+  and first commands, is gone: a compute tile's ROM jumps at every release, with no guard (6.5).
+- **The watchdog.** The master tile sets `WATCHDOG`'s limit above each phase's expected length; every `RELEASE`
+  restarts it (17.6). It is the only watchdog, it counts the chip's clock, and it is the backstop for a tile that
+  hangs without an error: a trap that sets no `ERRORS` bit (6.2), a lost packet, a request never answered (23).
+- **The master tile sends** through its own write unit and DMA unit, like any tile (9, 8); its packets enter the
+  mesh at tile 0's attach port, with its own tile id as src (16.2). **It receives** the tiles' requests, `LOAD`s
+  and reports among them, from its receive queue (11.1, 11.5), and packets addressed to it land in its memories
+  like any tile's, counted by their counter fields.
+- **Pacing.** The master tile sends bulk data between all-to-all passes, or paces it: nothing but the program
+  paces an attach link (16.3). A load sent as a broadcast is full-rate and has the mesh to itself, every compute
+  tile waiting in its ROM (6.5).
+- **Gone with the commands:** v1.35's wait of `go_latency` + 1 cycles after a release before sending a command,
+  and commands crossing the mesh during a phase.
+- **The special tiles and the barrier.** The memory and tracer tiles take no part in the barrier (7.3). The
+  memory tile starts from its placed image (`PARAMS.boot_local`, 6.5) and serves requests (23); the tracer tile
+  is loaded at its `LOAD` and then serves the segment (17.9.10). v1.35's "started" requests are not needed: a
+  special tile's first request to the master tile, or the master's first to it, is served whenever its receiver
+  is up, since the tree holds a request until it is popped (11.3).
+
+### 22.28 An error, end to end, and the reset (supplements 18)
+
+Kept from v1.35's 6.1. The hardware is 6.2 (the NMI, every trap terminal), 7.4 (`ERRORS`), 17.6 (the error
+lines, the watchdog, the toast pin) and 18 (the nets, the reset).
+
+**There is no HALT state.** The reset is the only way to stop anything, and coming out of it means running in
+the boot ROM (6.5). What is given up is stopping one tile to inspect it: after an error there is what the
+handlers' reports carry, and then the chip restarts.
+
+**An error, end to end:**
+1. **An error sets a bit in a tile's `ERRORS`** (7.4), which raises its NMI (6.2). Its handler sends its reports
+   to the master tile on the request tree and parks (6.5). Its units and peripherals carry on, unserviced, until
+   the reset (17.5).
+2. **Its error line** sets its bit in the master tile's `ERROR_LINES_0`–`2`, `ERROR_LATENCY` later; the lines are
+   live (17.6, 18).
+3. **`tile_error`,** Ingress/Egress's live `ERRORS` [0], sets the master tile's `ERRORS.peripheral_1`, and the
+   master tile takes its NMI. The master tile's own errors raise it directly. **Every error is terminal for the
+   chip:** nothing on the chip recovers.
+4. **The master tile's handler,** best effort, with nothing waiting for it: it tells the file system to flush its
+   logs to LPDDR *(Deferred, item 119)*; **drains the tiles' reports** from its receive queue, told apart by
+   their numbers (24 and 25 from a tile still on the ROM's handler, an image's own from 0; 6.5, 11.5); and
+   **sends the dump out,** over the UART, or over the host interface once its beats have a meaning *(Open: the
+   host interface's meaning, 17.6)*. It never returns to the interrupted code, and bounds its waits by
+   `mcycle` (6.1). Its details are the master tile's firmware's.
+5. **The toast pin** rises (17.6), and **the outside world resets the chip**: the chip never resets itself (18).
+
+- **The report set.** v1.35 fixed 24 reports for an image's handler *(Deferred, item 122: their header)*; in
+  v1.36 the header is fixed (`REPORT`, `op` 1, the number in word 0, 11.5) and an image's set is its own (6.5).
+  The request queue holds `REQUEST_QUEUE_DEPTH` = 4 requests (11.1), so a handler's burst of reports stalls its
+  core on the tree's pace, which the reports' exemption from the per-tile limit allows (11.3).
+- **`LED`** is the software pin: the master tile can blink codes on it while it is healthy (17.6).
+
+**The reset inputs.** The RTL's specification has one reset (18), and marks hard and soft *Open*. v1.35's
+intent stands as the proposal *(Open, item 124)*:
+- **hard reset:** everything, the `lpddr` port and the memory side included; LPDDR's contents are lost.
+  Power-on is a hard reset, held until power is stable;
+- **soft reset:** everything except a short list: the host interface's link, the `lpddr` port's far side, and
+  the LPDDR controller and PHY, so refresh continues and **LPDDR keeps the flushed logs**. The exact list is
+  open, and 3's `lpddr` and `fill` contracts constrain it: neither far side may answer after a reset anything it
+  accepted before it (3, 17.7).
+
+**Nothing tells the outside world that the flush has finished, and nothing needs to.** A host waits as long as it
+wants after the toast pin rises before it resets the chip; about 0.1 ms (about 100,000 cycles at 1 GHz) is a
+default. With no host, a person resets the chip by hand, slowly enough for the UART's dump. After a soft reset
+the file system is to come back up over LPDDR's contents *(Deferred, item 119)*.
+
+**No hold is needed.** The reset is the whole chip's, so the error lines' pipeline stages are reset with
+everything else (18), and no error raised before the reset reaches Ingress/Egress after it.
+
+## 23. The memory system and the file system (deferred)
+
+*Kept from v1.35's 6.7 and section 7, in v1.36's terms. Chapters 1–19 specify the hardware that is built; this
+chapter says what a tile sees of the memory tile's answers, and what stays deferred with the file system's design
+(item 119).*
+
+The **memory tile** (2.1) owns the chip's one path to LPDDR. Three parts of what v1.35 called the memory system
+are now specified, and built in the RTL (Snarky One):
+
+| Part | Where | v1.35's name |
+| --- | --- | --- |
+| the RW engine, the memory tile's peripheral 1: one read or one write of LPDDR at a time | 17.7 | the RW engine of the Updater/Binder/RW engine |
+| the memory tile's requests, `READ` and `WRITE`, which its core serves with the RW engine | 11.5 | the read and the tag-window write |
+| the write buffer and its parts, which the memory tile's software allots | 17.7 | the tag windows |
+| the `lpddr` port, an AXI4 master, to the LPDDR controller outside the chip | 3 | "its AXI bus" |
+| the Tracer's side of the fill port, `fill` | 3, 17.9.5 | the fill bus |
+
+Everything else is **deferred, as in v1.35**: the file system, the Updater and the Binder, the tag pool, the log
+files and their flush on a failure, and the memory system behind the fill port, its translator and its shared
+cache (23.5–23.7).
+
+### 23.1 Where it sits
+
+- **The memory tile** is tile id `TILE_COUNT` + 1 (65 at 8 × 8), attached to tile `MESH_SIZE` − 1 (2.1, 16.1).
+  Packets for it go to that tile id; a `WRITE` into the write buffer is addressed to its region 0x04 (17.7).
+- **Its packets' src is the memory tile's id** (16.4), its core's and its RW engine's DMA's alike. v1.35 deferred
+  the DMA's src here and decided it elsewhere as the id + 8 (item 118); 16.4 does not take that
+  (`spec/CHANGES-v1.35-to-v1.36.md`, the reversals).
+- **Requests** reach it on the request tree as target 1 (11.2). Targets 3–7 are reserved (11.2): v1.35's target 3,
+  kept for the file system, is not assigned *(Deferred, items 83 and 119)*.
+- **The same tile-side rules hold for the answers of every request receiver** (11.4): a special tile that answers
+  a request does so as the memory tile does here.
+
+### 23.2 How a request is answered
+
+The rules are 11.4's; this section adds only what v1.35 states beside them.
+
+- **Arming first, data, then the reply:** 11.4. A reply is a 32-, 64- or 128-bit `WRITE` (11.4), and **the memory
+  tile's replies are always 128-bit** (11.5, 17.7): they leave by the RW engine's DMA, whose packets are whole
+  128-bit entries (17.4). So a requester keeps 16 bytes of DMEM for each reply. v1.35 said 32 or 64 bits.
+- **Every request names its own reply address,** beside its reply's counter: anywhere in the requester's DMEM,
+  aligned to the reply's size (11.4). With up to three requests outstanding to the memory tile (11.3), replies to
+  one fixed place would overwrite each other, so each outstanding request gets its own buffer.
+- **A `READ`'s answer is its data.** It asks for a reply only if its `reply_counter` is non-zero, and the reply
+  is then 0 (11.5); v1.35 had no reply for a read. The data's packets are counted on `data_counter`, and that
+  counter's event says when all have landed (12.3).
+- **A value answer is a reply:** for `WRITE`, the part's address and the memory tile's counter (11.5). The
+  meaning of any other reply (an fd, an address, an error code) is its target's *(Deferred, item 119)*.
+- **Requests outstanding per tile** are limited by target: 1 to the master tile, 3 to the memory tile and 1 to the
+  tracer tile (11.3), so the receive queues never fill in normal operation. When a request stops being
+  outstanding is 11.3's convention.
+
+### 23.3 Reads
+
+A `READ` (11.5) copies `beats` 16-byte beats of LPDDR, from its beat address up, to the tile that sent it, the
+requester the tree stamped, from the destination address up.
+
+- **The data** is `WRITE` packets of 128 bits, unicast to the requester, in ascending address order, the address
+  advancing by 16 a packet, counted on the request's `data_counter` (11.5, 17.7). This closes v1.35's *(Proposed)*
+  item 67. The destination may be any region a packet reaches (5.1): DMEM or IMEM, the scratchpad, or a
+  peripheral's region.
+- **The requester arms** that counter with the read's packet count before it sends the request. A store adds to
+  what is already in flight (12.2), so nothing can arrive uncounted for.
+- **Landing.** A read has landed when its counter has drained: by `LAND_LATENCY` every packet is in place (12.3).
+- **Destination bounds** are the program's: a read past the end of its memory is UB (5.1). **The replayer takes
+  no reads into its queues:** what it needs from LPDDR is fetched into the scratchpad and refilled locally
+  (17.8.13).
+- **Order between reads.** One read's packets leave in ascending address order, and the RW engine sends reads
+  in the order they started (17.7), one transfer at a time. A receiver may still answer *requests* in any order
+  (11.4): software that needs one read's data before another's arms and waits for them on separate counters.
+  v1.35 also let the packets of two reads to one tile interleave; the RW engine does not.
+  *(Deferred, item 119: whether a cache in front of LPDDR may answer hits before misses.)*
+
+### 23.4 Writes
+
+v1.35's writes by tags are 11.5's `WRITE` request and 17.7's write buffer:
+
+1. The writer sends a `WRITE` request: `beats` and the LPDDR beat address (11.5).
+2. The memory tile's software allots a **part** of the write buffer to it, arms one of its own counters with
+   `beats`, and replies with the part's address and that counter's number (11.5): v1.35's tag.
+3. The writer sends exactly `beats` 128-bit `WRITE`s into the part, counted on that counter.
+4. When the counter drains, the memory tile's core starts the RW engine's write, and on its `EVENTS.done` the
+   part is free again (17.7): the tag, returned.
+
+- **Fan-in** (a constraint on the memory tile's software). Every write into the buffer reaches the memory tile
+  through its one attach link, and the NoC has no flow control (16.3), so several tiles streaming into parts at
+  once overflow a queue. The software keeps **one writer in flight at a time**, or **paces its writers** to a
+  stated share of one packet a cycle (17.7).
+- **The source buffer** may be overwritten once the transfer that sends it has ended (`EVENTS.dma_done`): the
+  read arbiter has then taken every read of it (8.2), ahead of any later write (15) [derived].
+- *(Deferred, item 119: how the file system chooses and reuses parts, the pool's size, and the writer's
+  acknowledgement beyond the reply.)*
+
+### 23.5 The file system *(Deferred, item 119)*
+
+Not specified and not built, as in v1.35. **Every `op` of the memory tile other than `READ` and `WRITE` is its
+firmware's** (11.5): the file system's requests, their layouts and their replies come with its design.
+
+- **Files.** What v1.3 fixed stands: memory is **files of 4 KiB pages**, each a tree of 1,024-entry index pages
+  whose depth follows its length, read and written by **128-byte lines**, a hole (an entry of 0xFFFF_FFFF)
+  reading as zero (17.9.5).
+- **The Updater and the Binder** (applying updates, binding) are not part of the RW engine (17.7) and are
+  deferred with the file system *(item 60)*.
+- **Debug output.** Each tile is to open **log files through the file system** and `printf` into them; when the
+  chip fails, the file system flushes their tails to LPDDR (22). The protocol is the file system's.
+- **Mounting existing state** after a soft reset, so that the wreckage can be read: deferred, with the soft
+  reset itself *(Open, item 124)*.
+
+### 23.6 The memory system behind the fill port *(Open)*
+
+The Tracer's misses do not use the request tree. They go over the **fill port** (3, 17.9.5): each request names
+one 128-byte line of a file by **(root, depth, line)**, a read's response carries a status (`ok`, `hole`,
+`not_owned`, `beyond`), and a write-back's response a status too (`ok`, `error`), which v1.35 did not have.
+17.9.5 specifies the Tracer's side.
+
+**The memory system's side is not built** (2.1): the translator, which walks a file's tree with no TLB; the
+**512 KiB cache shared by the whole chip**, after translation; and LPDDR behind it. In the RTL (Snarky One) the
+`fill` port stops at the chip's boundary. What 3 requires of whatever serves it: every request answered in
+bounded time, a read of a line seeing a write of it already accepted, and nothing accepted before a reset
+answered after it.
+
+**The simulator's model of it** (v1.35's, kept as the simulator's stand-in; its figures are the model's, not
+promises):
+- the shared cache as 8 ways × 512 sets, LRU, write-back; a hit in 6 cycles and a miss filled from LPDDR in 80;
+- translation as the walk, each index read a cache access;
+- the next victim in every set kept free or clean, dirty victims leaving early through a 4-line write buffer that
+  drains one line per 80 cycles, a read miss waiting until it is empty;
+- a Tracer write-back that misses allocates without an LPDDR read;
+- cold at each segment's start.
+
+It models only the Tracer's traffic, so its hit rates are optimistic. v1.35's model had one request outstanding;
+the fill port allows one read and one write outstanding together (3), and a write-back may fail (17.9.5), so
+v1.36's model serves the two channels separately and can return `error`.
+*(For the memory system's design: per segment the model reports early evictions, write-backs and read waits; if
+the waits matter, a 4-entry address compare in the write buffer is the cheap fix.)*
+
+### 23.7 Errors
+
+- **A request for a reserved target** (3–7) is dropped at the root (11.2), with nothing recorded
+  *(Open, item 126: whether the hardware records it; the RTL records nothing)*. The simulator flags it.
+- **An `op` the target does not define is UB** (11.5). v1.35 had the memory system drop such a request and raise
+  one of its peripheral's errors; the RW engine knows nothing of requests (17.7), so the check, if any, is the
+  memory tile's firmware's.
+- **An LPDDR response that is not OKAY** sets the RW engine's `ERRORS.lpddr_error` (17.7), which raises the memory
+  tile's error line and so the toast pin (17.6). A job past LPDDR's end is UB (17.7).
+- **A dropped or unanswered read never lands,** so its tile waits until the master tile's watchdog expires (17.6).
+
+### 23.8 No per-tile pacing
+
+The memory tile may deliver to a tile at up to one packet a cycle: the tile's eject serves arriving packets
+before its loopback queue (16.3), so its eject queues drain as fast as the delivery fills them, and the
+loopback, which the tokens protect (14.2), waits. Other traffic to a receiving tile comes on top and is the
+program's to pace (16.3).
+
+### 23.9 What a program must keep to (invariant 17, the request contract)
+
+- arm the counters for a request's data and its reply before sending it, and name them, with the reply's address,
+  in the request (11.4);
+- at most 1, 3 and 1 requests outstanding to the master, memory and tracer tiles (11.3); error reports excepted;
+- write a part of the write buffer only when the memory tile's reply directs it, exactly `beats` packets, one
+  writer in flight or paced (23.4);
+- **no `READ` outstanding and no write into the write buffer in flight across a group transfer**, so the memory
+  tile's traffic never meets the all-to-alls' schedule;
+- no read-unit reads outstanding while deliveries arrive (invariant 14)
+  *(Not stated by the RTL's specification; kept from v1.35; item 116)*;
+- deliveries into DMEM inside DMEM, clear of its reserved first 16 bytes (6.3) and of what the image keeps
+  (invariant 11).
+
+## 24. Logic budget (per tile, 12 nm estimates)
+
+The SRAM is about 75 % of the die; the remaining 25 % is about 1.5 mm² per tile for everything else. Every module
+is charged here, and additions must fit. The estimates exclude the scratchpad's banks themselves.
+
+**Every figure in mm² is v1.35's `[estimate]`,** rough (±50 %) and unreviewed, made for v1.35's hardware: 256-bit
+stored packets, bank request queues, a 128-entry request queue, an attach port on every tile. Where v1.36's
+hardware differs, the line says how, and its bit counts are derived from v1.36's sizes `[derived]`; the areas are
+to be redone. The RTL's (Snarky One's) synthesis results are on another process and are not signoff, so they are
+not used here.
+
+| module | state | v1.35's estimate, and what changed |
+|---|---|---|
+| `router` (16): 17 queues of 16 packets (4 link outputs × 2–4 queues, the eject × 5), the route blocks, the arbiters; the links' register stages | 17 × 16 × 182 bits ≈ 50 Kbit of flops at 8 × 8 | ≈ 0.11 mm² at 256 stored bits (70 Kbit). v1.36 stores a packet's defined bits only, 182 at 8 × 8 (4.1) |
+| the loopback queue at `LOOPBACK_QUEUE_DEPTH` ≥ 64 (16.3): 48 entries more than a router queue, as flops or a small two-port SRAM | ≈ 9 Kbit | ≈ 0.015 mm² at 256 stored bits (12 Kbit) |
+| an attach port (16.1), on an attach tile only, one per special tile attached: a route block, its queues at each output it reaches and at its own output, wider arbiters | | 0.04–0.07 mm² in v1.35, which charged it to every tile; v1.36 builds it on the attach tiles alone (0, 7 and 15 at 8 × 8) |
+| `receive_unit` (12): the traffic director with its address decode and the `LAND_LATENCY`-stage delay line; the counters with their add ports; the write engine's pipeline, its augment and count logic | | the director was in v1.35's router line; the write engine ≈ 0.007 mm², with an input FIFO that v1.36 does not have (12.4) |
+| `inject_unit` (14) and the scratchpad's routing (15): the read arbiter, the tokens, the return queues of per-read address and header, per-word write enables, routing from the clients to the banks and back | | ≈ 0.015–0.03 mm² in v1.35, with eight bank request queues of about 165 bits an entry; v1.36 has no bank queue (14.1, 15) |
+| `dma_unit` (8): the read-ahead queues (`READ_AHEAD` × about 100 bits: a `STREAM` and a `GROUP` entry), a rotation or element counter (18 bits) and its comparator, the element-address shift-add (21 bits), the relative-destination adder, the transfer's state | | ≈ 0.011 mm² |
+| `read_unit` (10): the read queue, `READ_QUEUE_DEPTH` (64) entries of 58 bits (address, 32-bit destination, size, counter), its registers | ≈ 3.7 Kbit | ≈ 0.005 mm² at v1.35's 43-bit entries (2.8 Kbit) |
+| `gather_unit` (13): the gather queue, `GATHER_QUEUE_DEPTH` (64) entries of an ordinal and a counter field (23 bits), the address multiply-add (*k* ≤ 8: a shift-add), the per-value counter | ≈ 1.5 Kbit | ≈ 0.004 mm² at v1.35's 16 entries of 64 bits (1 Kbit) |
+| the tables (8.6, 12.5): `STREAM_SRC_ADDR`, `STREAM_DEST_ADDR`, `STREAM_HDR` (256 × 21, 32 and 32 bits), `GROUP` (64 × 38 bits), `PTR` (256 × 21) and `HIST` (256 × 17) with their read-modify-write pipelines and bypass | ≈ 34 Kbit of SRAM | ≈ 0.017 mm², with two 16-entry request FIFOs that v1.36 does not have (12.5) |
+| `core` (6): RV32I + C + Zmmul + Zicsr + Zicond with `WFI`, the CSRs, the trap logic and the coprocessor port; IMEM and DMEM, 32 KiB each, each with its NoC port (one 128-bit write a cycle); the boot ROM | | ≈ 0.15 mm² for the core, its memories and its registers together, without C, Zicond or the coprocessor port |
+| `register_bus`, `tile_control_unit` and `write_unit` (5, 7, 9): the decode of region 0xFF; `PARAMS`, `STATUS`, `ERRORS`, the three event registers, `ARRIVE`, the arrival gate, the error line; the write unit's registers and holding register | | in v1.35's controller line, and 0.005 mm² for the barrier, the gate and the flags |
+| `request_unit` (11): the request queue, `REQUEST_QUEUE_DEPTH` (4) × 128 bits, the `REQUEST_OUT` registers, the 16-bit serializer; on a special tile, its receive queue (below) | ≈ 0.5 Kbit on a compute tile | ≈ 0.008 mm² in v1.35, with a 128 × 128-bit queue (16 Kbit) |
+| the peripherals' interface (17.1–17.3): the three windows' decode, the tile's live event and error bits, the write ports; a DMA only where a peripheral sends, on a special tile (17.4) | | ≈ 0.003 mm² |
+| the replayer (17.8), peripheral 1 on every compute tile: ALU and comparator, the 128 × 64-bit true dual-port register file, two adders, the operand resolution, the decode index, four queue readers and credit counters, three decoders and their size counters; with its memories (queues, ROM, decode table, register file, output queue) | ≈ 256 Kbit of SRAM | ≈ 0.09–0.14 mm² (`spec/jolt/replayer.md`) |
+| **total per compute tile** | | **≈ 0.52–0.61 mm² in v1.35,** with the replayer and an attach port, about 35–40 % of the per-tile logic budget. v1.36's changes all reduce it but the core's two extensions and the read and gather queues' entries. Still inside 1.5 mm² |
+| the special tiles (2.1) | tile instances with the compute tile's scratchpad, `SCRATCHPAD_BYTES`, each a tile's logic plus its peripheral and, with a sending peripheral, its DMA | not estimated here. v1.35 gave them 2 MB of big SRAM each |
+| once per die: the request tree's nodes (11.3), `MESH_SIZE` row nodes and the root, a 16-byte buffer per input, their arbiters and the root's credit counters; the three receive queues, 128, 256 and 128 × 128 bits at 8 × 8, each in its receiving tile's request unit; the tree's wiring (18 wires a link: 16 data, valid, ready) and a credit wire from each receiving tile | ≈ 74 Kbit | ≈ 0.03 mm² plus wiring |
+
+Rule of thumb: tables go in SRAM (cheap); comparators, multiplexers and per-entry flop state are what spend the
+budget. The tile is dominated by the scratchpad: at 0.75–0.9 MiB/mm², 4 MiB is about 4.5–5.3 mm². With the logic
+and the link channels, a tile is roughly 6–7 mm² at 4 MiB `[estimate]`. The banks' density at one access a cycle
+awaits memory-compiler numbers (item 1).
+
+## 25. Physical design: the control island
+
+A default arrangement, not a contract: what the latencies of chapter 19 were chosen to allow. Sizes are v1.35's
+`[estimate]`, at 12 nm, to be redone with chapter 24.
+
+All the tile's small memories and its registers cluster around the core. The units and the router sit between
+this **control island** and the scratchpad and the links.
+
+- **In the island:**
+  - the core;
+  - its memories, IMEM and DMEM (32 KiB each), and the boot ROM;
+  - the tables (`HIST`, `PTR`, the three `STREAM` arrays, `GROUP`);
+  - `register_bus` and the tile window's registers.
+
+  Rough sizes: about 0.017 mm² for the tables, 0.14 mm² for the 64 KiB of IMEM and DMEM, 0.01 mm² of core logic.
+  The island is **about 0.17–0.2 mm², a patch 0.4–0.45 mm across** `[estimate]`. Wires inside it cost a few tens
+  of ps.
+- **The tables go by the core, not the units.** The units' table traffic (the `PTR` and `HIST` read-modify-writes
+  with bypass, the `GROUP` and `STREAM` read-ahead) is pipelined and tolerates latency; the core's loads do not.
+  The units pay the distance: `TABLE_LATENCY` (8, 12.3).
+- **Configuration registers** live in the island although the units use them. They are static while they are
+  used, so the long wires are multi-cycle paths, or the units keep local copies.
+- **Status bits** are registered at their source in each unit and cross to the island with one flop (`status`,
+  3).
+- **The events** are registers in the island; the units' event pulses cross like status bits, with one flop.
+- **Not in the island:**
+  - everything the units touch every cycle other than the tables: the address generator's read-ahead queues,
+    the inject unit's return queues, the write engine's pipeline, the router's queues;
+  - the gather unit and the read unit's queue, which sit by the scratchpad.
+- **The request unit** sits at the island's edge: its registers in the island, its request queue beside them, and
+  its `request_link` leaving for its row node, which sits in the channels of its row of tiles. The root and its
+  credit counters sit by the master tile. A receive queue sits in its receiving tile's request unit, at the end
+  of a `request_link` from the root, with a `request_credit` wire back (11.3). The tree's placement and its links'
+  pipeline stages are *(Open)* (item 61).
+- **Paths that cross the gap:** the units' table accesses, and the traffic director's writes to the NoC ports of
+  IMEM and DMEM (`WRITE_PORT_LATENCY`). A peripheral (the replayer) sits beside the traffic director, outside
+  the island, with its memories as SRAMs, and the write path to it is pipelined within `PERIPHERAL_LATENCY`
+  (17.3; item 48; the replayer's placement against the materializer is open with item 59). Its window's loads
+  and its live event and error bits cross to the island like status bits. A sending peripheral's DMA sits by its
+  output queues and its router input (16.4). All are pipelined and tolerate latency, so the island costs no
+  throughput.
+- **The scratchpad:** at the default size, eight 512 KiB banks (128 bits × 32K rows each) around the logic, with
+  the link channels between them. Their arrangement awaits the memory compiler's numbers (item 1).
+
+## 26. Open items
+
+What is open, proposed or deferred in v1.36's design, each with the section it affects; possible later additions
+are marked *later*. The replayer's and the Tracer's items are in `spec/jolt/replayer.md` and `spec/jolt/tracer.md`.
+Numbers are v1.35's and are never reused; items 160 and up are new in v1.36 (174 to 177 are the Tracer's). Every earlier item's history is
+`spec/history/machine-spec-v1.3-section-13.md`, and the decisions are in `spec/history/`.
+
+v1.36 takes the RTL's (Snarky One's) hardware. Where that hardware settles an item, the item is closed below,
+the way v1.35 closed its own, and where it bears on one without settling it, the status says *informed* and the
+row says how. Chapters 1 to 19 mark an open subject *Open* in place; each is an item here.
+
+| item | what is to be settled | section | status |
+|---|---|---|---|
+| 1 | Memory-compiler numbers for a scratchpad bank's SRAM: latency, density, arrangement. The RTL builds one single-port SRAM per bank of at most 512 KiB, on placeholder macros | 15 | open, informed |
+| 7 | Gapless one-word exchanges: simulate them, then tighten the gap if queues stay low. The gap is now one per transfer, `DMA_CONFIG.gap`, 0 allowed | 8.1, 8.3 | open, informed |
+| 8 | The physical latencies of the three global nets, `ARRIVE_LATENCY`, `RELEASE_LATENCY` and `ERROR_LATENCY`, settled together. They are the chip's parameters; the RTL's chip holds wires and one flip-flop (19.1) | 18, 19 | open, informed |
+| 10 | Above the chip: cards, FPGAs, links and each chip's DRAM are not specified | 2 | open |
+| 13 | The sort's output format (keys carry the receive-buffer ordinal) | 27 | open |
+| 24 | Re-measurement: labels in this document and in `spec/schedule.md` still say "to be re-measured"; with item 164 | all | open |
+| 61 | The request tree's physical design: node placement and the links' pipeline stages. The RTL has one register a node, cut-through, and wires for links until there is a floorplan | 11.3, 25 | open, informed |
+| 107 | 4.25 MiB of scratchpad per tile, a tentative working figure. `SCRATCHPAD_BYTES` is a power of two, which cannot express it | 5.1, 15, 19 | open: needs a decision |
+| 116 | Read-unit reads overlapping incoming traffic: revisit the rule and invariant 14. The RTL's specification states no rule; v1.35's is kept | 10, 20 | open |
+| 124 | The hard and the soft reset, the soft reset's keep list, the RW engine's and the LPDDR controller's among them. The machine has one reset; the `lpddr` port's contract (3) constrains a soft one | 18, 17.7 | open |
+| 128 | `LAND_LATENCY`'s margin, validated across workloads. The RTL's slowest write path is 2·`TABLE_LATENCY` + 2 cycles after the acceptance, so 8 covers `TABLE_LATENCY` ≤ 3: the figure v1.35 asked the RTL for. The validation on the simulator is left | 12.3, 20 | open, informed |
+| 160 | **A peripheral DMA's packets carry the tile's own id as src** (16.4), where item 118 decided src = the id + 8 (owner, 2026-11-05). *(Reversed in v1.36, for the owner to rule on: see `spec/CHANGES-v1.35-to-v1.36.md`)* | 16.4, 17.4 | open: reverses a ruling |
+| 161 | **The Tracer's `EVENTS` and `ERRORS` are packed from bit 0** (17.9.1), where item 144 kept the positions shared with the replayer. *(Reversed in v1.36, for the owner to rule on: see `spec/CHANGES-v1.35-to-v1.36.md`)* | 17.9.1 | open: reverses a ruling |
+| 162 | **The segment's handshakes are requests to the tracer tile** (17.9.10), where v1.35's 4.21.10 staged them by a software delay, with "no 'booted' packets and no request-tree barrier". *(Reversed in v1.36, for the owner to rule on: see `spec/CHANGES-v1.35-to-v1.36.md`)* | 17.9.10, 11.5 | open: reverses a ruling |
+| 163 | How exact the simulator must be: the RTL's core, Tracer and replayer stall costs cycle for cycle, or exact rows and results with cycle counts close | 21, 19.1 | open |
+| 164 | Every `[meas: v1.35]` figure, and every older one, re-measured on v1.36's simulator; the RTL's sort comparison (27) re-run against it | all | open |
+| 165 | The field accelerator: where it attaches, as a peripheral or at the core's coprocessor port; what the coprocessor port serves; its access to the scratchpad; and, before those, its prime, operations and representation | 2.2, 6.1, 15 | open |
+| 166 | The host interface's meaning: the master tile's boot over LVDS, the beats and TLAST | 6.5, 17.6 | open |
+| 167 | How a silicon memory tile's IMEM and DMEM are filled (`boot_local`) | 6.5 | open |
+| 168 | A core load or store of `PTR` or `HIST` that meets its engine: the store lost and the load undefined (12.5), where v1.35 defined both | 12.5 | open: for the owner to confirm |
+| 169 | The gather queue at `TOKEN_COUNT`, its overflow a program error that only the tile's other senders can cause, and the address generator taking no read while the gather unit is busy. It changes the gather steps' cycle counts | 13, 14.1 | open: for the owner to confirm |
+| 170 | Whether `READ_LATENCY` and "a write wins its bank, with no bank queue" are contract values or stay the implementation's. The RTL's 3 cycles rest on placeholder SRAMs | 15, 19 | open |
+| 171 | No start skew: the release reaches every compute tile in the same cycle, where v1.35 allowed 0 or +1. How the net does it is physical, with item 8 | 7.3, 18 | open |
+| 172 | The UART's divisor counts the chip's clock and resets to 115,200 baud. v1.35 counted a reference oscillator, at 57,600, so that the UART works before the PLL locks | 17.6, 19 | open: for the owner to confirm |
+| 173 | Bring-up with every compute tile in every release, no one-at-a-time start and no overlays: what a partial or debug bring-up uses | 6.5, 7.3 | open |
+| 15 | A status bit with the arrival, for per-owner completion | 17.6 | proposed |
+| 27 | Drop the one-read-size-per-group rule. The RTL neither forbids mixed sizes nor tests them | 8.4 | proposed |
+| 28 | 128-bit staging from the master tile. A load is `WRITE` packets straight into IMEM and DMEM (6.5), of any size | 6.5 | proposed, informed |
+| 64 | The request queue and its stall rule. The stall rule is kept (11.1); the queue is `REQUEST_QUEUE_DEPTH` = 4, where v1.35 had 128, and there is no "no longer full" event, so a burst of reports stalls the core | 11.1, 19 | proposed: needs a decision |
+| 48 | Decided: a peripheral's landing is bounded. `PERIPHERAL_LATENCY` is a bound, at most `LAND_LATENCY` − `WRITE_PORT_LATENCY`, and every peripheral specified lands 2 cycles after the director's acceptance; still proposed: whether 2 is the contract | 17.3, 19 | decided, part proposed |
+| 60 | The memory system's side: the memory system behind `fill`, on the memory tile, its translator and shared cache, its latencies, and the link's physical width; with the file system (119) | 2.1, 3, 17.9.5, 23 | deferred |
+| 119 | The file system, with its design. The RW engine, the `READ` and `WRITE` requests, the write buffer and the `lpddr` port are specified (11.5, 17.7); the Tracer's side is specified | 11.5, 17.7, 23 | deferred, part decided |
+| 130 | A 1 × 4 test chip. Decided: the mesh is square, `MESH_SIZE` 1 to 8; a 1 × 4 is not one | 2.1, 16.2, 19 | deferred, part decided |
+| 159 | The simulator checks to add: invariant 17's request limits, its write-buffer rule and its group-transfer rule; invariant 18 for the scratchpad; size 11 and the two stream cases, stopped rather than counted | 20, 4.1, 8.3 | deferred (owner, 2026-11-12) |
+| 17 | A direct path from the gather unit to the write engine | 13 | later |
+| 18 | Fusing the local gather with the values all-to-all | 8.4, 13 | later |
+| 19 | An arrival-order form of augmenting for `GATHER` | 12.4 | later |
+| 20 | A search engine for the split | 10 | later |
+| 21 | A NoC-port reader for bulk transfers from DMEM | 14 | later |
+| 22 | Whole-row fetches for 64-bit streams | 8.3 | later |
+| 125 | Signed counters. Requests now remove the window between the release and the arming at boot (6.5) and in the segment (17.9.10), which was its use | 12.2 | later, informed |
+
+**The index:** where each item lives; *closed* means settled, its record in the history file or below.
+
+1 here; 2 closed (v1.36); 3 closed (v1.36); 4 closed (v1.36); 5 closed (v1.36); 6 closed (v1.36); 7 here; 8 here; 9 closed; 10 here; 11 closed; 12 closed; 13 here; 14 closed; 15 here; 16 closed; 17 here; 18 here; 19 here; 20 here; 21 here; 22 here; 23 closed; 24 here; 25 closed; 26 closed; 27 here; 28 here; 29 closed; 30 closed; 31 closed; 32 closed; 33 closed; 34 closed; 35 `spec/jolt/replayer.md`; 36 `spec/jolt/replayer.md`; 37 closed; 38 `spec/jolt/replayer.md`; 39 `spec/jolt/replayer.md`; 40 closed; 41 closed; 42 `spec/jolt/replayer.md`; 43 closed; 44 closed; 45 closed; 46 closed; 47 closed; 48 here; 49 closed; 50 closed; 51 closed; 52 closed; 53 closed; 54 closed; 55 closed; 56 `spec/jolt/replayer.md`; 57 `spec/jolt/replayer.md`; 58 closed; 59 `spec/jolt/replayer.md`; 60 here; 61 here; 62 closed (owner, 2026-11-12); 63 closed (v1.36); 64 here; 65 closed; 66 closed; 67 closed (v1.36); 68 closed; 69 closed; 70 closed (owner, 2026-11-12); 71 closed; 72 closed; 73 closed; 74 closed; 75 closed; 76 closed; 77 closed; 78 closed; 79 closed; 80 closed; 81 closed; 82 closed (v1.36); 83 closed (v1.36); 84 closed (v1.36); 85 closed; 86 closed; 87 closed; 88 closed; 89 closed; 90 closed; 91 closed; 92 closed; 93 closed; 94 closed; 95 closed; 96 closed; 97 closed; 98 closed; 99 closed; 100 closed; 101 closed; 102 closed; 103 closed (owner, 2026-11-12); 104 closed; 105 closed; 106 closed; 107 here; 108 closed; 109 closed; 110 closed; 111 closed; 112 closed; 113 `spec/jolt/replayer.md`; 114 closed; 115 `spec/jolt/replayer.md`; 116 here; 117 closed (v1.36); 118 closed (v1.36), its decided half reversed (160); 119 here; 120 closed (v1.36); 121 closed (v1.36); 122 closed (v1.36); 123 `spec/jolt/replayer.md`; 124 here; 125 here; 126 closed (v1.36); 127 closed; 128 here; 129 closed (v1.36); 130 here; 131 closed; 132 closed; 133 closed (v1.36); 134 closed; 135 closed; 136 closed; 137 `spec/jolt/replayer.md`; 138 closed; 139 `spec/jolt/replayer.md`; 140 `spec/jolt/replayer.md`; 141 closed; 142 closed (v1.36); 143 closed; 144 closed, and reversed (161); 145 closed; 146 closed; 147 `spec/jolt/tracer.md`; 148 `spec/jolt/tracer.md`; 149 closed; 150 closed; 151 closed; 152 closed; 153 `spec/jolt/tracer.md`; 154 closed; 155 closed; 156 closed; 157 closed; 158 `spec/jolt/replayer.md`; 159 here; 160 here; 161 here; 162 here; 163 here; 164 here; 165 here; 166 here; 167 here; 168 here; 169 here; 170 here; 171 here; 172 here; 173 here; 174 `spec/jolt/tracer.md`; 175 `spec/jolt/tracer.md`; 176 `spec/jolt/tracer.md`; 177 `spec/jolt/tracer.md`.
+
+**Closed in v1.36,** each by the RTL's hardware, which v1.36 takes:
+- **2,** the bank request-queue depth, and **4,** the bound on bank queueing: there is no bank queue. A write
+  wins its bank and a read that would meet it is not taken, so a read waits only for a write to its own bank;
+  the placement rule is 15's, concurrent streams in different 512 KiB blocks (14.1, 15).
+- **3,** write combining: no. A 32- or 64-bit write is one access of its row, with per-word enables (15).
+- **5,** the `PTR` and `HIST` macros: no requirement on them. Each read-modify-write has a bypass, so no update
+  is lost at any spacing and nothing depends on read-during-write data (12.5).
+- **6,** the gather queue's in-flight bound: the queue holds `TOKEN_COUNT` requests and the address generator
+  takes no read while the gather unit is busy, so with the address generator as the only source it cannot
+  overflow (13, 14.1). What follows from it is item 169.
+- **63,** each node passes whole requests, round-robin: as proposed (11.3).
+- **67,** a read's data: 128-bit `WRITE` packets in ascending address order (11.4, 11.5).
+- **82,** the special tiles' attachment: tile ids `TILE_COUNT`, + 1 and + 2; attach tiles 0, `MESH_SIZE` − 1 and
+  (2·`MESH_SIZE` − 1) mod `TILE_COUNT`; the request receivers by straps, `PARAMS.receiver` and
+  `PARAMS.request_target`; the peripherals' type numbers (2.1, 7.1, 17.1).
+- **83,** the target numbering: 0 the master tile, 1 the memory tile, 2 the tracer tile; 3–7 reserved, a request
+  for one dropped at the root. v1.35's target 3 is not kept: the file system's requests are the memory tile's
+  (11.2, 11.5; item 119).
+- **84,** the request: beats in ascending order, bits [15:0] first; the row node writes the requester; the receive
+  queues are `RECEIVE_QUEUE_DEPTH`, 128, 256 and 128 at 8 × 8 (11.3). v1.35's "16 requests per target queue" was
+  stale.
+- **117,** storing the reserved packet bits: they are not stored. Every port, queue and stage carries the defined
+  bits alone (4.1).
+- **118,** its deferred half: a special tile's routing (16.2), and its DMAs' flow control, the room of the queue
+  a packet enters (16.4). Its decided half, src = the id + 8, is reversed: item 160.
+- **120,** the tables' address: 0xFFFF_E000 to 0xFFFF_F5FF, in 512-byte windows (5.2).
+- **121,** the core's CSRs and their reset values: `spec/core.md`, CSRs. There is no `mtime`.
+- **122,** the handler's report: a `REPORT` request, `op` 1, its number in word 0's [25:18] (6.5, 11.5).
+- **126,** a request dropped at the root: nothing is recorded (11.2).
+- **129,** `STREAM_SRC_ADDR` stays a 21-bit word address (8.3).
+- **133,** the handler parks in a jump to itself (6.5).
+- **142,** the region-decode check: kept, as the bad packet's first case (4.2).
+
+## 27. Context: the sort these tiles serve
+
+Not part of the hardware specification; it is here because it explains the gather unit and augmenting. The
+program is in `fw/sort/program/` (the split in `fw/sort/split/`, skew handling in `fw/sort/skew/`), and v1.3's
+measured times are in `v1.3/results/`. Every figure below marked `[meas: …]` or `[model]` for a version before
+v1.36 was made on that version's hardware and simulator, and is to be re-measured on v1.36's (item 164).
+
+For a 32-bit key and a value of *k* records (*k* = 2 for 128-bit values), the sort has six steps:
+
+1. **Local sort** of (key, index) words, with the index attached by augmenting (`AUGMENT`, 12.4).
+2. **Local gather** of the values into key order: a `GATHER` stream to the tile itself (13).
+3. **Split:** a bisection on key values. Owners exchange probe keys and counts ((lb, ub) pairs), as `WRITE`
+   packets from the write unit into the receiver's DMEM, and every tile counts by binary searches of its own
+   sorted keys through the read unit (10). Exact on all 25 data sets: ≈ 203K cycles on uniform, 246K mean over
+   the 24 non-trivial sets, 367K worst, with a seed bracket and an early exit to idle barriers [meas: RV32 ISS].
+   Interface and memory: `fw/sort/split/BINDING.md`.
+4. **Two all-to-alls,** group transfers on the 16-group schedule (`spec/schedule.md`):
+   - **keys,** as `AUGMENT`, with count-on-arrival on at the receiver;
+   - **values,** as `APPEND`, with count-on-arrival off.
+
+   Each sender's packets land contiguously at `PTR[src]`, set by the receiver from its counts; senders need no
+   destination addresses. Key *i* and value *i* correspond because both arrive in the same sender order.
+5. **Local sort at the owner,** starting with its first digit already counted.
+6. **Local gather** of the values into final key order: the same operation as step 2.
+
+The values cross the NoC once, and each value is read twice locally, by the two gathers. For the 32-bit-value
+format, key and value fit in one 64-bit record, the value travelling in the record's high word: so steps 2 and 6
+disappear, nothing is augmented (the first local sort's input pass and the keys all-to-all use `APPEND`, not
+`AUGMENT`), and there is no values all-to-all.
+
+**Phases.** Each step is one or more phases, and every phase ends at the barrier (7.3). In v1.36 a phase is not
+a command from the master tile: the image holds the schedule of phases, every compute tile runs it, and the
+arguments of a phase are data in DMEM (6.5).
+
+**Skew handling** (`fw/sort/skew/`). A three-stage switch picks the transfer path for step 4: direct,
+loopback-as-local-copy (LB), the one-layer two-hop (TH), or the balanced two-hop (BT), with every tile making
+the same choice from the group maxima. K + V including planning: 215K uniform, 199K sorted and all-equal, 420K
+reverse, 772–786K Zipf and trace, 741K at 99 % one value [model; planner cycles measured on an RV32 ISS].
+The schedule holds a fixed maximum number of layer phases, and tiles finish empty layers at once: an empty
+phase, from one release to the next, is 35 cycles on the RTL's chip [meas: RTL]. The switch is format-aware: for
+32-bit values it costs the keys all-to-all only (trace sets take BT at 332–343K against 0.59–1.00M direct;
+sorted and all-equal LB at 66.7K; reverse TH at 149.0K) [model]. TH and BT run every stream at the full
+window and so use a group gap of 4 (8.4). In v1.35 the planner was an overlay (≈ 8.5 KiB); v1.36 has no
+overlays, so it is part of the image (6.5).
+
+**Global totals** (the group maxima for the `GROUP` `rotations` fields, or any global sum) use a mesh reduction,
+not a ring scan.
+- Each row collects toward its column-0 tile (4 hops from one side, 3 from the other), then column 0 collects
+  toward tile 0 the same way, and tile 0 broadcasts.
+- That is about 8 core turnarounds instead of 63.
+- **One-word totals** move as counted `WRITE`s into the collector's DMEM: a collector arms the counter with 2
+  and waits in `WFI`; a tile mid-chain arms it with 1.
+- **Vectors** (the 16 group maxima) move as four 128-bit `WRITE` packets into the receiver's DMEM, counted on a
+  counter.
+- The ring scan is kept only for exclusive prefixes.
+
+**The whole sort.** The plan estimated ≈ 1.37M cycles at *k* = 2 on uniform data [model]. Measured, for the
+full-size sort `uniform-k128` (64 tiles × 65,536 records, 128-bit values):
+
+| version | cycles | what it was measured on |
+|---|---|---|
+| v1.2 | 1,360,082 | [meas: v1.2] |
+| v1.25 | 1,229,008 | [meas: v1.25]: 131,074 fewer, all from the even-*k* gathers (13) |
+| v1.35 | 1,229,687 | [meas: v1.35], its simulator at its defaults, the three global nets at 8 cycles (`RUNNING.md`) |
+| v1.36 | to be measured | item 164 |
+
+Since v1.1 the values all-to-all of the 128-bit-value format sends one packet per value instead of two.
+
+**The RTL's sort** [meas: RTL]. The RTL (Snarky One) runs this sort end to end on its chip, in simulation, on a
+port layer over the same program. Its figures run from the first step's release to the last step's all
+arrived. **Their baseline is not v1.35:** the RTL measured them against v1.25's simulator with the nets'
+latencies at 1, on the same input. The sort's sources are the same in v1.25 and v1.35, but v1.35's defaults are
+8, so its 1,229,687 above is not comparable with the baseline column.
+
+| sort | the RTL | v1.25's simulator, nets at 1 | ratio |
+|---|---|---|---|
+| 64 × 16 records, 32-bit values | 150,261 | 123,473 | 1.22 |
+| 64 × 16 records, 128-bit values | 153,013 | 125,980 | 1.21 |
+| 64 × 65,536 records, 32-bit values | 952,154 | 894,163 | 1.06 |
+| 64 × 65,536 records, 128-bit values | 1,306,907 | 1,229,959 | 1.06 |
+
+- **The transfers agree.** The steps the tile's engines and the NoC drive (the local sorts, K and V at 65,536
+  records, 32-bit values) are within 0.2 % of the simulator's.
+- **The core accounts for the gap.** The steps bound by code take longer: the split, 66 barriers round a
+  bisection through the read unit, 1.22 to 1.26 times; the exchanges driven a word at a time by the core, 1.3
+  times. v1.25's and v1.35's simulators retire an instruction a cycle with no load-use delay; the RTL's core's
+  costs are `spec/core.md`'s, and v1.36's simulator is to take them (19.1; item 163).
+- **The gathers.** With 128-bit values the two local sorts with their gathers take 2.2 % and 2.5 % longer at
+  65,536 records: the gather in 128-bit rows on the scratchpad's fixed read latency, with a write winning its
+  bank (13, 14.1, 15). Measured, and not attributed further.
+- **An empty phase** is 35 cycles from release to release, against 43 for v1.25's command at latency 1.
+
+v1.36's simulator is to reproduce the RTL's column (chapter 21), and the comparison is to be re-run against it
+(item 164).
+
+## Appendix A. The RTL's implementation
+
+Facts of the RTL (Snarky One) that are not contract: what it holds where chapters 1–19 leave a choice to the
+implementation, and how it builds some parts. They are here because v1.36's simulator is to reproduce the RTL's
+cycle counts (21, item 163), and because a reader of v1.35 will look for them. Another implementation may differ
+in any of them and still meet the contract. Synthesis results are not part of this specification: there is no
+PDK, and the RTL's are on a predictive process with placeholder SRAM macros.
+
+**The scratchpad** (the RTL's scratchpad README).
+- Banks are as large as chapter 15 allows, the fewest: min(`SCRATCHPAD_BYTES`, 512 KiB) each. 8 banks of
+  32,768 × 128 bits at 4 MiB, 16 at 8 MiB, one at 512 bytes. Each is one single-port SRAM with a write enable
+  per 32-bit word.
+- `READ_LATENCY` is 3: access registers, the SRAMs, an output register. Both ports pass through the same
+  stages, so one cycle's accesses reach a bank at one edge.
+- A read presented at the bank of the same cycle's write (which the read arbiter never does) returns an
+  undefined row; the write is done.
+
+**The inject unit** (its README).
+- The return queues are one delay line of `READ_LATENCY` stages: a read taken in cycle *t* is injected in
+  *t* + 3 and is at the router's local input, through the link register, in *t* + 4.
+
+**The DMA unit** (its README).
+- `GROUP` is two dual-port SRAMs, word 0's 64 × 30 bits and word 1's 64 × 8, so a core store needs no write
+  mask; the address generator reads both. (v1.35 had one SRAM; the split changes no behaviour.)
+- `STREAM_SRC_ADDR` 256 × 21, `STREAM_DEST_ADDR` 256 × 32, `STREAM_HDR` 256 × (25 + `TILE_ID_BITS`), one
+  dual-port SRAM each.
+- The end of a transfer (8.2) is the cycle after the walk completes, so `EVENTS.dma_done` and
+  `STATUS.dma_busy` come from registers.
+- A store to `DMA_CONFIG` during a transfer changes nothing of it: the transfer takes `DMA_CONFIG` at its start.
+- The address generator's offer is taken by the read arbiter in the cycle it is offered; there is no holding
+  register between them.
+- Tested at `TABLE_LATENCY` 1 and 2.
+
+**The read unit** (its README).
+- `READ_QUEUE_DEPTH` is 64, the least chapter 10 allows; the queue is a two-port SRAM of 58-bit entries.
+- Reads are offered in the order queued, each from the cycle after its `READ_SEND` takes effect.
+
+**The gather unit** (its README).
+- The gather queue is a two-port SRAM of 64 × 23 bits: the ordinal and the counter field.
+- The read offered is a register: for a request the director passes in cycle *a*, the first read is offered in
+  *a* + 2, and reads follow one a cycle, value to value without a gap, while the arbiter takes each.
+
+**The receive unit** (its README).
+- For a packet the director accepts in cycle *a*: the `noc_write` in *a* + 2; the `PTR` and `HIST` entry read
+  at the end of *a* + `TABLE_LATENCY` and written at the end of *a* + `TABLE_LATENCY` + 1; the scratchpad write
+  presented in *a* + 2·`TABLE_LATENCY` + 2. So `LAND_LATENCY` = 8 covers `TABLE_LATENCY` 1 to 3, and 4 is
+  refused.
+- `PTR` and `HIST` are one two-port SRAM each; the read-modify-write's bypass is a register, so no SRAM is
+  asked to read an address it is writing.
+- The write engine is a fixed pipeline, with no queue.
+
+**The router** (its README).
+- 17 queues on a compute tile, plus the attach ports' on an attach tile. `LOOPBACK_QUEUE_DEPTH` is 64.
+- A packet at the local input in cycle *t* is ejected *h* hops away in *t* + 4*h* + 2 when no queue holds it.
+
+**The request tree** (its README).
+- One register a node, cut-through, and links that are wires until a floorplan gives their lengths: unloaded, a
+  beat a compute tile offers in cycle *t* is offered to its target in *t* + 2, and a special tile's in *t* + 1.
+  From the `REQUEST_SEND` store to the request being loadable at its target that is 11 cycles from a compute
+  tile and 10 from a special tile (21.4; derived from the figures above and the request unit's, not a measurement).
+- A popped request's credit is usable by the root from the next cycle.
+
+**The request unit** (its README).
+- A `REQUEST_SEND` the core issues in cycle *t* pushes its request at the end of *t* + 1, and the request's beat 0
+  is offered to the tree from *t* + 2, one beat a cycle as the link takes them.
+- `REQUEST_QUEUE_DEPTH` is 4. `STATUS.request_full` and the store's stall come from the queue's count at the
+  start of the cycle.
+
+**The global nets** (the RTL's chip).
+- `ARRIVE_LATENCY` 0 (a wire), `RELEASE_LATENCY` 1 (Ingress/Egress's flip-flop) and `ERROR_LATENCY` 0: placeholders
+  until a floorplan gives the nets' lengths (19.1, item 8).
+
+**The core** is the core specification's (`spec/core.md`): its pipeline, its cycle costs and its memories' ports
+are stated there, as contract or as the RTL's, each marked.
+
+**The peripherals.** Each of the four built (Ingress/Egress, the RW engine, the replayer, the Tracer) lands a
+write at the end of the cycle its write port presents it, 2 cycles after the director's acceptance (17.3, 21.3).
+The replayer's and the Tracer's implementation figures are in `spec/jolt/replayer.md` and `spec/jolt/tracer.md`.
+
+**Mesh sizes.** The RTL is tested at `MESH_SIZE` 1, 2, 5 and 8.

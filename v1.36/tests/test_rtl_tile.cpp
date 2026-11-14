@@ -31,8 +31,8 @@
 //     requests. The bench takes a request's eight beats one a cycle, at the RTL test's random ready, and frees the
 //     queue's entry at the last, so the request queue fills and stalls the core as there.
 //   - The RTL's handshake monitors have no counterpart: the framework's ports have no ready or valid to watch.
-//   - The RTL's test takes the replayer's rows from the row port at a random ready; the simulator's row port is the
-//     replayer's sink, always ready, and the rows are read from its buffer after the pass.
+//   - The replayer's rows leave by the row port at the RTL test's random ready (two cycles in three), into the
+//     model's sink, and are compared after the pass; the port's handshake monitor has no counterpart.
 //
 // The boot ROM's cycles. The RTL states them on its block `core` (Snarky One's rtl/blocks/core/README.md, "The boot
 // ROM's program", lines 204-208: boot_rom_program_test's figures, cycle 0 the first after the reset, each ending at the
@@ -309,6 +309,7 @@ struct Run {
     int64_t released_at = -1;                              // the boot ROM's release: BARRIER_RELEASE's pulse; -1 none awaited
     uint64_t retired_at_release = 0;                       // the instructions retired by the release's cycle
     uint32_t figures[4] = {};                              // how many times each figure was checked
+    Replayer* row_port = nullptr;                          // the replayer whose row port the bench takes rows from, in its run
     bool dead = false;                                     // a check failed: the run stops
 
     explicit Run(uint64_t seed) : random(seed), files(rtl_images::program_list("fw/rtl/tile/base_tile", KIND_COUNT)) {}
@@ -367,6 +368,7 @@ struct Run {
             counts.inputs_driven[port]++;
         }
         b.request_ready = random.below(3) != 0;
+        if (row_port) row_port->row_ready = random.below(3) != 0;   // replay_row_ready (base_tile_test.rs: !one_in(3))
         b.release_now = release;
         release = false;
         mach->m.run(1);
@@ -708,8 +710,8 @@ struct Run {
     // x3 = 0x33, x4 = 0x44 before, rd_prev on), from pc 0x1000 and instr_idx 5, each the program's template's (opcode
     // ADDI, rs2 an immediate, sign_imm), and a padding word's row, all 0. The PASS report: ROWS_RUN, the replayer's
     // PARAMS (type 4, version 0) and its EVENTS_PEEK: the four credits the state write filled, still 2, done consumed.
-    // The simulator's row port is the replayer's sink, which takes a row in every cycle (the chip ties replay_row_ready
-    // to 1: 17.8.11); the rows are read from its buffer.
+    // The rows leave by the row port at a random ready, as the RTL's test takes them (the chip ties replay_row_ready
+    // to 1: 17.8.11), into the model's sink; the rows are read from its buffer.
     void replayer(uint32_t tile, unsigned port) {
         // (instr_idx, rd, rs1, immediate, rs1's value, rd before, rd after)
         const uint64_t rows[3][7] = {{5, 3, 1, 7, 100, 0x33, 107}, {6, 4, 3, 17, 107, 0x44, 124}, {7, 1, 2, 257, 200, 100, 457}};
@@ -729,8 +731,11 @@ struct Run {
         std::vector<uint64_t> out(8 * ROW_LONGS, ~uint64_t(0));
         Replayer& rp = mach->m.unit<PeriphSlot>(unit_prefix(tile) + "slot").s.replayer(1);
         rp.set_row_buffer(out.data(), 8);
+        row_port = &rp;
         load(KIND_REPLAYER, port, {});
         expect_report(report(), REPORT_PASS, 4, 4, 0x3C, "replayer's pass");
+        if (dead) return;
+        step_until(64, "the pass's four rows out of the row port", [&] { return rp.rows_sunk() >= 4; });
         if (dead) return;
         if (rp.rows_sunk() != 4) { fail("rows out of the row port: %llu, expected 4", (unsigned long long)rp.rows_sunk()); return; }
         for (unsigned i = 0; i < 4 * ROW_LONGS; i++)
@@ -739,6 +744,7 @@ struct Run {
         end();
         quiet();
         if (!dead && rp.rows_sunk() != 4) fail("a row after the pass: %llu rows", (unsigned long long)rp.rows_sunk());
+        row_port = nullptr; rp.row_ready = true;
         rp.set_row_buffer(nullptr, 0);
     }
 

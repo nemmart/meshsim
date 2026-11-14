@@ -64,13 +64,12 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     dc.engine = true;                                     // PTR's and HIST's requests are the director's (12.4, 12.5)
     dc.gather_note = true;                                // to the read arbiter (inject.h)
     dc.periph_slot = periph_slot;
-    const unsigned lookahead = g.cfg.ag_lookahead ? g.cfg.ag_lookahead : 2 * g.cfg.ts_engine_latency + 2;
 
     auto& c = cfg.add<TileCore>(t + "core", core, k, g.cfg.read_port_depth, periph_slot, receiver, bs, g.cfg.request_queue_depth);
     auto& b = cfg.add<TileCtl>(t + "ctl", block, true, periph_slot, receiver);
     auto& d = cfg.add<Director>(t + "dir", dc);
     auto& we = cfg.add<WriteEngine>(t + "we", g.cfg.ts_engine_latency, g.cfg.mem_chunks, true);
-    auto& ag = cfg.add<AddrGen>(t + "ag", k, lookahead, true, false);
+    auto& ag = cfg.add<AddrGen>(t + "ag", k, g.cfg.ts_engine_latency, true);
     auto& ga = cfg.add<Gather>(t + "gather", g.gather_depth, k, true);
     auto& ts = cfg.add<TableStore>(t + "ts", true);
     auto& hs = cfg.add<HistStore>(t + "hist");
@@ -117,13 +116,9 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     cfg.link(ts.ret_we, we.ts_ret, g.cfg.ts_engine_latency + 1);
     cfg.link(d.hist_req, hs.req, g.cfg.ts_engine_latency);
     cfg.connect(we.to_sram, sr.wr);
-    cfg.link(ts.ovf_ev, b.ts_ovf, 1);
     // the DMA unit's table reads and the PTR view, its start and status, drift; the gather unit's busy half and its
     // queue's overflow; the director's GATHER put (STATUS.gather_busy is the OR of three inputs, gather.h)
-    cfg.link(ag.stream_req, ts.req_stream, g.cfg.ts_engine_latency);
-    cfg.link(ag.group_req, ts.req_group, g.cfg.ts_engine_latency);
-    cfg.link(ts.ret_stream, ag.stream_ret, g.cfg.ts_engine_latency);
-    cfg.link(ts.ret_group, ag.group_ret, g.cfg.ts_engine_latency);
+    cfg.connect(ts.view, ag.view);                        // STREAM and GROUP, read ahead (8.5: TABLE_LATENCY is in ag.h)
     cfg.connect(ts.ptr_view, ag.ptr);
     cfg.connect(b.ag_start, ag.start);
     cfg.connect(ag.status, b.ag_status);

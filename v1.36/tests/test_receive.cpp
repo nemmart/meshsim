@@ -38,8 +38,7 @@ struct Stand {
     sim::CountOut rp_stores;
     sim::RegFileOut dma;
     // the core's side of the tables
-    sim::LinkOut ts_window, hist_window, req_stream, req_group;
-    sim::LinkIn ret_stream, ret_group, ts_ovf;
+    sim::LinkOut ts_window, hist_window;
     sim::RegFileIn ptr_view, view, hist;
     std::vector<Ev> script;
     uint32_t receive_config = 0, gather_config = 0;
@@ -55,8 +54,6 @@ struct Stand {
         p.out(rp_stores, "rp_stores");
         p.out(dma, "dma", DMA_REGS);
         p.out(ts_window, "ts_window", 2); p.out(hist_window, "hist_window", 2);
-        p.out(req_stream, "req_stream", 3); p.out(req_group, "req_group", 3);
-        p.in(ret_stream, "ret_stream", 3); p.in(ret_group, "ret_group", 3); p.in(ts_ovf, "ts_ovf", 0);
         p.in(ptr_view, "ptr_view"); p.in(view, "view"); p.in(hist, "hist");
     }
     sim::Wake step(sim::Ctx& c) {
@@ -122,9 +119,6 @@ struct Rig {
         cfg.connect(we.to_sram, sr.wr);
         cfg.link(st.ts_window, ts.window, 1);
         cfg.link(st.hist_window, hs.window, 1);
-        cfg.link(st.req_stream, ts.req_stream, 1); cfg.link(st.req_group, ts.req_group, 1);
-        cfg.link(ts.ret_stream, st.ret_stream, 1); cfg.link(ts.ret_group, st.ret_group, 1);
-        cfg.link(ts.ovf_ev, st.ts_ovf, 1);
         cfg.connect(ts.ptr_view, st.ptr_view);
         cfg.connect(ts.view, st.view);
         cfg.connect(hs.out, st.hist);

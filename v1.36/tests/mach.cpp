@@ -91,7 +91,7 @@ const Field kFields[] = {
     F_U("rpLatency", rp_latency), F_U("K", K), F_U("memChunks", mem_chunks),
     F_U("readLatency", read_latency),
     F_U("readTokens", read_tokens), F_B("loopbackLast", loopback_last), F_B("loopbackTokens", loopback_tokens),
-    F_I("loopbackDepth", loopback_depth), F_U("tsEngineLatency", ts_engine_latency), F_I("agLookahead", ag_lookahead),
+    F_I("loopbackDepth", loopback_depth), F_U("tsEngineLatency", ts_engine_latency), 
     F_B("testReadClients", test_read_clients), F_U("regLoadLatency", reg_load_latency),
     F_B("ccCores", special_tiles), F_U("ccDmaDepth", cc_dma_depth),   // (ccCores: v1.3's name of the machine with units 64-66)
     F_U("arriveLatency", arrive_latency), F_U("releaseLatency", release_latency), F_U("errorLatency", error_latency),   // (v1.36's: 18)
@@ -127,6 +127,7 @@ const std::vector<std::pair<std::string, std::string>>& MachConfig::dropped() {
         {"doneGate", "v1.36: no DONE and no gate (ARRIVE and the arrival gate: 7.3)"},
         {"strictReplies", "v1.36: no reply block, so no check of it"},
         {"checkCommandRead", "v1.36: no command block, so no check of its reads"},
+        {"agLookahead", "v1.36: READ_AHEAD is 2 TABLE_LATENCY + 2 (machine-spec 8.5), not a setting"},
         {"weInDepth", "v1.36: the write engine is a fixed pipeline with no input FIFO (machine-spec 12.4)"},
         {"areaQueueDepth", "v1.36: the scratchpad has no bank request queues (a write wins its bank: machine-spec 15)"},
         {"writeCombining", "v1.36: no bank request queues, so no write to combine with (15)"},
@@ -263,7 +264,6 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     g.request_queue_depth = c.request_queue_depth;
     g.K = c.K; g.cm_latency = c.cm_latency;
     g.ts_engine_latency = c.ts_engine_latency;
-    g.ag_lookahead = c.ag_lookahead > 0 ? unsigned(c.ag_lookahead) : 0;
     g.read_latency = c.read_latency;
     g.read_port_depth = c.read_port_depth;
     m.gx.bootrom = m.rom.data(); m.gx.bootrom_words = uint32_t(m.rom.size()); m.gx.bootrom_handler = rom.handler;
@@ -1003,8 +1003,7 @@ bool TileRef::mem_idle() const {
 bool TileRef::ts_busy() const {
     const units::TableStore& t = unit<units::TableStore>("ts");
     const units::HistStore& h = unit<units::HistStore>("hist");
-    return t.pipe.valid || t.pub || t.q_stream.n || t.q_group.n || t.q_stream.pend || t.q_group.pend ||
-           h.pipe.valid || h.pub;
+    return t.pipe.valid || t.pub || h.pipe.valid || h.pub;
 }
 namespace {
 uint32_t link_after(sim::Sim& s, const sim::LinkIn& p, uint64_t c) {   // a Link's words arriving after c (still in flight)

@@ -120,7 +120,6 @@ struct MachConfig {
     unsigned ts_engine_latency = 1;    // TABLE_LATENCY
     unsigned reg_load_latency = 2;     // a window load's cycles (6.4)
     unsigned ref_cycle = 40;           // core cycles per reference-oscillator cycle (unit 64's UART, cc_cores)
-    int ag_lookahead = -1;             // <= 0: 2 ts_engine_latency + 2
     uint32_t mem_chunks = 1u << 20;    // the scratchpad's words
     unsigned read_latency = 3;         // READ_LATENCY (15, 19): a read's take to its row; the RTL's scratchpad's
     unsigned read_tokens = 64;         // TOKEN_COUNT (14.2)
@@ -164,7 +163,6 @@ struct MachConfig {
     static MachConfig machine();
     static MachConfig chip();          // machine() with the special tiles: v1.36's chip
     static MachConfig defaults();
-    unsigned ag_lookahead_used() const { return ag_lookahead > 0 ? unsigned(ag_lookahead) : 2 * ts_engine_latency + 2; }
     unsigned k_min() const;            // max(2L + 4, L + 4, cm_latency, rp_latency), L = ts_engine_latency
     MachConfig& with_ts_latency(unsigned L);
     // A field by v1.3's name (`cfg.<field>=value`: an int, a long, a boolean as Java parses them): false and `err` for an

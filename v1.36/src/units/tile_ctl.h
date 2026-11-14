@@ -32,8 +32,6 @@
 //   kline       Link(LAND_LATENCY + 1), width 1, from the director: a counter's decrement due (12.3)
 //   bad, ovf, drift, gather_ovf_ev  width 0, Link(1): the errors' pulses of the receive unit, the router, the DMA unit
 //               and the gather unit (7.4)
-//   ts_ovf      width 0, Link(1): an overflow of v1.35's STREAM and GROUP request FIFOs, which v1.36's hardware does not
-//               have (8.5): fatal, named (PENDING-v1.36.md)
 //   req_freed_ev  width 0, Link(1): the request queue's head left
 //   gather_busy, gather_srq_busy (Regs), gather_put (Link(1)): STATUS.gather_busy's inputs (gather.h)
 //   ag_status   Reg: the address generator's running | done << 1
@@ -84,7 +82,6 @@ enum : uint32_t {
 struct TileCtl {
     // ---- inputs ----
     sim::LinkIn bus, canon, side, release, kline, bad, ovf;
-    sim::LinkIn ts_ovf;
     sim::CountIn router_ovf, gather_ovf;   // the overflow Counts (statistics: the events above carry them)
     sim::RegIn send_busy;                      // the inject unit's holding-register status (v1.36 has no STATUS bit for it)
     sim::RegIn gather_busy, gather_srq_busy;   // the gather's own half; the read queue's (through MemIO)
@@ -115,7 +112,6 @@ struct TileCtl {
         if (slot) p.in(slot_win, "slot_win");
         if (receiver) p.in(recv, "recv");
         p.in(ovf, "ovf", 0);
-        p.in(ts_ovf, "ts_ovf", 0);
         if (g4) {
             p.in(gather_busy, "gather_busy", 1); p.in(gather_srq_busy, "gather_srq_busy", 1);
             p.in(gather_put, "gather_put", 0); p.in(gather_ovf_ev, "gather_ovf_ev", 0);
@@ -141,11 +137,6 @@ struct TileCtl {
         if (c.ready(bad)) { c.take(bad); in.error_pulses |= 1u << ERR_BAD_PACKET; }
         if (c.ready(req_freed_ev)) { c.take(req_freed_ev); in.freed = true; }
         if (c.ready(ovf)) { c.take(ovf); in.error_pulses |= 1u << ERR_ROUTER_OVERFLOW; }
-        // v1.35's request FIFOs in front of STREAM and GROUP, which v1.36's address generator does not have (8.5): an
-        // overflow there is a table read lost that the hardware would have made: stop.
-        if (c.ready(ts_ovf))
-            FATAL("tile %u, cycle %llu: the simulator's STREAM or GROUP request FIFO overflowed (v1.35's FIFOs: machine-spec "
-                  "8.5; PENDING-v1.36.md)", s.straps.tile_id, (unsigned long long)t);
         if (c.ready(bus)) {
             const sim::Word* m = c.peek(bus);
             const uint32_t op = uint32_t(m[0] >> 32), arg = uint32_t(m[0]);
@@ -516,7 +507,6 @@ struct G1Config {
     unsigned request_queue_depth = 4;  // REQUEST_QUEUE_DEPTH (19)
     // the memory path's keys
     unsigned ts_engine_latency = 1;    // TABLE_LATENCY: the engines' Links to and from the table store and HIST
-    unsigned ag_lookahead = 0;         // the AG's read-ahead rings; 0: READ_AHEAD = 2 TABLE_LATENCY + 2 (8.5)
     unsigned read_latency = 3;         // READ_LATENCY (15, 19): the RTL's scratchpad's
     unsigned read_port_depth = 64;     // READ_QUEUE_DEPTH (10)
     bool sram_running_sum = true;      // D31: BigSram keeps its fingerprint sum per store; false in timing runs

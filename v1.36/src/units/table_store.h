@@ -10,8 +10,9 @@
 // The core's store at t is committed at the end of t (a load at t + 1 sees it): the core puts it on `window`, a Link(1),
 // and the store applies it at its step at t + 1, before any reader of t + 1 (the core reads the tables' RegFiles at a
 // later level), unless the engine wrote the table at t. The engine's write at t is seen by a load at t + 1 too.
-//   TableStore: STREAM_SRC, STREAM_DEST, STREAM_HDR (256 x 32), GROUP (64 x 2 words), PTR (256 x 21); the address
-//               generator's STREAM and GROUP reads still pass v1.35's request FIFOs (PENDING-v1.36.md).
+//   TableStore: STREAM_SRC, STREAM_DEST, STREAM_HDR (256 x 32), GROUP (64 x 2 words), PTR (256 x 21). The address
+//               generator reads STREAM and GROUP through the `view` RegFile, with TABLE_LATENCY in its own timetable
+//               (ag.h): the store has no request port and no queue for it (8.5).
 //   HistStore:  HIST (256 x 17).
 // The window's word {table << 32 | index, value}; values already masked by the core (PTR 21 bits, HIST 17 bits, the
 // rest 32).
@@ -80,39 +81,6 @@ struct TableMems {
     }
 };
 
-// A request FIFO fed by a Link inside the store (TableStore's qStream, qGroup, qWe, HistStore's q: WordFIFO(16) after a
-// delay line). A put at t (an arrival) is judged at the store's next step, t + 1, against the occupancy at the start of
-// t (PORTS.md 3: count + a take at t >= 16 drops it); entries visible from t + 1.
-struct ReqFifo {
-    static constexpr unsigned N = 16;
-    uint64_t e[N][3] = {};
-    uint8_t head = 0, n = 0;
-    bool pend = false;                 // a put not yet judged (made at put_at)
-    uint64_t put_at = 0, pw[3] = {};
-    uint64_t last_take = ~0ull;
-    uint64_t overflows = 0, first_overflow = 0;
-    uint32_t peak = 0;                 // ref's highWater (PhaseLog's ptrReq/histReq/agTable; statistics only)
-    // Judge a put made before t; true if it overflowed (dropped).
-    bool commit(uint64_t t) {
-        if (!pend || put_at >= t) return false;
-        pend = false;
-        if (n + (last_take == put_at ? 1u : 0u) >= N) { if (!overflows++) first_overflow = put_at; return true; }
-        uint64_t* d = e[(head + n) % N];
-        d[0] = pw[0]; d[1] = pw[1]; d[2] = pw[2]; n++;
-        if (n > peak) peak = n;
-        return false;
-    }
-    void put(uint64_t t, const sim::Word* w) { pend = true; put_at = t; pw[0] = w[0]; pw[1] = w[1]; pw[2] = w[2]; }
-    const uint64_t* front() const { return e[head]; }
-    void pop(uint64_t t) { head = uint8_t((head + 1) % N); n--; last_take = t; }
-    const uint64_t* at(unsigned k) const { return e[(head + k) % N]; }
-    uint64_t digest() const {
-        uint64_t h = sim::hash_fields(n, pend, put_at, pw, last_take);
-        for (unsigned k = 0; k < n; k++) h = sim::hash_mix(h, sim::hash_bytes(at(k), 24));
-        return h;
-    }
-};
-
 // PTR's and HIST's read-modify-write (12.5): read on the read port at t, the new value written on the write port at
 // t + 1, with a bypass (the read at t sees the write of t). One a cycle, so at most one write is pending; the store
 // steps at its due cycle. A core store in the cycle of a write is lost.
@@ -134,35 +102,38 @@ struct TableStore {
     sim::LinkIn window;        // width 2, from the core: a table-window store of t (Link(1))
     sim::LinkIn req_we;        // width 3, from the director: PTR's read-modify-writes, Link(TABLE_LATENCY)
     sim::LinkOut ret_we;       // width 3, to the write engine: the old pointers {i, old, 0}, Link(TABLE_LATENCY + 1)
-    sim::LinkIn req_stream, req_group;      // width 3, the AG's (with_ag: G4)
-    sim::LinkOut ret_stream, ret_group;     // width 3, to the AG (with_ag)
-    sim::LinkOut ovf_ev;       // width 0, Link(1) to the block: a STREAM or GROUP request FIFO overflowed (D29)
     // PTR as the core's loads and the AG read it (with_ag): entry i as committed at the end of t - 1, the core's store
     // of t - 1 and the engine's write of t - 1 included; and PTR_RMW_AT, t + 1 in a cycle t the engine reads PTR in
     // (12.5: a core load of that cycle is undefined).
     sim::RegFileOut ptr_view;
-    sim::RegFileOut view;      // (v1.36, 5.2) STREAM and GROUP for the core's loads (TV_*), when with_ag
+    sim::RegFileOut view;      // STREAM and GROUP (TV_*), for the core's loads (5.2) and the address generator's reads
+                               // (8.5, 8.6: each read takes its entry as the table holds it at its issue); when with_ag
     bool with_ag = false;
     bool pub = false;          // the engine's write of the cycle before, not yet in ptr_view
     uint32_t pub_idx = 0, pub_val = 0;
 
     // ---- state ----
     TableMems m;
-    ReqFifo q_stream, q_group;
     Rmw pipe;
     uint64_t table_reads = 0, rmws = 0;
     // (harness-only; P2): a harness poke of PTR (between cycles) reaches `ptr_view` at the store's next step, as
     // committed before it. `host_poke` is set by the harness only; `host_ptr` marks the indices.
     bool host_poke = false;
-    uint64_t host_ptr[4] = {};
+    uint64_t host_ptr[4] = {}, host_view[TV_REGS / 64] = {};
     void poke_host(uint32_t table, uint32_t i, uint32_t v) {   // between cycles; the harness wakes the store
         m.write(table, i, v);
+        host_poke = true;
         if (table == TBL_PTR) host_ptr[(i & 255) >> 6] |= 1ull << (i & 63);
+        else { const unsigned k = table_view_index(table, i); host_view[k >> 6] |= 1ull << (k & 63); }
+    }
+    uint32_t view_word(unsigned k) const {                     // the table word at `view`'s index k
+        return k < TV_STREAM_DEST ? m.stream_src[k] : k < TV_STREAM_HDR ? m.stream_dest[k - TV_STREAM_DEST]
+               : k < TV_GROUP ? m.stream_count[k - TV_STREAM_HDR] : m.group[k - TV_GROUP];
     }
 
     uint64_t digest() const {
         return sim::hash_fields(m.s_src.sum, m.s_dest.sum, m.s_count.sum, m.s_group.sum, m.s_ptr.sum) ^
-               q_stream.digest() * 3 ^ q_group.digest() * 5 ^ pipe.digest() * 11 ^
+               pipe.digest() * 11 ^
                sim::hash_fields(pub, pub_idx, pub_val) * 13;
     }
 
@@ -171,10 +142,7 @@ struct TableStore {
         p.in(window, "window", 2);
         p.in(req_we, "req_we", 3);
         p.out(ret_we, "ret_we", 3);
-        p.out(ovf_ev, "ovf_ev", 0);
         if (with_ag) {
-            p.in(req_stream, "req_stream", 3); p.in(req_group, "req_group", 3);
-            p.out(ret_stream, "ret_stream", 3); p.out(ret_group, "ret_group", 3);
             p.out(ptr_view, "ptr", PTR_REGS);
             p.out(view, "view", TV_REGS);
         }
@@ -189,6 +157,13 @@ struct TableStore {
                     if (with_ag) c.write(ptr_view, i, m.ptr[i]);
                 }
             host_ptr[0] = host_ptr[1] = host_ptr[2] = host_ptr[3] = 0;
+            for (unsigned w = 0; w < TV_REGS / 64; w++) {
+                for (uint64_t b = host_view[w]; b; b &= b - 1) {
+                    const unsigned k = 64 * w + unsigned(__builtin_ctzll(b));
+                    if (with_ag) c.write(view, k, view_word(k));
+                }
+                host_view[w] = 0;
+            }
         }
         if (c.ready(window)) {                                 // the core's store of t - 1: lost if the engine wrote PTR then
             const sim::Word* w = c.peek(window);
@@ -210,25 +185,6 @@ struct TableStore {
 #endif
             if (with_ag) { pub = true; pub_idx = pipe.idx; pub_val = pipe.val; }
         }
-        const bool o1 = q_stream.commit(t), o2 = q_group.commit(t);
-        if (o1 || o2) c.put(ovf_ev);                           // judged at t, the put's t - 1 (PORTS.md 3)
-        if (with_ag) {
-            if (c.ready(req_stream)) { q_stream.put(t, c.peek(req_stream)); c.take(req_stream); }
-            if (c.ready(req_group)) { q_group.put(t, c.peek(req_group)); c.take(req_group); }
-        }
-        if (q_stream.n) {
-            const uint64_t idx = q_stream.front()[1];
-            q_stream.pop(t); table_reads++;
-            const unsigned i = unsigned(idx - mem::IDX_STREAM) & 255;
-            c.put(ret_stream, uint64_t(m.stream_src[i]) | uint64_t(m.stream_dest[i]) << 32, m.stream_count[i], idx);
-        }
-        if (q_group.n) {
-            const uint64_t idx = q_group.front()[1];
-            q_group.pop(t); table_reads++;
-            const unsigned i = unsigned(idx - mem::IDX_GROUP);
-            if (i + 1 >= 128) FATAL("table store: GROUP read at word %u", i);
-            c.put(ret_group, idx, uint64_t(m.group[i]) | uint64_t(m.group[i + 1]) << 32, 0);
-        }
         // the engine's read-modify-write (12.5): the entry read in the cycle its request arrives, t, with the write of
         // t in (the bypass); written in t + 1. No queue: one request a cycle at most (the director's one packet).
         if (c.ready(req_we)) {
@@ -241,7 +197,7 @@ struct TableStore {
             c.put(ret_we, idx, old, 0);
             if (with_ag) c.write(ptr_view, PTR_RMW_AT, uint32_t(t + 1));
         }
-        return pipe.valid || pub || q_stream.n || q_group.n || q_stream.pend || q_group.pend ? c.next() : sim::Wake::none();
+        return pipe.valid || pub ? c.next() : sim::Wake::none();
     }
 };
 

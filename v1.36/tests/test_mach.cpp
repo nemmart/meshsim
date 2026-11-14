@@ -167,7 +167,13 @@ void a2a_net(int64_t seed, int gap) {
 // read path each, so every cycle ref printed there is 2 later than v1.36's: the number after "at cycle ", before
 // " cycles" and at the head of an arrival. And the read's token number, which ref carried in the header's
 // simulator-only bits [59:54] (v1.36's tokens are counted, not numbered: 14.2), is 0. Everything else is ref's.
-static std::string refs_reads_at_read_latency_3(const std::string& ref) {
+//
+// `a2a` is a group transfer started through the harness's back door, and its cycles are 2 more earlier, `shift` 4 in
+// all, by two rules of the DMA unit: the read arbiter takes a read in the cycle it is offered (8.3, 14.1; ref's
+// generator offered through a holding register, its read taken the cycle after), and the table reads begin in the
+// cycle the start is presented in (8.2's lead-in of 4L + 3 after the start store; the RTL's address_generator.veryl:
+// "the table reads begin in E itself"), where ref's generator first read a table the cycle after it saw the start.
+static std::string refs_cycles_on_v136(const std::string& ref, uint64_t shift) {
     std::string o;
     size_t i = 0;
     auto number = [&](size_t from, int base, size_t& end) {
@@ -186,14 +192,14 @@ static std::string refs_reads_at_read_latency_3(const std::string& ref) {
         size_t e = 0;
         if (starts(i, "at cycle ")) {                              // "... at cycle N"
             const uint64_t v = number(i + 9, 10, e);
-            std::snprintf(buf, sizeof buf, "at cycle %llu", (unsigned long long)(v - 2)); o += buf; i = e;
+            std::snprintf(buf, sizeof buf, "at cycle %llu", (unsigned long long)(v - shift)); o += buf; i = e;
         } else if (starts(i, ": ") && ref.find(" cycles (", i) != std::string::npos && (number(i + 2, 10, e), e > i + 2) && starts(e, " cycles (")) {
-            std::snprintf(buf, sizeof buf, ": %llu", (unsigned long long)(number(i + 2, 10, e) - 2)); o += buf; i = e;
+            std::snprintf(buf, sizeof buf, ": %llu", (unsigned long long)(number(i + 2, 10, e) - shift)); o += buf; i = e;
         } else if (ref[i] == '[' && i > 0 && ref[i - 1] == ' ') {                              // an arrival: [cycle payload header payload-high]
             const uint64_t at = number(i + 1, 10, e);
             size_t p = ref.find(' ', e + 1), h_end = 0;             // past the payload
             const uint64_t h = number(p + 1, 16, h_end);
-            std::snprintf(buf, sizeof buf, "[%llu", (unsigned long long)(at - 2)); o += buf;
+            std::snprintf(buf, sizeof buf, "[%llu", (unsigned long long)(at - shift)); o += buf;
             o.append(ref, e, p + 1 - e);
             std::snprintf(buf, sizeof buf, "%llx", (unsigned long long)(h & ~(uint64_t(0x3F) << units::lw::TOKEN_SHIFT))); o += buf;
             i = h_end;
@@ -212,10 +218,12 @@ TEST(mach_net_as_refs_Net) {
     CHECK(at != std::string::npos);
     const size_t rd = all.find("reads: ", at);
     CHECK(rd != std::string::npos);
-    // NetSelf's last three cases, to the fixture's end: `packets` as ref printed it, `reads` and `a2a` at READ_LATENCY 3
-    const std::string want = all.substr(at, rd - at) + refs_reads_at_read_latency_3(all.substr(rd));
+    // NetSelf's last three cases, to the fixture's end: `packets` as ref printed it, `reads` and `a2a` on v1.36's hardware
+    const size_t aa = all.find("a2a seed", rd);
+    CHECK(aa != std::string::npos);
+    const std::string want = all.substr(at, rd - at) + refs_cycles_on_v136(all.substr(rd, aa - rd), 2) + refs_cycles_on_v136(all.substr(aa), 4);
     CHECK(all.find("a2a seed -1 gap 8: 3240 cycles") != std::string::npos);    // (the tail is what this test believes it is)
-    CHECK(want.find("a2a seed -1 gap 8: 3238 cycles (at cycle 3238)") != std::string::npos);
+    CHECK(want.find("a2a seed -1 gap 8: 3236 cycles (at cycle 3236)") != std::string::npos);
     if (out != want) std::fprintf(stderr, "---- got\n%s---- want (tests/mach/netself.out, from `packets seed -1`)\n%s", out.c_str(), want.c_str());
     CHECK(out == want);
 }

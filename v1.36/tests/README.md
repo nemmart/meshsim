@@ -49,7 +49,7 @@ gave (`core-programs/`), which `test_core_programs` requires of the model exactl
 | `tileslotconf/` | a tile's controller with its slot: programs and observations |
 | `reqconf/` | the request bus under five loads (calm, drop, fan-in, full, mix) |
 | `tracerconf/`, `tracerparts/` | the Tracer's cases and its parts (the LRU coder, the memory system) |
-| `replayer/` | the replayer's suites: row cases, the ALU sweep and reports |
+| `replayer/` | the replayer's fixtures: the conformance scripts with the RTL's observations of them, the ALU sweep and reports (its `README.md`) |
 | `ctlsuites/`, `p2suites/`, `p4suites/`, `tracersuites/`, `stageb/` | v1.3's suite logs, the references of `run_tests.sh --check`; `PROVENANCE` in each says how they were made |
 | `ctl/` | the control suites' sources (code, not fixtures) |
 | `sort/` | the sort's fingerprints and its kit's references (its `README.md`) |

@@ -40,6 +40,43 @@ const Tables* tables_at(std::map<std::string, std::unique_ptr<Tables>>& cache, c
     return t.get();
 }
 
+// The RTL's reference of a program's windows (tests/stage_a.h, RtlReference): $REPLAY_RTL/<program>.txt, by default
+// tests/acceptance/rtl/<program>.txt; null where the RTL has not run the program (a synthetic delivery).
+const stagea::RtlReference* rtl_for(std::map<std::string, std::unique_ptr<stagea::RtlReference>>& cache, const std::string& prog) {
+    auto it = cache.find(prog);
+    if (it == cache.end()) {
+        const char* dir = std::getenv("REPLAY_RTL");
+        auto r = std::make_unique<stagea::RtlReference>();
+        if (!r->load(std::string(dir ? dir : "tests/acceptance/rtl") + "/" + prog + ".txt")) r.reset();
+        it = cache.emplace(prog, std::move(r)).first;
+    }
+    return it->second.get();
+}
+
+// The run's figures, as the RTL's acceptance prints its own: the cycles, the rows' schedules, and the cycles past
+// them by the kind of row.
+struct Figures {
+    long long windows = 0, rows = 0, cycles = 0, equal = 0, with_reference = 0;
+    uint64_t schedule = 0, short_rows = 0, rows_of[stagea::kStallKinds] = {}, stalled[stagea::kStallKinds] = {}, cycles_of[stagea::kStallKinds] = {};
+    void add(const stagea::Result& r, const stagea::RtlReference* rtl, const std::string& variant) {
+        windows++; rows += r.rows; cycles += r.cycles; schedule += r.schedule; short_rows += r.short_rows;
+        for (unsigned k = 0; k < stagea::kStallKinds; k++) { rows_of[k] += r.stall_rows[k]; stalled[k] += r.stalled_rows[k]; cycles_of[k] += r.stall_cycles[k]; }
+        const stagea::RtlReference::W* w = rtl ? rtl->find(variant, r.index) : nullptr;
+        if (w) { with_reference++; if (w->cycles == r.cycles && w->hash == r.left_hash) equal++; }
+    }
+    void print(const std::string& variant) const {
+        uint64_t past = 0;
+        for (unsigned k = 0; k < stagea::kStallKinds; k++) past += cycles_of[k];
+        std::printf("%s: %lld cycles, %.4f a row; the rows' schedules %llu; past them %llu (%llu rows took fewer than theirs)\n", variant.c_str(), cycles,
+                    rows ? double(cycles) / double(rows) : 0.0, (unsigned long long)schedule, (unsigned long long)past, (unsigned long long)short_rows);
+        for (unsigned k = 0; k < stagea::kStallKinds; k++)
+            std::printf("%s:   %s: %llu rows, %llu of them past their schedules, %llu cycles\n", variant.c_str(), stagea::kStallKind[k],
+                        (unsigned long long)rows_of[k], (unsigned long long)stalled[k], (unsigned long long)cycles_of[k]);
+        std::printf("%s: %lld of %lld windows equal to the RTL's in their cycles and in every row's leaving (%lld with an RTL reference)\n", variant.c_str(), equal,
+                    windows, with_reference);
+    }
+};
+
 int manifest_mode(int argc, char** argv) {
     std::string dir = argv[1], variant = argv[2];
     bool keep_going = false;
@@ -49,6 +86,8 @@ int manifest_mode(int argc, char** argv) {
     std::string err;
     if (!stagea::read_manifest(dir + "/manifest.json", progs, err)) { std::fprintf(stderr, "replay_delivery: %s\n", err.c_str()); return 2; }
     std::map<std::string, std::unique_ptr<Tables>> cache;
+    std::map<std::string, std::unique_ptr<stagea::RtlReference>> rtls;
+    Figures fig;
     long long windows = 0, failed = 0, compared = 0;
     for (const stagea::Program& p : progs) {
         if (!only.empty() && std::find(only.begin(), only.end(), p.name) == only.end()) continue;
@@ -56,7 +95,9 @@ int manifest_mode(int argc, char** argv) {
         const Tables* t = tables_at(cache, stagea::tables_dir(dir, pd));
         for (const stagea::Entry& we : p.windows) {
             windows++;
-            stagea::Result r = stagea::run_window(*t, pd, we, variant);
+            const stagea::RtlReference* rtl = rtl_for(rtls, p.name);
+            stagea::Result r = stagea::run_window(*t, pd, we, variant, units::Replayer::LOG_QUEUE_ENTRIES, rtl);
+            fig.add(r, rtl, variant);
             compared += r.rows;
             std::printf("%s\n", r.line(p.name, variant).c_str());
             if (!r.ok) {
@@ -67,6 +108,7 @@ int manifest_mode(int argc, char** argv) {
             std::fflush(stdout);
         }
     }
+    fig.print(variant);
     std::printf("%s: %lld windows, %lld rows compared, %lld failed\n", variant.c_str(), windows, compared, failed);
     return failed == 0 ? 0 : 1;
 }
@@ -83,6 +125,8 @@ int list_mode(int argc, char** argv) {
     FILE* lf = std::fopen(argv[1], "r");
     if (!lf) { std::fprintf(stderr, "replay_delivery: cannot read %s\n", argv[1]); return 2; }
     std::map<std::string, std::unique_ptr<Tables>> cache;
+    std::map<std::string, std::unique_ptr<stagea::RtlReference>> rtls;
+    Figures fig;
     char pd[4096], td[4096];
     unsigned index, rows;
     unsigned long long first;
@@ -93,7 +137,9 @@ int list_mode(int argc, char** argv) {
         std::string prog = pd;
         prog = prog.substr(prog.rfind('/') + 1);
         windows++;
-        stagea::Result r = stagea::run_window(*t, pd, stagea::Entry{index, rows, (long long)first, nullptr}, variant);
+        const stagea::RtlReference* rtl = rtl_for(rtls, prog);
+        stagea::Result r = stagea::run_window(*t, pd, stagea::Entry{index, rows, (long long)first, nullptr}, variant, units::Replayer::LOG_QUEUE_ENTRIES, rtl);
+        fig.add(r, rtl, variant);
         compared += uint64_t(r.rows);
         std::printf("%s\n", r.line(prog, variant).c_str());
         if (!r.ok) {
@@ -104,6 +150,7 @@ int list_mode(int argc, char** argv) {
         std::fflush(stdout);
     }
     std::fclose(lf);
+    fig.print(variant);
     std::printf("%s: %llu windows, %llu rows compared, %llu failed\n", variant.c_str(), (unsigned long long)windows, (unsigned long long)compared,
                 (unsigned long long)failed);
     return failed == 0 ? 0 : 1;

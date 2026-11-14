@@ -10,6 +10,8 @@
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -126,10 +128,59 @@ inline bool read_manifest(const std::string& path, std::vector<Program>& out, st
     return true;
 }
 
+// ---------------------------------------------------------------- the RTL's reference (v1.36)
+// The RTL's figures of a window's pass, from its own acceptance (Snarky One's replayer_acceptance_test, run on
+// `replayer_unit` under the same ideal controller): the pass's cycles and a hash of the cycle each row left the row
+// port, START's cycle being 0 (h = mix(h ^ cycle), row 0 first). tests/acceptance/rtl/<program>.txt holds them, a line
+// a window and variant: `variant window rows cycles hash`; tests/acceptance/README.md says how it is made.
+inline uint64_t left_mix(uint64_t z) {
+    z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ull;
+    z = (z ^ (z >> 27)) * 0x94d049bb133111ebull;
+    return z ^ (z >> 31);
+}
+struct RtlReference {
+    struct W { long long rows = 0, cycles = 0; uint64_t hash = 0; };
+    std::map<std::string, W> windows;   // by "variant index"
+    std::string path;
+    static std::string key(const std::string& variant, long long index) { return variant + " " + std::to_string(index); }
+    bool load(const std::string& p) {
+        path = p;
+        FILE* f = std::fopen(p.c_str(), "r");
+        if (!f) return false;
+        char line[256], variant[64];
+        while (std::fgets(line, sizeof line, f)) {
+            long long index, rows, cycles;
+            unsigned long long hash;
+            if (line[0] == '#' || std::sscanf(line, "%63s %lld %lld %lld %llx", variant, &index, &rows, &cycles, &hash) != 5) continue;
+            windows[key(variant, index)] = W{rows, cycles, hash};
+        }
+        std::fclose(f);
+        return true;
+    }
+    const W* find(const std::string& variant, long long index) const {
+        auto it = windows.find(key(variant, index));
+        return it == windows.end() ? nullptr : &it->second;
+    }
+};
+
+// Where a row's cycles past its schedule fall, as the RTL's acceptance sorts them (its STALL_KINDS).
+constexpr unsigned kStallKinds = 7;
+inline const char* const kStallKind[kStallKinds] = {
+    "the window's first row (the queues empty at START)",
+    "a core-fed expansion's first row (the controller's answer)",
+    "a load or advice row (a read-log word)",
+    "a store row (a write-log word)",
+    "the shared NOP row of a ROM template under a NOP policy",
+    "any other row of a core-fed expansion",
+    "any other row of a ROM template, and a padding row"};
+
 // ---------------------------------------------------------------- one window's result
 struct Result {
     bool ok = true;
     long long rows = 0, index = 0, cycles = 0;
+    uint64_t left_hash = 0;                       // the hash of the cycle each row left the row port (RtlReference)
+    uint64_t schedule = 0, short_rows = 0;        // the rows' schedules; rows that took fewer cycles than theirs
+    uint64_t stall_rows[kStallKinds] = {}, stalled_rows[kStallKinds] = {}, stall_cycles[kStallKinds] = {};
     std::string summary;
     std::vector<std::string> detail;
     // ReplayDelivery.Result.line.
@@ -145,13 +196,12 @@ inline std::string consumed_exactly(Replayer& r, const units::streamword::Size* 
     std::string b;
     uint64_t files[3] = {code_e, rlog_e, wlog_e};
     const char* names[3] = {"code", "read log", "write log"};
-    const units::ReplayerStream* st[3] = {&r.code, &r.rlog, &r.wlog};
+    const units::StreamDecoder* st[3] = {&r.code_d, &r.rlog_d, &r.wlog_d};
     for (int k = 0; k < 3; k++) {
         if (files[k] != sz[k].words) b += fmt("%s: the file has %llu entries, the stream word %u words; ", names[k], (unsigned long long)files[k], sz[k].words);
         if (k == 2 && !r.store_log_latched()) continue;
-        if (st[k]->taken != sz[k].values) b += fmt("%s: %u of %u values; ", names[k], st[k]->taken, sz[k].values);
-        long long used = (long long)(uint64_t(st[k]->end_bits + 127) >> 7);
-        if (used != (long long)sz[k].words) b += fmt("%s: ended in word %lld of %u; ", names[k], used, sz[k].words);
+        if (st[k]->values != sz[k].values) b += fmt("%s: %llu of %u values; ", names[k], (unsigned long long)st[k]->values, sz[k].values);
+        if (st[k]->taken != sz[k].words) b += fmt("%s: %u of %u words taken; ", names[k], st[k]->taken, sz[k].words);
     }
     return b.empty() ? b : "streams not consumed exactly: " + b;
 }
@@ -174,6 +224,62 @@ inline const char* const kFields[21] = {"instr_idx", "opcode", "rd_reg", "rs1_re
                                          "is_first", "rd_is_imm", "rs1_is_imm", "rs2_is_imm", "spare", "pc", "imm", "rs1", "rs2", "rd_prev",
                                          "rd", "mem_addr", "mem_value"};
 
+// The pass's cycles past its rows' schedules (3 cycles a row, 5 an M row, 17.8.7), by the kind of row, as the RTL's
+// acceptance accounts them: a row's cycles are from the row before it leaving the row port to its own leaving, the
+// window's first from START's cycle; its kind from the window's raw code stream (an instruction ends at each row
+// whose seq_remaining is 0).
+inline void account(const units::tracer::ReplayTables& tables, const std::string& pd, const std::string& base, const rtest::ReplayDriver& d, Result& res) {
+    std::vector<uint8_t> raw;
+    if (!read_file(pd + "/" + base + "code.bin", raw)) return;
+    size_t instruction = 0;
+    bool first = true;
+    int64_t before = 0;
+    for (uint64_t at = 0; at < d.rows(); at++) {
+        const uint64_t* g = d.row(at);
+        // a padding row is all 0: its instruction is the code stream's value (a padding word)
+        const uint32_t w = 4 * instruction + 4 <= raw.size() ? le32(raw, 4 * instruction) : 0;
+        const unsigned entry = tables.table[units::rowcore::decode_index(w)];
+        const bool padding = (w & 3) == 0, core = !padding && ((entry & 3) == 1 || (entry & 3) == 2), rom = !padding && (entry & 3) == 0;
+        const unsigned op = unsigned(g[0] >> 32) & 0xFF, entry_rd0 = unsigned(tables.rom_lo[(entry >> 2) & 0x1FF] >> 46) & 3;
+        const bool reads = op == units::alu::LD || (op >= units::alu::LOAD_B && op <= units::alu::LOAD_W) || op == units::alu::ADVICE;
+        const unsigned kind = at == 0 ? 0 : core && first ? 1 : reads ? 2 : units::alu::is_store(op) ? 3
+                              : rom && ((w >> 7) & 31) == 0 && (entry_rd0 == 1 || entry_rd0 == 3) ? 4 : core ? 5 : 6;
+        const int64_t taken = d.left(at) - before, due = units::alu::cls(op) == 'M' ? 5 : 3;
+        before = d.left(at);
+        res.schedule += uint64_t(due);
+        res.stall_rows[kind]++;
+        if (taken > due) { res.stalled_rows[kind]++; res.stall_cycles[kind] += uint64_t(taken - due); }
+        if (taken < due) res.short_rows++;
+        first = padding || (g[1] & 0xFFFF) == 0;
+        if (first) instruction++;
+    }
+}
+
+// The pass's cycles against the RTL's: its cycles and the hash of every row's leaving. With $REPLAY_RTL_LEFT (a
+// directory of the RTL's own dumps, `<window>.<variant>.left`, a little-endian 32-bit cycle a row), the first row
+// that left in another cycle.
+inline void check_rtl(const RtlReference& rtl, const std::string& variant, const rtest::ReplayDriver& d, Result& res) {
+    const RtlReference::W* w = rtl.find(variant, res.index);
+    if (!w) { res.ok = false; res.detail.push_back(fmt("cycles: no RTL reference for %s window %lld in %s", variant.c_str(), res.index, rtl.path.c_str())); return; }
+    if (w->cycles == res.cycles && w->hash == res.left_hash && w->rows == (long long)d.rows()) return;
+    res.ok = false;
+    res.detail.push_back(fmt("cycles: model %lld (%llu rows, rows' leaving %016llx), the RTL %lld (%lld rows, %016llx)", res.cycles, (unsigned long long)d.rows(),
+                             (unsigned long long)res.left_hash, w->cycles, w->rows, (unsigned long long)w->hash));
+    const char* dir = std::getenv("REPLAY_RTL_LEFT");
+    std::vector<uint8_t> b;
+    if (!dir || !read_file(std::string(dir) + "/" + std::to_string(res.index) + "." + variant + ".left", b)) return;
+    for (uint64_t r = 0; r < d.rows() && 4 * r + 4 <= b.size(); r++) {
+        if (uint32_t(d.left(r)) == le32(b, 4 * r)) continue;
+        res.detail.push_back(fmt("  first row leaving in another cycle: row %llu, model %lld, the RTL %u", (unsigned long long)r, (long long)d.left(r), le32(b, 4 * r)));
+        for (uint64_t q = r < 3 ? 0 : r - 3; q <= r + 2 && q < d.rows() && 4 * q + 4 <= b.size(); q++) {
+            uint64_t qf[21];
+            fields(d.row(q), qf);
+            res.detail.push_back(fmt("  row %llu: model %lld, the RTL %u: ", (unsigned long long)q, (long long)d.left(q), le32(b, 4 * q)) + describe(qf));
+        }
+        break;
+    }
+}
+
 // Stage A's replayer keeps this many entries per error list (ref prints them whole in errorReport).
 constexpr unsigned kListCapacity = 4096;
 
@@ -182,7 +288,7 @@ constexpr unsigned kListCapacity = 4096;
 // logq: the replayer's read-log and write-log queues (ref's -Dreplayer.logq, which reaches every replayer in its JVM,
 // Stage A's included; the kit's -q).
 inline Result run_window(const units::tracer::ReplayTables& tables, const std::string& pd, const Entry& we, const std::string& variant,
-                         unsigned logq = Replayer::LOG_QUEUE_ENTRIES) {
+                         unsigned logq = Replayer::LOG_QUEUE_ENTRIES, const RtlReference* rtl = nullptr) {
     Result res;
     res.index = we.index;
     const long long rows = we.rows;
@@ -211,7 +317,10 @@ inline Result run_window(const units::tracer::ReplayTables& tables, const std::s
     auto d = std::make_unique<rtest::ReplayDriver>(*w, uint64_t(rows) + 16, rp.get());
     d->load();
     d->pass(40 * rows + 100000);
-    res.cycles = d->r->pass_end_at - d->r->pass_start_at;
+    res.cycles = d->cycles();
+    for (uint64_t i = 0; i < d->rows(); i++) res.left_hash = left_mix(res.left_hash ^ uint64_t(d->left(i)));
+    account(tables, pd, base, *d, res);
+    if (rtl) check_rtl(*rtl, variant, *d, res);
 
     // ---- the rows, byte for byte
     std::vector<uint8_t> ref;

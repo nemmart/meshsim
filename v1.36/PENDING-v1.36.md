@@ -3,6 +3,8 @@
 *For whoever merges or continues v1.36: what is not ported yet, why, and what closes each item. One row per item;
 a row is removed by the change that closes it.*
 
+## The core stage
+
 | What | Why | What closes it |
 |---|---|---|
 | The chip, the sort and every suite on the RTL's core (`run_tests.sh`'s step `core-chip`) | The tile's register block, C&C and firmware are still v1.35's, and they do not run on the RTL's core: C&C lands a tile's commands a fixed time apart, which the slower core misses (a command lands before the last is read: on the pipeline with v1.35's function kept, commit 8a444d1c, `ctrl`'s `wfi` group read a wrong command on all 64 tiles and every sort set failed "no invariant violations"), and the M1 goldens replay their events at `ref`'s cycles. So the chip runs v1.35's core, whole, behind the one option `v135_platform` (`src/units/rv32.h`, `rv32_v135.h`), and every v1.35 reference stands unchanged. | The platform stage: with the RTL's register map, boot ROM and firmware in place, clear `v135_platform` where the tile's core is made, delete `src/units/rv32_v135.h`, the option and the lines of `rv32.h` marked `v135_platform`, with `tests/test_rv32.cpp` and `tests/test_core_m2.cpp` (v1.35's core's own tests), and regenerate or retire the references that hold v1.3's cycles (the M1 goldens and fingerprints first). |
@@ -10,3 +12,17 @@ a row is removed by the change that closes it.*
 | The coprocessor port | The tile has no accelerator (the RTL builds none), so custom-0 and custom-1 are illegal instructions, as on a core with `coprocessor_present` 0. The RTL's `program_test` sets it to 1, but none of its programs has a coprocessor instruction. | The field accelerator, when the RTL has one. |
 | An instruction or data port that holds ready low, or answers a fetch later than the next cycle | No memory of the tile does either (IMEM, DMEM, the boot ROM and `register_bus` accept in every cycle), so the model has neither; the RTL's test runs each program a second time with randomly delayed ports, which the model cannot follow. | Nothing in the tile; a unit that needs it. |
 | The core's rules one by one (`test_rv32_rtl`: 62 directed tests of the RTL's core from the contract's sentences, on a bus and on the tile's environment) | Written by a sub-agent, which could not place the file in `tests/` (its write there was refused), so it is not in the tree: it is in the core stage's scratch folder, `build-scratch/rtl-tests/test_rv32_rtl.cpp` (untracked, outside `v1.36/`). 60 of its tests passed on the model; one found SIM_EXIT's store retiring twice (fixed since, with `test_core_m2_rtl`'s own test), one expects a faulting register-window load answered in q + 1 (the row above). What the RTL's programs do not reach and only that file checks: a CSR write to `mcycle` or `minstret`, `minstret` on a trapped instruction, the store-misaligned cause, a data target slower than one cycle on a bus, and the exact cycle `core_status_canonical_wait` rises. | The owner's or coordinator's decision to add the file as `tests/test_rv32_rtl.cpp` (link rule: `$(B)/test_rv32_rtl: $(B)/src/units/trace_log.o`), after reviewing it. |
+
+## The replayer stage
+
+The replayer's model is the RTL's `replayer_unit` at the block level: its rows, its cycles and every port's
+observations equal the RTL's (`tests/replayer/README.md`, `tests/acceptance/README.md`).
+
+| what | why | what closes it |
+|---|---|---|
+| `test_slotconf` (`tests/slotconf/seed1-5`) | the slot's conformance replays ref's seeded scripts on a slot with the replayer in it; its reference is ref's observations of v1.35's replayer under them (busy, errors, events and queue occupancies cycle by cycle), which the RTL's replayer does not give | the platform stage's slot (17.1-17.3): a conformance of the new slot, whose replayer side is `test_replayconf`'s |
+| the replayer's window as the slot presents it: `START` at word 6, `EVENTS` at 3, `EVENTS_PEEK`, `EVENTS_MASK` (17.1) | the slot is the platform's; the model keeps v1.35's calls (`run`, `consume_events`, `events`, `write_word`, `word`) and its own words 32-35 | the merge with the platform stage: `Replayer::W_*` are the only word numbers here |
+| the write port's latency in a chip: `accept(t)` presents the packet at `t + RP_LATENCY` | the director's and the slot's links are the platform's (`PERIPHERAL_LATENCY`, 17.3) | the platform stage; `Replayer::write(t, ...)` is the port itself |
+| Stage B and Stage F's cycles (`tests/stageb/stageb.log`, the acceptance kit's B and F) | they run v1.35's `replay_ctl.c` on v1.35's tile with the new replayer in its slot: rows and end state pass; the cycles are a mixture | the platform and firmware stages (17.8.21, 17.8.22), then the RTL chip's figures (3.0875 and 3.1249 a row) |
+| the row port's handshake | the model's consumer is its sink, ready one cycle in `sink_interval` (1: always, as the chip ties it); no unit reads `replay_row` | the materializer, *Open* (17.8.11) |
+| `spec/CHANGES-v1.35-to-v1.36.md` 5.2.6 item 1: the timing rules the specification does not state | the model takes them from the RTL's sources: they are listed in `src/units/replayer.h`'s header and in the stage's report | a ruling: write them down (the guide suggests an appendix), or leave them to the RTL |

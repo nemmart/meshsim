@@ -35,7 +35,7 @@ its machine through them.
 | C&C 1's peripheral (Ingress/Egress, the UART), C&C 2's and 3's stubs | `cnc1_periph.h` | 4.17.1, 4.20, 8.13, 8.14 |
 | C&C 1's behavioural model, the row collectors, C&C 2-3's endpoints | `cnc.h`, `cnc.cpp` | 6.2, 6.6 |
 | a controller's host port (C&C as cores) | `host_port.h` | 6.2 |
-| the replayer | `replayer.h`, `replayer.cpp`, `replayer_alu.h`, `stream_word.h` | 4.19 |
+| the replayer, as the RTL's `replayer_unit` builds it: its queues, decoders, fetch, row engine, pass and output queue, cycle for cycle | `replayer.h`, `replayer.cpp`, `replayer_alu.h`, `stream_word.h` | 17.8 (`spec/jolt/replayer.md`) |
 | the replayer's expansion tables as delivered | `replay_tables.h`, `replay_tables.cpp` | 4.19; `data/REPLAY-INPUT-REQUIREMENTS.md` |
 | what the replayer and the Tracer share | `row_core.h` | 4.19, 4.21 |
 | the Tracer | `tracer.h`, `tracer.cpp`, `rvc.h`, `lru_coder.h`, `lru_index.h` | 4.21, 8.16 |
@@ -70,7 +70,7 @@ configurations. Fields named as section 10's parameters:
 | request FIFO; the request bus's receive queues | `request_fifo_depth`; `receive_queue_depth` |
 | eject priority | `loopback_last` |
 | peripherals: `rp_latency` | `rp_latency`; `periph_type` (every mesh tile's peripheral 1) |
-| the replayer's log queues (`spec/jolt/replayer.md`) | `replayer_log_entries` |
+| the replayer's log queues (`spec/jolt/replayer.md`) | `replayer_log_entries`: 256 only, `REPLAY_QUEUE_ENTRIES` (v1.36) |
 
 The rest are the simulator's: the machine's shape (`coreless`, `real_responder`, `cc_cores`, `cc3_tracer`,
 `test_read_clients`, `reqbus_host`, `test_periph_tile`, `test_peripheral_tile`, `parked`), C&C's model (`ref_cycle`,

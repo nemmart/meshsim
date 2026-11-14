@@ -210,7 +210,7 @@ stagea::Result run_window(const mach::Mach::Image& im, const units::tracer::Repl
     const int64_t cap = 40 * rows + 2000000;
     g.c->run_until([&] {
         if (o.profile) {
-            uint64_t s2 = r.stalls[2];
+            uint64_t s2 = r.stalls[Replayer::ST_NEWEXP];
             if (s2 != last_s2) {
                 int32_t key = p.in_wfi() ? -1 : int32_t(p.pc());
                 auto it = std::find_if(pcs.begin(), pcs.end(), [&](const auto& e) { return e.first == key; });
@@ -282,9 +282,9 @@ stagea::Result run_window(const mach::Mach::Image& im, const units::tracer::Repl
     std::fflush(stdout);
     stagea::Result out;
     out.ok = pass; out.rows = same; out.cycles = cyc; out.index = index; out.detail = detail;
-    std::string waits = "image/code/newexp/exp/rlog/wlog/outq ";
+    std::string waits = "pipe/code/newexp/exp/rlog/wlog/outq/alu ";
     for (unsigned i = 0; i < Replayer::N_STALL; i++) waits += fmt("%s%llu", i ? "/" : "", (unsigned long long)r.stalls[i]);
-    waits += " logq " + std::to_string(r.rlog.cap);
+    waits += " logq " + std::to_string(unsigned(Replayer::LOG_QUEUE_ENTRIES));
     out.summary = std::string(o.lone ? "tile 0 only, " : "full chip, ") + "max row gap " + std::to_string(g.max_gap) + ", " + per_row +
                   fmt(" cycles/row, newexp %llu (slow %d), refills %d, waits ", (unsigned long long)r.new_expansions, int32_t(slow), int32_t(refills)) + waits;
     return out;

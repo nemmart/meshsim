@@ -241,6 +241,7 @@ TEST(alu_and_rowcore_sweeps_equal_ref) {
     CHECK(std::sscanf(want[0].c_str(), "# replayconf alu v1: seed %llu n %llu", (unsigned long long*)&seed, (unsigned long long*)&n) == 2);
     std::vector<std::string> got;
     got.push_back(want[0]);
+    uint64_t gate_bad = 0, moved = 0;   // rows that are not the last whose new pc is not pc; of them, those a last row moves
     for (unsigned op = 0; op < 256; op++) {
         if (!alu::executes(op)) continue;
         SweepRng g(seed * 1000 + op);
@@ -252,7 +253,18 @@ TEST(alu_and_rowcore_sweeps_equal_ref) {
             const unsigned incs[] = {0, 2, 4};
             alu::Out o;
             alu::exec(op, va, vb, vc, pc, incs[r % 3], (r >> 8) & 1, log, so, o);
-            h = mix(h ^ o.rd); h = mix(h ^ o.new_pc); h = mix(h ^ (o.undefined ? 1 : 0));
+            // v1.36 (17.8.7, A9.4): a row with pc_increment 0, one that is not its expansion's last, keeps its pc
+            // whatever its opcode. ref's sweep hashes the opcode's own new pc, which no opcode forms from pc_increment:
+            // it is the one the same row gives as a last row, so the sweep still checks every formula against ref's.
+            uint64_t opcode_new_pc = o.new_pc;
+            if (incs[r % 3] == 0) {
+                gate_bad += o.new_pc != pc;
+                alu::Out last;
+                alu::exec(op, va, vb, vc, pc, 4, (r >> 8) & 1, log, so, last);
+                opcode_new_pc = last.new_pc;
+                moved += last.new_pc != pc;
+            }
+            h = mix(h ^ o.rd); h = mix(h ^ opcode_new_pc); h = mix(h ^ (o.undefined ? 1 : 0));
             undef += o.undefined != nullptr;
         }
         got.push_back(std::to_string(op) + " " + alu::name_or_null(op) + " " + hex(h) + " " + std::to_string(undef));
@@ -278,4 +290,6 @@ TEST(alu_and_rowcore_sweeps_equal_ref) {
     for (size_t i = 0; i < want.size(); i++)
         if (got[i] != want[i]) { bad++; std::fprintf(stderr, "  ref:  %s\n  ours: %s\n", want[i].c_str(), got[i].c_str()); }
     CHECK_EQ(bad, 0);
+    CHECK_EQ(gate_bad, uint64_t(0));
+    CHECK(moved > 1000);   // the sweep reaches the gate: branches, JAL and JALR that a last row would have moved
 }

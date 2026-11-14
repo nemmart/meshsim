@@ -1,12 +1,16 @@
 # What changes in v1.35
 
+> **This is v1.35's page, kept as it was.** It describes v1.35 against v1.3, and the simulator as it still is in
+> this folder. v1.36's changes are `spec/CHANGES-v1.35-to-v1.36.md`; v1.35's guide it cites is now
+> `spec/history/CHANGES-v1.3-to-v1.35.md`.
+
 *For the RTL engineer and for v1.3's users: what v1.35 changes, and for each way of running v1.3, what to run now.*
 
 ## For the RTL
 
 **Nothing changes.** v1.35's hardware is v1.3's: every normative statement, register, number and parameter of the
 spec stands. What changed in the spec's text (it was restructured, and its statements about the simulator made true
-of v1.35), and where the simulator differs from v1.3's on purpose, are `spec/CHANGES-v1.3-to-v1.35.md`.
+of v1.35), and where the simulator differs from v1.3's on purpose, are `spec/history/CHANGES-v1.3-to-v1.35.md`.
 
 ## For users
 

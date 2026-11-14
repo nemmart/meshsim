@@ -204,11 +204,11 @@ bool SlotCore::write(int64_t t, unsigned n, unsigned w, uint32_t v) {
             case P_PARAMS: case P_STATUS: case P_ERRORS: case P_EVENTS: case P_EVENTS_PEEK: return false;
             case P_START: if (v & 1) p.run(t); return true;
             case P_DMA_START: if (!has_dma) { reserved(t, n, w, true); return true; } if (v & 1) dma_start(t, n); return true;
-            case P_EVENTS_MASK: pend_mask[n] = v; pend_mask_t[n] = t; return true;
+            case P_EVENTS_MASK: pend_mask[n] = v & event_bits(n); pend_mask_t[n] = t; return true;
             case P_DMA_HDR:
                 if (!has_dma) { reserved(t, n, w, true); return true; }
                 if (dma[n].busy) violate(t, F_DMA_HDR_BUSY, n);
-                dma[n].hdr = v;
+                dma[n].hdr = v & DMA_HDR_BITS;                 // the size, the DMA's, and the bits above `queue` read 0 (5.4)
                 return true;
             case P_DMA_DEST_ADDR:
                 if (!has_dma) { reserved(t, n, w, true); return true; }
@@ -223,6 +223,13 @@ bool SlotCore::write(int64_t t, unsigned n, unsigned w, uint32_t v) {
             }
         }
     });
+}
+
+// EVENTS_MASK has one bit per event of the peripheral (17.1; peripheral_control.veryl: EVENT_BITS of them): a store
+// ignores the bits above them, and they read 0 (5.4).
+uint32_t SlotCore::event_bits(unsigned n) {
+    const unsigned bits = visit(n, [](auto& p) { return p.events().n; });
+    return bits >= 32 ? ~0u : (1u << bits) - 1;
 }
 
 uint32_t SlotCore::live_events(int64_t t) {
@@ -504,7 +511,7 @@ sim::Wake PeriphSlot::step(sim::Ctx& c) {
             s.consume(t - 1, n, CoreOp::value(op));
             have_op = false;
         } else if (w == P_EVENTS_MASK) {
-            s.mask[n] = CoreOp::value(op);
+            s.mask[n] = CoreOp::value(op) & s.event_bits(n);
             have_op = false;
         }
     }

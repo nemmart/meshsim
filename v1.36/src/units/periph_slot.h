@@ -194,6 +194,7 @@ struct SlotCore {
     bool store_stalls(int64_t t, unsigned n, unsigned w);
     bool write(int64_t t, unsigned n, unsigned w, uint32_t v);          // false: a bus error
     bool defined(unsigned n, unsigned w);                               // a load of w is not flagged (configuration)
+    uint32_t event_bits(unsigned n);                                    // EVENTS_MASK's bits: one per event
     uint32_t live_events(int64_t t);
     uint32_t live_errors(int64_t t);
     void run_cycle(int64_t t, unsigned dma_room = ~0u);                 // dma_room: packets the DMA port takes at t

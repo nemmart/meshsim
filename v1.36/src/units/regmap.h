@@ -118,6 +118,7 @@ enum : uint32_t {
     WRITE_HDR_NO_INCREMENT = 1u << 15,                            // 9
     // a peripheral's DMA_HDR (17.1): count [26:15], queue [28:27]
     DMA_HDR_COUNT_LO = 15, DMA_HDR_COUNT_MASK = 0xFFF, DMA_HDR_QUEUE_LO = 27, DMA_HDR_QUEUE_MASK = 3,
+    DMA_HDR_BITS = 0x1FFFFFFC,                                   // what DMA_HDR stores: [28:2]; its size [1:0] is the DMA's (5.4)
     // STREAM_HDR (8.3): count [31:15]
     STREAM_HDR_COUNT_LO = 15, STREAM_HDR_COUNT_MASK = 0x1FFFF,
     WORD_ADDRESS_MASK = 0x1FFFFF,                                 // a 21-bit scratchpad word address (5.4)

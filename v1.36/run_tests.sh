@@ -61,6 +61,7 @@ SUITES="$SUITES test_mem"                            # v1.36: the scratchpad and
 SUITES="$SUITES test_router test_special_router test_ag test_receive test_gather test_request_tree test_reqbus"
 SUITES="$SUITES test_regs test_periph_slot test_ingress_egress test_tile_control"
 SUITES="$SUITES test_rtl_tile test_rtl_sort"         # v1.36: acceptances A and B (the rtl-tile and rtl-sort steps)
+SUITES="$SUITES test_rtl_stream"                     # v1.36: the master tile's external IO on the chip (the rtl-stream step)
 
 if [ "$BUILD" = 1 ]; then
   echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
@@ -161,6 +162,9 @@ check rtl-tile "acceptance A: the RTL's tile programs on one compute tile (tests
 # in `all`, with the RTL's 64K key file (16 MiB, not vendored: fw/rtl/README.md), which RTL_SORT_64K_KEYS names.
 rtl_sort() { $S/test_rtl_sort sort_oracle && $S/test_rtl_sort sort_16; }
 check rtl-sort "acceptance B: the RTL's sort images on the chip, 64 x 16 records: kv32, k128, and kv32 split over threads (tests/test_rtl_sort.cpp)" -- rtl_sort
+# The master tile's external IO on the chip, through the master's core, at the RTL chip's cycles: the RTL's
+# chip_stream_test (the master echoing beats on its AXI4-Stream ports) and the UART (tests/test_rtl_stream.cpp).
+check rtl-stream "the master's host interface and UART on the chip: the RTL's chip_stream_test, and the UART through the core (tests/test_rtl_stream.cpp)" -- $S/test_rtl_stream
 if [ "$MODE" != quick ]; then
   if [ -f "${RTL_SORT_64K_KEYS:-}" ]; then
     check rtl-sort-64k "acceptance B at 64 x 65,536 records: kv32 and k128 (about a minute)" -- $S/test_rtl_sort sort_64k

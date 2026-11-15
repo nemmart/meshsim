@@ -47,13 +47,19 @@ can't share a process with ASan.
 | the same, the suite build | `make MODE=suite` |
 | the same with gcc | add `CC_NAME=gcc` |
 | one program, including the drivers `make` leaves out (`t2`, `chain`) | `make build/clang-release/<name>` |
-| everything, and check it: v1.3's copied files unchanged, the TSan thread tests, then every test in the debug and release builds with gcc and clang | `make check` |
+| everything, and check it: v1.3's copied files unchanged, the TSan thread tests, then every test in the debug and release builds with gcc and clang | `setarch $(uname -m) -R make check` (see below; plain `make check` where TSan runs as it is) |
 | every test of one build, run | `make run CC_NAME=gcc MODE=debug` |
-| the thread tests under TSan, gcc and clang | `make tsan` |
+| the thread tests under TSan, gcc and clang | `setarch $(uname -m) -R make tsan` |
 | the firmware images, rebuilt and checked against the committed copies | `fw/build.sh --check` |
 | the firmware images, rewritten into `fw/images/` | `fw/build.sh` |
 | the committed images against their hash lists, without the toolchain | `fw/check_images.sh` |
 | the offline input tools (Java) | `sh pipeline/build.sh` |
 | the speed benchmarks | `bench/README.md` |
+
+**The TSan tests need address randomisation lowered or off on newer kernels.** Where `vm.mmap_rnd_bits` is above 28,
+as on Ubuntu 24.04's 6.8 kernel, a ThreadSanitizer binary stops at once with "ThreadSanitizer: unexpected memory
+mapping". `setarch $(uname -m) -R` runs `make` and its children with randomisation off, and is how the freeze check
+ran `make check` (24 minutes with `-j16`, `RUNNING.md`); `sudo sysctl vm.mmap_rnd_bits=28` is the other way. Nothing
+else needs it.
 
 `make clean` removes `build/`.

@@ -17,7 +17,7 @@ The times are wall times on the runner (an Intel i5-14400F: 6 P cores and 4 E co
 
 | step | in | command | time | writes | checked against |
 |---|---|---|---|---|---|
-| `layout` | both | `sh tools/check_copies.sh` | <1 s | `results/layout.log` | `COPIES.sha256`: every file copied from v1.3 still has v1.3's bytes (v1.3's own layout check, `tools/check_layout.sh`, became this one) |
+| `layout` | both | `sh tools/check_copies.sh` | <1 s | `results/layout.log` | `COPIES.sha256`: every file copied from v1.3 still has v1.3's bytes (v1.3's own layout check, `v1.3/meshsim/tools/check_layout.sh`, became this one) |
 | `sw-build` | both | `fw/build.sh --check` for boot tests m1 m3 replay tracer, or `fw/check_images.sh` without the toolchain | 4 s | `results/sw-build.log` | none (a build step) |
 | `sort-build` | both | `fw/build.sh --check` for sort, or `fw/check_images.sh` without the toolchain | <1 s | `results/sort-build.log` | none (a build step) |
 | `bus` | both | `build/clang-debug/suite_bus` | 2 s | `results/bus.log` | `tests/p2suites/bus.log` |
@@ -48,7 +48,7 @@ The times are wall times on the runner (an Intel i5-14400F: 6 P cores and 4 E co
 | `hooks` | both | `build/clang-suite/suite_hooks -1` | <1 s | `results/hooks.log` | `tests/ctlsuites/hooks.log` |
 | `hooks-shuf` | both | `build/clang-suite/suite_hooks 4` | <1 s | `results/hooks-shuf.log` | `tests/ctlsuites/hooks-shuf.log` |
 | `periph` | both | `build/clang-suite/test_tileslotconf` | <1 s | `results/periph.log`; `results/periph.out` | equivalent: test_tileslotconf (W15's TileSlotConf: PeripheralSlotTest's groups on a real tile, against ref) |
-| `periph-shuf` | both | `TILESLOTCONF_SEED=4 build/clang-suite/test_tileslotconf` | <1 s | `results/periph-shuf.log`; `results/periph-shuf.raw` | equivalent: test_tileslotconf shuffled (seed 4), its output the plain run's |
+| `periph-shuf` | both | `TILESLOTCONF_SEED=4 build/clang-suite/test_tileslotconf` | <1 s | `results/periph-shuf.log`; `results/periph-shuf.out`; `results/periph-shuf.raw` | equivalent: test_tileslotconf shuffled (seed 4), its output the plain run's |
 | `reqbus` | both | `build/clang-suite/suite_reqbus -1` | 1 s | `results/reqbus.log` | `tests/p4suites/reqbus.log` |
 | `reqbus-shuf` | both | `build/clang-suite/suite_reqbus 4` | <1 s | `results/reqbus-shuf.log` | `tests/p4suites/reqbus-shuf.log` |
 | `cccores` | both | `build/clang-suite/suite_cccores -1` | 2 s | `results/cccores.log` | `tests/ctlsuites/cccores.log` (D44 masked) |
@@ -87,7 +87,7 @@ release build). The inputs they need beyond this folder are named; the freeze ch
 | the chains | `build/clang-release/chain --w26 DIR --delivery DIR --program P --segments 0-127`, for both workloads; the inputs are the pipeline's segment files and a tracer delivery (`pipeline/README.md`) | about 17 min each (1,047 s and 1,021 s; they can run side by side) | its log | every start against `tests/golden-chain/`, every TracerT2 check, the ends |
 | the acceptance kit's calibration | `tests/acceptance/make_kit.sh KIT.tgz`, then in the kit `./calibrate.sh OUT DELIVERY` (128 synthetic windows, seed 11; 1, 4, 8 and 16 processes) | 37 s | `OUT/` | `tests/acceptance/README.md`'s expectations |
 | the sort kit, full size | `tests/sort/kit/assemble.sh OUTDIR [KEYDIR]`, then `OUTDIR/run.sh -j 10 -o results` | 22 min (1,312 s, `-j 10`) | per run `<id>.csv`, `<id>.phases.csv`, `<id>.log`; `SUMMARY.md`, `all.csv` | every run exits 0 or is refused as recorded (`tests/sort/README.md`) |
-| `make check` on a clean tree | `make check` | 24 min (1,428 s, `-j16`, both compilers, debug and release, TSan included) | `build/` | every test passes (`BUILDING.md`) |
+| `make check` on a clean tree | `setarch $(uname -m) -R make -j16 check` (`setarch -R` for the TSan tests on newer kernels, `BUILDING.md`) | 24 min (1,428 s, both compilers, debug and release, TSan included) | `build/` | every test passes (`BUILDING.md`) |
 
 ## The tools
 
@@ -96,7 +96,7 @@ release build). The inputs they need beyond this folder are named; the freeze ch
 | the sort as v1.3's SortTest | `build/clang-release/sort_test [SEED] p1\|sort\|run …` (`cfg.<field>=value` sets a `MachConfig` field) | its log |
 | the sweep, full | `build/clang-suite/sweep full` | `results/sweep-full.csv` |
 | two sort runs compared | `build/clang-release/sort_compare NEW_DIR REF_DIR [out.md]` | `out.md` |
-| a shard of the acceptance kit | `build/clang-release/replay_shard DELIVERY PROGRAM CSV [--stages ABF] [--variant V] [--first F --count N] [--manifest M]`; `shard_summary` sums the shards | `CSV` |
+| a shard of the acceptance kit | `build/clang-release/replay_shard DELIVERY PROGRAM CSV [--stages ABF] [--variant V] [--first F --count N] [--manifest M] [--stride S --phase K]`; `shard_summary` sums the shards | `CSV` |
 | Stage B on a delivery | `build/clang-suite/stageb DELIVERY VARIANT PROGRAM [WINDOW …]` | its log |
 | the delivery tools, the register tables | `tools/README.md` | |
 | the benchmarks | `bench/README.md` | |

@@ -508,10 +508,10 @@
 | `CHANGES-v1.3-to-v1.35.md` | 56 | \\| EngineTest \\| `tests/suite_engine.cpp` \\| |
 | `CHANGES-v1.3-to-v1.35.md` | 57 | \\| Stage B \\| `tests/stageb.cpp` \\| |
 | `CHANGES-v1.3-to-v1.35.md` | 58 | \\| AllToAllTest (`measure`), an older name: in v1.3 the all-to-all is EngineTest with the A2A helper \\| ported: `tests/suite_engine.cpp`, with `A2A` in `tests/mach.h` \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 59 | \\| ReadPortGatherTest \\| being ported: `tests/suite_rdport.cpp` \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 59 | \\| ReadPortGatherTest \\| ported: `tests/suite_rdport.cpp` (587 of 587 assertions, `tests/p4suites/rdport.log`) \\| |
 | `CHANGES-v1.3-to-v1.35.md` | 60 | \\| SearchBench \\| ported: `tests/suite_search.cpp` (56 of 56 assertions, `tests/p4suites/searchbench.log`) \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 61 | \\| CondTest \\| being ported \\| |
-| `CHANGES-v1.3-to-v1.35.md` | 62 | \\| S1Bench \\| being ported; `measure_s1` (`tests/mach.h`) is the harness side of its measurement \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 61 | \\| CondTest \\| ported: `tests/ctl/suite_cond.cpp` (153 of 153 assertions, `tests/ctlsuites/cond.log`) \\| |
+| `CHANGES-v1.3-to-v1.35.md` | 62 | \\| S1Bench \\| ported: `tests/ctl/suite_s1bench.cpp` (60 of 60 assertions, `tests/ctlsuites/s1bench.log`); `measure_s1` (`tests/mach.h`) is the harness side of its measurement \\| |
 | `CHANGES-v1.3-to-v1.35.md` | 63 | \\| SplitRun \\| not carried: its driver doesn't build in v1.3 \\| |
 | `history/README.md` | 1 | # spec/history |
 | `history/README.md` | 3 | What v1.35's restructuring took out of v1.3's spec, moved whole and unchanged: each version's `CHANGES-*` guide, the four decisions logs the spec cites (`DECISIONS-v1.2.md` to `DECISIONS-v1.3.md`), the preamble's "in brief" blocks and history companions (`machine-spec-v1.3-preamble.md`), and section 13 as it stood (`machine-spec-v1.3-section-13.md`). |

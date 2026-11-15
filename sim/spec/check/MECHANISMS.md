@@ -2,7 +2,7 @@
 
 *For the edits to the preamble (line 28) and section 9 (line 2942). Line numbers are `v1.3/spec/machine-spec.md`'s
 (`ops` = `replayer-opcodes.md`); code paths are under `sim/`. Searched: `src/units/`, `src/check.h`, `tests/mach.cpp`,
-`tests/checker.cpp`, 2026-11-12, again after merging `main` the same day (invariant 8's strict mode and the Tracer's facts landed then). A "not found" means that search found no check; it is a finding, to confirm.*
+`tests/checker.cpp`, 2026-11-12; **rerun on 2026-11-14 against the frozen tree** (`v1.35/`; `sim/` at f538bf39 has the same code), a day after the freeze, for the rows that were not found or counted only. A "not found" means that search found no check.*
 
 **The mechanisms.**
 - **F**: FATAL, every build: the run aborts with a message naming the access (`src/base/fatal.h`).
@@ -19,11 +19,11 @@
 | inv. | what | mechanism | where |
 |---|---|---|---|
 | 1 | no FIFO overflow | C+R | router FIFOs counted at t + 1 (D28), `FIFO_OVERFLOW` from the harness's scan (`tests/checker.h:30`); the gather queue's and the write engine's overflow links (`gather.h:33`, `tile_ctl.h:64`) |
-| 2 | one access per area per cycle; no buffer both read and written in a run | first half by construction (the area queues); second half **not found**: `check_disjoint` is a `MachConfig` flag and `DISJOINT` a `Kind`, with no record site |
-| 3 | the timetable holds | C | `rotations_late` (`ag.h:90`); `ROTATION_LATE` has no record site |
+| 2 | one access per area per cycle; no buffer both read and written in a run | by construction; C+R | first half by construction (the area queues); second half `disjoint_violations` and `DISJOINT`, once per tile and phase (`big_sram.h:142`, under `check_disjoint`) |
+| 3 | the timetable holds | C+R | `rotations_late` (`ag.h:90`); `ROTATION_LATE`, the first of each run (`ag.h:310`) |
 | 4 | expected arrivals land first (done early) | C+R | `CTL_DONE_EARLY`, `regblock.h:158` |
 | 5 | no bad packets | C+R; misaligned F | `DIR_BAD_PACKET` `director.h:127`, `INJ_*` `inject.cpp:48–53`; misaligned mode 0 `director.h:124` |
-| 6 | no `HIST` count past 17 bits | C | the overflow link `hist_ovf` (`tile_ctl.h:64`); `HIST_OVERFLOW` has no record site |
+| 6 | no `HIST` count past 17 bits | C+R | the overflow link `hist_ovf` (`tile_ctl.h:64`); `HIST_OVERFLOW`, once per tile (`table_store.h:327`) |
 | 8 | overwritten-unread results counted; strict mode | C+R | `CMEM_REPLY_OVERWRITE` `tile_ctl.h:531`, reported under `strict_replies`; `CMEM_COMMAND_UNREAD` `:539`; the read-port queue full: C (`tile_ctl.h:368`) |
 | 9 | no unexpected arrival | C+R | `DIR_UNEXPECTED`, `director.h:161` |
 | 10 | gathers are local | C+R | `INJ_GATHER_ELSEWHERE` `inject.cpp:51`; `ag.h:332` (C) |
@@ -33,7 +33,7 @@
 | 16, every peripheral's | no `PULSE_DMA` while busy; no unknown output queue | F | `periph_slot.cpp:308`, `:311` |
 | 16 | no `PULSE_RUN` while running | F (the replayer) | `replayer.cpp:272` |
 | 16 | no credit to a full counter | C | `event_counts.h:26` |
-| 16 | no change to `DMA_HDR`/`DMA_ADDR` mid-transfer | **not found** | |
+| 16 | no change to `DMA_HDR`/`DMA_ADDR` mid-transfer | C+R, **not F** | the slot's violation, `F_DMA_HDR_BUSY` and `F_DMA_ADDR_BUSY` (`periph_slot.cpp:212`, `:217`), reported as `SLOT_VIOLATION` |
 | 16, the replayer's | bad write; `RUN_CONFIG` while running; reserved expansion bits | F | `replayer.cpp:252`, `:312–331`, `:450` |
 | 16, the replayer's | the rest (two sources, …) | C+R | `PERIPH_VIOLATION`, `replayer.cpp:46` |
 | 16, the Tracer's | its undefined behaviour | F | `tracer.cpp:106` |
@@ -41,7 +41,7 @@
 | 17 | a request names its counters; arrives armed | C+R | `DIR_UNEXPECTED` |
 | 17 | at most 1, 3 and 1 requests outstanding | **not found** | |
 | 17 | tag windows written as the file system directs; none during a group run | **not found** (the file system is deferred, item 119) | |
-| 17 | no stream *d* = 67–125 or 127; no *d* = 126 on a mesh tile | C+R / C | `INJ_NO_ENDPOINT` `inject.cpp:50`; `ag.h:330–331` |
+| 17 | no stream *d* = 67–125 or 127; no *d* = 126 on a mesh tile | C+R | `INJ_NO_ENDPOINT` `inject.cpp:50`; `AG_BROADCAST_ON_TILE` `ag.h:350` |
 | 17 | a target with a receiver; `REQUEST_RECEIVE` never empty | C | `reqbus.h:369`, `:452` |
 | 18 | one source per order-placed destination | C+R for a queue port (`replayer.h:186`, `V_TWO_SOURCES`); **not found** for modes 1–3 into big SRAM |
 | 19 | everything in bounds | C+R / C | `DIR_PAST_SRAM` `director.h:174`, `WE_PAST_SRAM` `write_engine.h:127`; `inject.h:355`, `rv32.h:453` (C) |
@@ -65,14 +65,14 @@
 | 200 | a counted packet in a reserved mode | F | `director.h:136` |
 | 219 | size 11 (UB) | C+R, **not F** | `DIR_SIZE_UNDEF`, `director.h:131` |
 | 294, 2585 | a request dropped at the root | C | `reqbus.h:369` |
-| 468 | a misaligned stream source or destination | C | `ag.h:328–329` |
-| 473, 2968 | a stream with *d* = 126 from a mesh tile ("errors loudly") | C | `ag.h:330–331` |
+| 468 | a misaligned stream source or destination | C+R, **not F** | `AG_DEST_ALIGN`, `AG_SRC_ALIGN` (`ag.h:347–348`) |
+| 473, 2968 | a stream with *d* = 126 from a mesh tile ("errors loudly") | C+R, **not F** | `AG_BROADCAST_ON_TILE` (`ag.h:350`) |
 | 653, 2971 | two units feeding one queue port | C+R | `V_TWO_SOURCES` |
 | 753 | K below its formula | F | `tests/mach.cpp:165` |
 | 878, 1056, 2899, 2976 | the silent traps | S | `rv32.h` |
 | 901, 1195, 2663, 2684 | a reserved word of the block or a window | C+R / C | `CTL_RESERVED_ACCESS` `rv32.h:509`; `rv32.h:485` |
 | 1162 | a peripheral crediting a full counter | C | `event_counts.h:26` |
-| 1249 | `DMA_HDR` or `DMA_ADDR` changed mid-transfer | **not found** | |
+| 1249 | `DMA_HDR` or `DMA_ADDR` changed mid-transfer (undefined) | C+R, **not F** | `periph_slot.cpp:212`, `:217` |
 | 1430 | an expansion word with a reserved bit (UB) | F | `replayer.cpp:450` |
 | 1433 | `shift_offset` set on a row other than `VirtualShiftData…` | C+R | `V_OFFSET_IMM`, `replayer.h:189`, through `PERIPH_VIOLATION` (`replayer.cpp:46`) |
 | 1602; ops 325 | a misaligned memory row | C+R | `V_MISALIGNED`, `replayer.h:194` |
@@ -81,7 +81,7 @@
 | 1839 | a pass with no state write since the last | C+R | `V_NO_FLUSH`, `replayer.h:185` |
 | 1839 | a run while the replayer runs (undefined; ruled, owner, 2026-11-12) | F | `replayer.cpp:272` |
 | 2183 | an inline expansion with no `EXPANSION_TEMPLATE` store | C+R | `V_INLINE_NO_TEMPLATE`, `tracer.cpp:516` |
-| 2270 | a Tracer transfer asking for more than its credits cover (UB) | **not found** (searched `tracer.cpp`, `periph_slot.cpp`) | |
+| 2270 | a Tracer transfer asking for more than its credits cover (UB) | F | `tracer.cpp:835` |
 | 2455 | staging before arming | C+R | `DIR_UNEXPECTED` |
 | 2762 | `PULSE_DMA` while a run runs (undefined; ruled, owner, 2026-11-12) | F | `ag.h:145` |
 | 2775 | a counter sum past 2²⁰ − 1 | C+R | `CTL_COUNTER_WRAP`, `regblock.h:216` |
@@ -92,5 +92,8 @@
 
 Line 28 states the owner's three mechanisms as the rule. The checks neither v1.3's simulator nor v1.35's has (D48) are
 item 159 and `spec/CHANGES-v1.3-to-v1.35.md`'s "Checks the spec promises that neither simulator has"; section 9's
-opening names them. The other rows marked not found or C (invariants 2, 3, 6 and 22, `DMA_HDR` mid-transfer, the
-Tracer's oversized transfer) are to be ported by the freeze, when this table is rerun against `main`.
+opening names them. **The rerun of 2026-11-14:** the other rows that were not found or counted only are in the frozen
+tree: invariants 2, 3 and 6 are counted and reported, the Tracer's oversized transfer is fatal, and a `DMA_HDR` or
+`DMA_ADDR` change mid-transfer is counted and reported. That last one, the two stream cases and size 11 are undefined
+in the spec's text and are not fatal, as in v1.3's simulator (D48); the stream cases are now reported as well as
+counted. Invariant 22 is reported only, as before.

@@ -29,7 +29,8 @@ no spec**: v1.35 would be a simulator with nothing saying what it simulates.
 
 1. **Four kinds of document, never mixed.** *Entry* (`README`), *how-to* (`BUILDING`, `RUNNING`), *reference* (true
    of v1.35 as frozen, no history), *history* (`planning/`).
-2. **Every folder has a `README.md`** saying what is in it and how to use it; that is where a folder's reference goes.
+2. **Every folder a reader starts in has a `README.md`** saying what is in it and how to use it; that is where a
+   folder's reference goes. A subfolder needs none of its own if its parent's README describes it.
    Named documents (`PORTS.md`, `REGISTERS.md`) are for one subject each.
 3. **A reference document is complete without `planning/`.** It may cite a decision or a report as the reason
    (`(D26)`); it may not need it to be understood. No worker names, no `ref/` or `wip/` paths, no "to come".
@@ -87,7 +88,8 @@ no spec**: v1.35 would be a simulator with nothing saying what it simulates.
 ## 6. How it is checked
 
 - **`tools/doccheck.sh`, in `make check`:** every path a document cites exists; no `sim/`, `ref/`, `oracle/`, `wip/`
-  path outside `planning/`; every folder has a README; every document named in a code comment is in the tree.
+  path outside `planning/`; every folder has a README or is named in its parent's; every document named in a code
+  comment is in the tree.
 - **The comment strip changes no code:** preprocessed output identical before and after, file by file.
 - **BUILDING followed on a fresh machine** (a Quest task; already P8's check).
 - **A fresh-reader test:** a new session, given only the frozen folder, answers a fixed set of questions per reader

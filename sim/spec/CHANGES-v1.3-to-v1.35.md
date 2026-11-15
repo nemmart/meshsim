@@ -56,8 +56,8 @@ The `[meas: …]` labels name v1.3's Java tests and drivers (Markers). What repl
 | EngineTest | `tests/suite_engine.cpp` |
 | Stage B | `tests/stageb.cpp` |
 | AllToAllTest (`measure`), an older name: in v1.3 the all-to-all is EngineTest with the A2A helper | ported: `tests/suite_engine.cpp`, with `A2A` in `tests/mach.h` |
-| ReadPortGatherTest | being ported: `tests/suite_rdport.cpp` |
+| ReadPortGatherTest | ported: `tests/suite_rdport.cpp` (587 of 587 assertions, `tests/p4suites/rdport.log`) |
 | SearchBench | ported: `tests/suite_search.cpp` (56 of 56 assertions, `tests/p4suites/searchbench.log`) |
-| CondTest | being ported |
-| S1Bench | being ported; `measure_s1` (`tests/mach.h`) is the harness side of its measurement |
+| CondTest | ported: `tests/ctl/suite_cond.cpp` (153 of 153 assertions, `tests/ctlsuites/cond.log`) |
+| S1Bench | ported: `tests/ctl/suite_s1bench.cpp` (60 of 60 assertions, `tests/ctlsuites/s1bench.log`); `measure_s1` (`tests/mach.h`) is the harness side of its measurement |
 | SplitRun | not carried: its driver doesn't build in v1.3 |

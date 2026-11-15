@@ -82,37 +82,48 @@ debug options (`shuffle_seed`, `step_all`, `instance_major`), the logs and their
 
 ## The checker and the invariants
 
-How each invariant of spec section 9 is checked. **F**: fatal in every build (`src/base/fatal.h`); **S**: the core
-stops; **C**: counted in every build by the unit; **R**: reported by name, as a `check.h` kind, in the debug and suite
-builds. The checks neither simulator has are `spec/CHANGES-v1.3-to-v1.35.md`'s list.
+How each invariant of spec section 9 is checked, with every kind of `src/check.h`. **F**: fatal in every build
+(`src/base/fatal.h`); **S**: the core stops; **R**: recorded as a fact where it happens and reported by name, in the
+debug and suite builds (`tests/checker.cpp` has each kind's message, which names its invariant). Most reported kinds
+are also counted by their unit in every build, in a counter beside the record site; the traffic director's checks of
+invariants 22 and 25 are facts only. A check in brackets runs under that `MachConfig` switch (`tests/mach.h`). The
+checks neither simulator has are `spec/CHANGES-v1.3-to-v1.35.md`'s list.
 
 | invariant | kinds (`src/check.h`) | how |
 |---|---|---|
-| 1 no FIFO overflow | `FIFO_OVERFLOW` | C, R |
-| 2 one access per area per cycle | (by construction: the area queues) | |
-| 3 the timetable holds | `ROTATION_LATE` | C, R |
-| 4 expected arrivals land first | `CTL_DONE_EARLY` | C, R |
-| 5 no bad packets | `DIR_BAD_PACKET`, `INJ_BAD_PACKET`, `DIR_SIZE_UNDEF`, `INJ_SIZE_UNDEF`; a misaligned packet | C, R; F |
-| 6 no `HIST` count past 17 bits | `HIST_OVERFLOW` | C, R |
-| 8 overwritten-unread results | `CMEM_REPLY_OVERWRITE` (under `strict_replies`), `CMEM_COMMAND_UNREAD` | C, R |
-| 9 no unexpected arrival | `DIR_UNEXPECTED` | C, R |
-| 10 gathers are local | `INJ_GATHER_ELSEWHERE` | C, R |
-| 11 controller-memory writes keep their places | `DIR_COMMAND_BLOCK`, `DIR_REPLY_BLOCK`, `DIR_PAST_CMEM`, `DIR_COMMAND_KIND` | C, R |
-| 14 read-port results and incoming traffic don't overlap | `DIR_READPORT_OVERLAP` (under `check_read_port_overlap`) | C, R |
-| 15 no errors | `ERRORS_SET` | C, R |
-| 16 the peripherals | `PERIPH_VIOLATION`, `TRACER_VIOLATION`; a start while busy | C, R; F |
-| 17 the request contract | `DIR_UNEXPECTED`, `INJ_NO_ENDPOINT`; the request bus's own counts | C, R |
-| 18 one source per order-placed destination | `PERIPH_VIOLATION` (the replayer's queue port) | C, R |
-| 19 everything in bounds | `DIR_PAST_SRAM`, `WE_PAST_SRAM` | C, R |
-| 20 pointers and runs aligned | `CTL_RECORD_BASE_ODD`; a misaligned read-queue chunk | C, R; F |
-| 21 no reserved encodings | `DIR_COUNT_CTR0`, `INJ_COUNT_CTR0`, `CTL_RESERVED_ACCESS`; modes 6-7, a reserved `DMA_CONFIG` digit | C, R; F |
-| 22 uncounted traffic is mode 0 only | `DIR_UNCOUNTED_*` | R |
-| 23 no silent traps | (the core) | S |
-| 24 K covers the write path | `S1_LATE`; a K below its formula | C, R; F |
-| 25 boot keeps its order | `DIR_OVERLAY_AFTER_COMMAND`, `DIR_COMMAND_KIND` | C, R |
-| 26 no ignored start | (a start while running) | F |
+| 1 no FIFO overflow | `FIFO_OVERFLOW` (the harness's scan of the units' overflow counts) | R |
+| 2 one access per area per cycle; no buffer both read and written | the first by construction (the area queues); `DISJOINT`, once per tile and phase [`check_disjoint`] | R |
+| 3 the timetable holds | `ROTATION_LATE`, the first of each run | R |
+| 4 expected arrivals land first | `CTL_DONE_EARLY` | R |
+| 5 no bad packets | `DIR_BAD_PACKET`, `INJ_BAD_PACKET`, `EP_BAD_PACKET`; size 11: `DIR_SIZE_UNDEF`, `INJ_SIZE_UNDEF`, `EP_SIZE_UNDEF`; a mode-0 packet not aligned to its size | R; F |
+| 6 no `HIST` count past 17 bits | `HIST_OVERFLOW`, once per tile | R |
+| 8 overwritten-unread results | `CMEM_REPLY_OVERWRITE` [`strict_replies`]; `RP_QUEUE_FULL` (a read dropped, `ERRORS` [7]) | R |
+| 9 no unexpected arrival | `DIR_UNEXPECTED` [`check_unexpected`] | R |
+| 10 gathers are local | `INJ_GATHER_ELSEWHERE`, `AG_GATHER_DEST` | R |
+| 11 controller-memory writes keep their places | `DIR_COMMAND_BLOCK`, `DIR_REPLY_BLOCK` | R |
+| 14 read-port results and incoming traffic don't overlap | `DIR_READPORT_OVERLAP` [`check_read_port_overlap`] | R |
+| 15 no errors | `ERRORS_SET`, with `ERROR_LINE` (the line's rise and fall, no message) [`check_errors`] | R |
+| 16 the peripherals | `SLOT_VIOLATION` (a reserved window word, `DMA_HDR` or `DMA_ADDR` changed mid-transfer, an event posted at its full count), `PERIPH_VIOLATION` (the replayer's), `TRACER_VIOLATION`; a start while busy, a DMA transfer naming a queue the peripheral lacks, the Tracer's undefined cases (a transfer past its credits among them) | R; F |
+| 17 the request contract | `INJ_NO_ENDPOINT`, `AG_DEST_ENDPOINT`, `AG_BROADCAST_ON_TILE`, `REQBUS_NO_RECEIVER`; the limits on outstanding requests are not checked | R |
+| 18 one source per order-placed destination | `PERIPH_VIOLATION` (the replayer's queue port); not checked for big SRAM | R |
+| 19 everything in bounds | `DIR_PAST_SRAM`, `WE_PAST_SRAM`, `DIR_PAST_CMEM`, `CTL_ALIAS` | R |
+| 20 pointers and runs aligned | `CTL_RECORD_BASE_ODD`, `AG_DEST_ALIGN`, `AG_SRC_ALIGN`, `RP_DEST_ALIGN`; a misaligned read-queue chunk | R; F |
+| 21 no reserved encodings | `DIR_COUNT_CTR0`, `INJ_COUNT_CTR0`, `AG_COUNT_CTR0`, `INJ_RESERVED_MODE`, `EP_RESERVED_MODE`, `CTL_RESERVED_BITS`, `CTL_RD_DEST_SIZE`, `CTL_RESERVED_ACCESS`; a packet or stream in mode 6–7 at a tile, a reserved `DMA_CONFIG` digit | R; F |
+| 22 uncounted traffic is mode 0 only | `DIR_UNCOUNTED_MODE`, `DIR_UNCOUNTED_REGION`, `DIR_UNCOUNTED_SRC`, `DIR_RESERVED_BYTES`, `CTL_DMEM_RESERVED` | R |
+| 23 no silent traps | `CTL_HALT`, `CTL_MRET` | S, R |
+| 24 K covers the write path | `S1_LATE` [`measure_s1`]; a K below its formula | R; F |
+| 25 boot keeps its order | `DIR_OVERLAY_AFTER_COMMAND`, `DIR_COMMAND_KIND` | R |
+| 26 no ignored start | a start while a run is running | F |
 
 Invariants 7, 12 and 13 are withdrawn.
+
+**Kinds for rules outside section 9:** `CMEM_COMMAND_UNREAD` (a command over an unread one, 6.3)
+[`check_command_read`]; `CTL_WFI_WOKEN`, `CTL_DONE_GO_MASKED` and `CTL_COUNTER_WRAP` (4.12); `CTL_TABLE_BUSY` (a table
+window used while its engine runs, 4.10); `AG_SIZE_UNDEF` and `AG_AUG128` (3.1, 4.2); `RP_SIZE_UNDEF` (8.8);
+`CNC_RX_LOST` (6.6). **The simulator's own:** `CTL_REQ_FULL`
+and `REQBUS_QUEUE_OVERFLOW`, which a correct simulator never raises. **Kinds nothing records:** `EJECT_WRONG_TILE`,
+`ILLEGAL_FORWARD`, `CC1_PERIPH`, `SRQ_PAST_SRAM`, `READ_RETURN_REFUSED`, and `AG_START_WHILE_RUNNING` and
+`AG_TABLE_WRAP`, whose cases are fatal in the address generator instead.
 
 ## Simulator-only words
 

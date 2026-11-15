@@ -73,3 +73,7 @@ RUNNING.md	DIR/uniform.keys	output	a placeholder: the key set's folder, made by 
 RUNNING.md	OUTDIR/run.sh	output	written by the sort kit's assemble.sh into OUTDIR
 RUNNING.md	SUMMARY.md	output	written by the sort kit's run.sh
 RUNNING.md	out.md	output	a placeholder output name in a command
+fw/mesh-v1.2-draft.h	WORKER6/REPORT.md	historical	held to v1.3's bytes; an earlier series' report, not kept
+fw/sort/program/sw/bt_plan.c	WORKER8/REPORT.md	historical	held to v1.3's bytes; an earlier series' report, not kept
+fw/sort/program/sw/sort.h	WORKER8/REPORT.md	historical	held to v1.3's bytes; an earlier series' report, not kept
+fw/sort/program/sw/transfer.c	REPORT.md	historical	held to v1.3's bytes; an earlier series' report, not kept

@@ -161,9 +161,9 @@ Tracer's region. A packet is appended at the queue's tail and the rest of its ad
 Two differences, both because the Updater has no state write and its stream runs across runs:
 
 - **Only the reset empties the queues and fills the credits to 2.** A `START` does neither.
-- **† The segment queue is filled as the replayer's queues are:** the core takes a credit and starts a transfer of
-  up to half a queue from Ingress. Whether Ingress should feed the queue directly instead is open; Ingress is still
-  to be designed (`HOST-LINK.md`).
+- **The segment queue's credits come to the master tile to manage** (owner). Its core takes a credit, and sends a
+  background packet's words from Ingress into the queue only when its allowance covers them
+  (`INGRESS-INTERFACE.md`). There is no signal from the Updater to Ingress.
 
 ## Its other connections
 

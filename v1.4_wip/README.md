@@ -19,6 +19,7 @@ before v1.36 was read; `planning/V136-SCOPE.md` says where the two meet and wher
 | `planning/DESIGN-NOTES-2026-11-16.md` | the third day's: the cache as a controller and a cache memory, flush and discard, updates that write through to LPDDR and their sequence, and the order of the work (software prototypes of the two controllers before the specification) |
 | `planning/HOST-FRAMES.md` | the nine frames the host sends, field by field: what gold is to produce |
 | `planning/UPDATER-INTERFACE.md` | the Updater's registers, events, errors and queue ports, as walked through with the owner; the Updater is the master tile's peripheral |
+| `planning/INGRESS-INTERFACE.md` | how the master tile takes the host's packets out of Ingress: a service flag and a word count for each stream, reading out by DMA, the credits for the Updater; and v1.37's black box fed from a packetized file |
 | `planning/HOST-LINK.md` | the link under the frames: two streams, chunks with a 128-bit header, the two checks, and recovery from a loss of sync |
 | `planning/V136-SCOPE.md` | v1.36 against this design: the names, seven collisions and how the first pass ruled on them, what v1.36 already gives, what was not yet read |
 | `planning/RTL-CHANGE-REQUESTS.md` | what the design asks Tony to change in hardware the RTL has built |
@@ -29,7 +30,8 @@ before v1.36 was read; `planning/V136-SCOPE.md` says where the two meet and wher
 
 1. `planning/V136-SCOPE.md`, for what must be ruled on first.
 2. The three design notes, in order. Where they disagree, the later one stands.
-3. `planning/HOST-FRAMES.md`, `planning/UPDATER-INTERFACE.md` and `planning/HOST-LINK.md`, with the figure.
+3. `planning/HOST-FRAMES.md`, `planning/UPDATER-INTERFACE.md`, `planning/INGRESS-INTERFACE.md` and
+   `planning/HOST-LINK.md`, with the figure.
 
 Each document marks what the owner decided, what is proposed and what is open.
 

@@ -322,3 +322,35 @@ proof and the background), chunks with a 128-bit header word, the two checks, "r
 | the second note, section 4 | the segment queue is fed on the master tile, and the free page queue by the master tile's core |
 | `V136-SCOPE.md`, outcome 3 | the Updater is the master tile's peripheral 2, not the memory tile's |
 | `updater_wip` | the Updater is built on the master tile; the firmware that minds it is the master tile's |
+
+## 14. v1.37: something that works, with black boxes
+
+The owner's plan for the next version, on v1.36 (he called it a moving target, and this is where it stands):
+
+| piece | in v1.37 |
+|---|---|
+| the input | **Decided (owner):** the simulator is started with a file, the data that comes over Ingress: gold's frame file, **packetized** with the right CRC values. Every packet is on the background stream |
+| Ingress | **Decided (owner): a black box.** It presents the file's packets to the master tile (`INGRESS-INTERFACE.md`). A packet that fails its CRC is fatal |
+| the master tile | **Decided (owner): real firmware,** which drives the Updater |
+| the Updater | **Decided (owner): a black box, a software implementation.** Proposed: behind the registers and queues of `UPDATER-INTERFACE.md`, so that the firmware written against it stands when the real controller replaces it |
+| the cache | **Decided (owner): a black box, a software implementation.** v1.36's simulator has one already: the model of the memory system behind the Tracer's fill port, on a copy-on-write file store |
+| the memory tile | **Decided (owner): nothing runs on it.** The Tracer's output goes from the tracer tile straight to the compute tiles (checked in v1.36's `fw/tracer/tracer_ctl.c`) |
+| the file system | **Proposed: a software black box** that answers the master tile's requests for files and pages, since nothing runs on the memory tile |
+| the check | the Tracer traces on the images the Updater built, and the images equal gold's reference (`frames-images`) |
+
+- **Why black boxes first** (owner): "this way we can have something that actually works". The two real controllers,
+  the Updater's and the cache's, then replace their black boxes one at a time, with everything around them running.
+  This takes the place of section 5's order and section 8's.
+- **What it replaces in v1.36:** today a test harness, "standing in for C&C 1 and C&C 2", applies the update stream
+  and makes the Tracer's copy and the jump table before a run. v1.37 puts the frame file, the master tile's firmware
+  and the Updater in its place.
+- **The interface between Ingress and the master tile was settled first** (owner: a worker would otherwise "ask us a
+  million questions about it or get it completely wrong"). It is `INGRESS-INTERFACE.md`:
+  - a service flag and a status bit for each stream, and a register giving the words in the packet that asked;
+  - no further flag on a stream until that many words have been read out;
+  - reading out by Ingress's DMA, in pieces: one word for the frame's header, then the rest wherever it belongs;
+  - `dma_done` and a counter tell the core a transfer is complete;
+  - a packet is at most 32 words, and a frame ends at the end of a packet;
+  - the Updater's credits come to the master tile to manage.
+- **The streams are named foreground and background** (owner), not active and background.
+- **Open:** where the work lives. Proposed: `v1.37_wip/`, a copy of v1.36, as earlier versions were made.

@@ -1,6 +1,6 @@
 // test_rtl_tile.cpp: acceptance A of v1.36's platform: the RTL's tile programs (Snarky One's
-// rtl/tile/base/test/programs/base_tile, vendored unmodified as ELF files in fw/rtl/tile/base_tile/) on one simulated compute tile,
-// booted through the RTL's boot ROM (fw/rtl/boot/), with the stimulus and the verdicts of the RTL's own test of its tile,
+// rtl/tile/base/test/programs/base_tile; here fw/tile/, built by fw/build.sh into fw/images/tile/) on one simulated compute tile,
+// booted through the RTL's boot ROM (fw/images/boot/), with the stimulus and the verdicts of the RTL's own test of its tile,
 // rtl/tile/base/test/src/base_tile_test.rs. The bench here plays what that test plays: the master tile (the load, the
 // barrier's release), the request tree's row node that takes the tile's reports, and the tiles at the ends of the router's
 // links.
@@ -321,7 +321,7 @@ struct Run {
     Replayer* row_port = nullptr;                          // the replayer whose row port the bench takes rows from, in its run
     bool dead = false;                                     // a check failed: the run stops
 
-    explicit Run(uint64_t seed) : random(seed), files(rtl_images::program_list("fw/rtl/tile/base_tile", KIND_COUNT)) {}
+    explicit Run(uint64_t seed) : random(seed), files(rtl_images::program_list("fw/images/tile", KIND_COUNT)) {}
 
     void fail(const char* fmt, ...) __attribute__((format(printf, 2, 3))) {
         if (dead) return;

@@ -11,10 +11,16 @@ Checked on Ubuntu 24.04.
 |---|---|---|
 | the simulator, its tests and tools | `make`, g++ and clang++ (C++20): clang for the release build, both for `make check` | `apt install make g++ clang` |
 | `pipeline/`, the offline input tools | a JDK, Java 21 (`pipeline/README.md`) | `apt install openjdk-21-jdk-headless` |
+| the firmware images (`fw/build.sh`) | xPack `riscv-none-elf-gcc` 15.2.0-1 (GCC 15.2.0, binutils 2.45), the toolchain the committed images were built with, on `PATH` or named by `RISCV_PREFIX` | not packaged: the release `v15.2.0-1` of xpack-dev-tools' `riscv-none-elf-gcc-xpack`, unpacked (`fw/build.sh` prints where) |
+| riscv-tests' and CoreMark's images, with the above | a checkout of each at the revision `fw/core/riscv-tests/riscv-tests.toml` and `fw/core/coremark/coremark.toml` pin, named by `RISCV_TESTS` and `COREMARK` | `git clone` at that revision |
 
-**Nothing here needs a RISC-V toolchain.** The firmware the simulator runs is the RTL's, built in Snarky One by its
-own pinned toolchain and vendored here, sources and images (`fw/rtl/README.md`). `fw/check_images.sh` checks every
-vendored file against its hash list; `fw/rtl/refresh.sh` copies a newer build from a Snarky One checkout.
+**Without the RISC-V toolchain, everything else builds and runs.** The firmware images are committed (`fw/images/`,
+`tests/core-programs/elf/`, and the chip's Rust firmware in `fw/rtl/`), and the simulator, its tests and the suites
+use them as they are. `fw/build.sh --check` rebuilds every C and assembly image from the sources in `fw/` and proves
+each equal to its committed copy, byte for byte; without the toolchain, `fw/check_images.sh` checks the committed
+images against the hash lists committed beside them. The suite runner's step `fw-build` does the first when the
+toolchain is there and is printed as SKIPPED when it isn't; `fw-images` does the second always. The chip's programs
+that are Rust today are not built here yet: `fw/README.md`, "Built outside meshsim, to be replaced by C".
 
 ## The three builds
 
@@ -45,7 +51,10 @@ since TSan can't share a process with ASan.
 | every test of one build, run | `make run CC_NAME=gcc MODE=debug` |
 | the thread tests under TSan, gcc and clang | `make tsan` |
 | the chip split over threads under TSan (the sort's 16-record run on 2 and 8 threads), gcc and clang | `make tsan-chip` |
-| the vendored firmware against its hash list | `fw/check_images.sh` |
+| the firmware images, rebuilt and checked against the committed copies | `fw/build.sh --check` |
+| the firmware images, rewritten into `fw/images/` | `fw/build.sh` |
+| the committed images against their hash lists, without the toolchain | `fw/check_images.sh` |
+| the 64K sort runs' key file (16 MiB; the runner builds it itself) | `build/clang-release/fwimage keys 65536 FILE` |
 | the documents' check | `make doccheck` |
 | the offline input tools (Java) | `sh pipeline/build.sh` |
 | the speed benchmark | `bench/README.md` |

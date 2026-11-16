@@ -16,13 +16,17 @@ specification or the RTL: a failing test, or a program that stops, fails the run
 is compared with its reference log under `--check`, its timings masked (cycles are never masked); a difference fails
 the run. The run exits 0 only when every step passed.
 
-**Two inputs are outside the repository.** A step that needs one is not run when it is not there; the runner prints
-it as `SKIPPED (<why>)`, lists the skipped steps again in its summary, and ends with `all passed, N steps SKIPPED for
-data outside the repository`. With both inputs it ends with `all passed`.
+**Two things are outside the repository.** A step that needs one is not run when it is not on the machine; the runner
+prints it as `SKIPPED (<why>)`, lists the skipped steps again in its summary, and ends with `all passed, N steps
+SKIPPED for what is not on this machine (data, a toolchain)`. With both it ends with `all passed`.
 - `MESHSIM_INPUTS` (default `~/meshsim-inputs`): the real workloads' recorded data (EVM Zone, Cyclone), for
   `tracer-block` and `rtl-segment-real`.
-- `RTL_SORT_64K_KEYS`: the RTL's 64K key file (16 MiB, not vendored: `fw/rtl/README.md`; Snarky One's
-  `mise run sort-images` writes it as `build/sort/sort-64k.keys`), for `rtl-sort-64k`.
+- The RISC-V toolchain the firmware images were built with (`BUILDING.md`; `RISCV_PREFIX` names it), for `fw-build`.
+  With it, `RISCV_TESTS` and `COREMARK` name the checkouts from which that step also rebuilds riscv-tests' and
+  CoreMark's images; without them it rebuilds the rest and says so.
+
+The 64K sort runs' key file (16 MiB) is not an input: `rtl-sort-64k` builds it (`fwimage keys 65536`, into
+`build/sort-64k.keys`) and checks it against its committed sha256.
 
 The times are wall times on the development host (32 threads, clang, `JOBS=16`); the whole of `all --check` takes
 about 2.5 minutes after the build, `quick --check` about 40 seconds.
@@ -31,7 +35,8 @@ about 2.5 minutes after the build, `quick --check` about 40 seconds.
 |---|---|---|---|---|
 | `layout` | both | `sh tools/check_copies.sh` | <1 s | `COPIES.sha256`: every file copied from v1.3 still has v1.3's bytes |
 | `bus` | both | `build/clang-debug/suite_bus` | <1 s | log: `tests/p2suites/bus.log` (the framework's port kinds) |
-| `rtl-images` | both | `fw/check_images.sh` | <1 s | `fw/rtl/MANIFEST`: the RTL's vendored firmware, file by file |
+| `fw-images` | both | `fw/check_images.sh`, with `fwimage` | <1 s | the hash lists: `fw/images/MANIFEST`, `tests/core-programs/SHA256SUMS`, `fw/rtl/MANIFEST`, file by file; and what is made here of the runs' data: the committed keys are the generator's, and each committed master holds the run image made here (`fw/README.md`, "The run image") |
+| `fw-build` | both, with the RISC-V toolchain | `fw/build.sh --check` | 3 s | every C and assembly image rebuilt from `fw/`'s sources, byte-equal to its committed copy; each run image against its committed master |
 | `core-programs` | both | `test_core_programs` | 1 s | the RTL's core programs: each pass, cycle, retirement and trap the RTL's (`tests/core-programs/`) |
 | `core-tile` | both | `test_core_tile` | <1 s | the core's accesses to region 0xFF in `register_bus`'s cycles (machine-spec 5, 6.4) |
 | `core-contract` | both | `test_rv32_rtl` | <1 s | the core against its contract, test by test: the core specification's §1 on a small bus (the pipeline's cycles, control transfers, multiply, the CSRs, the traps table, interrupts, WFI and the canonical wait), and the tile's environment with region 0xFF decoded by `register_bus.h` (machine-spec 5, 6.4) |
@@ -56,7 +61,7 @@ about 2.5 minutes after the build, `quick --check` about 40 seconds.
 | `tracer` | both | `suite_tracer` | <1 s | log: `tests/tracersuites/tracer.log` |
 | `tracer-block-synth` | both | `tracer_block --synthetic` | <1 s | log: `tests/tracerblock/tracer-block-synth.log`; in the run itself, an interpreter of the synthetic guest |
 | `tracer-block` | both, with `MESHSIM_INPUTS` | `tracer_block --inputs DIR --program P --segment S --compression C --fill F --quiet --ref FILE`, for EVM Zone's segments 0 and 1 and Cyclone's 0, `C` 0 and 7, `F` 1 and 55,35; then each segment with `--fill model` (15 runs) | 22 s | log: `tests/tracerblock/tracer-block.log`; in the run itself, gold's files and the RTL's figures (`tests/tracerblock/rtl/`) |
-| `rtl-sort-64k` | all, with `RTL_SORT_64K_KEYS` | `test_rtl_sort sort_64k` | 40 s | as `rtl-sort`, at 64 × 65,536 records |
+| `rtl-sort-64k` | all | `fwimage keys 65536 build/sort-64k.keys`, its sha256 checked, then `test_rtl_sort sort_64k` | 40 s | as `rtl-sort`, at 64 × 65,536 records; the key file against `fw/images/sort/sort-64k.keys.sha256` |
 | `rtl-segment-real` | all, with `MESHSIM_INPUTS` | `test_rtl_segment real_` | 56 s | the real workloads' windows (EVM Zone's 0–63 and 64–127, Cyclone's 0–63): every row, record and stream against the recorded files, the cycles against the RTL chip's |
 
 The figures the chip's steps require are in `README.md` (Status); what each test is and where its reference came

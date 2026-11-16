@@ -1,0 +1,10 @@
+[package]
+name = "core-firmware"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Bare-metal Rust test program for the RV32 core (built by cargo xtask core-images)"
+
+# Its own workspace: it builds for the RISC-V target, unlike the xtask tooling in the
+# repository's root workspace. The toolchain is pinned by the root rust-toolchain.toml.
+[workspace]

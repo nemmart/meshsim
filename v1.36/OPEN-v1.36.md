@@ -2,7 +2,7 @@
 
 *For whoever takes v1.36 further, and for anyone who needs to know how far its simulator can be trusted: where the
 simulator still differs from the RTL, what of the RTL's tests has no counterpart here, what the simulator takes from
-the RTL's sources where the specification is silent, and what was retired.* This is the record at the freeze. What is
+the RTL's sources where the specification is silent, what was retired, and which firmware is not built here yet.* This is the record at the freeze. What is
 open in the design itself is `spec/machine-spec.md` chapter 26; what v1.35 had that v1.36 does not is `README.md`
 ("What v1.36 does not carry over").
 
@@ -30,7 +30,7 @@ compared with it (`tests/routerconf/README.md`, `test_periph_slot`, `test_ag`, `
 
 | the RTL's test | what it checks that nothing here does | what would close it |
 |---|---|---|
-| `base_tile_special_test.rs` and its `special` program (kind 4; vendored, `fw/rtl/tile/base_tile/special.elf`, not run) | a special tile's base with every kind of peripheral interface: the test plays peripherals 1, 2 and 3 as bare `reg` interfaces that answer every word, the control and DMA blocks' among them, with constants. In the simulator a peripheral's control block and DMA are the slot's own (`src/units/periph_slot.h`), so no peripheral can answer those loads with the test's constants. What the program checks of the tile is checked piece by piece: the straps and `boot_local` (`test_rtl_sort`, `test_rtl_memory`, `test_rtl_stream`), the peripherals' windows through the bus with the stores that stall (`test_core_tile`, `test_periph_slot`, `test_ingress_egress`, `test_rw_engine`), the write port, a DMA's packets through the special tile's router (`test_special_router`, `test_rtl_memory`), a request received with its credit (`test_request_tree`) | a slot whose blocks 0 and 1 a test can replace by a bare interface |
+| `base_tile_special_test.rs` and its `special` program (kind 4; built here, `fw/images/tile/special.elf`, not run) | a special tile's base with every kind of peripheral interface: the test plays peripherals 1, 2 and 3 as bare `reg` interfaces that answer every word, the control and DMA blocks' among them, with constants. In the simulator a peripheral's control block and DMA are the slot's own (`src/units/periph_slot.h`), so no peripheral can answer those loads with the test's constants. What the program checks of the tile is checked piece by piece: the straps and `boot_local` (`test_rtl_sort`, `test_rtl_memory`, `test_rtl_stream`), the peripherals' windows through the bus with the stores that stall (`test_core_tile`, `test_periph_slot`, `test_ingress_egress`, `test_rw_engine`), the write port, a DMA's packets through the special tile's router (`test_special_router`, `test_rtl_memory`), a request received with its credit (`test_request_tree`) | a slot whose blocks 0 and 1 a test can replace by a bare interface |
 | `memory_tile_test.rs` (the memory tile alone, a program of the test's) | a read under a stalled attach output, region `WRITE`s of 64 and 32 bits through the tile, an LPDDR error to `ERRORS.peripheral_1`, the NMI, the reports 24 and 25 and the error line, on one tile. Here the tile's composition is checked in the chip (`test_rtl_memory`) and those three at the unit (`test_rw_engine`) | a one-tile bench for a special tile (the same as above) |
 | `master_tile_test.rs`, parts 0–5 and 8 | the master tile alone. Its parts are the tile's and the nets' (`test_rtl_tile`, `test_request_tree`, `test_ingress_egress`, `test_rtl_sort`'s errors); parts 6 and 7 (the UART and the stream through the core) are `test_rtl_stream`'s | the same bench |
 | `chip_replay_test.rs`'s six smaller ranges (EVM Zone's windows 33–36 and 86–89, Cyclone's 30–33 and 40–42 among them) | a segment that starts inside a host segment: the RTL's test starts at any window by running its model of the Tracer's execution from row 0. The simulator's tests have no such model and take none from the simulator, so `tests/segment_real.h` starts at a host segment's start, which the recorded files give | a port of the RTL's `tracer_execution_model.rs` to the tests, or the RTL test's fixtures for those ranges |
@@ -252,7 +252,7 @@ A cycle of the RTL's tests is the simulator's less one (the framework counts fro
 | v1.3's suites on v1.35's firmware (the control, recipe, read-port, accounting, request-bus and C&C suites), `test_chip`, `test_sort`, the sort's driver, sweep and kit | the RTL's chip tests under the RTL's firmware: `test_rtl_tile`, `test_rtl_sort`, `test_rtl_memory`, `test_rtl_stream` |
 | Stage B and F, T2 and the chains | `test_rtl_segment`. What nothing checks now: a segment's end memory carried into the next segment's start on one machine (the memory system between segments is *Open*, 17.9.14) |
 | CheckSelf | `test_checker`, for the rules of the packet v1.36 keeps; (a)'s last row for the rest |
-| meshsim's own firmware | the RTL's (`fw/README.md`) |
+| meshsim's own firmware | the RTL's, built here from sources here but for (e)'s images (`fw/README.md`) |
 | the settings of v1.35's hardware (`areaQueueDepth`, `writeCombining`, `fifoCountBeforePop`, `sramReadLatency`, `weInDepth`, `agLookahead`, `ccDmaDepth`, `doneGate`, `stageDelay`, `runLatency`, `strictReplies`, `checkCommandRead`, `checkUnexpected` and the others) | refused by name, each with its reason (`MachConfig::dropped()`, `tests/mach.cpp`) |
 
 What is left of v1.35's machine in the tests, and why: the coreless machine with a behavioural master (`tests/mach.h`'s
@@ -260,3 +260,15 @@ What is left of v1.35's machine in the tests, and why: the coreless machine with
 v1.36's units and `test_checker` provokes the checker; `test_cnc` checks that behavioural master against v1.3's
 (`tests/cncconf/`). It is a test bench, not chip hardware: the chip's master is the master tile (`test_rtl_sort`).
 `shard_summary` still sums Stage B and F lines as v1.3's did (its test's cases hold them); nothing writes them.
+
+## (e) Firmware that is not built here yet
+
+Every image the simulator runs that is C or assembly is built in `fw/` from sources there, and `fw/build.sh --check`
+proves each equal to its committed copy. What follows is not: it is committed as Snarky One built it, and checked
+only against a hash list.
+
+| what | where | why it stays | what closes it |
+|---|---|---|---|
+| the chip's Rust firmware: the master tile's program (six images, one a run), the memory tile's, the replay image and the tracer tile's image | `fw/rtl/sort/`, with its sources in `fw/rtl/src/` and its hash list `fw/rtl/MANIFEST` | it is Rust, built by Snarky One's toolchain and recipes; the owners decided it is to be C, built here. Until then meshsim makes what it can of each master: its run image, with the tile image built here, which every committed master must hold byte for byte (`fw/README.md`, "The run image") | each program rewritten in C in `fw/` and built by `fw/build.sh` (`fw/README.md`, "Built outside meshsim, to be replaced by C": what each must provide). The images' instructions change, so the chip's cycle figures (`README.md`, Status) must be taken again from the RTL's run of the C images |
+| the core's Rust test program, `firmware-rust.elf`, one of the RTL's 49 | `tests/core-programs/elf/`; its source in `fw/rtl/src/` | the same | a C program in `fw/core/` in its place, with the RTL's run of it for its references, or its retirement in the RTL |
+| riscv-tests' and CoreMark's images, when `fw/build.sh` is run without their checkouts | `tests/core-programs/elf/` | third-party sources, not copied into this repository | nothing: `RISCV_TESTS` and `COREMARK` name the checkouts, and `fw/build.sh --check` then rebuilds and compares all 48 |

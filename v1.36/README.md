@@ -11,7 +11,8 @@ takes all of it back:
 - **the specification** (`spec/`) is the RTL's (the platform and the core, with their names, register layouts and
   vocabulary), with what meshsim's specification has beyond it kept in the same terms;
 - **the simulator** (`src/`) models the RTL's hardware at the register, the packet and the cycle, so that **the RTL's
-  own firmware images run on it unmodified** (`fw/rtl/`), with the RTL's results and the RTL chip's cycle counts;
+  own firmware images run on it unmodified** (`fw/`: built here from sources here, but the chip's programs that are
+  Rust today, which are still Snarky One's build), with the RTL's results and the RTL chip's cycle counts;
 - **the suites** (`tests/`, `run_tests.sh`, `make check`) check the simulator against the specification and against
   the RTL's own simulation. The RTL is the truth about the hardware: where the specification and the RTL differ, the
   RTL wins and the specification is corrected (`spec/GUIDELINES.md`).
@@ -42,10 +43,10 @@ specification is silent.
 | `spec/` | the machine specification: the platform, the core, the Jolt-specific peripherals, the schedule, the guide from v1.35, and the history |
 | `src/` | the simulator: the framework (`src/`, `src/base/`) and the model of the chip (`src/units/`) |
 | `tests/` | the tests and suites, their fixtures, and the RTL's references they are compared with |
-| `fw/` | the register interface (`fw/include/mesh.h`, `fw/REGISTERS.md`) and the RTL's firmware, sources and images (`fw/rtl/`) |
+| `fw/` | the register interface (`fw/include/mesh.h`, `fw/REGISTERS.md`) and the RTL's firmware: its sources, the script that builds them (`fw/build.sh`) and the committed images; the chip's Rust firmware, built outside (`fw/rtl/`) |
 | `data/` | the replayer's tables and the data sets |
 | `pipeline/` | the offline input tools (Java) |
-| `tools/` | helper scripts and tools: the register-table generator, the delivery converters, the documents' check |
+| `tools/` | helper scripts and tools: the register-table generator, the delivery converters, the run images' and keys' generator, the documents' check |
 | `bench/` | the simulator's speed benchmark |
 | `planning/` | history: v1.35's decisions, plans and session reports |
 
@@ -75,8 +76,8 @@ Each figure below is the RTL's, from Snarky One's simulation or its READMEs, and
 gives the same. None was made by tuning: each unit was brought to the specification and the RTL's block, and the
 chip's figures followed.
 
-**The sort** (`test_rtl_sort`: the RTL's `chip_test.rs`; the RTL's sort images, `fw/rtl/sort/`). Cycles, a step from
-its release to the next step's, the total from L1's release to L2's all arrived (Snarky One's chip README, Results):
+**The sort** (`test_rtl_sort`: the RTL's `chip_test.rs`; the tile image built from `fw/sort/`, in the RTL's masters,
+`fw/rtl/sort/`). Cycles, a step from its release to the next step's, the total from L1's release to L2's all arrived (Snarky One's chip README, Results):
 
 | | 64 × 16 kv32 | 64 × 16 k128 | 64 × 64K kv32 | 64 × 64K k128 |
 |---|---|---|---|---|
@@ -141,8 +142,8 @@ kept running, and is not in this folder; it is all in `../v1.35/`. For a reader 
 
 | v1.35 had | in v1.36 |
 |---|---|
-| meshsim's own firmware in C and assembly (the boot ROM, the controllers' programs, the M1 programs, the sort, the tile test programs, the replay and Tracer controllers, the riscv-tests images, the firmware's build script and the committed images) | the RTL's firmware, vendored and never built here (`fw/rtl/`): its boot ROM, tile programs, the sort on its port layer, and the chip's Rust firmware (the master's, the memory tile's, the tracer tile's and the replay image) |
-| the recipe book and the page of control conventions, both under v1.35's `fw/` | nothing. The conventions a program follows are the specification's (6.5, 7.3, 11.5), and the RTL's firmware is the example (`fw/rtl/src/`) |
+| meshsim's own firmware in C and assembly (the boot ROM, the controllers' programs, the M1 programs, the sort, the tile test programs, the replay and Tracer controllers, the riscv-tests images, the firmware's build script and the committed images) | the RTL's firmware. What is C or assembly is built here from sources here, as v1.35's was (`fw/build.sh`, with `--check` and `fw/check_images.sh`): the RTL's boot ROM, its tile programs, the sort on its port layer, the core's programs. The chip's Rust firmware (the master's, the memory tile's, the tracer tile's and the replay image) is still Snarky One's build, committed in `fw/rtl/`, until it is rewritten in C (`fw/README.md`) |
+| the recipe book and the page of control conventions, both under v1.35's `fw/` | nothing. The conventions a program follows are the specification's (6.5, 7.3, 11.5), and the RTL's firmware is the example (`fw/tile/`, `fw/sort/`, `fw/rtl/src/`) |
 | the sort's other key sets (sorted, reverse, equal, few, ragged, the trace and Zipf sets), `sort_test`, the sort kit with its 92 runs | nothing beyond the RTL's four runs: uniform keys, 64 × 16 and 64 × 65,536 records, 32- and 128-bit values (`test_rtl_sort`) |
 | the BT path forced (the steps `sort-bt-kv32` and `sort-bt-k128`), the parameter sweep (`sweep`) | nothing |
 | the full-size sort's figure, 1,229,687 cycles | superseded: the RTL chip's table above (64 × 64K k128: 1,306,907 cycles, from L1's release to L2's all arrived) |

@@ -10,7 +10,7 @@ the RTL wins and the document is corrected (`GUIDELINES.md`, section 1). v1.36's
 register, packet and cycle level, and runs the RTL's firmware images unmodified at the RTL chip's cycle counts;
 what it takes from the RTL's sources where the specification is silent, and what is still open, is
 `OPEN-v1.36.md`, at the version's root. The platform's text follows Snarky One's `rtl/tile/base/spec.md` at its commit
-076e647 and the core's its `rtl/blocks/core/spec.md` there; the RTL's firmware the simulator runs is vendored at the
+076e647 and the core's its `rtl/blocks/core/spec.md` there; the RTL's firmware the simulator runs (`fw/`) is that of the
 commit `fw/rtl/MANIFEST` names.
 
 1. `OVERVIEW.md`: what is being built and where it stands. Two pages.

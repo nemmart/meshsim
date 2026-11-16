@@ -1,12 +1,15 @@
 # The sort on Snarky One's tile
 
-The mesh-sorter's tile sort software, meshsim v1.25's (the sort design, the
-submodule `external/meshsim`, its `v1.25/meshsim/sw/ext/`), vendored and ported to
-the base tile ([the base tile specification](../../../../tile/base/spec.md), which
-refines meshsim's machine). `cargo xtask sort-images` builds it
-([sort_images.rs](../../../../../xtask/src/sort_images.rs), which also says how it
+*This page is Snarky One's, where the port was made (its `rtl/chip/test/programs/sort/PORTING.md`); "cargo xtask" in
+it is Snarky One's build, which here is `fw/build.sh`, its part `sort` (`fw/README.md`).*
+
+The mesh-sorter's tile sort software, meshsim v1.25's (the sort design; in this
+repository `v1.25/meshsim/sw/ext/`), vendored and ported to
+the base tile (the base tile specification, here `spec/machine-spec.md`, which
+refines meshsim's machine). `fw/build.sh` builds it as Snarky One's
+`cargo xtask sort-images` does (its `xtask/src/sort_images.rs`, which also says how it
 is audited and what the chip's test gets). The master tile's firmware, which runs
-it, is in [../firmware](../firmware/src/bin/master.rs). meshsim v1.35 holds the
+it, is `master.rs` (`fw/rtl/README.md`). meshsim v1.35 holds the
 same sources in `v1.35/fw/sort/`: `program/sw/` byte for byte, and `skew/planner/`
 and `split/` with `program/patches/` applied; its SortTest is `sort_test`
 (`v1.35/tests/sort_main.cpp` and `sort_input.h`).

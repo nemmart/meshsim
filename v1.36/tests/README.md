@@ -13,7 +13,7 @@ places, never from the simulator's own output:
   workloads. Each such folder has a `README.md` with the Snarky One commit, the instrumentation and the command. **A
   reference made by the RTL is never regenerated from the simulator**; a difference is the simulator's to fix.
 - **The RTL's own tests, ported.** A chip or unit test of Snarky One's rewritten on the simulator, with the RTL's
-  firmware images unmodified (`fw/rtl/`), its stimulus draw for draw, and the figures its chip gives.
+  firmware images unmodified (`fw/README.md`), its stimulus draw for draw, and the figures its chip gives.
 - **The specification** (`spec/`), and, where it leaves a cycle to the implementation, the RTL block's README or
   source: `OPEN-v1.36.md`, (c), lists those.
 - **`ref`**, v1.3's Java simulator, where v1.36's hardware is unchanged from v1.3's: the framework's port kinds, the

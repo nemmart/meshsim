@@ -1,8 +1,7 @@
-// rtl_images.h: the RTL's firmware images as the simulator's tests read them (fw/rtl/: the ELF files and lists that
-// Snarky One's `mise run core-images` builds, vendored unchanged; fw/rtl/boot/README.md and fw/rtl/tile/README.md say
-// from where). Configuration regime only.
+// rtl_images.h: the RTL's firmware images as the simulator's tests read them (fw/images/, built by fw/build.sh from
+// fw/'s sources, and the chip's Rust firmware, fw/rtl/; fw/README.md says which is which). Configuration regime only.
 //
-//   boot ROM      fw/rtl/boot/boot_rom.hex, one 32-bit word a line, and boot_rom.sym, `nm`'s lines (the handler's address,
+//   boot ROM      fw/images/boot/boot_rom.hex, one 32-bit word a line, and boot_rom.sym, `nm`'s lines (the handler's address,
 //                 mtvec's reset value: machine-spec 6.2)
 //   an ELF file   its loadable segments as 16-byte rows, as the RTL's tests land them (rtl/tile/base/test/src/
 //                 tile_programs.rs's program_rows): for each segment, each row of its memory image at its address, its
@@ -60,7 +59,7 @@ struct BootRom {
     std::vector<uint32_t> words;
     uint32_t handler = 0;
 };
-inline BootRom boot_rom(const std::string& dir = "fw/rtl/boot") {
+inline BootRom boot_rom(const std::string& dir = "fw/images/boot") {
     BootRom r;
     r.words = hex_words(dir + "/boot_rom.hex");
     const uint32_t base = symbol(dir + "/boot_rom.sym", "_start");

@@ -1,6 +1,6 @@
-/* events.h: the devices of the RTL's test memory map these programs use, and the event trigger (../README.md,
- * "The interrupt programs"): a store of KIND | DELAY to the side-effect write device has the test raise an input
- * DELAY cycles after the cycle it sees the store counted in. */
+/* events.h: the devices of the RTL's test memory map these programs use, and the event trigger
+ * (tests/core-programs/README.md, "The interrupt programs"): a store of KIND | DELAY to the side-effect write device has
+ * the test raise an input DELAY cycles after the cycle it sees the store counted in. */
 #define RESULT_PASS   0x20000000
 #define RESULT_FAIL   0x20000004
 #define TRIGGER       0x20000014    /* the side-effect write device */

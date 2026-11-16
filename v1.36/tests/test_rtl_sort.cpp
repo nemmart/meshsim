@@ -5,7 +5,7 @@
 // request tree and nets). A run, as chip_test.rs's: every tile's input placed in its scratchpad, the master's firmware
 // (fw/rtl/sort/<run>/master.elf: the run and the tile image linked in) and the memory tile's (fw/rtl/sort/memory-tile/
 // memory.elf) placed in their IMEM and DMEM before the first cycle (their boot straps, machine-spec 6.5); then the chip
-// runs. The master answers every compute tile's LOAD with the sort's image (fw/rtl/sort/tile/sort.elf, through the boot
+// runs. The master answers every compute tile's LOAD with the sort's image (fw/images/sort/tile/sort.elf, through the boot
 // ROM), releases each barrier of the image's schedule, collects the exit requests, measures the links, provokes and
 // checks every tile's error, and writes a summary into its DMEM, whose done word the test polls every 512 cycles.
 // Nothing here stands in for hardware: the tracer tile waits in its boot ROM for a load the master never answers, the
@@ -33,7 +33,7 @@
 //     tuned to them: its units are the specification's.
 //
 // THE RUNS: sort_16_kv32 and sort_16_k128, 16 records a tile, always; sort_64k_kv32 and sort_64k_k128, 65,536 a tile,
-// when RTL_SORT_64K_KEYS names the key file (fw/rtl/README.md: 16 MiB, not committed; its sha256 beside the images):
+// when RTL_SORT_64K_KEYS names the key file (16 MiB, not committed: `fwimage keys 65536 FILE` builds it, fw/README.md):
 // without it they print SKIPPED and pass.
 #include <algorithm>
 #include <array>
@@ -55,7 +55,8 @@
 namespace {
 
 constexpr unsigned T = units::TILE_COUNT;
-const std::string kDir = "fw/rtl/sort/";
+const std::string kDir = "fw/rtl/sort/";             // the master's and the memory tile's images (Rust: fw/README.md)
+const std::string kImages = "fw/images/sort/";       // the tile image and the keys, built here (fw/build.sh)
 
 // ---- the summary (master.rs's Summary and SortSummary), by word, as chip_test.rs and bench.rs index it ----
 enum : unsigned {
@@ -150,10 +151,10 @@ Expected oracle(const std::vector<std::vector<uint32_t>>& keys, Format f) {
 // ---- one run ----
 struct Layout { uint32_t buf_in, buf_vin, buf_y, buf_vs; };   // word addresses (the tile image's .sort_layout: port.c)
 Layout read_layout() {
-    const rtl_images::Section s = rtl_images::section(kDir + "tile/sort.elf", ".sort_layout");
-    if (!s.found || s.data.size() != 20) FATAL("%stile/sort.elf: no .sort_layout of 5 words", kDir.c_str());
+    const rtl_images::Section s = rtl_images::section(kImages + "tile/sort.elf", ".sort_layout");
+    if (!s.found || s.data.size() != 20) FATAL("%stile/sort.elf: no .sort_layout of 5 words", kImages.c_str());
     const std::vector<uint32_t> w = rtl_images::words(s.data);
-    if (w[0] != 0x4C41594F) FATAL("%stile/sort.elf: .sort_layout's magic 0x%x", kDir.c_str(), w[0]);
+    if (w[0] != 0x4C41594F) FATAL("%stile/sort.elf: .sort_layout's magic 0x%x", kImages.c_str(), w[0]);
     return {w[1], w[2], w[3], w[4]};
 }
 
@@ -171,12 +172,12 @@ void run_sort(Format format, bool full, unsigned parts = 1, std::vector<uint64_t
                              (parts > 1 ? " on " + std::to_string(parts) + " threads" : "");
     const std::string run_dir = std::string(format == KV32 ? "kv32" : "k128") + (full ? "-64k" : "");
     const char* tag = name.c_str();
-    std::string keys_path = kDir + "sort.keys";
+    std::string keys_path = kImages + "sort.keys";
     if (full) {
         const char* env = std::getenv("RTL_SORT_64K_KEYS");
         if (!env || !*env) {
-            std::printf("test_rtl_sort: %s: SKIPPED: RTL_SORT_64K_KEYS does not name the 64K key file (fw/rtl/README.md; its "
-                        "sha256 in fw/rtl/sort/sort-64k.keys.sha256)\n", tag);
+            std::printf("test_rtl_sort: %s: SKIPPED: RTL_SORT_64K_KEYS does not name the 64K key file (16 MiB, built by "
+                        "`fwimage keys 65536 FILE`: fw/README.md; run_tests.sh's step rtl-sort-64k builds it)\n", tag);
             return;
         }
         keys_path = env;

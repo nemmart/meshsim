@@ -23,7 +23,7 @@ v1.35's sections went. v1.35's numbering is not kept; a v1.35 section is always 
   Where a log and this document differ, this document is the authority.
 - `data/tables/`: the replayer's expansion tables (17.8.6), with the opcode table and a manifest.
 - `fw/` and `src/`: the firmware and meshsim, the cycle-level simulator. **The simulator is v1.36's:** it models
-  the RTL's hardware at the register, packet and cycle level, and runs the RTL's firmware images (`fw/rtl/`)
+  the RTL's hardware at the register, packet and cycle level, and runs the RTL's firmware images (`fw/`)
   unmodified, at the RTL chip's cycle counts. `fw/include/mesh.h` and `fw/REGISTERS.md` are generated from this
   document's tables. What is left of v1.35 in the tree, meshsim's own firmware and the old suites among it, and
   every decision the simulator takes from the RTL's sources where this document is silent, are listed in
@@ -3594,11 +3594,11 @@ Item 144 is closed and reversed (161), and item 153 part closed: their rows are 
 ## 27. Context: the sort these tiles serve
 
 Not part of the hardware specification; it is here because it explains the gather unit and augmenting. The
-program is in `fw/rtl/src/rtl/chip/test/programs/sort/sw/`, on the RTL's port layer (the split in `split-bisect/` beside it,
+program is in `fw/sort/sw/`, on the RTL's port layer (the split in `split-bisect/` beside it,
 skew handling in `skew-planner/`), and v1.3's
 measured times are in `v1.3/results/`. Every figure below marked `[meas: …]` or `[model]` for a version before
 v1.36 was made on that version's hardware and simulator. v1.36's simulator runs the RTL's port of the program
-(`fw/rtl/sort/`), and its figures are the RTL's (below; item 164).
+(`fw/sort/`; its image `fw/images/sort/tile/sort.elf`), and its figures are the RTL's (below; item 164).
 
 For a 32-bit key and a value of *k* records (*k* = 2 for 128-bit values), the sort has six steps:
 

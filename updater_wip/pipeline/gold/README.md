@@ -1,5 +1,10 @@
 # gold: Jolt's tracer in Java
 
+> **updater_wip's copy (WORKER1):** v1.36's gold, unchanged in everything it did before, **plus the host's frames for
+> v1.4** (`v1.4_wip/planning/HOST-FRAMES.md`): the `frames` command, the reader (`frames-read`) and the reference images
+> (`frames-images`). The section "The host's frames" below says how to run them and what they are checked against;
+> the plan and every choice where HOST-FRAMES.md is open are in `updater_wip/planning/sessions/WORKER1/NOTES.md`.
+
 A standalone emulator of the Jolt zkVM's tracer (DECISIONS-v1.3 section 17, work item W4): it reads a guest's ELF, sets
 up Jolt's memory, runs the program and produces **Jolt's trace rows exactly as jolt-cpp's tracer does** (jolt-cpp
 `821e1bd`). Self-contained: plain Java 21, no dependencies, no native code, nothing imported from the rest of meshsim.
@@ -77,3 +82,47 @@ over the ten words, folded per 2^16-row window, the windows folded into a run ha
 
 Every rule cites jolt-cpp (file:line at `821e1bd`) or, for the inlines, upstream Jolt's builder (`f8fc214`, the
 commit jolt-cpp pins); `v1.3/planning/sessions/WORKER18-NOTES.md` lists them.
+
+## The host's frames (v1.4, WORKER1)
+
+```sh
+java -cp build gold.Main frames <program dir> <input dir> <out file> [--cuts=0,a,...|--cuts-file=F] [--segment-rows=4194304]
+     [--base=none|static] [--lru=none|all|5,6,9] [--stem=P] [--workdir=P] [--base-path=P] [--verify]
+java -cp build gold.Main frames-read <frame file> [--check] [--seg=<v1.3 segment file>] [--brief]
+java -cp build gold.Main frames-images <frame file> <s> [--out=<prefix>]
+```
+
+- **`frames`** runs gold once and writes the nine frames in HOST-FRAMES.md's order (1 the program image, 2 the base
+  jump table if `--base=static`, 3 the proof header, 4 and 5 the jump table, 6 the data image, 7 the register states,
+  8 the advice logs, 9 the memory segments), always 128 segments, with `<out>.json` beside it: every frame's bytes,
+  both forms (raw and LRU) of frames 5, 6 and 9, the page counts, the file's SHA-256. `--base=static`: frame 2 is the
+  static targets' table and the run's table adds its own targets to it (a full new table if they don't fit). `--lru`
+  picks which of frames 5, 6, 9 are sent LRU-coded.
+- **`frames-read`** prints every frame's fields. `--check`: the file against itself (every length, every count of frames
+  3 and 4 against the data it describes, every page count rebuilt on copy-on-write trees for every *s*, the program id,
+  the advice counts in frames 7 and 8, word 66 against frame 3). `--seg`: frames 7, 8, 9 against the `segments`
+  command's v1.3 file for the same run (the same records, advice and update words).
+- **`frames-images`** plays a frame file into empty memory for segment *s* (`Reference`): the program image, the
+  cycle-0 image, the start image and the Tracer's copy (equal), the final image and the run's table, with digests and
+  the pages each took; `--out` writes them. **An image** is a file's pages by offset: every page with a non-zero byte,
+  ascending, each u64 offset then 4,096 bytes; its digest is the SHA-256 of that, so `sha256sum` of a written image is
+  its digest.
+- **`--verify`** checks the file as written, read back from disk, against gold's own run: the reference's images equal
+  gold's memory at cycle 0, at the cut before every *s* and at the end; the reference's page counts equal the headers';
+  every jump target the run takes is found by the Tracer's probe in the run's table with gold's next `instr_idx`; the
+  LRU form of every stream decodes to the raw form.
+
+The reading side (`FrameFile`, `Reference`, `FrameReader`) shares no code with the writing side (`Frames`,
+`FrameWriter`, `UpdateWords`, `FileTree`): in particular the page counts are computed twice, from page sets
+(`FileTree`) and by building every file as a real tree of 1,024-entry index pages with owned bits and copy-on-write
+(`Reference`).
+
+**Tests**, run by `build.sh` (`FRAMES_TESTS=0` skips them):
+
+| script | what |
+|---|---|
+| `test/frames/guests.sh` | every guest that runs to its end, jumpmap's `jumps` guest and keccak256 with three input files: frames written twice (a full table raw; a static base, all LRU) with `--verify`, read back with `--check --seg`; `FramesTest`: the page counts two ways on synthetic writes (depths 1 to 3, pages rewritten across segments) and broken files caught |
+| `test/frames/old_unchanged.sh [<prog> <input> <cuts>]...` | the `segments` command byte-identical to v1.36 gold's (built in scratch) on every guest, in both formats, and on the runs given; `test/guests/check_guests.sh` |
+| `test/frames/workloads.sh <tracer dir> <out> small\|29` | EVM Zone and Cyclone, small with the hard cuts or at 2^29: the frames twice with `--verify`, `--check --seg`; at 2^29 the `segments` files against their published v1.3 SHA-256s |
+
+Results: `updater_wip/planning/sessions/WORKER1/REPORT.md` (Quest 197).

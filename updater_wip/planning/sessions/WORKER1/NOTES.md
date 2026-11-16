@@ -2,7 +2,10 @@
 
 Status, 2026-11-16: **go-ahead given (owner, 03:10) with two changes:** the frame header is one 128-bit word (Q1
 answered, replacing C1), and an independent check of the page counts by real copy-on-write trees in `Reference`
-(section 6). Building.
+(section 6). **Built and checked** (2026-11-16): every guest, both small inputs and both workloads at 2²⁹ pass every
+check here; Quest 197 runs the same on the runner. Results and sizes: `REPORT.md`. The inputs come from Quest task
+111's kit (jolt-asic-planning `fa59d9a`, checked by its SHA-256): the repository itself is not reachable from this
+session.
 
 The specification is `v1.4_wip/planning/HOST-FRAMES.md` (HF below). Gold is `v1.36/pipeline/gold/` (unchanged from
 v1.3's accepted gold).

@@ -1,7 +1,8 @@
 # WORKER1 notes: gold writes the host's frames
 
-Status, 2026-11-16: **plan proposed, waiting for the owner's go-ahead.** No code yet; `updater_wip/pipeline/gold/`
-does not exist yet (the unchanged copy is the first commit after the go-ahead).
+Status, 2026-11-16: **go-ahead given (owner, 03:10) with two changes:** the frame header is one 128-bit word (Q1
+answered, replacing C1), and an independent check of the page counts by real copy-on-write trees in `Reference`
+(section 6). Building.
 
 The specification is `v1.4_wip/planning/HOST-FRAMES.md` (HF below). Gold is `v1.36/pipeline/gold/` (unchanged from
 v1.3's accepted gold).
@@ -87,7 +88,7 @@ In `updater_wip/pipeline/gold/`, a copy of `v1.36/pipeline/gold/` made unchanged
 | `FileTree.java` (new) | depth from a length; the index pages above a set of data pages |
 | `FrameWriter.java` (new) | runs gold once (through `SegmentWriter`), builds the nine frames, the counts and the size report |
 | `FrameReader.java` (new) | decodes a frame file; prints it; `--check`; `--seg` |
-| `Reference.java` (new) | plays a frame file into empty memory for a given *s*: the images and the run's table. Its own update-word and LRU decoder, written to be read, sharing nothing with the encoder |
+| `Reference.java` (new) | plays a frame file into empty memory for a given *s*: the images and the run's table, every file a real copy-on-write tree, and the pages each run takes. Its own frame, update-word and LRU decoding, written to be read, sharing nothing with the writer, `UpdateWords` or `FileTree` |
 | `PageImage.java` (new) | an image as sparse 4 KB pages; the canonical form, digest and writing |
 | `Main.java` | the three new commands |
 | `SegmentWriter.java` | an optional listener, called with the machine at each cut and at the end (for gold's memory and the jumps); nothing in its output changes |
@@ -115,6 +116,17 @@ and 9 (64-bit words, 128-bit words, the LRU flag, every page count from the tree
 1 against frame 8's table. `--seg`: frames 7 and 8 against the segment file's frames 2 and 3 (the same values,
 repacked), and frame 9's segments against its frames 4 or 5 (the same words).
 
+**The page counts, a second way** (owner, 2026-11-16). The writer computes every "pages" count of frames 3 and 4 from
+`FileTree` (sets of page numbers, the index pages above them). `Reference` builds every file as a real tree with
+copy-on-write, sharing no code with `FileTree`: index pages of 1,024 entries, each a page number with an owned bit; a
+copy is a new root whose entries point at its source's pages with the owned bit clear; a write to a page the file
+doesn't own takes a fresh page, top down, copying each shared index page on its path (its entries' owned bits
+cleared) and the data page. It counts the pages each run takes (the jump table run, the data image run, and for the
+memory segments the start image, the final image and the Tracer's copy) and those counts must equal the header's,
+for every *s*. **A page written in several segments is counted once per file:** the first write makes the page the
+file's own, and later writes find it owned and take nothing; on the `FileTree` side the counts are unions of page
+sets. The root (choice C11) is counted in one place in each: `FileTree.ROOT_COUNTED` and `Reference`'s equivalent.
+
 **Nothing old broke:** `build.sh`'s tests; `test/guests/check_guests.sh`; the `segments` command's file
 byte-identical to v1.36 gold's, on every guest, on both small inputs with the hard cuts, and at 2²⁹.
 
@@ -132,8 +144,9 @@ byte-identical to v1.36 gold's, on every guest, on both small inputs with the ha
 
 Where HF is open or silent. Each: the choice, the reason, the alternative.
 
-- **C1. The frame header is 8 bytes** (u32 type, u32 length in 128-bit words), as written. The data after it starts 8
-  bytes off a 128-bit boundary from the second frame on: raised in `QUESTIONS.md` Q1, not blocking.
+- **C1. Replaced by the owner's ruling (Q1):** the header is one 128-bit word, 64 reserved zero bits in [63:0], u32 type
+  in [95:64], u32 length in 128-bit words in [127:96]. Lengths and counts are 32 bits, never 64; the writer rejects a
+  frame or a count that would not fit.
 - **C2. The update words' LRU table** starts all zeros at each frame's start, as written; in frame 9 it carries across
   segments. `--lru` picks per frame; frames 5 and 6 may be LRU-coded (HF's flags are there). The writer computes both
   forms of every stream for the size report and the check, whatever it sends.
@@ -168,7 +181,8 @@ Where HF is open or silent. Each: the choice, the reason, the alternative.
   base with a different `instr_idx` is an error. *Alternative:* a base from an earlier run's table or frame file;
   left out, as a test of the same path.
 - **C11. "The pages the job takes, data and index":** the data pages the job writes and every index page above them,
-  the root included; no pages when it writes nothing. The same rule for frame 4's and frame 6's counts and for the
+  the root included; no pages when it writes nothing. The rule sits in one place on each side (`FileTree`, and
+  `Reference`'s tree), so that counting the root apart later is a one-line change in each. The same rule for frame 4's and frame 6's counts and for the
   per-ASIC counts: the start image is segments 0 to *s* − 1's written pages, the final image *s* to 127's, the Tracer's
   copy segment *s*'s (v1.3 section 16's rule), each with its index pages in that file's tree. *Alternative:* counting
   the root apart, since C&C 2 may supply it in `ROOT`.

@@ -35,6 +35,8 @@ With it: `HOST-FRAMES.md` (the frames from the host), `UPDATER-INTERFACE.md` (th
 
 ## 2. The path to LPDDR (the figure)
 
+*Revised on 2026-11-16, after Tony's review: the bus driver is an AXI arbiter, and each client talks AXI (section 7).*
+
 - **Decided (owner): LPDDR, the memory controller with its PHY, AXI, the bus driver.** There is no separate AXI
   controller: AXI is the memory controller's own front.
 - **Decided (owner): the bus driver** (first called the splitter) **is the only thing on AXI.** It serves requests of
@@ -186,3 +188,33 @@ Its registers are `UPDATER-INTERFACE.md`.
 - The bus driver's interface to a consumer, as exact fields.
 - The cache's and the RW engine's request queues, as exact fields.
 - Everything `V136-SCOPE.md` raises.
+
+## 7. After Tony's review and the first pass over v1.36 (2026-11-16)
+
+Later than everything above.
+
+- **Decided (owner, with Tony): every client of LPDDR talks AXI, and the "bus driver" is only an arbitration unit.**
+  It is now **the AXI arbiter.** The Updater, the RW engine and the cache each drive AXI's five channels on a port of
+  their own; the arbiter picks whose request goes to the memory controller next and steers the data and the
+  responses back.
+  - **Section 2's three sizes are the clients' bursts:** on a 128-bit bus a line is 8 beats, a half page 128 and a
+    page 256.
+  - **The write's confirmation is AXI's write response,** on the client's own port.
+  - **The RW engine Tony built is already an AXI master,** so it plugs in unchanged.
+- **Decided (owner): the arbitration is round robin.** First come, first served was the alternative; the two barely
+  differ while each client has one request outstanding, and round robin needs only a pointer.
+- **Proposed, and not objected to:**
+  - **a turn is one burst, and a burst has a maximum,** say 32 beats (512 bytes), so that a cache line never waits
+    behind a whole page: a client moving a page takes eight turns;
+  - reads and writes are arbitrated separately, as AXI's address channels are independent;
+  - if the Tracer is found stalling behind background work, the turns are weighted toward the cache.
+- **Decided (owner): the port to the memory controller supports multiple IDs,** so that a cache line can come back
+  ahead of a page requested earlier. Each client has its own ID, and the arbiter steers by it. A comment back to
+  Tony, whose `lpddr` has one ID: he did the least that got the simulation running, and did not design the LPDDR
+  side.
+- **Decided (owner): the links between the special tiles are added,** master to memory to tracer: the first note's
+  control row stands (`RTL-CHANGE-REQUESTS.md`).
+- **Decided (owner): Ingress is this design's to specify in full,** and is set aside for now.
+- **The Updater is the memory tile's peripheral 2,** in the RTL's register layout (`UPDATER-INTERFACE.md`); the RW
+  engine Tony built stays peripheral 1.
+- **For consideration, not decided:** the Tracer's jump cache at 128 entries (section 5, corrected).

@@ -15,12 +15,12 @@ before v1.36 was read; `planning/V136-SCOPE.md` says where the two meet and wher
 | file | what |
 |---|---|
 | `planning/DESIGN-NOTES-2026-11-14.md` | the first day's decisions: the superblock, formatting and recovery, copy-on-write, directory entries, the program's files, the working directory, the Updater's queues, the stream's credits, the control row |
-| `planning/DESIGN-NOTES-2026-11-15.md` | the second day's: the v1.4 deliverable, the bus driver, the cache and its look-up interface, the Updater's page faults and runs, the frames and the jump table |
+| `planning/DESIGN-NOTES-2026-11-15.md` | the second day's: the v1.4 deliverable, the AXI arbiter (first called the bus driver), the cache and its look-up interface, the Updater's page faults and runs, the frames and the jump table; and what changed on 2026-11-16 |
 | `planning/HOST-FRAMES.md` | the nine frames the host sends, field by field: what gold is to produce |
 | `planning/UPDATER-INTERFACE.md` | the Updater's registers, events, errors and queue ports |
-| `planning/V136-SCOPE.md` | v1.36 against this design: the names, seven collisions to rule on, what v1.36 already gives, what was not yet read |
+| `planning/V136-SCOPE.md` | v1.36 against this design: the names, seven collisions and how the first pass ruled on them, what v1.36 already gives, what was not yet read |
 | `planning/RTL-CHANGE-REQUESTS.md` | what the design asks Tony to change in hardware the RTL has built |
-| `diagrams/svg/fig_m1_lpddr_path.svg` | the figure: LPDDR, the memory controller, the bus driver, the cache and their consumers |
+| `diagrams/svg/fig_m1_lpddr_path.svg` | the figure: LPDDR, the memory controller, the AXI arbiter, the cache and their clients |
 | `diagrams/src/fig_m1_lpddr_path.py` | its generator; it uses `wip/diagrams/src/common.py` |
 
 ## Reading order

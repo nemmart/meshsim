@@ -70,6 +70,21 @@ RTL's: a change to it is written down here and asked of Tony, not made on this s
 One thing moved toward the owner's picture: v1.35 made the link to the tile the controller router's down port; in
 v1.36 it is the attach port, and a peripheral's DMA enters on an unused link input, as in the first note's port table.
 
+### The outcome of the first pass (owner, 2026-11-16)
+
+| # | collision | outcome |
+|---|---|---|
+| 1 | the links between the special tiles | **added:** master tile to memory tile to tracer tile; Tony can add links as desired (`RTL-CHANGE-REQUESTS.md`, 1) |
+| 2 | Ingress/Egress and the host's stream | **no collision:** Ingress is this design's to specify in full, and is set aside for now |
+| 3 | the RW engine's place | **Tony's RW engine stays peripheral 1; the Updater is peripheral 2** (the owner has no preference; the choice that changes the RTL least) |
+| 4 | `lpddr` | **this design's to specify: AXI with multiple IDs,** a comment back to Tony. He did the least that got the simulation running, and did not design the LPDDR side |
+| 5 | the window's layout and bits | **the Updater takes the RTL's** (`UPDATER-INTERFACE.md`, rewritten); item 161 itself is still the owner's to rule on |
+| 6 | the Tracer's jump cache | for consideration only |
+| 7 | a peripheral DMA's src | nothing to do |
+
+**From Tony's review of the figure (2026-11-16):** every client of LPDDR (the Updater, the RW engine, the cache) talks
+AXI, and the "bus driver" is only an arbitration unit: the second design note, section 7.
+
 ## 4. What v1.36 already gives the v1.4 design
 
 | what | where | use here |

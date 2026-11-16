@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1376" height="852" viewBox="0 0 1376 852" font-family="Helvetica, Arial, 'Liberation Sans', sans-serif">
 <defs><marker id="m444441" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#444441"/></marker><marker id="mB4B2A9" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#B4B2A9"/></marker><marker id="mD85A30" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#D85A30"/></marker></defs>
 <rect width="1376" height="852" fill="white"/>
-<text x="24.0" y="34.0" font-size="18" text-anchor="start" font-weight="bold" fill="#444441">The memory system: the bus driver, the cache and their consumers</text>
+<text x="24.0" y="34.0" font-size="18" text-anchor="start" font-weight="bold" fill="#444441">The memory system: the AXI arbiter, the cache and their clients</text>
 <text x="24.0" y="56.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#6b6a64">A first sketch</text>
 <rect x="296.0" y="80.0" width="220.0" height="52.0" rx="6" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
 <text x="406.0" y="101.7" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">LPDDR memory</text>
@@ -14,12 +14,12 @@
 <polyline points="406.0,228.0 406.0,272.0" fill="none" stroke="#444441" stroke-width="2" stroke-linejoin="round" marker-end="url(#m444441)" marker-start="url(#m444441)"/>
 <text x="418.0" y="254.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64">AXI</text>
 <rect x="326.0" y="272.0" width="160.0" height="52.0" rx="6" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
-<text x="406.0" y="293.7" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">Bus driver</text>
-<text x="406.0" y="311.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#444441">the only station on AXI</text>
+<text x="406.0" y="293.7" font-size="13" text-anchor="middle" font-weight="bold" fill="#444441">AXI arbiter</text>
+<text x="406.0" y="311.2" font-size="12" text-anchor="middle" font-weight="normal" fill="#444441">round robin</text>
 <polyline points="406.0,324.0 406.0,360.0" fill="none" stroke="#444441" stroke-width="2" stroke-linejoin="round" marker-end="url(#m444441)" marker-start="url(#m444441)"/>
 <polyline points="100.0,360.0 753.5,360.0" fill="none" stroke="#444441" stroke-width="3" stroke-linejoin="round"/>
 <polyline points="836.5,360.0 1336.0,360.0" fill="none" stroke="#444441" stroke-width="3" stroke-linejoin="round"/>
-<text x="420.0" y="351.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">the left bus: the AXI width, data only</text>
+<text x="420.0" y="351.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">AXI: a port for each client</text>
 <text x="850.5" y="351.0" font-size="11.5" text-anchor="start" font-weight="normal" fill="#6b6a64">the right bus: the Tracer's fill bus, 1,024 bits</text>
 <polyline points="241.0,360.0 241.0,396.0" fill="none" stroke="#444441" stroke-width="2" stroke-linejoin="round" marker-end="url(#m444441)" marker-start="url(#m444441)"/>
 <rect x="100.0" y="396.0" width="282.0" height="52.0" rx="6" fill="#F1EFE8" stroke="#888780" stroke-width="1"/>
@@ -90,10 +90,10 @@
 <text x="100.0" y="600.0" font-size="11" text-anchor="end" font-weight="normal" fill="#D85A30">credits, to</text>
 <text x="100.0" y="614.5" font-size="11" text-anchor="end" font-weight="normal" fill="#D85A30">Ingress/Egress</text>
 <line x1="24" y1="732" x2="1352" y2="732" stroke="#B4B2A9" stroke-width="0.8"/>
-<text x="24.0" y="754.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">The bus driver is the only station on the AXI bus to the memory controller. The left bus is as wide as AXI and carries data only, between the bus driver and its consumers: pages and half pages for the</text>
-<text x="24.0" y="770.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">Updater, the RW engine and the Binder, and lines for the cache. Those three ask the cache where a file's pages are, and change the file's index, over the narrow look-up bus.</text>
-<text x="24.0" y="786.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">The right bus is the Tracer's fill bus, between the cache and the Tracer's three stations: its data cache, its instruction cache and its jump-table read (figure 9.1). The</text>
-<text x="24.0" y="802.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">peripheral bus fills the segment queue and the free page queue, writes the Updater's state and goes into the RW engine; the segment queue sends credits to Ingress/Egress. The LRU turns the segment</text>
+<text x="24.0" y="754.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">The Updater, the RW engine, the Binder and the cache each have an AXI port of their own to the AXI arbiter, which takes their bursts in turn, round robin, and is the only thing on the</text>
+<text x="24.0" y="770.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">AXI bus to the memory controller. Those three ask the cache where a file's pages are, and change the file's index, over the narrow look-up bus. The right bus is the</text>
+<text x="24.0" y="786.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">Tracer's fill bus, between the cache and the Tracer's three stations: its data cache, its instruction cache and its jump-table read (figure 9.1). The peripheral bus fills the</text>
+<text x="24.0" y="802.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">segment queue and the free page queue, writes the Updater's state and goes into the RW engine; the segment queue sends credits to Ingress/Egress. The LRU turns the segment</text>
 <text x="24.0" y="818.0" font-size="12.5" text-anchor="start" font-weight="normal" fill="#444441">data into addresses and values, with a type for each: words, a half page (2 KB) or a full page (4 KB). The RW engine sends its packets through C&amp;C 2's +8 router input.</text>
-<text x="24.0" y="834.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">Source: v1.4_wip/planning/DESIGN-NOTES-2026-11-15.md, sections 2 to 4; the Tracer's stations are figure 9.1's.</text>
+<text x="24.0" y="834.0" font-size="11" text-anchor="start" font-weight="normal" fill="#6b6a64" font-style="italic">Source: v1.4_wip/planning/DESIGN-NOTES-2026-11-15.md, sections 2 to 4 and 7; the Tracer's stations are figure 9.1's.</text>
 </svg>

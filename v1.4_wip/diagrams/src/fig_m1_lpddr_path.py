@@ -1,4 +1,4 @@
-# Figure M.1: the memory system: LPDDR, the bus driver, the cache and their consumers (a first sketch; the design
+# Figure M.1: the memory system: LPDDR, the AXI arbiter, the cache and their clients (a first sketch; the design
 # notes of 2026-11-15). Uses the shared helpers of the main figure set, wip/diagrams/src/common.py; writes
 # ../svg/fig_m1_lpddr_path.svg.
 import os
@@ -14,7 +14,7 @@ STUB = 36                 # a station's connection to a bus
 SG = 20                   # the gap between two stations
 UX, UW = 100, 282         # the Updater
 BW = 220                  # LPDDR and the memory controller
-SW = 160                  # the bus driver
+SW = 160                  # the AXI arbiter
 KW = 166                  # the cache
 NW = 116                  # the LRU and the two queues
 FW = 84                   # the free page queue, narrower still
@@ -37,9 +37,9 @@ KX = x                    # the cache, the last station of the row before the Tr
 TX = KX + KW + 30         # the Tracer's outline
 TOW = 3 * TW + 2 * TG + 2 * TP
 W, H = TX + TOW + 40, 852
-CX = (UX + KX) / 2        # the column above the left bus: LPDDR, the memory controller, the bus driver
+CX = (UX + KX) / 2        # the column above the left bus: LPDDR, the memory controller, the AXI arbiter
 
-f = Fig(W, H, "The memory system: the bus driver, the cache and their consumers", "A first sketch")
+f = Fig(W, H, "The memory system: the AXI arbiter, the cache and their clients", "A first sketch")
 
 
 def bus(p, q, label=None, lx=0, ly=0):
@@ -57,7 +57,7 @@ def arrow(p, q, words=(), dx=9, anchor="start", colour=INK, dash=None):
                 fill=MUTED if colour == INK else colour)
 
 
-# Above the left bus, top to bottom: LPDDR, the memory controller, the bus driver.
+# Above the left bus, top to bottom: LPDDR, the memory controller, the AXI arbiter.
 y = 80
 f.box(CX - BW / 2, y, BW, BH, "LPDDR memory", ["4 GB"])
 bus((CX, y + BH), (CX, y + BH + GAP), "LPDDR pins", lx=12, ly=4)
@@ -65,16 +65,16 @@ y += BH + GAP
 f.box(CX - BW / 2, y, BW, BH, "Memory controller", ["with its PHY"])
 bus((CX, y + BH), (CX, y + BH + GAP), "AXI", lx=12, ly=4)
 y += BH + GAP
-f.box(CX - SW / 2, y, SW, BH, "Bus driver", ["the only station on AXI"])
+f.box(CX - SW / 2, y, SW, BH, "AXI arbiter", ["round robin"])
 
-# Two buses at one height: the left one for the bus driver and the page movers, the right one for the Tracer. The cache
+# Two buses at one height: the left one for the AXI arbiter and the page movers, the right one for the Tracer. The cache
 # is on both, by a line up to each.
 sy = y + BH + STUB        # both buses
 bus((CX, y + BH), (CX, sy))
 KL, KR = KX + KW / 4, KX + 3 * KW / 4   # the cache's two lines
 f.line([(UX, sy), (KL, sy)], INK, 3, end=False)
 f.line([(KR, sy), (TX + TOW, sy)], INK, 3, end=False)
-f.text(CX + 14, sy - 9, "the left bus: the AXI width, data only", 11.5, "start", fill=MUTED)
+f.text(CX + 14, sy - 9, "AXI: a port for each client", 11.5, "start", fill=MUTED)
 f.text(KR + 14, sy - 9, "the right bus: the Tracer's fill bus, 1,024 bits", 11.5, "start", fill=MUTED)
 
 y = sy + STUB             # the stations' row
@@ -142,12 +142,12 @@ cy = qy + BH - 16
 f.line([(LC - NW / 2, cy), (30, cy)], ORANGE, 2, dash=DASH["ctrl"])
 f.lines(LC - NW / 2 - 6, cy - 24, ["credits, to", "Ingress/Egress"], 11, "end", fill=ORANGE)
 
-f.caption(["The bus driver is the only station on the AXI bus to the memory controller. The left bus is as wide as AXI and carries data only, between the bus driver and its consumers: pages and half pages for the",
-           "Updater, the RW engine and the Binder, and lines for the cache. Those three ask the cache where a file's pages are, and change the file's index, over the narrow look-up bus.",
-           "The right bus is the Tracer's fill bus, between the cache and the Tracer's three stations: its data cache, its instruction cache and its jump-table read (figure 9.1). The",
-           "peripheral bus fills the segment queue and the free page queue, writes the Updater's state and goes into the RW engine; the segment queue sends credits to Ingress/Egress. The LRU turns the segment",
+f.caption(["The Updater, the RW engine, the Binder and the cache each have an AXI port of their own to the AXI arbiter, which takes their bursts in turn, round robin, and is the only thing on the",
+           "AXI bus to the memory controller. Those three ask the cache where a file's pages are, and change the file's index, over the narrow look-up bus. The right bus is the",
+           "Tracer's fill bus, between the cache and the Tracer's three stations: its data cache, its instruction cache and its jump-table read (figure 9.1). The peripheral bus fills the",
+           "segment queue and the free page queue, writes the Updater's state and goes into the RW engine; the segment queue sends credits to Ingress/Egress. The LRU turns the segment",
            "data into addresses and values, with a type for each: words, a half page (2 KB) or a full page (4 KB). The RW engine sends its packets through C&C 2's +8 router input."],
-          source="Source: v1.4_wip/planning/DESIGN-NOTES-2026-11-15.md, sections 2 to 4; the Tracer's stations are figure 9.1's.")
+          source="Source: v1.4_wip/planning/DESIGN-NOTES-2026-11-15.md, sections 2 to 4 and 7; the Tracer's stations are figure 9.1's.")
 
 out = os.path.join(HERE, "..", "svg", "fig_m1_lpddr_path.svg")
 with open(out, "w") as fh:

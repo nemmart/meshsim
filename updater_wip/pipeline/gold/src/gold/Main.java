@@ -32,6 +32,11 @@ import java.util.Map;
  *       Stage 2: runs the guest, computing everything, and writes section 16's segment file (SegmentWriter), with
  *       &lt;out&gt;.cuts and &lt;out&gt;.json beside it. With --compare, checks it byte for byte against a reference file
  *       (WORKER16's segment_writer) and reports the first difference by frame.
+ *
+ *   frames, frames-read, frames-images: the host's frames for v1.4 (FrameWriter, FrameReader, Reference).
+ *
+ *   packets, packets-read, packets-vectors: the frames wrapped in the link's packets (Packets), read back and
+ *       checked (PacketReader), and the test vectors (PacketVectors).
  * </pre>
  */
 public final class Main {
@@ -63,6 +68,15 @@ public final class Main {
     if (args.length >= 3 && args[0].equals("frames-images")) {
       System.exit(Reference.main(java.util.Arrays.copyOfRange(args, 1, args.length)) ? 0 : 1);
     }
+    if (args.length >= 3 && args[0].equals("packets")) {
+      System.exit(Packets.main(java.util.Arrays.copyOfRange(args, 1, args.length)) ? 0 : 1);
+    }
+    if (args.length >= 2 && args[0].equals("packets-read")) {
+      System.exit(PacketReader.main(java.util.Arrays.copyOfRange(args, 1, args.length)) ? 0 : 1);
+    }
+    if (args.length >= 2 && args[0].equals("packets-vectors")) {
+      System.exit(PacketVectors.main(java.util.Arrays.copyOfRange(args, 1, args.length)) ? 0 : 1);
+    }
     System.err.println("usage: gold segments <program dir> <input dir> <out file> [--cuts=0,a,b,...|--cuts-file=F]"
         + " [--segment-rows=4194304] [--segments=128] [--compare=<reference file>]");
     System.err.println("usage: gold frames <program dir> <input dir> <out file> [--cuts=0,a,...|--cuts-file=F]"
@@ -70,6 +84,10 @@ public final class Main {
         + " [--base-path=P] [--verify]");
     System.err.println("usage: gold frames-read <frame file> [--check] [--seg=<v1.3 segment file>] [--brief]");
     System.err.println("usage: gold frames-images <frame file> <s> [--out=<prefix>]");
+    System.err.println("usage: gold packets <frame file> <packet file> [--idle=N] [--first=N]");
+    System.err.println("usage: gold packets-read <packet file> [<frame file out>] [--compare=<frame file>] [--first=N] [--no-idle]"
+        + " [--packets-only] [--list]");
+    System.err.println("usage: gold packets-vectors <out dir>");
     System.err.println("usage: gold compare <program dir> <input dir> <ref prefix> [--max-rows=N] [--computed-advice]");
     System.exit(2);
   }

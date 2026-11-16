@@ -7,6 +7,9 @@
 #   then the host's frames (WORKER1): test/frames/guests.sh (every guest written, verified, read back and checked;
 #   FramesTest) and test/frames/old_unchanged.sh (the segments command byte-identical to v1.36 gold's on every guest;
 #   the guests as expected). FRAMES_TESTS=0 skips them.
+#   then the link's packets (WORKER2): test/packets/packets.sh (the committed test vectors regenerated and checked a
+#   third way in Python, the packets and packets-read commands on a guest's frames, PacketsTest). PACKETS_TESTS=0
+#   skips it. guests.sh also wraps every frame file it writes in packets and reads it back.
 set -e
 cd "$(dirname "$0")"
 rm -rf build
@@ -23,4 +26,8 @@ if [ "${FRAMES_TESTS:-1}" != 0 ]; then
   sh test/frames/guests.sh > /tmp/gold-frames-guests.log 2>&1 || { cat /tmp/gold-frames-guests.log; exit 1; }
   tail -1 /tmp/gold-frames-guests.log
   sh test/frames/old_unchanged.sh
+fi
+if [ "${PACKETS_TESTS:-1}" != 0 ]; then
+  sh test/packets/packets.sh > /tmp/gold-packets.log 2>&1 || { cat /tmp/gold-packets.log; exit 1; }
+  tail -2 /tmp/gold-packets.log
 fi

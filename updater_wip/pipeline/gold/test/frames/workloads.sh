@@ -5,6 +5,8 @@
 # --verify: a full table with no compression (N 128); the static base with the smaller form of each frame (N 128, the
 # real configuration); the static base all LRU with N 256; frames-read --check --seg on each. Logs and the side files (sizes)
 # into <out dir>; the frame files are deleted after their checks, their SHA-256 kept in the side files.
+# Each frame file is also wrapped in the link's packets (WORKER2: packets), read back (packets-read) and compared byte for
+# byte; what the two commands print (the packets, the overhead, both SHA-256s) is kept in <name>-<configuration>.packets.txt.
 #   test/frames/workloads.sh <jolt-asic-planning tracer dir> <out dir> small|29
 set -u
 cd "$(dirname "$0")/../.."
@@ -43,7 +45,15 @@ echo "$RUNS" | while read name prog in cuts; do
       echo "$name, $2 base, compression $3, N $4: FAILED"; echo FAIL > "$OUT/FAILED"
     fi
     grep -v "Picked up" "$f.log" | sed 's/^/    /'
-    rm -f "$f.frames"
+    $J gold.Main packets "$f.frames" "$f.packets" > "$f.packets.txt" 2>&1
+    $J gold.Main packets-read "$f.packets" "$f.back" --compare="$f.frames" >> "$f.packets.txt" 2>&1
+    if grep -q "^checks: ok" "$f.packets.txt" && cmp -s "$f.back" "$f.frames"; then
+      echo "$name, $2 base, compression $3, N $4: as packets, read back, the frames byte-identical"
+    else
+      echo "$name, $2 base, compression $3, N $4: the packets FAILED"; echo FAIL > "$OUT/FAILED"
+    fi
+    grep -v "Picked up" "$f.packets.txt" | sed 's/^/    /'
+    rm -f "$f.frames" "$f.packets" "$f.back"
   done
   rm -f "$OUT/$name.seg" "$OUT/$name.seg.cuts"
 done

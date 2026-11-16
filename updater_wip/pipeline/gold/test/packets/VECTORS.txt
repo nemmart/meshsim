@@ -1,0 +1,1522 @@
+# Test vectors for the link's packets (v1.4_wip/planning/HOST-LINK.md), for an Ingress written from the documents.
+# Made by gold's packets-vectors command (updater_wip/pipeline/gold, WORKER2); do not edit: the build regenerates
+# this file and compares. The choices behind it are in updater_wip/planning/sessions/WORKER2/NOTES.md.
+#
+# A PACKET is a header word of 128 bits, then 0 to 32 words of data. Every word goes on the link least significant
+# byte first: byte i of a word holds its bits [8i+7:8i]. The header word:
+#   byte 0       stream [3:0] (1 foreground, 2 background; never 0), flags [7:4]
+#   byte 1       length [15:8]: the data's 128-bit words, 0 to 32
+#   bytes 2-4    packet number [35:16], 20 bits (byte 4's low four bits are its top four)
+#   bytes 4-6    acknowledge [55:36], 20 bits (byte 4's high four bits are its low four)
+#   byte 7       reserved [63:56], 0
+#   bytes 8-11   data checksum [95:64]: the CRC-32C of the data's bytes, in link order; of no data, 0x00000000
+#   bytes 12-15  header CRC [127:96]: the CRC-32C of header bytes 0 to 11, in link order
+#
+# CRC-32C (Castagnoli; iSCSI's): polynomial 0x1EDC6F41, reflected; initial value 0xFFFFFFFF; final XOR 0xFFFFFFFF.
+#   crc = 0xFFFFFFFF
+#   for each byte b, in order:  crc = crc XOR b
+#                               8 times:  crc = (crc >> 1) XOR 0x82F63B78 if crc's bit 0 is 1, else crc >> 1
+#   result = crc XOR 0xFFFFFFFF, stored least significant byte first
+# The CRC-32C of all 16 header bytes of a packet whose header CRC is right is always 0x48674BC7.
+#
+# THE CHECKS, in the order gold's reader makes them; "expect" below is "ok" or the first one that fails:
+#   header-crc     the CRC-32C of bytes 0 to 11 is not bytes 12 to 15
+#   stream         the stream is not 1 or 2
+#   length         the length is over 32
+#   reserved       bits [63:56] are not 0
+#   data-checksum  the CRC-32C of the data is not bytes 8 to 11
+#   number         a packet with data: its number is not the next on its stream (1 first; after 0xFFFFE, 1).
+#                  A packet of length 0: its number is not the one the stream's next packet with data will carry;
+#                  it takes no number, and the next packet with data carries the same one (owner, 2026-11-16)
+#   frame-end      whole files only: on stream 2 a frame ends before the end of the packet its last word is in
+#   truncated      whole files only: the file ends inside a packet or inside a frame
+# The flags and the acknowledge field are not checked. Between packets, zero bytes are idle and are skipped, in
+# any number: the first byte that is not zero starts a header.
+#
+# THIS FILE: a line is a key and its value; "#" starts a comment; hex strings are bytes in link order.
+#   crc32c <bytes, or - for none> <the CRC-32C, as a number>
+#   packet <name> ... end     one packet alone. Frames are not looked at here: Ingress knows only packets.
+#       next-number        the number the receiver expects next on this packet's stream, before the packet
+#       stream, flags, length, number, acknowledge, reserved     the header's fields as the bytes hold them
+#       data               one line for each word of data
+#       data-checksum      the header's field;   data-crc32c    the CRC-32C of the data (equal in a good packet)
+#       header-0-11        header bytes 0 to 11: what the header CRC is over
+#       header-crc         the header's field;   header-crc32c  the CRC-32C of bytes 0 to 11
+#       header-word        the header as one 128-bit number, most significant digit first
+#       bytes              the whole packet, 16 bytes to a line
+#       expect             ok, or the check that refuses it
+#       next-number-after  for ok: the number expected next on the stream after this packet
+#   file <name> ... end       a whole packet file beside this one; its frames are small.frames
+#   damage <file> byte <offset> xor <mask> expect <check> packet <n> at <offset>
+#                             the file with that one byte changed: the check that must refuse it, at which packet
+#                             (counted from 1 in the file) and the byte where that packet is taken to start
+
+# ---- CRC-32C ----
+crc32c - 0x00000000    # no bytes
+crc32c 313233343536373839 0xe3069283    # the ASCII string 123456789
+crc32c 00 0x527d5351    # one zero byte
+crc32c 00000000000000000000000000000000 0x42709aea    # one zero word
+crc32c 0000000000000000000000000000000000000000000000000000000000000000 0x8a9136aa    # 32 zero bytes
+crc32c ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff 0x62a8ab43    # 32 bytes of 0xFF
+crc32c 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f 0x46dd794e    # 0x00 up to 0x1F
+crc32c 1f1e1d1c1b1a191817161514131211100f0e0d0c0b0a09080706050403020100 0x113fdb5c    # 0x1F down to 0x00
+
+# ---- single packets ----
+
+packet one-zero-word
+  # the first packet of a file: one word of data, all zeros
+  next-number        0x00001
+  stream             2
+  flags              0
+  length             1
+  number             0x00001
+  acknowledge        0x00000
+  reserved           0x00
+  data               00000000000000000000000000000000
+  data-checksum      0x42709aea
+  data-crc32c        0x42709aea
+  header-0-11        0201010000000000ea9a7042
+  header-crc         0xe1068ca0
+  header-crc32c      0xe1068ca0
+  header-word        0xe1068ca042709aea0000000000010102
+  bytes              0201010000000000ea9a7042a08c06e1
+  bytes              00000000000000000000000000000000
+  expect             ok
+  next-number-after  0x00002
+end
+
+packet two-words
+  next-number        0x00002
+  stream             2
+  flags              0
+  length             2
+  number             0x00002
+  acknowledge        0x00000
+  reserved           0x00
+  data               c15c0289ec2d0a9167ec8e65a18debbe
+  data               5e5532fbeea293f80bc942ee9086c171
+  data-checksum      0x75e782ce
+  data-crc32c        0x75e782ce
+  header-0-11        0202020000000000ce82e775
+  header-crc         0xbbd8915c
+  header-crc32c      0xbbd8915c
+  header-word        0xbbd8915c75e782ce0000000000020202
+  bytes              0202020000000000ce82e7755c91d8bb
+  bytes              c15c0289ec2d0a9167ec8e65a18debbe
+  bytes              5e5532fbeea293f80bc942ee9086c171
+  expect             ok
+  next-number-after  0x00003
+end
+
+packet full
+  # 32 words, the most a packet holds
+  next-number        0x00003
+  stream             2
+  flags              0
+  length             32
+  number             0x00003
+  acknowledge        0x00000
+  reserved           0x00
+  data               b9b501d1d854bb7180021590ff0b4dc3
+  data               a53c36d76cec99e0758527120fbbe785
+  data               a83d7e35de181749966761748e5c43cb
+  data               614f560177dc7567fe8bcf144dd4fc9a
+  data               c05daa4b8acf76748aa2d790d641b387
+  data               a8574c6fae6d9b6f3b4a79a517cec22a
+  data               630bfdb7a6a634a5f1aa2b57dad0bad0
+  data               ee89af30963784ae0865ef73371863e2
+  data               4687e96568c4e2109c442a5c3c97d714
+  data               cd8f54d10efdf17eac06f33e6310841f
+  data               9fb9aad1c5057349f7b677c17d40430c
+  data               35714a86a71cf983abf72d0defaeb9b6
+  data               27cd5b444516330b8a770919e8676cff
+  data               84d0c5120bd70c99ba8907c967192b96
+  data               6d2c075a68e2ac651ce0dc482f6f6170
+  data               17fcf32e4e82d6400cfffe56222e9e87
+  data               f5e04b5e44022e8bc1533500bb598cbf
+  data               189deb96b2a46ad13c135bbe71a127ab
+  data               862c7e6049c7a0dc07291e88403c4bb5
+  data               63811059bf1f823cb2ff8786380dffa7
+  data               8160c69f01d170de387ec812cd6aded6
+  data               5e68e918610e0e53969f4d30eaf9bf28
+  data               733037213230d9e47ad5ed610410a6e9
+  data               7405ba77ef73464de5be4c4cfd8caf21
+  data               f8e86abdf40060539017ca29e43caff0
+  data               8f4a5b0c0b0bc764afec512727877516
+  data               af7acd9a859c679bcc94c6c89e5fcd27
+  data               5262f0bfb24055f552c84d5a925228e0
+  data               14cee25cb0d1c5867fb775103ab28011
+  data               bcff1479811a9ac05bd21e40e194b888
+  data               620b9e35989a6cb8ac5f323967dca947
+  data               f3e073cab44595096b93c34189e1a205
+  data-checksum      0xf166378e
+  data-crc32c        0xf166378e
+  header-0-11        02200300000000008e3766f1
+  header-crc         0xc7555fef
+  header-crc32c      0xc7555fef
+  header-word        0xc7555feff166378e0000000000032002
+  bytes              02200300000000008e3766f1ef5f55c7
+  bytes              b9b501d1d854bb7180021590ff0b4dc3
+  bytes              a53c36d76cec99e0758527120fbbe785
+  bytes              a83d7e35de181749966761748e5c43cb
+  bytes              614f560177dc7567fe8bcf144dd4fc9a
+  bytes              c05daa4b8acf76748aa2d790d641b387
+  bytes              a8574c6fae6d9b6f3b4a79a517cec22a
+  bytes              630bfdb7a6a634a5f1aa2b57dad0bad0
+  bytes              ee89af30963784ae0865ef73371863e2
+  bytes              4687e96568c4e2109c442a5c3c97d714
+  bytes              cd8f54d10efdf17eac06f33e6310841f
+  bytes              9fb9aad1c5057349f7b677c17d40430c
+  bytes              35714a86a71cf983abf72d0defaeb9b6
+  bytes              27cd5b444516330b8a770919e8676cff
+  bytes              84d0c5120bd70c99ba8907c967192b96
+  bytes              6d2c075a68e2ac651ce0dc482f6f6170
+  bytes              17fcf32e4e82d6400cfffe56222e9e87
+  bytes              f5e04b5e44022e8bc1533500bb598cbf
+  bytes              189deb96b2a46ad13c135bbe71a127ab
+  bytes              862c7e6049c7a0dc07291e88403c4bb5
+  bytes              63811059bf1f823cb2ff8786380dffa7
+  bytes              8160c69f01d170de387ec812cd6aded6
+  bytes              5e68e918610e0e53969f4d30eaf9bf28
+  bytes              733037213230d9e47ad5ed610410a6e9
+  bytes              7405ba77ef73464de5be4c4cfd8caf21
+  bytes              f8e86abdf40060539017ca29e43caff0
+  bytes              8f4a5b0c0b0bc764afec512727877516
+  bytes              af7acd9a859c679bcc94c6c89e5fcd27
+  bytes              5262f0bfb24055f552c84d5a925228e0
+  bytes              14cee25cb0d1c5867fb775103ab28011
+  bytes              bcff1479811a9ac05bd21e40e194b888
+  bytes              620b9e35989a6cb8ac5f323967dca947
+  bytes              f3e073cab44595096b93c34189e1a205
+  expect             ok
+  next-number-after  0x00004
+end
+
+packet full-of-ones
+  # 32 words of all ones; a number with a digit in every place
+  next-number        0x12345
+  stream             2
+  flags              0
+  length             32
+  number             0x12345
+  acknowledge        0x00000
+  reserved           0x00
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data               ffffffffffffffffffffffffffffffff
+  data-checksum      0x5bd99297
+  data-crc32c        0x5bd99297
+  header-0-11        02204523010000009792d95b
+  header-crc         0xf637f5b8
+  header-crc32c      0xf637f5b8
+  header-word        0xf637f5b85bd992970000000123452002
+  bytes              02204523010000009792d95bb8f537f6
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  bytes              ffffffffffffffffffffffffffffffff
+  expect             ok
+  next-number-after  0x12346
+end
+
+packet last-number
+  # the last number, 0xFFFFE: the next is 1
+  next-number        0xffffe
+  stream             2
+  flags              0
+  length             4
+  number             0xffffe
+  acknowledge        0x00000
+  reserved           0x00
+  data               a966de0c4d6d8691bb139892d767b91e
+  data               6125eca09e3e66298711a227eb1ec6d2
+  data               75d528a35a1502f973cf1d6f4e09ebb0
+  data               0e33d26ca0b6cc904387666847837878
+  data-checksum      0x125f9116
+  data-crc32c        0x125f9116
+  header-0-11        0204feff0f00000016915f12
+  header-crc         0xb7a5e6c6
+  header-crc32c      0xb7a5e6c6
+  header-word        0xb7a5e6c6125f91160000000ffffe0402
+  bytes              0204feff0f00000016915f12c6e6a5b7
+  bytes              a966de0c4d6d8691bb139892d767b91e
+  bytes              6125eca09e3e66298711a227eb1ec6d2
+  bytes              75d528a35a1502f973cf1d6f4e09ebb0
+  bytes              0e33d26ca0b6cc904387666847837878
+  expect             ok
+  next-number-after  0x00001
+end
+
+packet after-the-wrap
+  # number 1 again, after 0xFFFFE
+  next-number        0x00001
+  stream             2
+  flags              0
+  length             4
+  number             0x00001
+  acknowledge        0x00000
+  reserved           0x00
+  data               53aa54953596bd9fbe63ca97bb2033dc
+  data               55fb0fc142a345ce9d777d2e4d99ea1b
+  data               397fc52cc2314ba6e16cb01e06958438
+  data               d7491e937a53386cf2834b68e05c1de3
+  data-checksum      0x9691c7ca
+  data-crc32c        0x9691c7ca
+  header-0-11        0204010000000000cac79196
+  header-crc         0x3ff099c2
+  header-crc32c      0x3ff099c2
+  header-word        0x3ff099c29691c7ca0000000000010402
+  bytes              0204010000000000cac79196c299f03f
+  bytes              53aa54953596bd9fbe63ca97bb2033dc
+  bytes              55fb0fc142a345ce9d777d2e4d99ea1b
+  bytes              397fc52cc2314ba6e16cb01e06958438
+  bytes              d7491e937a53386cf2834b68e05c1de3
+  expect             ok
+  next-number-after  0x00002
+end
+
+packet foreground
+  # stream 1
+  next-number        0x00009
+  stream             1
+  flags              0
+  length             1
+  number             0x00009
+  acknowledge        0x00000
+  reserved           0x00
+  data               09615769aeba60afb10e602e27d8daf0
+  data-checksum      0xf9af3d2f
+  data-crc32c        0xf9af3d2f
+  header-0-11        01010900000000002f3daff9
+  header-crc         0x4248e020
+  header-crc32c      0x4248e020
+  header-word        0x4248e020f9af3d2f0000000000090101
+  bytes              01010900000000002f3daff920e04842
+  bytes              09615769aeba60afb10e602e27d8daf0
+  expect             ok
+  next-number-after  0x0000a
+end
+
+packet flags-and-acknowledge
+  # every flag set and an acknowledge number: neither is checked
+  next-number        0x00006
+  stream             2
+  flags              15
+  length             2
+  number             0x00006
+  acknowledge        0xabcde
+  reserved           0x00
+  data               79c31138407e25c06ef281fe6db27220
+  data               5c3160b579e94d2d40baf3b56d5bf3bc
+  data-checksum      0xa26be048
+  data-crc32c        0xa26be048
+  header-0-11        f2020600e0cdab0048e06ba2
+  header-crc         0x2c9954ff
+  header-crc32c      0x2c9954ff
+  header-word        0x2c9954ffa26be04800abcde0000602f2
+  bytes              f2020600e0cdab0048e06ba2ff54992c
+  bytes              79c31138407e25c06ef281fe6db27220
+  bytes              5c3160b579e94d2d40baf3b56d5bf3bc
+  expect             ok
+  next-number-after  0x00007
+end
+
+packet empty
+  # length 0: its number is the one the next packet with data will carry, and it takes none
+  next-number        0x00007
+  stream             2
+  flags              0
+  length             0
+  number             0x00007
+  acknowledge        0x00000
+  reserved           0x00
+  data-checksum      0x00000000
+  data-crc32c        0x00000000
+  header-0-11        020007000000000000000000
+  header-crc         0x32f892a4
+  header-crc32c      0x32f892a4
+  header-word        0x32f892a4000000000000000000070002
+  bytes              020007000000000000000000a492f832
+  expect             ok
+  next-number-after  0x00007
+end
+
+packet empty-first
+  # length 0 before any data: number 1, and 1 is still to come
+  next-number        0x00001
+  stream             2
+  flags              0
+  length             0
+  number             0x00001
+  acknowledge        0x00000
+  reserved           0x00
+  data-checksum      0x00000000
+  data-crc32c        0x00000000
+  header-0-11        020001000000000000000000
+  header-crc         0x82d56698
+  header-crc32c      0x82d56698
+  header-word        0x82d56698000000000000000000010002
+  bytes              0200010000000000000000009866d582
+  expect             ok
+  next-number-after  0x00001
+end
+
+packet empty-at-the-last-number
+  # length 0 when 0xFFFFE is next
+  next-number        0xffffe
+  stream             2
+  flags              0
+  length             0
+  number             0xffffe
+  acknowledge        0x00000
+  reserved           0x00
+  data-checksum      0x00000000
+  data-crc32c        0x00000000
+  header-0-11        0200feff0f00000000000000
+  header-crc         0x44916538
+  header-crc32c      0x44916538
+  header-word        0x44916538000000000000000ffffe0002
+  bytes              0200feff0f0000000000000038659144
+  expect             ok
+  next-number-after  0xffffe
+end
+
+packet empty-foreground
+  # length 0 on stream 1
+  next-number        0x00004
+  stream             1
+  flags              0
+  length             0
+  number             0x00004
+  acknowledge        0x00000
+  reserved           0x00
+  data-checksum      0x00000000
+  data-crc32c        0x00000000
+  header-0-11        010004000000000000000000
+  header-crc         0x397c14ea
+  header-crc32c      0x397c14ea
+  header-word        0x397c14ea000000000000000000040001
+  bytes              010004000000000000000000ea147c39
+  expect             ok
+  next-number-after  0x00004
+end
+
+packet base
+  # the good packet the bad ones below are made from
+  next-number        0x00005
+  stream             2
+  flags              0
+  length             3
+  number             0x00005
+  acknowledge        0x00000
+  reserved           0x00
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1522ef22
+  data-crc32c        0x1522ef22
+  header-0-11        020305000000000022ef2215
+  header-crc         0xe9421c1a
+  header-crc32c      0xe9421c1a
+  header-word        0xe9421c1a1522ef220000000000050302
+  bytes              020305000000000022ef22151a1c42e9
+  bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777dfa2
+  expect             ok
+  next-number-after  0x00006
+end
+
+packet bit-stream
+  # base with header bit 0 changed (the stream becomes 3)
+  next-number        0x00005
+  stream             3
+  flags              0
+  length             3
+  number             0x00005
+  acknowledge        0x00000
+  reserved           0x00
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1522ef22
+  data-crc32c        0x1522ef22
+  header-0-11        030305000000000022ef2215
+  header-crc         0xe9421c1a
+  header-crc32c      0xd833c82a
+  header-word        0xe9421c1a1522ef220000000000050303
+  bytes              030305000000000022ef22151a1c42e9
+  bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777dfa2
+  expect             header-crc
+end
+
+packet bit-flags
+  # base with header bit 4 changed (the resend flag)
+  next-number        0x00005
+  stream             2
+  flags              1
+  length             3
+  number             0x00005
+  acknowledge        0x00000
+  reserved           0x00
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1522ef22
+  data-crc32c        0x1522ef22
+  header-0-11        120305000000000022ef2215
+  header-crc         0xe9421c1a
+  header-crc32c      0xf06bc409
+  header-word        0xe9421c1a1522ef220000000000050312
+  bytes              120305000000000022ef22151a1c42e9
+  bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777dfa2
+  expect             header-crc
+end
+
+packet bit-length
+  # base with header bit 8 changed (the length becomes 2)
+  next-number        0x00005
+  stream             2
+  flags              0
+  length             2
+  number             0x00005
+  acknowledge        0x00000
+  reserved           0x00
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1522ef22
+  data-crc32c        0x1522ef22
+  header-0-11        020205000000000022ef2215
+  header-crc         0xe9421c1a
+  header-crc32c      0x7e33ebdb
+  header-word        0xe9421c1a1522ef220000000000050202
+  bytes              020205000000000022ef22151a1c42e9
+  bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777dfa2
+  expect             header-crc
+end
+
+packet bit-number-low
+  # base with header bit 16 changed (the number becomes 4)
+  next-number        0x00005
+  stream             2
+  flags              0
+  length             3
+  number             0x00004
+  acknowledge        0x00000
+  reserved           0x00
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1522ef22
+  data-crc32c        0x1522ef22
+  header-0-11        020304000000000022ef2215
+  header-crc         0xe9421c1a
+  header-crc32c      0x221467bf
+  header-word        0xe9421c1a1522ef220000000000040302
+  bytes              020304000000000022ef22151a1c42e9
+  bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777dfa2
+  expect             header-crc
+end
+
+packet bit-number-high
+  # base with header bit 35 changed (the number's top bit)
+  next-number        0x00005
+  stream             2
+  flags              0
+  length             3
+  number             0x80005
+  acknowledge        0x00000
+  reserved           0x00
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1522ef22
+  data-crc32c        0x1522ef22
+  header-0-11        020305000800000022ef2215
+  header-crc         0xe9421c1a
+  header-crc32c      0xab7918c0
+  header-word        0xe9421c1a1522ef220000000800050302
+  bytes              020305000800000022ef22151a1c42e9
+  bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777dfa2
+  expect             header-crc
+end
+
+packet bit-acknowledge
+  # base with header bit 40 changed (in the acknowledge field)
+  next-number        0x00005
+  stream             2
+  flags              0
+  length             3
+  number             0x00005
+  acknowledge        0x00010
+  reserved           0x00
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1522ef22
+  data-crc32c        0x1522ef22
+  header-0-11        020305000001000022ef2215
+  header-crc         0xe9421c1a
+  header-crc32c      0x814130d2
+  header-word        0xe9421c1a1522ef220000010000050302
+  bytes              020305000001000022ef22151a1c42e9
+  bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777dfa2
+  expect             header-crc
+end
+
+packet bit-reserved
+  # base with header bit 63 changed (reserved)
+  next-number        0x00005
+  stream             2
+  flags              0
+  length             3
+  number             0x00005
+  acknowledge        0x00000
+  reserved           0x80
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1522ef22
+  data-crc32c        0x1522ef22
+  header-0-11        020305000000008022ef2215
+  header-crc         0xe9421c1a
+  header-crc32c      0x87e0c946
+  header-word        0xe9421c1a1522ef228000000000050302
+  bytes              020305000000008022ef22151a1c42e9
+  bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777dfa2
+  expect             header-crc
+end
+
+packet bit-data-checksum
+  # base with header bit 64 changed (the data checksum's lowest bit): the header CRC covers it
+  next-number        0x00005
+  stream             2
+  flags              0
+  length             3
+  number             0x00005
+  acknowledge        0x00000
+  reserved           0x00
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1522ef23
+  data-crc32c        0x1522ef22
+  header-0-11        020305000000000023ef2215
+  header-crc         0xe9421c1a
+  header-crc32c      0x3407b6a2
+  header-word        0xe9421c1a1522ef230000000000050302
+  bytes              020305000000000023ef22151a1c42e9
+  bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777dfa2
+  expect             header-crc
+end
+
+packet bit-header-crc
+  # base with header bit 127 changed (the header CRC's top bit)
+  next-number        0x00005
+  stream             2
+  flags              0
+  length             3
+  number             0x00005
+  acknowledge        0x00000
+  reserved           0x00
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1522ef22
+  data-crc32c        0x1522ef22
+  header-0-11        020305000000000022ef2215
+  header-crc         0x69421c1a
+  header-crc32c      0xe9421c1a
+  header-word        0x69421c1a1522ef220000000000050302
+  bytes              020305000000000022ef22151a1c4269
+  bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777dfa2
+  expect             header-crc
+end
+
+packet bit-data-first
+  # base with the lowest bit of its first data byte changed
+  next-number        0x00005
+  stream             2
+  flags              0
+  length             3
+  number             0x00005
+  acknowledge        0x00000
+  reserved           0x00
+  data               ec8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1522ef22
+  data-crc32c        0x090bf226
+  header-0-11        020305000000000022ef2215
+  header-crc         0xe9421c1a
+  header-crc32c      0xe9421c1a
+  header-word        0xe9421c1a1522ef220000000000050302
+  bytes              020305000000000022ef22151a1c42e9
+  bytes              ec8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777dfa2
+  expect             data-checksum
+end
+
+packet bit-data-last
+  # base with the top bit of its last data byte changed
+  next-number        0x00005
+  stream             2
+  flags              0
+  length             3
+  number             0x00005
+  acknowledge        0x00000
+  reserved           0x00
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777df22
+  data-checksum      0x1522ef22
+  data-crc32c        0x97d4d45a
+  header-0-11        020305000000000022ef2215
+  header-crc         0xe9421c1a
+  header-crc32c      0xe9421c1a
+  header-word        0xe9421c1a1522ef220000000000050302
+  bytes              020305000000000022ef22151a1c42e9
+  bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777df22
+  expect             data-checksum
+end
+
+packet stream-0
+  # stream 0 with the resend flag set, so the first byte is 0x10; both checks right
+  next-number        0x00005
+  stream             0
+  flags              1
+  length             3
+  number             0x00005
+  acknowledge        0x00000
+  reserved           0x00
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1522ef22
+  data-crc32c        0x1522ef22
+  header-0-11        100305000000000022ef2215
+  header-crc         0x92886c69
+  header-crc32c      0x92886c69
+  header-word        0x92886c691522ef220000000000050310
+  bytes              100305000000000022ef2215696c8892
+  bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777dfa2
+  expect             stream
+end
+
+packet stream-3
+  # stream 3; both checks right
+  next-number        0x00005
+  stream             3
+  flags              0
+  length             3
+  number             0x00005
+  acknowledge        0x00000
+  reserved           0x00
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1522ef22
+  data-crc32c        0x1522ef22
+  header-0-11        030305000000000022ef2215
+  header-crc         0xd833c82a
+  header-crc32c      0xd833c82a
+  header-word        0xd833c82a1522ef220000000000050303
+  bytes              030305000000000022ef22152ac833d8
+  bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777dfa2
+  expect             stream
+end
+
+packet stream-15
+  # stream 15; both checks right
+  next-number        0x00005
+  stream             15
+  flags              0
+  length             3
+  number             0x00005
+  acknowledge        0x00000
+  reserved           0x00
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1522ef22
+  data-crc32c        0x1522ef22
+  header-0-11        0f0305000000000022ef2215
+  header-crc         0x93964f9b
+  header-crc32c      0x93964f9b
+  header-word        0x93964f9b1522ef22000000000005030f
+  bytes              0f0305000000000022ef22159b4f9693
+  bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777dfa2
+  expect             stream
+end
+
+packet length-33
+  # length 33, with 33 words of data; both checks right
+  next-number        0x00005
+  stream             2
+  flags              0
+  length             33
+  number             0x00005
+  acknowledge        0x00000
+  reserved           0x00
+  data               ca8a33e272e3736e30b0984b6ac674e4
+  data               5f847b8efc19efdb9ef8f3260cebe47d
+  data               b9ca78a3183a0365e1e57477602c3396
+  data               5e1f5ef725aeb1eb527f0358d893e072
+  data               c9ba0ebd0a83892e05cca1be93d3a489
+  data               226c96e7aeb846cbf9877b2f92ff61b2
+  data               bc92ad9cc99b108b38ab9ea5c7dc22ae
+  data               29b68575fddae9d95193cd355f2a63cb
+  data               3b99c3a1264f9c9be490b59cebf8422b
+  data               86055aee7f40f1c27a2155acf94e6822
+  data               54ed6ad764f1b45d91475fdd37d0ca02
+  data               72a25a18de141c9d0bc8a0d29c37f821
+  data               d02addee4e8578890d98ac9ca3a23ae8
+  data               fd9e420db18e6e90ef2036cbab92a9de
+  data               5a0baebd374cee3fd1011c9539afc1a9
+  data               4e1b4135007d9eefa0d680308b70a50d
+  data               3df367620ca8c9545de26ac89fdce92e
+  data               5dd8849266e20fe313e0df135a93f3dd
+  data               349b0af7320a0f9d9732b985540943fc
+  data               e258863c5f44e5d6085d5123ee8fff32
+  data               ed4ef3a10249f3befadf6724c4f86ffa
+  data               d1fc1af0689daa002d2064fe280eba42
+  data               71e77265b025672904bfcb1187102881
+  data               682f39fe41c2b0f7a6e240be96a22b71
+  data               38def1a9234c13eb6dc3f71d7224fc5d
+  data               143f2cd096ce26c42c11162bf75bad76
+  data               f321fb15d3ff78867ed2adbdce939543
+  data               c7943128e02babb88f1970f023e9a2d8
+  data               6d92c342b8d950e36f6707d71a63c0ad
+  data               bed93fc9ab4a9d2303369a18dd71ce2b
+  data               5bddb6fa9207668ad0301a97213bc570
+  data               f461c9d4bfcc69a9a0c8d1efbe6b330d
+  data               1097ff40f6de12558db0a4c6a738f930
+  data-checksum      0xd206cecb
+  data-crc32c        0xd206cecb
+  header-0-11        0221050000000000cbce06d2
+  header-crc         0x1e0d1d2d
+  header-crc32c      0x1e0d1d2d
+  header-word        0x1e0d1d2dd206cecb0000000000052102
+  bytes              0221050000000000cbce06d22d1d0d1e
+  bytes              ca8a33e272e3736e30b0984b6ac674e4
+  bytes              5f847b8efc19efdb9ef8f3260cebe47d
+  bytes              b9ca78a3183a0365e1e57477602c3396
+  bytes              5e1f5ef725aeb1eb527f0358d893e072
+  bytes              c9ba0ebd0a83892e05cca1be93d3a489
+  bytes              226c96e7aeb846cbf9877b2f92ff61b2
+  bytes              bc92ad9cc99b108b38ab9ea5c7dc22ae
+  bytes              29b68575fddae9d95193cd355f2a63cb
+  bytes              3b99c3a1264f9c9be490b59cebf8422b
+  bytes              86055aee7f40f1c27a2155acf94e6822
+  bytes              54ed6ad764f1b45d91475fdd37d0ca02
+  bytes              72a25a18de141c9d0bc8a0d29c37f821
+  bytes              d02addee4e8578890d98ac9ca3a23ae8
+  bytes              fd9e420db18e6e90ef2036cbab92a9de
+  bytes              5a0baebd374cee3fd1011c9539afc1a9
+  bytes              4e1b4135007d9eefa0d680308b70a50d
+  bytes              3df367620ca8c9545de26ac89fdce92e
+  bytes              5dd8849266e20fe313e0df135a93f3dd
+  bytes              349b0af7320a0f9d9732b985540943fc
+  bytes              e258863c5f44e5d6085d5123ee8fff32
+  bytes              ed4ef3a10249f3befadf6724c4f86ffa
+  bytes              d1fc1af0689daa002d2064fe280eba42
+  bytes              71e77265b025672904bfcb1187102881
+  bytes              682f39fe41c2b0f7a6e240be96a22b71
+  bytes              38def1a9234c13eb6dc3f71d7224fc5d
+  bytes              143f2cd096ce26c42c11162bf75bad76
+  bytes              f321fb15d3ff78867ed2adbdce939543
+  bytes              c7943128e02babb88f1970f023e9a2d8
+  bytes              6d92c342b8d950e36f6707d71a63c0ad
+  bytes              bed93fc9ab4a9d2303369a18dd71ce2b
+  bytes              5bddb6fa9207668ad0301a97213bc570
+  bytes              f461c9d4bfcc69a9a0c8d1efbe6b330d
+  bytes              1097ff40f6de12558db0a4c6a738f930
+  expect             length
+end
+
+packet length-64
+  # length 64, with 64 words of data; both checks right
+  next-number        0x00005
+  stream             2
+  flags              0
+  length             64
+  number             0x00005
+  acknowledge        0x00000
+  reserved           0x00
+  data               5ac389a30c3b0363f83697934d3197c0
+  data               47c16b10f0d3923b45b905dac24e6e19
+  data               c55d01aa8f271e30444007b030966f61
+  data               211bcc1b1fe44dfc2bef9906138cd782
+  data               e8e9e99e3aea2b6d63d7996087147b9a
+  data               a7c67c25e95552733ca705558aecfe22
+  data               fb8a57841de3cedf0dcb945cf59ee473
+  data               176a21493bd465f4561a7119bbad60f0
+  data               6b31b3b5031bc3d4fba84ca5466f0776
+  data               779113d854ca4528d8f0dfde65148a74
+  data               d9352a6a4fc3671dcb8131d45e82cafc
+  data               209fad1053c3192eef3277635ac12ae0
+  data               e338e147e5e5f127038c9f9609746eb6
+  data               d6e53283f9c7b5ef2163dae962893e1f
+  data               dfa45bc5126c6475b653045e69c521d8
+  data               97cf6cc6439c9d45f526a52884b2c831
+  data               7fe837d2116b39face1ace256f552264
+  data               8fc22cda6a3683f8e527882bf2166fb5
+  data               4e5dac1e75826b5fefe6322330cda872
+  data               4cc6a0d481426f1fcbe6935e10256e00
+  data               22e75616d7c66e87024b52e80afeffa0
+  data               df018451cfd94777c99d7f058f01a148
+  data               9157a5252a62c9a663511c1bc55713c3
+  data               4323eebe1c8c343733b9f589709daefa
+  data               f0b8670e5687c724cd8419f55dc4e769
+  data               0766bd20ec2abf78e8cf0da14fb3d10f
+  data               b216bb24fd90b461f91dbac89928ffc4
+  data               9355e4be3ca0b8e9951b39e939b9006c
+  data               6d17d0754749f7666c277c26a6aa3eae
+  data               f0043bc6845828e05aa6d73d13a1fe46
+  data               39964c1e93759ddeeb02909311fcc950
+  data               7d944bdf6cfabe561b581eef52232700
+  data               16a5851c2705eecc1ed2764574959788
+  data               032df3143545a73ac4e2ac7c06506144
+  data               5f5731e0efb04d878de0171f0bcbdbfd
+  data               c312a5642a269a9166dcdc9202e08dad
+  data               812e0e478123948299a3526cb1562b19
+  data               3394496555eb618a132f2f1956446e00
+  data               1bc046c6f9fe4222cf0384dd578d0134
+  data               c37c5fe10c5cae9686a7bea902affa6e
+  data               80d836fe989810f2d8e9d5e80173de2a
+  data               e59401b89904d03c7a66192e9edd9b0a
+  data               5aedb9cd341905ef4e9a6e5c0e7cee1c
+  data               787d7ca8a4d34a91ee2a2c6ec7c101f0
+  data               59152de30d81436867b9afaf5d9866fa
+  data               6fe0f1ee919e529d1ea995a830e76966
+  data               f59d6ca98933d4d6bf0d8d6437b29e63
+  data               0af9228c8f09b1fcaf106982351af95a
+  data               a213b5a71e77443faedbd8ca9a0aba2d
+  data               a3ed1124d9f342e8ea752934e8c808ea
+  data               eb40865f8ed29770c6a8e1c99d591a76
+  data               d0d0a8929a5e7edaf28fbb5117f0b05f
+  data               8e347ce9b8698dc8cad6535f8f46c97c
+  data               bf3d10444aa679d844c0e27f086cf159
+  data               d1f53b6911aa8e01be86de7c8e569956
+  data               bb323a578ee411b493f1e329b6bd12e7
+  data               c584317cc407490446c18e827075414f
+  data               d4f1d64d8b57fbb68ff5712a80724862
+  data               3acee6b924ba88f9ad998a0d92bae7ff
+  data               3024f889ee1a857f3b522ec12569d27c
+  data               9645ad2aac10ef6f265ffb3421878d8c
+  data               6f82f83a396a2562f435a364d1c83af6
+  data               47359f90adc10e03591ca0f09168f26d
+  data               97305c1fada01e7ac4c776a36ac6ac9d
+  data-checksum      0x5d3434a2
+  data-crc32c        0x5d3434a2
+  header-0-11        0240050000000000a234345d
+  header-crc         0x0705a9a4
+  header-crc32c      0x0705a9a4
+  header-word        0x0705a9a45d3434a20000000000054002
+  bytes              0240050000000000a234345da4a90507
+  bytes              5ac389a30c3b0363f83697934d3197c0
+  bytes              47c16b10f0d3923b45b905dac24e6e19
+  bytes              c55d01aa8f271e30444007b030966f61
+  bytes              211bcc1b1fe44dfc2bef9906138cd782
+  bytes              e8e9e99e3aea2b6d63d7996087147b9a
+  bytes              a7c67c25e95552733ca705558aecfe22
+  bytes              fb8a57841de3cedf0dcb945cf59ee473
+  bytes              176a21493bd465f4561a7119bbad60f0
+  bytes              6b31b3b5031bc3d4fba84ca5466f0776
+  bytes              779113d854ca4528d8f0dfde65148a74
+  bytes              d9352a6a4fc3671dcb8131d45e82cafc
+  bytes              209fad1053c3192eef3277635ac12ae0
+  bytes              e338e147e5e5f127038c9f9609746eb6
+  bytes              d6e53283f9c7b5ef2163dae962893e1f
+  bytes              dfa45bc5126c6475b653045e69c521d8
+  bytes              97cf6cc6439c9d45f526a52884b2c831
+  bytes              7fe837d2116b39face1ace256f552264
+  bytes              8fc22cda6a3683f8e527882bf2166fb5
+  bytes              4e5dac1e75826b5fefe6322330cda872
+  bytes              4cc6a0d481426f1fcbe6935e10256e00
+  bytes              22e75616d7c66e87024b52e80afeffa0
+  bytes              df018451cfd94777c99d7f058f01a148
+  bytes              9157a5252a62c9a663511c1bc55713c3
+  bytes              4323eebe1c8c343733b9f589709daefa
+  bytes              f0b8670e5687c724cd8419f55dc4e769
+  bytes              0766bd20ec2abf78e8cf0da14fb3d10f
+  bytes              b216bb24fd90b461f91dbac89928ffc4
+  bytes              9355e4be3ca0b8e9951b39e939b9006c
+  bytes              6d17d0754749f7666c277c26a6aa3eae
+  bytes              f0043bc6845828e05aa6d73d13a1fe46
+  bytes              39964c1e93759ddeeb02909311fcc950
+  bytes              7d944bdf6cfabe561b581eef52232700
+  bytes              16a5851c2705eecc1ed2764574959788
+  bytes              032df3143545a73ac4e2ac7c06506144
+  bytes              5f5731e0efb04d878de0171f0bcbdbfd
+  bytes              c312a5642a269a9166dcdc9202e08dad
+  bytes              812e0e478123948299a3526cb1562b19
+  bytes              3394496555eb618a132f2f1956446e00
+  bytes              1bc046c6f9fe4222cf0384dd578d0134
+  bytes              c37c5fe10c5cae9686a7bea902affa6e
+  bytes              80d836fe989810f2d8e9d5e80173de2a
+  bytes              e59401b89904d03c7a66192e9edd9b0a
+  bytes              5aedb9cd341905ef4e9a6e5c0e7cee1c
+  bytes              787d7ca8a4d34a91ee2a2c6ec7c101f0
+  bytes              59152de30d81436867b9afaf5d9866fa
+  bytes              6fe0f1ee919e529d1ea995a830e76966
+  bytes              f59d6ca98933d4d6bf0d8d6437b29e63
+  bytes              0af9228c8f09b1fcaf106982351af95a
+  bytes              a213b5a71e77443faedbd8ca9a0aba2d
+  bytes              a3ed1124d9f342e8ea752934e8c808ea
+  bytes              eb40865f8ed29770c6a8e1c99d591a76
+  bytes              d0d0a8929a5e7edaf28fbb5117f0b05f
+  bytes              8e347ce9b8698dc8cad6535f8f46c97c
+  bytes              bf3d10444aa679d844c0e27f086cf159
+  bytes              d1f53b6911aa8e01be86de7c8e569956
+  bytes              bb323a578ee411b493f1e329b6bd12e7
+  bytes              c584317cc407490446c18e827075414f
+  bytes              d4f1d64d8b57fbb68ff5712a80724862
+  bytes              3acee6b924ba88f9ad998a0d92bae7ff
+  bytes              3024f889ee1a857f3b522ec12569d27c
+  bytes              9645ad2aac10ef6f265ffb3421878d8c
+  bytes              6f82f83a396a2562f435a364d1c83af6
+  bytes              47359f90adc10e03591ca0f09168f26d
+  bytes              97305c1fada01e7ac4c776a36ac6ac9d
+  expect             length
+end
+
+packet reserved-low
+  # reserved bit [56] set; both checks right
+  next-number        0x00005
+  stream             2
+  flags              0
+  length             3
+  number             0x00005
+  acknowledge        0x00000
+  reserved           0x01
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1522ef22
+  data-crc32c        0x1522ef22
+  header-0-11        020305000000000122ef2215
+  header-crc         0xd15373b6
+  header-crc32c      0xd15373b6
+  header-word        0xd15373b61522ef220100000000050302
+  bytes              020305000000000122ef2215b67353d1
+  bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777dfa2
+  expect             reserved
+end
+
+packet reserved-high
+  # reserved bit [63] set; both checks right
+  next-number        0x00005
+  stream             2
+  flags              0
+  length             3
+  number             0x00005
+  acknowledge        0x00000
+  reserved           0x80
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1522ef22
+  data-crc32c        0x1522ef22
+  header-0-11        020305000000008022ef2215
+  header-crc         0x87e0c946
+  header-crc32c      0x87e0c946
+  header-word        0x87e0c9461522ef228000000000050302
+  bytes              020305000000008022ef221546c9e087
+  bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777dfa2
+  expect             reserved
+end
+
+packet data-checksum-wrong
+  # the data checksum one bit off, the header CRC right for it
+  next-number        0x00005
+  stream             2
+  flags              0
+  length             3
+  number             0x00005
+  acknowledge        0x00000
+  reserved           0x00
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1523ef22
+  data-crc32c        0x1522ef22
+  header-0-11        020305000000000022ef2315
+  header-crc         0xfae0846d
+  header-crc32c      0xfae0846d
+  header-word        0xfae0846d1523ef220000000000050302
+  bytes              020305000000000022ef23156d84e0fa
+  bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777dfa2
+  expect             data-checksum
+end
+
+packet number-0
+  # number 0; both checks right
+  next-number        0x00005
+  stream             2
+  flags              0
+  length             3
+  number             0x00000
+  acknowledge        0x00000
+  reserved           0x00
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1522ef22
+  data-crc32c        0x1522ef22
+  header-0-11        020300000000000022ef2215
+  header-crc         0x01791238
+  header-crc32c      0x01791238
+  header-word        0x017912381522ef220000000000000302
+  bytes              020300000000000022ef221538127901
+  bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777dfa2
+  expect             number
+end
+
+packet number-all-ones
+  # number 0xFFFFF; both checks right
+  next-number        0x00005
+  stream             2
+  flags              0
+  length             3
+  number             0xfffff
+  acknowledge        0x00000
+  reserved           0x00
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1522ef22
+  data-crc32c        0x1522ef22
+  header-0-11        0203ffff0f00000022ef2215
+  header-crc         0xc73d1198
+  header-crc32c      0xc73d1198
+  header-word        0xc73d11981522ef220000000fffff0302
+  bytes              0203ffff0f00000022ef221598113dc7
+  bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777dfa2
+  expect             number
+end
+
+packet number-again
+  # the last packet's number again (4 when 5 is next)
+  next-number        0x00005
+  stream             2
+  flags              0
+  length             3
+  number             0x00004
+  acknowledge        0x00000
+  reserved           0x00
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1522ef22
+  data-crc32c        0x1522ef22
+  header-0-11        020304000000000022ef2215
+  header-crc         0x221467bf
+  header-crc32c      0x221467bf
+  header-word        0x221467bf1522ef220000000000040302
+  bytes              020304000000000022ef2215bf671422
+  bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777dfa2
+  expect             number
+end
+
+packet number-skipped
+  # a number skipped (6 when 5 is next)
+  next-number        0x00005
+  stream             2
+  flags              0
+  length             3
+  number             0x00006
+  acknowledge        0x00000
+  reserved           0x00
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1522ef22
+  data-crc32c        0x1522ef22
+  header-0-11        020306000000000022ef2215
+  header-crc         0xb154e604
+  header-crc32c      0xb154e604
+  header-word        0xb154e6041522ef220000000000060302
+  bytes              020306000000000022ef221504e654b1
+  bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777dfa2
+  expect             number
+end
+
+packet number-no-wrap
+  # 0xFFFFF after 0xFFFFE, where 1 is next
+  next-number        0x00001
+  stream             2
+  flags              0
+  length             3
+  number             0xfffff
+  acknowledge        0x00000
+  reserved           0x00
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1522ef22
+  data-crc32c        0x1522ef22
+  header-0-11        0203ffff0f00000022ef2215
+  header-crc         0xc73d1198
+  header-crc32c      0xc73d1198
+  header-word        0xc73d11981522ef220000000fffff0302
+  bytes              0203ffff0f00000022ef221598113dc7
+  bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777dfa2
+  expect             number
+end
+
+packet number-2-after-the-wrap
+  # 2 after 0xFFFFE, where 1 is next
+  next-number        0x00001
+  stream             2
+  flags              0
+  length             3
+  number             0x00002
+  acknowledge        0x00000
+  reserved           0x00
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1522ef22
+  data-crc32c        0x1522ef22
+  header-0-11        020302000000000022ef2215
+  header-crc         0x92399383
+  header-crc32c      0x92399383
+  header-word        0x923993831522ef220000000000020302
+  bytes              020302000000000022ef221583933992
+  bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777dfa2
+  expect             number
+end
+
+packet foreground-wrong-number
+  # stream 1 with a number that is not its stream's next
+  next-number        0x00005
+  stream             1
+  flags              0
+  length             3
+  number             0x00007
+  acknowledge        0x00000
+  reserved           0x00
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1522ef22
+  data-crc32c        0x1522ef22
+  header-0-11        010307000000000022ef2215
+  header-crc         0x2990e1f1
+  header-crc32c      0x2990e1f1
+  header-word        0x2990e1f11522ef220000000000070301
+  bytes              010307000000000022ef2215f1e19029
+  bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777dfa2
+  expect             number
+end
+
+packet empty-with-the-last-number
+  # length 0 holding the last packet's number (4) and not the next one's (5)
+  next-number        0x00005
+  stream             2
+  flags              0
+  length             0
+  number             0x00004
+  acknowledge        0x00000
+  reserved           0x00
+  data-checksum      0x00000000
+  data-crc32c        0x00000000
+  header-0-11        020004000000000000000000
+  header-crc         0x6aee68ba
+  header-crc32c      0x6aee68ba
+  header-word        0x6aee68ba000000000000000000040002
+  bytes              020004000000000000000000ba68ee6a
+  expect             number
+end
+
+packet empty-one-ahead
+  # length 0 holding 6 when 5 is next
+  next-number        0x00005
+  stream             2
+  flags              0
+  length             0
+  number             0x00006
+  acknowledge        0x00000
+  reserved           0x00
+  data-checksum      0x00000000
+  data-crc32c        0x00000000
+  header-0-11        020006000000000000000000
+  header-crc         0xf9aee901
+  header-crc32c      0xf9aee901
+  header-word        0xf9aee901000000000000000000060002
+  bytes              02000600000000000000000001e9aef9
+  expect             number
+end
+
+packet empty-number-0
+  # length 0 with number 0
+  next-number        0x00005
+  stream             2
+  flags              0
+  length             0
+  number             0x00000
+  acknowledge        0x00000
+  reserved           0x00
+  data-checksum      0x00000000
+  data-crc32c        0x00000000
+  header-0-11        020000000000000000000000
+  header-crc         0x49831d3d
+  header-crc32c      0x49831d3d
+  header-word        0x49831d3d000000000000000000000002
+  bytes              0200000000000000000000003d1d8349
+  expect             number
+end
+
+packet empty-with-a-checksum
+  # length 0 with a data checksum that is not 0x00000000 (it is one zero word's); the header CRC right for it
+  next-number        0x00005
+  stream             2
+  flags              0
+  length             0
+  number             0x00005
+  acknowledge        0x00000
+  reserved           0x00
+  data-checksum      0x42709aea
+  data-crc32c        0x00000000
+  header-0-11        0200050000000000ea9a7042
+  header-crc         0x551a0ee6
+  header-crc32c      0x551a0ee6
+  header-word        0x551a0ee642709aea0000000000050002
+  bytes              0200050000000000ea9a7042e60e1a55
+  expect             data-checksum
+end
+
+# ---- whole files ----
+
+# small.frames: 4240 bytes, SHA-256 595784b3376a7b5bf03578276f8467a0a4ce9f584c05b8d428b31c633f51a124: nine frames of types 1 to 9 with 0, 1, 2, 30, 31, 32, 33, 63 and 64
+# words of data (1, 2, 3, 31, 32, 33, 34, 64 and 65 with the header word). Made-up data: for Ingress alone, not a proof.
+
+file small.packets
+  # small.frames as the packetizer writes it
+  bytes              4464
+  sha256             f9129610f14304b2fa232acb5fbd5764562e4d7865d11b946544745b73aa6c31
+  first-number       0x00001
+  packets            14
+  packets-stream-2   14
+  packets-stream-1   0
+  packets-length-0   0
+  idle-bytes         0
+  words-stream-2     265
+  words-stream-1     0
+  frames             9
+  frames-file        small.frames
+  expect             ok
+end
+
+file small-idle.packets
+  # small.frames with zero bytes before the first packet (3), between the packets (runs of 1, 15, 16, 17, 31, 33,
+  # 1024, 1025, 0, 32, 7, 2 and 16) and after the last (40), and three packets of length 0: one between two
+  # frames, two together inside a frame
+  bytes              6795
+  sha256             eca7e46b4cd0abab26c5a3fb9bad7f88fc51628c01af91b19b8ca24ae24dad5f
+  first-number       0x00001
+  packets            17
+  packets-stream-2   17
+  packets-stream-1   0
+  packets-length-0   3
+  idle-bytes         2283
+  words-stream-2     265
+  words-stream-1     0
+  frames             9
+  frames-file        small.frames
+  expect             ok
+end
+
+file small-split.packets
+  # small.frames cut into packets of 1, 7, 32, 3, 16, 31, 2, 32 and 5 words in turn (a frame's last holding what
+  # remains): legal on the link, and never written by the packetizer
+  bytes              4656
+  sha256             baa6e913499adcf5becddeac7e5a4762758eb8c6ed5aa6cdb9a7c2744d38442b
+  first-number       0x00001
+  packets            26
+  packets-stream-2   26
+  packets-stream-1   0
+  packets-length-0   0
+  idle-bytes         0
+  words-stream-2     265
+  words-stream-1     0
+  frames             9
+  frames-file        small.frames
+  expect             ok
+end
+
+file wrap.packets
+  # small.frames numbered from 0xFFFFA: the numbers pass 0xFFFFE and go on from 1
+  bytes              4464
+  sha256             19f7646f64d4aa12e93055b266c4de54741f9efe3fe5dfde239085c0c90374cc
+  first-number       0xffffa
+  packets            14
+  packets-stream-2   14
+  packets-stream-1   0
+  packets-length-0   0
+  idle-bytes         0
+  words-stream-2     265
+  words-stream-1     0
+  frames             9
+  frames-file        small.frames
+  expect             ok
+end
+
+file two-streams.packets
+  # small.frames on stream 2 with packets of stream 1 among them (made-up data; one of length 0): each stream has
+  # its own numbers from 1. v1.37's file has no stream 1; this is for an Ingress that takes both
+  bytes              5840
+  sha256             f99bf9f567368d754111e7c398bd81ae170f81129a530154547a78c49c0a0819
+  first-number       0x00001
+  packets            22
+  packets-stream-2   14
+  packets-stream-1   8
+  packets-length-0   1
+  idle-bytes         0
+  words-stream-2     265
+  words-stream-1     78
+  frames             9
+  frames-file        small.frames
+  expect             ok
+end
+
+# ---- whole files, one byte changed ----
+
+damage small.packets byte 0 xor 0x01 expect header-crc packet 1 at 0    # the stream
+damage small.packets byte 1 xor 0x01 expect header-crc packet 1 at 0    # the length
+damage small.packets byte 2 xor 0x01 expect header-crc packet 1 at 0    # the packet number
+damage small.packets byte 5 xor 0x04 expect header-crc packet 1 at 0    # the acknowledge field
+damage small.packets byte 7 xor 0x80 expect header-crc packet 1 at 0    # a reserved bit
+damage small.packets byte 8 xor 0x01 expect header-crc packet 1 at 0    # the data checksum
+damage small.packets byte 15 xor 0x80 expect header-crc packet 1 at 0    # the header CRC
+damage small.packets byte 16 xor 0x01 expect data-checksum packet 1 at 0    # the first data byte
+damage small.packets byte 31 xor 0x80 expect data-checksum packet 1 at 0    # the last data byte
+damage small.packets byte 0 xor 0x02 expect header-crc packet 1 at 1    # the first byte made zero: it is skipped as idle, and a header is taken to start at the next byte
+damage small.packets byte 1712 xor 0x01 expect header-crc packet 7 at 1712    # the stream
+damage small.packets byte 1713 xor 0x01 expect header-crc packet 7 at 1712    # the length
+damage small.packets byte 1714 xor 0x01 expect header-crc packet 7 at 1712    # the packet number
+damage small.packets byte 1717 xor 0x04 expect header-crc packet 7 at 1712    # the acknowledge field
+damage small.packets byte 1719 xor 0x80 expect header-crc packet 7 at 1712    # a reserved bit
+damage small.packets byte 1720 xor 0x01 expect header-crc packet 7 at 1712    # the data checksum
+damage small.packets byte 1727 xor 0x80 expect header-crc packet 7 at 1712    # the header CRC
+damage small.packets byte 1728 xor 0x01 expect data-checksum packet 7 at 1712    # the first data byte
+damage small.packets byte 1743 xor 0x80 expect data-checksum packet 7 at 1712    # the last data byte
+damage small.packets byte 1712 xor 0x02 expect header-crc packet 7 at 1713    # the first byte made zero: it is skipped as idle, and a header is taken to start at the next byte
+damage small.packets byte 4432 xor 0x01 expect header-crc packet 14 at 4432    # the stream
+damage small.packets byte 4433 xor 0x01 expect header-crc packet 14 at 4432    # the length
+damage small.packets byte 4434 xor 0x01 expect header-crc packet 14 at 4432    # the packet number
+damage small.packets byte 4437 xor 0x04 expect header-crc packet 14 at 4432    # the acknowledge field
+damage small.packets byte 4439 xor 0x80 expect header-crc packet 14 at 4432    # a reserved bit
+damage small.packets byte 4440 xor 0x01 expect header-crc packet 14 at 4432    # the data checksum
+damage small.packets byte 4447 xor 0x80 expect header-crc packet 14 at 4432    # the header CRC
+damage small.packets byte 4448 xor 0x01 expect data-checksum packet 14 at 4432    # the first data byte
+damage small.packets byte 4463 xor 0x80 expect data-checksum packet 14 at 4432    # the last data byte
+damage small.packets byte 4432 xor 0x02 expect header-crc packet 14 at 4433    # the first byte made zero: it is skipped as idle, and a header is taken to start at the next byte
+damage small-idle.packets byte 1992 xor 0x02 expect header-crc packet 9 at 1992    # an idle byte made 0x02: a header is taken to start there
+damage small-idle.packets byte 1992 xor 0x10 expect header-crc packet 9 at 1992    # an idle byte made 0x10 (stream 0): the header CRC is tested first

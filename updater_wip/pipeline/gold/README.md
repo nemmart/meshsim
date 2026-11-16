@@ -4,6 +4,11 @@
 > v1.4** (`v1.4_wip/planning/HOST-FRAMES.md`): the `frames` command, the reader (`frames-read`) and the reference images
 > (`frames-images`). The section "The host's frames" below says how to run them and what they are checked against;
 > the plan and every choice where HOST-FRAMES.md is open are in `updater_wip/planning/sessions/WORKER1-NOTES.md`.
+>
+> **And the link's packets (WORKER2):** the packetizer (`packets`), which wraps a frame file in the packets of
+> `v1.4_wip/planning/HOST-LINK.md` for v1.37's Ingress, the reader (`packets-read`) and the test vectors
+> (`test/packets/`). The section "The link's packets" at the end; the plan and the choices are in
+> `updater_wip/planning/sessions/WORKER2/NOTES.md`.
 
 A standalone emulator of the Jolt zkVM's tracer (DECISIONS-v1.3 section 17, work item W4): it reads a guest's ELF, sets
 up Jolt's memory, runs the program and produces **Jolt's trace rows exactly as jolt-cpp's tracer does** (jolt-cpp
@@ -131,3 +136,87 @@ The reading side (`FrameFile`, `Reference`, `FrameReader`) shares no code with t
 | `test/frames/workloads.sh <tracer dir> <out> small\|29` | EVM Zone and Cyclone, small with the hard cuts or at 2^29: the frames three times (full table uncompressed; static base, the smaller form; static base, LRU, N 256) with `--verify`, `--check --seg`; at 2^29 the `segments` files against their published v1.3 SHA-256s |
 
 Results: `updater_wip/planning/sessions/WORKER1-REPORT.md` (Quest 197; Quest 200 after the rulings).
+
+## The link's packets (v1.37, WORKER2)
+
+The frames ride on the link in packets (`v1.4_wip/planning/HOST-LINK.md`). v1.37's simulator is started with one
+file, the packets, which its Ingress black box reads (`INGRESS-INTERFACE.md`, "In v1.37: a black box and a file").
+
+```sh
+java -cp build gold.Main packets <frame file> <packet file> [--idle=N] [--first=N]
+java -cp build gold.Main packets-read <packet file> [<frame file out>] [--compare=<frame file>] [--first=N] [--no-idle]
+     [--packets-only] [--list]
+java -cp build gold.Main packets-vectors <out dir>
+```
+
+- **`packets`**, the packetizer: every packet on stream 2; each frame starts a new packet; a frame's packets hold 32
+  words of data but its last, which holds what remains; numbers from 1, and 1 again after 0xFFFFE; the acknowledge
+  field, the flags and the reserved bits 0; both checks CRC-32C. It reads each frame's length and nothing else of the
+  frames. It prints the frames, words and packets, the overhead and the packet file's SHA-256. For the tests:
+  `--idle=N` puts *N* zero bytes between every two packets; `--first=N` numbers the packets from *N*.
+- **`packets-read`**, the reader: checks every packet and writes the frames back out, byte-identical to the frame
+  file the packetizer was given (`--compare` checks that). It prints the packets on each stream, the words, the
+  frames and the overhead against the frames. A file that fails a check is refused with one line,
+  `REFUSED <check>: packet <n> at byte <b>: ...`, exit status 1, and nothing is written. `--first=N`: the number
+  stream 2's first packet must have (default 1). `--no-idle`: a zero byte between packets is refused. `--packets-only`:
+  the packets alone, as Ingress sees them, without the frames. `--list`: a line for every packet.
+- **`packets-vectors`** writes `test/packets/`'s files again, the same bytes every time.
+
+**A packet,** every word least significant byte first:
+
+| byte | holds |
+|---|---|
+| 0 | stream in the low four bits (1 foreground, 2 background), flags in the high four |
+| 1 | length: the data's 128-bit words, 0 to 32 |
+| 2, 3, 4 low | packet number, 20 bits |
+| 4 high, 5, 6 | acknowledge, 20 bits |
+| 7 | reserved, 0 |
+| 8 to 11 | data checksum: the CRC-32C of the data's bytes in link order; 0x00000000 for no data |
+| 12 to 15 | header CRC: the CRC-32C of header bytes 0 to 11 |
+| 16 on | the data |
+
+**CRC-32C:** polynomial 0x1EDC6F41, reflected (0x82F63B78 shifting right); initial value and final XOR 0xFFFFFFFF;
+each byte least significant bit first; stored least significant byte first. CRC-32C("123456789") = 0xE3069283.
+
+**The reader's checks,** in order; zero bytes where a header is expected are idle and skipped, and the first byte
+that is not zero starts a header:
+
+| check | refused when |
+|---|---|
+| `truncated` | the file ends inside a header, inside a packet's data or, at its end, inside a frame |
+| `header-crc` | the CRC-32C of bytes 0 to 11 is not bytes 12 to 15 |
+| `stream` | the stream is not 1 or 2 |
+| `length` | the length is over 32 |
+| `reserved` | byte 7 is not 0 |
+| `data-checksum` | the CRC-32C of the data is not bytes 8 to 11 |
+| `number` | a packet with data: its number is not the next on its stream (1 first, 1 after 0xFFFFE). A packet of length 0: its number is not the one the stream's next packet with data will carry; it takes no number |
+| `frame-end` | on stream 2, a frame ends before the end of the packet its last word is in |
+| `first-byte` | with `--no-idle` only: a zero byte where a header is expected |
+
+Frames are tracked on stream 2 only. Stream 1's packets are checked and counted, and their data kept nowhere. The
+flags and the acknowledge field are not checked, only counted.
+
+**The test vectors,** for an Ingress written from the documents (WORKER3's), in `test/packets/`:
+
+| file | what |
+|---|---|
+| `VECTORS.txt` | the definitions; CRC-32C values; 43 single packets, good and bad, each with every field, both checks stored and computed, its bytes and what a reader must say; the files below with their counts and SHA-256; 32 lines each changing one byte of a file and naming the check that must refuse it. Its heading describes its format |
+| `small.frames` | nine made-up frames of 1, 2, 3, 31, 32, 33, 34, 64 and 65 words: every way a frame meets a packet's end. Not a proof |
+| `small.packets` | `small.frames` as the packetizer writes it: 14 packets |
+| `small-idle.packets` | the same with zero bytes before, between and after the packets (runs of 1 to 1,025) and three packets of length 0 |
+| `small-split.packets` | the same frames cut into packets of other legal lengths |
+| `wrap.packets` | the same numbered from 0xFFFFA, passing 0xFFFFE to 1 (`--first=0xFFFFA`) |
+| `two-streams.packets` | the same with stream 1's packets among stream 2's; v1.37's file has none |
+
+The writing side (`Packets`, with `java.util.zip.CRC32C`) and the reading side (`PacketFile`, with its own CRC-32C;
+`PacketReader`) share no code. `PacketVectors` makes the vectors with the writing side.
+
+**Tests**, run by `build.sh` (`PACKETS_TESTS=0` skips `packets.sh`):
+
+| script | what |
+|---|---|
+| `test/packets/packets.sh` | the committed vectors are what `packets-vectors` writes; `check_vectors.py`, a third implementation in Python written from `VECTORS.txt`'s heading, gets every value and every expected answer; the commands on keccak256's frames, with their refusals; `PacketsTest`: the round trip on made-up frame files of every length around the cuts, 275 changes to the fields of a real file's packets (the checks left, and the checks made right again), each refused by the check it should be, packets dropped, repeated and swapped, the file cut short at every byte, every single bit of the five small files changed in turn (209,752 files, each refused), the wrap by `--first` and by a file of 1,048,600 packets, idle zeros in many counts, packets of length 0, the two streams |
+| `test/frames/guests.sh`, `workloads.sh` | every frame file they write is wrapped in packets, read back and compared byte for byte (on the guests also with idle bytes and numbered from 0xFFFFE) |
+| `test/packets/frames_unchanged.sh <another gold> [<prog> <input> <cuts>]...` | the `frames` command's file, side file and output byte-identical to another gold's (main's before this work), on every guest four times and on the runs given |
+
+Results: `updater_wip/planning/sessions/WORKER2/REPORT.md`.

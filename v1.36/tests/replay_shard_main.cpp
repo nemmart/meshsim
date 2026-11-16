@@ -11,8 +11,8 @@
 //                [--tables DIR] [--logq Q] [--rtl FILE|none]
 // --tables: ref's -Dreplay.tables (the default tables, whose ../manifest.json the tables are checked against);
 // --logq: ref's -Dreplayer.logq; --rtl: the RTL's reference (default tests/acceptance/rtl/PROGRAM.txt where it is).
-// (ref's stages B and F, v1.35's replay controller on v1.35's tile, are retired: acceptance C, test_rtl_segment, runs
-// the RTL's replay image on the chip.)
+// (ref's stages B and F, v1.35's replay controller on v1.35's tile, are retired: tests/test_segment.cpp runs
+// meshsim's replay controller on the chip.)
 // Exit 0 if every line is OK and there was at least one.
 #include <algorithm>
 #include <cstdint>

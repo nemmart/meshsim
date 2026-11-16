@@ -49,7 +49,7 @@
 // behind it the cycles would differ, PENDING section 5); part C's 64-bit and 32-bit region WRITEs through the tile
 // (test_rw_engine's write port and slot tests have the three sizes; the chip's firmware sends 128-bit beats); part D's
 // LPDDR error to ERRORS.peripheral_1, the NMI, the reports 24 and 25 and the error line (test_rw_engine has the
-// engine's bit and the slot's live error bit; test_rtl_sort the NMI, the reports and the lines for the tile's other
+// engine's bit and the slot's live error bit; test_sort the NMI, the reports and the lines for the tile's other
 // errors); and its registers read back at their widths through the tile (test_rw_engine, at three configurations).
 #include <cstdio>
 #include <cstdlib>

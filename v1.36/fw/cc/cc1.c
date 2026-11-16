@@ -77,7 +77,7 @@ static void drain_requests(void) {
         (void)tile->REQUEST_RECEIVE;                /* the last word pops */
         uint32_t op = REQ_OP(w0), who = REQ_REQUESTOR(w0);
         if (op == REQ_OP_LOAD) mbox[4]++;          /* v1.36: a boot ROM's LOAD (6.5); answered by the boot alone */
-        else if (op == REQ_OP_RESULT && who < 64) {  /* a tile's result: the reply ends its outstanding request (D38, D40) */
+        else if (op == REQ_OP_RESULT && who <= DST_CC3) {  /* a tile's result (v1.36: the tracer tile's too): the reply ends its outstanding request (D38, D40) */
             send_to(ROUTER_HDR_W(who, MODE_WRITE, REQ_REPLY_CTR(w0)), REQ_ARG(w0) << 4);
             send32(1);
             mbox[6]++;

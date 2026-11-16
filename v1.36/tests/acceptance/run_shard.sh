@@ -16,7 +16,7 @@
 #         and the replayer refuses another size)
 # The stage is A, the replayer model under the ideal controller, its cycles against the RTL's where the kit holds the
 # program's reference (sim/tests/acceptance/rtl). v1.3's stages B and F (-s, -x, -g: v1.35's replay controller on
-# v1.35's tile) are retired: the RTL's replay image on the chip is acceptance C (tests/test_rtl_segment.cpp).
+# v1.35's tile) are retired: the segment on the chip is tests/test_segment.cpp.
 # Every file a window's replay reads is checked against the manifest's SHA-256 first (replay_shard). Writes
 # OUTDIR/results.csv (one line per window), OUTDIR/jvm-*.log (v1.3's names: one per process), SUMMARY.txt
 # and VERDICT.txt (shard_summary: v1.3's inline Python in C++). Exit 0 only if every window of the range is in the

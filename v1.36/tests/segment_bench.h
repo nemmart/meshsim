@@ -1,8 +1,9 @@
 // segment_bench.h: the segment on the chip, as the RTL's chip tests run it (Snarky One's rtl/chip/test/src/
 // chip_trace_test.rs, `run_chip`, with its bench.rs): a guest traced by the tracer tile's Tracer, window by window,
-// each window's record and streams delivered to its compute tile, and every window replayed there, all run by the
-// RTL's own firmware, unmodified (fw/rtl/sort/trace/master.elf, with the tracer tile's image and the replay image
-// linked in; fw/rtl/sort/memory-tile/memory.elf).
+// each window's record and streams delivered to its compute tile, and every window replayed there, all run by meshsim's
+// firmware, v1.35's upgraded to v1.36 (fw/README.md): C&C 1's program on the master tile (fw/cc/cc1.c), the tracer
+// tile's (fw/tracer/tracer_ctl.c) and the replay controller on every compute tile (fw/replay/replay_ctl.c), both loaded
+// by C&C 1 at their LOADs, and the memory tile's (fw/cc/memory.c).
 //
 // THE SEGMENT (`Segment`) is what the RTL's test builds before its run, from its models, which share no code with the
 // design and none with the simulator: the guest's memory file and its jump-target map as the host has them, the loaded
@@ -10,11 +11,13 @@
 // three streams' meaningful bits, its rows). It comes from a fixture the RTL's test wrote (tests/segment/rtl/: the
 // generated guests, with the RTL chip's own figures), or from a real workload's recorded files (tests/segment_real.h).
 //
-// THE RUN, bench.rs's and run_chip's: before the first cycle the master's and the memory tile's firmware in their IMEM
-// and DMEM (boot_local, 6.5); in the tracer tile's scratchpad the segment's header, the replayer's tables, the core-fed
-// set's index and templates, the loaded record, the advice and the expected end state; in each compute tile's its
-// header, and in those with a window the tables, the index and the templates. The layout is the RTL test's, written
-// here. Then the chip runs to the master's done word, polled every 512 cycles.
+// THE RUN, bench.rs's and run_chip's: before the first cycle the master's and the memory tile's programs in their IMEM
+// and DMEM (boot_local, 6.5), and in the master's scratchpad the two images it loads, with its boot_desc and its
+// commands (CC_SEGMENT, CC_WAIT, CC_EXIT: tests/test_sort.cpp says how), as v1.35's harness placed them; in the tracer
+// tile's scratchpad its layout (fw/tracer/tracer_layout.h): its header, the replayer's tables, the core-fed set's index
+// and templates, the loaded record, the advice and the expected end state; in each compute tile's its replay layout's
+// header (fw/replay/replay_layout.h), and in those with a window the tables, the index and the templates. Then the
+// chip runs to C&C 1's exit word, polled every 512 cycles.
 //
 // THE MEMORY SYSTEM behind the Tracer's fill port is Open (17.9.14), and the RTL's test plays it at the chip's boundary
 // (`Fill`): each read answered after a latency of its kind's (a code line's, a data line's, a map line's), each write
@@ -22,15 +25,15 @@
 // cycle by cycle. `Fill` here is that model, draw for draw, on the Tracer's fill port (units::tracer::Tracer::FillPort):
 // with the chip's cycles the RTL's, its draws fall on the same requests. It is the test's, not hardware.
 //
-// THE CHECKS, run_chip's: the summary (no failure, three releases, every tile's exit and the tracer tile's, each its
-// own; ROWS_RUN); every window's rows out of its tile's row port against the segment's; every window's delivery read
+// THE CHECKS, run_chip's: C&C 1's mailbox (its commands done, every tile's result and the tracer tile's, the LOADs, no
+// other request), the tracer tile's results (every window run, no error, the advice used up, the end state the
+// expected one, no stray request) and every compute tile's (its pass, no error; ROWS_RUN); every window's rows out of
+// its tile's row port against the segment's; every window's delivery read
 // from its tile's scratchpad; each replayer's end registers against the next window's record as it landed, the last
 // against the Tracer's last record, and that record against the segment's end; the fill port (one read and one write
-// outstanding); the error lines and the toast pin; for a guest built to miss, that it did. And, where the segment
-// comes with the RTL chip's figures (`Rtl`), THE CYCLES: the run's cycles from the reset, every word of the master's
-// summary (each release's mcycle among them), every word of the tracer tile's report (each run's START, rows' end and
-// done, and the Tracer's statistics counters), every fill request's cycle, line and answer's cycle, and the cycle each
-// row left its tile's row port.
+// outstanding); the toast pin; for a guest built to miss, that it did. THE CYCLES are printed, the simulator's own
+// figures for meshsim's firmware: chip-level cycle equality with the RTL, under the RTL's own firmware, was established
+// at meshsim's commit 5a87d658 and is no longer checked (a fixture's RTL figures, `Rtl`, are read and not compared).
 //
 // Test-side code (the configuration regime): the STL throughout.
 #pragma once
@@ -161,11 +164,10 @@ private:
 struct Run {
     bool finished = false;
     uint64_t cycles = 0;                        // from the reset, to the poll that saw the done word
-    std::vector<uint32_t> summary, report;
+    std::vector<uint32_t> summary, report;   // C&C 1's mailbox, the tracer tile's tr_results
     std::vector<std::vector<uint64_t>> rows;    // each tile's rows as they left its row port, ROW_LONGS a row
     std::vector<std::vector<int64_t>> row_cycles;   // and the cycle each left in, the RTL test's cycles
-    uint32_t released = 0, ended = 0;           // the master's mcycle at the windows' landing's release and the passes' end
-    uint32_t load = 0, trace = 0, replay = 0, tracer_own = 0;   // the summary's parts (run_chip's second line)
+    uint32_t released = 0;                      // C&C 1's mcycle at the windows' landing's release
     uint64_t fill_counts[4] = {};
     double seconds = 0;
     int failures = 0;                           // the checks that failed (each printed)
@@ -173,10 +175,10 @@ struct Run {
 struct Options {
     unsigned parts = 1;                         // the chip split over threads (mach.h)
     bool quiet = false;                         // only the failures and the summary lines
-    const char* fw = "fw/rtl/sort/";
+    const char* fw = nullptr;                   // the images' folder: rtl_images::fw_images()'s by default
     const char* tables = "data/tables/replayer/";
 };
-// The segment on the chip, with run_chip's checks; `rtl` (null: none), the RTL chip's figures, each compared.
+// The segment on the chip, with run_chip's checks; `rtl`, the RTL chip's figures, is not compared (the header).
 Run run_chip(const Segment& s, const Rtl* rtl, const Options& o = Options());
 
 // The replay's cycles (chip_replay_test.rs's a_row): from the windows' landing's release to each window's last row,

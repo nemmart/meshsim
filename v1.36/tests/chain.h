@@ -7,7 +7,7 @@
 //   - the segment file (TracerT1.readSegments: frames 2-5; frame 5's 32-entry LRU coding), and its writer for tests;
 //   - a minimal JSON reader for proof.json.
 // (v1.35's chain, T2's segments back to back under v1.35's firmware, and its landings, dump forms and oracle were
-// here: retired with T2 when acceptance C, tests/test_rtl_segment.cpp, took the segment on the chip.)
+// here: retired with T2 when the chip test of the segment, tests/test_segment.cpp, took the segment on the chip.)
 #pragma once
 
 #include <cstdint>

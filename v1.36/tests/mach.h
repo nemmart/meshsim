@@ -32,7 +32,7 @@
 //     (Ingress/Egress; the RW engine; the Tracer), on its attach tile's attach port; the request tree; the
 //     nets at the RTL chip's latencies. The master and memory tiles start from the images placed in their IMEM and DMEM
 //     (boot_local: Mach::place_elf), the others from the boot ROM's LOAD. This is the machine every test of v1.36's chip
-//     builds (tests/test_rtl_sort.cpp).
+//     builds (tests/test_sort.cpp).
 //   - A TEST BENCH'S (without special_tiles; tests/bench_master.h): the 64 compute tiles with v1.35's behavioural model
 //     of C&C ("cnc"), C&C 2's and 3's endpoints ("ep2", "ep3") on the attach tiles 0, 7 and 15, for the tests of the
 //     tile's units that feed a machine from the harness. What it still means on v1.36's tiles: its GO link drives every tile's

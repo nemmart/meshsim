@@ -8,6 +8,20 @@ The Updater is **the memory tile's peripheral 2** (the RW engine Tony built stay
 **run**: `START` starts it, `STATUS.busy` is 1 while it lasts, and `EVENTS.done` is posted at its end. A run applies
 one frame of update words (`HOST-FRAMES.md`) to a file.
 
+## Ruled on 2026-11-16, and not yet worked into the tables below
+
+`DESIGN-NOTES-2026-11-16.md`, section 9. Where the tables below disagree with these, these stand.
+
+- **The file system's firmware makes every root** before a run. `SRC_ROOT` and `RUN_CONFIG`'s `empty` bit go: the
+  Updater always starts on a file that exists and has a root.
+- **`PAGES_USED` excludes roots:** it is the pages taken from the free page queue.
+- **Memory segments is two runs,** with the firmware between them: the words before segment *s* into the start image;
+  then, after the firmware has made the final image and the Tracer's copy, segment *s* and the rest. `STATUS.stretch`
+  and the three word counts change with that. Their new shape is open.
+- **A program image and a base table are runs too:** whole pages into an empty file, as a full new jump table is.
+  Type 0 covers all three.
+- **`RUN_CONFIG`'s `lru` bit is set from the frame header's compression type.**
+
 ## How a peripheral's registers are laid out (v1.36)
 
 | level | size | how it is found |

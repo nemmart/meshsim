@@ -8,18 +8,23 @@ import java.io.ByteArrayOutputStream;
  * and share nothing with this.
  *
  * <pre>
- *   header   one 128-bit word: [63:0] reserved, 0; [95:64] u32 type; [127:96] u32 length of the data in 128-bit words
+ *   header   one 128-bit word: [7:0] compression (0 none, 1 LRU); [63:8] reserved, 0; [95:64] u32 type;
+ *            [127:96] u32 length of the data in 128-bit words
  *   data     zero-padded to a whole number of 128-bit words
  * </pre>
  *
  * Lengths and counts are 32 bits, never 64 (owner): a value that doesn't fit is an error, never truncated.
  */
 public final class Frames {
-  public static final int ELF = 1, BASE_TABLE = 2, PROOF_HEADER = 3, TABLE_HEADER = 4, TABLE_DATA = 5, DATA_IMAGE = 6,
-      REGISTERS = 7, ADVICE = 8, SEGMENTS = 9;
-  public static final String[] NAMES = {"", "ELF", "base jump table", "proof header", "jump table header",
-      "jump table data", "data image", "register states", "advice logs", "memory segments"};
-  public static final int SEGMENT_COUNT = 128;
+  public static final int PROGRAM_HEADER = 1, PROGRAM_DATA = 2, PROOF_HEADER = 3, TABLE_HEADER = 4, TABLE_DATA = 5,
+      DATA_IMAGE = 6, REGISTERS = 7, ADVICE = 8, SEGMENTS = 9;
+  public static final String[] NAMES = {"", "program image header", "program image data", "proof header",
+      "jump table header", "jump table data", "data image", "register states", "advice logs", "memory segments"};
+  /** The compression types (the header's [7:0]). */
+  public static final int NONE = 0, LRU = 1;
+  /** N, the number of ASICs and so of segments: system configuration, in no frame (owner). */
+  public static final int[] ASIC_COUNTS = {64, 128, 256};
+  public static final int DEFAULT_ASICS = 128;
   public static final int FORMAT_VERSION = 1;
   public static final int PAGE_BYTES = 4096, PAGE_WORDS = 512;
 
@@ -35,10 +40,10 @@ public final class Frames {
   public static long words128(long bytes) { return (bytes + 15) / 16; }
 
   /** Appends one frame: the 128-bit header, the data, the padding. Returns the frame's bytes. */
-  public static long frame(ByteArrayOutputStream out, int type, byte[] data) {
+  public static long frame(ByteArrayOutputStream out, int type, int compression, byte[] data) {
     long words = words128(data.length);
     Bytes h = new Bytes();
-    h.u64(0);
+    h.u64(compression);
     h.u32(type);
     h.u32(u32(words, NAMES[type] + "'s length in 128-bit words"));
     out.writeBytes(h.toArray());

@@ -12,7 +12,9 @@ import java.util.Map;
  *   <li>the page counts: the Reference's trees against frames 3 and 4, for every s;</li>
  *   <li>the jump table: every jump target the run takes, found by the Tracer's probe in the Reference's run's table,
  *       with gold's next instr_idx;</li>
- *   <li>LRU: both forms of frames 5, 6 and 9, decoded by the Reference, equal the writer's words.</li>
+ *   <li>the forms: both forms of frames 2, 5, 6 and 9 (and the base table's 5), decoded by the Reference, equal the
+ *       writer's words; frame 6's two forms make the same image; with --compression=auto the smaller form is sent,
+ *       sizes counted by the Reference.</li>
  * </ul>
  */
 public final class Verify {
@@ -24,14 +26,28 @@ public final class Verify {
     Reference r = new Reference(f);
     int failures = 0;
 
-    // LRU against raw, for every stream, whichever was sent
-    FrameWriter.Stream[] streams = {w.tableData, w.dataImage, w.segmentsStream};
-    String[] names = {"frame 5", "frame 6", "frame 9"};
-    for (int i = 0; i < 3; i++) {
-      long[] raw = Reference.decodeRaw(pad(streams[i].raw), streams[i].words.length);
-      long[] lru = Reference.decodeLru(pad(streams[i].lru), streams[i].words.length, null);
-      if (!Arrays.equals(raw, streams[i].words) || !Arrays.equals(lru, raw)) {
-        System.out.println("LRU " + names[i] + ": the LRU form doesn't decode to the raw form");
+    // LRU against raw, for every stream, whichever was sent; with --compression=auto, the smaller form sent
+    List<FrameWriter.Stream> streams = new java.util.ArrayList<>(List.of(w.programData, w.tableData, w.dataImage, w.segmentsStream));
+    List<String> names = new java.util.ArrayList<>(List.of("frame 2", "frame 5", "frame 6", "frame 9"));
+    if (w.baseData != null) { streams.add(w.baseData); names.add("the base table's frame 5"); }
+    for (int i = 0; i < streams.size(); i++) {
+      FrameWriter.Stream st = streams.get(i);
+      long[] raw = Reference.decodeRaw(pad(st.raw), st.rawWords.length);
+      long[] lru = Reference.decodeLru(pad(st.lru), st.lruWords.length, null);
+      if (!Arrays.equals(raw, st.rawWords) || !Arrays.equals(lru, st.lruWords)) {
+        System.out.println("LRU " + names.get(i) + ": a form doesn't decode to its words");
+        failures++;
+      }
+      if (st.rawWords != st.lruWords && !Arrays.equals(st.rawWords, st.lruWords)) {   // frame 6: the same image either way
+        Reference.Tree a = Reference.Tree.copyOf(r.program), b = Reference.Tree.copyOf(r.program);
+        Reference.apply(a, raw, false, "raw");
+        Reference.apply(b, lru, false, "lru");
+        if (!Arrays.equals(a.image(), b.image())) { System.out.println("FORMS " + names.get(i) + ": the two forms make different images"); failures++; }
+      }
+      long rawWords128 = (8L * st.rawWords.length + 15) / 16, lruWords128 = ((Reference.lruBits(st.lruWords) + 7) / 8 + 15) / 16;
+      boolean sentLru = st.compression == 1;
+      if (w.compression() == FrameWriter.Compression.AUTO && (sentLru ? lruWords128 >= rawWords128 : lruWords128 < rawWords128)) {
+        System.out.printf("FORM %s: sent %s, %d 128-bit words raw, %d LRU%n", names.get(i), sentLru ? "LRU" : "raw", rawWords128, lruWords128);
         failures++;
       }
     }
@@ -41,7 +57,7 @@ public final class Verify {
     if (!c0.equals(w.cycle0Digest)) { System.out.println("IMAGE cycle-0: " + c0 + ", gold " + w.cycle0Digest); failures++; }
     int imageFailures = 0, countFailures = 0;
     String finalDigest = null;
-    for (int s = 0; s < FrameFile.SEGMENTS; s++) {
+    for (int s = 0; s < f.n; s++) {
       r.forSegment(s);
       byte[] st = r.start.image();
       String sd = Reference.sha256(st), fd = Reference.sha256(r.fin.image());
@@ -56,7 +72,6 @@ public final class Verify {
       }
       finalDigest = fd;
       List<String> bad = r.checkCounts(s);
-      if (s > 0) bad.removeIf(x -> x.startsWith("jump table") || x.startsWith("data image"));
       for (String b : bad) if (countFailures++ < 10) System.out.println("COUNT " + b);
     }
     failures += imageFailures + countFailures;
@@ -65,7 +80,7 @@ public final class Verify {
     byte[] t = r.tableBytes();
     long found = 0, missed = 0;
     for (Map.Entry<Integer, Integer> e : w.run.jumps.runTargets().entrySet()) {
-      long base = Reference.probe(t, f.k, f.p1, f.p3, e.getKey());
+      long base = Reference.probe(t, f.table.k, f.table.p1, f.table.p3, e.getKey());
       if (base == (e.getValue() & 0xffffffffL)) {
         found++;
       } else {
@@ -74,10 +89,11 @@ public final class Verify {
     }
     failures += (int) missed;
 
-    System.out.printf("verify: images (cycle-0 %s, 128 starts and Tracer's copies, final %s) %s; page counts %s;"
-        + " jump targets %d found, %d missed (table %s); LRU = raw on frames 5, 6, 9; %.1f s: %s%n",
-        c0.substring(0, 16), finalDigest.substring(0, 16), imageFailures == 0 ? "equal gold's memory" : imageFailures + " FAILED",
+    System.out.printf("verify: images (cycle-0 %s, %d starts and Tracer's copies, final %s) %s; page counts %s;"
+        + " jump targets %d found, %d missed (table %s); both forms of every update-word frame decode%s; %.1f s: %s%n",
+        c0.substring(0, 16), f.n, finalDigest.substring(0, 16), imageFailures == 0 ? "equal gold's memory" : imageFailures + " FAILED",
         countFailures == 0 ? "equal" : countFailures + " FAILED", found, missed, w.tableMode,
+        w.compression() == FrameWriter.Compression.AUTO ? ", the smaller sent" : "",
         (System.nanoTime() - t0) / 1e9, failures == 0 ? "VERIFIED" : "FAILED");
     return failures == 0;
   }

@@ -66,7 +66,7 @@ public final class Main {
     System.err.println("usage: gold segments <program dir> <input dir> <out file> [--cuts=0,a,b,...|--cuts-file=F]"
         + " [--segment-rows=4194304] [--segments=128] [--compare=<reference file>]");
     System.err.println("usage: gold frames <program dir> <input dir> <out file> [--cuts=0,a,...|--cuts-file=F]"
-        + " [--segment-rows=4194304] [--base=none|static] [--lru=none|all|5,6,9] [--stem=P] [--workdir=P]"
+        + " [--segment-rows=4194304] [--asics=64|128|256] [--base=none|static] [--compression=auto|none|lru] [--stem=P] [--workdir=P]"
         + " [--base-path=P] [--verify]");
     System.err.println("usage: gold frames-read <frame file> [--check] [--seg=<v1.3 segment file>] [--brief]");
     System.err.println("usage: gold frames-images <frame file> <s> [--out=<prefix>]");
@@ -190,19 +190,14 @@ public final class Main {
         cuts = Files.readAllLines(Path.of(a.substring(12))).stream().filter(l -> !l.isBlank()).mapToLong(Long::parseLong).toArray();
       } else if (a.equals("--base=static")) o.baseStatic = true;
       else if (a.equals("--base=none")) o.baseStatic = false;
-      else if (a.startsWith("--lru=")) {
-        String v = a.substring(6);
-        o.lru5 = o.lru6 = o.lru9 = v.equals("all");
-        if (!v.equals("all") && !v.equals("none")) {
-          for (String f : v.split(",")) {
-            switch (f) {
-              case "5" -> o.lru5 = true;
-              case "6" -> o.lru6 = true;
-              case "9" -> o.lru9 = true;
-              default -> throw new IllegalArgumentException("--lru takes none, all, or frames among 5,6,9");
-            }
-          }
-        }
+      else if (a.startsWith("--asics=")) o.asics = Integer.parseInt(a.substring(8));
+      else if (a.startsWith("--compression=")) {
+        o.compression = switch (a.substring(14)) {
+          case "auto" -> FrameWriter.Compression.AUTO;
+          case "none" -> FrameWriter.Compression.NONE;
+          case "lru" -> FrameWriter.Compression.LRU;
+          default -> throw new IllegalArgumentException("--compression takes auto, none or lru");
+        };
       } else if (a.startsWith("--stem=")) o.stem = a.substring(7);
       else if (a.startsWith("--workdir=")) o.workdir = a.substring(10);
       else if (a.startsWith("--base-path=")) o.basePath = a.substring(12);
@@ -210,7 +205,7 @@ public final class Main {
       else throw new IllegalArgumentException("unknown option " + a);
     }
     if (o.basePath == null) o.basePath = o.stem + ".base";
-    o.cuts = cuts != null ? cuts : SegmentWriter.defaultCuts(segmentRows, 128);
+    o.cuts = cuts != null ? cuts : SegmentWriter.defaultCuts(segmentRows, o.asics);
     o.snapshots = verify;
     FrameWriter w = new FrameWriter(programDir, inputDir, o);
     byte[] file;
@@ -222,10 +217,11 @@ public final class Main {
     }
     Files.write(Path.of(args[3]), file);
     Files.writeString(Path.of(args[3] + ".json"), w.json(args[1], args[2]));
-    System.out.printf("%d rows, %d cuts; frames file %d bytes, SHA-256 %s; table %s (k %d, %d pages taken); data image"
-        + " %d words, %d pages; memory segments %d words (raw %d B, LRU %d B); %.1f s%n", w.run.totalRows, o.cuts.length,
-        file.length, sha256(file), w.tableMode, w.table.k, w.tablePagesTaken, w.dataImage.words.length, w.dataImagePages,
-        w.segmentsStream.words.length, w.segmentsStream.raw.length, w.segmentsStream.lru.length, w.seconds);
+    System.out.printf("%d rows, %d cuts, N %d; frames file %d bytes, SHA-256 %s; program image %d pages (%d taken); table %s"
+        + " (k %d, %d pages taken); data image %d words, %d pages; memory segments %d words (raw %d B, LRU %d B); %.1f s%n",
+        w.run.totalRows, o.cuts.length, w.n, file.length, sha256(file), w.programPages, w.programPagesTaken, w.tableMode,
+        w.table.k, w.tablePagesTaken, w.dataImage.words().length, w.dataImagePages, w.segmentsStream.rawWords.length,
+        w.segmentsStream.raw.length, w.segmentsStream.lru.length, w.seconds);
     if (!verify) return true;
     return Verify.run(w, Files.readAllBytes(Path.of(args[3])));
   }

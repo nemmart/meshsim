@@ -39,44 +39,44 @@ public final class FrameReader {
       "output_end", "stack_size", "stack_end", "heap_size", "heap_end", "panic", "termination", "io_end"};
 
   static void print(FrameFile f, long size, boolean brief) {
-    System.out.printf("frame file: %d bytes, %d frames%n", size, f.frames.size());
+    System.out.printf("frame file: %d bytes, %d frames, N = %d (from frame 7)%n", size, f.frames.size(), f.n);
     for (FrameFile.Frame fr : f.frames) {
-      System.out.printf("%nframe %d (%s) at byte %d: %d 128-bit words of data (%d bytes with its header)%n", fr.type,
-          name(fr.type), fr.offset, fr.length128, 16 * (fr.length128 + 1));
+      boolean baseFrame = fr == f.baseHeaderFrame || fr == f.baseDataFrame;
+      System.out.printf("%nframe %d (%s%s) at byte %d: %d 128-bit words of data (%d bytes with its header)%s%n", fr.type,
+          name(fr.type), baseFrame ? ", the base table on its own" : "", fr.offset, fr.length128, 16 * (fr.length128 + 1),
+          fr.type == 2 || fr.type == 5 || fr.type == 6 || fr.type == 9 ? (fr.lru() ? ", LRU" : ", no compression") : "");
       switch (fr.type) {
-        case 1 -> {
-          System.out.printf("  file length %d pages; %d pages listed%n", f.fileLength, f.programPages.size());
-          if (!brief) for (long p : f.programPages.keySet()) System.out.printf("    offset %#x%n", p * 4096);
-        }
-        case 2 -> System.out.printf("  k %d (%d lines), p1 %#x, p3 %d%n", f.baseK, 1L << f.baseK, f.baseP1, f.baseP3);
+        case 1 -> System.out.printf("  program stem %s%n  file length %d pages%n  frame 2: %d 64-bit words, %d 128-bit words,"
+            + " %d pages%n", f.programStem, f.fileLength, f.programWords, f.program128, f.programPages);
+        case 2 -> runs(Reference.decode(fr, f.programWords), brief);
         case 3 -> {
-          System.out.printf("  format version %d%n  program stem %s%n  program id %s%n  working directory %s%n", f.version,
-              f.stem, hex(f.programId), f.workdir);
+          System.out.printf("  format version %d%n  program stem %s%n  working directory %s%n", f.version, f.stem, f.workdir);
           System.out.printf("  proof parameters, %d fields:%n", f.params.length);
           for (int i = 0; i < f.params.length; i++) {
             System.out.printf("    %-26s %#x%n", i < FIELDS.length ? FIELDS[i] : "field " + i, f.params[i]);
           }
-          System.out.printf("  data image: %d 64-bit words, %d 128-bit words, %s, %d pages%n", f.dataWords, f.data128,
-              f.dataLru ? "LRU" : "raw", f.dataPages);
+          System.out.printf("  data image: %d 64-bit words, %d 128-bit words, %d pages%n", f.dataWords, f.data128, f.dataPages);
           long total = 0;
-          for (long n : f.segWords) total += n;
-          System.out.printf("  memory segments: %d 64-bit words in all, %d 128-bit words, %s%n", total, f.seg128,
-              f.segLru ? "LRU" : "raw");
+          for (long x : f.segWords) total += x;
+          System.out.printf("  memory segments: %d 64-bit words in all, %d 128-bit words%n", total, f.seg128);
           System.out.println("  per segment: 64-bit words, pages written; per ASIC: start, final, Tracer's copy pages");
-          for (int s = 0; s < FrameFile.SEGMENTS; s++) {
+          for (int s = 0; s < f.n; s++) {
             if (brief && f.segWords[s] == 0 && s > 0) continue;
             System.out.printf("    %3d  %9d words  %5d written   ASIC %6d %6d %6d%n", s, f.segWords[s], f.pagesWritten[s],
                 f.perAsic[s][0], f.perAsic[s][1], f.perAsic[s][2]);
           }
         }
-        case 4 -> System.out.printf("  base table \"%s\"%s%n  k %d (%d lines), p1 %#x, p3 %d%n  frame 5: %d 64-bit words, %d"
-            + " 128-bit words, %s, %d pages%n", f.basePath, f.basePath.isEmpty() ? " (none: a full new table)" : "", f.k,
-            1L << f.k, f.p1, f.p3, f.tableWords, f.table128, f.tableLru ? "LRU" : "raw", f.tablePages);
-        case 5 -> runs(Reference.decode(fr.data, f.tableWords, f.tableLru), brief);
-        case 6 -> runs(Reference.decode(fr.data, f.dataWords, f.dataLru), brief);
+        case 4 -> {
+          FrameFile.TableHeader t = baseFrame ? f.baseHeader : f.table;
+          System.out.printf("  path \"%s\"%s%n  base table \"%s\"%s%n  k %d (%d lines), p1 %#x, p3 %d%n  frame 5: %d 64-bit"
+              + " words, %d 128-bit words, %d pages%n", t.path, t.path.isEmpty() ? " (a run's table)" : "", t.base,
+              t.base.isEmpty() ? " (none: a full new table)" : "", t.k, 1L << t.k, t.p1, t.p3, t.words, t.words128, t.pages);
+        }
+        case 5 -> runs(Reference.decode(fr, baseFrame ? f.baseHeader.words : f.table.words), brief);
+        case 6 -> runs(Reference.decode(fr, f.dataWords), brief);
         case 7 -> {
           System.out.println("  segment: pc, instr_idx, next offset, advice values, log2 K, I/O region size");
-          for (int s = 0; s < FrameFile.SEGMENTS; s++) {
+          for (int s = 0; s < f.n; s++) {
             if (brief && s > 0 && f.recordBits(s, 0, 0, 63) == 0) continue;
             System.out.printf("    %3d  pc %#x  idx %d  off %d  advice %d  log2K %d  io %#x%n", s, f.recordBits(s, 0, 0, 63),
                 f.recordBits(s, 0, 64, 95), f.recordBits(s, 0, 96, 111), f.recordBits(s, 1, 102, 124),
@@ -85,16 +85,16 @@ public final class FrameReader {
         }
         case 8 -> {
           long total = 0;
-          for (long n : f.adviceCounts) total += n;
+          for (long x : f.adviceCounts) total += x;
           System.out.printf("  %d advice values in all; per segment:%s%n", total, compact(f.adviceCounts));
         }
         case 9 -> {
           long total = 0;
-          for (long n : f.segWords) total += n;
-          long[] all = Reference.decode(fr.data, total, f.segLru);
+          for (long x : f.segWords) total += x;
+          long[] all = Reference.decode(fr, total);
           int runs = 0;
           for (int i = 0; i < all.length; i += 1 + (int) (all[i] >>> 32)) runs++;
-          System.out.printf("  %d words, %d runs, %s%n", all.length, runs, f.segLru ? "LRU" : "raw");
+          System.out.printf("  %d words, %d runs%n", all.length, runs);
         }
         default -> System.out.println("  (unknown type)");
       }
@@ -120,66 +120,52 @@ public final class FrameReader {
   }
 
   static String name(int type) {
-    String[] n = {"?", "ELF", "base jump table", "proof header", "jump table header", "jump table data", "data image",
-        "register states", "advice logs", "memory segments"};
+    String[] n = {"?", "program image header", "program image data", "proof header", "jump table header",
+        "jump table data", "data image", "register states", "advice logs", "memory segments"};
     return type >= 1 && type <= 9 ? n[type] : "?";
   }
 
-  static String hex(byte[] b) {
-    StringBuilder s = new StringBuilder();
-    for (byte x : b) s.append(String.format("%02x", x));
-    return s.toString();
-  }
-
-  /** The file against itself: every length, every count of frames 3 and 4, the advice counts' two places. */
+  /** The file against itself: every length, every count of frames 1, 3 and 4, the advice counts' two places. */
   static boolean check(FrameFile f) {
     List<String> bad = new ArrayList<>();
-    // the 128-bit lengths of the update-word frames, from the codes they hold
     long total = 0;
-    for (long n : f.segWords) total += n;
-    lengths(bad, "frame 5", f.get(5), f.tableWords, f.tableLru, f.table128);
-    lengths(bad, "frame 6", f.get(6), f.dataWords, f.dataLru, f.data128);
-    lengths(bad, "frame 9", f.get(9), total, f.segLru, f.seg128);
-    // frame 7 is 128 records of 68 words, frame 8 the counts and the logs, frame 1 its pages
-    if (f.get(7).length128 != 128 * 68) bad.add("frame 7: " + f.get(7).length128 + " 128-bit words, 8,704 expected");
-    long adv = 32;
-    for (long n : f.adviceCounts) adv += (n + 1) / 2;
+    for (long x : f.segWords) total += x;
+    lengths(bad, "frame 2", f.programFrame, f.programWords, f.program128);
+    if (f.baseHeader != null) lengths(bad, "the base table's frame 5", f.baseDataFrame, f.baseHeader.words, f.baseHeader.words128);
+    lengths(bad, "frame 5", f.get(5), f.table.words, f.table.words128);
+    lengths(bad, "frame 6", f.get(6), f.dataWords, f.data128);
+    lengths(bad, "frame 9", f.get(9), total, f.seg128);
+    if (!f.stem.equals(f.programStem)) bad.add("frame 3's program stem isn't frame 1's");
+    // frame 8: the counts and the logs
+    long adv = (4L * f.n + 15) / 16;
+    for (long x : f.adviceCounts) adv += (x + 1) / 2;
     if (f.get(8).length128 != adv) bad.add("frame 8: " + f.get(8).length128 + " 128-bit words, " + adv + " from its counts");
-    long f1 = (8 + 4104L * f.programPages.size() + 15) / 16;
-    if (f.get(1).length128 != f1) bad.add("frame 1: " + f.get(1).length128 + " 128-bit words, " + f1 + " from its pages");
-    if (f.hasBase && f.get(2).length128 != (12 + (128L << f.baseK) + 15) / 16) bad.add("frame 2's length");
-    // the program id
-    if (!hex(f.programId).equals(Reference.sha256(Arrays.copyOf(f.get(1).data, (int) (8 + 4104L * f.programPages.size()))))) {
-      bad.add("frame 3's program id isn't the SHA-256 of frame 1's data");
-    }
     // the advice counts: frame 7's word 1 and frame 8's table
-    for (int s = 0; s < FrameFile.SEGMENTS; s++) {
+    for (int s = 0; s < f.n; s++) {
       long w1 = f.recordBits(s, 1, 102, 124);
       if (w1 != f.adviceCounts[s]) bad.add("segment " + s + ": frame 7's advice field " + w1 + ", frame 8's count " + f.adviceCounts[s]);
     }
     // frame 7's word 66 against frame 3's parameters
-    for (int s = 0; s < FrameFile.SEGMENTS; s++) {
+    for (int s = 0; s < f.n; s++) {
       if (f.recordBits(s, 66, 66, 71) != f.params[0] || f.recordBits(s, 66, 72, 102) != 0x8000_0000L - f.params[1]) {
         bad.add("segment " + s + ": frame 7's word 66 doesn't match frame 3's log2 K and lowest_address");
       }
     }
     // every page count, by the reference's trees, for every s
     Reference r = new Reference(f);
-    for (int s = 0; s < FrameFile.SEGMENTS; s++) {
+    for (int s = 0; s < f.n; s++) {
       r.forSegment(s);
-      List<String> b = r.checkCounts(s);
-      if (s > 0) b.removeIf(x -> x.startsWith("jump table") || x.startsWith("data image"));
-      bad.addAll(b);
+      bad.addAll(r.checkCounts(s));
     }
     for (String b : bad) System.out.println("CHECK " + b);
-    System.out.printf("%ncheck: %s (lengths, counts of frames 3 and 4, page counts by copy-on-write trees for every s,"
+    System.out.printf("%ncheck: %s (lengths, counts of frames 1, 3 and 4, page counts by copy-on-write trees for every s,"
         + " the advice counts in frames 7 and 8)%n", bad.isEmpty() ? "ok" : bad.size() + " FAILED");
     return bad.isEmpty();
   }
 
-  static void lengths(List<String> bad, String what, FrameFile.Frame fr, long words, boolean lru, long header128) {
+  static void lengths(List<String> bad, String what, FrameFile.Frame fr, long words, long header128) {
     long bytes;
-    if (lru) {
+    if (fr.lru()) {
       long[] used = new long[1];
       Reference.decodeLru(fr.data, words, used);
       bytes = (used[0] + 7) / 8;
@@ -192,7 +178,7 @@ public final class FrameReader {
     }
     long need = (bytes + 15) / 16;
     if (fr.length128 != need) bad.add(what + ": " + fr.length128 + " 128-bit words, the codes need " + need);
-    if (header128 != fr.length128) bad.add(what + ": the header says " + header128 + " 128-bit words, the frame has " + fr.length128);
+    if (header128 != fr.length128) bad.add(what + ": the header frame says " + header128 + " 128-bit words, the frame has " + fr.length128);
   }
 
   /** Frames 7, 8 and 9 against gold's v1.3 segment file (section 16's 32-bit framing; frames 7, 1, 6, then per
@@ -222,13 +208,18 @@ public final class FrameReader {
     List<String> bad = new ArrayList<>();
     Reference r = new Reference(f);
     int n = records.size();
-    if (n > FrameFile.SEGMENTS) bad.add("the segment file has " + n + " segments");
-    for (int s = 0; s < Math.min(n, FrameFile.SEGMENTS); s++) {
+    for (int s = f.n; s < n; s++) {                                  // past N: only segments past the run's end
+      long pc = new FrameFile.Cursor(records.get(s), "segment file").u64();
+      if (pc != 0 || advice.get(s).length != 0 || updates.get(s).length != 0) {
+        bad.add("the segment file's segment " + s + " is past N = " + f.n + " and not empty");
+      }
+    }
+    for (int s = 0; s < Math.min(n, f.n); s++) {
       if (!Arrays.equals(records.get(s), f.records[s])) bad.add("segment " + s + ": frame 7's record differs from the segment file's frame 2");
       if (!Arrays.equals(advice.get(s), f.advice[s])) bad.add("segment " + s + ": frame 8's log differs from the segment file's frame 3");
       if (!Arrays.equals(updates.get(s), r.segments[s])) bad.add("segment " + s + ": frame 9's words differ from the segment file's frame 4/5");
     }
-    for (int s = n; s < FrameFile.SEGMENTS; s++) {
+    for (int s = n; s < f.n; s++) {
       if (f.adviceCounts[s] != 0 || r.segments[s].length != 0 || f.recordBits(s, 0, 0, 63) != 0) {
         bad.add("segment " + s + ", past the segment file's " + n + ": not empty");
       }

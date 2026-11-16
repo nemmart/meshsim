@@ -2,9 +2,10 @@
 # The host's frames on the repository's guests (WORKER1): every gold guest that runs to its end (test/guests/expected.txt),
 # jumpmap's jumps guest (v1.36/pipeline/jumpmap/test/make_jump_guest.py), and keccak256 again with all three input files
 # (a mem_conf of its own, so that frame 6 has three runs). Each guest is spread over many of the 128 segments, written
-# twice (--base=none --lru=none; --base=static --lru=all) with --verify, then read back with frames-read --check and
-# --seg against the segments command's file at the same cuts. Then FramesTest: the page counts two ways, and the checks
-# caught on broken files.
+# three times with --verify (--base=none --compression=none; --base=static --compression=lru --asics=64 (or 256 for
+# runs over 64 segments' worth); --base=static, the smaller form, N = 128), then read back with frames-read --check and
+# --seg against the segments command's file at the same cuts. Then FramesTest: the page counts two ways, the checks
+# caught on files broken from keccak256 with inputs, and the forced fall-back on the jumps guest.
 #   test/frames/guests.sh     from gold's directory, after build.sh
 set -e
 cd "$(dirname "$0")/../.."
@@ -29,20 +30,21 @@ fail=0; n=0
 for g in $GUESTS jumps kin; do
   case $g in jumps) d=$W/jumps; i=$W/empty;; kin) d=$W/kin; i=$W/kin-input;; *) d=test/guests/$g; i=$W/empty;; esac
   rows=$(java -cp $CP gold.Main run "$d" "$i" | sed 's/ rows.*//')
-  R=$(( (rows + 99) / 100 )); [ $R -lt 1 ] && R=1               # about 100 segments with rows
+  R=$(( (rows + 59) / 60 )); [ $R -lt 1 ] && R=1                # about 60 segments with rows
   java -cp $CP gold.Main segments "$d" "$i" "$W/$g.seg" --segment-rows=$R > /dev/null
-  for v in "none none" "static all"; do
+  for v in "none none 128" "static lru 64" "static auto 128" "none auto 256"; do
     set -- $v
-    out=$(java -cp $CP gold.Main frames "$d" "$i" "$W/$g.frames" --segment-rows=$R --base=$1 --lru=$2 --verify) || true
+    out=$(java -cp $CP gold.Main frames "$d" "$i" "$W/$g.frames" --segment-rows=$R --base=$1 --compression=$2 --asics=$3 --verify) || true
     chk=$(java -cp $CP gold.Main frames-read "$W/$g.frames" --check --seg="$W/$g.seg" --brief | tail -2 | tr '\n' ' ') || true
     n=$((n + 1))
     if echo "$out" | grep -q VERIFIED && echo "$chk" | grep -q "check: ok" && echo "$chk" | grep -q "segment file ([0-9]* segments): ok"; then
-      echo "$g ($rows rows, $R a segment, base $1, lru $2): ok"
+      echo "$g ($rows rows, $R a segment, base $1, compression $2, N $3): ok"
     else
-      echo "$g (base $1, lru $2): FAILED"; echo "$out"; echo "$chk"; fail=$((fail + 1))
+      echo "$g (base $1, compression $2, N $3): FAILED"; echo "$out"; echo "$chk"; fail=$((fail + 1))
     fi
   done
 done
-java -cp $CP gold.FramesTest test/guests/keccak256 "$W/empty" 32 | grep -v "^verify:\|^check:\|^CHECK\|^COUNT\|^IMAGE\|^$" || fail=$((fail + 1))
+java -cp $CP gold.FramesTest "$W/kin" "$W/kin-input" 52 "$W/jumps" "$W/empty" > "$W/framestest.txt" 2>&1 || fail=$((fail + 1))
+grep -v "^verify:\|^check:\|^CHECK\|^COUNT\|^IMAGE\|^$" "$W/framestest.txt"
 rm -rf "$W"
 [ $fail = 0 ] && echo "frames on the guests: $n runs, all ok" || { echo "frames on the guests: $fail FAILED"; exit 1; }

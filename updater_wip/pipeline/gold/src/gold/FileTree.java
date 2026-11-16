@@ -8,12 +8,14 @@ import java.util.Set;
  * length (v1.36 spec 23.5; the fill port's capacity rule, line < 2^(5 + 10 depth)). The Reference builds the trees for
  * real and counts the pages it takes; the two share no code (owner, 2026-11-16).
  *
- * <p>The pages a job takes (WORKER1 choice C11): the data pages it writes and every index page above them, the root
- * included; nothing when it writes nothing. ROOT_COUNTED is the one place that says whether the root is counted.
+ * <p>The pages a run takes (HOST-FRAMES, "Files, lengths and page counts"; owner, 2026-11-16): the pages the Updater
+ * takes from the free page queue, the data pages it writes and every index page above them, without the root, which
+ * the file system's firmware makes before the run. Nothing when it writes nothing. A page written many times counts
+ * once. ROOT_COUNTED is the one place that says whether the root is counted.
  */
 public final class FileTree {
-  /** C11: the root is one of the pages a job takes. */
-  public static final boolean ROOT_COUNTED = true;
+  /** The root is made by the firmware, not taken by the run (owner, 2026-11-16; was C11). */
+  public static final boolean ROOT_COUNTED = false;
   public static final int FANOUT_BITS = 10;
 
   private FileTree() {}
@@ -25,7 +27,7 @@ public final class FileTree {
     return d;
   }
 
-  /** An image's length in pages (choice C3): a16z's max_ram_k cells in bytes, in 4 KB pages, at least 1. */
+  /** An image's length in pages (HOST-FRAMES: a16z's max_ram_k cells in bytes, in 4 KB pages; at least 1). */
   public static long imagePages(Layout l) {
     long maxRamK = ProofParams.nextPow2((l.heapEnd - l.lowestAddress()) / 8);
     return Math.max(1, maxRamK * 8 / Frames.PAGE_BYTES);

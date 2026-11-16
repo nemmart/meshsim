@@ -19,11 +19,12 @@ import java.util.TreeSet;
  * every page is shared. A write to a page the file doesn't own takes a fresh page at each level from the top that the
  * file doesn't own: a shared index page is copied with its entries' owned bits cleared, a shared data page is copied, a
  * hole becomes an index page of holes or a data page of zeros. Each file counts the pages it takes, so a page written
- * many times, in one segment or several, is taken once per file.
+ * many times, in one segment or several, is taken once per file. The root is made by the file system's firmware when
+ * the file is made or copied, before the run, and is not one of the pages the run takes (owner, 2026-11-16).
  *
  * <pre>
- *   program image   frame 1, into an empty file
- *   base table      frame 2, into an empty file (if present)
+ *   program image   frame 2, into an empty file of frame 1's length
+ *   base table      the base's frame 5, into an empty file (if the file establishes one)
  *   run's table     a copy of the base table when frame 4 names one, else an empty file; then frame 5
  *   cycle-0 image   a copy of the program image; then frame 6
  *   start image     a copy of the cycle-0 image; then segments 0 to s - 1 of frame 9
@@ -32,8 +33,8 @@ import java.util.TreeSet;
  * </pre>
  */
 public final class Reference {
-  /** WORKER1's choice C11: the root is one of the pages a run takes. The one place that says so on this side. */
-  static final boolean ROOT_IS_A_PAGE_TAKEN = true;
+  /** The root is not one of the pages a run takes (owner, 2026-11-16). The one place that says so on this side. */
+  static final boolean ROOT_IS_A_PAGE_TAKEN = false;
   static final int HOLE = 0xFFFFFFFF, OWNED = 0x80000000;
   static final int ENTRIES = 1024, WORDS = 512;
 
@@ -217,9 +218,28 @@ public final class Reference {
     return v;
   }
 
-  /** A frame's update words in the form its flag names. */
-  static long[] decode(byte[] data, long count, boolean lru) {
-    return lru ? decodeLru(data, count, null) : decodeRaw(data, count);
+  /** A frame's update words in the form its header names. */
+  static long[] decode(FrameFile.Frame fr, long count) {
+    return fr.lru() ? decodeLru(fr.data, count, null) : decodeRaw(fr.data, count);
+  }
+
+  /** The bits the LRU form of these words takes (to compare the forms' sizes; counted here, not by the writer). */
+  public static long lruBits(long[] words) {
+    long[] table = new long[32];
+    long bits = 0;
+    for (long v : words) {
+      int hit = -1;
+      for (int i = 0; i < 32; i++) if (table[i] == v) { hit = i; break; }
+      if (hit >= 0) {
+        bits += 6;
+        System.arraycopy(table, 0, table, 1, hit);
+      } else {
+        bits += (v >>> 32) == 0 ? 34 : 66;
+        System.arraycopy(table, 0, table, 1, 31);
+      }
+      table[0] = v;
+    }
+    return bits;
   }
 
   /** Applies update words to a file; checks the runs and, if pagesOnly, that every run is whole pages. */
@@ -252,21 +272,24 @@ public final class Reference {
   public final FrameFile f;
   final Lpddr mem = new Lpddr();
   public Tree program, base, table, cycle0, start, tracer, fin;
-  public long[] tableWords, dataWords;
-  public final long[][] segments = new long[FrameFile.SEGMENTS][];
+  public long[] programWords, baseWords, tableWords, dataWords;
+  public final long[][] segments;
   int mark;
 
   /** Decodes the streams and builds the program image, the base table, the run's table and the cycle-0 image. */
   public Reference(FrameFile f) {
     this.f = f;
-    tableWords = decode(f.get(5).data, f.tableWords, f.tableLru);
-    dataWords = decode(f.get(6).data, f.dataWords, f.dataLru);
+    segments = new long[f.n][];
+    programWords = decode(f.programFrame, f.programWords);
+    if (f.baseHeader != null) baseWords = decode(f.baseDataFrame, f.baseHeader.words);
+    tableWords = decode(f.get(5), f.table.words);
+    dataWords = decode(f.get(6), f.dataWords);
     long total = 0;
     for (long n : f.segWords) total += n;
-    long[] all = decode(f.get(9).data, total, f.segLru);
+    long[] all = decode(f.get(9), total);
     // the stream split by frame 3's counts: each segment must be whole runs
     int at = 0;
-    for (int s = 0; s < FrameFile.SEGMENTS; s++) {
+    for (int s = 0; s < f.n; s++) {
       segments[s] = java.util.Arrays.copyOfRange(all, at, at + (int) f.segWords[s]);
       at += (int) f.segWords[s];
       for (int i = 0; i < segments[s].length; i += 1 + (int) (segments[s][i] >>> 32)) {
@@ -277,31 +300,34 @@ public final class Reference {
     }
 
     program = new Tree(mem, f.fileLength);
-    for (var e : f.programPages.entrySet()) {
-      long[] w = e.getValue();
-      for (int i = 0; i < WORDS; i++) program.write(e.getKey() * 512 + i, w[i]);
+    apply(program, programWords, true, "frame 2");
+    if (f.baseHeader != null) {
+      FrameFile.TableHeader b = f.baseHeader;
+      if (b.path.isEmpty()) throw new IllegalArgumentException("the base table's frame 4 has no path");
+      if (!b.base.isEmpty()) throw new IllegalArgumentException("the base table's frame 4 names a base of its own (" + b.base + ")");
+      base = new Tree(mem, tableLength(b.k));
+      apply(base, baseWords, true, "the base table's frame 5");
     }
-    long tableLength = Math.max(1, (128L << f.k) / 4096);
-    if (f.hasBase) {
-      base = new Tree(mem, Math.max(1, (128L << f.baseK) / 4096));
-      for (int i = 0; i < f.baseLines.length / 8; i++) {
-        long v = 0;
-        for (int j = 0; j < 8; j++) v |= (f.baseLines[8 * i + j] & 0xffL) << (8 * j);
-        base.write(i, v);
+    FrameFile.TableHeader t = f.table;
+    if (!t.path.isEmpty()) throw new IllegalArgumentException("the run's frame 4 has a path (" + t.path + "): a run's table has none");
+    if (!t.base.isEmpty()) {
+      if (base == null || !t.base.equals(f.baseHeader.path)) {
+        throw new IllegalArgumentException("frame 4 names a base table (" + t.base + ") the file doesn't establish");
       }
-    }
-    if (!f.basePath.isEmpty()) {
-      if (base == null) throw new IllegalArgumentException("frame 4 names a base table (" + f.basePath + ") and the file has no frame 2");
-      if (f.k != f.baseK || f.p1 != f.baseP1 || f.p3 != f.baseP3) throw new IllegalArgumentException("frame 4's k, p1, p3 aren't the base's");
+      FrameFile.TableHeader b = f.baseHeader;
+      if (t.k != b.k || t.p1 != b.p1 || t.p3 != b.p3) throw new IllegalArgumentException("frame 4's k, p1, p3 aren't the base's");
       table = Tree.copyOf(base);
     } else {
-      table = new Tree(mem, tableLength);
+      table = new Tree(mem, tableLength(t.k));
     }
     apply(table, tableWords, true, "frame 5");
     cycle0 = Tree.copyOf(program);
     apply(cycle0, dataWords, false, "frame 6");
     mark = mem.pages.size();
   }
+
+  /** A jump table's length: 2^k lines of 128 bytes, in pages, at least 1. */
+  static long tableLength(int k) { return Math.max(1, (128L << k) / 4096); }
 
   /** The images for segment s: the start image, the Tracer's copy and the final image. */
   public void forSegment(int s) {
@@ -311,12 +337,12 @@ public final class Reference {
     tracer = Tree.copyOf(start);
     fin = Tree.copyOf(start);
     for (long p : pagesOf(segments[s])) tracer.own(p);       // the page as it was, the Tracer's own
-    for (int k = s; k < FrameFile.SEGMENTS; k++) apply(fin, segments[k], false, "segment " + k);
+    for (int k = s; k < f.n; k++) apply(fin, segments[k], false, "segment " + k);
   }
 
   /** The run's table as the Tracer reads it: the file's bytes, line h at 128 h. */
   public byte[] tableBytes() {
-    long lines = 1L << f.k;
+    long lines = 1L << f.table.k;
     byte[] b = new byte[(int) (lines * 128)];
     for (long pg = 0; pg * 4096 < b.length; pg++) {
       long[] w = table.read(pg);
@@ -347,20 +373,30 @@ public final class Reference {
     return -1;
   }
 
-  /** Every page count of frames 3 and 4 against what the trees took; the run's and the data image's always, the
-   *  per-ASIC counts for s (after forSegment(s)), and every segment's pages written. Returns the differences. */
+  /** Every page count of frames 1, 3 and 4 against what the trees took: the program image's, the base table's, the
+   *  run's table's and the data image's (s 0 only), the per-ASIC counts for s (after forSegment(s)), and segment s's
+   *  pages written. Returns the differences. */
   public List<String> checkCounts(int s) {
     List<String> bad = new ArrayList<>();
-    if (table.taken != f.tablePages) bad.add("jump table: took " + table.taken + " pages, frame 4 says " + f.tablePages);
-    if (cycle0.taken != f.dataPages) bad.add("data image: took " + cycle0.taken + " pages, frame 3 says " + f.dataPages);
+    if (s == 0) bad.addAll(fileCounts());
+    if (pagesOf(segments[s]).size() != f.pagesWritten[s]) {
+      bad.add("segment " + s + " writes " + pagesOf(segments[s]).size() + " pages, frame 3 says " + f.pagesWritten[s]);
+    }
     long[] mine = {start.taken, fin.taken, tracer.taken};
     String[] names = {"start image", "final image", "Tracer's copy"};
     for (int j = 0; j < 3; j++) {
       if (mine[j] != f.perAsic[s][j]) bad.add("s " + s + ", " + names[j] + ": took " + mine[j] + " pages, frame 3 says " + f.perAsic[s][j]);
     }
-    if (pagesOf(segments[s]).size() != f.pagesWritten[s]) {
-      bad.add("segment " + s + " writes " + pagesOf(segments[s]).size() + " pages, frame 3 says " + f.pagesWritten[s]);
-    }
+    return bad;
+  }
+
+  /** The program image's, the base table's, the run's table's and the data image's page counts. */
+  public List<String> fileCounts() {
+    List<String> bad = new ArrayList<>();
+    if (program.taken != f.programPages) bad.add("program image: took " + program.taken + " pages, frame 1 says " + f.programPages);
+    if (base != null && base.taken != f.baseHeader.pages) bad.add("base table: took " + base.taken + " pages, its frame 4 says " + f.baseHeader.pages);
+    if (table.taken != f.table.pages) bad.add("jump table: took " + table.taken + " pages, frame 4 says " + f.table.pages);
+    if (cycle0.taken != f.dataPages) bad.add("data image: took " + cycle0.taken + " pages, frame 3 says " + f.dataPages);
     return bad;
   }
 
@@ -380,7 +416,7 @@ public final class Reference {
   static boolean main(String[] args) throws IOException {
     FrameFile f = FrameFile.parse(Files.readAllBytes(Path.of(args[0])));
     int s = Integer.parseInt(args[1]);
-    if (s < 0 || s >= FrameFile.SEGMENTS) throw new IllegalArgumentException("s must be 0 to 127");
+    if (s < 0 || s >= f.n) throw new IllegalArgumentException("s must be 0 to N - 1 = " + (f.n - 1));
     String out = null;
     for (int i = 2; i < args.length; i++) {
       if (args[i].startsWith("--out=")) out = args[i].substring(6);

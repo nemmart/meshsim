@@ -1,8 +1,9 @@
 #!/bin/sh
 # The host's frames on the two workloads (WORKER1): EVM Zone and Cyclone, small (trace-23 and input/22, with the hard-cut
 # lists) or at 2^29 (128 segments of 2^22 rows). Per workload: the segments command's v1.3 file (at 2^29 against its
-# published SHA-256, v1.3/planning/sessions/WORKER18-data/v13/segment-files-v1.3.sha256); the frames twice with --verify
-# (--base=none --lru=none, --base=static --lru=all); frames-read --check --seg on each. Logs and the side files (sizes)
+# published SHA-256, v1.3/planning/sessions/WORKER18-data/v13/segment-files-v1.3.sha256); the frames three times with
+# --verify: a full table with no compression (N 128); the static base with the smaller form of each frame (N 128, the
+# real configuration); the static base all LRU with N 256; frames-read --check --seg on each. Logs and the side files (sizes)
 # into <out dir>; the frame files are deleted after their checks, their SHA-256 kept in the side files.
 #   test/frames/workloads.sh <jolt-asic-planning tracer dir> <out dir> small|29
 set -u
@@ -31,15 +32,15 @@ echo "$RUNS" | while read name prog in cuts; do
   else
     echo "$name: segments file $sha"
   fi
-  for v in "full none none" "base static all"; do
+  for v in "full none none 128" "base static auto 128" "base256 static lru 256"; do
     set -- $v
     f="$OUT/$name-$1"
-    $J gold.Main frames $prog $in "$f.frames" $C --base=$2 --lru=$3 --verify > "$f.log" 2>&1
+    $J gold.Main frames $prog $in "$f.frames" $C --base=$2 --compression=$3 --asics=$4 --verify > "$f.log" 2>&1
     $J gold.Main frames-read "$f.frames" --check --seg="$OUT/$name.seg" > "$f.read.txt" 2>&1
     if grep -q VERIFIED "$f.log" && grep -q "^check: ok" "$f.read.txt" && grep -q "segment file (.*): ok" "$f.read.txt"; then
-      echo "$name, $1 table, lru $3: verified, checked, against the segment file ok"
+      echo "$name, $2 base, compression $3, N $4: verified, checked, against the segment file ok"
     else
-      echo "$name, $1 table, lru $3: FAILED"; echo FAIL > "$OUT/FAILED"
+      echo "$name, $2 base, compression $3, N $4: FAILED"; echo FAIL > "$OUT/FAILED"
     fi
     grep -v "Picked up" "$f.log" | sed 's/^/    /'
     rm -f "$f.frames"

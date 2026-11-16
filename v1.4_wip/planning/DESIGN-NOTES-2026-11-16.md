@@ -335,7 +335,9 @@ The owner's plan for the next version, on v1.36 (he called it a moving target, a
 | the Updater | **Decided (owner): a black box, a software implementation.** Proposed: behind the registers and queues of `UPDATER-INTERFACE.md`, so that the firmware written against it stands when the real controller replaces it |
 | the cache | **Decided (owner): a black box, a software implementation.** v1.36's simulator has one already: the model of the memory system behind the Tracer's fill port, on a copy-on-write file store |
 | the memory tile | **Decided (owner): nothing runs on it.** The Tracer's output goes from the tracer tile straight to the compute tiles (checked in v1.36's `fw/tracer/tracer_ctl.c`) |
-| the file system | **Proposed: a software black box** that answers the master tile's requests for files and pages, since nothing runs on the memory tile |
+| the page map | **Decided (owner): on the master tile, for now.** The 128 KB bit array, one bit for each 4 KB page, moves there, so the master tile knows which pages are free and asks the memory tile for none |
+| a file's root | **Proposed (the owner: "sure"; all of this will be refined): the Updater black box makes it,** as two extra commands: an empty root, or a copy of another file's root with the owned bits cleared. The master tile picks the root's page from its bit array (`UPDATER-INTERFACE.md`) |
+| the file system | **not in v1.37.** v1.36 has none either: no firmware there knows about files; its copy-on-write file store is called only by the C++ test harnesses, to build the Tracer's images before a run |
 | the check | the Tracer traces on the images the Updater built, and the images equal gold's reference (`frames-images`) |
 
 - **Why black boxes first** (owner): "this way we can have something that actually works". The two real controllers,
@@ -353,4 +355,6 @@ The owner's plan for the next version, on v1.36 (he called it a moving target, a
   - a packet is at most 32 words, and a frame ends at the end of a packet;
   - the Updater's credits come to the master tile to manage.
 - **The streams are named foreground and background** (owner), not active and background.
+- **A thing to know about v1.36's simulator:** the RW engine's LPDDR and the file store's LPDDR are two separate
+  models. The Tracer's images are in the file store, and the memory tile's read and write requests do not reach it.
 - **Open:** where the work lives. Proposed: `v1.37_wip/`, a copy of v1.36, as earlier versions were made.

@@ -102,6 +102,21 @@ units, the form an index entry stores, and the form the Tracer's state record ho
 - **These are window words, not a state record** †. The Tracer keeps its roots in a record because the record is its
   working state; the Updater has five words.
 
+### For v1.37: making a root †
+
+In v1.37 there is no file system, and the master tile, which keeps the page map, has no path of its own to LPDDR.
+So for now the Updater makes a file's root at the start of a run. Whether the real Updater keeps this, or the file
+system takes it over, is decided when the file system is built.
+
+| word | register or bits | meaning |
+|---|---|---|
+| 32 | `RUN_CONFIG` [6:5] `root` | 0: the file exists, as above. 1: first write an empty root, every entry "no page", at `IMAGE_ROOT`. 2: first copy the root at `SOURCE_ROOT`, with its owned bits cleared, to `IMAGE_ROOT`, and with `tracer_copy` to `TRACER_ROOT` as well |
+| 37 | `SOURCE_ROOT`, R/W | with `root` = 2: the root of the file being copied |
+
+- The master tile picks the new root's page from its bit array and writes its address to `IMAGE_ROOT`. A root is
+  not taken from the free page queue and is not counted in `PAGE_COUNT`.
+- A run with `WORD_COUNT` 0 makes the root and ends.
+
 ## Block 3: statistics †
 
 32 bits each, wrapping, counting while `STATUS.busy` is 1, cleared at the reset.
@@ -148,7 +163,7 @@ Tracer's region. A packet is appended at the queue's tail and the rest of its ad
 | part | queue | size | an entry | filled by |
 |---|---|---|---|---|
 | 1 | segment queue | 256 entries of 128 bits, 4 KB | 128 bits of a frame's data | Ingress, on the same tile |
-| 2 | free page queue | 256 entries | one free page, in [31:0] † | the master tile's core, from the run's page list |
+| 2 | free page queue | 256 entries | one free page, in [31:0] † | the master tile's core, from its page map |
 | 0, 3-7 | unmapped | | | |
 
 **The credits are the replayer's and the Tracer's, unchanged** (owner; replayer chapter 17.8.8):
@@ -176,8 +191,8 @@ Both reach across to the memory side. Latency on them does not matter (owner): t
 
 ## Open
 
-- The page list: how the master tile gets a run's free pages. Proposed: it asks for all of them before the run, by a
-  request, and keeps the list in its own memory.
+- The page map is the master tile's for now (owner, 2026-11-16): a 128 KB bit array, one bit for each 4 KB page.
+  Where it lives in the end is the file system's design.
 - Whether an entry of the free page queue carries one page or four.
 - What a `START` during a run does: an error bit, or undefined as elsewhere.
 - The type number, 5: v1.36 assigns 0 to 4.

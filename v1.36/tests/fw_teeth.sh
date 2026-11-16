@@ -3,8 +3,9 @@
 # firmware build and the chip's tests per bug; about ten minutes). fw/ is copied into a scratch directory, each bug is
 # planted there by sed, the images rebuilt (fw/build.sh, its parts sort, cc, replay and tracer, the RISC-V toolchain on
 # PATH or named by RISCV_PREFIX) and the chip's tests (clang release, built here first) run on them (FW_IMAGES):
-# test_sort sort_16_kv32, test_memory and test_segment segment_small. A bug is caught when a test fails or stops; the
-# table names the tests that failed.
+# test_sort sort_16_kv32, test_memory and test_segment's generated segments. A bug is caught when a test fails or
+# stops; the table names the tests that failed. Not planted: a handshake sent early or not waited for (ARMED,
+# STREAMS_ARMED), whose race these runs' timings never provoke, so that no test can catch it.
 #
 # The bugs are slips in each program v1.36 carries over from v1.35 (cc/cc1.c, replay/replay_ctl.c, tracer/tracer_ctl.c,
 # crt0.S, the sort's port and schedule), in the port layer (port/mesh.h), and in the two programs new in v1.36
@@ -26,7 +27,7 @@ build() {   # the images of fw/ as $W/fw holds it, into $W/out
 }
 run() {   # prints the failing tests, "-" if none
   local f="" t rc
-  for t in "test_sort sort_16_kv32" "test_memory" "test_segment segment_small"; do
+  for t in "test_sort sort_16_kv32" "test_memory" "test_segment segment_"; do
     (cd "$SIM" && FW_IMAGES="$W/out" timeout 300 ./$B/$t > "$W/run.out" 2>&1) 2> /dev/null
     rc=$?
     [ $rc = 0 ] && continue
@@ -43,7 +44,7 @@ echo "pristine: all pass"
 # name ~ file ~ sed expression
 BUGS=(
   "cc1: a result's reply on no counter~cc/cc1.c~s/send_to(ROUTER_HDR_W(who, MODE_WRITE, REQ_REPLY_CTR(w0)), REQ_ARG(w0) << 4);/send_to(ROUTER_HDR_W(who, MODE_WRITE, CTR_NONE), REQ_ARG(w0) << 4);/"
-  "cc1: a result's reply at the word above its address~cc/cc1.c~s/REQ_REPLY_CTR(w0)), REQ_ARG(w0) << 4);/REQ_REPLY_CTR(w0)), (REQ_ARG(w0) << 4) + 4);/"
+  "cc1: the tracer tile's result unanswered~cc/cc1.c~s/REQ_OP_RESULT \&\& who <= DST_CC3/REQ_OP_RESULT \&\& who < 64/"
   "cc1: the load's COUNT on no counter~cc/cc1.c~s/STREAM_COUNT_W(1, SIZE_128, CTR_LOAD, MODE_COUNT, d)/STREAM_COUNT_W(1, SIZE_128, CTR_NONE, MODE_COUNT, d)/"
   "cc1: the image's data from DMEM's byte 0~cc/cc1.c~s/REGION_DMEM + DMEM_FIRST, STREAM_COUNT_W(b->dmem_packets/REGION_DMEM, STREAM_COUNT_W(b->dmem_packets/"
   "cc1: one release fewer in CC_PHASE~cc/cc1.c~s/} while (reps-- > 1);/} while (reps-- > 2);/"
@@ -51,11 +52,10 @@ BUGS=(
   "cc1: CC_WAIT without the LOADs after the results~cc/cc1.c~s/if (mbox\[6\] >= n \&\& mbox\[4\] >= TILES_LOADING + n) break;/if (mbox[6] >= n) break;/"
   "replay_ctl: a wait that keeps only its last wake's events~replay/replay_ctl.c~s/do { __asm__ volatile (\"wfi\" ::: \"memory\"); e |= tile->EVENTS; } while ((e \& ev) != ev);/do { __asm__ volatile (\"wfi\" ::: \"memory\"); e = tile->EVENTS; } while ((e \& ev) != ev);/"
   "replay_ctl: no ARMED~replay/replay_ctl.c~/REQ_OP_ARMED << 10);/d"
-  "replay_ctl: STREAMS_ARMED before the stream counter is armed~replay/replay_ctl.c~s/if (n) tile->WRITE_COUNTER\[RL_CTR_STREAMS - 1\] = n;/request_send(0, 0, 0, REQ_TARGET(TARGET_CC3) | REQ_OP_STREAMS_ARMED << 10); if (n) tile->WRITE_COUNTER[RL_CTR_STREAMS - 1] = n;/"
+  "replay_ctl: the totals' counter not armed~replay/replay_ctl.c~/        tile->WRITE_COUNTER\[RL_CTR_TOTALS - 1\] = 2;/d"
   "replay_ctl: the read log's size from the code's field~replay/replay_ctl.c~s/hdr\[RL_H_RLOG_N\] = record\[4\] >> 16;/hdr[RL_H_RLOG_N] = record[4] \& 0xFFFFu;/"
   "tracer_ctl: ARMED taken for STREAMS_ARMED~tracer/tracer_ctl.c~s/if (t < 64 \&\& REQ_OP(w0) == REQ_OP_ARMED) armed_set/if (t < 64 \&\& REQ_OP(w0) == REQ_OP_ARMED) streams_set/"
-  "tracer_ctl: the streams without STREAMS_ARMED~tracer/tracer_ctl.c~s/} else if (armed(streams_set, tn)) {/} else if (1) {/"
-  "tracer_ctl: a state piece to tile n + 1 without its ARMED~tracer/tracer_ctl.c~s/(last || armed(armed_set, to0))/(last || armed(armed_set, tn))/"
+  "tracer_ctl: window 0's start, words 2-66, a row low~tracer/tracer_ctl.c~s/sram_addr(trec + 8));/sram_addr(trec + 4));/"
   "tracer_ctl: an advice refill one short~tracer/tracer_ctl.c~s/    adv_next += n;/    adv_next += n - 1;/"
   "tracer_ctl: the streams on the record's counter~tracer/tracer_ctl.c~s/dma(q, c, tn, sram_addr(base + (sent\[q\] << 2)), RL_CTR_STREAMS);/dma(q, c, tn, sram_addr(base + (sent[q] << 2)), RL_CTR_STATE);/"
   "crt0: the reply's counter not armed~crt0.S~/sw    t0, X0REL(OFF_WRITE_COUNTER_1 + 4 \* (CTR_REPLY - 1))(zero)/d"

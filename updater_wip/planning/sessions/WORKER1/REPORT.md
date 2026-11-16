@@ -9,7 +9,7 @@ current); the questions are `QUESTIONS.md` (Q1 answered; Q2, the readings taken 
 | | |
 |---|---|
 | the frames as first specified | built and checked; **Quest 197 passed on the runner** (every step: build and tests, the small inputs, v1.36 gold's `segments` byte-identical, both workloads at 2²⁹) |
-| the frames as ruled on 2026-11-16 | built and checked here; **Quest 200 sent** (updater-w1 `562fd725`), the same steps; its result is below when it comes |
+| the frames as ruled on 2026-11-16 | built and checked; **Quest 200 passed on the runner** (updater-w1 `562fd725`): every step, and the frame files byte-identical to the local runs' |
 
 ## What was built
 
@@ -75,7 +75,8 @@ until now a pipe hid `FramesTest`'s exit status.
 
 ## Sizes
 
-Every frame's bytes with its 16-byte header. **L**: sent LRU-coded. Local runs; Quest 200 writes the same side files.
+Every frame's bytes with its 16-byte header. **L**: sent LRU-coded. Local runs; Quest 200's frame files are
+byte-identical (e.g. Cyclone 2²⁹, static base: `470990a5…` on both).
 
 | run | configuration | 1 | 2 program image | 4 base | 5 base | 3 header | 4 | 5 table | 6 data image | 7 registers | 8 advice | 9 segments | file |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -135,4 +136,8 @@ SHA-256s; every `--verify` VERIFIED.
 
 ## Quest 200 (the frames as ruled)
 
-PENDING: updater-w1 `562fd725`, kit `bcb5497b…`. The same task passed start to finish in a copy of the queue here.
+PASS on the runner (updater-w1 `562fd725`, kit `bcb5497b…`): build and tests 55 s (80 guest runs, `FramesTest`
+including the fall-back, 168 `segments` runs byte-identical to v1.36 gold's, the guests as expected); the small inputs
+43 s and their `segments` byte-identical 31 s; both workloads at 2²⁹ 193 s, both `segments` files equal to the
+published v1.3 SHA-256s; every one of the 12 workload runs verified, checked and equal to its segment file. The 2²⁹
+frame files have the same SHA-256 as the local runs'.

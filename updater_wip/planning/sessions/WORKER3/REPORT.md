@@ -207,6 +207,10 @@ required equal, byte for byte, to the tests' own writer's output.
 | `test_master`, `test_updater`, `test_ingress_link` in the debug build (ASan, UBSan), and with gcc | here | pass |
 | Ingress against HOST-LINK.md and INGRESS-INTERFACE.md as main has them, and against gold's vectors on main | here | the documents have not changed since `8385dacd`, which Ingress was built to; `test_ingress_link` now has HL's own figures (its table's CRC values, its example packet byte for byte, its cross-check 0x48674BC7): **33 pass**; `test_packet_vectors` reads main's `test/packets/`: the 8 CRC values, 43 packets, 5 files and 32 damaged files **all agree** |
 
+Quest 204 and 205 ran `updater-w3` at `7f8f40a8`. What changed after it is what `proof_run` prints (the master's
+cycle stamps and its instructions), a side file `pipeline/frames/build.sh` no longer keeps, and documents;
+`quick --check` and `test_master` were run again here on the final tree.
+
 ### The figures
 
 Cycles are the simulator's, with the black boxes' timing (`NOTES.md`, section 6): the link at a byte a cycle, a

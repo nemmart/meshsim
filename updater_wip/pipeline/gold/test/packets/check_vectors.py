@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+"""The packet test vectors checked by a third implementation (WORKER2).
+
+    check_vectors.py <directory holding VECTORS.txt and the small packet files>
+
+Nothing here comes from gold's Java: the CRC-32C is the bit-by-bit algorithm written in VECTORS.txt's own heading,
+and the reader below is written from HOST-LINK.md and that heading. It checks:
+  - every "crc32c" line;
+  - every "packet": the fields against the bytes (the header rebuilt from the fields, and decoded again), both stored
+    checks and both computed ones, the 128-bit header word, the data lines; then what a reader says of the packet
+    alone ("expect"), and the number expected after it;
+  - every "file": its size and SHA-256, its counts, that it reads without a refusal, and that its frames are
+    small.frames byte for byte;
+  - every "damage" line: the file with that byte changed is refused by that check, at that packet and byte.
+"""
+import hashlib
+import sys
+from pathlib import Path
+
+
+def crc32c(data):
+    crc = 0xFFFFFFFF
+    for b in data:
+        crc ^= b
+        for _ in range(8):
+            crc = (crc >> 1) ^ 0x82F63B78 if crc & 1 else crc >> 1
+    return crc ^ 0xFFFFFFFF
+
+
+class Refused(Exception):
+    def __init__(self, check, packet, at):
+        super().__init__(f"{check} at packet {packet}, byte {at}")
+        self.check, self.packet, self.at = check, packet, at
+
+
+def read(f, first=(None, 1, 1), frames=True):
+    """Reads a packet file. Returns its counts and the frames' bytes; raises Refused."""
+    expect = list(first)
+    c = dict(packets=0, s2=0, s1=0, empty=0, idle=0, words2=0, words1=0, frames=0, after=None)
+    out = bytearray()
+    left = 0
+    pos = 0
+    while True:
+        while pos < len(f) and f[pos] == 0:        # idle
+            pos += 1
+            c["idle"] += 1
+        if pos == len(f):
+            break
+        k = c["packets"] + 1
+        if len(f) - pos < 16:
+            raise Refused("truncated", k, pos)
+        word = int.from_bytes(f[pos:pos + 16], "little")
+        if word >> 96 != crc32c(f[pos:pos + 12]):
+            raise Refused("header-crc", k, pos)
+        stream = word & 15
+        length = (word >> 8) & 0xFF
+        number = (word >> 16) & 0xFFFFF
+        if stream not in (1, 2):
+            raise Refused("stream", k, pos)
+        if length > 32:
+            raise Refused("length", k, pos)
+        if (word >> 56) & 0xFF:
+            raise Refused("reserved", k, pos)
+        data = f[pos + 16:pos + 16 + 16 * length]
+        if len(data) < 16 * length:
+            raise Refused("truncated", k, pos)
+        if (word >> 64) & 0xFFFFFFFF != crc32c(data):
+            raise Refused("data-checksum", k, pos)
+        if number != expect[stream]:               # 0 and 0xFFFFF are never expected
+            raise Refused("number", k, pos)
+        c["packets"] += 1
+        c["s2" if stream == 2 else "s1"] += 1
+        if length == 0:
+            c["empty"] += 1                        # it takes no number
+        else:
+            expect[stream] = 1 if number == 0xFFFFE else number + 1
+            if stream == 1:
+                c["words1"] += length
+            else:
+                c["words2"] += length
+                if frames:
+                    if left == 0:
+                        left = 1 + int.from_bytes(data[12:16], "little")
+                        c["frames"] += 1
+                    if length > left:
+                        raise Refused("frame-end", k, pos)
+                    left -= length
+                    out += data
+        c["after"] = expect[stream]
+        pos += 16 + 16 * length
+    if left:
+        raise Refused("truncated", c["packets"], len(f))
+    return c, bytes(out)
+
+
+def said(f, **kw):
+    try:
+        return "ok", read(f, **kw)
+    except Refused as r:
+        return r.check, r
+
+
+def main(directory):
+    d = Path(directory)
+    failures = []
+
+    def expect(ok, what):
+        if not ok:
+            failures.append(what)
+
+    blocks, crcs, damage = [], [], []
+    block = None
+    for raw in (d / "VECTORS.txt").read_text().splitlines():
+        line = raw.split("#")[0].split()
+        if not line:
+            continue
+        if line[0] == "crc32c":
+            crcs.append((b"" if line[1] == "-" else bytes.fromhex(line[1]), int(line[2], 16)))
+        elif line[0] == "damage":
+            damage.append((line[1], int(line[3]), int(line[5], 16), line[7], int(line[9]), int(line[11])))
+        elif line[0] in ("packet", "file"):
+            block = {"kind": line[0], "name": line[1], "data": [], "bytes": []}
+        elif line[0] == "end":
+            blocks.append(block)
+            block = None
+        elif line[0] in ("data", "bytes") and block["kind"] == "packet":
+            block[line[0]].append(bytes.fromhex(line[1]))
+        else:
+            block[line[0]] = line[1]
+
+    for data, want in crcs:
+        expect(crc32c(data) == want, f"crc32c of {data.hex() or 'no bytes'}")
+
+    packets = [b for b in blocks if b["kind"] == "packet"]
+    for v in packets:
+        name = "packet " + v["name"]
+        num = lambda key: int(v[key], 0)
+        data, all_bytes = b"".join(v["data"]), b"".join(v["bytes"])
+        header = all_bytes[:16]
+        # the header rebuilt from the fields
+        low = (num("stream") | num("flags") << 4 | num("length") << 8 | num("number") << 16 | num("acknowledge") << 36
+               | num("reserved") << 56 | num("data-checksum") << 64)
+        word = low | num("header-crc") << 96
+        expect(word.to_bytes(16, "little") == header, name + ": the fields make the header bytes")
+        expect(low.to_bytes(12, "little") == bytes.fromhex(v["header-0-11"]), name + ": header-0-11")
+        expect(word == num("header-word"), name + ": header-word")
+        expect(all_bytes[16:] == data, name + ": the data lines are the bytes after the header")
+        expect(crc32c(data) == num("data-crc32c"), name + ": data-crc32c")
+        expect(crc32c(header[:12]) == num("header-crc32c"), name + ": header-crc32c")
+        good = v["expect"] == "ok"
+        if good:
+            expect(num("data-checksum") == num("data-crc32c") and num("header-crc") == num("header-crc32c"),
+                   name + ": a good packet's stored checks are the computed ones")
+            expect(crc32c(header) == 0x48674BC7, name + ": the CRC-32C of a good header's 16 bytes")
+            expect(len(data) == 16 * num("length"), name + ": the data is length words")
+        # what a reader says of it alone
+        nxt = num("next-number")
+        got, result = said(all_bytes, first=(None, nxt, nxt), frames=False)
+        expect(got == v["expect"], f"{name}: expect {v['expect']}, this reader says {got}")
+        if good and got == "ok":
+            expect(result[0]["after"] == num("next-number-after"), name + ": next-number-after")
+            expect(num("next-number-after") == (nxt if num("length") == 0 else 1 if nxt == 0xFFFFE else nxt + 1),
+                   name + ": a packet with data takes a number, one of length 0 does not")
+
+    frames = (d / "small.frames").read_bytes()
+    files = {}
+    for v in [b for b in blocks if b["kind"] == "file"]:
+        name = v["name"]
+        f = (d / name).read_bytes()
+        files[name] = (f, int(v["first-number"], 0))
+        expect(len(f) == int(v["bytes"]) and hashlib.sha256(f).hexdigest() == v["sha256"], name + ": its size and SHA-256")
+        got, result = said(f, first=(None, 1, int(v["first-number"], 0)))
+        expect(got == v["expect"], f"{name}: expect {v['expect']}, this reader says {got}")
+        if got == "ok":
+            c, out = result
+            expect(out == frames, name + ": its frames are small.frames")
+            for key, field in (("packets", "packets"), ("packets-stream-2", "s2"), ("packets-stream-1", "s1"),
+                               ("packets-length-0", "empty"), ("idle-bytes", "idle"), ("words-stream-2", "words2"),
+                               ("words-stream-1", "words1"), ("frames", "frames")):
+                expect(c[field] == int(v[key]), f"{name}: {key} {v[key]}, this reader counts {c[field]}")
+
+    for name, at, mask, check, packet, where in damage:
+        f, first = files[name]
+        g = bytearray(f)
+        g[at] ^= mask
+        got, r = said(bytes(g), first=(None, 1, first))
+        expect(got == check and (r.packet, r.at) == (packet, where),
+               f"damage {name} byte {at} xor {mask:#04x}: expect {check} at packet {packet}, byte {where}; this reader says {r}")
+
+    for what in failures[:40]:
+        print("FAIL", what)
+    print(f"vectors by the Python reader: {len(crcs)} CRC-32C values, {len(packets)} single packets, {len(files)} whole files, "
+          f"{len(damage)} damaged files: " + ("ok" if not failures else f"{len(failures)} FAILED"))
+    return 0 if not failures else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1]))

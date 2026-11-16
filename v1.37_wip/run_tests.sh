@@ -52,7 +52,7 @@ SUITES="$SUITES test_rtl_tile test_rtl_stream test_sort test_memory test_segment
 SUITES="$SUITES suite_replayer suite_memsys suite_rvc suite_tracer tracer_block"            # the replayer and the Tracer
 SUITES="$SUITES fwimage"                                                                   # the runs' keys (tools/fwimage)
 SUITES="$SUITES test_file_store test_updater test_ingress_link test_packet_vectors updater_frames packetize"       # v1.37: the file store's pages by address, the Updater black box, Ingress's host link
-SUITES="$SUITES test_master"                                                               # v1.37: the master tile's program, the whole chip from a packet file
+SUITES="$SUITES test_master proof_run"                                                     # v1.37: the master tile's program, the whole chip from a packet file
 
 if [ "$BUILD" = 1 ]; then
   echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
@@ -206,6 +206,35 @@ if [ "$MODE" != quick ]; then
     check segment-real "the segment on the real workloads' windows: EVM Zone's 0-63 and 64-127 and Cyclone's 0-63, every row and delivery against the recorded files (about a minute)" -- env MESHSIM_INPUTS="$INPUTS" $S/test_segment real_
   else
     skipped segment-real "the segment on the real workloads' windows (EVM Zone, Cyclone), against the recorded files" "the workloads' data is not at $INPUTS: MESHSIM_INPUTS"
+  fi
+  # v1.37: the whole chip from a packet file, on the real workloads (tests/proof_run_main.cpp). The host's side, gold's
+  # frame files, the link's packet files and gold's reference for each segment, is made by pipeline/frames/build.sh
+  # into $INPUTS/v137/SET/; its RUNS lists each run's name, N, a segment's windows and the segments to run.
+  proof_set() {   # proof_set SET [--recorded]: every run of the set, every segment listed
+    local d=$INPUTS/v137/$1 name n windows list s rec
+    while read -r name n windows list; do
+      for s in $list; do
+        rec=""; [ "${2:-}" = --recorded ] && rec="--recorded $name"
+        MESHSIM_INPUTS="$INPUTS" $S/proof_run "$d/$name.frames" --packets "$d/$name.packets" --asics "$n" --segment "$s" --windows "$windows" \
+          --gold "$d/$name-s$s.images.txt" $rec --quiet || echo "FAIL proof_run $name, s $s: exit $?"
+      done
+    done < "$d/RUNS"
+  }
+  V137="the host's side is not at $INPUTS/v137 (pipeline/frames/build.sh makes it: MESHSIM_INPUTS)"
+  if [ -f "$INPUTS/v137/real/RUNS" ] && [ -f "$INPUTS/w26-jumpmap/evm-zone-23/proof.json" ] && [ -f "$INPUTS/v1261/cyclone-22/window_00000.rows.bin" ]; then
+    check proof-real "v1.37: segment-real's three segments from packet files: the master builds the images with the Updater and hands the tracer tile its segment; every row and delivery against the recorded files, every image against gold's" -- proof_set real --recorded
+  else
+    skipped proof-real "v1.37: segment-real's three segments from packet files, against the recorded files and gold's images" "the recorded windows or $V137"
+  fi
+  if [ -f "$INPUTS/v137/matrix/RUNS" ]; then
+    check proof-matrix "v1.37: the small inputs from packet files, segments of 8 windows: EVM Zone and Cyclone, raw and LRU-coded, with and without a base table, s = 0, 1 and the middle; every image against gold's, the Tracer's last record against record s + 1 (24 runs)" -- proof_set matrix
+  else
+    skipped proof-matrix "v1.37: the small inputs from packet files, raw and LRU-coded, with and without a base table" "$V137"
+  fi
+  if [ -f "$INPUTS/v137/29/RUNS" ]; then
+    check proof-29 "v1.37: both workloads at 2^29 from packet files, N 128: five segments of each (the first two, the middle, the last two), every image against gold's, the Tracer's last record against record s + 1 (10 runs)" -- proof_set 29
+  else
+    skipped proof-29 "v1.37: both workloads at 2^29 from packet files" "$V137"
   fi
 fi
 

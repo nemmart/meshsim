@@ -85,32 +85,37 @@ commit jolt-cpp pins); `v1.3/planning/sessions/WORKER18-NOTES.md` lists them.
 
 ## The host's frames (v1.4, WORKER1)
 
+As `v1.4_wip/planning/HOST-FRAMES.md` stands after the owner's rulings of 2026-11-16.
+
 ```sh
 java -cp build gold.Main frames <program dir> <input dir> <out file> [--cuts=0,a,...|--cuts-file=F] [--segment-rows=4194304]
-     [--base=none|static] [--lru=none|all|5,6,9] [--stem=P] [--workdir=P] [--base-path=P] [--verify]
+     [--asics=64|128|256] [--base=none|static] [--compression=auto|none|lru] [--stem=P] [--workdir=P] [--base-path=P]
+     [--verify]
 java -cp build gold.Main frames-read <frame file> [--check] [--seg=<v1.3 segment file>] [--brief]
 java -cp build gold.Main frames-images <frame file> <s> [--out=<prefix>]
 ```
 
-- **`frames`** runs gold once and writes the nine frames in HOST-FRAMES.md's order (1 the program image, 2 the base
-  jump table if `--base=static`, 3 the proof header, 4 and 5 the jump table, 6 the data image, 7 the register states,
-  8 the advice logs, 9 the memory segments), always 128 segments, with `<out>.json` beside it: every frame's bytes,
-  both forms (raw and LRU) of frames 5, 6 and 9, the page counts, the file's SHA-256. `--base=static`: frame 2 is the
-  static targets' table and the run's table adds its own targets to it (a full new table if they don't fit). `--lru`
-  picks which of frames 5, 6, 9 are sent LRU-coded.
-- **`frames-read`** prints every frame's fields. `--check`: the file against itself (every length, every count of frames
-  3 and 4 against the data it describes, every page count rebuilt on copy-on-write trees for every *s*, the program id,
-  the advice counts in frames 7 and 8, word 66 against frame 3). `--seg`: frames 7, 8, 9 against the `segments`
-  command's v1.3 file for the same run (the same records, advice and update words).
+- **`frames`** runs gold once and writes, in order: 1 and 2 the program image (header; update words in whole pages);
+  with `--base=static`, the static targets' table established as a base table (frames 4 and 5 on their own); 3 the
+  proof header; 4 and 5 the run's jump table (pages added to the base, or a full new table); 6 the data image (the
+  least data); 7 the register states; 8 the advice logs; 9 the memory segments. *N* segments (`--asics`, default 128;
+  in no frame). Frames 2, 5, 6 and 9 go in whichever form is smaller, the header's compression byte saying which;
+  `--compression=none|lru` forces one, for tests. `<out>.json` beside it: every frame's bytes, both forms' sizes, the
+  page counts, the file's SHA-256.
+- **`frames-read`** prints every frame's fields; *N* is frame 7's length / 68. `--check`: the file against itself
+  (every length, every count of frames 1, 3 and 4 against the data it describes, every page count rebuilt on
+  copy-on-write trees for every *s*, the advice counts in frames 7 and 8, word 66 against frame 3). `--seg`: frames 7,
+  8, 9 against the `segments` command's v1.3 file for the same run.
 - **`frames-images`** plays a frame file into empty memory for segment *s* (`Reference`): the program image, the
   cycle-0 image, the start image and the Tracer's copy (equal), the final image and the run's table, with digests and
-  the pages each took; `--out` writes them. **An image** is a file's pages by offset: every page with a non-zero byte,
-  ascending, each u64 offset then 4,096 bytes; its digest is the SHA-256 of that, so `sha256sum` of a written image is
-  its digest.
+  the pages each run took; `--out` writes them. **An image** is a file's pages by offset: every page with a non-zero
+  byte, ascending, each u64 offset then 4,096 bytes; its digest is the SHA-256 of that.
 - **`--verify`** checks the file as written, read back from disk, against gold's own run: the reference's images equal
   gold's memory at cycle 0, at the cut before every *s* and at the end; the reference's page counts equal the headers';
-  every jump target the run takes is found by the Tracer's probe in the run's table with gold's next `instr_idx`; the
-  LRU form of every stream decodes to the raw form.
+  every jump target the run takes is found by the Tracer's probe in the run's table with gold's next `instr_idx`; both
+  forms of every update-word frame decode (frame 6's two make the same image); with `auto`, the smaller form was sent.
+- **Page counts** are the pages the Updater takes from the free page queue: data pages and the index pages above them,
+  without the root (the firmware makes it); a page written many times counts once per file.
 
 The reading side (`FrameFile`, `Reference`, `FrameReader`) shares no code with the writing side (`Frames`,
 `FrameWriter`, `UpdateWords`, `FileTree`): in particular the page counts are computed twice, from page sets
@@ -121,8 +126,8 @@ The reading side (`FrameFile`, `Reference`, `FrameReader`) shares no code with t
 
 | script | what |
 |---|---|
-| `test/frames/guests.sh` | every guest that runs to its end, jumpmap's `jumps` guest and keccak256 with three input files: frames written twice (a full table raw; a static base, all LRU) with `--verify`, read back with `--check --seg`; `FramesTest`: the page counts two ways on synthetic writes (depths 1 to 3, pages rewritten across segments) and broken files caught |
+| `test/frames/guests.sh` | every guest that runs to its end, jumpmap's `jumps` guest and keccak256 with three input files: frames written four times (no base, uncompressed, N 128; static base, LRU, N 64; static base, the smaller form, N 128; no base, the smaller form, N 256) with `--verify`, read back with `--check --seg`; `FramesTest`: the page counts two ways on synthetic writes (depths 1 to 3, pages rewritten across segments), broken files caught, the forced fall-back from a base to a full new table |
 | `test/frames/old_unchanged.sh [<prog> <input> <cuts>]...` | the `segments` command byte-identical to v1.36 gold's (built in scratch) on every guest, in both formats, and on the runs given; `test/guests/check_guests.sh` |
-| `test/frames/workloads.sh <tracer dir> <out> small\|29` | EVM Zone and Cyclone, small with the hard cuts or at 2^29: the frames twice with `--verify`, `--check --seg`; at 2^29 the `segments` files against their published v1.3 SHA-256s |
+| `test/frames/workloads.sh <tracer dir> <out> small\|29` | EVM Zone and Cyclone, small with the hard cuts or at 2^29: the frames three times (full table uncompressed; static base, the smaller form; static base, LRU, N 256) with `--verify`, `--check --seg`; at 2^29 the `segments` files against their published v1.3 SHA-256s |
 
-Results: `updater_wip/planning/sessions/WORKER1/REPORT.md` (Quest 197).
+Results: `updater_wip/planning/sessions/WORKER1/REPORT.md` (Quest 197; Quest 200 after the rulings).

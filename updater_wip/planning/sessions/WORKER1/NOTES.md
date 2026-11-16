@@ -1,6 +1,10 @@
 # WORKER1 notes: gold writes the host's frames
 
-Status, 2026-11-16: **go-ahead given (owner, 03:10) with two changes:** the frame header is one 128-bit word (Q1
+Status, 2026-11-16, later: **the owner's rulings on the report (`NEXT.md`) are done**: the frames rewritten to
+HOST-FRAMES.md as ruled, every check rerun and passing (80 guest runs at *N* = 64, 128, 256; both small inputs and both
+workloads at 2²⁹, three configurations each), Quest 200 sent for the runner. The choices below are revised.
+
+Earlier, 2026-11-16: **go-ahead given (owner, 03:10) with two changes:** the frame header is one 128-bit word (Q1
 answered, replacing C1), and an independent check of the page counts by real copy-on-write trees in `Reference`
 (section 6). **Built and checked** (2026-11-16): every guest, both small inputs and both workloads at 2²⁹ pass every
 check here; Quest 197 runs the same on the runner. Results and sizes: `REPORT.md`. The inputs come from Quest task
@@ -9,6 +13,10 @@ session.
 
 The specification is `v1.4_wip/planning/HOST-FRAMES.md` (HF below). Gold is `v1.36/pipeline/gold/` (unchanged from
 v1.3's accepted gold).
+
+*Sections 1 to 6 are the plan as proposed on the morning of 2026-11-16, before the rulings; where they differ from
+section 7 (the frame numbers, the program id, the LRU flags, 128 segments, the root), section 7 and the code are
+current.*
 
 ## 1. Where each frame's data comes from in gold today
 
@@ -145,50 +153,45 @@ byte-identical to v1.36 gold's, on every guest, on both small inputs with the ha
 
 ## 7. Choices
 
-Where HF is open or silent. Each: the choice, the reason, the alternative.
+Where HF is open or silent. Each: the choice, the reason, the alternative. **Revised 2026-11-16 after the owner's
+rulings on the report (`NEXT.md`); HOST-FRAMES.md on main has them.** Ruled choices are marked; what they replaced is
+in the history of this file.
 
-- **C1. Replaced by the owner's ruling (Q1):** the header is one 128-bit word, 64 reserved zero bits in [63:0], u32 type
-  in [95:64], u32 length in 128-bit words in [127:96]. Lengths and counts are 32 bits, never 64; the writer rejects a
-  frame or a count that would not fit.
-- **C2. The update words' LRU table** starts all zeros at each frame's start, as written; in frame 9 it carries across
-  segments. `--lru` picks per frame; frames 5 and 6 may be LRU-coded (HF's flags are there). The writer computes both
-  forms of every stream for the size report and the check, whatever it sends.
-- **C3. File lengths and depths.** Every image of a proof (the program image, the cycle-0, start, final images and the
-  Tracer's copy) has **one length: a16z's `max_ram_k` in bytes, in 4 KB pages** (`ProofParams.maxRamK` × 8 / 4,096,
-  at least 1). It follows from the program's layout alone, so frame 1 can carry it before any run, K never exceeds it
-  (gold rejects the run otherwise), and every copy is a copy of a root of the same depth. A jump table's length is its
-  2^k lines in pages, at least 1. **Depth: the smallest d ≥ 1 with 1,024^d ≥ the length** (the spec's capacity rule,
-  2^(5 + 10·d) lines, with an index level always, as the 2026-11-15 note proposes for small tables). *Alternative:*
-  the length from the run's K, which frame 1 can't know; or the whole span to 2³².
-- **C4. The strings.** Program stem: `--stem`, default `/programs/<program dir's name>`. Working directory: `--workdir`,
-  default `/work/<program dir's name>-<input dir's name>`. Base path: `--base-path`, default `<stem>.base`. Gold doesn't
-  know the chip's paths; these are labels the reader prints. *Alternative:* required options, with no defaults.
-- **C5. The program id:** SHA-256 of frame 1's data (before its padding), the image as stored. *Alternative:* the
-  ELF's SHA-256, which the chip can't recompute from what it stores.
-- **C6. Frame 1's pages:** every page of the program image holding a non-zero byte (section 3's rule), ascending.
-  *Alternative:* every page a section covers, zeros included, as jumpmap's `initial.pages`; bigger, and the same
-  contents.
-- **C7. Frame 6's runs:** one run per input file present and non-empty, covering its length rounded up to 8 bytes,
-  zero words included, in address order. *Alternative:* only the non-zero words, in many runs.
-- **C8. Frame 5's runs:** maximal runs of consecutive pages (each a multiple of 512 words). A table smaller than a page
-  is padded to the page with free entries (all ones) and sent as one page. *Alternative:* one run per page; padding
-  with zeros, which are not free entries.
-- **C9. Always 128 segments.** A cut list of fewer than 128 (the hard cuts: 93 and 111) is padded with segments past the
-  run's end, written as `SegmentWriter` writes its own past-the-end segments: pc, `instr_idx` and offset 0, the final
-  registers, no advice, no updates. More than 128 is rejected. *Alternative:* a segment count in frame 3, which HF
-  doesn't have.
-- **C10. The base table (`--base=static`)** is the static targets alone (`StaticTargets`, placed by `HashTable.choose`),
-  the HF's "the static analysis" case. The run's table is the base, read back from its image, with the run's targets
-  not already in it inserted in ascending key order by the probe's rule; if any doesn't fit within three lines, the run
-  gets a full new table (static and run targets, as today's `JumpTable`) and frame 4 names no base. A target in the
-  base with a different `instr_idx` is an error. *Alternative:* a base from an earlier run's table or frame file;
-  left out, as a test of the same path.
-- **C11. "The pages the job takes, data and index":** the data pages the job writes and every index page above them,
-  the root included; no pages when it writes nothing. The rule sits in one place on each side (`FileTree`, and
-  `Reference`'s tree), so that counting the root apart later is a one-line change in each. The same rule for frame 4's and frame 6's counts and for the
-  per-ASIC counts: the start image is segments 0 to *s* − 1's written pages, the final image *s* to 127's, the Tracer's
-  copy segment *s*'s (v1.3 section 16's rule), each with its index pages in that file's tree. *Alternative:* counting
-  the root apart, since C&C 2 may supply it in `ROOT`.
+- **C1. The header** (ruled): one 128-bit word: compression [7:0] (0 none, 1 LRU), reserved [63:8], type [95:64],
+  length in 128-bit words [127:96]. Lengths and counts are 32 bits; the writer refuses a value that doesn't fit.
+- **C2. Compression** (ruled): on frames 2, 5, 6 and 9 only; each is sent in whichever form takes fewer 128-bit words,
+  **a tie sent uncompressed** (my reading: the simpler form). `--compression=none|lru` forces one form, for the tests
+  only. The LRU table is all zeros at each frame's start and carries on across segments in frame 9.
+- **C3. Lengths** (ruled): the program image's length is frame 1's, a16z's `max_ram_k` in 4 KB pages; every image of
+  the proof is a copy and inherits it. A jump table's length is 2^k lines in pages, at least 1. Depth: the smallest
+  *d* ≥ 1 with 1,024^*d* ≥ the length.
+- **C4. The strings:** program stem `--stem` (default `/programs/<program dir's name>`), working directory `--workdir`
+  (default `/work/<program>-<input>`), the base table's path `--base-path` (default `<stem>.base`).
+- **C5. The program id** (ruled): dropped.
+- **C6. Frame 2** (ruled): every page of the program image holding a non-zero byte, as update words in whole pages,
+  maximal runs of consecutive pages, into an empty file.
+- **C7. Frame 6, the least data** (ruled; the method is mine). Each input file's words, leading and trailing zero
+  words dropped; a stretch of at least *T* zero words skipped by ending the run and starting another. For the raw
+  form *T* = 2 is exact (a skipped word saves 8 bytes, a new run costs one header word). For LRU the cost isn't local
+  (the table), so gold encodes with each *T* in {2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 128, 256, ∞} and keeps the
+  smallest. Then the smaller of the two forms is sent (C2). A word is skipped only where the program image is zero
+  too (checked, as the owner asked; the cycle-0 image check also covers it). *Alternative:* an exact optimum for LRU,
+  which would take a search over the gaps for a few bytes.
+- **C8. Frame 5's runs:** maximal runs of consecutive pages. A table smaller than a page is padded to the page with
+  free entries (all ones).
+- **C9. N segments** (ruled): `--asics=64|128|256`, default 128; in no frame; the reader infers *N* from frame 7's
+  length. A shorter cut list is padded with segments past the run's end, as `SegmentWriter` writes them; more than *N*
+  cuts is refused. The `segments` command is unchanged (its default stays 128).
+- **C10. Base tables** (ruled): established by the host as frames 4 (with a path) and 5 on their own, sent after
+  frames 1 and 2 and before frame 3. Gold's base is the static targets' table (`--base=static`). **A base table's own
+  frame 4 names no base** (my reading: a base is always a full new table). The run's table is the base with the run's
+  targets not already in it inserted in ascending key order; if one doesn't fit within three lines, a full new table
+  (static and run targets), and the run's frame 4 names no base; the base is still sent. The fall-back is tested with
+  a made-up full base (`FramesTest`).
+- **C11. Page counts** (ruled): the pages the Updater takes from the free page queue: the data pages a run writes and
+  the index pages above them, **without the root**, which the firmware makes. A page written in several segments
+  counts once for each file. `FileTree.ROOT_COUNTED` and `Reference.ROOT_IS_A_PAGE_TAKEN`, one place each.
+- **C12. The frame file's order:** 1, 2, then 4 and 5 for the base if there is one, then 3 to 9 (`NEXT.md`, item 2).
 
 ## 8. The order of the work, after the go-ahead
 

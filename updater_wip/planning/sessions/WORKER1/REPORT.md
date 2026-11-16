@@ -1,8 +1,15 @@
 # WORKER1 report: gold writes the host's frames
 
 2026-11-16. Branch `updater-w1`. The specification is `v1.4_wip/planning/HOST-FRAMES.md` (HF) as on main after the
-owner's ruling on Q1 (the 128-bit header). The plan and the choices are `NOTES.md`; the one question, answered, is
-`QUESTIONS.md`.
+owner's rulings on this report's first version (`NEXT.md`). The plan and the choices are `NOTES.md` (section 7 is
+current); the questions are `QUESTIONS.md` (Q1 answered; Q2, the readings taken on the rulings).
+
+## Status
+
+| | |
+|---|---|
+| the frames as first specified | built and checked; **Quest 197 passed on the runner** (every step: build and tests, the small inputs, v1.36 gold's `segments` byte-identical, both workloads at 2²⁹) |
+| the frames as ruled on 2026-11-16 | built and checked here; **Quest 200 sent** (updater-w1 `562fd725`), the same steps; its result is below when it comes |
 
 ## What was built
 
@@ -10,136 +17,122 @@ In `updater_wip/pipeline/gold/`, a copy of `v1.36/pipeline/gold/` (its first com
 
 | command | what |
 |---|---|
-| `frames` | runs gold once and writes the nine frames for one program and one proof, always 128 segments; the update words of frames 5, 6 and 9 raw or LRU (`--lru`); the jump table as a full new table or as pages added to a base (`--base=static`: frame 2 is the static targets' table); every count of frames 3 and 4, the page counts included; `<out>.json` with every frame's bytes and both forms' sizes; `--verify` |
-| `frames-read` | decodes a frame file and prints every frame's fields; `--check` verifies it against itself; `--seg` against gold's v1.3 segment file |
-| `frames-images` | the reference: plays a frame file into empty memory for a given *s* and gives the four images (cycle-0, start, the Tracer's copy, final), the program image and the run's table, each with a digest and the pages it took; `--out` writes them |
+| `frames` | runs gold once and writes the frames for one program and one proof in HF's order: 1 and 2 the program image; 4 and 5 a base table on its own (with `--base=static`); 3 the proof header; 4 and 5 the run's jump table; 6 the data image; 7 to 9 the segments' data. *N* segments (`--asics`); frames 2, 5, 6 and 9 in the smaller form; every count of frames 1, 3 and 4; `<out>.json` with every size; `--verify` |
+| `frames-read` | decodes and prints every frame; `--check` the file against itself; `--seg` against gold's v1.3 segment file |
+| `frames-images` | the reference: plays a frame file into empty memory for a given *s*: the program image, the cycle-0, start and final images, the Tracer's copy, the run's table; digests, the pages each run took; `--out` writes them |
 
-Files: `Frames`, `UpdateWords`, `FileTree`, `PageImage`, `FrameWriter` (the writing side); `FrameFile`, `Reference`,
-`FrameReader` (the reading side, sharing no code with the writing side); `Verify` (`--verify`); in the copied files,
-small hooks only (a listener in `SegmentWriter`, the static-only table and the run's targets in `JumpTable`, `copy` and
-`find` in `HashTable`, a page accessor in `Memory`, a load without inputs in `Program`). jumpmap was not copied.
+The writing side (`Frames`, `FrameWriter`, `UpdateWords`, `FileTree`, `PageImage`) and the reading side (`FrameFile`,
+`Reference`, `FrameReader`) share no code. `Verify` (`--verify`) compares the reading side's results with gold's own
+run. In the copied files, small hooks only. jumpmap was not copied.
 
 **The image format:** every page of a file holding a non-zero byte, ascending by offset, each a u64 offset then the
-4,096 bytes; the digest is its SHA-256 (`sha256sum` of a written image). A page not present reads as zero, so equal
-contents give equal digests.
+4,096 bytes; the digest is its SHA-256 (`sha256sum` of a written image).
 
-**The page counts two ways (owner's change 2):** the writer counts from page sets (`FileTree`: the data pages and the
-index pages above them). `Reference` builds every file as a real tree in a model of LPDDR: index pages of 1,024 32-bit
-entries (an address in 128-byte units with the owned bit at 31, the hole 0xFFFF_FFFF), a copy as its source's root
-with the owned bit clear, a write to a page the file doesn't own taking a page at each level it doesn't own (a shared
-index page copied with its children's owned bits cleared). It counts the pages each file takes. **A page written in
-several segments is counted once per file**: the first write makes it the file's own, later writes find it owned. The
-root rule (C11) is in one place on each side: `FileTree.ROOT_COUNTED` and `Reference.ROOT_IS_A_PAGE_TAKEN`.
+**The page counts two ways:** the writer counts from page sets (`FileTree`); `Reference` builds every file as a real
+tree in a model of LPDDR (index pages of 1,024 entries with owned bits; a copy shares its source's pages; a write to a
+page the file doesn't own takes a page at each level it doesn't own) and counts the pages each run takes. **Without
+the root** (ruled: the firmware makes it), in one place on each side. **A page written in several segments counts
+once per file:** the first write makes it the file's own; later writes take nothing.
+
+## The rulings, as built
+
+| # | ruling | in gold |
+|---|---|---|
+| 1 | the program image is two frames | frame 1: stem, file length, frame 2's 64- and 128-bit words, pages; frame 2: every page with a non-zero byte, maximal runs of whole pages, into an empty file |
+| 2 | a base table is frames 4 and 5 on their own | sent after 1 and 2; frame 4's new first field is its path; the run's frame 4 has path "" |
+| 3 | no length fields | the images inherit frame 1's length; a table's follows from k |
+| 4 | page counts exclude the root | `FileTree.ROOT_COUNTED = false`, `Reference.ROOT_IS_A_PAGE_TAKEN = false` |
+| 5 | frame 6 sends the least data | zero stretches skipped by a new run when that is smaller in the form sent: raw by the exact rule, LRU by trying 14 thresholds; skipped words checked zero in the program image |
+| 6 | no program id | removed from frame 3 and the checks |
+| 7 | *N* segments | `--asics=64\|128\|256`; the reader infers *N* from frame 7; `segments` unchanged |
+| 8 | compression in the header | [7:0]: 0 none, 1 LRU; frames 2, 5, 6, 9 sent in the smaller form (a tie uncompressed); `--compression=none\|lru` for the tests |
+| 9 | the fall-back tested | `FramesTest`: a base already full (k 0, 16 made-up keys) on the jumps guest: the run gets a full new table, its frame 4 names no base, every jump is found, `--check` passes |
+| 10 | the per-ASIC counts stay | without the root |
 
 ## The checks, and their results
 
-*Local* is this session's container (2 threads); *Quest 197* is the runner. Each run of `frames` is twice: a full new
-table with every stream raw, and the static base with every stream LRU.
+Each workload is written three times: a full table, uncompressed, *N* 128; the static base, the smaller form, *N* 128
+(the real configuration); the static base, all LRU, *N* 256. The guests four times (adding *N* 64).
 
-| check | guests (40 runs) | EVM Zone trace-23 | Cyclone input/22 | EVM Zone 2²⁹ | Cyclone 2²⁹ |
+| check | guests (80 runs) | EVM Zone trace-23 | Cyclone input/22 | EVM Zone 2²⁹ | Cyclone 2²⁹ |
 |---|---|---|---|---|---|
 | cycle-0, start (every *s*), Tracer's copy = start, final images = gold's memory | ok | ok | ok | ok | ok |
-| page counts: the reference's trees = frames 3 and 4, every *s* | ok | ok | ok | ok | ok |
-| every jump target found by the probe (full / added) | ok | 5,526 / 5,526 | 2,945 / 2,945 | 6,195 / 6,195 | 4,240 / 4,240 |
-| LRU decodes to raw (frames 5, 6, 9) | ok | ok | ok | ok | ok |
-| `--check` (lengths, counts, program id, advice in 7 and 8, word 66) | ok | ok | ok | ok | ok |
-| `--seg`: registers, advice, memory segments = the segment file's | ok | ok (93 segments, 35 past the end empty) | ok (111, 17 empty) | ok | ok |
-| the `segments` file unchanged | byte-identical to v1.36 gold's (168 runs) | byte-identical to v1.36 gold's | byte-identical | = published `3cd32881…` | = published `e932baaf…` |
+| page counts: the reference's trees = frames 1, 3 and 4 (program image, base, table, data image, per ASIC for every *s*) | ok | ok | ok | ok | ok |
+| every jump target found by the probe | ok | 5,526 | 2,945 | 6,195 | 4,240 |
+| both forms of frames 2, 5, 6, 9 decode; frame 6's two forms make one image; the smaller sent | ok | ok | ok | ok | ok |
+| `--check` (lengths, counts, advice in 7 and 8, word 66, stems) | ok | ok | ok | ok | ok |
+| `--seg`: registers, advice, memory segments = the segment file's | ok | ok | ok | ok | ok |
+| the `segments` file unchanged | byte-identical to v1.36 gold's (168 runs) | byte-identical | byte-identical | = published `3cd32881…` | = published `e932baaf…` |
 | gold's own tests, `check_guests.sh` | pass | | | | |
 
-Result on the runner: **Quest 197**, PENDING (see the section at the end).
+**The checks catch what they are for** (`FramesTest`): frame 1's pages, a per-ASIC count, the last Tracer's copy count,
+frame 3's data image pages, frame 4's pages, a reserved header bit, compression on frame 3, frame 7's advice field
+against frame 8, and a value in frame 9 (by `--verify`): each caught. The counts two ways agree on 240 synthetic cases
+(lengths 1 to 3·2²⁰ pages, depths 1 to 3, pages rewritten across segments).
 
-**The checks catch what they are for** (`FramesTest`, in `build.sh`): a per-ASIC count changed, the Tracer's copy count
-of the last segment, frame 3's data image pages, frame 4's pages, a reserved header bit, frame 7's advice field against
-frame 8, and one value in frame 9 (caught by `--verify` against gold): each is caught. The counts two ways agree on
-240 synthetic cases (lengths of 1 to 3·2²⁰ pages, depths 1 to 3, 128 segments with pages rewritten across them).
-
-**Not exercised:** the fallback from an added table to a full one (C10). On every run the static base took the run's
-targets within three lines (Cyclone's run targets are all static targets already; EVM Zone's add 2 entries).
+`build.sh` runs the guests, `FramesTest` and the `segments` comparison, and fails if any fails. That is fixed today:
+until now a pipe hid `FramesTest`'s exit status.
 
 ## Sizes
 
-Every frame's bytes, the 128-bit header included (local runs; the runner's side files are in Quest 197's results).
+Every frame's bytes with its 16-byte header. **L**: sent LRU-coded. Local runs; Quest 200 writes the same side files.
 
-| run | table, form | 1 ELF | 2 base | 3 header | 4 | 5 table | 6 data image | 7 registers | 8 advice | 9 segments | file |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| EVM Zone trace-23 | full, raw | 2,015,088 | — | 2,912 | 48 | 1,048,608 | 9,280 | 139,280 | 30,352 | 584,496 | 3,830,064 |
-| | added, LRU | 2,015,088 | 1,048,608 | 2,912 | 96 | 3,888 | 8,528 | 139,280 | 30,352 | 195,632 | 3,444,384 |
-| Cyclone input/22 | full, raw | 3,316,064 | — | 2,880 | 48 | 1,048,608 | 32,288 | 139,280 | 2,768 | 859,024 | 5,400,960 |
-| | added, LRU | 3,316,064 | 1,048,608 | 2,880 | 80 | 16 | 26,272 | 139,280 | 2,768 | 217,776 | 4,753,744 |
-| EVM Zone 2²⁹ | full, raw | 2,015,088 | — | 2,912 | 48 | 1,048,608 | 9,152 | 139,280 | 31,328 | 2,585,424 | 5,831,840 |
-| | added, LRU | 2,015,088 | 1,048,608 | 2,912 | 96 | 3,888 | 8,576 | 139,280 | 31,328 | 1,579,264 | 4,829,040 |
-| Cyclone 2²⁹ | full, raw | 3,316,064 | — | 2,880 | 48 | 1,048,608 | 2,903,120 | 139,280 | 774,320 | 17,665,504 | 25,849,824 |
-| | added, LRU | 3,316,064 | 1,048,608 | 2,880 | 80 | 16 | 2,436,256 | 139,280 | 774,320 | 9,422,800 | 17,140,304 |
+| run | configuration | 1 | 2 program image | 4 base | 5 base | 3 header | 4 | 5 table | 6 data image | 7 registers | 8 advice | 9 segments | file |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| EVM Zone trace-23 | full table, none, N 128 | 80 | 2,011,168 | — | — | 2,880 | 48 | 1,048,608 | 8,800 | 139,280 | 30,352 | 584,496 | 3,825,712 |
+| | static base, smaller, N 128 | 80 | 1,997,280 L | 96 | 471,616 L | 2,880 | 96 | 3,888 L | 8,512 L | 139,280 | 30,352 | 195,632 L | 2,849,712 |
+| | static base, LRU, N 256 | 80 | 1,997,280 L | 96 | 471,616 L | 5,440 | 96 | 3,888 L | 8,512 L | 278,544 | 30,864 | 195,632 L | 2,992,048 |
+| Cyclone input/22 | full table, none, N 128 | 64 | 3,309,600 | — | — | 2,832 | 48 | 1,048,608 | 27,840 | 139,280 | 2,768 | 859,024 | 5,390,064 |
+| | static base, smaller, N 128 | 64 | 3,192,128 L | 80 | 416,256 L | 2,832 | 80 | 16 | 26,048 L | 139,280 | 2,768 | 217,776 L | 3,997,328 |
+| | static base, LRU, N 256 | 64 | 3,192,128 L | 80 | 416,256 L | 5,392 | 80 | 16 L | 26,048 L | 278,544 | 3,280 | 217,776 L | 4,139,664 |
+| EVM Zone 2²⁹ | full table, none, N 128 | 80 | 2,011,168 | — | — | 2,880 | 48 | 1,048,608 | 8,672 | 139,280 | 31,328 | 2,585,424 | 5,827,488 |
+| | static base, smaller, N 128 | 80 | 1,997,280 L | 96 | 471,616 L | 2,880 | 96 | 3,888 L | 8,560 L | 139,280 | 31,328 | 1,579,264 L | 4,234,368 |
+| | static base, LRU, N 256 | 80 | 1,997,280 L | 96 | 471,616 L | 5,440 | 96 | 3,888 L | 8,560 L | 278,544 | 31,840 | 1,579,264 L | 4,376,704 |
+| Cyclone 2²⁹ | full table, none, N 128 | 64 | 3,309,600 | — | — | 2,832 | 48 | 1,048,608 | 2,727,424 | 139,280 | 774,320 | 17,665,504 | 25,667,680 |
+| | static base, smaller, N 128 | 64 | 3,192,128 L | 80 | 416,256 L | 2,832 | 80 | 16 | 2,435,792 L | 139,280 | 774,320 | 9,422,800 L | 16,383,648 |
+| | static base, LRU, N 256 | 64 | 3,192,128 L | 80 | 416,256 L | 5,392 | 80 | 16 L | 2,435,792 L | 278,544 | 774,832 | 9,422,800 L | 16,525,984 |
 
-Raw against LRU, frame bytes (the same words either way):
+The update-word frames in both forms (frame bytes; the static-base runs). Frame 6's two forms hold different words
+(C7): raw skips every zero stretch of two words or more; LRU skips stretches of *T* or more, *T* the best found.
 
-| run | frame 5: words, raw, LRU | frame 6: words, raw, LRU | frame 9: words, raw, LRU | LRU / raw, frame 9 |
-|---|---|---|---|---|
-| EVM Zone trace-23, full table | 131,073, 1,048,608, 471,632 | 1,158, 9,280, 8,528 | 73,060, 584,496, 195,632 | 0.33 |
-| EVM Zone trace-23, added | 1,026, 8,224, 3,888 | | | |
-| Cyclone input/22, full table | 131,073, 1,048,608, 416,256 | 4,033, 32,288, 26,272 | 107,376, 859,024, 217,776 | 0.25 |
-| Cyclone input/22, added | 0, 16, 16 | | | |
-| EVM Zone 2²⁹, full table | 131,073, 1,048,608, 471,632 | 1,141, 9,152, 8,576 | 323,176, 2,585,424, 1,579,264 | 0.61 |
-| EVM Zone 2²⁹, added | 1,026, 8,224, 3,888 | | | |
-| Cyclone 2²⁹, full table | 131,073, 1,048,608, 416,256 | 362,888, 2,903,120, 2,436,256 | 2,208,186, 17,665,504, 9,422,800 | 0.53 |
-| Cyclone 2²⁹, added | 0, 16, 16 | | | |
+| run | frame 2: words, raw, LRU | the full table (the base's frame 5): words, raw, LRU | frame 6: words raw / LRU, raw, LRU (*T*) | frame 9: words, raw, LRU | LRU / raw: 2, table, 6, 9 |
+|---|---|---|---|---|---|
+| EVM Zone trace-23 | 251,393, 2,011,168, 1,997,280 | 131,073, 1,048,608, 471,616 | 1,097 / 1,128, 8,800, 8,512 (24) | 73,060, 584,496, 195,632 | 0.99, 0.45, 0.97, 0.33 |
+| Cyclone input/22 | 413,698, 3,309,600, 3,192,128 | 131,073, 1,048,608, 416,256 | 3,477 / 3,559, 27,840, 26,048 (16) | 107,376, 859,024, 217,776 | 0.96, 0.40, 0.94, 0.25 |
+| EVM Zone 2²⁹ | 251,393, 2,011,168, 1,997,280 | 131,073, 1,048,608, 471,616 | 1,081 / 1,111, 8,672, 8,560 (24) | 323,176, 2,585,424, 1,579,264 | 0.99, 0.45, 0.99, 0.61 |
+| Cyclone 2²⁹ | 413,698, 3,309,600, 3,192,128 | 131,073, 1,048,608, 416,256 | 340,925 / 360,527, 2,727,424, 2,435,792 (12) | 2,208,186, 17,665,504, 9,422,800 | 0.96, 0.40, 0.89, 0.53 |
 
-The page counts:
+The page counts (without the root):
 
-| run | log₂ K | image length, pages (depth) | program pages | data image pages | table k, entries | table pages taken: full / added | pages written: sum, max | per ASIC, max: start / final / Tracer's copy |
+| run | log₂ K | image length (depth) | program image: pages sent, taken | data image | table k, entries | taken: the base, a full table, added | pages written: sum, max | per ASIC, max: start / final / Tracer's copy |
 |---|---|---|---|---|---|---|---|---|
-| EVM Zone trace-23 | 23 | 32,768 (2) | 491 | 8 | 13, 49,772 | 257 / 3 | 533, 45 | 140 / 140 / 48 |
-| Cyclone input/22 | 24 | 131,072 (2) | 808 | 12 | 13, 42,388 | 257 / 0 | 739, 52 | 162 / 162 / 55 |
-| EVM Zone 2²⁹ | 23 | 32,768 (2) | 491 | 8 | 13, 49,772 | 257 / 3 | 1,761, 81 | 145 / 145 / 84 |
-| Cyclone 2²⁹ | 24 | 131,072 (2) | 808 | 713 | 13, 42,388 | 257 / 0 | 6,093, 1,048 | 1,995 / 1,995 / 1,053 |
+| EVM Zone trace-23 | 23 | 32,768 (2) | 491, 492 | 7 | 13, 49,772 | 256, 256, 2 | 533, 45 | 139 / 139 / 47 |
+| Cyclone input/22 | 24 | 131,072 (2) | 808, 809 | 11 | 13, 42,388 | 256, 256, 0 | 739, 52 | 161 / 161 / 54 |
+| EVM Zone 2²⁹ | 23 | 32,768 (2) | 491, 492 | 7 | 13, 49,772 | 256, 256, 2 | 1,761, 81 | 144 / 144 / 83 |
+| Cyclone 2²⁹ | 24 | 131,072 (2) | 808, 809 | 712 | 13, 42,388 | 256, 256, 0 | 6,093, 1,048 | 1,994 / 1,994 / 1,052 |
 
-Read: the static analysis covers the runs' targets almost entirely (EVM Zone adds 2 entries, 3 pages; Cyclone none),
-so with a base table frame 5 is a few kilobytes against a megabyte. Frame 9 at 2²⁹ is at most 17.7 MB raw, far
-under section 16's 256 MiB cap. The program image is the largest frame on every run but Cyclone 2²⁹.
+At *N* 256 the per-ASIC maxima are the same: with 2²² rows a segment the runs have at most 89 segments with rows, and
+the rest are past the end.
 
-## The choices where HF was open
+## What the numbers say
 
-As in `NOTES.md`, section 7, with the owner's ruling on C1:
+- **The program image barely compresses** (0.96-0.99): it is code and data. It is the largest frame on three of the
+  four runs, and it is sent once per program.
+- **A base table pays:** the run's frame 5 is 3,888 bytes (EVM Zone, 2 pages added) or nothing (Cyclone, all its
+  targets are static), against 1 MB for a full table raw or 0.4 MB LRU-coded.
+- **The smaller form is LRU for frames 2, 6 and 9 on every run.** Frame 5 with no pages to send goes uncompressed: 16
+  bytes either way, a tie.
+- **Frame 6's least data saves 5-14% raw** against one run per file (this report's first version: 9,280 to 8,800
+  bytes on EVM Zone trace-23, 32,288 to 27,840 on Cyclone input/22, 2,903,120 to 2,727,424 on Cyclone 2²⁹). LRU then
+  takes off another 1-11%.
+- ***N* costs 1,088 bytes a segment in frame 7** and 24 in frames 3 and 8 together; *N* 256 adds 142 KB to a proof.
 
-- **C1** (ruled): the header is one 128-bit word, reserved [63:0], type [95:64], length [127:96]; lengths and counts 32
-  bits, never 64, and the writer refuses one that doesn't fit.
-- **C2** the LRU table all zeros at each frame's start, carried across segments in frame 9; frames 5 and 6 may be LRU.
-- **C3** every image of a proof one length: a16z's `max_ram_k` cells in 4 KB pages (known from the program alone);
-  a jump table 2^k lines in pages; depth the smallest *d* ≥ 1 with 1,024^*d* ≥ the length.
-- **C4** the strings from options, defaulting to `/programs/<name>`, `/work/<name>-<input>`, `<stem>.base`.
-- **C5** the program id: SHA-256 of frame 1's data before its padding.
-- **C6** frame 1 lists the pages with a non-zero byte.
-- **C7** frame 6: one run per input file, its length rounded up to 8 bytes, zeros included.
-- **C8** frame 5: maximal runs of consecutive pages; a table under a page padded with free entries.
-- **C9** always 128 segments; a shorter cut list padded with past-the-end segments, as `SegmentWriter` writes them.
-- **C10** the base is the static targets' table; the run's targets inserted in ascending order; a full table if one
-  doesn't fit.
-- **C11** a job's pages: the data pages it writes and every index page above them, the root included; none when it
-  writes nothing. One place on each side.
+## Quest 197 (the frames as first specified)
 
-## What I would change in HOST-FRAMES.md (for the owner)
+PASS on the runner (it was down for an expired token, then ran): build and tests 43 s, the small inputs 24 s, v1.36
+gold's `segments` byte-identical 31 s, both workloads at 2²⁹ 114 s; both 2²⁹ `segments` files equal the published v1.3
+SHA-256s; every `--verify` VERIFIED.
 
-1. **Frame 1's page records are 4,104 bytes** (u64 offset, then the page), so from the second page on a page doesn't
-   start on a 128-bit word: the same thing Q1 fixed for headers. Either a 16-byte record head (u32 page number and 12
-   bytes of 0, or the offset in a 128-bit word), or all the offsets first, padded, then the pages.
-2. **Frame 2's three u32 (k, p1, p3) put the lines 12 bytes off** a 128-bit word; pad them to 16 bytes.
-3. **Say each file's length** (C3). The images' length (and so their depth) isn't in any frame but frame 1; the
-   Updater's `FILE_PAGES` needs it for every image. Proposed: a16z's `max_ram_k`, which frame 1 carries; or a field in
-   frame 3.
-4. **Say whether a page count includes the root** (C11), and that a page written in many segments counts once per file.
-5. **Say what frame 6 sends** (C7): the whole of each input file, zeros included, is what gold sends now.
-6. **The program id's definition** (C5): the SHA-256 of frame 1's data is what the chip can recompute from what it
-   stores.
-7. **The segment count**: the frames carry exactly 128; a run cut into fewer segments (the hard-cut lists) needs
-   empty ones (C9). Worth a sentence.
-8. **The LRU flags on frames 5 and 6 are worth keeping:** frame 5 as a full table codes to 0.40-0.45 of raw; frame 6 to
-   0.81-0.94; frame 9 to 0.25-0.61.
-9. **Base tables work:** with the static analysis as the base, a run adds 0 to 3 pages. The full table is 257 pages,
-   so the Open item on a base outliving the runs built on it matters more than its size.
-10. **The per-ASIC counts** (an Open item): they are cheap to compute and now checked two ways; keeping them costs
-    1,536 bytes of frame 3.
+## Quest 200 (the frames as ruled)
 
-## Quest 197
-
-PENDING.
+PENDING: updater-w1 `562fd725`, kit `bcb5497b…`. The same task passed start to finish in a copy of the queue here.

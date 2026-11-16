@@ -16,3 +16,14 @@ always 0, which the "no reserved fields" rule may rule out; the owner's call.
 **Answered (owner, 2026-11-16):** the header is one 128-bit word: 64 reserved zero bits in [63:0], u32 type in
 [95:64], u32 length in 128-bit words in [127:96]; lengths and counts are never 64 bits. `HOST-FRAMES.md` on main has
 it; it replaces choice C1.
+
+## Q2. Readings taken on the rulings of 2026-11-16 (no answer needed unless one is wrong)
+
+1. **A base table's own frame 4 names no base**: a base is always established as a full new table, never by adding to
+   another base. The reference refuses a base frame 4 with a base.
+2. **"The least data in the form being sent" (frame 6)**: gold finds the least data for each form separately (raw and
+   LRU can skip different stretches), then sends the smaller form, so frame 6's raw and LRU forms may hold different
+   update words making the same image. `--verify` checks both make the same image.
+3. **A tie in size is sent uncompressed.**
+4. **A base table established in a frame file comes right after frames 1 and 2**, as `NEXT.md` says; the reference
+   requires the run's frame 4 to name a base established in the same file.

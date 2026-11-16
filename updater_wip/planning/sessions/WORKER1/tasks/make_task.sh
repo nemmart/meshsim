@@ -16,7 +16,7 @@ cat > "$OUT" <<TASK
 #   gold's build.sh: its tests, the frames on every guest (--verify, frames-read --check --seg, FramesTest), the segments
 #     command byte-identical to v1.36 gold's on every guest and the guests as expected;
 #   the small inputs (EVM Zone trace-23, Cyclone input/22, the hard cuts) and both workloads at 2^29 (test/frames/workloads.sh):
-#     the frames twice (a full table raw; a static base, all LRU), each with --verify and frames-read --check --seg;
+#     the frames three times (a full table, no compression; the static base, the smaller form (the real configuration); the static base, LRU, N 256), each with --verify and frames-read --check --seg;
 #     at 2^29 the segments command's files against their published v1.3 SHA-256s; small: against v1.36 gold's, byte for byte.
 # The inputs are Quest task 111's kit (tasks/111-w27-inputs-evm-zone-29.sh, jolt-asic-planning fa59d9a), checked by SHA-256.
 # Reads no persistent data and writes none; scratch in /tmp, removed at the start and the end. Safe to re-run. ~10 min.

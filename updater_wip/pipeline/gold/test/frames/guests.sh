@@ -6,6 +6,9 @@
 # runs over 64 segments' worth); --base=static, the smaller form, N = 128), then read back with frames-read --check and
 # --seg against the segments command's file at the same cuts. Then FramesTest: the page counts two ways, the checks
 # caught on files broken from keccak256 with inputs, and the forced fall-back on the jumps guest.
+# Each frame file is also wrapped in the link's packets (WORKER2: packets), read back (packets-read) and compared byte for
+# byte: as the packetizer writes it for N 128; with 17 idle bytes between packets and numbered from 0xFFFFE for N 64;
+# with 1,024 idle bytes for N 256.
 #   test/frames/guests.sh     from gold's directory, after build.sh
 set -e
 cd "$(dirname "$0")/../.."
@@ -36,11 +39,16 @@ for g in $GUESTS jumps kin; do
     set -- $v
     out=$(java -cp $CP gold.Main frames "$d" "$i" "$W/$g.frames" --segment-rows=$R --base=$1 --compression=$2 --asics=$3 --verify) || true
     chk=$(java -cp $CP gold.Main frames-read "$W/$g.frames" --check --seg="$W/$g.seg" --brief | tail -2 | tr '\n' ' ') || true
+    case $3 in 64) pi=--idle=17; pf=--first=0xFFFFE;; 256) pi=--idle=1024; pf=--first=1;; *) pi=--idle=0; pf=--first=1;; esac
+    rm -f "$W/$g.packets" "$W/$g.back"
+    pk=$( { java -cp $CP gold.Main packets "$W/$g.frames" "$W/$g.packets" $pi $pf > /dev/null \
+      && java -cp $CP gold.Main packets-read "$W/$g.packets" "$W/$g.back" --compare="$W/$g.frames" $pf | tail -1; } 2>&1 ) || true
     n=$((n + 1))
-    if echo "$out" | grep -q VERIFIED && echo "$chk" | grep -q "check: ok" && echo "$chk" | grep -q "segment file ([0-9]* segments): ok"; then
-      echo "$g ($rows rows, $R a segment, base $1, compression $2, N $3): ok"
+    if echo "$out" | grep -q VERIFIED && echo "$chk" | grep -q "check: ok" && echo "$chk" | grep -q "segment file ([0-9]* segments): ok" \
+        && [ "$pk" = "checks: ok" ] && cmp -s "$W/$g.back" "$W/$g.frames"; then
+      echo "$g ($rows rows, $R a segment, base $1, compression $2, N $3): ok; as packets ($pi $pf), read back: ok"
     else
-      echo "$g (base $1, compression $2, N $3): FAILED"; echo "$out"; echo "$chk"; fail=$((fail + 1))
+      echo "$g (base $1, compression $2, N $3): FAILED"; echo "$out"; echo "$chk"; echo "packets: $pk"; fail=$((fail + 1))
     fi
   done
 done

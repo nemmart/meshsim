@@ -19,6 +19,7 @@ before v1.36 was read; `planning/V136-SCOPE.md` says where the two meet and wher
 | `planning/HOST-FRAMES.md` | the nine frames the host sends, field by field: what gold is to produce |
 | `planning/UPDATER-INTERFACE.md` | the Updater's registers, events, errors and queue ports |
 | `planning/V136-SCOPE.md` | v1.36 against this design: the names, seven collisions to rule on, what v1.36 already gives, what was not yet read |
+| `planning/RTL-CHANGE-REQUESTS.md` | what the design asks Tony to change in hardware the RTL has built |
 | `diagrams/svg/fig_m1_lpddr_path.svg` | the figure: LPDDR, the memory controller, the bus driver, the cache and their consumers |
 | `diagrams/src/fig_m1_lpddr_path.py` | its generator; it uses `wip/diagrams/src/common.py` |
 

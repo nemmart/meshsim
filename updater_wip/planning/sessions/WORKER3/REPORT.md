@@ -203,7 +203,7 @@ required equal, byte for byte, to the tests' own writer's output.
 | the same three without the recorded files' checks | here | pass |
 | in every run above: the master's status; every image as its run ended against gold's (program, table, cycle-0, start, the Tracer's copy, final), and the frozen ones again at the end; `PAGE_COUNT` 0 at every done; no error bit; the link read to its end; the page map; the hand-over; the Tracer's last record against record s + 1; the tracer tile's and every tile's results; each replayer's end state against the next window's start | | |
 | `./run_tests.sh all --check`, every v1.36 step with them | here (3 steps SKIPPED for the recorded files); the runner (Quest 204) | **pass**, both places. On the runner every step ran but `fw-build` (no xPack toolchain there; `fw/build.sh --check` passes here: 18 images) |
-| `make check` | the runner (QUEST205) | QUEST205CHECK |
+| `make check`: every test, debug and release, gcc and clang, the TSan runs; `test_master`'s 20 chip runs in each build | the runner (Quest 205) | **pass**, 857 s |
 | `test_master`, `test_updater`, `test_ingress_link` in the debug build (ASan, UBSan), and with gcc | here | pass |
 | Ingress against HOST-LINK.md and INGRESS-INTERFACE.md as main has them, and against gold's vectors on main | here | the documents have not changed since `8385dacd`, which Ingress was built to; `test_ingress_link` now has HL's own figures (its table's CRC values, its example packet byte for byte, its cross-check 0x48674BC7): **33 pass**; `test_packet_vectors` reads main's `test/packets/`: the 8 CRC values, 43 packets, 5 files and 32 damaged files **all agree** |
 

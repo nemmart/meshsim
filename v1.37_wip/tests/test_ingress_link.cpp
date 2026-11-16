@@ -59,6 +59,34 @@ TEST(link_crc32c) {
     CHECK_EQ(packet_writer::crc32c(b, 32), 0x113FDB5Cu);                 // the writer's, table-driven, agrees
 }
 
+// HL's own figures, as main has them (8385dacd): its table's values, its example packet byte for byte, its cross-check.
+TEST(link_documents_example) {
+    using hostlink::crc32c;
+    uint8_t zeros[16] = {};
+    CHECK_EQ(crc32c(zeros, 16), 0x42709AEAu);              // "of 16 zero bytes"
+    // "stream 2, no flags, length 1, number 1, acknowledge 0, the data one zero word"
+    static const uint8_t example[16] = {0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0xEA, 0x9A, 0x70, 0x42, 0xA0, 0x8C, 0x06, 0xE1};
+    CHECK_EQ(crc32c(example, 12), 0xE1068CA0u);            // the header CRC, over bytes 0 to 11
+    CHECK_EQ(crc32c(example, 16), 0x48674BC7u);            // "the CRC-32C of all 16 header bytes of a good packet"
+    std::vector<uint8_t> bytes(example, example + 16);
+    bytes.insert(bytes.end(), 16, 0);
+    hostlink::Reader reader;
+    reader.open(bytes.data(), bytes.size());
+    hostlink::Packet p;
+    hostlink::Check check;
+    size_t taken = 0;
+    CHECK(reader.next(p, check, taken) == hostlink::Reader::Next::PACKET);
+    CHECK(check == hostlink::Check::OK);
+    CHECK_EQ(p.stream, 2u); CHECK_EQ(p.length, 1u); CHECK_EQ(p.number, 1u); CHECK_EQ(p.acknowledge, 0u); CHECK_EQ(p.flags, 0u);
+    CHECK_EQ(taken, size_t(32));
+    CHECK(reader.next(p, check, taken) == hostlink::Reader::Next::END);
+    std::vector<uint8_t> written;                          // and the tests' writer makes the same 32 bytes
+    packet_writer::Fields f;
+    f.length = 1; f.number = 1;
+    packet_writer::packet(written, f, zeros);
+    CHECK(written == bytes);
+}
+
 // A header word's fields where HL puts them, and the two checks over the bytes HL names.
 TEST(link_header_fields) {
     packet_writer::Fields f;

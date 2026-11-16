@@ -5,7 +5,11 @@
 #            jumpmap's classes from this kit, each build against its manifest (check.sh); 3 ./run_tests.sh all --check with
 #            those inputs and the kit's link vectors (PACKET_VECTORS). A step run_tests.sh prints as SKIPPED (the firmware
 #            toolchain is not the runner's; no javac for the fixtures) is listed and is not a failure; if the inputs can't
-#            be built the real-data steps are skipped, and that is one.
+#            be built the real-data steps are skipped, and that is one. Between 2 and 3, 2b: the host's side of v1.37's
+#            proof steps (pipeline/frames/build.sh matrix real 29, with the kit's classes of the frames' gold, each packet
+#            file also against the tests' writer), into the same inputs' directory; after 3, 4: the proof runs counted
+#            (3 recorded segments, 24 of the matrix, 10 at 2^29: each must have passed) and their figures
+#            (tests/proof_numbers.py) in proof-numbers.md.
 #   check    make check from a clean tree: every test, debug and release, gcc and clang, and the TSan runs.
 # VERDICTS: one line per item. TIMES: each item's wall time. Scratch in /tmp, removed first and at the end.
 FAIL=0; T0=$(date +%s); N=$(nproc)
@@ -51,6 +55,16 @@ if [ "$ITEM" = suites ]; then
   [ $INOK = 1 ] && verdict inputs-small PASS || verdict inputs-small FAIL
   took inputs-small "$t"
 
+  sec "2b. the host's side of the proof steps: gold's frames, packets and references (pipeline/frames/build.sh)"
+  t=$(date +%s)
+  ( cd "$KS" && make -j"$N" MODE=suite CC_NAME=clang build/clang-suite/packetize ) > "$RES/build-packetize.log" 2>&1 || tail -5 "$RES/build-packetize.log"
+  if [ $INOK = 1 ] && OUT=$IN JAP_DIR=$W/i/k/jap GOLD_CLASSES=$KIT/classes-frames PACKETIZE=$KS/build/clang-suite/packetize \
+       bash "$KS/pipeline/frames/build.sh" matrix real 29 > "$RES/frames.log" 2>&1
+  then grep -v JAVA_TOOL "$RES/frames.log" | tail -16; verdict frames PASS
+  else tail -8 "$RES/frames.log" 2>/dev/null; verdict frames FAIL; fi
+  cat "$IN"/v137/*/SHA256SUMS > "$RES/frames-sha256.txt" 2>/dev/null
+  took frames "$t"
+
   sec "3. ./run_tests.sh all --check (JOBS=$N; MESHSIM_INPUTS=$IN)"
   t=$(date +%s)
   ( cd "$KS" && MESHSIM_INPUTS=$IN PACKET_VECTORS=$KIT/updater_wip/pipeline/gold/test/packets STEP_TIMES=1 JOBS=$N ./run_tests.sh all --check ) > "$RES/run_tests.log" 2>&1; R=$?
@@ -61,6 +75,15 @@ if [ "$ITEM" = suites ]; then
   [ "$(stat -c %s "$RES/run_tests-logs.tgz" 2>/dev/null || echo 0)" -le 20000000 ] || rm -f "$RES/run_tests-logs.tgz"
   LAST=$(grep '^== ' "$RES/run_tests.log" | tail -1); echo "exit $R; $LAST"
   if [ $R = 0 ] && [[ "$LAST" == "== all passed"* ]]; then verdict run_tests PASS; else verdict run_tests FAIL; fi
+  sec "4. the proof runs, counted, and their figures"
+  for p in real:3 matrix:24 29:10; do
+    L=$KS/results/proof-${p%%:*}.log; want=${p##*:}
+    got=$(grep -c '^PASS proof_run' "$L" 2>/dev/null); bad=$(grep -c '^FAIL' "$L" 2>/dev/null)
+    cp "$L" "$RES/" 2>/dev/null
+    if [ "${got:-0}" = "$want" ] && [ "${bad:-0}" = 0 ]; then verdict "proof-${p%%:*}" "PASS-$got-runs"; else verdict "proof-${p%%:*}" "FAIL-${got:-0}-of-$want-passed"; fi
+  done
+  ( cd "$KS" && python3 tests/proof_numbers.py results/proof-real.log results/proof-matrix.log results/proof-29.log ) > "$RES/proof-numbers.md" 2>&1
+  tail -3 "$RES/proof-numbers.md"
   SK=$(grep -c 'SKIPPED (' "$RES/run_tests.log")
   [ "$SK" = 0 ] || verdict run_tests-skipped "SKIPPED-$SK-steps: $(grep 'SKIPPED (' "$RES/run_tests.log" | sed 's/^[^a-z]*//; s/ .*//' | sort -u | tr '\n' ' ')"
 fi

@@ -119,6 +119,9 @@ int main(int argc, char** argv) {
     std::printf("the link: %llu packets, %llu words, %llu bytes; the page map: %llu pages marked; the master's core: %llu cycles awake of %llu (%.2f%%)\n",
                 (unsigned long long)n.link_packets, (unsigned long long)n.link_words, (unsigned long long)n.link_bytes, (unsigned long long)n.pages_marked,
                 (unsigned long long)n.master_awake, (unsigned long long)run.cycles, run.cycles ? 100.0 * double(n.master_awake) / double(run.cycles) : 0.0);
+    if (n.master.size() > 27)   // fw/cc/master_layout.h: MR_HANDED, MR_RELEASED, MR_END, the master's mcycle at each
+        std::printf("the master: the tracer tile's load at its cycle %u, the windows landed and the replay released at %u, its exit at %u\n",
+                    n.master[25], n.master[26], n.master[27]);
     std::printf("%s proof_run %s: %d checks failed\n", run.failures ? "FAIL" : "PASS", seg.name.c_str(), run.failures);
     return run.failures ? 1 : 0;
 }

@@ -1,6 +1,7 @@
 # Running v1.36
 
-> *v1.37, in progress: this page is v1.36's, and holds for this folder. What v1.37 adds is marked "v1.37".*
+> *v1.37: this page is v1.36's, and holds for this folder. What v1.37 adds is marked "v1.37"; running the whole chip
+> from a packet file is `RUNNING-v1.37.md`.*
 
 *For anyone running v1.36's suites, kits and tools: each one's command, how long it takes, what it writes, and what it
 is checked against.* Building is `BUILDING.md`; the commands run from this folder.
@@ -22,7 +23,9 @@ the run. The run exits 0 only when every step passed.
 prints it as `SKIPPED (<why>)`, lists the skipped steps again in its summary, and ends with `all passed, N steps
 SKIPPED for what is not on this machine (data, a toolchain)`. With both it ends with `all passed`.
 - `MESHSIM_INPUTS` (default `~/meshsim-inputs`): the real workloads' recorded data (EVM Zone, Cyclone), for
-  `tracer-block` and `segment-real`.
+  `tracer-block` and `segment-real`. v1.37: and, under its `v137/`, the host's side of the proof steps (gold's frame
+  files, the link's packet files, gold's reference images: `pipeline/frames/build.sh` makes them in minutes), for
+  `proof-real`, `proof-matrix` and `proof-29`.
 - The RISC-V toolchain the firmware images were built with (`BUILDING.md`; `RISCV_PREFIX` names it), for `fw-build`.
   With it, `RISCV_TESTS` and `COREMARK` name the checkouts from which that step also rebuilds riscv-tests' and
   CoreMark's images; without them it rebuilds the rest and says so.
@@ -65,6 +68,15 @@ about 2.5 minutes after the build, `quick --check` about 40 seconds.
 | `tracer-block` | both, with `MESHSIM_INPUTS` | `tracer_block --inputs DIR --program P --segment S --compression C --fill F --quiet --ref FILE`, for EVM Zone's segments 0 and 1 and Cyclone's 0, `C` 0 and 7, `F` 1 and 55,35; then each segment with `--fill model` (15 runs) | 22 s | log: `tests/tracerblock/tracer-block.log`; in the run itself, gold's files and the RTL's figures (`tests/tracerblock/rtl/`) |
 | `sort-64k` | all | `fwimage keys 65536 build/sort-64k.keys`, its sha256 checked, then `test_sort sort_64k` | 40 s | as `sort`, at 64 × 65,536 records; the key file against `fw/images/sort/sort-64k.keys.sha256` |
 | `segment-real` | all, with `MESHSIM_INPUTS` | `test_segment real_` | 40 s | the real workloads' windows (EVM Zone's 0–63 and 64–127, Cyclone's 0–63): every row, record and stream against the recorded files |
+| `file-store` (v1.37) | both | `test_file_store` | <1 s | the file store's pages by address: a page placed where told, beside the pages it hands out |
+| `updater` (v1.37) | both | `test_updater` | <1 s | the Updater black box alone, against `UPDATER-INTERFACE.md`; on gold's frame files of four guests, every image against gold's (`tests/updater/`) |
+| `ingress-link` (v1.37) | both | `test_ingress_link` | <1 s | Ingress's host link, the black box, against `INGRESS-INTERFACE.md` and `HOST-LINK.md` |
+| `packet-vectors` (v1.37) | both, with gold's vectors | `test_packet_vectors` | <1 s | gold's packetizer's vectors, packet files and damaged files (`../updater_wip/pipeline/gold/test/packets`; `PACKET_VECTORS` names another folder) |
+| `updater-fixtures` (v1.37) | both, with a JDK | `tests/updater/make_fixtures.sh --check` | 10 s | the fixtures made again by gold, equal to the committed ones |
+| `master` (v1.37) | both | `test_master` | 10 s | the whole chip from a packet file, on the guests' fixtures, under `fw/cc/master.c`: every image against gold's, the page map, the hand-over, the segment traced and replayed; the error path; runs that must fail |
+| `proof-real` (v1.37) | all, with `MESHSIM_INPUTS` and its `v137/real` | `proof_run ... --recorded RUN`, for `segment-real`'s three segments | 1 min | every row, record and stream against the recorded files, as `segment-real`; every image against gold's |
+| `proof-matrix` (v1.37) | all, with `MESHSIM_INPUTS/v137/matrix` | `proof_run`, 24 runs: EVM Zone and Cyclone small, segments of 8 windows, raw and LRU-coded, with and without a base table, s = 0, 1 and the middle | 3 min | every image against gold's; the Tracer's last record against record s + 1; `RUNNING-v1.37.md` |
+| `proof-29` (v1.37) | all, with `MESHSIM_INPUTS/v137/29` | `proof_run`, 10 runs: both workloads at 2^29, N 128, five segments of each | 6 min | as `proof-matrix` |
 
 The figures the chip's steps print are in `README.md` (Status); what each test is and where its reference came
 from is `tests/README.md`.
@@ -84,5 +96,7 @@ from is `tests/README.md`.
 | a shard of the acceptance kit (the replayer alone on a delivery's windows) | `build/clang-release/replay_shard DELIVERY PROGRAM CSV [--variant V] [--first F --count N] [--manifest M]`; `shard_summary` sums the shards | `CSV` |
 | a delivery's windows on the replayer, with the run's figures | `build/clang-release/replay_delivery` (`tests/acceptance/README.md`) | its report |
 | the Tracer alone on a segment | `build/clang-release/tracer_block` (its usage line; `tests/README.md`) | its report |
+| v1.37: the whole chip from a packet file, one frame file with N and s | `build/clang-suite/proof_run` (`RUNNING-v1.37.md`) | the run's lines and its figures |
+| v1.37: a frame file on the Updater alone; a frame file in the link's packets | `build/clang-suite/updater_frames`, `build/clang-suite/packetize` (their usage lines) | the images' digests; the packet file |
 | the delivery tools, the register tables | `tools/README.md` | |
 | the benchmark | `bench/README.md` | |

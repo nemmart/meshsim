@@ -1,11 +1,13 @@
 // packet_writer.h: a frame file wrapped in the link's packets, for the tests (v1.37; ../v1.4_wip/planning/HOST-LINK.md
 // and INGRESS-INTERFACE.md, "In v1.37: a black box and a file").
 //
-// PROVISIONAL. The packetizer is WORKER2's, in gold (../updater_wip/pipeline/gold); it is not written yet. Until its
-// vectors and packet files are here, Ingress's black box (src/units/host_link.h, ingress_egress.h) is tested against
-// packets made by this writer, which is by the same author as the reader: it shows that the two agree with each other
-// and with the documents as one person read them, and no more. WORKER2's files are the check, and replace it.
-// It shares no code with the reader: its CRC-32C is table-driven, the reader's bit by bit.
+// The packetizer is gold's (../updater_wip/pipeline/gold: `gold packets`, WORKER2's), and gold's vectors and packet
+// files are what Ingress's black box (src/units/host_link.h, ingress_egress.h) is checked against
+// (tests/test_packet_vectors.cpp). This writer is the tests' own, for a test that makes its packets on the spot from a
+// frame file: written from HOST-LINK.md before gold's was there, by the reader's author, so by itself it shows only
+// that the two agree with each other. Its output equals gold's, byte for byte, on gold's small.frames and on every
+// packet file of the proof steps (pipeline/frames/build.sh requires it). It shares no code with the reader: its
+// CRC-32C is table-driven, the reader's bit by bit.
 //
 // A frame file's packets: every packet on the background stream (2); each frame starts a new packet; a frame's packets
 // hold 32 words of data but its last, which holds what remains; packet numbers from 1, and after 0xFFFFE, 1; the

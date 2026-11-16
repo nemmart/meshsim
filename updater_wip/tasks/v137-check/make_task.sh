@@ -2,10 +2,11 @@
 # make_task.sh -- v1.37_wip's checks as a Quest task (WORKER3; v136-check's generator, for v1.37_wip).
 #   updater_wip/tasks/v137-check/make_task.sh NNN-name suites|check > NNN-name.sh     (commit first: the kit is HEAD's)
 # Writes a self-contained task with an embedded kit: v1.37_wip/ and updater_wip/pipeline/gold at HEAD (git archive),
-# gold's and jumpmap's classes built here (pipeline/inputs/lib/classes.sh), so that the runner needs no javac, and, for
-# suites, the link's test vectors: updater_wip/pipeline/gold/test/packets, HEAD's if it has them, else those of
-# $VECTORS_REV (default origin/updater-w2: WORKER2's branch, until it is on main). The body is body.sh (its header lists
-# the items). The suites item also reads Quest task 111's kit from the queue (jolt-asic-planning at the pin).
+# gold's and jumpmap's classes built here (pipeline/inputs/lib/classes.sh) and the frames' gold's (updater_wip/pipeline/
+# gold: classes-frames), so that the runner needs no javac, and, for suites, the link's test vectors:
+# updater_wip/pipeline/gold/test/packets, HEAD's if it has them, else those of $VECTORS_REV (default origin/updater-w2).
+# The body is body.sh (its header lists the items). The suites item also reads Quest task 111's kit from the queue
+# (jolt-asic-planning at the pin, with the workloads' inputs, the 2^29 ones too).
 # Reads no persistent data and writes none; writes only results/NNN-name/. Safe to re-run.
 set -eu
 export LC_ALL=C
@@ -20,6 +21,8 @@ mkdir -p "$K/kit"
 VEC="HEAD's"
 if [ "$ITEM" = suites ]; then
   bash "$K/kit/v1.37_wip/pipeline/inputs/lib/classes.sh" "$K/kit/v1.37_wip" "$K/kit/classes" >&2
+  mkdir -p "$K/kit/classes-frames"
+  javac -d "$K/kit/classes-frames" $(find "$K/kit/updater_wip/pipeline/gold/src" -name '*.java') >&2
   P=updater_wip/pipeline/gold/test/packets
   if [ ! -f "$K/kit/$P/VECTORS.txt" ]; then
     VR=${VECTORS_REV:-origin/updater-w2}; VEC="$(cd "$TOP" && git rev-parse --short "$VR")'s ($VR)"
@@ -35,9 +38,11 @@ cat <<HEAD
 #!/bin/bash
 # Task $NAME -- meshsim v1.37_wip's checks (v1.37_wip/ at $R, $BR; updater_wip/tasks/v137-check/make_task.sh), item: $ITEM.
 # v1.37 is v1.36 with Ingress's host link, the Updater and a file store that places pages, behind a switch that is off
-# by default (updater_wip/planning/sessions/WORKER3). suites = the small inputs built from the pinned sources, then
-# ./run_tests.sh all --check: every v1.36 step against its v1.36 log, and v1.37's own steps; check = make check from a
-# clean tree (debug and release, gcc and clang, TSan).
+# by default, and the master tile's program that runs the whole chip from a packet file (updater_wip/planning/sessions/
+# WORKER3). suites = the small inputs built from the pinned sources; the host's side of the proof steps (gold's frames,
+# packets and reference images: the 24-run matrix, the three recorded segments, both workloads at 2^29); then
+# ./run_tests.sh all --check: every v1.36 step against its v1.36 log, and v1.37's own steps, the proof steps with them;
+# the proof runs' figures. check = make check from a clean tree (debug and release, gcc and clang, TSan).
 # From an embedded kit. Writes only results/$NAME/. Scratch in /tmp, removed first and at the end. Safe to re-run.
 set -u
 cd "\$(dirname "\$0")/.."

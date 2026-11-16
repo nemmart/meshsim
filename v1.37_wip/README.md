@@ -1,15 +1,22 @@
-# meshsim v1.37 (in progress)
+# meshsim v1.37
 
-> **v1.37 is in progress** (`../updater_wip/`, WORKER3). It is to be the first version that works end to end: the
-> simulator is started with one file, the packets that come over the link from the host; the master tile's
-> firmware reads the frames out of Ingress and drives the Updater; the Updater builds the memory images; the
-> Tracer traces its segment on them. Ingress's host side and the Updater are software black boxes behind their
-> real registers. **`CHANGES-v1.37.md` lists what is v1.37's, and grows with the work.**
+> **v1.37 is v1.36 with the first end-to-end path** (`../updater_wip/`, WORKER3). The simulator is started with one
+> file, the packets that come over the link from the host, and with N and s; the master tile's firmware
+> (`fw/cc/master.c`) reads the frames out of Ingress and drives the Updater; the Updater builds the memory images;
+> the Tracer traces its segment on them, and the compute tiles replay it. Ingress's host side and the Updater are
+> software black boxes behind their real registers.
 >
-> **Everything else in this folder is still v1.36's, copied unchanged (main, 67aaeb86), and reads as v1.36:** this
-> page below the line, `BUILDING.md` and `RUNNING.md` but for the steps marked v1.37, `OPEN-v1.36.md`, `spec/`,
-> `tools/freeze/README.md`. v1.36's machine is what the folder builds unless a machine asks for v1.37's master
-> tile (`MachConfig::host_link`), so every test, suite and figure of v1.36 below still holds here.
+> | to | read |
+> |---|---|
+> | run it | `RUNNING-v1.37.md` |
+> | see what v1.37 adds, piece by piece, and what specifies each | `CHANGES-v1.37.md` |
+> | see how it was checked, and its figures | `../updater_wip/planning/sessions/WORKER3/REPORT.md` |
+>
+> **Everything else in this folder is v1.36's, copied unchanged (main, 67aaeb86), and reads as v1.36:** this page
+> below the line, `BUILDING.md` and `RUNNING.md` but for what they mark v1.37, `OPEN-v1.36.md`, `spec/`,
+> `tools/freeze/README.md`. v1.36's machine is what the folder builds unless a machine asks for v1.37's master tile
+> (`MachConfig::host_link`), so every test, suite and figure of v1.36 below still holds here. The specification is
+> not changed: what v1.37 adds is specified by the design documents of `../v1.4_wip/planning/`.
 
 ---
 

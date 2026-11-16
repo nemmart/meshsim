@@ -4,6 +4,9 @@
 #                                 inline vector test (upstream's inline test vectors, test/inline-vectors.jsonl.gz)
 #   JOLT_CPP=<jolt-cpp checkout> ./build.sh
 #                                 the same, but row for row against <jolt-cpp>/src/tracer/inlines/*.inc
+#   then the host's frames (WORKER1): test/frames/guests.sh (every guest written, verified, read back and checked;
+#   FramesTest) and test/frames/old_unchanged.sh (the segments command byte-identical to v1.36 gold's on every guest;
+#   the guests as expected). FRAMES_TESTS=0 skips them.
 set -e
 cd "$(dirname "$0")"
 rm -rf build
@@ -16,3 +19,8 @@ else
   java -cp build gold.InlineEmitTest
 fi
 java -cp build gold.InlineVectorTest test/inline-vectors.jsonl.gz
+if [ "${FRAMES_TESTS:-1}" != 0 ]; then
+  sh test/frames/guests.sh > /tmp/gold-frames-guests.log 2>&1 || { cat /tmp/gold-frames-guests.log; exit 1; }
+  tail -1 /tmp/gold-frames-guests.log
+  sh test/frames/old_unchanged.sh
+fi

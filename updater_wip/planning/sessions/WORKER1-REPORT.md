@@ -1,5 +1,8 @@
 # WORKER1 report: gold writes the host's frames
 
+*Closed and merged into `main` on 2026-11-16. The files this one calls `NOTES.md`, `REPORT.md`, `QUESTIONS.md` and
+`NEXT.md` are `WORKER1-NOTES.md`, `WORKER1-REPORT.md`, `WORKER1-QUESTIONS.md` and `WORKER1-NEXT.md`, beside it.*
+
 2026-11-16. Branch `updater-w1`. The specification is `v1.4_wip/planning/HOST-FRAMES.md` (HF) as on main after the
 owner's rulings on this report's first version (`NEXT.md`). The plan and the choices are `NOTES.md` (section 7 is
 current); the questions are `QUESTIONS.md` (Q1 answered; Q2, the readings taken on the rulings).

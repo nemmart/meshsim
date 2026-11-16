@@ -3,7 +3,7 @@
 > **updater_wip's copy (WORKER1):** v1.36's gold, unchanged in everything it did before, **plus the host's frames for
 > v1.4** (`v1.4_wip/planning/HOST-FRAMES.md`): the `frames` command, the reader (`frames-read`) and the reference images
 > (`frames-images`). The section "The host's frames" below says how to run them and what they are checked against;
-> the plan and every choice where HOST-FRAMES.md is open are in `updater_wip/planning/sessions/WORKER1/NOTES.md`.
+> the plan and every choice where HOST-FRAMES.md is open are in `updater_wip/planning/sessions/WORKER1-NOTES.md`.
 
 A standalone emulator of the Jolt zkVM's tracer (DECISIONS-v1.3 section 17, work item W4): it reads a guest's ELF, sets
 up Jolt's memory, runs the program and produces **Jolt's trace rows exactly as jolt-cpp's tracer does** (jolt-cpp
@@ -130,4 +130,4 @@ The reading side (`FrameFile`, `Reference`, `FrameReader`) shares no code with t
 | `test/frames/old_unchanged.sh [<prog> <input> <cuts>]...` | the `segments` command byte-identical to v1.36 gold's (built in scratch) on every guest, in both formats, and on the runs given; `test/guests/check_guests.sh` |
 | `test/frames/workloads.sh <tracer dir> <out> small\|29` | EVM Zone and Cyclone, small with the hard cuts or at 2^29: the frames three times (full table uncompressed; static base, the smaller form; static base, LRU, N 256) with `--verify`, `--check --seg`; at 2^29 the `segments` files against their published v1.3 SHA-256s |
 
-Results: `updater_wip/planning/sessions/WORKER1/REPORT.md` (Quest 197; Quest 200 after the rulings).
+Results: `updater_wip/planning/sessions/WORKER1-REPORT.md` (Quest 197; Quest 200 after the rulings).

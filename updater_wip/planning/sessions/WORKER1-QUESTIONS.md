@@ -1,5 +1,8 @@
 # WORKER1 questions
 
+*Closed and merged into `main` on 2026-11-16. The files this one calls `NOTES.md`, `REPORT.md`, `QUESTIONS.md` and
+`NEXT.md` are `WORKER1-NOTES.md`, `WORKER1-REPORT.md`, `WORKER1-QUESTIONS.md` and `WORKER1-NEXT.md`, beside it.*
+
 ## Q1. The frame header is 64 bits, but frames are moved in 128-bit words (answered)
 
 `HOST-FRAMES.md`, "Every frame": the header is u32 type and u32 length (8 bytes), and the data is zero-padded to whole

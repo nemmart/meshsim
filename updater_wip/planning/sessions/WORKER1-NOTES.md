@@ -1,5 +1,8 @@
 # WORKER1 notes: gold writes the host's frames
 
+*Closed and merged into `main` on 2026-11-16. The files this one calls `NOTES.md`, `REPORT.md`, `QUESTIONS.md` and
+`NEXT.md` are `WORKER1-NOTES.md`, `WORKER1-REPORT.md`, `WORKER1-QUESTIONS.md` and `WORKER1-NEXT.md`, beside it.*
+
 Status, 2026-11-16, later: **the owner's rulings on the report (`NEXT.md`) are done**: the frames rewritten to
 HOST-FRAMES.md as ruled, every check rerun and passing (80 guest runs at *N* = 64, 128, 256; both small inputs and both
 workloads at 2²⁹, three configurations each), Quest 200 sent for the runner. The choices below are revised.

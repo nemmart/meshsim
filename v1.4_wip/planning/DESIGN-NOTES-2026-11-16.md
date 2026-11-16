@@ -152,7 +152,7 @@ session that brings the simulator to it, and a coder session that updates the fi
   sort at full size, and the memory tile's requests.
   - One step was skipped: `fw-build`, which rebuilds the firmware images. It needs xPack `riscv-none-elf-gcc`
     15.2.0-1, which the runner does not have. New firmware on v1.36 will need it there.
-- **Proposed: v1.36 is the base.** Its names and register layout are the ones this design uses, so nothing is ported
+- **Decided (owner): v1.36 is the base.** Its names and register layout are the ones this design uses, so nothing is ported
   later, and `memory.c` is where the firmware that minds the Updater starts.
 
 ## 9. Gold's frames, and the rulings on them

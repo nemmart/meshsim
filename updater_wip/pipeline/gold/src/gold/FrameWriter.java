@@ -19,7 +19,7 @@ import java.util.function.LongFunction;
  * frames 4 and 5 on their own; then 3 the proof header, 4 and 5 the run's jump table, 6 the data image, 7 the register
  * states, 8 the advice logs, 9 the memory segments. N segments, N the number of ASICs. Gold runs once, through
  * SegmentWriter (whose own file is not written); the per-segment data is v1.3's, repacked. The choices where
- * HOST-FRAMES is open are WORKER1's (updater_wip/planning/sessions/WORKER1/NOTES.md, "Choices").
+ * HOST-FRAMES is open are WORKER1's (updater_wip/planning/sessions/WORKER1-NOTES.md, "Choices").
  */
 public final class FrameWriter {
   /** Which form the update-word frames (2, 5, 6, 9) are sent in: the smaller (the rule), or forced, for the tests. */

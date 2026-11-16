@@ -1,5 +1,8 @@
 # For WORKER1: the owner's rulings on the report (2026-11-16)
 
+*Closed and merged into `main` on 2026-11-16. The files this one calls `NOTES.md`, `REPORT.md`, `QUESTIONS.md` and
+`NEXT.md` are `WORKER1-NOTES.md`, `WORKER1-REPORT.md`, `WORKER1-QUESTIONS.md` and `WORKER1-NEXT.md`, beside it.*
+
 Quest 197 passed on the runner (it was down for an expired token); record it in REPORT.md.
 
 The owner went through your ten suggestions. These rulings change the frames. **`HOST-FRAMES.md` on main now has all

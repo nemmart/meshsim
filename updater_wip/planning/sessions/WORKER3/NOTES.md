@@ -1,7 +1,7 @@
 # WORKER3 notes: v1.37, the Tracer on images the Updater built
 
-Status, 2026-11-16: **Stage 1 done** (the units, each tested alone; `REPORT.md`, Stage 1). Stage 2, the master
-tile's firmware, is under way. Branch `updater-w3`, main merged in at `8385dacd`. The owner's go-ahead and rulings
+Status, 2026-11-16: **Stages 1 and 2 done** (the units, each tested alone; the master tile's firmware, on the
+whole chip with gold's guests; `REPORT.md`). Stage 3, the real workloads, is under way. Branch `updater-w3`, main merged in at `8385dacd`. The owner's go-ahead and rulings
 are in section 9; what was built differently from this plan is in section 11.
 
 Names: II is `INGRESS-INTERFACE.md`, UI `UPDATER-INTERFACE.md`, HF `HOST-FRAMES.md`, HL `HOST-LINK.md`, all in
@@ -369,4 +369,38 @@ at each stage's end, and `main` merged in.
   which this session's network refuses. The steps on recorded windows (`segment-real`, `tracer-block`) run on the
   runner (Quest), as do `make check` and everything of Stage 3 on the real workloads. Gold's frames of the small
   inputs are made here (gold needs only the kit's files), so the Updater is checked against gold here.
+
+**Stage 2.**
+
+- **The staging area is at word 0x48000,** right above the page map, not at 0x80000: record *s* at 0x48000,
+  record *s* + 1 at 0x48200, two rows for the tracer tile's header at 0x48400, 32 rows of scrap at 0x48480, and
+  advice log *s* from 0x48800 to the scratchpad's end: 187,904 rows, 375,808 values (`fw/cc/master_layout.h`).
+  A log that does not fit, there or in the tracer tile's layout, ends the run with a status of its own.
+- **Record *s*'s word 66 goes to DMEM as frame 7 passes,** not to the staging area and back through the read
+  unit: the hand-over completes it there (the Tracer's copy's root and depth, the table's) and writes it to the
+  staging area. The read unit is used for the page map alone.
+- **Both of the segment's barriers are the master's,** as `cc1.c`'s: the first is released in the boot (the
+  tiles arm for their records and say so to the tracer tile, whose requests wait in its queue while it sits in
+  its boot ROM); the second after the hand-over, when every window has landed.
+- **What the master is told** (`master_layout.h`): `boot_desc`, the two images' places in its scratchpad and the
+  tracer tile's layout (where its record, its expected end state and its advice go, and the advice's room);
+  `system_config`, N and *s*. The tracer tile's header, tables and templates are placed by the harness, as
+  today; the master writes five of the header's words (`TL_H_HASH_MUL`, `_STEP`, `_LINES`, `TL_H_ADVICE_N`, and
+  `TL_H_EXPECT` 0 for the last segment) as 32-bit streams of the same transfer.
+- **One sleep, and everything else polled.** Every wait is a WFI followed by one load of the tile's `EVENTS` and
+  of each peripheral's that has one; what the loads return is kept in the program's own state (a load consumes),
+  the requests are answered, and the pump, which never waits, moves the frame's data on when the allowance
+  covers the packet. So the third run of frame 9 goes on while the tracer tile is loaded and the segment runs.
+  The master's counters: 1 for what Ingress's DMA sends it, 2 for the read unit, 3 for its own writes to its
+  scratchpad.
+- **"A frame ends at the end of a packet" is checked** where the next frame starts: the packet at the front must
+  be whole. So is each header frame's length against its fields, each data frame's against its header frame, and
+  frame 7's against 68 N: a difference ends the run (`MR_FRAME`).
+- **The harness is `run_chip` with a proof** (`segment_bench.h`'s `Proof`; `tests/proof_bench.h`): one machine,
+  one set of the tiles' checks, for v1.36's segments and for a proof. A segment with no recorded windows (a
+  guest) is run with the checks that need none.
+- **The fixtures' segments are 50 rows, one window.** A fourth guest, `divs` (`tests/updater/make_div_guest.py`),
+  has advice values and a page written in every segment: none of gold's test guests has advice.
+- **`tools/doccheck.sh`** takes a document of `../v1.4_wip/planning/` cited by its name as there: v1.37's
+  additions are specified by design documents that are not in the version's folder.
 

@@ -34,6 +34,8 @@ Each document marks what the owner decided, what is proposed and what is open.
 
 ## Beside it
 
+- `updater_wip/`: where the Updater and the cache controller are built in simulation, as a design input to v1.4;
+  gold's frames first. Its sessions' prompts are there.
 - `fs_wip/`: the file system's own folder, with the shell's specification. The file system is the step after v1.4's
   deliverable; its design decisions so far are in the first design note here.
 - `v1.36/`: the base.

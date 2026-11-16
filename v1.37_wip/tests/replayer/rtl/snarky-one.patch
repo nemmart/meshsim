@@ -1,0 +1,45 @@
+diff --git i/rtl/blocks/replayer_unit/test/src/lib.rs w/rtl/blocks/replayer_unit/test/src/lib.rs
+index d359698..8529d0b 100644
+--- i/rtl/blocks/replayer_unit/test/src/lib.rs
++++ w/rtl/blocks/replayer_unit/test/src/lib.rs
+@@ -22,6 +22,8 @@ mod replayer_region_test;
+ #[cfg(test)]
+ mod replayer_row_engine_test;
+ #[cfg(test)]
++mod replayer_script_test;
++#[cfg(test)]
+ mod replayer_tables;
+ #[cfg(test)]
+ mod replayer_unit_test;
+diff --git i/rtl/blocks/replayer_unit/test/src/replayer_acceptance_test.rs w/rtl/blocks/replayer_unit/test/src/replayer_acceptance_test.rs
+index 9ea23e5..fb01bfd 100644
+--- i/rtl/blocks/replayer_unit/test/src/replayer_acceptance_test.rs
++++ w/rtl/blocks/replayer_unit/test/src/replayer_acceptance_test.rs
+@@ -317,6 +317,7 @@ impl StreamWord {
+ /// A window and a record variant: what a pass reads.
+ struct Window {
+     index: usize,
++    variant: String,
+     record: Vec<u128>,
+     streams: [Vec<u128>; 3],
+     /// rows.bin's rows.
+@@ -360,7 +361,7 @@ impl Window {
+         assert!(raw.values[0] <= instructions.len(), "{}: its values", file("code").display());
+         instructions.truncate(raw.values[0]);
+         assert_eq!(raw.values[0], stream_word.values[0], "window {index}: the variants' code values");
+-        Self { index, record, streams, reference, end_registers, instructions }
++        Self { index, variant: variant.to_string(), record, streams, reference, end_registers, instructions }
+     }
+ }
+ 
+@@ -1152,6 +1153,10 @@ fn run_window(bench: &mut Bench, tables: &Tables, window: &Window) -> Result<Fig
+     if !failures.is_empty() {
+         return Err(failures.join("\n    "));
+     }
++    if let Ok(directory) = std::env::var("REPLAY_DUMP") {
++        let bytes: Vec<u8> = outcome.left.iter().flat_map(|&cycle| (cycle as u32).to_le_bytes()).collect();
++        std::fs::write(format!("{directory}/{}.{}.left", window.index, window.variant), bytes).unwrap();
++    }
+     let mut figures = Figures::of(window, &places, &outcome.left);
+     figures.expansions = expansions as u64;
+     figures.expansion_words = outcome.expansion_words as u64;

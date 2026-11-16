@@ -1,0 +1,9 @@
+program syn, windows 0..2 (3), stages ABF, 8 JVMs, wall 12 s
+stage A: 3 windows OK, 196608 rows, 14.2 JVM-s, 13816 rows per JVM-second, 4.74 s per window
+stage B: 3 windows OK, 196608 rows, 18.5 JVM-s, 10640 rows per JVM-second, 6.16 s per window
+stage F: 2 windows OK, 131072 rows, 11.1 JVM-s, 11776 rows per JVM-second, 5.57 s per window
+stage B stalls, cycles per window over 3 windows (log queues 256 entries): image 2673.3 (max 3792), code 1801.7 (max 2366), newexp 3582.3 (max 4098), exp 3271.3 (max 3909), rlog 2634.7 (max 2849), wlog 2377.3 (max 4244), outq 2468.7 (max 3413)
+stage B log waits: read log 2634.7, write log 2377.3 cycles per window; windows with any: read 3, write 3
+stage F stalls, cycles per window over 2 windows (log queues 256 entries): image 3034.0 (max 4758), code 4517.0 (max 4804), newexp 3530.0 (max 3613), exp 1979.5 (max 2479), rlog 3162.5 (max 4531), wlog 1847.5 (max 2217), outq 284.0 (max 342)
+stage F log waits: read log 3162.5, write log 1847.5 cycles per window; windows with any: read 2, write 2
+throughput: 800 windows per hour (all stages)

@@ -1,0 +1,58 @@
+# The RTL's core programs and what the RTL's simulation measured on each (README.md): per line, the ELF file under
+# elf/, the cycle in which the RTL's test saw the program's pass (cycle 0 the first after reset), and the instructions
+# retired through that cycle. tests/test_core_programs.cpp requires the core model to give exactly these.
+rv32ui-add.elf 486 433
+rv32ui-addi.elf 236 210
+rv32ui-and.elf 506 453
+rv32ui-andi.elf 192 166
+rv32ui-auipc.elf 38 26
+rv32ui-beq.elf 345 259
+rv32ui-bge.elf 390 277
+rv32ui-bgeu.elf 415 302
+rv32ui-blt.elf 345 259
+rv32ui-bltu.elf 370 284
+rv32ui-bne.elf 351 259
+rv32ui-jal.elf 35 23
+rv32ui-jalr.elf 127 83
+rv32ui-lb.elf 249 221
+rv32ui-lbu.elf 249 221
+rv32ui-ld_st.elf 1083 931
+rv32ui-lh.elf 265 237
+rv32ui-lhu.elf 274 246
+rv32ui-lui.elf 41 33
+rv32ui-lw.elf 279 251
+rv32ui-or.elf 509 456
+rv32ui-ori.elf 199 173
+rv32ui-sb.elf 482 422
+rv32ui-sh.elf 535 475
+rv32ui-simple.elf 14 9
+rv32ui-sll.elf 514 461
+rv32ui-slli.elf 235 209
+rv32ui-slt.elf 480 427
+rv32ui-slti.elf 231 205
+rv32ui-sltiu.elf 231 205
+rv32ui-sltu.elf 480 427
+rv32ui-sra.elf 533 480
+rv32ui-srai.elf 250 224
+rv32ui-srl.elf 527 474
+rv32ui-srli.elf 244 218
+rv32ui-st_ld.elf 459 451
+rv32ui-sub.elf 478 425
+rv32ui-sw.elf 542 482
+rv32ui-xor.elf 508 455
+rv32ui-xori.elf 201 175
+rv32um-mul.elf 520 427
+rv32um-mulh.elf 518 427
+rv32um-mulhsu.elf 518 427
+rv32um-mulhu.elf 518 427
+rv32uzicond-czero_eqz.elf 441 388
+rv32uzicond-czero_nez.elf 440 387
+firmware-isa_edges.elf 1388 797
+coremark.elf 398723 301189
+# CoreMark as mise run bench-core builds it (10 iterations); its own report is also checked, against BENCH.
+coremark-bench.elf 3641314 2773473
+# The interrupt programs (src/, README.md): the machine external interrupt, WFI and the NMI, with the event trigger.
+irq_wfi.elf 2940 1523
+nmi_wfi.elf 118 56
+nmi_run.elf 102 53
+trap_nmi.elf 99 42

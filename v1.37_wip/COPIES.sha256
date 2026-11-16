@@ -1,0 +1,18 @@
+# Files copied from v1.3 and still held to v1.3's bytes: the data files and the pipeline's key tools. sha256, the path here, the path in v1.3.
+# tools/check_copies.sh checks them (run_tests.sh's step layout; make check). v1.35's list also held meshsim's own
+# firmware sources, which v1.36 does not carry (README.md, "What v1.36 does not carry over").
+a3b90f3c2fbc64f1a93c8c0ff916cfbaf40823aae38c4540811482873741d3da  data/hops.txt  meshsim/hops.txt
+3d76b556f111764ac36d8ba6a3e7492c3399e15c8371efba19d06894934827ad  data/one99.txt  meshsim/data/one99.txt
+f2d00f78de18eb04d7530baab68234748951208ce4eb023de35d0136a50af8e9  data/trace.txt  meshsim/data/trace.txt
+d36d1c4c44ed22ccc162c40eec7ca0b9669d31875f3a60886b0c8ed926037cef  data/vec-821e1bd.tsv  meshsim/data/vec-821e1bd.tsv
+b2c00a748f36e2fa0ac017e37537f641a6ac5ac10b227606b0b70fc707b30512  data/zipfraw.txt  meshsim/data/zipfraw.txt
+0e64fe0035675229e8f6f1c29e994b7b70f0877f01d01ee98ce5107aaac28bfc  data/tables/manifest.json  tables/manifest.json
+09d5f9cdcc3c85b8f0c6c7205e963d8b775a6f2c29ce19ab3724a21bd2e38003  data/tables/opcode_table.txt  tables/opcode_table.txt
+5a84b1e68cac2c7679a102c2f7f3b5e8d8b0ed0c5c332c5f5d7f1e8f47f6a364  data/tables/replayer/check.txt  tables/replayer/check.txt
+b42445b28890a0b57946ee912b6c83dbaa801cc0ea241c8b55a2dae0dec49db0  data/tables/replayer/decode_table.bin  tables/replayer/decode_table.bin
+8211c89cc1e4dfb07ef763f28cdb3ca0ecce1544058164a81e4e74630872cb0d  data/tables/replayer/listing.txt  tables/replayer/listing.txt
+061ce69d3692aa2e71e6495f3ca64442d5179e0658eee8cfcdf81bc1c461a4f9  data/tables/replayer/rom.bin  tables/replayer/rom.bin
+0f039d69a1317eafd9db171778dda05d5f89d9b459ea787ccf7c09bbf783db57  data/tables/replayer/template_index.bin  tables/replayer/template_index.bin
+465298c21fa706a21ab35a46ea2120454273f6a541b27a5aa5ee701b1a667b1b  data/tables/replayer/templates.bin  tables/replayer/templates.bin
+f442f9d68f53db6ea3a8740e78e506e514d9421393d34f158b16956961134841  pipeline/keys/KeyGen.java  meshsim/test/KeyGen.java
+cd18a0fd78f235f929dc5796d382d27711cf5f20696433a175a5796b25d34bab  pipeline/keys/SplitSets.java  meshsim/test/SplitSets.java

@@ -1,0 +1,30 @@
+# The rebuilt tile's programs, which mise run core-images builds for base_tile_test
+# and base_tile_special_test (xtask/src/tile_tests.rs), in kind order: each one's
+# kind, its index here, is the number test/src/tile_programs.rs's KIND_* constants
+# give it, and argument 0 of its runs (tile_map.h). Each is the assembly file
+# <name>.S of this directory, linked with start.S by link.ld. A new program adds its
+# entry here, its source and its kind in tile_programs.rs.
+
+[[program]]
+kind = 0
+name = "registers"
+
+[[program]]
+kind = 1
+name = "noc"
+
+[[program]]
+kind = 2
+name = "barrier"
+
+[[program]]
+kind = 3
+name = "errors"
+
+[[program]]
+kind = 4
+name = "special"
+
+[[program]]
+kind = 5
+name = "replayer"

@@ -6,8 +6,15 @@
 //
 // THE TWO REGIMES (D6). Building an image (create, put_page, cow_open, make_private, set_ownership, copy) is the
 // configuration phase and allocates pages. The Tracer's cycle uses only walk, read_line and write_line, which never
-// allocate. `ref` keeps its pages in a HashMap by address; addresses are handed out in order from `first`, 32 units
-// apart, so here the pages are one dense array indexed by (address - first) / 32.
+// allocate. `ref` keeps its pages in a HashMap by address; these calls hand addresses out in order from `first`, 32
+// units apart.
+//
+// v1.37: A PAGE IS PLACED WHERE IT IS TOLD (updater_wip, WORKER3). The master tile's firmware keeps the page map and
+// chooses every page, so the store no longer decides where a page is: `page_at(a)` makes the page at address a, and
+// `read_page` / `write_page` move a whole page, for the Updater (units/updater.h). The pages are found through a
+// two-level table by page number (address / 32), each page a block of its own that never moves, so that one unit may
+// read a page while another places a new one. The calls above are unchanged, and hand out the same addresses as
+// before; an address a page was placed at is passed over.
 //
 // `ref`'s IllegalStateException and IllegalArgumentException are FATAL here.
 #pragma once
@@ -49,7 +56,23 @@ public:
     // first: the first page's address in 128 B units (address 0 is the superblock's, so tests start above it).
     explicit FileStore(int32_t first = PAGE_UNITS);
 
-    size_t pages_allocated() const { return words_.size() / PAGE_WORDS; }
+    ~FileStore();
+    FileStore(const FileStore&) = delete;
+    FileStore& operator=(const FileStore&) = delete;
+
+    size_t pages_allocated() const { return n_pages_; }
+
+    // ---- v1.37: pages by address (the Updater's side; the firmware chooses the addresses) ----
+    // An address a page can be at: a multiple of 32 units, below `limit` (LPDDR's end, in 128 B units).
+    static bool page_address(int64_t a, int64_t limit) { return a >= 0 && a % PAGE_UNITS == 0 && a < limit; }
+    bool has_page(int32_t a) const { return find(a) != nullptr; }
+    // The page at a, made of zeros if there is none yet. Allocates when it makes one.
+    uint64_t* page_at(int32_t a);
+    // A whole page read (zeros, and false, if no page was ever written there) and written (made if absent).
+    bool read_page(int32_t a, uint64_t* out) const;
+    void write_page(int32_t a, const uint64_t* in);
+    // Every page of the store, ascending by address (tools and checks).
+    void for_each_stored(const std::function<void(int32_t, const uint64_t*)>& fn) const;
 
     // ---- configuration: building images ----
     // The depth a file of `bytes` needs (section 20): 0 to 4 KB, 1 to 4 MB, 2 to 4 GB, 3 to 4 TB.
@@ -115,11 +138,22 @@ private:
     void for_each(int32_t a, int levels, int64_t prefix, const std::function<void(int64_t, const uint64_t*)>& fn) const;
     static int digit(int64_t pg, int level, int depth) { return int(uint64_t(pg) >> (10 * (depth - 1 - level))) & 1023; }
 
+    // The pages, by page number n = address / 32 (26 bits): top_[n >> 10][n & 1023] is the page's 512 words, or null.
+    static constexpr unsigned LEAF_BITS = 10, TOP = 1u << 16;
+    uint64_t* find(int32_t a) const {
+        if (a < 0 || a % PAGE_UNITS != 0) return nullptr;
+        const uint32_t n = uint32_t(a) / uint32_t(PAGE_UNITS);
+        uint64_t** leaf = top_[n >> LEAF_BITS];
+        return leaf ? leaf[n & ((1u << LEAF_BITS) - 1)] : nullptr;
+    }
+    uint64_t* make(int32_t a, bool index);
+
     bool tracking_ = false;
     uint64_t sum_ = 0;
     int32_t first_;
     int64_t next_free_;
-    std::vector<uint64_t> words_;  // page k (address first_ + 32 k) at words_[512 k]
+    size_t n_pages_ = 0;
+    uint64_t*** top_;
 };
 
 }  // namespace tracer

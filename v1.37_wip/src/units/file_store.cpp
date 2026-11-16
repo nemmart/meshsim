@@ -1,6 +1,7 @@
 // file_store.cpp: FileStore (file_store.h), ported from `ref`'s FileStore.java.
 #include "units/file_store.h"
 
+#include <cstdlib>
 #include <cstring>
 
 #include "base/fatal.h"
@@ -10,30 +11,95 @@ namespace tracer {
 
 FileStore::FileStore(int32_t first) : first_(first), next_free_(first) {
     if (first % PAGE_UNITS != 0 || first < 0) FATAL("FileStore: unaligned first page address 0x%x", unsigned(first));
+    top_ = static_cast<uint64_t***>(std::calloc(TOP, sizeof(uint64_t**)));
+    if (!top_) FATAL("FileStore: out of memory");
+}
+
+FileStore::~FileStore() {
+    for (unsigned i = 0; i < TOP; i++) {
+        if (!top_[i]) continue;
+        for (unsigned k = 0; k < (1u << LEAF_BITS); k++) std::free(top_[i][k]);
+        std::free(top_[i]);
+    }
+    std::free(top_);
+}
+
+// A new page at a: zeros, or for an index page every entry 0xFFFFFFFF.
+uint64_t* FileStore::make(int32_t a, bool index) {
+    if (a < 0 || a % PAGE_UNITS != 0) FATAL("FileStore: no page can be at 0x%x", unsigned(a));
+    const uint32_t n = uint32_t(a) / uint32_t(PAGE_UNITS);
+    uint64_t**& leaf = top_[n >> LEAF_BITS];
+    if (!leaf) {
+        leaf = static_cast<uint64_t**>(std::calloc(size_t(1) << LEAF_BITS, sizeof(uint64_t*)));
+        if (!leaf) FATAL("FileStore: out of memory");
+    }
+    uint64_t*& pg = leaf[n & ((1u << LEAF_BITS) - 1)];
+    if (pg) FATAL("FileStore: a page is already at 0x%x", unsigned(a));
+    pg = static_cast<uint64_t*>(std::malloc(PAGE_WORDS * sizeof(uint64_t)));
+    if (!pg) FATAL("FileStore: out of memory");
+    std::memset(pg, index ? 0xFF : 0, PAGE_WORDS * sizeof(uint64_t));
+    n_pages_++;
+    return pg;
 }
 
 int32_t FileStore::alloc(bool index) {
+    while (find(int32_t(next_free_))) {                   // v1.37: an address a page was placed at is passed over
+        next_free_ += PAGE_UNITS;
+        if (next_free_ > int64_t(0x7FFFFFFF) + 1) FATAL("FileStore: out of 31-bit addresses");
+    }
     const int64_t a = next_free_;
     next_free_ += PAGE_UNITS;
     if (next_free_ > int64_t(0x7FFFFFFF) + 1) FATAL("FileStore: out of 31-bit addresses");
-    words_.resize(words_.size() + PAGE_WORDS, index ? ~uint64_t(0) : 0);  // an index page: every entry 0xFFFFFFFF
+    make(int32_t(a), index);
     return int32_t(a);
 }
 
 void FileStore::grow_to(int64_t next_free) {
     if (next_free < next_free_ || (next_free - first_) % PAGE_UNITS != 0 || next_free > int64_t(0x7FFFFFFF) + 1)
         FATAL("FileStore: grow_to 0x%llx from 0x%llx", (unsigned long long)next_free, (unsigned long long)next_free_);
-    words_.resize(size_t((next_free - first_) / PAGE_UNITS) * PAGE_WORDS, 0);
+    for (int64_t a = next_free_; a < next_free; a += PAGE_UNITS)
+        if (!find(int32_t(a))) make(int32_t(a), false);
     next_free_ = next_free;
 }
 
 uint64_t* FileStore::page(int32_t a) {
-    const int64_t k = (int64_t(a) - first_) / PAGE_UNITS;
-    if (a < first_ || (a - first_) % PAGE_UNITS != 0 || int64_t(a) >= next_free_)
-        FATAL("FileStore: no page at 0x%x", unsigned(a));
-    return words_.data() + k * PAGE_WORDS;
+    uint64_t* p = find(a);
+    if (!p) FATAL("FileStore: no page at 0x%x", unsigned(a));
+    return p;
 }
 const uint64_t* FileStore::page(int32_t a) const { return const_cast<FileStore*>(this)->page(a); }
+
+uint64_t* FileStore::page_at(int32_t a) {
+    uint64_t* p = find(a);
+    return p ? p : make(a, false);
+}
+
+bool FileStore::read_page(int32_t a, uint64_t* out) const {
+    const uint64_t* p = find(a);
+    if (!p) { std::memset(out, 0, PAGE_WORDS * sizeof(uint64_t)); return false; }
+    std::memcpy(out, p, PAGE_WORDS * sizeof(uint64_t));
+    return true;
+}
+
+void FileStore::write_page(int32_t a, const uint64_t* in) {
+    uint64_t* d = page_at(a);
+    if (tracking_) {
+        const uint64_t base = uint64_t(a) / PAGE_UNITS * PAGE_WORDS;
+        for (int i = 0; i < PAGE_WORDS; i++) {
+            if (d[i] != 0) sum_ -= term64(R_FILES, base + uint64_t(i), d[i]);
+            if (in[i] != 0) sum_ += term64(R_FILES, base + uint64_t(i), in[i]);
+        }
+    }
+    std::memcpy(d, in, PAGE_WORDS * sizeof(uint64_t));
+}
+
+void FileStore::for_each_stored(const std::function<void(int32_t, const uint64_t*)>& fn) const {
+    for (unsigned i = 0; i < TOP; i++) {
+        if (!top_[i]) continue;
+        for (unsigned k = 0; k < (1u << LEAF_BITS); k++)
+            if (top_[i][k]) fn(int32_t(((i << LEAF_BITS) | k) * uint32_t(PAGE_UNITS)), top_[i][k]);
+    }
+}
 
 int FileStore::depth_for(int64_t bytes) {
     for (int d = 0; d <= 3; d++)
@@ -202,12 +268,11 @@ void FileStore::write_line(int32_t line_addr, const uint64_t* in) {
 
 uint64_t FileStore::scan_sum() const {
     uint64_t s = 0;
-    for (int64_t a = first_; a < next_free_; a += PAGE_UNITS) {
-        const uint64_t* p = page(int32_t(a));
+    for_each_stored([&](int32_t a, const uint64_t* p) {
         const uint64_t base = uint64_t(a) / PAGE_UNITS * PAGE_WORDS;
         for (int i = 0; i < PAGE_WORDS; i++)
             if (p[i] != 0) s += term64(R_FILES, base + uint64_t(i), p[i]);
-    }
+    });
     return s;
 }
 

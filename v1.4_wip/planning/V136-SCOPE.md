@@ -47,7 +47,7 @@ The names this folder's documents use, and v1.36's (from the guide's section 7.1
 
 ## 3. Where v1.36 collides with the v1.4 design
 
-Each needs a ruling before the documents here can be put in v1.36's terms.
+Each needs a ruling before the documents here can be put in v1.36's terms; how binding each is follows the table.
 
 | # | topic | v1.36, as built | this folder | to decide |
 |---|---|---|---|---|
@@ -56,8 +56,16 @@ Each needs a ruling before the documents here can be put in v1.36's terms.
 | 3 | **the RW engine, and the memory tile's peripheral 1** | The RW engine is the memory tile's peripheral 1, type 2: its window's words 32 to 36, its region 0x04 the write buffer (16 KiB by default). One job at a time: a read of LPDDR into a queue its DMA sends, or a write from the write buffer. It is the master of `lpddr` (17.7) | `UPDATER-INTERFACE.md` gives the Updater type 2, words 32 to 49 and region 0x04's parts 1 and 2. The figure has the RW engine as one consumer of the bus driver | The Updater becomes the memory tile's peripheral 2 (region 0x05), with a new type number; the cache perhaps peripheral 3. The bus driver goes between the RW engine's `lpddr` port and the controller |
 | 4 | **`lpddr`** | AXI4 with 128-bit data and a byte address of 32 bits by default; one ID, so no ID signals, and reads answered in order; bursts INCR, none crossing 4 KiB; `rready` and `bready` always 1 (3) | The bus driver is the only thing on AXI and serves the cache's lines and the Updater's pages too; a line was to be able to pass a page (second note, section 2) | Whether the port to the controller gains IDs, or the bus driver orders everything itself with one ID and short bursts |
 | 5 | **a peripheral's window and its bits** | Control block: `PARAMS` 0, `STATUS` 1, `ERRORS` 2, `EVENTS` 3, `EVENTS_PEEK` 4, `EVENTS_MASK` 5, `START` 6. DMA block: words 16 to 18. The peripheral's own words from 32. The Tracer's `EVENTS` and `ERRORS` are packed from bit 0, which reverses item 144 and awaits the owner (17.1, item 161) | `UPDATER-INTERFACE.md` uses v1.35's words (`PULSE_RUN` at 3, `EVENTS` at 5 to 7) and the bit positions v1.35 shared between units | Mechanical once item 161 is ruled: the control block as v1.36's, and the Updater's event and error bits packed or shared accordingly |
-| 6 | **the Tracer's jump cache** | 64 entries of a 32-bit key and a 32-bit base, fully associative (17.9.4) | 128 entries (owner, second note, section 5) | A change to the RTL's Tracer |
+| 6 | **the Tracer's jump cache** | 64 entries of a 32-bit key and a 32-bit base, fully associative (17.9.4) | 128 entries, for consideration only (owner; second note, section 5) | If it is wanted, a request to Tony: the Tracer is built |
 | 7 | **a peripheral DMA's src** | The tile's own id, which reverses item 118 and awaits the owner (16.4, item 160) | "72 to 74 stay source ids" (first note, section 8) | Nothing in the design depends on it; the wording follows the ruling |
+
+**How to read them (owner, 2026-11-16).** v1.35 was simulation only, and to get the RTL off the ground Tony had to
+pencil in units that v1.35 had left as black boxes. Those are not necessarily the units that stay: for them, this
+folder's design is the proposal, and Tony's unit a starting point where it fits. What the RTL really built stays the
+RTL's: a change to it is written down here and asked of Tony, not made on this side.
+
+- **Pencilled in:** 2 (the host interface, whose meaning v1.36 lists as open), 3 (the RW engine) and 4 (`lpddr`).
+- **Built:** 1 (the attachment, in the router), 5 (the window's layout), 6 (the Tracer's jump cache) and 7 (the src).
 
 One thing moved toward the owner's picture: v1.35 made the link to the tile the controller router's down port; in
 v1.36 it is the attach port, and a peripheral's DMA enters on an unused link input, as in the first note's port table.

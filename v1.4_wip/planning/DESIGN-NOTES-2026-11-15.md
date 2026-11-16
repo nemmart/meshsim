@@ -168,9 +168,11 @@ Its registers are `UPDATER-INTERFACE.md`.
 - **Decided (owner): the jump table is out of the proof header, and a run's table is either a full new table or
   entries added to an existing one.** The existing one is a **base jump table**, loaded on its own: from a common
   run, from many runs, or from the static analysis.
-- **Decided (owner): the Tracer's jump cache goes from 64 entries to 128.** An entry is 8 bytes and saves at most
-  one 128-byte line of the big cache. To measure when building: the map's stalls at 64, 128 and 256 entries, and a
-  set-associative one of 1,024 or 2,048.
+- **For consideration, not decided (owner, 2026-11-16): the Tracer's jump cache from 64 entries to 128.** An entry is
+  8 bytes and saves at most one 128-byte line of the big cache. With base jump tables that a run can add to, a run's
+  table may be dense enough that the larger cache is not needed; to look at again as more of the design is done. To
+  measure when building: the map's stalls at 64, 128 and 256 entries, and a set-associative one of 1,024 or 2,048.
+  The Tracer is built, so it would be a request to Tony, not a change made here.
 - **Considered and set aside:** a bitmap of the targets a run uses with an on-chip builder; a table for each
   segment; a table ordered by address.
 - **Decided (owner): the copy-on-write files go in the working directory,** and go with it at cleanup.

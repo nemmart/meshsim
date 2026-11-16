@@ -58,6 +58,7 @@ struct Numbers {
     uint64_t link_packets = 0, link_words = 0, link_bytes = 0;
     uint64_t pages_marked = 0;                   // in the page map, with page 0
     uint64_t master_awake = 0;                   // cycles the master's core was not asleep
+    uint64_t master_instructions = 0;            // and the instructions it retired
 };
 
 // gold's reference file (`gold frames-images FRAMES S`, tests/updater/NAME-sS.images.txt): each line a name and a

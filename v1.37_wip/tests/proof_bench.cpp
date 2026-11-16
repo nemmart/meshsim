@@ -203,6 +203,7 @@ struct ChipProof final : segment::Proof {
             numbers->link_packets = link.link_packets; numbers->link_words = link.link_words; numbers->link_bytes = link.link_bytes;
             const auto& core = m.c.unit<units::TileCore>(units::unit_prefix(units::ID_MASTER) + "core").rv;
             numbers->master_awake = core.mcycle - core.cycles_wfi;
+            numbers->master_instructions = core.instructions;
             for (size_t i = 0; i < done.size(); i++) {
                 RunAccount a;
                 a.name = i < run_names.size() ? run_names[i] : "?";

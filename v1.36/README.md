@@ -46,7 +46,7 @@ specification is silent.
 | `fw/` | the register interface (`fw/include/mesh.h`, `fw/REGISTERS.md`) and the firmware: v1.35's upgraded to v1.36, the RTL's boot ROM, tile and core programs, the script that builds them (`fw/build.sh`) and the committed images |
 | `data/` | the replayer's tables and the data sets |
 | `pipeline/` | the offline input tools (Java) |
-| `tools/` | helper scripts and tools: the register-table generator, the delivery converters, the run images' and keys' generator, the documents' check |
+| `tools/` | helper scripts and tools: the register-table generator, the delivery converters, the sort runs' keys' generator, the documents' check |
 | `bench/` | the simulator's speed benchmark |
 | `planning/` | history: v1.35's decisions, plans and session reports |
 

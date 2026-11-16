@@ -90,7 +90,7 @@ audit() {
 # nolib ELF NAMES...: none of the library's arithmetic helpers linked in (sort_images.rs, `forbid_symbols`)
 nolib() { local e=$1 s; shift; for s in "$@"; do
   if $NM "$e" | grep -q " $s\$"; then echo "ERROR: $(basename "$e"): links library arithmetic ($s)"; exit 1; fi; done; }
-# wfis DISASSEMBLY: every WFI of the sort keeps the port's rules (sort_images.rs, `check_wfis`; sort/port/mesh.h): a
+# wfis DISASSEMBLY: every WFI of the sort keeps the port's rules (sort_images.rs, `check_wfis`; port/mesh.h): a
 # load of EVENTS follows it at once, and exactly one, the barrier's, follows a store to ARRIVE.
 wfis() {
   awk -F'\t' '

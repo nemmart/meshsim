@@ -174,7 +174,7 @@ ImageRows image_rows(const std::string& elf, uint32_t records, uint32_t format) 
     r.dmem = {records, format, 0, 0};
     for (const rtl_images::Row& row : rtl_images::program_rows(elf)) {
         std::vector<uint32_t>& to = row.address >= units::IMEM_BASE ? r.pmem : r.dmem;
-        const uint32_t base = row.address >= units::IMEM_BASE ? units::IMEM_BASE : 0x10;
+        const uint32_t base = row.address >= units::IMEM_BASE ? uint32_t(units::IMEM_BASE) : 0x10u;
         if (row.address - base != 4 * to.size()) FATAL("%s: its rows are not contiguous from the image's base", elf.c_str());
         for (uint64_t half : {row.lo, row.hi}) { to.push_back(uint32_t(half)); to.push_back(uint32_t(half >> 32)); }
     }

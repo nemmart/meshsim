@@ -46,21 +46,3 @@ tests/routerconf/README.md	DIR/tables.txt	output	a file the RTL-side command wri
 # The sort's sources (fw/sort/), vendored from meshsim v1.25 through Snarky One: their comments and PORTING.md cite v1.25's files
 fw/sort/PORTING.md	sw/mesh.h	historical	meshsim v1.25's file (its meshsim/sw/), which the port layer replaces
 fw/sort/PORTING.md	sw/crt0.S	historical	meshsim v1.25's file (its meshsim/sw/), which the port layer replaces
-fw/sort/skew-planner/skew_bt.c	RESULTS.md	historical	the sort, vendored from meshsim v1.25 through Snarky One and held to its bytes; a v1.25 document
-fw/sort/skew-planner/skew_bt.c	skew-v2.md	historical	the sort, vendored from meshsim v1.25 through Snarky One and held to its bytes; a v1.25 document
-fw/sort/skew-planner/skew.h	RESULTS.md	historical	the sort, vendored from meshsim v1.25 through Snarky One and held to its bytes; a v1.25 document
-fw/sort/skew-planner/skew.h	skew-v2.md	historical	the sort, vendored from meshsim v1.25 through Snarky One and held to its bytes; a v1.25 document
-fw/sort/skew-planner/skew_th.c	skew-v2.md	historical	the sort, vendored from meshsim v1.25 through Snarky One and held to its bytes; a v1.25 document
-fw/sort/split-bisect/split.c	BINDING.md	historical	the sort, vendored from meshsim v1.25 through Snarky One and held to its bytes; a v1.25 document
-fw/sort/split-bisect/split.h	BINDING.md	historical	the sort, vendored from meshsim v1.25 through Snarky One and held to its bytes; a v1.25 document
-fw/sort/sw/bt_plan.c	skew-v2.md	historical	the sort, vendored from meshsim v1.25 through Snarky One and held to its bytes; a v1.25 document
-fw/sort/sw/bt_run.c	skew-v2.md	historical	the sort, vendored from meshsim v1.25 through Snarky One and held to its bytes; a v1.25 document
-fw/sort/sw/config.c	skew-v2.md	historical	the sort, vendored from meshsim v1.25 through Snarky One and held to its bytes; a v1.25 document
-fw/sort/sw/main.c	CONVENTIONS.md	historical	the sort, vendored from meshsim v1.25 through Snarky One and held to its bytes; a v1.25 document
-fw/sort/sw/skew.c	skew-v2.md	historical	the sort, vendored from meshsim v1.25 through Snarky One and held to its bytes; a v1.25 document
-fw/sort/sw/sort.h	BINDING.md	historical	the sort, vendored from meshsim v1.25 through Snarky One and held to its bytes; a v1.25 document
-fw/sort/sw/sort.h	design_v2/sort/sort-walkthrough.md	historical	the sort, vendored from meshsim v1.25 through Snarky One and held to its bytes; a v1.25 document
-fw/sort/sw/sort.h	skew-v2.md	historical	the sort, vendored from meshsim v1.25 through Snarky One and held to its bytes; a v1.25 document
-fw/sort/sw/sort.h	sw/CONVENTIONS.md	historical	the sort, vendored from meshsim v1.25 through Snarky One and held to its bytes; a v1.25 document
-fw/sort/sw/sort.h	sw/RECIPES.md	historical	the sort, vendored from meshsim v1.25 through Snarky One and held to its bytes; a v1.25 document
-fw/sort/sw/transfer.c	skew-v2.md	historical	the sort, vendored from meshsim v1.25 through Snarky One and held to its bytes; a v1.25 document

@@ -3627,7 +3627,7 @@ disappear, nothing is augmented (the first local sort's input pass and the keys 
 a command from the master tile: the image holds the schedule of phases, every compute tile runs it, and the
 arguments of a phase are data in DMEM (6.5).
 
-**Skew handling** (`skew-planner/`). A three-stage switch picks the transfer path for step 4: direct,
+**Skew handling** (`fw/sort/skew/`). A three-stage switch picks the transfer path for step 4: direct,
 loopback-as-local-copy (LB), the one-layer two-hop (TH), or the balanced two-hop (BT), with every tile making
 the same choice from the group maxima. K + V including planning: 215K uniform, 199K sorted and all-equal, 420K
 reverse, 772–786K Zipf and trace, 741K at 99 % one value [model; planner cycles measured on an RV32 ISS].

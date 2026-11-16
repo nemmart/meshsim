@@ -36,7 +36,7 @@ about 2.5 minutes after the build, `quick --check` about 40 seconds.
 | `layout` | both | `sh tools/check_copies.sh` | <1 s | `COPIES.sha256`: every file copied from v1.3 still has v1.3's bytes |
 | `bus` | both | `build/clang-debug/suite_bus` | <1 s | log: `tests/p2suites/bus.log` (the framework's port kinds) |
 | `fw-images` | both | `fw/check_images.sh`, with `fwimage` | <1 s | the hash lists: `fw/images/MANIFEST`, `tests/core-programs/SHA256SUMS`, file by file; and the committed keys against the generator's (`fw/README.md`) |
-| `fw-build` | both, with the RISC-V toolchain | `fw/build.sh --check` | 3 s | every C and assembly image rebuilt from `fw/`'s sources, byte-equal to its committed copy; each run image against its committed master |
+| `fw-build` | both, with the RISC-V toolchain | `fw/build.sh --check` | 3 s | every image rebuilt from `fw/`'s sources, byte-equal to its committed copy |
 | `core-programs` | both | `test_core_programs` | 1 s | the RTL's core programs: each pass, cycle, retirement and trap the RTL's (`tests/core-programs/`) |
 | `core-tile` | both | `test_core_tile` | <1 s | the core's accesses to region 0xFF in `register_bus`'s cycles (machine-spec 5, 6.4) |
 | `core-contract` | both | `test_rv32_rtl` | <1 s | the core against its contract, test by test: the core specification's §1 on a small bus (the pipeline's cycles, control transfers, multiply, the CSRs, the traps table, interrupts, WFI and the canonical wait), and the tile's environment with region 0xFF decoded by `register_bus.h` (machine-spec 5, 6.4) |

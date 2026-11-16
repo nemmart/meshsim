@@ -4,8 +4,8 @@
 
 The RW engine's model (`src/units/rw_engine.h`, in the peripheral slot) is checked against the RTL's unit, Snarky One's
 `rtl/blocks/rw_engine_unit`, by what the RTL's own simulation did. (It was also checked against the RTL's chip under
-the RTL's own firmware, every handshake on `lpddr` in its cycle, up to meshsim's commit 5a87d658, whose
-`chip-memory-*.ev` files and `rtl-chip-instrument.patch` hold that run; the chip now runs meshsim's firmware, whose
+the RTL's own firmware, every handshake on `lpddr` in its cycle, up to meshsim's commit 5a87d658, where this
+folder holds that run's handshakes and the instrumentation that printed them; the chip now runs meshsim's firmware, whose
 cycles are no longer compared: `tests/test_memory.cpp`.) Nothing here
 was made by the simulator, and nothing here is regenerated from it.
 

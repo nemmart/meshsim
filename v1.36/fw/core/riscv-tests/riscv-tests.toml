@@ -1,0 +1,26 @@
+# riscv-tests, the upstream instruction tests. Only the groups below run: every
+# test in each one's upstream list, less the exclusions. Each is built with
+# riscv_test.h, the local replacement for the upstream environment header, and
+# linked like the firmware (firmware/link.ld, start.S). The test bodies come
+# unmodified from the pinned revision, fetched into the shared tools by
+# `mise run setup`.
+
+# rv32uc is not run: its only test, rvc, stores into its own code, and core stores to
+# IMEM must fault.
+# rv32mi is not run: its tests need a trap handler, CSR setup and an ecall exit,
+# which riscv_test.h does not provide. Machine mode is checked by csr_test,
+# rv32_core_test, decode_test, isa_edges.S under Whisper, and riscv-formal.
+groups = ["rv32ui", "rv32um", "rv32uzicond"]
+
+[upstream]
+repository = "https://github.com/riscv-software-src/riscv-tests.git"
+revision = "bcffa2b3188b040c611f90dc0b6e422f54775a09"
+
+# Each must name an upstream test of the groups above.
+[exclusions]
+"rv32ui/fence_i" = "Zifencei is not implemented; fence.i is an illegal instruction."
+"rv32ui/ma_data" = "Misaligned halfword/word data accesses trap instead of completing."
+"rv32um/div" = "Zmmul only: division is an illegal instruction."
+"rv32um/divu" = "Zmmul only: division is an illegal instruction."
+"rv32um/rem" = "Zmmul only: remainder is an illegal instruction."
+"rv32um/remu" = "Zmmul only: remainder is an illegal instruction."

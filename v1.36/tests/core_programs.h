@@ -15,7 +15,7 @@
 //                a load reads the line in bit 0 and the arming in bit 1
 // Any other access to the system window is answered with an error; an address in no window faults (the core's own).
 //
-// The event trigger, for the programs that take interrupts (tests/core-programs/src/events.h; the RTL's test was given
+// The event trigger, for the programs that take interrupts (fw/core/events.h; the RTL's test was given
 // the same): a store of KIND << 8 | DELAY to the side-effect write device raises an input DELAY cycles after the cycle
 // the test sees the store counted in. KIND 0: the barrier's release in that cycle (the line, MEIP, high from the next);
 // KIND 1: the core's nmi input high from that cycle on.

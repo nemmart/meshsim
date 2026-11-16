@@ -204,34 +204,52 @@ int64_t Fill::write(void* ctx, int64_t t, int32_t root, int depth, int64_t line,
 // ================================================================================================= the run
 namespace {
 
-// ---- the segment's headers (the firmware's src/lib.rs, `segment`): their words, by index
+// ---- the segment's layouts in the scratchpads, v1.35's (fw/tracer/tracer_layout.h, fw/replay/replay_layout.h): their
+// headers' words, by index
 enum : unsigned {
-    HEADER_MAGIC = 0, HEADER_WINDOWS, HEADER_ROWS, HEADER_RUN_CONFIG, HEADER_TABLES, HEADER_INDEX, HEADER_TEMPLATES_COUNT,
-    HEADER_TEMPLATES, HEADER_RECORD, HEADER_CODE, HEADER_READ_LOG, HEADER_WRITE_LOG, HEADER_HASH_MUL, HEADER_HASH_STEP,
-    HEADER_HASH_LINES, HEADER_TRACER_RECORD, HEADER_ADVICE, HEADER_ADVICE_ENTRIES, HEADER_EXPECTED, HEADER_FINAL,
+    TL_MAGIC_W = 0, TL_VERSION_W, TL_TABLES, TL_INDEX, TL_NTEMPLATES, TL_TEMPLATES, TL_RECORD, TL_OWN_RECORD, TL_EXPECT,
+    TL_ADVICE, TL_ADVICE_N, TL_RUN_CONFIG, TL_HASH_MUL, TL_HASH_STEP, TL_HASH_LINES, TL_WINDOWS, TL_T_RECORD, TL_T_CODE,
+    TL_T_RLOG, TL_T_WLOG, TL_FIRST_TILE, TL_WORDS = 32,
 };
-constexpr uint32_t REPLAY_MAGIC = 0x52504C59, TRACER_MAGIC = 0x54524345;   // "RPLY", "TRCE"
-// ---- the scratchpads' layout, the RTL test's, "as the host would": word addresses (5.4)
+enum : unsigned {
+    RL_MAGIC_W = 0, RL_VERSION_W, RL_TABLES, RL_INDEX, RL_NTEMPLATES, RL_TEMPLATES, RL_RECORD, RL_CODE, RL_CODE_N, RL_RLOG,
+    RL_RLOG_N, RL_WLOG, RL_WLOG_N, RL_PASSES, RL_RUN_CONFIG, RL_WAIT, RL_WORDS = 16,
+};
+constexpr uint32_t TL_MAGIC = 0x52435254, TL_VERSION = 1, RL_MAGIC = 0x594C5052, RL_VERSION = 5;   // "TRCR", "RPLY"
+constexpr uint32_t RL_N_FROM_RECORD = 0xFFFFFFFF, RL_WAIT_BARRIERS = 1, RL_WAIT_HANDSHAKE = 2;
+// ---- the scratchpads' layout, as the host would place it: word addresses (5.4)
 constexpr uint32_t TABLES = 0x40, INDEX = 0xC40, TEMPLATES = 0xD80;
 constexpr uint32_t RECORD = 0x10000, CODE = 0x10400, READ_LOG = 0x20400, WRITE_LOG = 0x40400;
 constexpr uint32_t TRACER_RECORD = 0x10000, EXPECTED = 0x10200, FINAL = 0x10400, ADVICE = 0x10800;
-// ---- the summary (the master's src/bin/master.rs, Summary and TraceSummary), by word
-enum : unsigned {
-    SUMMARY_DONE = 0, SUMMARY_FAILURE = 1, SUMMARY_FAILED_PHASE = 2, SUMMARY_KIND = 3, SUMMARY_PHASES = 4, SUMMARY_EXITS = 5,
-    SUMMARY_LOADS = 6, SUMMARY_STRAYS = 7, SUMMARY_REPORTS = 8, SUMMARY_REPORT = 9, SUMMARY_TRACER_EXIT = 13, SUMMARY_EXIT = 17,
-    SUMMARY_PHASE = SUMMARY_EXIT + 4 * T, TRACE_PHASES = 3, SUMMARY_ERROR_LINES = SUMMARY_PHASE + 3 * TRACE_PHASES,
-    SUMMARY_WORDS = SUMMARY_ERROR_LINES + 3,
-};
-constexpr uint32_t DONE = 0x444F4E45, KIND_TRACE = 2, OP_EXIT = 2;
-// ---- the tracer tile's report (its src/bin/tracer.rs, `report`, in its DMEM's .summary), by word: mcycle at its main, at its
-// setup's end, at tile 0's ARMED and at its end's checks' end; the expansions served the general way; the Tracer's eight
-// statistics counters (17.9.8); each run's START, its rows' end and its done
-enum : unsigned { REPORT_STARTED = 0, REPORT_READY = 1, REPORT_ARMED = 2, REPORT_ENDED = 3, REPORT_GENERAL = 4, REPORT_STATS = 8, REPORT_WINDOW = 16 };
+// ---- C&C 1's program (fw/cc/cc1.c): its commands, boot_desc's words, its mailbox; the master's image rows' places
+// (its three commands each count in its mailbox, CC_EXIT before it exits)
+constexpr uint32_t CC_SEGMENT = 0x54, CC_WAIT = 0x52, CC_EXIT = 0x58;
+enum : unsigned { BOOT_MAGIC = 0, BOOT_UNIT = 1, IMAGE_WORDS = 6, BOOT_GO_LATENCY = 19, BOOT_SCRIPT = 21 };
+enum : unsigned { MBOX_COMMANDS = 0, MBOX_RELEASED = 2, MBOX_BOOT = 3, MBOX_LOADS = 4, MBOX_RESULTS = 6, MBOX_OTHERS = 7 };
+constexpr uint32_t BOOT_DESC_MAGIC = 0xB007DE5C, EXIT_DONE = 0x45584954;
+constexpr uint32_t REPLAY_PMEM = 0x0000, REPLAY_DMEM = 0x2000, TRACER_PMEM = 0x4000, TRACER_DMEM = 0x6000, COUNT_ROW = 0x8000;
+// ---- the programs' results: replay_ctl.c's rp_results and tracer_ctl.c's tr_results, by index
+enum : unsigned { RP_STATUS = 0, RP_PASSES = 1, RP_CONDITIONS = 2, RP_MISSING = 5 };
+enum : unsigned { TR_STATUS = 0, TR_WINDOWS = 1, TR_MISSING = 5, TR_ERRORS = 6, TR_ADVICE_LEFT = 7, TR_END_DIFF = 8, TR_CONDITIONS = 9, TR_STRAYS = 10 };
 constexpr uint64_t POLL_CYCLES = 512;
 // The RTL test's cycle 0 is the first after the reset; the simulator's cycles count from 1.
 constexpr int64_t CYCLE_OFFSET = 1;
 
 std::vector<uint32_t> file_words(const std::string& path) { return rtl_images::words(rtl_images::read_file(path)); }
+
+// An image's rows, as cc1.c's boot streams them and v1.35's harness took them (its .code.bin and .data.bin): its .text
+// from IMEM's base, its .data from DMEM_FIRST, each padded to whole rows (.bss is not loaded: crt0.S zeroes it).
+struct ImageRows { std::vector<uint32_t> pmem, dmem; };
+ImageRows image_rows(const std::string& elf) {
+    ImageRows r;
+    const rtl_images::Section text = rtl_images::section(elf, ".text"), data = rtl_images::section(elf, ".data");
+    if (!text.found || text.address != units::IMEM_BASE || (data.found && data.address != 0x10)) FATAL("%s: not an image of fw/app.ld", elf.c_str());
+    r.pmem = rtl_images::words(text.data);
+    if (data.found) r.dmem = rtl_images::words(data.data);
+    r.pmem.resize((r.pmem.size() + 3) / 4 * 4, 0);
+    r.dmem.resize((r.dmem.size() + 3) / 4 * 4, 0);
+    return r;
+}
 
 void place(mach::Mach& m, unsigned unit, uint32_t word, const std::vector<uint32_t>& words) {
     const std::string name = units::unit_prefix(unit) + "sram";
@@ -270,16 +288,17 @@ struct Fails {
 }  // namespace
 
 Run run_chip(const Segment& s, const Rtl* rtl, const Options& o) {
+    (void)rtl;                                                         // the RTL's figures: no longer compared (header)
     Run run;
     const char* name = s.name.c_str();
     Fails fail{run, name};
     const auto wall0 = std::chrono::steady_clock::now();
-    const std::string fw = o.fw, tables_dir = o.tables;
-    const std::string master_elf = fw + "trace/master.elf", memory_elf = fw + "memory-tile/memory.elf", tracer_elf = fw + "segment/tracer.elf";
-    const rtl_images::Section summary_section = rtl_images::section(master_elf, ".summary");
-    const rtl_images::Section report_section = rtl_images::section(tracer_elf, ".summary");
-    if (!summary_section.found || summary_section.size / 4 < SUMMARY_WORDS) FATAL("%s: no .summary of %u words", master_elf.c_str(), unsigned(SUMMARY_WORDS));
-    if (!report_section.found || report_section.size == 0) FATAL("%s: the tracer tile's image: no .summary", tracer_elf.c_str());
+    const std::string fw = o.fw ? o.fw : rtl_images::fw_images(), tables_dir = o.tables;
+    const std::string cc1_elf = fw + "cc/cc1.elf", memory_elf = fw + "cc/memory.elf";
+    const std::string tracer_elf = fw + "tracer/tracer_ctl.elf", replay_elf = fw + "replay/replay_ctl.elf";
+    const uint32_t boot_desc = rtl_images::elf_symbol(cc1_elf, "boot_desc"), mbox = rtl_images::elf_symbol(cc1_elf, "mbox");
+    const uint32_t exit_word = rtl_images::elf_symbol(cc1_elf, "sim_exit_word");
+    const uint32_t tr_results = rtl_images::elf_symbol(tracer_elf, "tr_results"), rp_results = rtl_images::elf_symbol(replay_elf, "rp_results");
 
     // ---- the test data, as the host places it
     std::vector<uint32_t> table_rows = file_words(tables_dir + "decode_table.bin");
@@ -288,32 +307,46 @@ Run run_chip(const Segment& s, const Rtl* rtl, const Options& o) {
     const std::vector<uint32_t> index = file_words(tables_dir + "template_index.bin");
     const std::vector<uint32_t> templates = file_words(tables_dir + "templates.bin");
     const uint32_t template_count = uint32_t(index.size() / 4);
-    auto header = [&](uint32_t magic, uint32_t run_config) {
-        std::vector<uint32_t> w(HEADER_WORDS, 0);
-        w[HEADER_MAGIC] = magic; w[HEADER_WINDOWS] = s.windows; w[HEADER_ROWS] = s.rows; w[HEADER_RUN_CONFIG] = run_config;
-        w[HEADER_TABLES] = TABLES; w[HEADER_INDEX] = INDEX; w[HEADER_TEMPLATES_COUNT] = template_count; w[HEADER_TEMPLATES] = TEMPLATES;
-        w[HEADER_RECORD] = RECORD; w[HEADER_CODE] = CODE; w[HEADER_READ_LOG] = READ_LOG; w[HEADER_WRITE_LOG] = WRITE_LOG;
-        return w;
-    };
     // The Tracer's RUN_CONFIG: every stream may go LRU-coded (17.9.1, 17.9.6); the replayer's: the store log and rd_prev.
-    std::vector<uint32_t> tracer_header = header(TRACER_MAGIC, s.rows | 7u << 26);
-    tracer_header[HEADER_HASH_MUL] = s.map.p1; tracer_header[HEADER_HASH_STEP] = s.map.p3; tracer_header[HEADER_HASH_LINES] = s.map.k;
-    tracer_header[HEADER_TRACER_RECORD] = TRACER_RECORD; tracer_header[HEADER_ADVICE] = ADVICE;
-    tracer_header[HEADER_ADVICE_ENTRIES] = uint32_t((s.advice.size() + 1) / 2);
-    tracer_header[HEADER_EXPECTED] = EXPECTED; tracer_header[HEADER_FINAL] = FINAL;
-    const std::vector<uint32_t> replay_header = header(REPLAY_MAGIC, s.rows | 1u << 24 | 1u << 25);
-    if (rtl && rtl->present)   // this placement is the RTL test's
-        for (unsigned i = 0; i < HEADER_WORDS; i++) {
-            if (tracer_header[i] != rtl->tracer_header[i]) fail("the tracer tile's header word %u is 0x%x here, the RTL test's 0x%x", i, tracer_header[i], rtl->tracer_header[i]);
-            if (replay_header[i] != rtl->replay_header[i]) fail("the replay header word %u is 0x%x here, the RTL test's 0x%x", i, replay_header[i], rtl->replay_header[i]);
-        }
+    std::vector<uint32_t> tracer_header(TL_WORDS, 0);
+    tracer_header[TL_MAGIC_W] = TL_MAGIC; tracer_header[TL_VERSION_W] = TL_VERSION;
+    tracer_header[TL_TABLES] = TABLES; tracer_header[TL_INDEX] = INDEX; tracer_header[TL_NTEMPLATES] = template_count;
+    tracer_header[TL_TEMPLATES] = TEMPLATES; tracer_header[TL_RECORD] = TRACER_RECORD; tracer_header[TL_OWN_RECORD] = FINAL;
+    tracer_header[TL_EXPECT] = EXPECTED; tracer_header[TL_ADVICE] = ADVICE; tracer_header[TL_ADVICE_N] = uint32_t(s.advice.size());
+    tracer_header[TL_RUN_CONFIG] = s.rows | 7u << 26;
+    tracer_header[TL_HASH_MUL] = s.map.p1; tracer_header[TL_HASH_STEP] = s.map.p3; tracer_header[TL_HASH_LINES] = s.map.k;
+    tracer_header[TL_WINDOWS] = s.windows; tracer_header[TL_T_RECORD] = RECORD; tracer_header[TL_T_CODE] = CODE;
+    tracer_header[TL_T_RLOG] = READ_LOG; tracer_header[TL_T_WLOG] = WRITE_LOG; tracer_header[TL_FIRST_TILE] = 0;
+    std::vector<uint32_t> replay_header(RL_WORDS, 0);
+    replay_header[RL_MAGIC_W] = RL_MAGIC; replay_header[RL_VERSION_W] = RL_VERSION;
+    replay_header[RL_TABLES] = TABLES; replay_header[RL_INDEX] = INDEX; replay_header[RL_NTEMPLATES] = template_count;
+    replay_header[RL_TEMPLATES] = TEMPLATES; replay_header[RL_RECORD] = RECORD;
+    replay_header[RL_CODE] = CODE; replay_header[RL_RLOG] = READ_LOG; replay_header[RL_WLOG] = WRITE_LOG;
+    replay_header[RL_CODE_N] = replay_header[RL_RLOG_N] = replay_header[RL_WLOG_N] = RL_N_FROM_RECORD;
+    replay_header[RL_PASSES] = 1; replay_header[RL_RUN_CONFIG] = s.rows | 1u << 24 | 1u << 25;
 
     // ---- the chip, its images and the segment, before the first cycle
     mach::MachConfig mc = mach::Mach::chip_cfg(-1);
     mc.parts = o.parts; mc.threads = o.parts;
     mach::Mach m(mc);
-    m.place_elf(units::ID_MASTER, master_elf);
+    m.place_elf(units::ID_MASTER, cc1_elf);
     m.place_elf(units::ID_MEMORY, memory_elf);
+    // C&C 1's images in its scratchpad, its boot_desc and its commands: CC_SEGMENT, the segment's two barriers; CC_WAIT,
+    // the 64 compute tiles' results and the tracer tile's; CC_EXIT
+    const ImageRows replay_rows = image_rows(replay_elf), tracer_rows = image_rows(tracer_elf);
+    place(m, units::ID_MASTER, REPLAY_PMEM, replay_rows.pmem); place(m, units::ID_MASTER, REPLAY_DMEM, replay_rows.dmem);
+    place(m, units::ID_MASTER, TRACER_PMEM, tracer_rows.pmem); place(m, units::ID_MASTER, TRACER_DMEM, tracer_rows.dmem);
+    place(m, units::ID_MASTER, COUNT_ROW, {0, 0, 0, 0});
+    std::vector<uint32_t> desc(BOOT_SCRIPT + 4 * 3, 0);
+    desc[BOOT_MAGIC] = BOOT_DESC_MAGIC;
+    const uint32_t units_images[2][IMAGE_WORDS] = {
+        {TRACER_PMEM, uint32_t(tracer_rows.pmem.size() / 4), TRACER_DMEM, uint32_t(tracer_rows.dmem.size() / 4), COUNT_ROW, 0},   // C&C 3's: the tracer tile
+        {REPLAY_PMEM, uint32_t(replay_rows.pmem.size() / 4), REPLAY_DMEM, uint32_t(replay_rows.dmem.size() / 4), COUNT_ROW, 0},   // the tiles
+    };
+    for (unsigned u = 0; u < 2; u++) for (unsigned i = 0; i < IMAGE_WORDS; i++) desc[BOOT_UNIT + (u + 1) * IMAGE_WORDS + i] = units_images[u][i];
+    desc[BOOT_GO_LATENCY] = 1;
+    desc[BOOT_SCRIPT] = CC_SEGMENT << 24; desc[BOOT_SCRIPT + 4] = CC_WAIT << 24 | (T + 1); desc[BOOT_SCRIPT + 8] = CC_EXIT << 24;
+    m.place(units::ID_MASTER, boot_desc, desc);
     auto place_tables = [&](unsigned unit) { place(m, unit, TABLES, table_rows); place(m, unit, INDEX, index); place(m, unit, TEMPLATES, templates); };
     place(m, units::ID_TRACER, 0, tracer_header);
     place_tables(units::ID_TRACER);
@@ -324,6 +357,7 @@ Run run_chip(const Segment& s, const Rtl* rtl, const Options& o) {
     place(m, units::ID_TRACER, ADVICE, advice);
     place(m, units::ID_TRACER, EXPECTED, words_of(s.end, RECORD_WORDS));
     for (unsigned tile = 0; tile < T; tile++) {
+        replay_header[RL_WAIT] = tile < s.windows ? RL_WAIT_HANDSHAKE : RL_WAIT_BARRIERS;
         place(m, tile, 0, replay_header);
         if (tile < s.windows) place_tables(tile);
     }
@@ -341,12 +375,11 @@ Run run_chip(const Segment& s, const Rtl* rtl, const Options& o) {
         replayer[tile]->set_row_times(run.row_cycles[tile].data());
     }
 
-    // ---- the run: to the master's done word
-    const uint32_t done_address = summary_section.address + 4 * SUMMARY_DONE;
+    // ---- the run: to C&C 1's exit word
     while (!run.finished && run.cycles < s.cycle_limit) {
         m.c.run(POLL_CYCLES);
         run.cycles += POLL_CYCLES;
-        run.finished = m.word(units::ID_MASTER, done_address) == DONE;
+        run.finished = m.word(units::ID_MASTER, exit_word) == EXIT_DONE;
     }
     for (unsigned tile = 0; tile < T; tile++) {
         const size_t sunk = replayer[tile]->rows_sunk();
@@ -354,51 +387,41 @@ Run run_chip(const Segment& s, const Rtl* rtl, const Options& o) {
         run.row_cycles[tile].resize(sunk);
         for (int64_t& c : run.row_cycles[tile]) c -= CYCLE_OFFSET;
     }
-    run.summary.resize(SUMMARY_WORDS);
-    for (unsigned i = 0; i < SUMMARY_WORDS; i++) run.summary[i] = m.word(units::ID_MASTER, summary_section.address + 4 * i);
-    run.report.resize(report_section.size / 4);
-    for (size_t i = 0; i < run.report.size(); i++) run.report[i] = m.word(units::ID_TRACER, report_section.address + uint32_t(4 * i));
-    const std::vector<uint32_t>& summary = run.summary;
-    auto phase = [&](unsigned i, unsigned k) { return summary[SUMMARY_PHASE + 3 * i + k]; };
-    const uint32_t* tracer_exit = &summary[SUMMARY_TRACER_EXIT];
-    std::printf("%s: summary: failure 0x%x (in phase %u), %u exits, %u loads, %u stray, %u reports (the first [%x, %x, %x, %x]), "
-                "the tracer tile's exit [%x, %x, %x, %x]; %llu cycles from the reset\n", name, summary[SUMMARY_FAILURE],
-                summary[SUMMARY_FAILED_PHASE], summary[SUMMARY_EXITS], summary[SUMMARY_LOADS], summary[SUMMARY_STRAYS],
-                summary[SUMMARY_REPORTS], summary[SUMMARY_REPORT], summary[SUMMARY_REPORT + 1], summary[SUMMARY_REPORT + 2],
-                summary[SUMMARY_REPORT + 3], tracer_exit[0], tracer_exit[1], tracer_exit[2], tracer_exit[3], (unsigned long long)run.cycles);
-    const unsigned phases = summary[SUMMARY_PHASES];
-    if (phases == TRACE_PHASES) {
-        run.load = phase(0, 1); run.trace = phase(1, 1) - phase(0, 2); run.replay = phase(2, 1) - phase(1, 2); run.tracer_own = tracer_exit[3];
-        run.released = phase(1, 2); run.ended = phase(2, 1);
-        std::printf("%s: the load %u cycles from the master's start; the trace and its windows' delivery, from the load's release to "
-                    "the windows' landing, %u cycles; the replay, from that release to the passes' end, %u cycles; the Tracer's "
-                    "segment, its first START to its last done, %u cycles\n", name, run.load, run.trace, run.replay, run.tracer_own);
-    }
+    auto mb = [&](unsigned i) { return m.word(units::ID_MASTER, mbox + 4 * i); };
+    auto tr = [&](unsigned i) { return m.word(units::ID_TRACER, tr_results + 4 * i); };
+    run.summary.resize(8);
+    for (unsigned i = 0; i < 8; i++) run.summary[i] = mb(i);
+    run.report.resize(16);
+    for (unsigned i = 0; i < 16; i++) run.report[i] = tr(i);
+    run.released = mb(MBOX_RELEASED);                                   // the last GO: the windows' landing's release
+    std::printf("%s: C&C 1: %u commands, boot %u, %u LOADs, %u results, %u others, exit 0x%x; the tracer tile: status %u, %u windows, "
+                "ERRORS 0x%x, advice left %u, end differs at %u, %u strays; %llu cycles from the reset\n", name, mb(MBOX_COMMANDS),
+                mb(MBOX_BOOT), mb(MBOX_LOADS), mb(MBOX_RESULTS), mb(MBOX_OTHERS), m.word(units::ID_MASTER, exit_word + 4), tr(TR_STATUS),
+                tr(TR_WINDOWS), tr(TR_ERRORS), tr(TR_ADVICE_LEFT), tr(TR_END_DIFF), tr(TR_STRAYS), (unsigned long long)run.cycles);
     if (!o.quiet) {
         std::printf("%s: the rows each tile sent:", name);
         for (unsigned tile = 0; tile < s.windows; tile++) std::printf(" %zu", run.rows[tile].size() / ROW_LONGS);
         std::printf("\n");
     }
 
-    // ---- the summary
-    if (!run.finished) fail("no summary in %llu cycles", (unsigned long long)s.cycle_limit);
-    if (summary[SUMMARY_KIND] != KIND_TRACE) fail("the run's kind %u", summary[SUMMARY_KIND]);
-    if (summary[SUMMARY_FAILURE] != 0) fail("the master failed (0x%x) after release %u", summary[SUMMARY_FAILURE], summary[SUMMARY_FAILED_PHASE]);
-    if (phases != TRACE_PHASES) fail("%u releases: the load's, the windows' landing's and the passes' end's", phases);
-    if (summary[SUMMARY_REPORTS] != 0) fail("%u error reports", summary[SUMMARY_REPORTS]);
-    if (summary[SUMMARY_STRAYS] != 0) fail("%u stray requests", summary[SUMMARY_STRAYS]);
-    if (summary[SUMMARY_EXITS] != T) fail("the compute tiles' exits: %u", summary[SUMMARY_EXITS]);
-    if (summary[SUMMARY_LOADS] != T + 1) fail("the LOADs after the exits, the tracer tile's among them: %u", summary[SUMMARY_LOADS]);
-    auto op = [](uint32_t w0) { return (w0 >> 10) & 0xFF; };
-    if ((tracer_exit[0] & 0x7F) != units::ID_TRACER || op(tracer_exit[0]) != OP_EXIT) fail("the tracer tile's exit's word 0 0x%x", tracer_exit[0]);
-    if (tracer_exit[1] != 0) fail("the tracer tile's status %u (src/bin/tracer.rs, Status)", tracer_exit[1]);
-    if (tracer_exit[2] != 0) fail("the Tracer's ERRORS, and the tracer tile's from bit 16: 0x%x", tracer_exit[2]);
+    // ---- C&C 1's, the tracer tile's and every compute tile's results
+    if (!run.finished) fail("no exit in %llu cycles", (unsigned long long)s.cycle_limit);
+    if (mb(MBOX_COMMANDS) != 3 || mb(MBOX_BOOT) != 2) fail("C&C 1 completed %u commands, its boot %u", mb(MBOX_COMMANDS), mb(MBOX_BOOT));
+    if (mb(MBOX_RESULTS) != T + 1) fail("%u results, of 64 compute tiles and the tracer tile", mb(MBOX_RESULTS));
+    if (mb(MBOX_LOADS) != 2 * (T + 1)) fail("%u LOADs: the boot's 65 and one after each result", mb(MBOX_LOADS));
+    if (mb(MBOX_OTHERS) != 0) fail("%u other requests at C&C 1", mb(MBOX_OTHERS));
+    if (tr(TR_STATUS) != 1) fail("the tracer tile's status %u (tracer_layout.h; the word with no template 0x%x)", tr(TR_STATUS), tr(TR_MISSING));
+    if (tr(TR_WINDOWS) != s.windows) fail("the tracer tile ran %u windows of %u", tr(TR_WINDOWS), s.windows);
+    if (tr(TR_ERRORS) != 0 || tr(TR_CONDITIONS) != 0) fail("the Tracer's ERRORS 0x%x, the tracer tile's 0x%x", tr(TR_ERRORS), tr(TR_CONDITIONS));
+    if (tr(TR_ADVICE_LEFT) != 0 || tr(TR_END_DIFF) != 0) fail("the advice left %u; the end state differs at word %u", tr(TR_ADVICE_LEFT), tr(TR_END_DIFF));
+    if (tr(TR_STRAYS) != 0) fail("%u requests at the tracer tile that are no handshake", tr(TR_STRAYS));
     for (unsigned tile = 0; tile < T; tile++) {
-        const uint32_t* exit = &summary[SUMMARY_EXIT + 4 * tile];
-        const uint32_t rows_run = tile < s.windows ? s.rows : 0;
-        if ((exit[0] & 0x7F) != tile || op(exit[0]) != OP_EXIT) fail("tile %u's exit's word 0 0x%x", tile, exit[0]);
-        if (exit[1] != 0 || exit[2] != 0 || exit[3] != rows_run)
-            fail("tile %u's status %u, its ERRORS (the replayer's, its own) 0x%x and ROWS_RUN %u (its window's: %u)", tile, exit[1], exit[2], exit[3], rows_run);
+        const uint32_t status = m.word(tile, rp_results + 4 * RP_STATUS), passes = m.word(tile, rp_results + 4 * RP_PASSES);
+        const uint32_t conditions = m.word(tile, rp_results + 4 * RP_CONDITIONS), rows_run = replayer[tile]->rows_done();
+        const uint32_t want_passes = tile < s.windows ? 1 : 0, want_rows = tile < s.windows ? s.rows : 0;
+        if (status != 1 || passes != want_passes || conditions != 0 || rows_run != want_rows)
+            fail("tile %u's status %u (the word with no template 0x%x), passes %u, ERRORS 0x%x, ROWS_RUN %u (its window's: %u)", tile, status,
+                 m.word(tile, rp_results + 4 * RP_MISSING), passes, conditions, rows_run, want_rows);
     }
 
     // ---- every window's rows, against the segment's
@@ -463,7 +486,6 @@ Run run_chip(const Segment& s, const Rtl* rtl, const Options& o) {
     for (unsigned i = 0; i < 4; i++) run.fill_counts[i] = fill.counts[i];
     std::printf("%s: the fill port: %llu code lines, %llu data lines, %llu map lines read, %llu lines written back\n", name,
                 (unsigned long long)fill.counts[0], (unsigned long long)fill.counts[1], (unsigned long long)fill.counts[2], (unsigned long long)fill.counts[3]);
-    for (unsigned w = 0; w < 3; w++) if (summary[SUMMARY_ERROR_LINES + w] != 0) fail("ERROR_LINES word %u at the run's end 0x%x: a tile's error line rose", w, summary[SUMMARY_ERROR_LINES + w]);
     if (m.c.toast()) fail("the toast pin: the master's error line rose");
     if (s.misses) {
         if (fill.counts[0] <= 128) fail("the code lines read: the instruction cache never missed past its 128 lines");
@@ -471,41 +493,6 @@ Run run_chip(const Segment& s, const Rtl* rtl, const Options& o) {
         if (fill.counts[3] == 0) fail("no line written back");
     }
 
-    // ---- the cycles, against the RTL chip's
-    if (rtl && rtl->present) {
-        if (run.cycles != rtl->cycles) fail("%llu cycles from the reset, the RTL chip's %llu", (unsigned long long)run.cycles, (unsigned long long)rtl->cycles);
-        if (rtl->summary.size() != summary.size()) fail("the RTL's summary has %zu words", rtl->summary.size());
-        else for (unsigned i = 0; i < summary.size(); i++)
-            if (summary[i] != rtl->summary[i]) fail("the summary's word %u is %u (0x%x), the RTL chip's %u (0x%x)", i, summary[i], summary[i], rtl->summary[i], rtl->summary[i]);
-        if (rtl->report.size() != run.report.size()) fail("the RTL's report has %zu words, the tracer tile's %zu", rtl->report.size(), run.report.size());
-        else for (size_t i = 0; i < run.report.size(); i++)   // the words the image writes (tracer.rs, `report`): the others are as the memory started
-            if ((i <= REPORT_GENERAL || (i >= REPORT_STATS && i < REPORT_WINDOW + 3 * size_t(s.windows))) && run.report[i] != rtl->report[i]) fail("the tracer tile's report's word %zu is %u, the RTL chip's %u", i, run.report[i], rtl->report[i]);
-        for (unsigned i = 0; i < 4; i++) if (fill.counts[i] != rtl->fill_counts[i]) fail("the fill port's count %u is %llu, the RTL chip's %llu", i, (unsigned long long)fill.counts[i], (unsigned long long)rtl->fill_counts[i]);
-        if (fill.calls.size() != rtl->fill.size()) fail("%zu fill requests, the RTL chip's %zu", fill.calls.size(), rtl->fill.size());
-        for (size_t i = 0; i < fill.calls.size() && i < rtl->fill.size(); i++) {
-            const FillCall &a = fill.calls[i], &b = rtl->fill[i];
-            if (a.cycle != b.cycle || a.kind != b.kind || a.root != b.root || a.depth != b.depth || a.line != b.line || a.due != b.due || a.status != b.status) {
-                fail("fill request %zu: a %s of line %llu (root 0x%x) in cycle %llu, answered in %llu, status %u; the RTL chip's: a %s of line %llu (root 0x%x) in cycle "
-                     "%llu, answered in %llu, status %u", i, a.kind ? "write" : "read", (unsigned long long)a.line, a.root, (unsigned long long)a.cycle, (unsigned long long)a.due, a.status,
-                     b.kind ? "write" : "read", (unsigned long long)b.line, b.root, (unsigned long long)b.cycle, (unsigned long long)b.due, b.status);
-                break;
-            }
-        }
-        uint64_t rows_timed = 0;
-        for (unsigned tile = 0; tile < T; tile++) {
-            const auto& got = run.row_cycles[tile];
-            const auto& want = rtl->row_cycles[tile];
-            if (got.size() != want.size()) { fail("tile %u: %zu rows timed, the RTL chip's %zu", tile, got.size(), want.size()); continue; }
-            for (size_t row = 0; row < got.size(); row++) {
-                if (uint64_t(got[row]) != want[row]) { fail("tile %u's row %zu left its port in cycle %lld, the RTL chip's in %u", tile, row, (long long)got[row], want[row]); break; }
-                rows_timed++;
-            }
-        }
-        if (run.failures == 0)
-            std::printf("%s: the cycles are the RTL chip's: %llu from the reset, the summary's %zu words, the tracer tile's report's %zu, %zu fill "
-                        "requests and %llu rows' cycles out of the row ports\n", name, (unsigned long long)run.cycles, summary.size(),
-                        run.report.size(), fill.calls.size(), (unsigned long long)rows_timed);
-    }
     run.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - wall0).count();
     std::printf("%s: %s in %llu cycles, %.1f s of simulation, %.0f cycles a second\n", name, run.failures ? "FAILED" : "passed",
                 (unsigned long long)run.cycles, run.seconds, double(run.cycles) / run.seconds);

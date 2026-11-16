@@ -1,0 +1,23 @@
+# CoreMark, built by `cargo xtask` with the port in this directory (core_portme.h,
+# core_portme.c). The benchmark sources come unmodified from the pinned revision,
+# fetched into the shared tools by `mise run setup`.
+[upstream]
+repository = "https://github.com/eembc/coremark.git"
+revision = "1f483d5b8316753a742cbf5590caf5bd0a4e4777"
+
+# Compiler options for the benchmark, reported by CoreMark as "Compiler flags":
+# the optimization options Ibex (lowRISC/ibex) uses for its published CoreMark
+# scores. The code still differs: Ibex builds for rv32im, this core for
+# rv32ic_zicond_zicsr_zmmul (MARCH in xtask/src/core_tests.rs), with compressed
+# instructions, so the two scores compare only roughly. -mstrict-align keeps GCC
+# from assuming misaligned accesses work; they trap on this core.
+[build]
+flags = [
+  "-O3",
+  "-falign-functions=16",
+  "-funroll-all-loops",
+  "-finline-functions",
+  "-falign-jumps=4",
+  "-mtune=sifive-3-series",
+  "-mstrict-align",
+]

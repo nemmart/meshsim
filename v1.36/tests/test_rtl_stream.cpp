@@ -5,7 +5,7 @@
 //
 // The chip is tests/mach.h's (MachConfig::chip()). As the RTL's tests do, each test places a program at the master's
 // IMEM base and its data in DMEM (the master's boot strap, machine-spec 6.5) and the memory tile's firmware
-// (fw/rtl/sort/memory-tile/memory.elf) in its own, before the first cycle; the program is written here with the
+// (fw/images/cc/memory.elf, fw/cc/memory.c) in its own, before the first cycle; the program is written here with the
 // simulator's assembler helper (tests/rv32_asm.h), instruction for instruction the RTL test's (verif::rv32i's).
 //
 // CYCLES. Cycle 0 is the first cycle after the reset, as the RTL bench's count (the simulator's cycle 1). The far ends here are the RTL
@@ -20,6 +20,7 @@
 #include "harness.h"
 #include "ie_far_end.h"
 #include "mach.h"
+#include "rtl_images.h"
 #include "rv32_asm.h"
 #include "units/ingress_egress.h"
 #include "units/periph_slot.h"
@@ -100,7 +101,7 @@ struct Bench {
         far.attach(ie);
         far.origin = 1;                                     // cycle 0 is the first after the reset (header, CYCLES)
         m.c.touched("cc1.slot");
-        m.place_elf(units::ID_MEMORY, "fw/rtl/sort/memory-tile/memory.elf");
+        m.place_elf(units::ID_MEMORY, rtl_images::fw_images() + "cc/memory.elf");
     }
     void run_cycle() { m.c.run(1); cycle++; }
     bool done() const { return m.word(units::ID_MASTER, DONE_ADDRESS) == DONE; }

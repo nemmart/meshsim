@@ -2,8 +2,8 @@
 # rw_engine_teeth.sh: planted bugs, each of which the RW engine's tests must catch. Not in make check (a rebuild per
 # bug). The tree is copied into a scratch directory, each bug is planted there by sed, the RW engine's tests rebuilt
 # (clang release) and run: test_rw_engine (the RTL's unit test ported, against its reference model and the RTL's
-# fingerprints, and the engine in the slot unit) and test_rtl_memory (the RTL's memory run on the chip, against the RTL
-# chip's handshakes). A bug is caught when a test fails; the table names the tests that failed.
+# fingerprints, and the engine in the slot unit) and test_memory (the memory run on the chip under meshsim's firmware,
+# its results and its bursts). A bug is caught when a test fails; the table names the tests that failed.
 #
 # The bugs are slips of the model of the RTL's rw_engine_unit (src/units/rw_engine.h): the bursts' split and the room
 # rule, the job's end, the write data and WLAST, the write port's lanes, the reply, the error, the reset, the registers;
@@ -18,7 +18,7 @@ JOBS=${JOBS:-8}
 if [ -n "${TEETH_DIR:-}" ]; then W=$TEETH_DIR; rm -rf "$W"; mkdir -p "$W"; else W=$(mktemp -d); trap 'rm -rf "$W"' EXIT; fi
 (cd "$SIM" && tar cf - --exclude=./build --exclude=./results .) | (cd "$W" && tar xf -)
 B=build/clang-release
-TESTS="test_rw_engine test_rtl_memory"
+TESTS="test_rw_engine test_memory"
 TARGETS=""; for t in $TESTS; do TARGETS="$TARGETS $B/$t"; done
 build() { (cd "$W" && make -s CC_NAME=clang MODE=release -j"$JOBS" $TARGETS > "$W/build.log" 2>&1); }
 run() {   # prints the failing tests, "-" if none

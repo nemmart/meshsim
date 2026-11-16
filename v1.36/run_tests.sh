@@ -8,11 +8,13 @@
 #                   below); a difference fails the run as a FAIL line would
 #     --no-build    use the binaries as they are
 #   Environment: CC_NAME (default clang); JOBS (the build's parallel jobs, default 4); STEP_TIMES=1 (each step's wall
-#   time in results/.step-times). Two inputs are outside the repository, and a step that needs one is SKIPPED, and
-#   printed and counted as such, when it is not there:
+#   time in results/.step-times). Two things are outside the repository, and a step that needs one is SKIPPED, and
+#   printed and counted as such, when it is not on this machine:
 #     MESHSIM_INPUTS      (default ~/meshsim-inputs) the real workloads' data: the steps tracer-block and, in `all`,
-#                         rtl-segment-real
-#     RTL_SORT_64K_KEYS   the RTL's 64K key file (16 MiB; fw/rtl/README.md): the step rtl-sort-64k of `all`
+#                         segment-real
+#     the RISC-V toolchain (fw/build.sh's header; RISCV_PREFIX names it): the step fw-build. With it, RISCV_TESTS and
+#                         COREMARK name the checkouts that step also rebuilds riscv-tests' and CoreMark's images from
+#   The 64K runs' key file (16 MiB) is built here (the step sort-64k of `all`, into build/sort-64k.keys).
 #   The suites build with MODE=suite (release flags, the checker's facts on: src/check.h), into build/$CC_NAME-suite/.
 #
 # ADDING A STEP:
@@ -46,8 +48,9 @@ SUITES="test_core_programs test_core_tile test_rv32_rtl test_regs test_tile_cont
 SUITES="$SUITES test_router test_special_router test_request_tree test_reqbus"              # the router, the request tree
 SUITES="$SUITES test_mem test_ag test_receive test_gather test_mach test_checker"                     # the tile's units, and the tile
 SUITES="$SUITES test_periph_slot test_ingress_egress test_rw_engine"                        # the peripherals
-SUITES="$SUITES test_rtl_tile test_rtl_sort test_rtl_stream test_rtl_memory test_rtl_segment"   # the RTL's firmware on the tile and the chip
+SUITES="$SUITES test_rtl_tile test_rtl_stream test_sort test_memory test_segment"           # the firmware on the tile and the chip
 SUITES="$SUITES suite_replayer suite_memsys suite_rvc suite_tracer tracer_block"            # the replayer and the Tracer
+SUITES="$SUITES fwimage"                                                                   # the runs' keys (tools/fwimage)
 
 if [ "$BUILD" = 1 ]; then
   echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
@@ -88,15 +91,22 @@ check() {
   [ -z "${STEP_TIMES:-}" ] || echo "$log $((SECONDS - t0)) s" >> results/.step-times
   tail -1 "results/$log.log"
 }
-# A step whose input is outside the repository and not on this machine: not run, and said so.
+# A step that needs what is outside the repository and not on this machine: not run, and said so.
 NSKIPPED=0
 skipped() { echo "== $2"; echo "SKIPPED ($3)" | tee "results/$1.log"; NSKIPPED=$((NSKIPPED + 1)); }
 all_of() { local t; for t in "$@"; do "$S/$t" || return 1; done; }   # several tests as one step
 
-# ---- the framework, the copies and the vendored firmware ----
+# ---- the framework, the copies and the firmware ----
 echo "== the files copied from v1.3 (tools/check_copies.sh)"; sh tools/check_copies.sh > results/layout.log 2>&1 && tail -1 results/layout.log || { cat results/layout.log; echo "FAIL the layout" | tee -a results/layout.log; }
 step bus 1 "the framework's port kinds (the debug build: its throws checks are debug assertions)" tests/p2suites/bus.log -- build/$CC_NAME-debug/suite_bus
-check rtl-images "the RTL's vendored firmware against its hash list (fw/check_images.sh)" -- bash fw/check_images.sh
+check fw-images "the committed firmware images against their hash lists, and the runs' keys made here against the committed keys (fw/check_images.sh)" -- env FWIMAGE=$S/fwimage bash fw/check_images.sh
+# Every C and assembly image rebuilt from fw/'s sources and compared, byte for byte, with its committed copy: only with
+# the toolchain the committed images were built with.
+if why=$(bash fw/build.sh --toolchain); then
+  check fw-build "the firmware rebuilt from its sources: every image byte-equal to its committed copy (fw/build.sh --check)" -- bash fw/build.sh --check
+else
+  skipped fw-build "the firmware rebuilt from its sources, against the committed images" "$why"
+fi
 
 # ---- the core and the register map ----
 check core-programs "the RTL's core programs on the core: each pass, cycle, retirement and trap the RTL's (tests/core-programs/)" -- $S/test_core_programs
@@ -124,18 +134,18 @@ check checker "the checker's report: packets that break a rule, each named once 
 check periph "the peripheral slot: the control block and the DMA (machine-spec 17.1-17.4, the RTL's peripheral_control and peripheral_dma; tests/test_periph_slot.cpp)" -- $S/test_periph_slot
 check ingress-egress "Ingress/Egress: the nets, RELEASE, the watchdog, the error lines, the toast pin, the UART, the host interface (17.6; tests/test_ingress_egress.cpp)" -- $S/test_ingress_egress
 
-# ---- the RTL's firmware, unmodified, on the tile and on the chip ----
+# ---- the RTL's tile programs, unmodified, on the tile; meshsim's firmware on the chip ----
 check rtl-tile "the RTL's tile programs on one compute tile, with the boot ROM's cycles (tests/test_rtl_tile.cpp)" -- $S/test_rtl_tile
-# The RTL's sort images end to end on the chip, the master, memory and tracer tiles booted as the RTL's chip test boots
-# them. The 16-record runs and the run split over threads here; the 64K runs in `all`, with the RTL's 64K key file.
-rtl_sort() { $S/test_rtl_sort sort_oracle && $S/test_rtl_sort sort_16; }
-check rtl-sort "the RTL's sort images on the chip, 64 x 16 records: kv32, k128, and kv32 split over threads, every step in the RTL chip's cycles (tests/test_rtl_sort.cpp)" -- rtl_sort
+# The sort end to end on the chip under meshsim's firmware (C&C 1's program, cc1.c), the master and memory tiles
+# placed, the compute tiles booted by LOAD. The 16-record runs and the run split over threads here; the 64K runs in `all`, with their key file built here.
+sort_16() { $S/test_sort sort_oracle && $S/test_sort sort_16; }
+check sort "the sort on the chip, 64 x 16 records: kv32, k128, and kv32 split over threads, against the oracle, every tile's error provoked (tests/test_sort.cpp)" -- sort_16
 check rtl-stream "the master's host interface and UART on the chip: the RTL's chip_stream_test, and the UART through the core (tests/test_rtl_stream.cpp)" -- $S/test_rtl_stream
-rtl_memory() { $S/test_rw_engine && $S/test_rtl_memory; }
-check rtl-memory "the memory tile: the RW engine against the RTL's unit, cycle for cycle, and the RTL's memory run on the chip (tests/test_rw_engine.cpp, tests/test_rtl_memory.cpp)" -- rtl_memory
-# The segment on the chip, run by the RTL's own firmware (the master's trace run, the tracer tile's image, the replay
-# image): the RTL test's three generated segments here; the real workloads' windows in `all`, with their data.
-check rtl-segment "the segment on the chip under the RTL's firmware: 4 windows, 64 windows and a window of 65,536 rows, traced, delivered and replayed, in the RTL chip's cycles (tests/test_rtl_segment.cpp)" -- $S/test_rtl_segment segment_
+memory_run() { $S/test_rw_engine && $S/test_memory; }
+check memory "the memory tile: the RW engine against the RTL's unit, cycle for cycle, and the memory run on the chip (tests/test_rw_engine.cpp, tests/test_memory.cpp)" -- memory_run
+# The segment on the chip, run by meshsim's firmware (cc1.c, tracer_ctl.c, replay_ctl.c): the RTL test's three
+# generated segments here; the real workloads' windows in `all`, with their data.
+check segment "the segment on the chip: 4 windows, 64 windows and a window of 65,536 rows, traced, delivered and replayed, every row and delivery against the segment's (tests/test_segment.cpp)" -- $S/test_segment segment_
 
 # ---- the replayer and the Tracer at the block level ----
 step replayer 1 "the replayer: the opcode table, the ALU against vec.tsv at 821e1bd, the unit tests" tests/replayer/replayer.log -- $S/suite_replayer
@@ -166,15 +176,16 @@ fi
 
 # ---- the long steps ----
 if [ "$MODE" != quick ]; then
-  if [ -f "${RTL_SORT_64K_KEYS:-}" ]; then
-    check rtl-sort-64k "the RTL's sort images on the chip at 64 x 65,536 records: kv32 and k128 (about a minute)" -- $S/test_rtl_sort sort_64k
-  else
-    skipped rtl-sort-64k "the RTL's sort images on the chip at 64 x 65,536 records: kv32 and k128" "RTL_SORT_64K_KEYS does not name the RTL's 64K key file: fw/rtl/README.md"
-  fi
+  # The 64K runs' keys: SortTest's uniform set, built here (16 MiB, not committed) and checked against its committed sha256.
+  sort_64k() {
+    $S/fwimage keys 65536 build/sort-64k.keys && (cd build && sha256sum -c ../fw/images/sort/sort-64k.keys.sha256) &&
+      SORT_64K_KEYS=build/sort-64k.keys $S/test_sort sort_64k
+  }
+  check sort-64k "the sort on the chip at 64 x 65,536 records: kv32 and k128, against the oracle (about a minute)" -- sort_64k
   if [ -f "$INPUTS/w26-jumpmap/evm-zone-23/proof.json" ] && [ -f "$INPUTS/v1261/cyclone-22/window_00000.rows.bin" ]; then
-    check rtl-segment-real "the segment on the real workloads' windows: EVM Zone's 0-63 and 64-127 and Cyclone's 0-63, every row and delivery against the recorded files, the cycles against the RTL chip's (about a minute)" -- env MESHSIM_INPUTS="$INPUTS" $S/test_rtl_segment real_
+    check segment-real "the segment on the real workloads' windows: EVM Zone's 0-63 and 64-127 and Cyclone's 0-63, every row and delivery against the recorded files (about a minute)" -- env MESHSIM_INPUTS="$INPUTS" $S/test_segment real_
   else
-    skipped rtl-segment-real "the segment on the real workloads' windows (EVM Zone, Cyclone), against the recorded files and the RTL chip's figures" "the workloads' data is not at $INPUTS: MESHSIM_INPUTS"
+    skipped segment-real "the segment on the real workloads' windows (EVM Zone, Cyclone), against the recorded files" "the workloads' data is not at $INPUTS: MESHSIM_INPUTS"
   fi
 fi
 
@@ -185,4 +196,4 @@ grep -h "FAIL" results/*.log && FAILED=1
 [ "$NSKIPPED" = 0 ] || grep -H "^SKIPPED" results/*.log | sed 's|^results/\(.*\)\.log:|  \1: |'
 if [ "$FAILED" = 1 ]; then echo "== FAILURES"; exit 1; fi
 if [ "$NSKIPPED" = 0 ]; then echo "== all passed; logs in results/"
-else echo "== all passed, $NSKIPPED steps SKIPPED for data outside the repository; logs in results/"; fi
+else echo "== all passed, $NSKIPPED steps SKIPPED for what is not on this machine (data, a toolchain); logs in results/"; fi

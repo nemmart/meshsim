@@ -1,0 +1,101 @@
+diff -ru a/sort/skew/planner/skew.h b/sort/skew/planner/skew.h
+--- sort/skew/planner/skew.h
++++ sort/skew/planner/skew.h
+@@ -95,7 +95,7 @@
+  * words; HW_STREAM_HI (a count word only) empties a stream: count 0 sends nothing. */
+ #define HW_STREAM3(T, s, src, dest, cnt)  ((void)(T), set_stream((s), (src), (dest), (cnt)))
+ #define HW_STREAM_HI(T, s, hi)   ((void)(T), tables->STREAM_COUNT[s] = (hi))
+-#define HW_GROUP_R(T, g, R)   ((void)(T), tables->GROUP[g][0] = (R))
++#define HW_GROUP_R(T, g, R)   ((void)(T), set_group_r((g), (R)))   /* Snarky One port: GROUP's R alone (mesh.h) */
+ #define HW_PTR(T, i, v)        ((void)(T), tables->PTR[i] = (v))
+ #endif
+ 
+diff -ru a/sort/split/split.c b/sort/split/split.c
+--- sort/split/split.c
++++ sort/split/split.c
+@@ -24,6 +24,8 @@
+  * (or copied out) before the next exchange, which a barrier guarantees.
+  * v1.2 (WORKER8): a reply is a mode-0 write to REPLY_WORD(me) in the receiver, sent with ROUTER_ADDR set once per
+  * exchange and the no-increment bit, counted on counter 3; read-port results are counted on counter 2.
++
++ * Snarky One port (../PORTING.md): the read unit's registers: sr_read_dest32() for SRAM_RD_DEST_ADDR, READ_SEND and READ_FREE for SRAM_RD_ADDR_QUEUE's store and load.
+  */
+ #include "split.h"
+ #include "split_regs.h"
+@@ -108,14 +110,14 @@
+         uint32_t h = 1u << (k - 1), old = act;
+         act += cnt[k];
+         tile->WRITE_COUNTER[CTR_CM - 1] = act;                   /* a store adds: the count is 0 here */
+-        tile->SRAM_RD_DEST_ADDR = gw;
++        sr_read_dest32(gw);
+         uint32_t a = run + ((h - 1) << 1);
+         const uint32_t *bp = s_base, *b4 = s_base + (act & ~3u), *be = s_base + act;
+         for (; bp != b4; bp += 4) {                              /* issue, unrolled by 4 */
+-            tile->SRAM_RD_ADDR_QUEUE = a + (bp[0] << 1); tile->SRAM_RD_ADDR_QUEUE = a + (bp[1] << 1);
+-            tile->SRAM_RD_ADDR_QUEUE = a + (bp[2] << 1); tile->SRAM_RD_ADDR_QUEUE = a + (bp[3] << 1);
++            tile->READ_SEND = a + (bp[0] << 1); tile->READ_SEND = a + (bp[1] << 1);
++            tile->READ_SEND = a + (bp[2] << 1); tile->READ_SEND = a + (bp[3] << 1);
+         }
+-        for (; bp != be; bp++) tile->SRAM_RD_ADDR_QUEUE = a + (bp[0] << 1);
++        for (; bp != be; bp++) tile->READ_SEND = a + (bp[0] << 1);
+         sr_wait();
+         steps += act;
+         uint32_t *b = s_base;
+@@ -211,10 +213,10 @@
+         uint32_t last = run + ((n_me - 1) << 1);
+         if (m) {
+         tile->WRITE_COUNTER[CTR_CM - 1] = m;
+-        tile->SRAM_RD_DEST_ADDR = SR_RD_DEST32(got);
++        sr_read_dest32(SR_RD_DEST32(got));
+         for (uint32_t i = 0; i < m; i++) {
+             uint32_t a = run + (s_base[i] << 1);
+-            tile->SRAM_RD_ADDR_QUEUE = a < last ? a : last;
++            tile->READ_SEND = a < last ? a : last;
+         }
+         sr_wait();
+         }
+@@ -267,7 +269,7 @@
+ void split_get_cuts(uint32_t run, uint32_t n_me, uint32_t shaped, uint32_t c[65], uint32_t n[64])
+ {
+     uint32_t me = ME();
+-    while (tile->SRAM_RD_ADDR_QUEUE < READ_PORT_DEPTH) ;         /* spec 4.3: once, before the first step */
++    while (tile->READ_FREE < READ_PORT_DEPTH) ;         /* spec 4.3: once, before the first step */
+ 
+     /* n[]: every tile's run length */
+     tile->WRITE_COUNTER[CTR_REPLY - 1] = 64;
+@@ -310,9 +312,9 @@
+         uint32_t *mine = got;                                    /* free until round 1 */
+         if (n_me) {
+             tile->WRITE_COUNTER[CTR_CM - 1] = 64;
+-            tile->SRAM_RD_DEST_ADDR = SR_RD_DEST32(mine);
++            sr_read_dest32(SR_RD_DEST32(mine));
+             uint32_t acc = 0;
+-            for (uint32_t q = 0; q < 64; q++, acc += n_me) tile->SRAM_RD_ADDR_QUEUE = run + ((acc >> 6) << 1);
++            for (uint32_t q = 0; q < 64; q++, acc += n_me) tile->READ_SEND = run + ((acc >> 6) << 1);
+             sr_wait();
+         }
+         barrier();
+diff -ru a/sort/split/split_regs.h b/sort/split/split_regs.h
+--- sort/split/split_regs.h
++++ sort/split/split_regs.h
+@@ -1,7 +1,9 @@
+ /* split_regs.h -- the split's view of the machine (v1.2 port: WORKER8). v1.1's own register addresses are gone: the
+  * split includes the generated mesh.h 1.2 (W3-REVIEW-2 s.6: "better: include the generated header") and this file
+  * keeps only its few names on top of it. Counters (CONVENTIONS 5): the exchanges' words on counter 3 (replies), the
+- * read port's results on counter 2 (controller memory). */
++ * read port's results on counter 2 (controller memory).
++ * Snarky One port (../PORTING.md): the read unit's setup in READ_HDR and READ_DEST_ADDR (sr_read_dest32); a read queued by READ_SEND, the free entries in READ_FREE.
++ */
+ #ifndef SPLIT_REGS_H
+ #define SPLIT_REGS_H
+ #include <stdint.h>
+@@ -14,7 +16,8 @@
+  * counted on counter 3 (RECIPES 7) */
+ #define SR_HDR(dst) (ROUTER_HDR_W((dst), MODE_WRITE, CTR_REPLY) | ROUTER_NOINC)
+ /* the read port's setup for 32-bit results landing from p on, counted on counter 2 (RECIPES 11) */
+-#define SR_RD_DEST32(p) RD_DEST((uint32_t)(uintptr_t)(p), SIZE_32, CTR_CM)
++#define SR_RD_DEST32(p) ((uint32_t)(uintptr_t)(p))
++static inline void sr_read_dest32(uint32_t p) { read_dest(p, SIZE_32, CTR_CM); }   /* Snarky One port: READ_HDR, READ_DEST_ADDR */
+ /* every armed counter done (counters done, under the reset mask), as v1.1's wfi() for counters done: the split arms one
+  * counter at a time (2 or 3), as DECISIONS-v1.2 47 (Q3) requires */
+ static inline void sr_wait(void) { while (!(wfi() & EV_CTRS_DONE)) ; }

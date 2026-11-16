@@ -9,8 +9,7 @@
 //       the offsets and accesses of 5.5, the bits of 7.1, 7.2 and 7.4, the fields of 4.1, 5.4, 7.1, 8-13, 11.5 and
 //       17.1, and the peripherals' words and bits of 17.6-17.9, all written out below from the specification's tables
 //       (spec/machine-spec.md, and the RTL's base tile specification), never taken from the generator. The RTL firmware's
-//       own definitions of the registers they share (fw/rtl/src: the tile programs' tile_map.h and the chip
-//       firmware's src/lib.rs) are read too and must equal them; and mesh.h must compile, its structs' members at the
+//       own definitions of the registers they share (the tile programs' fw/tile/tile_map.h) are read too and must equal them; and mesh.h must compile, its structs' members at the
 //       specification's offsets (the host C compiler, $CC or cc).
 #include <cstdio>
 #include <cstdlib>
@@ -652,10 +651,11 @@ TEST(mesh_h_holds_the_specifications_offsets_bits_fields_and_values) {
     CHECK(m.count("X0REL(off)") && m.at("X0REL(off)") == "((off) - 0x800)");
 }
 
-// The RTL firmware's own definitions (vendored under fw/rtl/src), for the registers and bits they share with mesh.h.
+// The RTL firmware's own definitions (fw/tile/tile_map.h), for the registers and
+// bits they share with mesh.h.
 TEST(the_rtl_firmwares_definitions_agree) {
     // the tile programs' tile_map.h: a register is its x0-relative address, (-0x800 + offset)
-    const std::string tile_map = slurp("fw/rtl/src/rtl/tile/base/test/programs/base_tile/tile_map.h");
+    const std::string tile_map = slurp("fw/tile/tile_map.h");
     CHECK(tile_map != "<cannot read>");
     const auto t = defines(tile_map);
     int found = 0;
@@ -687,30 +687,6 @@ TEST(the_rtl_firmwares_definitions_agree) {
     CHECK(t.count("HEADER(mode, counter, size)") && t.at("HEADER(mode, counter, size)") == "((mode) << 5 | (counter) << 2 | (size))");
     CHECK_EQ(value_of(t, "HDR_DST"), unsigned(regs::field("HDR", "dst").lo));
 
-    // the chip firmware's src/lib.rs: `pub const NAME: usize = 0x...;` an offset in the tile window, P_NAME in a peripheral's
-    const std::string lib = slurp("fw/rtl/src/rtl/chip/test/programs/firmware/src/lib.rs");
-    CHECK(lib != "<cannot read>");
-    auto rust = [&](const std::string& name, uint32_t& v) {
-        const std::string key = "pub const " + name + ": usize = ";
-        const size_t p = lib.find(key);
-        if (p == std::string::npos) return false;
-        std::string s = lib.substr(p + key.size(), lib.find(';', p) - p - key.size());
-        for (size_t u; (u = s.find('_')) != std::string::npos;) s.erase(u, 1);
-        return number(s, v);
-    };
-    found = 0;
-    uint32_t v = 0;
-    for (const SpecReg& r : SPEC_TILE)
-        if (rust(r.name, v)) { found++; CHECK_EQ(v, r.offset); }
-    CHECK_EQ(found, 23);   // the registers the chip's firmware uses
-    found = 0;
-    for (const SpecReg& r : SPEC_PERIPHERAL)
-        if (rust(std::string("P_") + r.name, v)) { found++; CHECK_EQ(v, r.offset); }
-    CHECK_EQ(found, 7);
-    CHECK(rust("TILE_WINDOW", v) && v == value_of(m, "TILE_WINDOW_BASE"));
-    CHECK(rust("STREAM_SRC_ADDR", v) && v == value_of(m, "STREAM_SRC_ADDR_BASE"));
-    CHECK(rust("STREAM_DEST_ADDR", v) && v == value_of(m, "STREAM_DEST_ADDR_BASE"));
-    CHECK(rust("STREAM_HDR", v) && v == value_of(m, "STREAM_HDR_BASE"));
 }
 
 // mesh.h compiles, and its structs put every register where the specification does: a C file of the committed header

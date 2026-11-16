@@ -63,7 +63,7 @@ std::string hash_of(const std::vector<std::string>& lines) {
 
 TEST(core_programs_fixtures_are_the_listed_files) {
     const auto sums = read_list("SHA256SUMS");
-    CHECK_EQ(sums.size(), 55u);                              // the 54 programs, and the boot ROM
+    CHECK_EQ(sums.size(), 53u);                              // the 53 programs (the boot ROM: fw/images/MANIFEST)
     for (const auto& row : sums) {
         CHECK_EQ(row.size(), 2u);
         std::ifstream in(kDir + "elf/" + row[1], std::ios::binary);
@@ -76,10 +76,10 @@ TEST(core_programs_fixtures_are_the_listed_files) {
 // Every program: its verdict, its cycles and retired instructions, and its whole retire trace against the RTL's.
 TEST(core_programs_pass_in_the_rtls_cycles) {
     const std::vector<Program> list = programs();
-    CHECK_EQ(list.size(), 54u);                              // the 49, the benchmark run, the interrupt programs
+    CHECK_EQ(list.size(), 53u);                              // the 48, the benchmark run, the interrupt programs
     std::map<std::string, std::string> hashes;
     for (const auto& row : read_list("RETIRE.sha256")) if (row.size() == 2) hashes[row[1]] = row[0];
-    CHECK_EQ(hashes.size(), 54u);
+    CHECK_EQ(hashes.size(), 53u);
     unsigned bad = 0;
     for (const Program& p : list) {
         core_programs::Run r;
@@ -147,7 +147,7 @@ TEST(core_programs_coremark_reports_the_rtls_baseline) {
 }
 
 // ------------------------------------------------------------------------------------------- the tile's bus
-// The RTL's boot ROM (rtl/blocks/core/src/boot_rom.S, built by mise run core-images) on the core in the tile's map,
+// The RTL's boot ROM (fw/boot/boot_rom.S, built by fw/build.sh: fw/images/boot/boot_rom.elf) on the core in the tile's map,
 // with the register bus's timing as the RTL's register_bus has it (rv32.h's header): a window load answered two
 // cycles after it is raised, a window store the cycle after, in the cycle it is made, REQUEST_SEND's store, which
 // may stall, the cycle after it is made. The RTL's boot_rom_program_test measures the ROM's cycles on its block
@@ -199,7 +199,7 @@ struct BootRun {
 
     bool boot(uint32_t params) {
         bus.params = params;
-        const std::string error = core_programs::read_elf(kDir + "elf/boot_rom.elf", [&](uint32_t a, uint8_t byte) {
+        const std::string error = core_programs::read_elf("fw/images/boot/boot_rom.elf", [&](uint32_t a, uint8_t byte) {
             if (a - TileBus::ROM < TileBus::ROM_BYTES) core_programs::place_byte(bus.rom, a - TileBus::ROM, byte);
             return true;                                     // (the segment starts with the file's own header)
         });

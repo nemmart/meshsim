@@ -139,3 +139,59 @@ session that brings the simulator to it, and a coder session that updates the fi
 - How the front end chooses between the Tracer's fill port and the look-up ports.
 - Whether the Updater's roots and counts are window registers or a state record (carried from the second note).
 - The walk through the Updater's registers one at a time, which was begun and not finished.
+
+## 8. Building on a simulator, not a harness (later the same day)
+
+- **Decided (owner): the two controllers are built on an existing version's simulator,** not in a harness of their
+  own as section 5 proposed. The real Tracer running on the Updater's images is then the check.
+- **Decided (owner): the work is in `updater_wip/`, and is not tied to a version.**
+- **Tony pushed v1.36's firmware the same day:** v1.35's C firmware upgraded to v1.36's hardware, and a new program
+  for the memory tile (`v1.36/fw/cc/memory.c`), which serves read and write requests through the RW engine.
+- **v1.36's own checks pass on the owner's runner** (Quest 198 and 199, at main 60ec71cf): `run_tests.sh all --check`
+  in 183 s and `make check` in 770 s, on 16 threads. They include the trace and replay of three real segments, the
+  sort at full size, and the memory tile's requests.
+  - One step was skipped: `fw-build`, which rebuilds the firmware images. It needs xPack `riscv-none-elf-gcc`
+    15.2.0-1, which the runner does not have. New firmware on v1.36 will need it there.
+- **Proposed: v1.36 is the base.** Its names and register layout are the ones this design uses, so nothing is ported
+  later, and `memory.c` is where the firmware that minds the Updater starts.
+
+## 9. Gold's frames, and the rulings on them
+
+Gold now writes the frames, reads them back, and builds reference images from them (`updater_wip`, WORKER1; its
+`REPORT.md` has the checks and the sizes). Its report made ten suggestions for `HOST-FRAMES.md`; the owner went
+through them one at a time. `HOST-FRAMES.md` now has all of this.
+
+| | ruling |
+|---|---|
+| the frame header | **Decided (owner):** one 128-bit word. Bits [7:0] the compression type (0 none, 1 LRU), [63:8] reserved, the type in [95:64], the length in [127:96]. Lengths and counts are 32 bits, never 64 |
+| 1. the program image | **Decided (owner):** frame 1 is "program image" (not "ELF"), sent as update words in whole pages into an empty file. **The Updater makes the file,** which saves a firmware path |
+| 2. the base jump table | **Decided (owner):** the same treatment |
+| 3. file lengths | **Decided (owner):** no field. A copy has its source's length; a jump table's follows from k. A file's length is fixed when it is made, so no update ever adds a level |
+| 4. roots and page counts | **Decided (owner):** the file system's firmware makes every root, by a copy, before the Updater runs. Page counts exclude the root. A page written in several segments counts once for each file |
+| 5. the data image | **Decided (owner):** gold sends the least data; it may skip zero words, and what it skips is zero underneath |
+| 6. the program id | **Decided (owner): dropped,** with the `.sha` file. The host manages what it loaded |
+| 7. the segment count | **Decided (owner):** *N*, the number of ASICs: 64, 128 or 256. *N* and *s* are the system's configuration, told to each ASIC at start-up ("69 of 128"), and are in no frame |
+| 8. compression | **Decided (owner):** the type is in the frame header, and each frame is sent in whichever form is smaller. LRU stays: it is about 2,000 flip-flops and halves the stream |
+| 9. base tables | **Decided (owner):** the host establishes them. A run's own table is dead when the run ends |
+| 10. the per-ASIC page counts | **Decided (owner): kept.** The firmware allocates a run's pages ahead of time from them, to keep the free page queue full |
+
+What follows for the Updater:
+
+- **Decided (owner): memory segments is two runs.** The Updater applies the words before segment *s* to the start
+  image and raises `done`. The firmware freezes the start image and makes the final image and the Tracer's copy.
+  The Updater is started again for segment *s* and the rest, while the stream waits in the segment queue.
+- **Decided (owner): minding the Updater is the file system firmware's job,** as minding the Tracer is the tracer
+  tile's.
+- **`SRC_ROOT` and the "empty" setting leave the Updater:** it always starts on a file that exists and has a root.
+- **No new modes** (owner's condition): a program image and a base table are the whole-pages run into an empty
+  file that a full new jump table already is.
+- **Proposed:** the program image becomes a header frame and a data frame (frames 1 and 2), and a base table uses
+  frames 4 and 5 with a path, so that each frame has one destination and its data starts on a 128-bit word.
+
+What gold measured, both workloads at 2²⁹:
+
+- **The Updater's load is small:** 1,761 pages written over a whole proof on EVM Zone, 6,093 on Cyclone; one ASIC
+  needs at most about 2,000 pages for its start image.
+- **Frame 9 is at most 17.7 MB raw;** LRU brings it to 0.53 to 0.61 of that.
+- **The static table as the base takes nearly every target:** a run adds 0 to 3 pages, against 257 for a full table.
+- **Every image is depth 2.**

@@ -43,3 +43,6 @@ spec/jolt/tracer.md	tracer/src/emulator/mmu.rs	other-repo	a16z's jolt
 spec/jolt/replayer.md	replayer/decode_table.bin	cd	relative to data/tables/, named earlier in the same sentence: a context the check cannot follow
 tests/TRACE-FORMAT.md	sim/tests/TRACE-FORMAT.md	output	the literal text of the trace header, which both writers emit and every golden trace carries (D38)
 tests/routerconf/README.md	DIR/tables.txt	output	a file the RTL-side command writes
+# The sort's sources (fw/sort/), vendored from meshsim v1.25 through Snarky One: their comments and PORTING.md cite v1.25's files
+fw/sort/PORTING.md	sw/mesh.h	historical	meshsim v1.25's file (its meshsim/sw/), which the port layer replaces
+fw/sort/PORTING.md	sw/crt0.S	historical	meshsim v1.25's file (its meshsim/sw/), which the port layer replaces

@@ -92,6 +92,7 @@ include tests/tracersuites.mk
 include tests/mach.mk
 include tools/regs/regs.mk
 include tools/delivery/delivery.mk
+include tools/fwimage/fwimage.mk
 include tests/p7b.mk
 include tests/bus.mk
 include tools/doccheck.mk

@@ -396,7 +396,7 @@ TEST(mach_config_front_end) {
 // RTL's boot ROM. Units 64 and 65 have boot_local (6.5), so their ROM enters an empty IMEM: the all-zero word is an
 // illegal instruction, which sets ERRORS.illegal_instruction (7.4). Unit 66 and the compute tiles have armed COUNTER_7
 // and wait for a load nobody sends. The master tile's own error line sets the toast pin (17.6), and the memory tile's
-// its bit of ERROR_LINES, ERROR_LINES_2 [1], alone. (The sort end to end on this chip: tests/test_rtl_sort.cpp.)
+// its bit of ERROR_LINES, ERROR_LINES_2 [1], alone. (The sort end to end on this chip: tests/test_sort.cpp.)
 TEST(mach_chip_builds_and_steps) {
     Mach m(Mach::chip_cfg(-1));
     m.c.run(20);

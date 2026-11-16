@@ -48,7 +48,6 @@ rv32um-mulhu.elf 518 427
 rv32uzicond-czero_eqz.elf 441 388
 rv32uzicond-czero_nez.elf 440 387
 firmware-isa_edges.elf 1388 797
-firmware-rust.elf 28779 22281
 coremark.elf 398723 301189
 # CoreMark as mise run bench-core builds it (10 iterations); its own report is also checked, against BENCH.
 coremark-bench.elf 3641314 2773473

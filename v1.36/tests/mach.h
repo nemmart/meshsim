@@ -17,7 +17,7 @@
 //
 // THE TWO MACHINES.
 //   - The machine as specified (MachConfig::machine(): coreless off, real_responder on): every tile's core runs from
-//     the reset PC in the RTL's boot ROM (fw/rtl/boot/, read by tests/rtl_images.h). A compute tile's ROM pulls its image
+//     the reset PC in the RTL's boot ROM (fw/images/boot/, read by tests/rtl_images.h). A compute tile's ROM pulls its image
 //     with a LOAD request to the master tile (6.5), which the master tile's firmware serves on the chip (below); on the
 //     bench machine nothing serves it, so such a tile waits in its ROM for ever. With MachConfig::boot_local every
 //     compute tile has the strap boot_local (7.1), and its ROM enters the image the harness placed in its IMEM
@@ -32,7 +32,7 @@
 //     (Ingress/Egress; the RW engine; the Tracer), on its attach tile's attach port; the request tree; the
 //     nets at the RTL chip's latencies. The master and memory tiles start from the images placed in their IMEM and DMEM
 //     (boot_local: Mach::place_elf), the others from the boot ROM's LOAD. This is the machine every test of v1.36's chip
-//     builds (tests/test_rtl_sort.cpp).
+//     builds (tests/test_sort.cpp).
 //   - A TEST BENCH'S (without special_tiles; tests/bench_master.h): the 64 compute tiles with v1.35's behavioural model
 //     of C&C ("cnc"), C&C 2's and 3's endpoints ("ep2", "ep3") on the attach tiles 0, 7 and 15, for the tests of the
 //     tile's units that feed a machine from the harness. What it still means on v1.36's tiles: its GO link drives every tile's
@@ -442,7 +442,7 @@ public:
     // An image placed in a unit's memories (a back door, before the unit's core needs it: 6.5's boot_local start, or a
     // test's own data): `words` from byte address `byte_addr` of IMEM (region 0x01) or DMEM (0x00).
     void place(unsigned unit, uint32_t byte_addr, const std::vector<uint32_t>& words);
-    // An ELF file's loadable segments (the RTL's images, fw/rtl/) placed likewise, as the RTL's chip tests place a
+    // An ELF file's loadable segments (the images: fw/images/) placed likewise, as the RTL's chip tests place a
     // firmware (tests/rtl_images.h's memory_images, bench.rs's): IMEM and DMEM each from its base, .bss's zeros included.
     void place_elf(unsigned unit, const std::string& path);
 

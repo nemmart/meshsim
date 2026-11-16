@@ -63,7 +63,7 @@ std::string hash_of(const std::vector<std::string>& lines) {
 
 TEST(core_programs_fixtures_are_the_listed_files) {
     const auto sums = read_list("SHA256SUMS");
-    CHECK_EQ(sums.size(), 54u);                              // the 54 programs (the boot ROM: fw/images/MANIFEST)
+    CHECK_EQ(sums.size(), 53u);                              // the 53 programs (the boot ROM: fw/images/MANIFEST)
     for (const auto& row : sums) {
         CHECK_EQ(row.size(), 2u);
         std::ifstream in(kDir + "elf/" + row[1], std::ios::binary);
@@ -79,7 +79,7 @@ TEST(core_programs_pass_in_the_rtls_cycles) {
     CHECK_EQ(list.size(), 53u);                              // the 48, the benchmark run, the interrupt programs
     std::map<std::string, std::string> hashes;
     for (const auto& row : read_list("RETIRE.sha256")) if (row.size() == 2) hashes[row[1]] = row[0];
-    CHECK_EQ(hashes.size(), 54u);
+    CHECK_EQ(hashes.size(), 53u);
     unsigned bad = 0;
     for (const Program& p : list) {
         core_programs::Run r;

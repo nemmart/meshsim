@@ -20,6 +20,7 @@
 #include "harness.h"
 #include "ie_far_end.h"
 #include "mach.h"
+#include "rtl_images.h"
 #include "rv32_asm.h"
 #include "units/ingress_egress.h"
 #include "units/periph_slot.h"

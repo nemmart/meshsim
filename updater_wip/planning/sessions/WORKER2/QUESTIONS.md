@@ -1,8 +1,11 @@
 # WORKER2 questions
 
-`HL` is `v1.4_wip/planning/HOST-LINK.md`, `II` is `INGRESS-INTERFACE.md`, both as on main `543e1eda`. None of these
-stops the work: each is taken as `NOTES.md`'s choice until ruled. They are here because WORKER3 writes Ingress from
-the same documents without my code, and where the documents are silent the two of us can differ.
+`HL` is `v1.4_wip/planning/HOST-LINK.md`, `II` is `INGRESS-INTERFACE.md`, both as on main `543e1eda`. They are here
+because WORKER3 writes Ingress from the same documents without my code, and where the documents are silent the two
+of us can differ.
+
+**All four were ruled by the owner on 2026-11-16;** each ruling is under its question, and the code and the vectors
+follow them.
 
 ## Q1. How many words a packet holds: II and HL differ
 
@@ -12,6 +15,8 @@ the same documents without my code, and where the documents are silent the two o
   with a packet of length 0 († it asks for no service).
 
 Taken: HL's. The reader accepts a length of 0 and skips it, as the brief says. Suggested: II's "Terms" says 0 to 32.
+
+**Ruled:** 0 to 32, as HL says.
 
 ## Q2. Does a packet of length 0 take a number in its stream's sequence?
 
@@ -24,6 +29,13 @@ Taken (C4): it is a packet like any other; it takes the next number, and the nex
 after it. The other reading: it is outside the numbering, as PCI Express's acknowledgements are, and its number field
 means something else or repeats the last. The packetizer writes no such packet, so only the reader and two test
 vectors depend on it. But an Ingress written the other way would refuse those two vectors with `sequence_error`.
+
+**Ruled: no.** A packet of length 0 does not take a number and does not advance the numbering. Its packet number
+field holds the number the next data packet on that stream will carry; the reader checks that it equals that, and
+does not advance. Built so: `Packets.Writer.empty`, `PacketFile`'s `number` check, and eight vectors (four good:
+when 7 is next, first in a file, when 0xFFFFE is next, on stream 1; four bad: holding the last packet's number,
+holding the one after the next, number 0, a data checksum that is not 0), with three such packets in
+`small-idle.packets` (two of them together) and one in `two-streams.packets`.
 
 ## Q3. "The first byte is not zero" and idle zeros
 
@@ -40,6 +52,10 @@ Taken (C2): zeros are skipped, and the damage test for the first byte expects `s
 byte. `packets-read --no-idle` is the other reading, where a zero is refused as `first-byte`. Is the first what is
 wanted of Ingress as well?
 
+**Ruled: as taken.** One correction to what I wrote above, found by the tests: the refusal one byte later is always
+`header-crc`, never `stream`, because the header CRC is tested before the stream is looked at. Ten damage lines of
+`VECTORS.txt` are this case.
+
 ## Q4. A packet with a bad data checksum and a wrong number: which error?
 
 II has two sticky bits, `crc_error` (a header CRC or a data checksum failed) and `sequence_error` (the number was not
@@ -49,3 +65,5 @@ Taken (C9): the header CRC, then the stream, the length and the reserved bits, t
 number. HL: "A packet counts only when both pass", so a packet whose data is bad has not used its number, and the
 error is `crc_error`. The vectors file has no packet wrong in two ways, so that WORKER3's tests do not depend on
 this before it is ruled.
+
+**Ruled: as taken.**

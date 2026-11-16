@@ -225,7 +225,7 @@ public final class PacketsTest {
     int n = s.size();
     TreeSet<Integer> ks = new TreeSet<>(List.of(1, 2, n / 3 + 1, n / 2 + 1, n - 1, n));
     ks.removeIf(k -> k < 1 || k > n);
-    long before = checks;
+    long before = checks, taken = 0;
     for (int k : ks) {
       int a = s.get(k - 1), len = file[a + 1] & 0xff;
       String w = "packet " + k + " of " + n + ": ";
@@ -261,15 +261,16 @@ public final class PacketsTest {
       byte[] fl = sealed(file, s, k, p -> { p.flags = 0xF; p.acknowledge = 0xFFFFF; });
       PacketFile p = good(fl, o, frames, w + "flags and acknowledge set");
       expect(p != null && p.flagged == 1 && p.acknowledged == 1, w + "flags and acknowledge counted");
+      taken += 2;
     }
-    long cases = checks - before;
+    long cases = checks - before - taken;
     // a data bit changed with both checks made right again is a good packet file of other frames: no check of the
     // link's can tell, and only --compare does
     byte[] changed = sealed(file, s, n, p -> p.data[0] ^= 4);
     expect(refused(changed, o) == null && !Arrays.equals(PacketFile.read(changed, o).frameBytes, frames), "a changed data bit with both checks right"
         + " is a good file of other frames");
     System.out.println("damage: " + cases + " changes to " + ks.size() + " packets of a file of " + n + " (" + file.length + " bytes): each"
-        + " refused by the check it should be, at the right packet and byte");
+        + " refused by the check it should be, at the right packet and byte; with every flag and an acknowledge number set, taken");
   }
 
   static PacketFile.Options noIdle() {

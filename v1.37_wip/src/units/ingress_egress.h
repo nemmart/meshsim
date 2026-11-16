@@ -335,8 +335,11 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
     bool running(int64_t) const { return false; }
     int errors(int64_t) const { return ((err_line[0] | err_line[1]) ? 1 : 0) | link_errors; }   // [0] tile_error, live; v1.37: [3:1] the link's, sticky
     uint32_t status_bits(int64_t) const {                    // [2] stream_last; v1.37: [3], [4] a packet waiting on a stream
-        return (in_n > 0 && in_q[in_head].last ? ST_STREAM_LAST : 0) | (link_stream[0].n > 0 ? ST_FOREGROUND_READY : 0) |
-               (link_stream[1].n > 0 ? ST_BACKGROUND_READY : 0);
+        uint32_t s = 0;
+        if (in_n > 0 && in_q[in_head].last) s |= ST_STREAM_LAST;
+        if (link_stream[0].n > 0) s |= ST_FOREGROUND_READY;
+        if (link_stream[1].n > 0) s |= ST_BACKGROUND_READY;
+        return s;
     }
     EventCounts& events() { return ev; }
     void sync(int64_t t) { set_live(t); }

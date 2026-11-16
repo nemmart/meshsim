@@ -197,12 +197,12 @@ required equal, byte for byte, to the tests' own writer's output.
 
 | check | where it ran | result |
 |---|---|---|
-| **`proof-matrix`, 24 runs:** EVM Zone trace-23 and Cyclone input/22, N 64, segments of 8 windows, each with its update words raw and LRU-coded, with a full new table and one added to a static base table, at s = 0, 1 and the middle (6 and 3) | here; the runner (QUEST204) | **24 of 24 pass** |
-| **`proof-29`, 10 runs:** EVM Zone trace-29 (85 segments with rows) at s = 0, 1, 42, 83, 84; Cyclone input/29 (89) at s = 0, 1, 44, 87, 88; N 128, segments of 64 windows | here; the runner (QUEST204) | **10 of 10 pass** |
-| **`proof-real`, 3 runs:** `segment-real`'s three segments (EVM Zone 23's s = 0 and 1, Cyclone 22's 0; N 128, 64 windows) from packet files, with everything `segment-real` checks: every row out of every tile's row port, every window's record and streams as delivered, against the recorded files | the runner (QUEST204): the recorded files can't be built in this session | QUEST204REAL |
+| **`proof-matrix`, 24 runs:** EVM Zone trace-23 and Cyclone input/22, N 64, segments of 8 windows, each with its update words raw and LRU-coded, with a full new table and one added to a static base table, at s = 0, 1 and the middle (6 and 3) | here; the runner (Quest 204) | **24 of 24 pass**, both places, with the same cycles |
+| **`proof-29`, 10 runs:** EVM Zone trace-29 (85 segments with rows) at s = 0, 1, 42, 83, 84; Cyclone input/29 (89) at s = 0, 1, 44, 87, 88; N 128, segments of 64 windows | here; the runner (Quest 204) | **10 of 10 pass**, both places, with the same cycles |
+| **`proof-real`, 3 runs:** `segment-real`'s three segments (EVM Zone 23's s = 0 and 1, Cyclone 22's 0; N 128, 64 windows) from packet files, with everything `segment-real` checks: every row out of every tile's row port, every window's record and streams as delivered, against the recorded files | the runner (Quest 204): the recorded files can't be built in this session | **3 of 3 pass:** from a packet file the chip passes what `segment-real` passes |
 | the same three without the recorded files' checks | here | pass |
 | in every run above: the master's status; every image as its run ended against gold's (program, table, cycle-0, start, the Tracer's copy, final), and the frozen ones again at the end; `PAGE_COUNT` 0 at every done; no error bit; the link read to its end; the page map; the hand-over; the Tracer's last record against record s + 1; the tracer tile's and every tile's results; each replayer's end state against the next window's start | | |
-| `./run_tests.sh all --check`, every v1.36 step with them | here (3 steps SKIPPED for the recorded files); the runner (QUEST204) | pass here; QUEST204ALL |
+| `./run_tests.sh all --check`, every v1.36 step with them | here (3 steps SKIPPED for the recorded files); the runner (Quest 204) | **pass**, both places. On the runner every step ran but `fw-build` (no xPack toolchain there; `fw/build.sh --check` passes here: 18 images) |
 | `make check` | the runner (QUEST205) | QUEST205CHECK |
 | `test_master`, `test_updater`, `test_ingress_link` in the debug build (ASan, UBSan), and with gcc | here | pass |
 | Ingress against HOST-LINK.md and INGRESS-INTERFACE.md as main has them, and against gold's vectors on main | here | the documents have not changed since `8385dacd`, which Ingress was built to; `test_ingress_link` now has HL's own figures (its table's CRC values, its example packet byte for byte, its cross-check 0x48674BC7): **33 pass**; `test_packet_vectors` reads main's `test/packets/`: the 8 CRC values, 43 packets, 5 files and 32 damaged files **all agree** |
@@ -228,7 +228,35 @@ look-up 6 cycles, a page read or written 336, a half page 208, an index entry 80
 | | 88 | 39,985,152 | | 3,832 | 17,275,617 | 10,503,503 | 0 | 3,658,612 | 3,493 | 7,914 | 10,385,063 | 26.0% |
 
 "Pages read" and "written" count pages and half pages, as the Updater's statistics do. The full table of all 37
-runs is the runner's `proof-numbers.md` (QUEST204).
+runs is the runner's `proof-numbers.md` (Quest 204, `results/204-v137-proof/`).
+
+**The three recorded segments** (the runner; N 128, 64 windows, a static base table):
+
+| run | s | cycles to the exit | link, bytes | pages marked | Updater busy | waiting on data | on pages | on memory | pages read | written | master awake | its share |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| EVM Zone 23 | 0 | 26,824,192 | 2,828,672 | 962 | 2,770,509 | 1,910,027 | 2,473 | 428,040 | 51 | 986 | 1,888,873 | 7.0% |
+| | 1 | 26,035,712 | | 1,039 | 2,799,034 | 1,916,545 | 0 | 452,520 | 36 | 1,038 | 1,893,918 | 7.3% |
+| Cyclone 22 | 0 | 28,297,728 | 4,022,560 | 1,406 | 4,076,115 | 2,850,315 | 0 | 599,844 | 8 | 1,405 | 2,727,654 | 9.6% |
+
+**The matrix** (segments of 8 windows; the range over s = 0, 1 and the middle):
+
+| run | link, bytes | cycles to the exit | Updater busy | master awake |
+|---|---|---|---|---|
+| EVM Zone 23, raw, full table | 3,720,864 | 6.46 to 6.89 M | 3.70 M | 2.38 M, 35 to 37% |
+| EVM Zone 23, raw, on a base | 3,729,520 | 6.47 to 6.90 M | 3.71 M | 2.38 M |
+| EVM Zone 23, LRU, full table | 2,788,112 | 5.83 to 6.14 M | 2.82 M | 1.84 M, 30 to 32% |
+| EVM Zone 23, LRU, on a base | 2,792,272 | 5.84 to 6.15 M | 2.82 M | 1.84 M |
+| Cyclone 22, raw, full table | 5,293,296 | 8.06 to 9.74 M | 5.32 M | 3.43 M, 35 to 43% |
+| Cyclone 22, raw, on a base | 5,293,456 | 8.06 to 9.74 M | 5.32 M | 3.43 M |
+| Cyclone 22, LRU, full table | 3,967,440 | 7.26 to 8.54 M | 4.07 to 4.12 M | 2.66 M, 31 to 37% |
+| Cyclone 22, LRU, on a base | 3,967,600 | 7.26 to 8.54 M | 4.07 to 4.13 M | 2.66 M |
+
+LRU coding takes a quarter off the link's bytes on both workloads, and the run is shorter by as much as the link
+is. On these inputs a base table changes almost nothing: the table is a small part of the file.
+
+**On the runner** (Quest 204, 16 threads): the host's side made in 99 s (the three sets; 64 files, byte-identical
+to those made here); `proof-real` 47 s, `proof-matrix` 118 s, `proof-29` 216 s; `all --check` 571 s with them. A
+2²⁹ run simulates at about 1.8 M cycles a second there, 1.0 M here.
 
 **One proof, run by run** (Cyclone 2²⁹, s = 44):
 

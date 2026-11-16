@@ -21,7 +21,7 @@
 #                     also equal its output, byte for byte
 #   JAVA_HEAP=3g
 # Each set's folder gets RUNS, a line a run: its name, N, the windows a segment has, and the segments to run; and
-# SHA256SUMS. A set is rebuilt whole (seconds). Exit 1 on any failure.
+# SHA256SUMS, the same on every machine. A set is rebuilt whole (seconds). Exit 1 on any failure.
 set -eu
 export LC_ALL=C
 HERE=$(cd "$(dirname "$0")" && pwd); . "$HERE/../inputs/pins.sh"
@@ -50,6 +50,7 @@ one() {
     && grep -q VERIFIED "$D/$name.log" || { tail -3 "$D/$name.log"; echo "frames: gold did not make and verify $name"; exit 1; }
   rows=$(sed -n 's/.*"rows": *\([0-9]*\).*/\1/p' "$f.json" | head -1)
   segs=$(( (rows + windows * 65536 - 1) / (windows * 65536) ))     # the segments that have rows
+  rm -f "$f.json"                                                  # gold's account of the run: it names this machine's paths
   case $pick in
     middle) list="0 1 $((segs / 2))" ;;
     ends)   list="0 1 $((segs / 2)) $((segs - 2)) $((segs - 1))" ;;

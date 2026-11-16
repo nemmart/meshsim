@@ -10,7 +10,7 @@ The link itself, its packets and its checks, is `HOST-LINK.md`. The frames insid
 
 | term | meaning |
 |---|---|
-| **a packet** | one packet of the link: a header word, then 1 to 32 words of data. Not a packet of the mesh, which this document calls a `WRITE` |
+| **a packet** | one packet of the link: a header word, then 0 to 32 words of data. Not a packet of the mesh, which this document calls a `WRITE` |
 | **a word** | 128 bits |
 | **a stream** | foreground or background (owner's names). The foreground carries what the host sends for the proof being worked on; the background sets up the next proof |
 | **a frame** | one of `HOST-FRAMES.md`'s, sent as one or more packets of a stream |
@@ -38,6 +38,7 @@ Ingress/Egress is the master tile's peripheral 1 (`v1.36/spec/machine-spec.md` 1
 | `EVENTS` [1] | `dma_done` | counted, depth 1 | the DMA's transfer has ended (17.4) |
 | `ERRORS` [1] † | `crc_error` | sticky | a packet failed its header CRC or its data checksum |
 | `ERRORS` [2] † | `sequence_error` | sticky | a packet's number was not the next one on its stream |
+| `ERRORS` [3] † | `format_error` | sticky | a packet passed both checks but a field cannot be: its stream, its length, or a reserved bit |
 | word 80 † | `FOREGROUND_WORDS` | R | the words in the foreground packet that asked for service; 0 when none is waiting |
 | word 81 † | `BACKGROUND_WORDS` | R | the same for the background |
 | block 1 | `DMA_HDR`, `DMA_DEST_ADDR`, `DMA_START` | 17.4's | reads words out of a packet (below) |
@@ -123,6 +124,10 @@ What the core does with a background packet:
 
 - **A packet that fails a check is fatal** (owner). `ERRORS.crc_error` is set and Ingress presents no more packets.
 - † A packet number out of order is treated the same way, with `ERRORS.sequence_error`.
+- † So is a packet that passes both checks with a field that cannot be, with `ERRORS.format_error`: that is the
+  sender's fault, not noise.
+- **The order of the tests is `HOST-LINK.md`'s:** the header CRC, the fields, the data checksum, then the number.
+  So a packet with a bad data checksum and a wrong number is a `crc_error`.
 - Sending again and recovery need the way back to the host, and are for later (`HOST-LINK.md`).
 
 ## In v1.37: a black box and a file
@@ -141,11 +146,20 @@ What the core does with a background packet:
 - every packet is on stream 2, the background;
 - each frame starts a new packet; a frame's packets are 32 words long but its last, which holds what remains;
 - packet numbers run from 1; the acknowledge field and the flags are 0;
-- † both checks are CRC-32C.
+- both checks are CRC-32C, as `HOST-LINK.md` defines it.
+
+**What the black box does with the rest:**
+
+- † zero bytes between packets are idle, and it skips them;
+- † a packet of length 0 takes no number and asks for no service: it is checked and passed over;
+- † the flags and the acknowledge field are ignored, since there is no way back to the host;
+- † at the end of the file no more packets come, which is not an error.
+
+Gold's packetizer and its vectors are `updater_wip/pipeline/gold/` (`packets`, `packets-read`,
+`test/packets/VECTORS.txt`).
 
 ## Open
 
 - The word numbers and bit numbers marked †.
 - The sending side, Egress: nothing goes back to the host in v1.37.
 - Whether the foreground stream's messages are frames of the same kind, and what they are.
-- What Ingress does with a packet of length 0. † It asks for no service.

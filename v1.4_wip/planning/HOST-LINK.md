@@ -12,7 +12,8 @@ takes packets out of Ingress is `INGRESS-INTERFACE.md`.
 
 - **8 LVDS data lines** (owner): one byte per transfer. Byte alignment comes from the wires, so the receiver only
   ever has to find where a packet starts.
-- **About 1 GB a second.**
+- **About 1 GB a second.** A full packet is 16 bytes of header in 528, so the frames get 32/33 of it: gold measures
+  3.13% of overhead on both workloads.
 - **A 128-bit word is 16 transfers,** least significant byte first, as everywhere in the design.
 - **Noise can last hundreds of milliseconds** (owner: a phone call in the server room). The link has to come back
   from that by itself.
@@ -40,7 +41,7 @@ A header word of 128 bits, then 0 to 32 words of data.
 | [3:0] | stream | 1 foreground, 2 background; never 0 |
 | [7:4] | flags | below |
 | [15:8] | length | the data's length in 128-bit words, 0 to 32 |
-| [35:16] | packet number | this packet's number on its stream: 1 to 0xFFFFE, then 1 again |
+| [35:16] | packet number | this packet's number on its stream: the first is 1, they run to 0xFFFFE, then 1 again |
 | [55:36] | acknowledge | the last packet number received in order on this stream; 0 for none yet |
 | [63:56] | reserved | 0 |
 | [95:64] | data checksum | over the data |
@@ -53,12 +54,30 @@ A header word of 128 bits, then 0 to 32 words of data.
 | recovery | [6] | the answer to "lost": the first packet after the zeros |
 | stop | [7] | "stop sending me this stream"; 0 is "send" |
 
+The same word byte by byte, as it goes on the link. Byte *i* holds bits [8*i* + 7 : 8*i*] and is the (*i* + 1)th
+byte sent. The data follows, 16 bytes a word.
+
+| byte | holds |
+|---|---|
+| 0 | the stream in its low four bits, the flags in its high four. A background packet with no flags is 0x02 |
+| 1 | the length, 0 to 32 |
+| 2, 3 | packet number bits 0 to 15, low byte first |
+| 4 | low four bits: packet number bits 16 to 19; high four bits: acknowledge bits 0 to 3 |
+| 5, 6 | acknowledge bits 4 to 19, low byte first |
+| 7 | reserved, 0 |
+| 8 to 11 | the data checksum, low byte first |
+| 12 to 15 | the header CRC, low byte first |
+
 - **Everything rides in 128 bits** (owner): the header is one word, and the data is whole words, so the link is
   word-aligned throughout.
 - **The length is any number of words up to 32,** 16 to 512 bytes of data (owner). Any frame then cuts exactly into
   packets.
 - **A frame ends at the end of a packet** (owner): the next frame never starts in the middle of one.
 - **A length of 0 is a header with no data** (owner): a way to acknowledge with nothing else to send.
+  - **It takes no packet number** (ruled 2026-11-16, on WORKER2's question): if it did, the other side would have to
+    acknowledge it, and an acknowledgement that must itself be acknowledged never settles. Its number field holds
+    the number the stream's next data packet will carry, so the field is still never 0. The receiver checks the
+    field and does not advance.
 - **Packet numbers are per stream** †, since the streams are flow-controlled apart.
 - **No packet number is 0 or all ones** (owner), so a header word is never all zeros.
 - **About 20 bits of packet number is enough** (owner), which left more bits for the checks. Only packets not yet
@@ -76,12 +95,56 @@ A header word of 128 bits, then 0 to 32 words of data.
   to expect.
 - The packet number is checked as well, since the receiver compares it anyway to keep packets in order.
 
+**Both checks are CRC-32C** (Castagnoli; the one in iSCSI, SCTP and ext4; RFC 3720, appendix B.4). † The choice of
+CRC-32C is proposed; its definition here is exact, and gold's packetizer and its test vectors use it
+(`updater_wip/pipeline/gold/test/packets/VECTORS.txt`).
+
+| | |
+|---|---|
+| width | 32 bits |
+| polynomial | 0x1EDC6F41; reflected, as the steps below use it, 0x82F63B78 |
+| initial value | 0xFFFFFFFF |
+| input and output | reflected: each byte enters least significant bit first |
+| final XOR | 0xFFFFFFFF |
+| of the nine ASCII bytes "123456789" | 0xE3069283 |
+| of no bytes | 0x00000000 |
+| of 16 zero bytes | 0x42709AEA |
+
+```
+crc = 0xFFFFFFFF
+for each byte b, in order:
+    crc = crc XOR b
+    repeat 8 times:  crc = (crc >> 1) XOR 0x82F63B78   if crc's bit 0 is 1
+                     crc =  crc >> 1                    otherwise
+result = crc XOR 0xFFFFFFFF
+```
+
+- **The data checksum** is the CRC-32C of the packet's data, all 16 × length bytes, in the order they go on the
+  link. For a packet of length 0 it is 0x00000000, and it is checked.
+- **The header CRC** is the CRC-32C of header bytes 0 to 11, the data checksum included.
+- **An example:** stream 2, no flags, length 1, number 1, acknowledge 0, the data one zero word. The header's bytes
+  are `02 01 01 00 00 00 00 00 EA 9A 70 42 A0 8C 06 E1`.
+- A cross-check for any implementation: the CRC-32C of all 16 header bytes of a good packet is 0x48674BC7.
+
+**The order a receiver tests in:**
+
+1. the header CRC;
+2. the header's fields: the stream is 1 or 2, the length is at most 32, the reserved bits are 0;
+3. the data checksum;
+4. the packet number, which means something only once the rest has passed.
+
 ## When a packet is bad
 
 | what went wrong | still in step? | what the receiver does |
 |---|---|---|
 | the header is good, the data checksum fails | yes: the length could be trusted | sets **resend** on its next packet back. The link does not stop (owner) |
 | the header's CRC fails | no: the packet's length is unknown | the recovery below |
+| both checks pass but a field cannot be: a stream that does not exist, a length over 32, a reserved bit set | yes | † this is the sender's fault, not noise, and sending again would not help: an error of its own (`ERRORS.format_error` in `INGRESS-INTERFACE.md`) |
+
+- **Idle is zero bytes, in any number,** not only whole words: the first byte that is not zero starts a header.
+- **"The first byte is never zero" is how a receiver finds a packet's start, not a check it can make.** A first
+  byte that noise turns to zero is taken for idle; the receiver then fails a header CRC one byte later, which is
+  the "lost my place" case.
 
 ## Recovery
 
@@ -148,7 +211,5 @@ The owner's remark: there must be a mountain of literature on building these. Th
 - What the foreground stream carries, and how large its messages are.
 - Whether the recovery packet states the packet number it restarts from, or that is the "lost" packet's number plus one.
 - How much room a stream's queue keeps when it says stop, and how large the queues are.
-- The checksums: † CRC-32C for both, and what a data checksum over no data is.
 - The timers: how soon an unacknowledged packet is sent again without a "resend".
-- How the chip acknowledges a stream it has nothing to send on: a packet of length 0 on that stream.
 - How large the chip's own window of kept packets is.

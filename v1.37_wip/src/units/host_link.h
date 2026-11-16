@@ -57,6 +57,7 @@ struct Reader {
     const uint8_t* bytes = nullptr;
     size_t size = 0, at = 0;
     uint32_t expect[2] = {FIRST_NUMBER, FIRST_NUMBER};   // each stream's next packet number (foreground, background)
+    size_t header_at = 0;                                // where the last packet's header was taken to start
 
     enum class Next : uint8_t { PACKET, END, CUT };
     void open(const uint8_t* b, size_t n) { bytes = b; size = n; rewind(); }
@@ -70,6 +71,7 @@ struct Reader {
         while (at < size && bytes[at] == 0) at++;        // idle
         taken = at - from;
         if (at == size) return Next::END;
+        header_at = at;
         if (size - at < 16) { at = size; return Next::CUT; }
         const uint8_t* h = bytes + at;
         auto u32 = [&](unsigned i) { return uint32_t(h[i]) | uint32_t(h[i + 1]) << 8 | uint32_t(h[i + 2]) << 16 | uint32_t(h[i + 3]) << 24; };

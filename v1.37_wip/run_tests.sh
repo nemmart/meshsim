@@ -51,7 +51,7 @@ SUITES="$SUITES test_periph_slot test_ingress_egress test_rw_engine"            
 SUITES="$SUITES test_rtl_tile test_rtl_stream test_sort test_memory test_segment"           # the firmware on the tile and the chip
 SUITES="$SUITES suite_replayer suite_memsys suite_rvc suite_tracer tracer_block"            # the replayer and the Tracer
 SUITES="$SUITES fwimage"                                                                   # the runs' keys (tools/fwimage)
-SUITES="$SUITES test_file_store test_updater test_ingress_link updater_frames packetize"       # v1.37: the file store's pages by address, the Updater black box, Ingress's host link
+SUITES="$SUITES test_file_store test_updater test_ingress_link test_packet_vectors updater_frames packetize"       # v1.37: the file store's pages by address, the Updater black box, Ingress's host link
 
 if [ "$BUILD" = 1 ]; then
   echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
@@ -179,6 +179,12 @@ fi
 check file-store "v1.37: the file store's pages by address: placed where told, whole pages, beside the pages it hands out (tests/test_file_store.cpp)" -- $S/test_file_store
 check updater "v1.37: the Updater black box alone: registers, queues and credits, update words raw and LRU, copy-on-write, the Tracer's copy, errors; gold's fixtures, each image against gold's (tests/test_updater.cpp)" -- $S/test_updater
 check ingress-link "v1.37: Ingress's host link, the black box: the link's checks, the rule for a service flag, reading out by the DMA, both streams, the errors, the timing (tests/test_ingress_link.cpp)" -- $S/test_ingress_link
+VECTORS=${PACKET_VECTORS:-../updater_wip/pipeline/gold/test/packets}
+if [ -f "$VECTORS/VECTORS.txt" ]; then
+  check packet-vectors "v1.37: Ingress's host link against gold's packetizer: every vector, packet file and damaged file of $VECTORS, by the reader and through the black box (tests/test_packet_vectors.cpp)" -- env PACKET_VECTORS="$VECTORS" $S/test_packet_vectors
+else
+  skipped packet-vectors "v1.37: Ingress's host link against gold's packetizer's vectors and packet files" "no $VECTORS/VECTORS.txt: gold's packetizer is not on this branch yet (PACKET_VECTORS names another folder)"
+fi
 if command -v javac > /dev/null && [ -d ../updater_wip/pipeline/gold/src ]; then
   check updater-fixtures "v1.37: the fixtures made again by gold (../updater_wip/pipeline/gold), equal to the committed ones (tests/updater/make_fixtures.sh --check)" -- bash tests/updater/make_fixtures.sh --check
 else

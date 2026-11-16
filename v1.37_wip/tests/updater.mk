@@ -12,3 +12,5 @@ $(B)/packetize: $(B)/tests/packetize_main.o $(LIB_OBJ)
 all: $(B)/packetize
 # Ingress's host link in the master tile's slot (tests/test_ingress_link.cpp)
 $(B)/test_ingress_link: $(SLOT_LINK)
+# Ingress's host link against gold's packetizer's vectors and packet files (tests/test_packet_vectors.cpp)
+$(B)/test_packet_vectors: $(SLOT_LINK)

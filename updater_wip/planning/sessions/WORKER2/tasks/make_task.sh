@@ -49,9 +49,9 @@ step() { name=\$1; shift; t0=\$(date +%s); "\$@" > "\$RES/\$name.txt" 2>&1; rc=\
   echo "\$name: \$([ \$rc = 0 ] && echo PASS || echo FAIL) (\$(( \$(date +%s) - t0 )) s)" | tee -a "\$V"; tail -3 "\$RES/\$name.txt"; }
 as200() {  # the frame files' SHA-256s, from their side files, against Quest 200's
   bad=0
-  while read name sha; do
-    got=\$(grep -o '"file_sha256": "[0-9a-f]*"' "\$RES/\$name.frames.json" | cut -d'"' -f4)
-    [ "\$got" = "\$sha" ] && echo "\$name.frames \$got: as Quest 200's" || { echo "\$name.frames \$got: Quest 200's is \$sha: DIFFERS"; bad=1; }
+  while read f want; do                # not "name": step's own variable
+    got=\$(grep -o '"file_sha256": "[0-9a-f]*"' "\$RES/\$f.frames.json" | cut -d'"' -f4)
+    [ "\$got" = "\$want" ] && echo "\$f.frames \$got: as Quest 200's" || { echo "\$f.frames \$got: Quest 200's is \$want: DIFFERS"; bad=1; }
   done <<'SHAS'
 small/evm-zone-23-full bd7c771b52fd5bc94f3dee6d2051bcea886f1323173b8a6a65c370c6f42d885c
 small/evm-zone-23-base b209f2b08b5d9b778455024046a78024cd5d78bae3f467906d9044f6c0ff2bfd

@@ -53,6 +53,21 @@ public final class SegmentWriter {
     byte[] updateData;
   }
 
+  /** Called during write(), for the host's frames (FrameWriter); it changes nothing in the file. */
+  public interface Listener {
+    /** At segment k's first row (its cut), or at once if the run has already ended. */
+    void segmentStart(int k, Machine m);
+    /** After each step: v and pc as before it, m after it. */
+    void step(VInstr v, long pc, Machine m);
+    /** After the last segment. */
+    void end(Machine m);
+  }
+
+  /** null: none. */
+  public Listener listener;
+  /** After write() at V1_3: the run's jump-target table (static and run targets). */
+  public JumpTable jumps;
+
   /** Statistics for the side file. */
   public long totalRows, adviceWords, updateWords;
 
@@ -87,7 +102,7 @@ public final class SegmentWriter {
   /** Runs the program over all segments, then returns the file. */
   public byte[] write() {
     Machine m = new Machine(program, new SecpCompute());
-    JumpTable jumps = format == Format.V1_3 ? new JumpTable(program) : null;
+    jumps = format == Format.V1_3 ? new JumpTable(program) : null;
     final long lowest = program.layout.lowestAddress();
     final long spanCells = ((1L << 32) - lowest) / 8 + 1;
     final long[] dirtyBits = new long[(int) ((spanCells + 63) / 64)];
@@ -105,12 +120,14 @@ public final class SegmentWriter {
         sg.state[2] = m.index - m.code.indexOf(m.pc);
       }
       for (int r = 1; r < Isa.NUM_REGS; r++) sg.state[3 + r] = m.regs[r];
+      if (listener != null) listener.segmentStart(k, m);
 
       while (m.cycle < end && !m.halted()) {
         VInstr before = m.code.at(m.index);
         long beforePc = m.pc;
         m.step();
         if (jumps != null) jumps.observe(before, beforePc, m);
+        if (listener != null) listener.step(before, beforePc, m);
         sg.rows++;
         int op = (int) (m.row[1] & 0xff);
         if (op == Op.VirtualAdvice) sg.advice.add(m.row[3]);       // every advice row: the word its rd takes
@@ -167,6 +184,7 @@ public final class SegmentWriter {
       updateWords += words.length;
     }
 
+    if (listener != null) listener.end(m);
     ByteArrayOutputStream file = new ByteArrayOutputStream();
     if (format == Format.V1_3) {
       params = new ProofParams(program, m);        // K by a16z's prover rule, after the run (section 25's checks)

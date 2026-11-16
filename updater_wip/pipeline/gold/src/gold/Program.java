@@ -23,6 +23,7 @@ public final class Program {
   /** The merged Text ranges (D1): what is code, for the stores-into-code check (DECISIONS-v1.3 section 25). */
   public final List<long[]> textRanges = new ArrayList<>();
 
+  /** inputDir null: the program image alone, no input files loaded (the host's frame 1). */
   public Program(Path programDir, Path inputDir) throws IOException {
     Elf elf = new Elf(programDir.resolve("program.elf"));
     symbols = elf.symbols;
@@ -73,9 +74,11 @@ public final class Program {
     layout = Layout.compute(config, Layout.RAM_START, programEnd, codeStart, codeEnd, elf.entry);
 
     // inputs, copied unparsed (an absent file is empty)
-    copyInput(inputDir.resolve("input.bin"), layout.inputStart, layout.inputEnd);
-    copyInput(inputDir.resolve("trusted_advice.bin"), layout.trustedAdviceStart, layout.trustedAdviceEnd);
-    copyInput(inputDir.resolve("untrusted_advice.bin"), layout.untrustedAdviceStart, layout.untrustedAdviceEnd);
+    if (inputDir != null) {
+      copyInput(inputDir.resolve("input.bin"), layout.inputStart, layout.inputEnd);
+      copyInput(inputDir.resolve("trusted_advice.bin"), layout.trustedAdviceStart, layout.trustedAdviceEnd);
+      copyInput(inputDir.resolve("untrusted_advice.bin"), layout.untrustedAdviceStart, layout.untrustedAdviceEnd);
+    }
 
     List<Bytecode.Range> ranges = new ArrayList<>();
     for (long[] r : merged) ranges.add(new Bytecode.Range(r[0], memory.read(r[0], (int) (r[1] - r[0]))));

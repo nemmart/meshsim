@@ -68,6 +68,29 @@ public final class HashTable {
     return -1;
   }
 
+  /** An independent copy: the same entries in the same places. */
+  public HashTable copy() {
+    HashTable t = new HashTable(k, p1, p3);
+    System.arraycopy(keys, 0, t.keys, 0, keys.length);
+    System.arraycopy(bases, 0, t.bases, 0, bases.length);
+    System.arraycopy(fill, 0, t.fill, 0, fill.length);
+    System.arraycopy(placedAt, 0, t.placedAt, 0, placedAt.length);
+    t.entries = entries;
+    return t;
+  }
+
+  /** The key's base as an unsigned value, or -1 if absent (the probe's rule over the table as built). */
+  public long find(int key) {
+    int h = home(key, p1, k);
+    for (int s = 0; s < PROBE_LINES; s++) {
+      int at = h * ENTRIES;
+      for (int j = 0; j < fill[h]; j++) if (keys[at + j] == key) return bases[at + j] & 0xffffffffL;
+      if (fill[h] < ENTRIES) return -1;
+      h = step(h, p3, k);
+    }
+    return -1;
+  }
+
   public int fullestLine() {
     int m = 0;
     for (int f : fill) m = Math.max(m, f);

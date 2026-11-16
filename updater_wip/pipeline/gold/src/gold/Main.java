@@ -54,8 +54,22 @@ public final class Main {
     if (args.length >= 4 && args[0].equals("segments")) {
       System.exit(segments(args) ? 0 : 1);
     }
+    if (args.length >= 4 && args[0].equals("frames")) {
+      System.exit(frames(args) ? 0 : 1);
+    }
+    if (args.length >= 2 && args[0].equals("frames-read")) {
+      System.exit(FrameReader.main(java.util.Arrays.copyOfRange(args, 1, args.length)) ? 0 : 1);
+    }
+    if (args.length >= 3 && args[0].equals("frames-images")) {
+      System.exit(Reference.main(java.util.Arrays.copyOfRange(args, 1, args.length)) ? 0 : 1);
+    }
     System.err.println("usage: gold segments <program dir> <input dir> <out file> [--cuts=0,a,b,...|--cuts-file=F]"
         + " [--segment-rows=4194304] [--segments=128] [--compare=<reference file>]");
+    System.err.println("usage: gold frames <program dir> <input dir> <out file> [--cuts=0,a,...|--cuts-file=F]"
+        + " [--segment-rows=4194304] [--base=none|static] [--lru=none|all|5,6,9] [--stem=P] [--workdir=P]"
+        + " [--base-path=P] [--verify]");
+    System.err.println("usage: gold frames-read <frame file> [--check] [--seg=<v1.3 segment file>] [--brief]");
+    System.err.println("usage: gold frames-images <frame file> <s> [--out=<prefix>]");
     System.err.println("usage: gold compare <program dir> <input dir> <ref prefix> [--max-rows=N] [--computed-advice]");
     System.exit(2);
   }
@@ -155,6 +169,65 @@ public final class Main {
     String where = FrameDiff.firstDifference(file, ref);
     System.out.println(where == null ? "IDENTICAL to " + compareWith + " (SHA-256 " + sha256(ref) + ")" : "DIFFERS: " + where);
     return where == null;
+  }
+
+  /** frames: the host's frames for v1.4 (FrameWriter), with &lt;out&gt;.json beside them; --verify checks them. */
+  static boolean frames(String[] args) throws Exception {
+    long segmentRows = 1L << 22;
+    long[] cuts = null;
+    FrameWriter.Options o = new FrameWriter.Options();
+    boolean verify = false;
+    Path programDir = Path.of(args[1]), inputDir = Path.of(args[2]);
+    String name = programDir.toAbsolutePath().normalize().getFileName().toString();
+    o.stem = "/programs/" + name;
+    o.workdir = "/work/" + name + "-" + inputDir.toAbsolutePath().normalize().getFileName();
+    o.basePath = null;
+    for (int i = 4; i < args.length; i++) {
+      String a = args[i];
+      if (a.startsWith("--segment-rows=")) segmentRows = Long.parseLong(a.substring(15));
+      else if (a.startsWith("--cuts=")) cuts = Arrays.stream(a.substring(7).split(",")).mapToLong(Long::parseLong).toArray();
+      else if (a.startsWith("--cuts-file=")) {
+        cuts = Files.readAllLines(Path.of(a.substring(12))).stream().filter(l -> !l.isBlank()).mapToLong(Long::parseLong).toArray();
+      } else if (a.equals("--base=static")) o.baseStatic = true;
+      else if (a.equals("--base=none")) o.baseStatic = false;
+      else if (a.startsWith("--lru=")) {
+        String v = a.substring(6);
+        o.lru5 = o.lru6 = o.lru9 = v.equals("all");
+        if (!v.equals("all") && !v.equals("none")) {
+          for (String f : v.split(",")) {
+            switch (f) {
+              case "5" -> o.lru5 = true;
+              case "6" -> o.lru6 = true;
+              case "9" -> o.lru9 = true;
+              default -> throw new IllegalArgumentException("--lru takes none, all, or frames among 5,6,9");
+            }
+          }
+        }
+      } else if (a.startsWith("--stem=")) o.stem = a.substring(7);
+      else if (a.startsWith("--workdir=")) o.workdir = a.substring(10);
+      else if (a.startsWith("--base-path=")) o.basePath = a.substring(12);
+      else if (a.equals("--verify")) verify = true;
+      else throw new IllegalArgumentException("unknown option " + a);
+    }
+    if (o.basePath == null) o.basePath = o.stem + ".base";
+    o.cuts = cuts != null ? cuts : SegmentWriter.defaultCuts(segmentRows, 128);
+    o.snapshots = verify;
+    FrameWriter w = new FrameWriter(programDir, inputDir, o);
+    byte[] file;
+    try {
+      file = w.write();
+    } catch (SegmentWriter.Rejected e) {
+      System.out.println("REJECTED: " + e.getMessage());
+      return false;
+    }
+    Files.write(Path.of(args[3]), file);
+    Files.writeString(Path.of(args[3] + ".json"), w.json(args[1], args[2]));
+    System.out.printf("%d rows, %d cuts; frames file %d bytes, SHA-256 %s; table %s (k %d, %d pages taken); data image"
+        + " %d words, %d pages; memory segments %d words (raw %d B, LRU %d B); %.1f s%n", w.run.totalRows, o.cuts.length,
+        file.length, sha256(file), w.tableMode, w.table.k, w.tablePagesTaken, w.dataImage.words.length, w.dataImagePages,
+        w.segmentsStream.words.length, w.segmentsStream.raw.length, w.segmentsStream.lru.length, w.seconds);
+    if (!verify) return true;
+    return Verify.run(w, Files.readAllBytes(Path.of(args[3])));
   }
 
   static String sha256(byte[] data) throws Exception {

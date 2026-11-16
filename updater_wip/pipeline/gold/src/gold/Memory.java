@@ -12,6 +12,11 @@ public final class Memory {
 
   private final long[][] pages = new long[(int) (SIZE >>> PAGE_SHIFT)][];
 
+  /** The number of 16 KB pages, and page i's words (null if never written): read them, never write them. */
+  public static int pageCount() { return (int) (SIZE >>> PAGE_SHIFT); }
+
+  public long[] pageOrNull(int i) { return pages[i]; }
+
   static void check(long addr) {
     if (addr < 0 || addr >= SIZE) throw new EmulationError(String.format("address %#x outside the 4 GiB RAM", addr));
   }

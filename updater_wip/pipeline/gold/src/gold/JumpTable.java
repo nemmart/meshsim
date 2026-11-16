@@ -62,6 +62,23 @@ public final class JumpTable {
     return table = HashTable.choose(keys, bases);
   }
 
+  /** The static targets alone, placed as table() places its keys (the host's base jump table, frame 2). */
+  public HashTable staticTable() {
+    long[] l = new long[st.kinds.size()];
+    int i = 0;
+    for (int key : st.kinds.keySet()) l[i++] = key & 0xffffffffL;
+    Arrays.sort(l);
+    int[] keys = new int[l.length], bases = new int[l.length];
+    for (i = 0; i < l.length; i++) { keys[i] = (int) l[i]; bases[i] = st.base(st.pc(keys[i])); }
+    return HashTable.choose(keys, bases);
+  }
+
+  /** The run's own targets: key o -> gold's next instr_idx (read only). */
+  public Map<Integer, Integer> runTargets() { return java.util.Collections.unmodifiableMap(runTargets); }
+
+  /** The static targets' key and base (read only). */
+  public int staticBase(int key) { return st.base(st.pc(key)); }
+
   /** Frame 6's data: u32 k, u32 p1, u32 p3, then the lines. */
   public byte[] frame6() {
     HashTable t = table();

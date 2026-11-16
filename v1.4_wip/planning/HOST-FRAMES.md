@@ -29,14 +29,14 @@ In the order sent. Frames 1 and 2 are sent once per program; frames 3 to 9 once 
 
 | field | size | meaning |
 |---|---|---|
+| reserved | u64 | 0 |
 | type | u32 | the frame's number, 1 to 9 † |
 | length | u32 | the data's length in 128-bit words |
-| padding | 64 bits | zeros: the header is padded to one 128-bit word, as the data is |
 | data | | zero-padded to a whole number of 128-bit words |
 
-- **The header is one 128-bit word** (owner, 2026-11-16): the type in bits [31:0], the length in [63:32], zeros above.
-  With the data padded to 128 bits, every frame starts and ends on a 128-bit boundary, so nothing is ever split
-  across Ingress's words. Without the padding every second frame was 8 bytes off (WORKER1's question 1).
+- **The header is one 128-bit word** (owner, 2026-11-16): reserved in bits [63:0], the type in [95:64], the length in
+  [127:96]. With the data padded to 128 bits, every frame starts and ends on a 128-bit boundary, so nothing is ever
+  split across Ingress's words. Without the reserved half every second frame was 8 bytes off (WORKER1's question 1).
 - **Lengths and counts are 32 bits, never 64** (owner): the controllers then need no 64-bit arithmetic, and 2³²
   128-bit words is far more than a frame will hold.
 
@@ -45,7 +45,7 @@ In the order sent. Frames 1 and 2 are sent once per program; frames 3 to 9 once 
   written "× *n*".
 - The data is padded to 128 bits, because Ingress sends 128-bit words, and the length counts those words. Section 16's
   header is u32 length in 32-bit words (the header included), then u32 type, with the data padded to 32 bits.
-- No reserved fields anywhere: we control both ends, and a field is added when it is needed (owner).
+- No reserved fields anywhere but the header's: we control both ends, and a field is added when it is needed (owner).
 - A string is a u32 length in bytes, then the bytes, padded to a whole number of 32-bit words. †
 - Delivery is assumed correct and in order: no checksums, no end frame (owner).
 

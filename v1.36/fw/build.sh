@@ -1,26 +1,28 @@
 #!/bin/bash
-# fw/build.sh [--check | --build-only | --toolchain]: builds every firmware image v1.36 runs that is C or assembly, from
-# fw/'s sources, exactly as the RTL's recipes build them (Snarky One's `mise run core-images` and `mise run sort-images`:
-# the same flags, start-up files and link scripts; each step names the recipe it reproduces, and fw/rtl/src/xtask/src/
-# keeps the two that also build the Rust images), into fw/build/out/ (OUT=DIR to change). Then:
+# fw/build.sh [--check | --build-only | --toolchain]: builds every firmware image v1.36 runs, from fw/'s sources, into
+# fw/build/out/ (OUT=DIR to change): the RTL's (the boot ROM, the tile programs, the sort's tile image and the core's
+# programs) exactly as the RTL's recipes build them (Snarky One's `mise run core-images` and `mise run sort-images`: the
+# same flags, start-up files and link scripts; each step names the recipe it reproduces), and v1.35's firmware, upgraded
+# to v1.36, as v1.35's fw/build.sh built it (its flags and checks). Then:
 #   --check       every image equal, byte for byte, to its committed copy; exit 1 on any difference or missing copy.
 #   (none)        the images of fw/images/ are (re)written there, with fw/images/MANIFEST (sha256); the core's programs
 #                 are compared with their fixture folder, tests/core-programs/elf, and never overwritten: its
 #                 references are the RTL's measurements of those bytes (tests/core-programs/README.md).
 #   --build-only  only the build into OUT.
 #   --toolchain   builds nothing: exit 0 if the toolchain is the one below, else 1 with the reason on one line.
-# The committed images: fw/images/ (the boot ROM, the tile programs, the sort's tile image, the 16-record runs' keys)
-# and tests/core-programs/elf/ (the core's own programs). The images that are still built outside meshsim (the chip's
-# Rust firmware: fw/rtl/) are not built here; the part `runs` makes the data they are linked around.
+# The committed images: fw/images/ (the boot ROM, the tile programs, the sort's tile image, the 16-record runs' keys,
+# the controllers', the replay controller and the tracer tile's program) and tests/core-programs/elf/ (the core's own
+# programs). No image v1.36 runs is built anywhere else.
 #
-# PARTS="boot tile sort runs core riscv coremark": build (and check) only those parts; empty: all.
+# PARTS="boot tile sort runs cc replay tracer core riscv coremark": build (and check) only those parts; empty: all.
 #   boot      the boot ROM: boot/boot_rom.S -> boot/boot_rom.elf, .hex (one 32-bit word a line), .sym
 #   tile      the tile programs: tile/<name>.S with tile/start.S -> tile/<name>.elf, tile/programs.txt
 #   sort      the sort's tile image: sort/ -> sort/tile/sort.elf
-#   runs      the runs' data (tools/fwimage, built here with the host's C++ compiler, CXX): sort/sort.keys, and each
-#             run's run image, runs/<run>/run.bin, with runs/<run>/run.o, the object a master tile's program links it
-#             from (symbol RUN_IMAGE). With --check each run image must be the bytes the committed master's image
-#             holds (fw/rtl/sort/<run>/master.elf). Needs the part sort's image.
+#   runs      the 16-record runs' keys (tools/fwimage, built here with the host's C++ compiler, CXX): sort/sort.keys
+#   cc        C&C 1's program, the master tile's: cc/cc1.c -> cc/cc1.elf; the memory tile's, cc/memory.c, and the
+#             memory run's master, cc/cc_mem.c -> cc/memory.elf, cc/cc_mem.elf
+#   replay    the replay controller: replay/replay_ctl.c -> replay/replay_ctl.elf
+#   tracer    the tracer tile's program: tracer/tracer_ctl.c -> tracer/tracer_ctl.elf
 #   core      the core's own programs that are ours: core/isa_edges.S and the interrupt programs -> core/*.elf
 #   riscv     riscv-tests' programs, only with RISCV_TESTS=DIR, a riscv-tests checkout at the revision
 #             core/riscv-tests/riscv-tests.toml pins -> core/rv32*.elf
@@ -28,7 +30,7 @@
 #             -> core/coremark.elf (1 iteration) and core/coremark-bench.elf (10)
 #
 # Toolchain: xPack riscv-none-elf-gcc 15.2.0-1 (GCC 15.2.0, binutils 2.45), the one the committed images were built
-# with; RISCV_PREFIX names it (default `riscv-none-elf-`, on PATH). The machine's configuration is the RTL's default:
+# with (v1.35's were Ubuntu 24.04's riscv64-unknown-elf-gcc 13.2, which this host has not); RISCV_PREFIX names it (default `riscv-none-elf-`, on PATH). The machine's configuration is the RTL's default:
 # an 8 x 8 mesh, 32 KiB of IMEM and of DMEM, a 4 MiB scratchpad (CONFIG below).
 #
 # Every image is linked from named object files, in the build's own folder, so that no file holds a name that changes
@@ -157,23 +159,27 @@ done
 echo "tile programs: $kind"
 fi  # tile
 
-# ---- the sort's tile image (sort_images.rs, `build_tile_image`): the owner's v1.25 sort, split and skew planner on
-# the RTL's port layer (sort/PORTING.md), built as meshsim's sort was (-O2 -fno-jump-tables, function and data
-# sections, --no-relax, --gc-sections, the split with -DSPLIT_BARRIER=sort_barrier), -Werror
+# ---- the sort's tile image (sort_images.rs, `build_tile_image`): v1.35's sort (sort/program/sw), with its planner
+# (sort/skew/planner) and split (sort/split) patched as v1.35's build patched them (sort/program/patches: planner.patch,
+# split-barrier.patch) and for the port layer (port.patch), on the port layer (sort/port, port/mesh.h; sort/PORTING.md),
+# built as meshsim's sort was (-O2 -fno-jump-tables, function and data sections, --no-relax, --gc-sections, the split
+# with -DSPLIT_BARRIER=sort_barrier), -Werror
 if part sort; then
-mkdir -p "$T/sort" "$OUT/sort/tile"; cd "$T/sort"
+mkdir -p "$T/sort/p/sort/skew" "$T/sort/p/sort/split" "$OUT/sort/tile"; cd "$T/sort"
 S=$FW/sort
-SCC="$RV $BARE -ffreestanding -fno-builtin -Wall -Wno-array-bounds -Werror -Wl,--no-relax $CONFIG -I$S/sw -I$S/skew-planner -I$S/port"
+cp -r "$S/skew/planner" p/sort/skew/; cp "$S/split/split.c" "$S/split/split.h" "$S/split/split_regs.h" p/sort/split/
+for x in planner split-barrier port; do patch -s -p0 -d p < "$S/program/patches/$x.patch"; done
+SK=$T/sort/p/sort/skew/planner; SP=$T/sort/p/sort/split
+SCC="$RV $BARE -ffreestanding -fno-builtin -Wall -Wno-array-bounds -Werror -Wl,--no-relax $CONFIG -I$S/program/sw -I$SK -I$FW/port"
 SOPT="-O2 -fno-jump-tables -ffunction-sections -fdata-sections -fstack-usage"
 OBJS=""
-for f in sw/bt_plan.c sw/bt_run.c sw/config.c sw/exchange.c sw/local.c sw/main.c sw/skew.c sw/transfer.c \
-         skew-planner/skew_common.c skew-planner/skew_th.c skew-planner/skew_bt.c port/port.c; do
+for f in "$S"/program/sw/*.c "$SK/skew_common.c" "$SK/skew_th.c" "$SK/skew_bt.c" "$S/port/port.c"; do
   o=$(basename "$f" .c).o
-  $SCC $SOPT -c "$S/$f" -o "$o"; OBJS="$OBJS $o"
+  $SCC $SOPT -c "$f" -o "$o"; OBJS="$OBJS $o"
 done
-$SCC $SOPT -DSPLIT_BARRIER=sort_barrier -I"$S/split-bisect" -c "$S/split-bisect/split.c" -o split_bisect.o
+$SCC $SOPT -DSPLIT_BARRIER=sort_barrier -I"$SP" -c "$SP/split.c" -o split_bisect.o
 OBJS="$OBJS split_bisect.o"
-${P}cpp -P -undef -x c -D__ASSEMBLER__ $CONFIG -I"$S/port" "$S/port/sort.ld" -o sort.ld
+${P}cpp -P -undef -x c -D__ASSEMBLER__ $CONFIG -I"$FW/port" "$S/port/sort.ld" -o sort.ld
 $SCC -c "$S/port/crt0.S" -o crt0.o
 $SCC -T sort.ld -Wl,--gc-sections -Wl,--orphan-handling=error -Wl,--build-id=none -Wl,--fatal-warnings -Wl,-Map=sort.map \
   crt0.o $OBJS -o "$OUT/sort/tile/sort.elf"
@@ -185,31 +191,47 @@ $OC --dump-section .sort_layout=layout.bin "$OUT/sort/tile/sort.elf"
 echo "the sort's tile image: code $(${P}size -A "$OUT/sort/tile/sort.elf" | awk '$1 == ".text" { print $2 }') B of $IMEM_BYTES"
 fi  # sort
 
-# ---- the runs' data (sort_images.rs: `sort_test_keys`, `run_image`, `trace_run_image`, `build_master`'s object):
-# the keys of the 16-record runs, and each run's run image with the object a master's program links it from
+# ---- the keys of the 16-record sort runs (sort_images.rs, `sort_test_keys`): tools/fwimage, built here with the
+# host's C++ compiler (CXX)
 if part runs; then
-[ -f "$OUT/sort/tile/sort.elf" ] || { echo "fw/build.sh: the part runs needs the part sort's image"; exit 1; }
 mkdir -p "$T/runs"; cd "$T/runs"
 ${CXX:-c++} -std=c++20 -O2 -Wall -Wextra -Werror "$SIM/tools/fwimage/fwimage.cpp" -o fwimage
 ./fwimage keys 16 "$OUT/sort/sort.keys"
-R=$FW/rtl/sort
-for run in kv32 k128 kv32-64k k128-64k memory trace; do
-  mkdir -p "$OUT/runs/$run"
-  case $run in
-    memory) ./fwimage run memory "$OUT/runs/$run/run.bin" ;;
-    trace)  ./fwimage run trace "$R/segment/replay.elf" "$R/segment/tracer.elf" "$OUT/runs/$run/run.bin" ;;   # the Rust images, until they are C
-    *-64k)  ./fwimage run sort "${run%-64k}" 65536 "$OUT/sort/tile/sort.elf" "$OUT/runs/$run/run.bin" ;;
-    *)      ./fwimage run sort "$run" 16 "$OUT/sort/tile/sort.elf" "$OUT/runs/$run/run.bin" ;;
-  esac
-  # the run image as an object: read-only data, 16-byte aligned, one symbol, RUN_IMAGE, at its start
-  (cd "$OUT/runs/$run" && $OC -I binary -O elf32-littleriscv -B riscv \
-     --rename-section .data=.rodata.run_image,alloc,load,readonly,data,contents --set-section-alignment .rodata.run_image=16 \
-     --redefine-sym _binary_run_bin_start=RUN_IMAGE --strip-symbol _binary_run_bin_end --strip-symbol _binary_run_bin_size \
-     run.bin run.o)
-  if [ $MODE = check ]; then ./fwimage check-run "$R/$run/master.elf" "$OUT/runs/$run/run.bin" || { echo "fw/build.sh: FAILED"; exit 1; }; fi
-done
-echo "runs: 6 run images$([ $MODE = check ] && echo ', each the bytes its committed master holds')"
+echo "runs: the 16-record runs' keys"
 fi  # runs
+
+# ---- v1.35's programs, on the port layer (port/mesh.h): the controllers' (cc/: C&C 1's, the master tile's; and the
+# memory tile's and the memory run's master, which v1.35 had not), the replay controller (replay/) and the tracer
+# tile's (tracer/), each with crt0.S and app.ld, as v1.35's build.sh built them (meshsim/sw/build_cc.sh's flags for
+# cc/, replay/build.sh's and tracer/build.sh's for the others), and v1.35's -march; each compiled in its own folder,
+# linked from a named object, audited, its symbols kept (the tests find the program's data by them). Software
+# division refused.
+V135="${P}gcc -march=rv32i_zicsr_zmmul -mabi=ilp32"
+RCC="$V135 $CONFIG -std=gnu11 -O2 -Wall -Wextra -ffreestanding -nostdlib -nostartfiles -static -fno-builtin -Wl,--no-relax -include $FW/port/mesh.h"
+CTLCC="$V135 $CONFIG -std=gnu11 -ffreestanding -nostdlib -nostartfiles -static -fno-builtin -Wall -Wextra -Wno-array-bounds -Wl,--no-relax -I. -I$FW/port -Os"
+SOFTDIV='__udivsi3 __umodsi3 __divsi3 __modsi3'
+# v135 SRC CC OUT: SRC (a C file under fw/) with crt0.S, by app.ld, into OUT
+v135() {
+  local src=$1 cc=$2 out=$3 n; n=$(basename "$src" .c)
+  mkdir -p "$T/v135" "$(dirname "$out")"
+  (cd "$FW" && $V135 $CONFIG -I"$FW/port" -c crt0.S -o "$T/v135/crt0.o")
+  (cd "$(dirname "$FW/$src")" && $cc -c "$n.c" -o "$T/v135/$n.o")
+  (cd "$T/v135" && $cc -T "$FW/app.ld" -Wl,--build-id=none crt0.o "$n.o" -o "$out")
+  audit "$out"; nolib "$out" $SOFTDIV
+  [ "$($NM "$out" | awk '$3 == "_start" { print $1 }')" = 01000000 ] || { echo "ERROR: $n: _start is not at IMEM's base"; exit 1; }
+  echo "$n: code $(${P}size -A "$out" | awk '$1 == ".text" { print $2 }') B, data $(${P}size -A "$out" | awk '$1 == ".data" { print $2 }') B"
+}
+if part cc; then
+v135 cc/cc1.c "$RCC -Werror" "$OUT/cc/cc1.elf"
+end=$($NM "$OUT/cc/cc1.elf" | awk '$3 == "_end" { print $1 }')
+[ $((0x$end)) -le $((0x1000)) ] || { echo "cc1: data and .bss end at 0x$end, above 0x1000 (cc1's report buffer)"; exit 1; }
+# the memory tile's program and the memory run's master, new in v1.36, on v1.36's interface (include/mesh.h)
+NEWCC="$V135 -std=gnu11 -O2 -Wall -Wextra -Werror -ffreestanding -nostdlib -nostartfiles -static -fno-builtin -Wl,--no-relax -I$FW/include"
+v135 cc/memory.c "$NEWCC" "$OUT/cc/memory.elf"
+v135 cc/cc_mem.c "$NEWCC" "$OUT/cc/cc_mem.elf"
+fi  # cc
+if part replay; then v135 replay/replay_ctl.c "$CTLCC" "$OUT/replay/replay_ctl.elf"; fi
+if part tracer; then v135 tracer/tracer_ctl.c "$CTLCC" "$OUT/tracer/tracer_ctl.elf"; fi
 
 # ---- the core's own programs (core_tests.rs, `gcc`): each linked with core/start.S by core/link.ld at the test
 # memory's map, for the configured capacities
@@ -276,12 +298,11 @@ cd "$FW"
 [ $MODE = build ] && { echo "fw/build.sh: built into $OUT"; exit 0; }
 
 # ---- compare with (or install) the committed images. OUT's folders map to: core/ -> tests/core-programs/elf (a
-# fixture folder: compared, never written); runs/ -> nothing (checked above against the masters); the rest -> fw/images
+# fixture folder: compared, never written); the rest -> fw/images
 bad=0; nfix=0; nfw=0
 cd "$OUT"
 for f in $(find . -type f | sed 's|^\./||' | sort); do
   case $f in
-    runs/*) ;;
     core/*)
       nfix=$((nfix + 1))
       cmp -s "$f" "$SIM/tests/core-programs/elf/${f#core/}" || { echo "DIFFERS (or missing): $f against tests/core-programs/elf/${f#core/}"; bad=1; } ;;
@@ -304,10 +325,10 @@ if [ -z "${PARTS:-}" ]; then
   for f in $(cd "$SIM/tests/core-programs/elf" && ls); do
     [ -f "$OUT/core/$f" ] || notbuilt=$((notbuilt + 1))
   done
-  # firmware-rust.elf is Rust (fw/README.md, "Built outside meshsim"); riscv-tests' and CoreMark's need their checkouts
-  expect=1; [ -n "${RISCV_TESTS:-}" ] || expect=$((expect + $(cd "$SIM/tests/core-programs/elf" && ls rv32*.elf | wc -l)))
+  # riscv-tests' and CoreMark's need their checkouts
+  expect=0; [ -n "${RISCV_TESTS:-}" ] || expect=$((expect + $(cd "$SIM/tests/core-programs/elf" && ls rv32*.elf | wc -l)))
   [ -n "${COREMARK:-}" ] || expect=$((expect + 2))
-  [ $notbuilt = $expect ] || { echo "NOT BUILT: $notbuilt programs of tests/core-programs/elf, where $expect are expected (firmware-rust.elf, and riscv-tests' and CoreMark's without their checkouts)"; bad=1; }
+  [ $notbuilt = $expect ] || { echo "NOT BUILT: $notbuilt programs of tests/core-programs/elf, where $expect are expected (riscv-tests' and CoreMark's without their checkouts)"; bad=1; }
   [ -n "${RISCV_TESTS:-}" ] || echo "not rebuilt: riscv-tests' programs (RISCV_TESTS names no checkout); their committed images: fw/check_images.sh"
   [ -n "${COREMARK:-}" ] || echo "not rebuilt: CoreMark's two programs (COREMARK names no checkout); their committed images: fw/check_images.sh"
 fi

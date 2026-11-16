@@ -688,30 +688,6 @@ TEST(the_rtl_firmwares_definitions_agree) {
     CHECK(t.count("HEADER(mode, counter, size)") && t.at("HEADER(mode, counter, size)") == "((mode) << 5 | (counter) << 2 | (size))");
     CHECK_EQ(value_of(t, "HDR_DST"), unsigned(regs::field("HDR", "dst").lo));
 
-    // the chip firmware's src/lib.rs: `pub const NAME: usize = 0x...;` an offset in the tile window, P_NAME in a peripheral's
-    const std::string lib = slurp("fw/rtl/src/rtl/chip/test/programs/firmware/src/lib.rs");
-    CHECK(lib != "<cannot read>");
-    auto rust = [&](const std::string& name, uint32_t& v) {
-        const std::string key = "pub const " + name + ": usize = ";
-        const size_t p = lib.find(key);
-        if (p == std::string::npos) return false;
-        std::string s = lib.substr(p + key.size(), lib.find(';', p) - p - key.size());
-        for (size_t u; (u = s.find('_')) != std::string::npos;) s.erase(u, 1);
-        return number(s, v);
-    };
-    found = 0;
-    uint32_t v = 0;
-    for (const SpecReg& r : SPEC_TILE)
-        if (rust(r.name, v)) { found++; CHECK_EQ(v, r.offset); }
-    CHECK_EQ(found, 23);   // the registers the chip's firmware uses
-    found = 0;
-    for (const SpecReg& r : SPEC_PERIPHERAL)
-        if (rust(std::string("P_") + r.name, v)) { found++; CHECK_EQ(v, r.offset); }
-    CHECK_EQ(found, 7);
-    CHECK(rust("TILE_WINDOW", v) && v == value_of(m, "TILE_WINDOW_BASE"));
-    CHECK(rust("STREAM_SRC_ADDR", v) && v == value_of(m, "STREAM_SRC_ADDR_BASE"));
-    CHECK(rust("STREAM_DEST_ADDR", v) && v == value_of(m, "STREAM_DEST_ADDR_BASE"));
-    CHECK(rust("STREAM_HDR", v) && v == value_of(m, "STREAM_HDR_BASE"));
 }
 
 // mesh.h compiles, and its structs put every register where the specification does: a C file of the committed header

@@ -1,5 +1,5 @@
-// rtl_images.h: the RTL's firmware images as the simulator's tests read them (fw/images/, built by fw/build.sh from
-// fw/'s sources, and the chip's Rust firmware, fw/rtl/; fw/README.md says which is which). Configuration regime only.
+// rtl_images.h: the firmware images as the simulator's tests read them (fw/images/, built by fw/build.sh from fw/'s
+// sources: the RTL's boot ROM and tile programs, and meshsim's firmware). Configuration regime only.
 //
 //   boot ROM      fw/images/boot/boot_rom.hex, one 32-bit word a line, and boot_rom.sym, `nm`'s lines (the handler's address,
 //                 mtvec's reset value: machine-spec 6.2)
@@ -10,6 +10,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -38,6 +39,15 @@ inline std::vector<uint32_t> hex_words(const std::string& path) {
         at = e + 1;
     }
     return w;
+}
+
+// The folder of the firmware's images (built by fw/build.sh): the committed images, fw/images/, or the folder
+// $FW_IMAGES names, laid out likewise (a build not yet committed: fw/build/out/). With a trailing slash.
+inline std::string fw_images() {
+    const char* env = std::getenv("FW_IMAGES");
+    std::string dir = env && *env ? env : "fw/images";
+    if (dir.back() != '/') dir += '/';
+    return dir;
 }
 
 // A symbol's address in an `nm` listing ("02000068 T handler").
@@ -155,6 +165,14 @@ inline Section section(const std::string& path, const std::string& name) {
         return s;
     }
     return s;
+}
+// A symbol's value in an ELF file's symbol table (.symtab, its names in .strtab); fatal if it has none of that name.
+inline uint32_t elf_symbol(const std::string& path, const std::string& name) {
+    const Section table = section(path, ".symtab"), names = section(path, ".strtab");
+    if (!table.found || !names.found) FATAL("rtl_images: %s has no symbol table", path.c_str());
+    for (size_t at = 0; at + 16 <= table.data.size(); at += 16)
+        if (name == names.data.c_str() + field(table.data, at)) return field(table.data, at + 4);
+    FATAL("rtl_images: %s has no symbol %s", path.c_str(), name.c_str());
 }
 // An ELF file's entry point.
 inline uint32_t entry(const std::string& path) { return field(read_file(path), 24); }

@@ -76,7 +76,7 @@ TEST(core_programs_fixtures_are_the_listed_files) {
 // Every program: its verdict, its cycles and retired instructions, and its whole retire trace against the RTL's.
 TEST(core_programs_pass_in_the_rtls_cycles) {
     const std::vector<Program> list = programs();
-    CHECK_EQ(list.size(), 54u);                              // the 49, the benchmark run, the interrupt programs
+    CHECK_EQ(list.size(), 53u);                              // the 48, the benchmark run, the interrupt programs
     std::map<std::string, std::string> hashes;
     for (const auto& row : read_list("RETIRE.sha256")) if (row.size() == 2) hashes[row[1]] = row[0];
     CHECK_EQ(hashes.size(), 54u);

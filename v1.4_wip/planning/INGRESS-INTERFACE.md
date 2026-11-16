@@ -21,23 +21,25 @@ Ingress/Egress is the master tile's peripheral 1 (`v1.36/spec/machine-spec.md` 1
 
 - **What the RTL has built stays as it is:** the error lines, the barrier's master side, the watchdog, the LED and
   the UART (words 32 to 45, `EVENTS` bits 2 to 5).
-- **The host interface is replaced.** v1.36 pencilled in two stream ports read a beat at a time by the core
-  (words 64 to 72, `STATUS.stream_last`, `EVENTS.stream_in` and `stream_out`). This design's is below.
+- **The host interface is replaced by this design's, below.** v1.36 pencilled in two stream ports read a beat at a
+  time by the core (words 64 to 72, `STATUS.stream_last`, `EVENTS.stream_in` and `stream_out`).
+  - † For now the new interface sits beside the old one, at words and bits of its own: the RTL's firmware images
+    and v1.36's stream tests use the old words, and those run unchanged.
 - **Ingress gains a DMA,** the standard one of 17.4. v1.36's Ingress/Egress has none.
 
 ## The registers
 
 | where | register or bit | access | meaning |
 |---|---|---|---|
-| `STATUS` [2] | `foreground_ready` | R, live | a packet is waiting on the foreground stream |
-| `STATUS` [3] | `background_ready` | R, live | a packet is waiting on the background stream |
-| `EVENTS` [6] † | `foreground_service` | counted, depth 1 | a foreground packet asks to be read out |
-| `EVENTS` [7] † | `background_service` | counted, depth 1 | a background packet asks to be read out |
+| `STATUS` [3] † | `foreground_ready` | R, live | a packet is waiting on the foreground stream |
+| `STATUS` [4] † | `background_ready` | R, live | a packet is waiting on the background stream |
+| `EVENTS` [8] † | `foreground_service` | counted, depth 1 | a foreground packet asks to be read out |
+| `EVENTS` [9] † | `background_service` | counted, depth 1 | a background packet asks to be read out |
 | `EVENTS` [1] | `dma_done` | counted, depth 1 | the DMA's transfer has ended (17.4) |
 | `ERRORS` [1] † | `crc_error` | sticky | a packet failed its header CRC or its data checksum |
 | `ERRORS` [2] † | `sequence_error` | sticky | a packet's number was not the next one on its stream |
-| word 64 † | `FOREGROUND_WORDS` | R | the words in the foreground packet that asked for service; 0 when none is waiting |
-| word 65 † | `BACKGROUND_WORDS` | R | the same for the background |
+| word 80 † | `FOREGROUND_WORDS` | R | the words in the foreground packet that asked for service; 0 when none is waiting |
+| word 81 † | `BACKGROUND_WORDS` | R | the same for the background |
 | block 1 | `DMA_HDR`, `DMA_DEST_ADDR`, `DMA_START` | 17.4's | reads words out of a packet (below) |
 
 - **Two service flags, one for each stream** (owner).

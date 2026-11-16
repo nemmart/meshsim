@@ -1,7 +1,8 @@
 # WORKER3 notes: v1.37, the Tracer on images the Updater built
 
-Status, 2026-11-16: **the plan, proposed; no code written.** Waiting for the owner's go-ahead. Branch `updater-w3`,
-from main `543e1eda`. What I ask of the owner before starting is section 9.
+Status, 2026-11-16: **Stage 1 done** (the units, each tested alone; `REPORT.md`, Stage 1). Stage 2, the master
+tile's firmware, is under way. Branch `updater-w3`, main merged in at `8385dacd`. The owner's go-ahead and rulings
+are in section 9; what was built differently from this plan is in section 11.
 
 Names: II is `INGRESS-INTERFACE.md`, UI `UPDATER-INTERFACE.md`, HF `HOST-FRAMES.md`, HL `HOST-LINK.md`, all in
 `v1.4_wip/planning/`. Paths without a folder are in `v1.37_wip/`.
@@ -81,8 +82,10 @@ To decide at the freeze.
   data. A zero byte where a header's first byte is expected is idle and skipped (HL, "Why the zeros work").
 - **The checks, in HL's order:** the header CRC over bits [95:0] (the word's first 12 bytes); then the fields;
   then the data checksum over the data's bytes; then the packet number against the next one of its stream (1 at
-  the start; after 0xFFFFE, 1). A failure sets `ERRORS.crc_error` or `sequence_error`, and nothing more is read
-  from the file or presented; packets already presented stay readable.
+  the start; after 0xFFFFE, 1). A failure sets `ERRORS.crc_error`, `format_error` (a field that cannot be; the owner's ruling
+  on Q2) or `sequence_error`, and nothing more is read from the file or presented; packets already presented
+  stay readable. A length-0 packet takes no number: its number field holds the number the next data packet on
+  its stream will carry, and is checked against it (the owner's ruling; HL on main says the same).
 - **Presenting** is II's rule for a service flag, to the letter: `…_ready` and `…_WORDS` when a packet is at the
   front; the flag posted once; no further flag until `…_WORDS` words have been read out, in one transfer or
   several; the two streams independent. A packet of length 0 is checked and counted and asks for no service (†).
@@ -299,7 +302,7 @@ Every † in II, UI, HF and HL is taken as written. What the documents do not sa
 | C3 | a new program `master.c`; `cc1.c` untouched | `cc1.c` is v1.35's, kept to its diff, and its image's hash is checked; a new command in `cc1.c` |
 | C4 | the link at a byte a cycle; a stream's queue of 4 packets | HL's rate; HL leaves the queues open. As fast as taken |
 | C5 | CRC-32C as WORKER2's prompt defines it, over the bytes in link order; a checksum over no data is 0 | HL says only "CRC-32C" (Q1) |
-| C6 | a header whose CRC is good and whose fields cannot be (stream not 1 or 2, length over 32, a reserved bit) is `crc_error`. Flags and the acknowledge field are ignored | II has two error bits; a third bit (Q2) |
+| C6 | a header whose CRC is good and whose fields cannot be (stream not 1 or 2, length over 32, a reserved bit) is `ERRORS.format_error`, bit 3. Flags and the acknowledge field are ignored | the owner's ruling on Q2 (II on main has the bit); I had proposed `crc_error` |
 | C7 | a page stays in the page memory across runs of values that fall in it, and is written once | a segment's runs are in address order, so a page is visited once; a read and a write for each run of values would cost tens of times more |
 | C8 | the run of values the decoder is in is decoder state: kept by `continue`, cleared without | UI lists the table and the bits; with gold's counts a run never straddles |
 | C9 | with `tracer_copy`, the Tracer's copy takes its page first at each level, and only where it does not own one | the second note: "written unchanged to the Tracer's copy, then patched" |
@@ -314,16 +317,18 @@ Every † in II, UI, HF and HL is taken as written. What the documents do not sa
 | C18 | the Tracer's memory on the chip is `MemSystem` on the shared store | the owner's "v1.36's software model"; `Fill` has no store |
 | C19 | no names: the strings are skipped; the base is the last table established with a path | no file system in v1.37 |
 
-## 9. Before I start
+## 9. The owner's go-ahead (2026-11-16)
 
-1. **The go-ahead,** and a word on C1 (the switch), C16 (N and *s*) and the 8-window segments of `proof-matrix`
-   if any is not what you want.
-2. **WORKER2.** Stage 1's Ingress check needs its vectors and packet files, and Stage 3 its packetizer. I can
-   build everything against my own provisional writer meanwhile; I cannot call Ingress checked until its files
-   are in.
-3. **Questions** (`QUESTIONS.md`): Q1, HL does not define the CRC-32C or the bytes it runs over; Q2, what a
-   packet with a good CRC and impossible fields is; Q3, no frame says how many rows a segment has, which a
-   segment with hard cuts would need.
+Go ahead with the plan. The switch, off by default: yes (C1). N and *s* as two words with the master's image: yes
+(C16). Today's three segments from packets, plus the 24-run matrix at 8 windows a segment: yes. Ingress built
+against my own provisional writer, then checked against WORKER2's vectors.
+
+- **Q1:** `HOST-LINK.md` on main states the CRC-32C as I had it (it does, since `8385dacd`).
+- **Q2:** its own bit, `ERRORS.format_error`, not `crc_error` (C6).
+- **Q3:** as I had it; listed in the report.
+- **A length-0 packet does not take a packet number.** Its number field holds the number the next data packet on
+  that stream will carry.
+- Merge main in for the documents' wording (done at `8385dacd`).
 
 ## 10. Order of work
 
@@ -337,3 +342,31 @@ at each stage's end, and `main` merged in.
    frame loop, the runs, the hand-over; `master` and `fw_teeth`. **Stage 2's report.**
 5. The whole chip: `proof-real`, `proof-matrix`, `proof-damaged`; the numbers; the Quest task at 2²⁹; the README
    and the running guide. **Stage 3's report,** with the lists for the four documents.
+
+## 11. As built, where it differs from the plan above
+
+**Stage 1.**
+
+- **The Updater's cycles** are counted as section 6 has them, with one arrangement: the work a word causes
+  (bringing a page, the Tracer's copy, a half page read) is done in the word's cycle and its cost is then waited
+  out, so a run's cycles are the root's 1, a cycle a word, 2 at the end, and the waits. The figures are the
+  black box's (`Updater::Timing`: a look-up 6, a page 336, a half page 208, an entry 80), not the RTL's.
+- **The Updater stops at an error** (`beyond`, `out_of_pages`, `lpddr_error`): `STATUS.busy` stays 1 and no
+  `done` is posted. UI does not say what a run does after an error; the firmware's error path does not depend on
+  it (it reads `ERRORS`). Listed for UI in the report.
+- **A run needing more pages than the free page queue holds stalls** (`STAT_STALL_PAGES`) until the firmware
+  pushes more; a page is counted as needed for the whole path to it, before any is taken, so a path is never
+  half built.
+- **The link's timing:** the first byte arrives in cycle 1; a packet whose last byte arrives in cycle c is at its
+  stream at the end of c; when a stream's four places are full the link waits, and its next byte arrives the
+  cycle after there is room. `link_cycles_per_byte` 0 gives packets as fast as they are taken (for tests).
+- **A file that ends inside a packet** sets no error bit (the link has gone quiet, which no check sees); the
+  model records it (`link_cut`) for the harness.
+- **WORKER2's vectors** are on `updater-w2` (`d3e07c8b`), not yet on main. `test_packet_vectors` reads them from
+  `$PACKET_VECTORS` or, once merged, from `../updater_wip/pipeline/gold/test/packets`; without them the step is
+  SKIPPED. I have not merged another worker's branch into mine.
+- **The small inputs cannot be built in this session:** the tracer's build fetches `fmt` from GitHub's archive,
+  which this session's network refuses. The steps on recorded windows (`segment-real`, `tracer-block`) run on the
+  runner (Quest), as do `make check` and everything of Stage 3 on the real workloads. Gold's frames of the small
+  inputs are made here (gold needs only the kit's files), so the Updater is checked against gold here.
+

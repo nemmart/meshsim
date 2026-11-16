@@ -2,6 +2,9 @@
 
 Each with the evidence and what I take meanwhile. None stops the work.
 
+**All three are answered** (the owner, 2026-11-16): Q1, `HOST-LINK.md` on main now defines the CRC-32C as taken
+here; Q2, its own bit, `ERRORS.format_error` (not `crc_error`: built so); Q3, as taken here, listed in the report.
+
 ## Q1. HOST-LINK does not define the checks
 
 - **Evidence.** `HOST-LINK.md` says "† CRC-32C for both" and "the header CRC over bits [95:0]", and leaves open

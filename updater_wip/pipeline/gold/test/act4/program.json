@@ -1,0 +1,12 @@
+{
+  "max_trace_length": 16777216,
+  "compressed_chunk_size": 512,
+  "mem_conf": {
+    "max_untrusted_advice_size": 4096,
+    "max_trusted_advice_size": 4096,
+    "max_input_size": 4096,
+    "max_output_size": 4096,
+    "stack_size": 4096,
+    "heap_size": 33554432
+  }
+}

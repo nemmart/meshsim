@@ -1,0 +1,3 @@
+tests/p2suites: the reference logs of the framework's own suites
+  bus.log   v1.3's BusTest (run_tests.sh's bus step): v1.3's committed results/bus.log (the oracle's
+            ref/meshsim/results/bus.log), copied unchanged; sha256 6b2b0c5136653aae2e00923973dbac8186dda9a97ffbbac738dd1ff6eee8a019

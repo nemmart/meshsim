@@ -3,6 +3,11 @@
 > **For the RTL: start here.** The current target is **`v1.3/`**, the Tracer. Read **`v1.3/spec/CHANGES-v1.26.1-to-v1.3.md`**
 > first (what to build, unit by unit), then **spec 4.21**. The replayer is unchanged from v1.26.1.
 
+> **The RTL, brought back: `v1.36/`.** The RTL (Snarky One) was built against v1.3 and v1.35; v1.36 is its hardware as
+> built, in its terms, as a specification and a simulator that runs the RTL's own firmware images in the RTL chip's cycle
+> counts. Read **`v1.36/README.md`**, then **`v1.36/spec/CHANGES-v1.35-to-v1.36.md`** (what changed from v1.35, the name
+> table, and the rulings it asks of the owner).
+
 
 Simulator and software for a parallel compute mesh, part of an ASIC for proving the Jolt zkVM.
 
@@ -17,6 +22,7 @@ Simulator and software for a parallel compute mesh, part of an ASIC for proving 
 | ~~`v1.26/`~~ | superseded by v1.26.1, deleted 2026-11-05 (owner) | v1.25 plus the replayer changes designed for v1.3 (the 68-word record, the stream word's sizes, 4 KB queues, the flush on a state write, part 0 as the working state); accepted by Quest 098-104. Nobody built on it; **the folder is in git at commit 63ea8de** (`git show 63ea8de:v1.26/...`) |
 | `v1.3/` | frozen (2026-11-06) | **the RTL's target: the Tracer** (guide: `spec/CHANGES-v1.26.1-to-v1.3.md`; spec 4.21): C&C 3's RV64 row machine, its memory interface and output path, the DMA in 128-bit words, the segment's barriers; meshsim with the Tracer and exact idle-skipping (about 18× on the full chip), gold, jumpmap and the input pipeline. **Accepted on every window of both workloads at 2²⁹ (T1), 18 full-chip T2 runs, and the final regression (Quest 118)** |
 | `v1.35/` | frozen (2026-11-13) | **v1.3's simulator in C++, without Java**: `sim/`'s framework with every v1.3 suite, kit and tool ported and its logs byte-identical to v1.3's (`run_tests.sh all --check`), the firmware built from source, the pipeline; its own documents (`README.md`, `BUILDING.md`, `RUNNING.md`, `CHANGES-v1.35.md`). The hardware is v1.3's, unchanged. **Accepted by the freeze check: Quests 194-196** (every run_tests.sh step, none pending; the full-size sort, T2, both 128-segment chains, the calibration, the sort kit, make check from a clean tree); **`v1.35/ERRATA.md`** lists what the shortened final sequence left undone (documentation and record; the code and checks stand) |
+| `v1.36/` | frozen (2026-11-15) | **the RTL's hardware, ported back** (guide: `spec/CHANGES-v1.35-to-v1.36.md`): the specification is the RTL's (Snarky One's base tile and core specifications, in the RTL's names, register layouts and vocabulary) with meshsim's own chapters kept in the same terms; the simulator is v1.35's framework with every unit rewritten to the RTL at the register, the packet and the cycle, so that **the RTL's firmware images run on it unmodified, with the RTL's results and the RTL chip's cycle counts**: the tile programs, the sort's four runs (150,261, 153,013, 952,154 and 1,306,907 cycles), a segment traced and replayed (generated segments and EVM Zone's and Cyclone's real windows), the memory run and the stream run, and each unit against the RTL's own block (`run_tests.sh all --check`, `make check`). What only ran on v1.35's hardware (meshsim's C firmware and recipes, C&C's commands, the suites and goldens of v1.35's machine) is not carried over: `v1.36/README.md` lists it. **`v1.36/OPEN-v1.36.md`** records where the simulator still differs from the RTL and what the RTL's tests check that nothing here does. Not accepted by a Quest: checked against the RTL's simulation instead |
 | `wip/` | in progress | work toward **v1.4**; started from v1.3 |
 | `sim/` | started 2026-11-06 | **the next simulator**: a clean-sheet C++ framework (`sim/src/`), with v1.3's Java simulator as its reference and oracle (`sim/ref/`); see `sim/README.md` |
 

@@ -1,0 +1,161 @@
+diff --git i/rtl/chip/test/src/chip_trace_test.rs w/rtl/chip/test/src/chip_trace_test.rs
+index 5a58b5b..257c839 100644
+--- i/rtl/chip/test/src/chip_trace_test.rs
++++ w/rtl/chip/test/src/chip_trace_test.rs
+@@ -603,6 +603,8 @@ struct Fill {
+     read_monitor: Handshake<(u32, u8, u64)>,
+     write_monitor: Handshake<(u32, u8, u64)>,
+     counts: [u64; 4],
++    /// SEGMENT_DUMP: every request taken: its cycle, kind (0 read, 1 write), root, depth, line, due cycle, status.
++    trace: Vec<(u64, u8, u32, u8, u64, u64, u8)>,
+ }
+ 
+ fn between(random: &mut Random, range: (u32, u32)) -> u64 {
+@@ -638,6 +640,7 @@ impl Fill {
+             read_monitor: Handshake::new(1),
+             write_monitor: Handshake::new(1),
+             counts: [0; 4],
++            trace: Vec::new(),
+         }
+     }
+ 
+@@ -687,6 +690,7 @@ impl Fill {
+         }
+         if read_valid && self.read_ready {
+             let (latency, status, bytes) = self.read(read.0, read.1, read.2);
++            self.trace.push((cycle, 0, read.0, read.1, read.2, cycle + latency, status));
+             self.reads.push_back((cycle + latency, status, bytes));
+         }
+         let write = (chip.fill_write_request_root(), chip.fill_write_request_depth(), chip.fill_write_request_line());
+@@ -703,7 +707,9 @@ impl Fill {
+             assert_eq!(entry.0, 0, "a write-back of a line not writable");
+             entry.1 = line_bytes(&chip.fill_write_request_data());
+             self.counts[3] += 1;
+-            self.writes.push_back(cycle + between(&mut self.random, WRITE_LATENCY));
++            let due = cycle + between(&mut self.random, WRITE_LATENCY);
++            self.trace.push((cycle, 1, root, depth, line, due, 0));
++            self.writes.push_back(due);
+         }
+     }
+ }
+@@ -1190,6 +1196,9 @@ pub(crate) fn run_chip(shape: &Shape, tables: &Tables, segment: &Segment) -> Run
+         assert!(fill.counts[2] > 3 * windows as u64, "the map lines read: the jump LRU seldom missed");
+         assert!(fill.counts[3] > 0, "no line written back");
+     }
++    if let Ok(directory) = std::env::var("SEGMENT_DUMP") {
++        dump(&directory, shape, &tracer_header, &replay_header, segment, &fill, &summary, &report, &row_cycles, cycle);
++    }
+     let seconds = began.elapsed().as_secs_f64();
+     println!(
+         "{name}: passed in {cycle} cycles, {seconds:.0} s of simulation, {:.0} rows a second",
+@@ -1214,3 +1223,110 @@ fn chip_trace_test_full() {
+ fn chip_trace_test_window() {
+     run_segment(&WINDOW, small_guest);
+ }
++
++// --------------------------------------------------------------------
++// SEGMENT_DUMP (meshsim v1.36's fixture; not part of the test): the segment as the test placed it, the model's
++// expectations and the chip's figures, little-endian.
++// --------------------------------------------------------------------
++
++#[allow(clippy::too_many_arguments)]
++fn dump(
++    directory: &str,
++    shape: &Shape,
++    tracer_header: &[u32],
++    replay_header: &[u32],
++    segment: &Segment,
++    fill: &Fill,
++    summary: &[u32],
++    report: &[u32],
++    row_cycles: &[Vec<u64>],
++    cycles: u64,
++) {
++    let mut out: Vec<u8> = Vec::new();
++    let u8_ = |out: &mut Vec<u8>, value: u8| out.push(value);
++    let u32_ = |out: &mut Vec<u8>, value: u32| out.extend(value.to_le_bytes());
++    let u64_ = |out: &mut Vec<u8>, value: u64| out.extend(value.to_le_bytes());
++    let u128_ = |out: &mut Vec<u8>, value: u128| out.extend(value.to_le_bytes());
++    u32_(&mut out, 0x3147_4553); // "SEG1"
++    u32_(&mut out, shape.windows as u32);
++    u32_(&mut out, shape.rows);
++    u32_(&mut out, shape.seed);
++    u64_(&mut out, shape.cycle_limit);
++    u32_(&mut out, u32::from(shape.misses));
++    for header in [tracer_header, replay_header] {
++        assert_eq!(header.len(), HEADER_WORDS);
++        header.iter().for_each(|&word| u32_(&mut out, word));
++    }
++    // The guest's file.
++    u64_(&mut out, segment.guest.lowest);
++    u32_(&mut out, segment.guest.log_k);
++    u32_(&mut out, segment.guest.depth);
++    let mut lines: Vec<_> = segment.guest.lines.iter().collect();
++    lines.sort_by_key(|(line, _)| **line);
++    u32_(&mut out, lines.len() as u32);
++    for (line, (status, bytes)) in lines {
++        u64_(&mut out, *line);
++        u8_(&mut out, *status);
++        out.extend(bytes);
++    }
++    // The map.
++    u32_(&mut out, segment.map.k);
++    u32_(&mut out, segment.map.p1);
++    u32_(&mut out, segment.map.p3);
++    u32_(&mut out, segment.map.lines.len() as u32);
++    for (line, status) in segment.map.lines.iter().zip(&segment.map.status) {
++        u8_(&mut out, *status);
++        out.extend(line);
++    }
++    u8_(&mut out, u8::from(segment.map.filler.is_some()));
++    if let Some(filler) = &segment.map.filler {
++        out.extend(filler);
++    }
++    // The loaded record, the advice, the expected end.
++    assert_eq!((segment.start.len(), segment.end.len()), (68, 68));
++    segment.start.iter().for_each(|&word| u128_(&mut out, word));
++    u32_(&mut out, segment.advice.len() as u32);
++    segment.advice.iter().for_each(|&value| u64_(&mut out, value));
++    segment.end.iter().for_each(|&word| u128_(&mut out, word));
++    // The windows.
++    for window in &segment.windows {
++        assert_eq!(window.record.len(), 68);
++        window.record.iter().for_each(|&word| u128_(&mut out, word));
++        u32_(&mut out, window.scans[0] as u32);
++        u32_(&mut out, window.scans[1] as u32);
++        for bits in &window.streams {
++            u64_(&mut out, bits.length);
++            u32_(&mut out, bits.entries.len() as u32);
++            (0..bits.entries.len()).for_each(|index| u128_(&mut out, bits.meaningful(index)));
++        }
++        u32_(&mut out, window.rows.len() as u32);
++        for row in &window.rows {
++            row.iter().for_each(|&word| u128_(&mut out, word));
++        }
++    }
++    // The chip's figures.
++    u64_(&mut out, cycles);
++    u32_(&mut out, summary.len() as u32);
++    summary.iter().for_each(|&word| u32_(&mut out, word));
++    u32_(&mut out, report.len() as u32);
++    report.iter().for_each(|&word| u32_(&mut out, word));
++    fill.counts.iter().for_each(|&count| u64_(&mut out, count));
++    u32_(&mut out, fill.trace.len() as u32);
++    for &(cycle, kind, root, depth, line, due, status) in &fill.trace {
++        u64_(&mut out, cycle);
++        u8_(&mut out, kind);
++        u32_(&mut out, root);
++        u8_(&mut out, depth);
++        u64_(&mut out, line);
++        u64_(&mut out, due);
++        u8_(&mut out, status);
++    }
++    for tile in row_cycles {
++        u32_(&mut out, tile.len() as u32);
++        tile.iter().for_each(|&cycle| u32_(&mut out, cycle as u32));
++    }
++    u32_(&mut out, 0x444e_4553); // "SEND"
++    let path = std::path::Path::new(directory).join(format!("{}.seg", shape.name));
++    std::fs::write(&path, &out).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
++    println!("{}: SEGMENT_DUMP: {} bytes in {}", shape.name, out.len(), path.display());
++}

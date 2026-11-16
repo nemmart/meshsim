@@ -1,0 +1,6 @@
+02000000 T _start
+02000044 T wait_load
+02000056 T wait_release
+02000062 T image
+02000068 T handler
+020000ac T park

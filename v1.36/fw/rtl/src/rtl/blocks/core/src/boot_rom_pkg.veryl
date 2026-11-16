@@ -1,0 +1,133 @@
+/// The boot ROM's program (rtl/tile/base/spec.md 6.5), every tile's, which boot_rom
+/// serves from the reset PC and core points mtvec's reset value into: its source is
+/// boot_rom.S, beside this file, which says what each step does and why, and this is
+/// its halfwords, written by hand as the GNU assembler encodes it. boot_rom_test
+/// assembles boot_rom.S (mise run core-images) and checks the two equal, word for
+/// word, at the configuration it runs at.
+///
+/// One entry per halfword, from the ROM's first byte: a 16-bit instruction is one
+/// entry, a 32-bit instruction two, its low half first, with the instruction and its
+/// encoding beside the first. The two halfwords of the instruction that holds the
+/// handler's offset are composed from their fields below. The program depends on no
+/// configuration (6.5 branches on the straps alone), so neither does this table.
+/// Every halfword past the program is 0, an illegal instruction (c.unimp).
+pub package boot_rom_pkg {
+    // The ROM's size, BOOT_ROM_BYTES (19): 128 halfwords.
+    const BYTES: u32 = 256;
+    const HALFWORDS: u32 = BYTES / 2;
+
+    type halfword_index_t = logic<$clog2(HALFWORDS)>;
+
+    // The handler's offset in the ROM, boot_rom.S's `handler`, halfword 52: mtvec's
+    // reset value is the ROM's base plus this (6.2), and step 1 sets it again.
+    const HANDLER: u32 = 32'h68;
+
+    // addi a0, a0, HANDLER, the lower part of the handler's address from the reset
+    // PC, which auipc a0, 0 holds (la a0, handler): I-type, OP-IMM.
+    const ADDI_HANDLER: logic<32> = {HANDLER as 12, 5'd10, 3'b000, 5'd10, 7'b0010011};
+
+    // ---- The program ----
+
+    /// The ROM's halfword `index`.
+    function program_halfword (
+        index: input halfword_index_t,
+    ) -> logic<16> {
+        return case index {
+            // ---- 1. mtvec, mie.MEIE and EVENTS_MASK ----
+            0: 16'h0517, // auipc a0, 0: 0x0000_0517
+            1: 16'h0000,
+            2: ADDI_HANDLER[15:0], // addi a0, a0, HANDLER
+            3: ADDI_HANDLER[31:16],
+            4: 16'h1073, // csrw mtvec, a0: 0x3055_1073
+            5: 16'h3055,
+            6: 16'h4505, // li a0, 1 (c.li)
+            7: 16'h052e, // slli a0, a0, 11 (c.slli)
+            8: 16'h2073, // csrs mie, a0: 0x3045_2073
+            9: 16'h3045,
+            10: 16'h4515, // li a0, 5: EVENTS_MASK's reset value (c.li)
+            11: 16'h2a23, // sw a0, -0x7ec(zero): EVENTS_MASK, 0x80a0_2a23
+            12: 16'h80a0,
+            // ---- 2. The boot strap: boot_local, the image already in IMEM ----
+            13: 16'h2583, // lw a1, -0x800(zero): PARAMS, 0x8000_2583
+            14: 16'h8000,
+            15: 16'hd613, // srli a2, a1, 18: boot_local, 0x0125_d613
+            16: 16'h0125,
+            17: 16'h8a05, // andi a2, a2, 1 (c.andi)
+            18: 16'hee1d, // bnez a2, image (halfword 49; c.bnez)
+            // ---- 3. The load: COUNTER_7 armed, the LOAD request, the load, the release ----
+            19: 16'h4505, // li a0, 1 (c.li)
+            20: 16'h2e23, // sw a0, -0x6a4(zero): COUNTER_7, 0x94a0_2e23
+            21: 16'h94a0,
+            22: 16'h460d, // li a2, 3: LOAD (c.li)
+            23: 16'h062a, // slli a2, a2, 10 (c.slli)
+            24: 16'h2023, // sw a2, -0x700(zero): REQUEST_OUT_W0, 0x90c0_2023
+            25: 16'h90c0,
+            26: 16'h2223, // sw zero, -0x6fc(zero): REQUEST_OUT_W1, 0x9000_2223
+            27: 16'h9000,
+            28: 16'h2423, // sw zero, -0x6f8(zero): REQUEST_OUT_W2, 0x9000_2423
+            29: 16'h9000,
+            30: 16'h2623, // sw zero, -0x6f4(zero): REQUEST_SEND, 0x9000_2623
+            31: 16'h9000,
+            32: 16'h81c5, // srli a1, a1, 17: barrier (c.srli)
+            33: 16'h8985, // andi a1, a1, 1 (c.andi)
+            34: 16'h0073, // wait_load: wfi, 0x1050_0073
+            35: 16'h1050,
+            36: 16'h2603, // lw a2, -0x7f4(zero): EVENTS, 0x80c0_2603
+            37: 16'h80c0,
+            38: 16'h8a11, // andi a2, a2, 4: all_counters_done (c.andi)
+            39: 16'hda7d, // beqz a2, wait_load (halfword 34; c.beqz)
+            40: 16'hc989, // beqz a1, image (halfword 49; c.beqz)
+            41: 16'h2c23, // sw a0, -0x7e8(zero): ARRIVE, 0x80a0_2c23
+            42: 16'h80a0,
+            43: 16'h0073, // wait_release: wfi, 0x1050_0073
+            44: 16'h1050,
+            45: 16'h2603, // lw a2, -0x7f4(zero): EVENTS, 0x80c0_2603
+            46: 16'h80c0,
+            47: 16'h8a05, // andi a2, a2, 1: release (c.andi)
+            48: 16'hda7d, // beqz a2, wait_release (halfword 43; c.beqz)
+            49: 16'h0537, // image: lui a0, 0x1000: IMEM's base, 0x0100_0537
+            50: 16'h0100,
+            51: 16'h8502, // jr a0 (c.jr)
+            // ---- The handler: report 24, ERRORS, mcause, mepc ----
+            52: 16'h0537, // handler: lui a0, 0x600: report 24's word 0, 0x0060_0537
+            53: 16'h0060,
+            54: 16'h0513, // addi a0, a0, 0x400: 0x4005_0513
+            55: 16'h4005,
+            56: 16'h2583, // lw a1, -0x7f8(zero): ERRORS, 0x8080_2583
+            57: 16'h8080,
+            58: 16'h2673, // csrr a2, mcause: 0x3420_2673
+            59: 16'h3420,
+            60: 16'h26f3, // csrr a3, mepc: 0x3410_26f3
+            61: 16'h3410,
+            62: 16'h2023, // sw a0, -0x700(zero): REQUEST_OUT_W0, 0x90a0_2023
+            63: 16'h90a0,
+            64: 16'h2223, // sw a1, -0x6fc(zero): REQUEST_OUT_W1, 0x90b0_2223
+            65: 16'h90b0,
+            66: 16'h2423, // sw a2, -0x6f8(zero): REQUEST_OUT_W2, 0x90c0_2423
+            67: 16'h90c0,
+            68: 16'h2623, // sw a3, -0x6f4(zero): REQUEST_SEND, 0x90d0_2623
+            69: 16'h90d0,
+            // ---- Report 25: mtval, STATUS, ra ----
+            70: 16'h0537, // lui a0, 0x640: report 25's word 0, 0x0064_0537
+            71: 16'h0064,
+            72: 16'h0513, // addi a0, a0, 0x400: 0x4005_0513
+            73: 16'h4005,
+            74: 16'h25f3, // csrr a1, mtval: 0x3430_25f3
+            75: 16'h3430,
+            76: 16'h2603, // lw a2, -0x7fc(zero): STATUS, 0x8040_2603
+            77: 16'h8040,
+            78: 16'h2023, // sw a0, -0x700(zero): REQUEST_OUT_W0, 0x90a0_2023
+            79: 16'h90a0,
+            80: 16'h2223, // sw a1, -0x6fc(zero): REQUEST_OUT_W1, 0x90b0_2223
+            81: 16'h90b0,
+            82: 16'h2423, // sw a2, -0x6f8(zero): REQUEST_OUT_W2, 0x90c0_2423
+            83: 16'h90c0,
+            84: 16'h2623, // sw ra, -0x6f4(zero): REQUEST_SEND, 0x9010_2623
+            85: 16'h9010,
+            // ---- The park ----
+            86: 16'ha001, // park: j park (c.j)
+            87: 16'h0001, // nop (c.nop): the program's end at a word
+            default: 0,
+        };
+    }
+}

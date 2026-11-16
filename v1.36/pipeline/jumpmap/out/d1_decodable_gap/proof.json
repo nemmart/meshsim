@@ -1,0 +1,18 @@
+{
+  "name": "d1_decodable_gap",
+  "log2_k": 4,
+  "lowest_address": "0x7fffffe0",
+  "hash_k": 0,
+  "hash_p1": "0x9e3779b1",
+  "hash_p3": 10368899,
+  "map_entries": 1,
+  "program_elf_sha256": "5a3588b2cdaac97d851c9b349d8f9b697831c4c05c655fb0e6c6002028f7490c",
+  "input": "empty",
+  "gold_commit": "fixture",
+  "segment_file_sha256": "6140022d1cfac3324cb60095d4f9e46ba50b9d902e0611bf4f622f2afd7a5b6d",
+  "segment_rows": 8,
+  "segments": 4,
+  "sha256": {"map.lines": "2ef4c52bdf194539856eb84cc06d28c25d454beda3b51e2eb555dbd4c19f5335", "frame6.bin": "f1d03c807b69d219a100129d82ff43822ee7b3721e7f6d015e89a37f6c5e2567", "initial.pages": "113a830386bd3c054615faeb02432238464b5c70c3689aa751204ee812f7117b"},
+  "initial_pages": 1,
+  "seg_written_sha256": ["e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"]
+}

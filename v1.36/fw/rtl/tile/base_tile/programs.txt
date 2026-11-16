@@ -1,0 +1,6 @@
+0 registers.elf
+1 noc.elf
+2 barrier.elf
+3 errors.elf
+4 special.elf
+5 replayer.elf

@@ -1,0 +1,188 @@
+#!/bin/bash
+# run_tests.sh: v1.36's suite runner. Every step runs a test or a suite of v1.36's hardware and writes
+# results/<step>.log; the summary lists every FAIL line and every log that differs from its reference.
+#
+#   ./run_tests.sh [all|quick] [--check] [--no-build]
+#     all | quick   quick leaves out the long steps (the block under `if [ "$MODE" != quick ]`)
+#     --check       also compare each log that has a reference log (the step's REF) with it, timing masked (mask()
+#                   below); a difference fails the run as a FAIL line would
+#     --no-build    use the binaries as they are
+#   Environment: CC_NAME (default clang); JOBS (the build's parallel jobs, default 4); STEP_TIMES=1 (each step's wall
+#   time in results/.step-times). Two inputs are outside the repository, and a step that needs one is SKIPPED, and
+#   printed and counted as such, when it is not there:
+#     MESHSIM_INPUTS      (default ~/meshsim-inputs) the real workloads' data: the steps tracer-block and, in `all`,
+#                         rtl-segment-real
+#     RTL_SORT_64K_KEYS   the RTL's 64K key file (16 MiB; fw/rtl/README.md): the step rtl-sort-64k of `all`
+#   The suites build with MODE=suite (release flags, the checker's facts on: src/check.h), into build/$CC_NAME-suite/.
+#
+# ADDING A STEP:
+#     step LOG TAIL "description" REF -- command args...
+#   a suite whose log is compared with a reference: LOG the log's name, TAIL the lines shown, REF the reference log,
+#   then the command ($S is the suites' build directory);
+#     check LOG "description" -- command args...
+#   a test with no reference log: its own FAIL lines or a non-zero exit fail the run. Its expectations are in the test,
+#   from the specification or the RTL.
+#   The step's program must be in SUITES below (built before the steps run).
+set -u
+cd "$(dirname "$0")"
+MODE=all CHECK=0 BUILD=1
+for a in "$@"; do
+  case "$a" in
+    all|quick) MODE=$a;;
+    --check) CHECK=1;;
+    --no-build) BUILD=0;;
+    *) echo "usage: ./run_tests.sh [all|quick] [--check] [--no-build]"; exit 2;;
+  esac
+done
+CC_NAME=${CC_NAME:-clang}
+S=build/$CC_NAME-suite
+mkdir -p results
+rm -f results/*.log
+: > results/.differs
+[ -z "${STEP_TIMES:-}" ] || : > results/.step-times
+
+# The programs the steps run (targets of the Makefile).
+SUITES="test_core_programs test_core_tile test_rv32_rtl test_regs test_tile_control"                      # the core, the map, the tile control unit
+SUITES="$SUITES test_router test_special_router test_request_tree test_reqbus"              # the router, the request tree
+SUITES="$SUITES test_mem test_ag test_receive test_gather test_mach test_checker"                     # the tile's units, and the tile
+SUITES="$SUITES test_periph_slot test_ingress_egress test_rw_engine"                        # the peripherals
+SUITES="$SUITES test_rtl_tile test_rtl_sort test_rtl_stream test_rtl_memory test_rtl_segment"   # the RTL's firmware on the tile and the chip
+SUITES="$SUITES suite_replayer suite_memsys suite_rvc suite_tracer tracer_block"            # the replayer and the Tracer
+
+if [ "$BUILD" = 1 ]; then
+  echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
+  t_build=$SECONDS
+  make -s -j"${JOBS:-4}" MODE=suite CC_NAME="$CC_NAME" $(for x in $SUITES; do echo "$S/$x"; done) > results/.build.log 2>&1 \
+    || { cat results/.build.log; echo "== the build failed"; exit 1; }
+  # suite_bus's throws checks are the framework's debug assertions, so its step runs suite_bus's debug build (tiny)
+  make -s -j"${JOBS:-4}" MODE=debug CC_NAME="$CC_NAME" "build/$CC_NAME-debug/suite_bus" > results/.build-bus.log 2>&1 \
+    || { cat results/.build-bus.log; echo "== the build failed (suite_bus, MODE=debug)"; exit 1; }
+  [ -z "${STEP_TIMES:-}" ] || echo "(build) $((SECONDS - t_build)) s" >> results/.step-times
+fi
+
+# Timing masked for --check: wall-clock figures (seconds, ms, rates) vary by machine; cycles never do.
+# An `inputs:` line's first field names the simulator: metadata, masked.
+mask() { sed -E 's/[0-9]+(\.[0-9]+)? ?(ms|s|sec|seconds|us|µs|ns)\b/<time>/g; s/[0-9.]+ ?[kKMG]?(cycles|instructions|packets|steps)\/s/<rate>/g; s/^(inputs: )[^ ]+/\1<simulator>/'; }
+
+step() {
+  local log=$1 tail=$2 what=$3 ref=$4; shift 4
+  [ "$1" = -- ] && shift
+  echo "== $what"
+  local t0=$SECONDS
+  "$@" > "results/$log.log" 2>&1
+  [ -z "${STEP_TIMES:-}" ] || echo "$log $((SECONDS - t0)) s" >> results/.step-times
+  tail -"$tail" "results/$log.log"
+  if [ "$CHECK" = 1 ]; then
+    if [ ! -f "$ref" ]; then echo "LOG DIFFERS ($log): no reference log $ref" | tee -a results/.differs
+    elif ! diff -q <(mask < "$ref") <(mask < "results/$log.log") > /dev/null; then
+      echo "LOG DIFFERS ($log): results/$log.log against $ref" | tee -a results/.differs
+    fi
+  fi
+}
+check() {
+  local log=$1 what=$2; shift 2
+  [ "$1" = -- ] && shift
+  echo "== $what"
+  local t0=$SECONDS
+  "$@" > "results/$log.log" 2>&1 || echo "FAIL $log: exit status $?" >> "results/$log.log"
+  [ -z "${STEP_TIMES:-}" ] || echo "$log $((SECONDS - t0)) s" >> results/.step-times
+  tail -1 "results/$log.log"
+}
+# A step whose input is outside the repository and not on this machine: not run, and said so.
+NSKIPPED=0
+skipped() { echo "== $2"; echo "SKIPPED ($3)" | tee "results/$1.log"; NSKIPPED=$((NSKIPPED + 1)); }
+all_of() { local t; for t in "$@"; do "$S/$t" || return 1; done; }   # several tests as one step
+
+# ---- the framework, the copies and the vendored firmware ----
+echo "== the files copied from v1.3 (tools/check_copies.sh)"; sh tools/check_copies.sh > results/layout.log 2>&1 && tail -1 results/layout.log || { cat results/layout.log; echo "FAIL the layout" | tee -a results/layout.log; }
+step bus 1 "the framework's port kinds (the debug build: its throws checks are debug assertions)" tests/p2suites/bus.log -- build/$CC_NAME-debug/suite_bus
+check rtl-images "the RTL's vendored firmware against its hash list (fw/check_images.sh)" -- bash fw/check_images.sh
+
+# ---- the core and the register map ----
+check core-programs "the RTL's core programs on the core: each pass, cycle, retirement and trap the RTL's (tests/core-programs/)" -- $S/test_core_programs
+check core-tile "the RTL's core on the tile's environment: region 0xFF's accesses in register_bus's cycles" -- $S/test_core_tile
+check core-contract "the RTL's core against its contract: the core specification's §1 on a bus, and machine-spec 5 and 6.4 through register_bus.h's decode (tests/test_rv32_rtl.cpp)" -- $S/test_rv32_rtl
+check regs "REGISTERS.md and mesh.h against their generator, the simulator's decode, the specification and the RTL firmware's definitions (tests/test_regs.cpp)" -- $S/test_regs
+check tile-control "the tile control unit and the register bus's decode: events, errors, the barrier (machine-spec 5, 7)" -- $S/test_tile_control
+
+# ---- the NoC ----
+check router "the router against the RTL's own and from machine-spec 16 (tests/test_router.cpp, test_special_router.cpp)" -- all_of test_router test_special_router
+check requests "the request unit and the request tree (machine-spec 11; tests/test_request_tree.cpp, test_reqbus.cpp)" -- all_of test_request_tree test_reqbus
+
+# ---- the tile's units ----
+check mem "the scratchpad and the inject unit (machine-spec 14, 15; tests/test_mem.cpp)" -- $S/test_mem
+mem_shuf() { MEM_SHUFFLE=$1 $S/test_mem; }
+check mem-shuf "the same, the units of a level stepped in a shuffled order (seed 3)" -- mem_shuf 3
+check mem-shuf2 "the same (seed 8)" -- mem_shuf 8
+check units "the DMA unit (8.2-8.5: test_ag), the write engine with PTR and HIST (12.4, 12.5: test_receive), the gather unit (13: test_gather)" -- all_of test_ag test_receive test_gather
+units_shuf() { SIM_SHUFFLE=4 $S/test_ag && SIM_SHUFFLE=4 $S/test_receive; }
+check units-shuf "test_ag and test_receive, the units of a level stepped in a shuffled order (seed 4)" -- units_shuf
+check mach "the tile and the machine harness: the pull boot on all 64 tiles, the chip's build, packets, reads, an all-to-all, the gather unit on the tile (tests/test_mach.cpp)" -- $S/test_mach
+check checker "the checker's report: packets that break a rule, each named once at its sender and at its receiver; ERRORS bits by machine-spec 7.4's names (tests/test_checker.cpp)" -- $S/test_checker
+
+# ---- the peripherals ----
+check periph "the peripheral slot: the control block and the DMA (machine-spec 17.1-17.4, the RTL's peripheral_control and peripheral_dma; tests/test_periph_slot.cpp)" -- $S/test_periph_slot
+check ingress-egress "Ingress/Egress: the nets, RELEASE, the watchdog, the error lines, the toast pin, the UART, the host interface (17.6; tests/test_ingress_egress.cpp)" -- $S/test_ingress_egress
+
+# ---- the RTL's firmware, unmodified, on the tile and on the chip ----
+check rtl-tile "the RTL's tile programs on one compute tile, with the boot ROM's cycles (tests/test_rtl_tile.cpp)" -- $S/test_rtl_tile
+# The RTL's sort images end to end on the chip, the master, memory and tracer tiles booted as the RTL's chip test boots
+# them. The 16-record runs and the run split over threads here; the 64K runs in `all`, with the RTL's 64K key file.
+rtl_sort() { $S/test_rtl_sort sort_oracle && $S/test_rtl_sort sort_16; }
+check rtl-sort "the RTL's sort images on the chip, 64 x 16 records: kv32, k128, and kv32 split over threads, every step in the RTL chip's cycles (tests/test_rtl_sort.cpp)" -- rtl_sort
+check rtl-stream "the master's host interface and UART on the chip: the RTL's chip_stream_test, and the UART through the core (tests/test_rtl_stream.cpp)" -- $S/test_rtl_stream
+rtl_memory() { $S/test_rw_engine && $S/test_rtl_memory; }
+check rtl-memory "the memory tile: the RW engine against the RTL's unit, cycle for cycle, and the RTL's memory run on the chip (tests/test_rw_engine.cpp, tests/test_rtl_memory.cpp)" -- rtl_memory
+# The segment on the chip, run by the RTL's own firmware (the master's trace run, the tracer tile's image, the replay
+# image): the RTL test's three generated segments here; the real workloads' windows in `all`, with their data.
+check rtl-segment "the segment on the chip under the RTL's firmware: 4 windows, 64 windows and a window of 65,536 rows, traced, delivered and replayed, in the RTL chip's cycles (tests/test_rtl_segment.cpp)" -- $S/test_rtl_segment segment_
+
+# ---- the replayer and the Tracer at the block level ----
+step replayer 1 "the replayer: the opcode table, the ALU against vec.tsv at 821e1bd, the unit tests" tests/replayer/replayer.log -- $S/suite_replayer
+step memsys 1 "the Tracer's memory system: FileStore's trees and statuses, the shared cache's timing" tests/tracersuites/memsys.log -- $S/suite_memsys
+step rvc    1 "the Tracer's RVC decompressor against gold's, every 16-bit encoding" tests/tracersuites/rvc.log -- $S/suite_rvc
+step tracer 1 "the Tracer: execution, memory, the map, errors, cuts, core-fed expansions, the output path" tests/tracersuites/tracer.log -- $S/suite_tracer
+# The Tracer at the block level, on the RTL acceptance's bench (tests/tracer_block_main.cpp). A run that stops without
+# its verdict (a FATAL) is a FAIL line too.
+tracer_block_synth() { $S/tracer_block --synthetic || echo "FAIL tracer_block --synthetic: exit $?"; }
+step tracer-block-synth 1 "the Tracer alone on a synthetic RV64IMAC guest, against an interpreter of it: the output, the exact counters, the cycles adding up and by hand" tests/tracerblock/tracer-block-synth.log -- tracer_block_synth
+INPUTS=${MESHSIM_INPUTS:-$HOME/meshsim-inputs}
+tracer_block_real() {   # every segment at both compressions and both latencies against gold's files and the RTL's figures; then on the simulator's memory system, against gold's files
+  local ps p s c f
+  for ps in evm-zone-23:0 evm-zone-23:1 cyclone-22:0; do
+    p=${ps%:*} s=${ps#*:}
+    for c in 0 7; do for f in 1 55,35; do
+      $S/tracer_block --inputs "$INPUTS" --program $p --segment $s --compression $c --fill $f --quiet \
+        --ref tests/tracerblock/rtl/windows-$p-s$s-c$c-l${f/,/-}.txt || echo "FAIL tracer_block $p segment $s, compression $c, fill $f: exit $?"
+    done; done
+    $S/tracer_block --inputs "$INPUTS" --program $p --segment $s --fill model --quiet || echo "FAIL tracer_block $p segment $s, fill model: exit $?"
+  done
+}
+if [ -d "$INPUTS/v1261/evm-zone-23" ] && [ -d "$INPUTS/v1261/cyclone-22" ] && [ -d "$INPUTS/gold-v1.3" ] && [ -d "$INPUTS/w26-jumpmap" ]; then
+  step tracer-block 1 "the Tracer alone on the real segments (EVM Zone 0 and 1, Cyclone 0): every run against gold's files and the RTL's figures, cycle for cycle" tests/tracerblock/tracer-block.log -- tracer_block_real
+else
+  skipped tracer-block "the Tracer alone on the real segments, against gold's files and the RTL's figures" "the workloads' data is not at $INPUTS: MESHSIM_INPUTS"
+fi
+
+# ---- the long steps ----
+if [ "$MODE" != quick ]; then
+  if [ -f "${RTL_SORT_64K_KEYS:-}" ]; then
+    check rtl-sort-64k "the RTL's sort images on the chip at 64 x 65,536 records: kv32 and k128 (about a minute)" -- $S/test_rtl_sort sort_64k
+  else
+    skipped rtl-sort-64k "the RTL's sort images on the chip at 64 x 65,536 records: kv32 and k128" "RTL_SORT_64K_KEYS does not name the RTL's 64K key file: fw/rtl/README.md"
+  fi
+  if [ -f "$INPUTS/w26-jumpmap/evm-zone-23/proof.json" ] && [ -f "$INPUTS/v1261/cyclone-22/window_00000.rows.bin" ]; then
+    check rtl-segment-real "the segment on the real workloads' windows: EVM Zone's 0-63 and 64-127 and Cyclone's 0-63, every row and delivery against the recorded files, the cycles against the RTL chip's (about a minute)" -- env MESHSIM_INPUTS="$INPUTS" $S/test_rtl_segment real_
+  else
+    skipped rtl-segment-real "the segment on the real workloads' windows (EVM Zone, Cyclone), against the recorded files and the RTL chip's figures" "the workloads' data is not at $INPUTS: MESHSIM_INPUTS"
+  fi
+fi
+
+# ---- the summary ----
+FAILED=0
+grep -h "FAIL" results/*.log && FAILED=1
+[ -s results/.differs ] && { cat results/.differs; FAILED=1; }
+[ "$NSKIPPED" = 0 ] || grep -H "^SKIPPED" results/*.log | sed 's|^results/\(.*\)\.log:|  \1: |'
+if [ "$FAILED" = 1 ]; then echo "== FAILURES"; exit 1; fi
+if [ "$NSKIPPED" = 0 ]; then echo "== all passed; logs in results/"
+else echo "== all passed, $NSKIPPED steps SKIPPED for data outside the repository; logs in results/"; fi

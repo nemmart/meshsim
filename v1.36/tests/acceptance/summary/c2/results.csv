@@ -1,0 +1,16 @@
+syn,0,0,A:state,OK,65536,200000,5167,"streams rrr  newexp 0, stalls [0, 4, 8, 0, 21, 18, 0]"
+syn,1,65536,A:state,OK,65536,200007,8026,"streams rrr  newexp 1, stalls [0, 4, 8, 0, 21, 18, 0]"
+syn,2,131072,A:state,OK,65536,200014,2746,"streams rrr  newexp 2, stalls [0, 4, 8, 0, 21, 18, 0]"
+syn,3,196608,A:state,OK,65536,200021,895,"streams rrr  newexp 3, stalls [0, 4, 8, 0, 21, 18, 0]"
+syn,4,262144,A:state,OK,65536,200028,1426,"streams rrr  newexp 4, stalls [0, 4, 8, 0, 21, 18, 0]"
+syn,5,327680,A:state,OK,65536,200035,8841,"streams rrr  newexp 5, stalls [0, 4, 8, 0, 21, 18, 0]"
+syn,0,0,B:state,OK,65536,200000,7010,"tile 0 only, max row gap 12, 3.479 cycles/row, newexp 2 (slow 1), refills 3, waits image/code/newexp/exp/rlog/wlog/outq 3325/260/1944/4865/2816/2049/3732 logq 256"
+syn,1,65536,B:state,OK,65536,200007,2275,"tile 0 only, max row gap 12, 3.479 cycles/row, newexp 2 (slow 1), refills 3, waits image/code/newexp/exp/rlog/wlog/outq 1192/456/268/4043/2737/1696/1069 logq 256"
+syn,2,131072,B:state,OK,65536,200014,6991,"tile 0 only, max row gap 12, 3.479 cycles/row, newexp 2 (slow 1), refills 3, waits image/code/newexp/exp/rlog/wlog/outq 3390/873/1382/3559/3055/1222/481 logq 256"
+syn,4,262144,B:state,OK,65536,200028,5305,"tile 0 only, max row gap 12, 3.479 cycles/row, newexp 2 (slow 1), refills 3, waits image/code/newexp/exp/rlog/wlog/outq 2415/1156/3712/1386/4277/3715/3998 logq 256"
+syn,5,327680,B:state,OK,65536,200035,6276,"tile 0 only, max row gap 12, 3.479 cycles/row, newexp 2 (slow 1), refills 3, waits image/code/newexp/exp/rlog/wlog/outq 3924/2244/2384/3850/3307/1200/922 logq 256"
+syn,7,0,-,CORRUPT,0,0,0,"window_00007.rlog.bin: missing; "
+syn,-,-,tables,FAIL,0,0,0,"tables differ: [x]"
+bad,line
+
+syn,2,131072,B:state,FAIL,65536,200014,4561,"first mismatching row 3 | end state, ok"

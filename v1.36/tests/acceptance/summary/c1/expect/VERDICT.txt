@@ -1,0 +1,5 @@
+ok   stage A: 10 of 10 windows matched
+ok   stage B: 10 of 10 windows matched
+ok   stage F: 3 of 3 windows matched
+FAIL window 8: stage B (tile 0 alone) 200056 cycles, stage F (full chip) 1
+FAIL: syn windows 0..9

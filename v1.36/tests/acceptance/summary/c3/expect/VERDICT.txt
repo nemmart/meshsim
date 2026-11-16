@@ -1,0 +1,3 @@
+ok   stage A: 3 of 3 windows matched
+FAIL stage F: 2 of 3 windows matched; first missing [2]
+FAIL: syn windows (all 3 listed)

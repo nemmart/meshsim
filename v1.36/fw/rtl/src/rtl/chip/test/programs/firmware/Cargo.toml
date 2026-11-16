@@ -1,0 +1,41 @@
+[package]
+name = "chip-firmware"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "The chip's firmware: the master tile's (the sort's, the memory tile's and the trace runs), the memory tile's, and the segment's: the tracer tile's and the compute tiles' replay image (built by cargo xtask sort-images)"
+
+# Its own workspace: it builds for the RISC-V target, unlike the xtask tooling in the
+# repository's root workspace. The toolchain is pinned by the root rust-toolchain.toml.
+[workspace]
+
+[lib]
+# The base tile's registers and conventions, which both programs use (src/lib.rs).
+name = "tile"
+path = "src/lib.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "master"
+path = "src/bin/master.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "memory"
+path = "src/bin/memory.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "replay"
+path = "src/bin/replay.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "tracer"
+path = "src/bin/tracer.rs"
+test = false
+bench = false

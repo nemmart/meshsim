@@ -1,0 +1,6 @@
+# The paths under this folder that the version's file list leaves out: one extended regular expression per line,
+# matched against each tracked file's path relative to the version's root. A line starting with "!" keeps paths an
+# earlier line left out. Read by tools/freeze/frozen.sh (and through it by tools/doccheck.sh).
+#
+# v1.36 leaves nothing out: it began as a copy of v1.35's frozen folder, which had already left out v1.35's oracle,
+# sketches and session material, and everything in it since is the version's own.

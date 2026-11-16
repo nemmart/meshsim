@@ -18,3 +18,7 @@ $(B)/test_packet_vectors: $(SLOT_LINK)
 # tile's program on gold's fixtures (tests/test_master.cpp)
 PROOF_LINK := $(B)/tests/proof_bench.o $(UPDATER_BENCH) $(SEGMENT_LINK)
 $(B)/test_master: $(PROOF_LINK)
+# one frame file, N and s on the whole chip, with its figures (tests/proof_run_main.cpp)
+$(B)/proof_run: $(B)/tests/proof_run_main.o $(PROOF_LINK) $(LIB_OBJ)
+	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
+all: $(B)/proof_run

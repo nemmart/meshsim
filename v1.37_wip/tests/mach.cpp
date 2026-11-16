@@ -31,6 +31,7 @@
 #include "units/net.h"
 #include "units/table_store.h"
 #include "units/tile_ctl.h"
+#include "units/updater.h"
 
 namespace mach {
 
@@ -100,7 +101,7 @@ const Field kFields[] = {
     F_U("readyLatency", ready_latency), F_B("cncGoSettle", cnc_go_settle), F_U("cncReaction", cnc_reaction),
     F_B("checkReadPortOverlap", check_read_port_overlap), F_B("bootLocal", boot_local),   // (bootLocal: v1.36's, not ref's)
     F_B("checkDisjoint", check_disjoint), F_L("shuffleSeed", shuffle_seed), F_U("maxViolationMessages", max_violation_messages),
-    F_B("measureS1", measure_s1), F_B("checkErrors", check_errors),
+    F_B("measureS1", measure_s1), F_B("checkErrors", check_errors), F_B("hostLink", host_link),   // (hostLink: v1.37's)
     F_U("cncRxDepth", cnc_rx_depth),
     F_U("replayerLogEntries", replayer_log_entries),   // (not ref's Config: its -Dreplayer.logq; the kit's -q)
 };
@@ -180,6 +181,7 @@ bool MachConfig::set_args(const std::vector<std::string>& args, std::string& err
 
 // ===================================================================================================== the chip
 struct Chip::Impl {
+    std::vector<uint8_t> link_bytes;   // v1.37: the packet file Ingress reads (Mach::set_link)
     units::Hops hops;
     std::vector<uint32_t> rom, mem;
     units::SramBlocks sram;
@@ -252,6 +254,9 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     g.timing.ref_cycle = c.ref_cycle;
     g.mem_chunks = c.mem_chunks;
     g.periph_present = c.periph_type != 0 ? 1 : 0;
+    if (c.host_link && !c.special_tiles) FATAL("mach: host_link is the chip's (the master tile's Ingress/Egress and Updater)");
+    if (c.host_link && c.parts > 1) FATAL("mach: host_link with the chip split over threads: the Updater and the Tracer share one file store");
+    g.host_link = c.host_link;
     g.periph_slot = c.periph_type != 0 || c.special_tiles;     // ref: every tile's slot holds its peripheral 1 (type 4)
     if (c.periph_type != 0 && c.periph_type != 4) FATAL("mach: periph_type %d (4 the replayer, or 0)", c.periph_type);
     if (c.test_peripheral_tile >= 64) FATAL("mach: test_peripheral_tile %d (a mesh tile)", c.test_peripheral_tile);
@@ -311,6 +316,11 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         if (!c.real_responder) m.sim->unit<units::Gather>(units::tile_unit(k, "gather")).drain = true;
         m.sim->unit<units::TableStore>(units::tile_unit(k, "ts")).host_poke = true;
         m.sim->unit<units::HistStore>(units::tile_unit(k, "hist")).host_poke = true;
+    }
+    if (c.host_link) {   // v1.37: one file store, the Tracer's memory system on it (cold at a state write), the Updater's too
+        units::tracer::Tracer& tr = m.sim->unit<units::PeriphSlot>(units::unit_prefix(units::ID_TRACER) + "slot").s.tracer(1);
+        tr.own_memory(std::make_unique<units::tracer::FileStore>());
+        m.sim->unit<units::PeriphSlot>(units::unit_prefix(units::ID_MASTER) + "slot").s.updater(2).store = tr.store();
     }
     m.shifted = {m.sim->type_of(units::tile_unit(0, "ctl")), m.sim->type_of(units::tile_unit(0, "core"))};
     if (!c.special_tiles) m.lines = {m.sim->type_of("row0"), m.sim->type_of("cnc")};
@@ -1390,5 +1400,22 @@ void Mach::place_elf(unsigned unit, const std::string& path) {
     place(unit, 0, im.dmem);
 }
 uint32_t Mach::word(unsigned unit, uint32_t a) const { return const_cast<Chip&>(c).tile(unit).peek_local(a); }
+
+// ---- v1.37's chip
+units::IngressEgress& Mach::ingress() {
+    if (!c.cfg().host_link) FATAL("mach: no host link on this machine (MachConfig::host_link)");
+    return c.unit<units::PeriphSlot>(units::unit_prefix(units::ID_MASTER) + "slot").s.ingress_egress(1);
+}
+units::Updater& Mach::updater() {
+    if (!c.cfg().host_link) FATAL("mach: no Updater on this machine (MachConfig::host_link)");
+    return c.unit<units::PeriphSlot>(units::unit_prefix(units::ID_MASTER) + "slot").s.updater(2);
+}
+units::tracer::FileStore& Mach::store() { return *updater().store; }
+void Mach::set_link(std::vector<uint8_t> bytes) {
+    Chip::Impl& m = c.impl();
+    m.link_bytes = std::move(bytes);
+    ingress().set_link(m.link_bytes.data(), m.link_bytes.size());
+    c.touched(units::unit_prefix(units::ID_MASTER) + "slot");
+}
 
 }  // namespace mach

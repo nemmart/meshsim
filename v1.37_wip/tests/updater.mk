@@ -6,3 +6,9 @@ $(B)/test_file_store: $(B)/src/units/file_store.o
 $(B)/updater_frames: $(B)/tests/updater_frames_main.o $(UPDATER_BENCH) $(LIB_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 all: $(B)/updater_frames
+# the link's packets: the tests' provisional writer and Ingress's reader (tests/packetize_main.cpp)
+$(B)/packetize: $(B)/tests/packetize_main.o $(LIB_OBJ)
+	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
+all: $(B)/packetize
+# Ingress's host link in the master tile's slot (tests/test_ingress_link.cpp)
+$(B)/test_ingress_link: $(SLOT_LINK)

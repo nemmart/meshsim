@@ -75,6 +75,7 @@ struct TestPeripheral;
 namespace tracer { class Tracer; }
 struct IngressEgress;
 struct RwEngine;
+struct Updater;
 
 // The core's word on S2/S3 (one per cycle): a store to window word w of peripheral n, or a consuming EVENTS load.
 struct CoreOp {
@@ -131,6 +132,8 @@ struct PeriphSlotConfig {
     uint64_t replayer_row_buffer = 0;    // rows of the replayer's optional record buffer (tests; 0: the hash only)
     unsigned replayer_log_entries = 256; // the replayer's read-log and write-log queues (ref's -Dreplayer.logq)
     RwEngineConfig rw;                   // the RW engine's parameters (19): LPDDR_ADDRESS_BITS, RW_BUFFER_BYTES, RW_QUEUE_BEATS
+    bool host_link = false;              // v1.37: an Ingress/Egress here is built with the host link (ingress_egress.h), which
+                                         //   has a DMA: `controller` is set with it
 };
 
 // A packet a DMA sends (ref's dmaOut entry): the header as LinkWord.hdr builds it.
@@ -235,6 +238,7 @@ struct SlotCore {
     TestPeripheral& test_peripheral(unsigned n);
     IngressEgress& ingress_egress(unsigned n);
     RwEngine& rw_engine(unsigned n);
+    Updater& updater(unsigned n);
 
 private:
     void violate(int64_t t, uint16_t code, uint32_t a = 0, uint32_t b = 0);

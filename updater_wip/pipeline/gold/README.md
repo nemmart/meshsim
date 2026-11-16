@@ -8,7 +8,7 @@
 > **And the link's packets (WORKER2):** the packetizer (`packets`), which wraps a frame file in the packets of
 > `v1.4_wip/planning/HOST-LINK.md` for v1.37's Ingress, the reader (`packets-read`) and the test vectors
 > (`test/packets/`). The section "The link's packets" at the end; the plan and the choices are in
-> `updater_wip/planning/sessions/WORKER2/NOTES.md`.
+> `updater_wip/planning/sessions/WORKER2-NOTES.md`.
 
 A standalone emulator of the Jolt zkVM's tracer (DECISIONS-v1.3 section 17, work item W4): it reads a guest's ELF, sets
 up Jolt's memory, runs the program and produces **Jolt's trace rows exactly as jolt-cpp's tracer does** (jolt-cpp
@@ -219,4 +219,4 @@ The writing side (`Packets`, with `java.util.zip.CRC32C`) and the reading side (
 | `test/frames/guests.sh`, `workloads.sh` | every frame file they write is wrapped in packets, read back and compared byte for byte (on the guests also with idle bytes and numbered from 0xFFFFE) |
 | `test/packets/frames_unchanged.sh <another gold> [<prog> <input> <cuts>]...` | the `frames` command's file, side file and output byte-identical to another gold's (main's before this work), on every guest four times and on the runs given |
 
-Results: `updater_wip/planning/sessions/WORKER2/REPORT.md`.
+Results: `updater_wip/planning/sessions/WORKER2-REPORT.md`.

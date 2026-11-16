@@ -334,7 +334,7 @@ public final class PacketVectors {
   static final String HEAD = """
       # Test vectors for the link's packets (v1.4_wip/planning/HOST-LINK.md), for an Ingress written from the documents.
       # Made by gold's packets-vectors command (updater_wip/pipeline/gold, WORKER2); do not edit: the build regenerates
-      # this file and compares. The choices behind it are in updater_wip/planning/sessions/WORKER2/NOTES.md.
+      # this file and compares. The choices behind it are in updater_wip/planning/sessions/WORKER2-NOTES.md.
       #
       # A PACKET is a header word of 128 bits, then 0 to 32 words of data. Every word goes on the link least significant
       # byte first: byte i of a word holds its bits [8i+7:8i]. The header word:

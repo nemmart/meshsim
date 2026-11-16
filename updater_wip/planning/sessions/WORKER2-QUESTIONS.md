@@ -1,5 +1,8 @@
 # WORKER2 questions
 
+*Closed and merged into `main` on 2026-11-16. The files this one calls `NOTES.md`, `REPORT.md` and `QUESTIONS.md` are
+`WORKER2-NOTES.md`, `WORKER2-REPORT.md` and `WORKER2-QUESTIONS.md`, beside it; its Quest task is in `WORKER2-tasks/`.*
+
 `HL` is `v1.4_wip/planning/HOST-LINK.md`, `II` is `INGRESS-INTERFACE.md`, both as on main `543e1eda`. They are here
 because WORKER3 writes Ingress from the same documents without my code, and where the documents are silent the two
 of us can differ.

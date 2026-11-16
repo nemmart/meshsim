@@ -11,7 +11,7 @@ import java.util.zip.CRC32C;
  * The link's packets (v1.4_wip/planning/HOST-LINK.md), the writing side: the packetizer, which wraps a frame file
  * (HOST-FRAMES.md) in packets for v1.37's Ingress black box (INGRESS-INTERFACE.md, "In v1.37: a black box and a
  * file"). The reading side (PacketFile, PacketReader) is written from the documents and shares nothing with this,
- * its CRC-32C included; the choices are WORKER2's (updater_wip/planning/sessions/WORKER2/NOTES.md).
+ * its CRC-32C included; the choices are WORKER2's (updater_wip/planning/sessions/WORKER2-NOTES.md).
  *
  * <pre>
  *   a packet   a header word of 128 bits, then 0 to 32 words of data; every word least significant byte first

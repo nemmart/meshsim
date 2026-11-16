@@ -1,5 +1,8 @@
 # WORKER2 report: the packetizer
 
+*Closed and merged into `main` on 2026-11-16. The files this one calls `NOTES.md`, `REPORT.md` and `QUESTIONS.md` are
+`WORKER2-NOTES.md`, `WORKER2-REPORT.md` and `WORKER2-QUESTIONS.md`, beside it; its Quest task is in `WORKER2-tasks/`.*
+
 2026-11-16. Branch `updater-w2`, from main `543e1eda`. The brief is `PROMPT.md`; the plan as built, the exact
 definition of the checks and the choices are `NOTES.md`; the questions and the owner's rulings are `QUESTIONS.md`.
 The link is `v1.4_wip/planning/HOST-LINK.md` (HL); Ingress is `INGRESS-INTERFACE.md` (II).

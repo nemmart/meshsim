@@ -15,7 +15,8 @@ end first, with software black boxes, and the real controllers afterwards.
 
 1. **Gold writes the host's frames** (`v1.4_wip/planning/HOST-FRAMES.md`), with a reader and a reference that turns
    the frames into the memory images. **Done** (WORKER1).
-2. **The packetizer** wraps gold's frame file in the link's packets (`v1.4_wip/planning/HOST-LINK.md`). WORKER2.
+2. **The packetizer** wraps gold's frame file in the link's packets (`v1.4_wip/planning/HOST-LINK.md`). **Done**
+   (WORKER2).
 3. **v1.37:** the simulator is started with the packet file; the master tile's real firmware reads the frames out
    of Ingress and drives the Updater; the Tracer traces on the images the Updater built. Ingress and the Updater
    are software black boxes behind their real registers (`INGRESS-INTERFACE.md`, `UPDATER-INTERFACE.md`); the cache
@@ -26,7 +27,7 @@ end first, with software black boxes, and the real controllers afterwards.
 
 | folder | what |
 |---|---|
-| `pipeline/gold/` | gold with the frames added (`frames`, `frames-read`, `frames-images`): a copy of `v1.36/pipeline/gold/` with WORKER1's work; its `README.md` says how to run it |
+| `pipeline/gold/` | gold with the frames (`frames`, `frames-read`, `frames-images`; WORKER1) and the link's packets (`packets`, `packets-read`, the vectors in `test/packets/`; WORKER2): a copy of `v1.36/pipeline/gold/` with their work; its `README.md` says how to run it |
 | `planning/sessions/` | the sessions, numbered from WORKER1 in a series of their own |
 | `../v1.37_wip/` | the simulator and firmware for v1.37: v1.36 copied unchanged (main, 67aaeb86), then WORKER3's work |
 | `tasks/v136-check/` | the generator of v1.36's own checks as Quest tasks: the suites, with the small inputs built on the runner, and `make check` |
@@ -47,5 +48,5 @@ into `main`.
 | session | what it did | kept in `planning/sessions/` |
 |---|---|---|
 | WORKER1 | gold writes the host's frames as `HOST-FRAMES.md` stands after the owner's rulings; the reader with its checks; the reference images on copy-on-write trees, with page counts checked two ways; both workloads at 2²⁹ (Quests 197 and 200). Closed and merged 2026-11-16 | `WORKER1-REPORT.md`, `WORKER1-NOTES.md`, `WORKER1-QUESTIONS.md`, `WORKER1-NEXT.md` (the rulings), `WORKER1-tasks/` |
-| WORKER2 | the packetizer: gold's frame file wrapped in the link's packets, a reader that checks them, and test vectors for the Ingress black box | prompt written (`WORKER2/PROMPT.md`), not started |
-| WORKER3 | v1.37 in `v1.37_wip/`: the Ingress and Updater black boxes, the master tile's firmware with the page map, and the Tracer running on the images the Updater built | prompt written (`WORKER3/PROMPT.md`), not started |
+| WORKER2 | the packetizer (`packets`), its reader (`packets-read`) and the test vectors (`pipeline/gold/test/packets/`), the two sides sharing no code; every frame file round-trips, every single-bit change of the small files is refused, both workloads at 2²⁹ (Quest 201); the packets add 3.13%. Closed and merged 2026-11-16 | `WORKER2-REPORT.md`, `WORKER2-NOTES.md`, `WORKER2-QUESTIONS.md`, `WORKER2-tasks/` |
+| WORKER3 | v1.37 in `v1.37_wip/`: the Ingress and Updater black boxes, the master tile's firmware with the page map, and the Tracer running on the images the Updater built | running, on branch `updater-w3` (`WORKER3/`) |

@@ -1,5 +1,8 @@
 # WORKER2 notes: the packetizer
 
+*Closed and merged into `main` on 2026-11-16. The files this one calls `NOTES.md`, `REPORT.md` and `QUESTIONS.md` are
+`WORKER2-NOTES.md`, `WORKER2-REPORT.md` and `WORKER2-QUESTIONS.md`, beside it; its Quest task is in `WORKER2-tasks/`.*
+
 Branch `updater-w2`, from main `543e1eda`. The brief is `PROMPT.md`. The link is `v1.4_wip/planning/HOST-LINK.md`
 (HL); the black box that reads my file is `INGRESS-INTERFACE.md` (II); the frames are `HOST-FRAMES.md` (HF).
 

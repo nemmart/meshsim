@@ -50,8 +50,9 @@ HOW IT IS CHECKED
   three lines), for a full new table and for a base table with pages added.
 - **LRU:** decoding the LRU form gives the raw form, word for word.
 - **Nothing old broke:** gold's existing tests, the guests, and the segment files are byte-identical to before.
-- **Where it runs:** the guests and the small inputs here (EVM Zone trace-23, Cyclone input/22, the hard-cut
-  lists); both workloads at 2²⁹ on the runner.
+- **Where it runs:** the guests in the repository (gold's and jumpmap's); the small inputs (EVM Zone trace-23,
+  Cyclone input/22, with the hard-cut lists), which are built from the pinned sources as
+  `v1.36/pipeline/inputs/README.md` says; both workloads at 2²⁹ on the runner.
 - **Report the sizes:** each frame's bytes for each run, raw against LRU, the page counts, and the whole file.
 
 WHERE HOST-FRAMES.md IS OPEN

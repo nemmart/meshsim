@@ -20,15 +20,15 @@ chip's figures** for the run: its cycles from the reset, the master's summary (e
 tile's report (each run's `START`, rows' end and `done`, the Tracer's statistics counters), every request of the fill
 port (its cycle, its line, its answer's cycle), and the cycle every row left its tile's `replay_row` port.
 
-**They are the expectations of `tests/test_rtl_segment.cpp`** (`tests/segment_bench.h`; the runner's step
-`rtl-segment`): the simulator, running the same firmware on the same segment under the same model of the memory
-system, must give the segment's rows and deliveries and every one of the RTL chip's figures. **Never regenerate them
+**They are the expectations of `tests/test_segment.cpp`** (`tests/segment_bench.h`; the runner's step `segment`):
+the simulator, running meshsim's firmware on the same segment under the same model of the memory system, must give
+the segment's rows, deliveries and end state. The RTL chip's figures are read and no longer compared: they are the
+RTL's run of its own firmware, which the simulator reproduced, cycle for cycle, up to meshsim's commit 5a87d658. **Never regenerate them
 from the simulator.** A hardware change is first made in the RTL, and these files are then produced again by the RTL.
 
 ## Where they came from
 
-Snarky One `main` at `076e647` (the firmware images are those of `370e3ac`, vendored in `fw/rtl/`, byte for byte:
-`fw/rtl/MANIFEST`), 2026-11-15: `chip_trace_test.rs` with `chip_trace_dump.patch` (here) applied, which adds the dump
+Snarky One `main` at `076e647` (the firmware images are those of its commit `370e3ac`), 2026-11-15: `chip_trace_test.rs` with `chip_trace_dump.patch` (here) applied, which adds the dump
 and changes no cycle (each run's printed totals are the unmodified test's: 113,152, 764,928 and 609,280 cycles from the
 reset). From a scratch worktree of Snarky One (`mise run agent-new <name> shared`), with the patch applied:
 

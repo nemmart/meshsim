@@ -395,7 +395,7 @@ reproduced the RTL's column on v1.36's simulator, and the rows they found wrong 
 
 The RTL's sort was compared with **v1.25's simulator at net latencies of 1**, not with v1.35's: the sort's sources
 are the same in v1.25 and v1.35, but v1.35's defaults are 8, 8 and 8, and its one committed full-size reference
-is uniform-k128. v1.36's simulator gives the RTL's column, step for step (`tests/test_rtl_sort.cpp`); the
+is uniform-k128. v1.36's simulator gave the RTL's column, step for step (meshsim's commit 5a87d658); the
 comparison with v1.35's own sort is not run again, its program not being ported (item 164). The RTL attributes the gap to
 the core's timing: the steps the engines drive match within 0.2 %.
 

@@ -14,5 +14,5 @@
 
 `fw/build.sh --check` requires all three equal to the build's. The RTL holds the same words in its
 `rtl/blocks/core/src/boot_rom_pkg.veryl`, which its `boot_rom_test` checks against its own build of this program;
-`boot_rom.hex` and `boot_rom.sym` here are byte for byte those of Snarky One's build at the commit `fw/rtl/MANIFEST`
-names. v1.35's own boot ROM is not in v1.36.
+`boot_rom.hex` and `boot_rom.sym` here are byte for byte those of Snarky One's build at its commit
+370e3ac. v1.35's own boot ROM is not in v1.36.

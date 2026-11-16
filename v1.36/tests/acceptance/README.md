@@ -6,8 +6,8 @@ on the Quest runner. Its outputs are v1.3's for Stage A: `results.csv` byte-iden
 `VERDICT.txt` byte-identical, `SUMMARY.txt`'s non-timing lines equal.
 
 v1.3's kit had a second stage, the replay controller (`replay_ctl.c`) on a meshsim tile (Stage B on tile 0 alone, F on
-the full chip). v1.36 retired it with v1.35's firmware: the RTL's replay image on v1.36's chip is acceptance C
-(`tests/test_rtl_segment.cpp`), not this kit's. `shard_summary` still sums B and F lines as v1.3's Python did (its
+the full chip). v1.36 retired the stages: v1.35's replay controller, upgraded, runs on v1.36's chip in
+`tests/test_segment.cpp`, not in this kit. `shard_summary` still sums B and F lines as v1.3's Python did (its
 test's cases hold them), but nothing writes them.
 
 ## What it runs

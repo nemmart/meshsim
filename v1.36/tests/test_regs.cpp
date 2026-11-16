@@ -9,8 +9,7 @@
 //       the offsets and accesses of 5.5, the bits of 7.1, 7.2 and 7.4, the fields of 4.1, 5.4, 7.1, 8-13, 11.5 and
 //       17.1, and the peripherals' words and bits of 17.6-17.9, all written out below from the specification's tables
 //       (spec/machine-spec.md, and the RTL's base tile specification), never taken from the generator. The RTL firmware's
-//       own definitions of the registers they share (the tile programs' fw/tile/tile_map.h and, in fw/rtl/src, the chip
-//       firmware's src/lib.rs) are read too and must equal them; and mesh.h must compile, its structs' members at the
+//       own definitions of the registers they share (the tile programs' fw/tile/tile_map.h) are read too and must equal them; and mesh.h must compile, its structs' members at the
 //       specification's offsets (the host C compiler, $CC or cc).
 #include <cstdio>
 #include <cstdlib>
@@ -652,7 +651,7 @@ TEST(mesh_h_holds_the_specifications_offsets_bits_fields_and_values) {
     CHECK(m.count("X0REL(off)") && m.at("X0REL(off)") == "((off) - 0x800)");
 }
 
-// The RTL firmware's own definitions (fw/tile/tile_map.h; fw/rtl/src, the chip's Rust firmware), for the registers and
+// The RTL firmware's own definitions (fw/tile/tile_map.h), for the registers and
 // bits they share with mesh.h.
 TEST(the_rtl_firmwares_definitions_agree) {
     // the tile programs' tile_map.h: a register is its x0-relative address, (-0x800 + offset)

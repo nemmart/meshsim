@@ -29,9 +29,8 @@ What the freeze takes, in order, from this folder on the commit to be frozen:
 7. Then, outside this folder: the repository's top-level `README.md` gains v1.36's row and names v1.36 as the RTL's
    target, and the commit lands on `main`. The folder's own `README.md` is already written for the frozen state.
 
-What the frozen folder is pinned to: the RTL's firmware at the Snarky One commit `fw/rtl/MANIFEST`'s header names
-(the images built here by their hash lists, `fw/images/MANIFEST` and `tests/core-programs/SHA256SUMS`; the Rust
-images by `fw/rtl/MANIFEST`); the files copied from v1.3 by `COPIES.sha256`; the RTL's references
+What the frozen folder is pinned to: the firmware built here, by its hash lists (`fw/images/MANIFEST` and
+`tests/core-programs/SHA256SUMS`), the RTL's programs among it at the Snarky One commit 370e3ac; the files copied from v1.3 by `COPIES.sha256`; the RTL's references
 under `tests/` (each folder's `README.md` names the Snarky One commit and the command that made them). The
 specification follows Snarky One's `rtl/tile/base/spec.md` and `rtl/blocks/core/spec.md` at the commit
 `spec/README.md` names.

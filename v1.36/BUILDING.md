@@ -11,16 +11,16 @@ Checked on Ubuntu 24.04.
 |---|---|---|
 | the simulator, its tests and tools | `make`, g++ and clang++ (C++20): clang for the release build, both for `make check` | `apt install make g++ clang` |
 | `pipeline/`, the offline input tools | a JDK, Java 21 (`pipeline/README.md`) | `apt install openjdk-21-jdk-headless` |
-| the firmware images (`fw/build.sh`) | xPack `riscv-none-elf-gcc` 15.2.0-1 (GCC 15.2.0, binutils 2.45), the toolchain the committed images were built with, on `PATH` or named by `RISCV_PREFIX`; and a C++ compiler (`c++`, or `CXX`), with which its part `runs` builds `tools/fwimage/` | not packaged: the release `v15.2.0-1` of xpack-dev-tools' `riscv-none-elf-gcc-xpack`, unpacked (`fw/build.sh` prints where) |
+| the firmware images (`fw/build.sh`) | xPack `riscv-none-elf-gcc` 15.2.0-1 (GCC 15.2.0, binutils 2.45), the toolchain the committed images were built with, on `PATH` or named by `RISCV_PREFIX`; and a C++ compiler (`c++`, or `CXX`), with which its part `runs` builds `tools/fwimage/`. (v1.35's images were built with Ubuntu 24.04's `riscv64-unknown-elf-gcc` 13.2, which this toolchain replaces: `fw/README.md`) | not packaged: the release `v15.2.0-1` of xpack-dev-tools' `riscv-none-elf-gcc-xpack`, unpacked (`fw/build.sh` prints where) |
 | riscv-tests' and CoreMark's images, with the above | a checkout of each at the revision `fw/core/riscv-tests/riscv-tests.toml` and `fw/core/coremark/coremark.toml` pin, named by `RISCV_TESTS` and `COREMARK` | `git clone` at that revision |
 
 **Without the RISC-V toolchain, everything else builds and runs.** The firmware images are committed (`fw/images/`,
-`tests/core-programs/elf/`, and the chip's Rust firmware in `fw/rtl/`), and the simulator, its tests and the suites
+`tests/core-programs/elf/`), and the simulator, its tests and the suites
 use them as they are. `fw/build.sh --check` rebuilds every C and assembly image from the sources in `fw/` and proves
 each equal to its committed copy, byte for byte; without the toolchain, `fw/check_images.sh` checks the committed
 images against the hash lists committed beside them. The suite runner's step `fw-build` does the first when the
-toolchain is there and is printed as SKIPPED when it isn't; `fw-images` does the second always. The chip's programs
-that are Rust today are not built here yet: `fw/README.md`, "Built outside meshsim, to be replaced by C".
+toolchain is there and is printed as SKIPPED when it isn't; `fw-images` does the second always. No image is built
+outside meshsim.
 
 ## The three builds
 

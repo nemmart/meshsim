@@ -20,12 +20,12 @@ the run. The run exits 0 only when every step passed.
 prints it as `SKIPPED (<why>)`, lists the skipped steps again in its summary, and ends with `all passed, N steps
 SKIPPED for what is not on this machine (data, a toolchain)`. With both it ends with `all passed`.
 - `MESHSIM_INPUTS` (default `~/meshsim-inputs`): the real workloads' recorded data (EVM Zone, Cyclone), for
-  `tracer-block` and `rtl-segment-real`.
+  `tracer-block` and `segment-real`.
 - The RISC-V toolchain the firmware images were built with (`BUILDING.md`; `RISCV_PREFIX` names it), for `fw-build`.
   With it, `RISCV_TESTS` and `COREMARK` name the checkouts from which that step also rebuilds riscv-tests' and
   CoreMark's images; without them it rebuilds the rest and says so.
 
-The 64K sort runs' key file (16 MiB) is not an input: `rtl-sort-64k` builds it (`fwimage keys 65536`, into
+The 64K sort runs' key file (16 MiB) is not an input: `sort-64k` builds it (`fwimage keys 65536`, into
 `build/sort-64k.keys`) and checks it against its committed sha256.
 
 The times are wall times on the development host (32 threads, clang, `JOBS=16`); the whole of `all --check` takes
@@ -35,7 +35,7 @@ about 2.5 minutes after the build, `quick --check` about 40 seconds.
 |---|---|---|---|---|
 | `layout` | both | `sh tools/check_copies.sh` | <1 s | `COPIES.sha256`: every file copied from v1.3 still has v1.3's bytes |
 | `bus` | both | `build/clang-debug/suite_bus` | <1 s | log: `tests/p2suites/bus.log` (the framework's port kinds) |
-| `fw-images` | both | `fw/check_images.sh`, with `fwimage` | <1 s | the hash lists: `fw/images/MANIFEST`, `tests/core-programs/SHA256SUMS`, `fw/rtl/MANIFEST`, file by file; and what is made here of the runs' data: the committed keys are the generator's, and each committed master holds the run image made here (`fw/README.md`, "The run image") |
+| `fw-images` | both | `fw/check_images.sh`, with `fwimage` | <1 s | the hash lists: `fw/images/MANIFEST`, `tests/core-programs/SHA256SUMS`, file by file; and the committed keys against the generator's (`fw/README.md`) |
 | `fw-build` | both, with the RISC-V toolchain | `fw/build.sh --check` | 3 s | every C and assembly image rebuilt from `fw/`'s sources, byte-equal to its committed copy; each run image against its committed master |
 | `core-programs` | both | `test_core_programs` | 1 s | the RTL's core programs: each pass, cycle, retirement and trap the RTL's (`tests/core-programs/`) |
 | `core-tile` | both | `test_core_tile` | <1 s | the core's accesses to region 0xFF in `register_bus`'s cycles (machine-spec 5, 6.4) |
@@ -51,20 +51,20 @@ about 2.5 minutes after the build, `quick --check` about 40 seconds.
 | `periph` | both | `test_periph_slot` | 1 s | the peripheral's control block and DMA (17.1–17.4; the RTL's `peripheral_control`, `peripheral_dma`) |
 | `ingress-egress` | both | `test_ingress_egress` | <1 s | Ingress/Egress (17.6): the nets, the watchdog, the error lines, the UART, the host interface |
 | `rtl-tile` | both | `test_rtl_tile` | <1 s | the RTL's tile programs on one compute tile: the RTL's `base_tile_test.rs`'s verdicts, and the boot ROM's cycles |
-| `rtl-sort` | both | `test_rtl_sort sort_oracle`, then `sort_16` | 5 s | the RTL's `chip_test.rs`: the sort at 64 × 16 records, kv32 and k128, against the oracle and the RTL chip's cycles step by step; kv32 split over 2 and 8 threads |
+| `sort` | both | `test_sort sort_oracle`, then `sort_16` | 5 s | the RTL's `chip_test.rs`'s result checks, under meshsim's firmware: the sort at 64 × 16 records, kv32 and k128, against the oracle, every tile's error provoked; kv32 split over 2 and 8 threads |
 | `rtl-stream` | both | `test_rtl_stream` | <1 s | the RTL's `chip_stream_test.rs`, and the UART through the master's core, at the RTL chip's cycles |
-| `rtl-memory` | both | `test_rw_engine`, then `test_rtl_memory` | 2 s | the RTL's `rw_engine_unit_test.rs` ported, with the RTL's outputs' fingerprints, and the RTL's `chip_memory_test.rs` with the RTL chip's handshakes on `lpddr` (`tests/rwengine/`) |
-| `rtl-segment` | both | `test_rtl_segment segment_` | 2 s | the RTL's `chip_trace_test.rs`: three generated segments, every row, delivery and cycle against the RTL's own run (`tests/segment/rtl/`) |
+| `memory` | both | `test_rw_engine`, then `test_memory` | 2 s | the RTL's `rw_engine_unit_test.rs` ported, with the RTL's outputs' fingerprints, and the RTL's `chip_memory_test.rs`'s result checks, under meshsim's firmware |
+| `segment` | both | `test_segment segment_` | 2 s | the RTL's `chip_trace_test.rs`'s result checks, under meshsim's firmware: three generated segments, every row, record, stream, end state and program result against the segment's (`tests/segment/rtl/`) |
 | `replayer` | both | `suite_replayer` | 2 s | log: `tests/replayer/replayer.log` |
 | `memsys` | both | `suite_memsys` | <1 s | log: `tests/tracersuites/memsys.log` |
 | `rvc` | both | `suite_rvc` | <1 s | log: `tests/tracersuites/rvc.log` |
 | `tracer` | both | `suite_tracer` | <1 s | log: `tests/tracersuites/tracer.log` |
 | `tracer-block-synth` | both | `tracer_block --synthetic` | <1 s | log: `tests/tracerblock/tracer-block-synth.log`; in the run itself, an interpreter of the synthetic guest |
 | `tracer-block` | both, with `MESHSIM_INPUTS` | `tracer_block --inputs DIR --program P --segment S --compression C --fill F --quiet --ref FILE`, for EVM Zone's segments 0 and 1 and Cyclone's 0, `C` 0 and 7, `F` 1 and 55,35; then each segment with `--fill model` (15 runs) | 22 s | log: `tests/tracerblock/tracer-block.log`; in the run itself, gold's files and the RTL's figures (`tests/tracerblock/rtl/`) |
-| `rtl-sort-64k` | all | `fwimage keys 65536 build/sort-64k.keys`, its sha256 checked, then `test_rtl_sort sort_64k` | 40 s | as `rtl-sort`, at 64 × 65,536 records; the key file against `fw/images/sort/sort-64k.keys.sha256` |
-| `rtl-segment-real` | all, with `MESHSIM_INPUTS` | `test_rtl_segment real_` | 56 s | the real workloads' windows (EVM Zone's 0–63 and 64–127, Cyclone's 0–63): every row, record and stream against the recorded files, the cycles against the RTL chip's |
+| `sort-64k` | all | `fwimage keys 65536 build/sort-64k.keys`, its sha256 checked, then `test_sort sort_64k` | 40 s | as `sort`, at 64 × 65,536 records; the key file against `fw/images/sort/sort-64k.keys.sha256` |
+| `segment-real` | all, with `MESHSIM_INPUTS` | `test_segment real_` | 40 s | the real workloads' windows (EVM Zone's 0–63 and 64–127, Cyclone's 0–63): every row, record and stream against the recorded files |
 
-The figures the chip's steps require are in `README.md` (Status); what each test is and where its reference came
+The figures the chip's steps print are in `README.md` (Status); what each test is and where its reference came
 from is `tests/README.md`.
 
 ## `make check`, and the kit

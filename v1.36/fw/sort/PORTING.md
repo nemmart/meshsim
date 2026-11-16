@@ -1,7 +1,13 @@
 # The sort on Snarky One's tile
 
 *This page is Snarky One's, where the port was made (its `rtl/chip/test/programs/sort/PORTING.md`); "cargo xtask" in
-it is Snarky One's build, which here is `fw/build.sh`, its part `sort` (`fw/README.md`).*
+it is Snarky One's build, which here is `fw/build.sh`, its part `sort` (`fw/README.md`). v1.36 keeps v1.35's layout
+of the sources (this folder's `README.md`): the port's `sw/` is `program/sw/`; its `skew-planner/` and
+`split-bisect/` are `skew/planner/` and `split/` at v1.35's bytes, which the build patches with v1.35's
+`program/patches/planner.patch` and `split-barrier.patch` and the port's changes, `program/patches/port.patch`; its
+`mesh.h` in `port/` is `../port/mesh.h`, the port layer every v1.35 program takes. The master tile's firmware that runs it
+is C&C 1's program, `../cc/cc1.c`, where the text below says `master.rs`, and it answers the exit request below as
+`REQ_OP_RESULT`. The image is the port's, byte for byte.*
 
 The mesh-sorter's tile sort software, meshsim v1.25's (the sort design; in this
 repository `v1.25/meshsim/sw/ext/`), vendored and ported to
@@ -9,7 +15,7 @@ the base tile (the base tile specification, here `spec/machine-spec.md`, which
 refines meshsim's machine). `fw/build.sh` builds it as Snarky One's
 `cargo xtask sort-images` does (its `xtask/src/sort_images.rs`, which also says how it
 is audited and what the chip's test gets). The master tile's firmware, which runs
-it, is `master.rs` (`fw/rtl/README.md`). meshsim v1.35 holds the
+it, is `master.rs` (Snarky One's; here `../cc/cc1.c`). meshsim v1.35 holds the
 same sources in `v1.35/fw/sort/`: `program/sw/` byte for byte, and `skew/planner/`
 and `split/` with `program/patches/` applied; its SortTest is `sort_test`
 (`v1.35/tests/sort_main.cpp` and `sort_input.h`).
@@ -21,9 +27,9 @@ Vendored unchanged from `v1.25/meshsim/sw/ext/`, unless listed under
 
 | Directory | From | What |
 | --- | --- | --- |
-| `sw/` | `ext/sort/sw/` | the sort: the command loop (`main.c`, here a fixed schedule), the local sorts (`local.c`), the exchanges and the reduction (`exchange.c`), the transfer (`transfer.c`, `config.c`), TH and BT (`skew.c`, `bt_plan.c`, `bt_run.c`), `sort.h` |
-| `skew-planner/` | `ext/skew-planner/` | the skew planner: `skew.h`, `skew_common.c`, `skew_th.c`, `skew_bt.c` |
-| `split-bisect/` | `ext/split-bisect/` | the split: `split.c` (its `SPLIT_BARRIER` hook), `split.h`, `split_regs.h` |
+| `program/sw/` | `ext/sort/sw/` | the sort: the command loop (`main.c`, here a fixed schedule), the local sorts (`local.c`), the exchanges and the reduction (`exchange.c`), the transfer (`transfer.c`, `config.c`), TH and BT (`skew.c`, `bt_plan.c`, `bt_run.c`), `sort.h` |
+| `skew/planner/` | `ext/skew-planner/` | the skew planner: `skew.h`, `skew_common.c`, `skew_th.c`, `skew_bt.c` |
+| `split/` | `ext/split-bisect/` | the split: `split.c` (its `SPLIT_BARRIER` hook), `split.h`, `split_regs.h` |
 
 The port layer, `port/`, replaces meshsim's generated `sw/mesh.h` 1.2, its
 `sw/crt0.S` and the sort's `sort.ld`:
@@ -42,11 +48,11 @@ changed line.
 
 | File | Change | Why |
 | --- | --- | --- |
-| `sw/local.c`, `sw/config.c`, `sw/transfer.c`, `sw/skew.c`, `sw/bt_run.c` | a store to `DMA_CONFIG` becomes `dma_config()`, and one to `DMA_RECORD_BASE_ADDRESS` `record_base()` | v1.25's `DMA_CONFIG` holds the transfer, the receive digits and the gather's *k*, which the specification splits into `DMA_CONFIG`, `RECEIVE_CONFIG` and `GATHER_CONFIG` (8.1, 12.1, 13); its record base is `GATHER_CONFIG.record_base` |
-| `sw/skew.c`, `sw/bt_run.c` | a store of a `GROUP` entry's high word becomes `set_group_hi()` | v1.25's high word (first stream, streams, gap) is the specification's word 0 above R and word 1 (8.4) |
-| `skew-planner/skew.h` | `HW_GROUP_R` stores R through `set_group_r()` | the same: R shares word 0 |
-| `split-bisect/split_regs.h`, `split-bisect/split.c` | `SRAM_RD_DEST_ADDR`'s store becomes `sr_read_dest32()`, and `SRAM_RD_ADDR_QUEUE`'s store and load `READ_SEND` and `READ_FREE` | the read unit's setup is two registers, `READ_HDR` and `READ_DEST_ADDR`, and its queue's word and free count two (10) |
-| `sw/main.c` | the command loop becomes a fixed schedule: `main` runs each phase, in C&C's order for the run's format, as its command's case did, then the barrier (`sort_barrier()`), and returns 0 after L2's, to the master tile; the format is the image's argument | there are no commands (the specification's 6.5): an image's phases are fixed in it, and its arguments are data in DMEM; meshsim's exit word is the simulator's |
+| `program/sw/local.c`, `program/sw/config.c`, `program/sw/transfer.c`, `program/sw/skew.c`, `program/sw/bt_run.c` | a store to `DMA_CONFIG` becomes `dma_config()`, and one to `DMA_RECORD_BASE_ADDRESS` `record_base()` | v1.25's `DMA_CONFIG` holds the transfer, the receive digits and the gather's *k*, which the specification splits into `DMA_CONFIG`, `RECEIVE_CONFIG` and `GATHER_CONFIG` (8.1, 12.1, 13); its record base is `GATHER_CONFIG.record_base` |
+| `program/sw/skew.c`, `program/sw/bt_run.c` | a store of a `GROUP` entry's high word becomes `set_group_hi()` | v1.25's high word (first stream, streams, gap) is the specification's word 0 above R and word 1 (8.4) |
+| `skew/planner/skew.h` | `HW_GROUP_R` stores R through `set_group_r()` | the same: R shares word 0 |
+| `split/split_regs.h`, `split/split.c` | `SRAM_RD_DEST_ADDR`'s store becomes `sr_read_dest32()`, and `SRAM_RD_ADDR_QUEUE`'s store and load `READ_SEND` and `READ_FREE` | the read unit's setup is two registers, `READ_HDR` and `READ_DEST_ADDR`, and its queue's word and free count two (10) |
+| `program/sw/main.c` | the command loop becomes a fixed schedule: `main` runs each phase, in C&C's order for the run's format, as its command's case did, then the barrier (`sort_barrier()`), and returns 0 after L2's, to the master tile; the format is the image's argument | there are no commands (the specification's 6.5): an image's phases are fixed in it, and its arguments are data in DMEM; meshsim's exit word is the simulator's |
 
 ## The port layer's decisions
 

@@ -442,7 +442,7 @@ public:
     // An image placed in a unit's memories (a back door, before the unit's core needs it: 6.5's boot_local start, or a
     // test's own data): `words` from byte address `byte_addr` of IMEM (region 0x01) or DMEM (0x00).
     void place(unsigned unit, uint32_t byte_addr, const std::vector<uint32_t>& words);
-    // An ELF file's loadable segments (the RTL's images: fw/images/, fw/rtl/) placed likewise, as the RTL's chip tests place a
+    // An ELF file's loadable segments (the images: fw/images/) placed likewise, as the RTL's chip tests place a
     // firmware (tests/rtl_images.h's memory_images, bench.rs's): IMEM and DMEM each from its base, .bss's zeros included.
     void place_elf(unsigned unit, const std::string& path);
 

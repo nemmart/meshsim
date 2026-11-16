@@ -13,4 +13,4 @@ framework test chip, not the model of `src/units/`.
 
 v1.35's benchmarks of the sort and of the chip ran v1.35's machine and images and are not in v1.36
 (`../README.md`, "What v1.36 does not carry over"). The simulator's speed on v1.36's chip is printed by the chip's
-tests as they run (`test_rtl_sort`, `test_rtl_segment`: cycles and wall time), and `tracer_block` prints its own.
+tests as they run (`test_sort`, `test_segment`: cycles and wall time), and `tracer_block` prints its own.

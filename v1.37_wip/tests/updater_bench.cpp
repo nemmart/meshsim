@@ -29,7 +29,8 @@ bool Bench::run(const Run& r) {
     uint32_t stat0[6];
     for (int k = 0; k < 6; k++) u.word(t, Updater::W_STAT_CYCLES + k, stat0[k]);
     u.step(t); u.run(t); t++;
-    uint32_t pages_to_queue = r.pages;
+    // the pages still to queue for this run: what it will take, less what the last run left in the queue
+    uint32_t pages_to_queue = r.pages > u.free_page_entries() ? r.pages - u.free_page_entries() : 0;
     bool done = false;
     for (int64_t limit = t + cycle_limit; !done && t < limit; t++) {
         // a load of EVENTS under a mask of done and both credits: one count from each that is set

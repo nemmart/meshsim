@@ -51,6 +51,7 @@ SUITES="$SUITES test_periph_slot test_ingress_egress test_rw_engine"            
 SUITES="$SUITES test_rtl_tile test_rtl_stream test_sort test_memory test_segment"           # the firmware on the tile and the chip
 SUITES="$SUITES suite_replayer suite_memsys suite_rvc suite_tracer tracer_block"            # the replayer and the Tracer
 SUITES="$SUITES fwimage"                                                                   # the runs' keys (tools/fwimage)
+SUITES="$SUITES test_file_store test_updater"                                              # v1.37: the file store's pages by address, the Updater black box
 
 if [ "$BUILD" = 1 ]; then
   echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
@@ -172,6 +173,15 @@ if [ -d "$INPUTS/v1261/evm-zone-23" ] && [ -d "$INPUTS/v1261/cyclone-22" ] && [ 
   step tracer-block 1 "the Tracer alone on the real segments (EVM Zone 0 and 1, Cyclone 0): every run against gold's files and the RTL's figures, cycle for cycle" tests/tracerblock/tracer-block.log -- tracer_block_real
 else
   skipped tracer-block "the Tracer alone on the real segments, against gold's files and the RTL's figures" "the workloads' data is not at $INPUTS: MESHSIM_INPUTS"
+fi
+
+# ---- v1.37: the units of the Updater's work, each alone (../updater_wip; CHANGES-v1.37.md) ----
+check file-store "v1.37: the file store's pages by address: placed where told, whole pages, beside the pages it hands out (tests/test_file_store.cpp)" -- $S/test_file_store
+check updater "v1.37: the Updater black box alone: registers, queues and credits, update words raw and LRU, copy-on-write, the Tracer's copy, errors; gold's fixtures, each image against gold's (tests/test_updater.cpp)" -- $S/test_updater
+if command -v javac > /dev/null && [ -d ../updater_wip/pipeline/gold/src ]; then
+  check updater-fixtures "v1.37: the fixtures made again by gold (../updater_wip/pipeline/gold), equal to the committed ones (tests/updater/make_fixtures.sh --check)" -- bash tests/updater/make_fixtures.sh --check
+else
+  skipped updater-fixtures "v1.37: the fixtures made again by gold, against the committed ones" "no javac, or no ../updater_wip/pipeline/gold"
 fi
 
 # ---- the long steps ----

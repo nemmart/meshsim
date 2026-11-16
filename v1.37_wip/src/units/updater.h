@@ -35,8 +35,8 @@
 // done is not posted. A START while busy, a store to block 2 while busy, a write of another size than 128 bits and a
 // write to a part the region does not map are UB (17.2, 17.3), and stop the simulator.
 //
-// TIMING: PLAIN, AND NOT THE HARDWARE'S. One update word a cycle while its page is in the page memory. Everything that
-// reaches the memory side costs a fixed number of cycles (`Timing`), from the memory model's two figures
+// TIMING: PLAIN, AND NOT THE HARDWARE'S. One update word a cycle. Everything that reaches the memory side is done in
+// its word's cycle and then waited out, a fixed number of cycles (`Timing`) before the next word, from the memory model's two figures
 // (mem_system.h: a hit 6, a miss 80) and a beat of 16 bytes a cycle: a look-up 6 for each level of a walk; a page read,
 // or written and confirmed, 80 + 256; half a page 80 + 128; an entry's update 80. A page is read as UI's table says, by
 // halves: a half that the run of values covers whole, or that is a hole, is not read; a page copied for the Tracer is

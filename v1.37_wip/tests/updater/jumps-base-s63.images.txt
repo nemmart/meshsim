@@ -1,0 +1,6 @@
+program    a1996aad94bf2397c897e781aba646214f1fc1fe4d435d3ec65b8c46fddfe580       1 pages
+cycle0     a1996aad94bf2397c897e781aba646214f1fc1fe4d435d3ec65b8c46fddfe580       1 pages, 0 taken
+start-63   a1996aad94bf2397c897e781aba646214f1fc1fe4d435d3ec65b8c46fddfe580       1 pages, 0 taken
+final      a1996aad94bf2397c897e781aba646214f1fc1fe4d435d3ec65b8c46fddfe580       1 pages, 0 taken
+table      2e144119b914c44c36fc3e010113428aa980bf9f41ce3dd8c78680ac58814ed9       1 pages, 1 taken
+tracer     a1996aad94bf2397c897e781aba646214f1fc1fe4d435d3ec65b8c46fddfe580  (the start image's copy: equal), 0 taken

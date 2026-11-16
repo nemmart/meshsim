@@ -353,11 +353,13 @@ void Updater::step(int64_t t) {
     }
     const int64_t page = run_addr_ >> 9;
     if (page >= (int64_t(1) << (10 * depth_))) { stop(ERR_BEYOND); return; }
-    if (held_ && held_page_ != page) { write_held(); return; }
+    // The value's page into the page memory, the page that was there written first, and the value into its word, all
+    // in the word's cycle: what they cost is waited out before the next word.
+    if (held_ && held_page_ != page) write_held();
     if (!held_) {
         const Bring r = bring(t, page);
         if (r == Bring::STALL) stat_[W_STAT_STALL_PAGES - W_STAT_CYCLES]++;
-        if (r != Bring::OK || wait_ > 0) return;
+        if (r != Bring::OK) return;
     }
     patch();
 }

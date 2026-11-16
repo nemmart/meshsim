@@ -129,7 +129,7 @@ Tracer's region. A packet is appended at the queue's tail and the rest of its ad
 | to | what |
 |---|---|
 | the AXI arbiter | an AXI port of its own: pages and half pages, read and written |
-| the cache | a look-up port: look up, update, flush; replies on the shared reply bus |
+| the cache | a look-up port: look up and update; replies on the shared reply bus. An update's reply comes once the changed line has landed in LPDDR (`DESIGN-NOTES-2026-11-16.md`) |
 | Ingress/Egress | the segment queue's credits, a private signal (Ingress is set aside for now) |
 
 ## Open

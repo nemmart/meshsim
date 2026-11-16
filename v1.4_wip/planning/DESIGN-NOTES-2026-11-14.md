@@ -50,7 +50,8 @@ renaming the spec is a separate edit, not decided).
   - Considered and dropped: a dirty flag in the superblock with the 128 KB bitmap saved at shutdown. The walk would be
     needed anyway as the fallback, so it is the only mechanism (owner).
   - The walk is only as good as the trees in LPDDR: if the shutdown didn't flush the shared cache's dirty index lines,
-    the map can be wrong. Reads are suspect then too; accepted.
+    the map can be wrong. Reads are suspect then too; accepted. (*Since 2026-11-16 an index line is never dirty:
+    updates write through, the third note's section 3.*)
   - Recovery needs 128 KB for the rebuilt bitmap, in whichever unit runs the recovery file system.
 - **Open:**
   - whether normal operation can resume from the shell over the same memory, or a hard reset is the only way out (it

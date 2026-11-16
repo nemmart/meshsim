@@ -18,7 +18,7 @@ With it: `HOST-FRAMES.md` (the frames from the host), `UPDATER-INTERFACE.md` (th
 | gold's frames for a proof (`HOST-FRAMES.md`) | real; the Java work comes first |
 | the Updater: its queues, the LRU, its page memory, its state machine and its control | **real, built in full** (owner) |
 | the Tracer | real, as it is |
-| the cache, with its look-up interface and the fill bus | a black box: right answers and simple timing |
+| the cache, with its look-up interface and the fill bus | a black box: right answers and simple timing (*revised 2026-11-16: a real controller, the third note's section 1*) |
 | the bus driver, the memory controller and LPDDR | a black box, behind a model of AXI |
 | Ingress | a black box: it plays the frames into the segment queue and obeys the credits |
 | the RW engine, the Binder | not used |
@@ -61,6 +61,9 @@ With it: `HOST-FRAMES.md` (the frames from the host), `UPDATER-INTERFACE.md` (th
   that write's response.
 
 ## 3. The cache
+
+*Revised on 2026-11-16: the cache is a controller and a cache memory; "drop" is now "discard"; flush is gone, because
+an update writes through to LPDDR (`DESIGN-NOTES-2026-11-16.md`).*
 
 512 KB, 8 ways by 512 sets, keyed by LPDDR line address, as in the simulator's model.
 
@@ -128,7 +131,7 @@ Its registers are `UPDATER-INTERFACE.md`.
 - **Decided (owner): how a page fault goes.**
   - **A shared data page:** read it, take a free page, patch, write it there, wait for the confirmation, update the
     entry.
-  - **A shared index page:** flush it, read it, clear the owned bit of its 1,024 entries, write it to a free page,
+  - **A shared index page:** flush it (*not needed since 2026-11-16: updates write through*), read it, clear the owned bit of its 1,024 entries, write it to a free page,
     wait, update the entry above. The entry for the level below is set later, by its own update.
   - **Top down, one page a level.** Once a level is not owned, nothing below it is.
   - **A missing page:** nothing is read; the page memory is filled with zeros, or with the hole value for an index

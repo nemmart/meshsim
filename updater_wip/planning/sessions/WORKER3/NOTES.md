@@ -1,7 +1,7 @@
 # WORKER3 notes: v1.37, the Tracer on images the Updater built
 
-Status, 2026-11-16: **Stages 1 and 2 done** (the units, each tested alone; the master tile's firmware, on the
-whole chip with gold's guests; `REPORT.md`). Stage 3, the real workloads, is under way. Branch `updater-w3`, main merged in at `8385dacd`. The owner's go-ahead and rulings
+Status, 2026-11-16: **all three stages done** (`REPORT.md`): the units, each tested alone; the master tile's
+firmware, on the whole chip with gold's guests; the real workloads from packet files, small and at 2²⁹. Branch `updater-w3`, main merged in at `8385dacd`. The owner's go-ahead and rulings
 are in section 9; what was built differently from this plan is in section 11.
 
 Names: II is `INGRESS-INTERFACE.md`, UI `UPDATER-INTERFACE.md`, HF `HOST-FRAMES.md`, HL `HOST-LINK.md`, all in
@@ -403,4 +403,23 @@ at each stage's end, and `main` merged in.
   has advice values and a page written in every segment: none of gold's test guests has advice.
 - **`tools/doccheck.sh`** takes a document of `../v1.4_wip/planning/` cited by its name as there: v1.37's
   additions are specified by design documents that are not in the version's folder.
+
+**Stage 3.**
+
+- **The steps are three, not `proof-real`, `proof-matrix` and `proof-damaged`:** `proof-real` (the three recorded
+  segments), `proof-matrix` (24 runs), and `proof-29` (both workloads at 2²⁹, five segments each), which is a
+  step of `run_tests.sh` like the others and not a task of its own: a 2²⁹ frame file is 4 to 16 MB and a run
+  half a minute. The damaged files are `test_master`'s, on the guests: the error path does not depend on the
+  workload.
+- **The 2²⁹ runs were made here as well as on the runner:** gold makes the frames in seconds, and everything but
+  the recorded windows' checks runs in this session.
+- **The host's side is a script of `pipeline/`** (`pipeline/frames/build.sh`), into `$MESHSIM_INPUTS/v137/`: gold's
+  frames (`--verify`), gold's packets (read back, and compared with the tests' writer's), gold's references. Its
+  `RUNS` file is how the steps know N, the windows of a segment, and which segments to run.
+- **The matrix's middle segments** are 6 (EVM Zone, 12 segments of 8 windows) and 3 (Cyclone, 6). At 2²⁹ the
+  five are the first two, the middle one, and the last two that have rows: 0, 1, 42, 83, 84 of EVM Zone's 85 and
+  0, 1, 44, 87, 88 of Cyclone's 89. The 2²⁹ runs are with a static base table and each frame in its smaller
+  form.
+- **A segment with no recorded windows is checked without them** (the matrix's 8-window segments, the 2²⁹ runs):
+  the Tracer's last record against gold's record s + 1 is then the check of the trace, with the tiles' own.
 

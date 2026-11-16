@@ -39,7 +39,7 @@ A header word of 128 bits, then 0 to 32 words of data.
 | [15:8] | length | the data's length in 128-bit words, 0 to 32 |
 | [35:16] | packet number | this chunk's number on its stream: 1 to 0xFFFFE, then 1 again |
 | [55:36] | acknowledge | the last packet number received in order on this stream; 0 for none yet |
-| [63:56] | window † | how many more chunks of this stream the other side may send |
+| [63:56] | reserved | 0 |
 | [95:64] | data checksum | over the data |
 | [127:96] | header CRC | over bits [95:0] of this word |
 
@@ -48,7 +48,7 @@ A header word of 128 bits, then 0 to 32 words of data.
 | resend | [4] | "your last chunk was bad: send again from the number after my acknowledge field" |
 | lost | [5] | "I have lost my place" (below) |
 | recovery | [6] | the answer to "lost": the first chunk after the zeros |
-| spare | [7] | 0 |
+| stop | [7] | "stop sending me this stream"; 0 is "send" |
 
 - **Everything rides in 128 bits** (owner): the header is one word, and the data is whole words, so the link is
   word-aligned throughout.
@@ -103,10 +103,17 @@ Why the zeros work:
 
 Nothing in the exchange is relied on to arrive, because the noise can cover it: that is why both sides repeat.
 
-## Holding the host back
+## Holding the host back: stop sending and resume sending
 
-† Each header carries a **window** for its stream: how many more chunks of that stream the other side may send. When
-the Updater stalls, the background stream's window closes and the active stream's stays open.
+- **Decided (owner): the link has "stop sending" and "resume sending".**
+- **They are for each stream.** Stopping the background stream, when the Updater stalls, leaves the active stream
+  running. The owner can't imagine the active stream ever needing to stop, but it has the bit all the same.
+- **† They are one bit, not two messages:** the `stop` flag in every header a side sends on a stream says what it
+  wants now, 1 for "stop sending me this stream" and 0 for "send". Resuming is the bit going back to 0.
+  - A "resume" sent as a message could be lost in noise, and the stream would hang. A bit that is in every header
+    is put right by the next chunk that gets through.
+- **The queue behind a stream keeps some room when it says stop:** the chunks already on the wire still arrive.
+- This replaces the per-stream window first proposed here, which did the same job with more machinery.
 
 ## What a sender must keep
 
@@ -127,7 +134,8 @@ The owner's remark: there must be a mountain of literature on building these. Th
 | ATM and GFP | finding where packets start by hunting for a header whose CRC checks |
 | Xilinx Aurora | a light link protocol for FPGAs, if the host's side is one |
 
-- **† The flow control and the replay buffer are taken from PCI Express,** not invented here.
+- **† The replay buffer is taken from PCI Express,** not invented here. Its flow control is by credits; this link's
+  is the simpler stop bit.
 - One difference: PCI Express never loses its place, because its physical layer marks packet starts with symbols of
   their own. This link marks nothing, which is why it has the zeros and "lost".
 
@@ -135,7 +143,7 @@ The owner's remark: there must be a mountain of literature on building these. Th
 
 - What the active stream carries, and how large its messages are.
 - Whether the recovery chunk states the packet number it restarts from, or that is the "lost" chunk's number plus one.
-- The window: its unit, and how large the queues behind it are.
+- How much room a stream's queue keeps when it says stop, and how large the queues are.
 - The checksums' polynomials, and what a data checksum over no data is.
 - The timers: how soon an unacknowledged chunk is sent again without a "resend".
 - Whether a chunk may hold the end of one frame and the start of the next.

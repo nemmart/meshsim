@@ -172,11 +172,36 @@ struct Run {
     double seconds = 0;
     int failures = 0;                           // the checks that failed (each printed)
 };
+// ---- v1.37: the segment from the host's frames (tests/proof_bench.h; CHANGES-v1.37.md). With Options::proof set,
+// run_chip builds the machine with the host link (MachConfig::host_link) and the master runs fw/cc/master.c in place of
+// cc1.c: nothing of the segment is placed (its record, its advice and its expected end state come from the frames,
+// through the master), the Tracer's memory is the file store the Updater writes, in place of `Fill`, and the checks of
+// C&C 1's mailbox, of the fill port and of the Tracer's last record are the proof's own. A segment with no `window`
+// (a guest with no recorded files) is run with the checks that need none.
+struct MasterPlaces {                           // where run_chip placed what the master must be told of: word addresses
+    uint32_t tiles[5], tracer[5];               // an image: its code in the master's scratchpad, its rows, its data, its rows, the COUNT row
+    uint32_t tr_record, tr_expect, tr_final, tr_advice, tr_advice_rows;   // the tracer tile's layout
+};
+struct Proof {
+    virtual ~Proof() = default;
+    // Before the first cycle, the master's image placed: what it is told, the link's bytes, the observers.
+    virtual void place(mach::Mach& m, const std::string& master_elf, const MasterPlaces& places) = 0;
+    // After the run, before run_chip's checks: the master's results read (run.summary, run.released).
+    virtual void finished(mach::Mach& m, Run& run) = 0;
+    // A record's word 66 as it must be on this machine: `recorded`'s with the roots and depths the master gave.
+    virtual U128 files_word(const U128& recorded) const = 0;
+    // The proof's own checks, after run_chip's: each failure printed, and counted in run.failures.
+    virtual void check(mach::Mach& m, Run& run) = 0;
+    // A run that must end early (a damaged packet file): run_chip's own checks, of a segment traced and replayed, are
+    // left out, and the proof's are the run's.
+    virtual bool ends_early() const = 0;
+};
 struct Options {
     unsigned parts = 1;                         // the chip split over threads (mach.h)
     bool quiet = false;                         // only the failures and the summary lines
     const char* fw = nullptr;                   // the images' folder: rtl_images::fw_images()'s by default
     const char* tables = "data/tables/replayer/";
+    Proof* proof = nullptr;                     // v1.37: the segment from the host's frames
 };
 // The segment on the chip, with run_chip's checks; `rtl`, the RTL chip's figures, is not compared (the header).
 Run run_chip(const Segment& s, const Rtl* rtl, const Options& o = Options());

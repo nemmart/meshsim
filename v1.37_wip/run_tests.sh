@@ -52,6 +52,7 @@ SUITES="$SUITES test_rtl_tile test_rtl_stream test_sort test_memory test_segment
 SUITES="$SUITES suite_replayer suite_memsys suite_rvc suite_tracer tracer_block"            # the replayer and the Tracer
 SUITES="$SUITES fwimage"                                                                   # the runs' keys (tools/fwimage)
 SUITES="$SUITES test_file_store test_updater test_ingress_link test_packet_vectors updater_frames packetize"       # v1.37: the file store's pages by address, the Updater black box, Ingress's host link
+SUITES="$SUITES test_master"                                                               # v1.37: the master tile's program, the whole chip from a packet file
 
 if [ "$BUILD" = 1 ]; then
   echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
@@ -190,6 +191,8 @@ if command -v javac > /dev/null && [ -d ../updater_wip/pipeline/gold/src ]; then
 else
   skipped updater-fixtures "v1.37: the fixtures made again by gold, against the committed ones" "no javac, or no ../updater_wip/pipeline/gold"
 fi
+check master "v1.37: the master tile's program on the whole chip, from a packet file: gold's frames of the guests in the link's packets, the Updater's images against gold's, the hand-over, the segment traced and replayed; the error path; the checks' teeth (tests/test_master.cpp)" -- $S/test_master
+
 
 # ---- the long steps ----
 if [ "$MODE" != quick ]; then

@@ -9,7 +9,8 @@
 #
 # The bugs are slips in each program v1.36 carries over from v1.35 (cc/cc1.c, replay/replay_ctl.c, tracer/tracer_ctl.c,
 # crt0.S, the sort's port and schedule), in the port layer (port/mesh.h), and in the two programs new in v1.36
-# (cc/memory.c, cc/cc_mem.c).
+# (cc/memory.c, cc/cc_mem.c). v1.37: and in the master tile's program for the host's frames (cc/master.c, with
+# include/host.h), which test_master alone runs: a bug there is run against test_master, the others as before.
 # Usage: tests/fw_teeth.sh [FILTER] (from anywhere): only the bugs whose name contains FILTER; exit 1 if a bug goes
 # uncaught or its sed plants nothing. JOBS sets make's -j (8); TEETH_DIR the scratch directory (default: a new
 # temporary one, removed at the end).
@@ -19,15 +20,17 @@ FILTER=${1:-}
 JOBS=${JOBS:-8}
 if [ -n "${TEETH_DIR:-}" ]; then W=$TEETH_DIR; rm -rf "$W"; mkdir -p "$W"; else W=$(mktemp -d); trap 'rm -rf "$W"' EXIT; fi
 B=build/clang-release
-(cd "$SIM" && make -s CC_NAME=clang MODE=release -j"$JOBS" $B/test_sort $B/test_memory $B/test_segment > "$W/make.log" 2>&1) \
+(cd "$SIM" && make -s CC_NAME=clang MODE=release -j"$JOBS" $B/test_sort $B/test_memory $B/test_segment $B/test_master > "$W/make.log" 2>&1) \
   || { cat "$W/make.log"; echo "teeth: the tests didn't build"; exit 2; }
 build() {   # the images of fw/ as $W/fw holds it, into $W/out
   (cd "$W" && PARTS="sort cc replay tracer" OUT="$W/out" bash fw/build.sh --build-only > "$W/build.log" 2>&1) || return 1
   mkdir -p "$W/out/sort" && cp "$SIM/fw/images/sort/sort.keys" "$W/out/sort/"
 }
-run() {   # prints the failing tests, "-" if none
+run() {   # run [FILE]: prints the failing tests, "-" if none; a bug in v1.37's master program is test_master's alone
   local f="" t rc
-  for t in "test_sort sort_16_kv32" "test_memory" "test_segment segment_"; do
+  local tests=("test_sort sort_16_kv32" "test_memory" "test_segment segment_")
+  case ${1:-} in cc/master.c|include/host.h) tests=("test_master master_") ;; '') tests+=("test_master master_") ;; esac
+  for t in "${tests[@]}"; do
     (cd "$SIM" && FW_IMAGES="$W/out" timeout 300 ./$B/$t > "$W/run.out" 2>&1) 2> /dev/null
     rc=$?
     [ $rc = 0 ] && continue
@@ -74,6 +77,18 @@ BUGS=(
   "cc_mem: a beat's words in the wrong order~cc/cc_mem.c~s/write128(word | 3, word | 2, word | 1, word);/write128(word, word | 1, word | 2, word | 3);/"
   "cc_mem: the credits' requests in one slot~cc/cc_mem.c~s/write_request(0, 0, address_of(mem_summary.answers\[r\]));/write_request(0, 0, address_of(mem_summary.answers[first]));/"
   "cc_mem: a READ's data on the reply's counter~cc/cc_mem.c~s/| MEMORY_BEATS(beats) | MEMORY_DATA_COUNTER(1));/| MEMORY_BEATS(beats) | MEMORY_DATA_COUNTER(2));/"
+  "master: the Tracer's copy asked for half its pages~cc/master.c~s/words_mine, 2 \* pages_tracer, final, copy, start/words_mine, pages_tracer, final, copy, start/"
+  "master: segment s's run as a new frame's~cc/master.c~s/run_config(lru, 1, 1, image_depth, UPD_ROOT_COPY), words_mine/run_config(lru, 0, 1, image_depth, UPD_ROOT_COPY), words_mine/"
+  "master: the cycle-0 image from an empty root~cc/master.c~s/run_config(lru, 0, 0, image_depth, UPD_ROOT_COPY), data_words64/run_config(lru, 0, 0, image_depth, UPD_ROOT_EMPTY), data_words64/"
+  "master: word 66 without the table's root~cc/master.c~s/uint32_t w1 = (image_depth >> 1 \& 1) | root_table << 1;/uint32_t w1 = (image_depth >> 1 \& 1);/"
+  "master: the advice count one short~cc/master.c~s/write128(advice_values, table_k, table_p3, table_p1);/write128(advice_values - 1, table_k, table_p3, table_p1);/"
+  "master: record s + 1 taken for record s~cc/master.c~s/            if (k == S) {/            if (k == S + 1) {/"
+  "master: the page map's last row not written back~cc/master.c~/^        map_flush();$/d"
+  "master: page 0 not marked~cc/master.c~s/map_row\[0\] = 1; map_row\[1\] = 0;/map_row[0] = 0; map_row[1] = 0;/"
+  "master: the tracer tile's result unanswered~cc/master.c~s/op == OP_RESULT \&\& who <= TILE_TRACER/op == OP_RESULT \&\& who < TILE_TRACER/"
+  "master: the pump without the allowance~cc/master.c~/    if (allowance < n) return;/d"
+  "host.h: the segment queue at the free page queue's part~include/host.h~s/#define UPD_QUEUE_SEGMENT           (PERIPHERAL_BASE(2) + 0x100000)/#define UPD_QUEUE_SEGMENT           (PERIPHERAL_BASE(2) + 0x200000)/"
+  "host.h: background_service at the foreground's bit~include/host.h~s/#define HL_EVENT_BACKGROUND_SERVICE (1 << 9)/#define HL_EVENT_BACKGROUND_SERVICE (1 << 8)/"
 )
 bad=0
 printf '%-74s %s\n' "bug" "failing tests"
@@ -84,7 +99,7 @@ for entry in "${BUGS[@]}"; do
   sed -i "$expr" "$W/fw/$file"
   if cmp -s "$W/fw/$file" "$SIM/fw/$file"; then printf '%-74s %s\n' "$name" "NOT PLANTED (the sed matched nothing)"; bad=1; continue; fi
   if ! build; then printf '%-74s %s\n' "$name" "caught by the build"; continue; fi
-  r=$(run)
+  r=$(run "$file")
   [ "$r" = " -" ] && { r="UNCAUGHT"; bad=1; }
   printf '%-74s %s\n' "$name" "$r"
 done

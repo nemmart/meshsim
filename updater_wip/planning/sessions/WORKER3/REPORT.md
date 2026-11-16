@@ -69,8 +69,9 @@ Stage 3.
 
 - **The steps on recorded windows, and `make check`.** The small inputs' build fetches a dependency of the
   tracer from GitHub's archive, which this session's network refuses; and `make check` (four builds and TSan) is
-  too much for two CPUs. Both go to the runner as a Quest task (claimed with this report; its result will be
-  added here).
+  too much for two CPUs. Both go to the runner: **Quest 202** (the small inputs built, then `all --check`) and
+  **Quest 203** (`make check`), made by `updater_wip/tasks/v137-check/make_task.sh`. Their results are added
+  here when they are in. The new tests were also built and run here with gcc, debug and release.
 - **WORKER2's vectors are not on main.** I read them from a checkout of `updater-w2`; the step is SKIPPED where
   they are absent, and reads `../updater_wip/pipeline/gold/test/packets` once they are merged.
 

@@ -14,3 +14,7 @@ all: $(B)/packetize
 $(B)/test_ingress_link: $(SLOT_LINK)
 # Ingress's host link against gold's packetizer's vectors and packet files (tests/test_packet_vectors.cpp)
 $(B)/test_packet_vectors: $(SLOT_LINK)
+# the whole chip from a packet file: run_chip with the master tile's program for v1.37 (tests/proof_bench.h); the master
+# tile's program on gold's fixtures (tests/test_master.cpp)
+PROOF_LINK := $(B)/tests/proof_bench.o $(UPDATER_BENCH) $(SEGMENT_LINK)
+$(B)/test_master: $(PROOF_LINK)

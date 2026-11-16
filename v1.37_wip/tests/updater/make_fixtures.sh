@@ -9,6 +9,7 @@
 #   kin-raw    keccak256 with input, trusted and untrusted advice (frame 6 has three runs), no base, no compression
 #   kin-lru    the same, a static base table, every update-word frame LRU-coded
 #   jumps-base jumpmap's jumps guest, a static base table, each frame in its smaller form
+#   divs       a loop of divisions and stores (make_div_guest.py): 51 segments with advice values and a page written
 # Each guest is cut into segments of 50 rows, so that most of the 64 segments have rows. --check makes them in scratch
 # and requires the committed files equal: exit 1 on a difference.
 set -eu
@@ -32,18 +33,20 @@ open('$W/kin-input/input.bin','wb').write(bytes(r.randrange(256) for _ in range(
 open('$W/kin-input/trusted_advice.bin','wb').write(bytes(r.randrange(256) for _ in range(1001)))
 open('$W/kin-input/untrusted_advice.bin','wb').write(bytes([0]*4096 + [r.randrange(256) for _ in range(4000)]))"
 python3 pipeline/jumpmap/test/make_jump_guest.py "$W" > /dev/null
+python3 tests/updater/make_div_guest.py "$W" > /dev/null
 OUT=tests/updater; [ $CHECK = 1 ] && OUT=$W/out
 make_one() {   # NAME PROGRAM INPUT BASE COMPRESSION
   $J frames "$2" "$3" "$OUT/$1.frames" --segment-rows=50 --asics=64 --base="$4" --compression="$5" --verify 2>/dev/null | grep -q VERIFIED \
     || { echo "make_fixtures: gold did not verify $1"; exit 1; }
   rm -f "$OUT/$1.frames.json"
-  for s in 0 20 63; do
+  for s in 0 20 60 63; do
     $J frames-images "$OUT/$1.frames" $s 2>/dev/null | grep -v '^ok$' > "$OUT/$1-s$s.images.txt"
   done
 }
 make_one kin-raw "$W/kin" "$W/kin-input" none none
 make_one kin-lru "$W/kin" "$W/kin-input" static lru
 make_one jumps-base "$W/jumps" "$W/empty" static auto
+make_one divs "$W/divs" "$W/empty" none auto
 if [ $CHECK = 1 ]; then
   fail=0
   for f in "$W"/out/*; do cmp -s "$f" "tests/updater/$(basename "$f")" || { echo "make_fixtures: tests/updater/$(basename "$f") differs from gold's"; fail=1; }; done

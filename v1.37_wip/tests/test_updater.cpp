@@ -502,7 +502,7 @@ void fixture(const char* name) {
     frames::File file;
     std::string err;
     if (!file.read(std::string("tests/updater/") + name + ".frames", err)) { ::test::fail(__FILE__, __LINE__, "%s", err.c_str()); return; }
-    for (unsigned s : {0u, 20u, 63u}) {
+    for (unsigned s : {0u, 20u, 60u, 63u}) {
         const auto gold = gold_digests(std::string("tests/updater/") + name + "-s" + std::to_string(s) + ".images.txt");
         CHECK_EQ(gold.size(), size_t(6));
         Bench b;
@@ -526,3 +526,4 @@ void fixture(const char* name) {
 TEST(updater_gold_kin_raw) { fixture("kin-raw"); }
 TEST(updater_gold_kin_lru) { fixture("kin-lru"); }
 TEST(updater_gold_jumps_base) { fixture("jumps-base"); }
+TEST(updater_gold_divs) { fixture("divs"); }

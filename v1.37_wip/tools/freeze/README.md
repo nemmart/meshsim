@@ -1,5 +1,8 @@
 # tools/freeze: the version's file list, and freezing v1.36
 
+> *v1.36's page. v1.37 is a work folder (`v1.37_wip/`), to be frozen by copying it to `v1.37/`; the list and
+> the documents' check here serve it unchanged.*
+
 *For whoever freezes v1.36: what is here, what the freeze takes, and what it does not need.*
 
 | file | what it does |

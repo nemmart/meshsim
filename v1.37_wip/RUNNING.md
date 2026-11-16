@@ -1,5 +1,7 @@
 # Running v1.36
 
+> *v1.37, in progress: this page is v1.36's, and holds for this folder. What v1.37 adds is marked "v1.37".*
+
 *For anyone running v1.36's suites, kits and tools: each one's command, how long it takes, what it writes, and what it
 is checked against.* Building is `BUILDING.md`; the commands run from this folder.
 

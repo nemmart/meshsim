@@ -1,5 +1,7 @@
 # Building v1.36
 
+> *v1.37, in progress: this page is v1.36's, and holds for this folder. What v1.37 adds is marked "v1.37".*
+
 *For anyone building v1.36: what to install, which build to use for what, and one command for each thing you build.*
 Commands run from this folder. Running the suites, tools and kits is `RUNNING.md`.
 

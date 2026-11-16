@@ -29,14 +29,18 @@ In the order sent. Frames 1 and 2 are sent once per program; frames 3 to 9 once 
 
 | field | size | meaning |
 |---|---|---|
-| type † | u32 | the frame's number, 1 to 9 |
-| length † | u32 | the data's length in 128-bit words |
+| type | u64 | the frame's number, 1 to 9 † |
+| length | u64 | the data's length in 128-bit words |
 | data | | zero-padded to a whole number of 128-bit words |
+
+- **The header is one 128-bit word** (owner, 2026-11-16): the type in its low 64 bits, the length in its high 64. With
+  the data padded to 128 bits, every frame starts and ends on a 128-bit boundary, so nothing is ever split across
+  Ingress's words. It was u32 type and u32 length, which put every second frame 8 bytes off (WORKER1's question 1).
 
 - Every multi-byte value is least significant byte first.
 - In the tables, a double line (═══) comes before a group of fields that repeats; a single field that repeats is
   written "× *n*".
-- † The data is padded to 128 bits, because Ingress sends 128-bit words, and the length counts those words. Section 16's
+- The data is padded to 128 bits, because Ingress sends 128-bit words, and the length counts those words. Section 16's
   header is u32 length in 32-bit words (the header included), then u32 type, with the data padded to 32 bits.
 - No reserved fields anywhere: we control both ends, and a field is added when it is needed (owner).
 - A string is a u32 length in bytes, then the bytes, padded to a whole number of 32-bit words. †
@@ -239,10 +243,10 @@ as one sequence.
 
 ## Open
 
-- The frame header's layout and the type numbers (†).
+- The type numbers (†).
 - Whether frames 5 and 6 may be LRU-coded, or are always raw.
-- Frame 9 as a single frame can pass section 16's cap of 2²⁶ words (256 MiB) on a long run: lift the cap, or let the
-  frame continue in further frames with the data unbroken.
+- Frame 9 as a single frame can pass section 16's cap of 2²⁶ words (256 MiB) on a long run. The header's 64-bit length
+  has no such cap; whether Ingress needs one, with the frame continuing in further frames, is open.
 - The image file's length and depth: K follows the run, and the program image is loaded before any run.
 - A run whose table is the base of a later run's table can't be removed before that later run's.
 - Whether the per-ASIC page counts are still wanted while C&C 2's page map is a stand-in.

@@ -74,8 +74,8 @@ The same day's earlier work, after Tony's review and the first pass over v1.36, 
 
 ## 4. The sequence of an `update`
 
-**Proposed.** The owner asked for the sequence so that the reply does not return until the write is complete; he
-has not yet confirmed this one.
+**The working design.** The owner asked for the sequence so that the reply does not return until the write is
+complete, and left it to this session to work out (2026-11-16). The cache controller's simulation is what tests it.
 
 1. **Accept the request** from a client's look-up port: the file's root and depth, the page number, the level and
    the new entry. That client's port is now busy.
@@ -98,8 +98,27 @@ The reply is step 8, and nothing before step 7 can produce it.
   being written back.
 - **The controller is not strictly one request at a time,** because of step 6. Holding everything until the
   confirmation would make a Tracer read wait about 80 cycles behind every update.
-- **One update is in flight at a time,** so parking needs a single slot. A second update waits at its port.
+- **One update is in flight at a time,** so parking needs a single slot. A second update waits at its port. With one
+  slot, step 3 never has anything to wait for; it matters only if there is ever a slot for each client.
 - **Open:** whether that should be one slot for each client instead.
+
+What the sequence rests on, checked when it was worked through:
+
+- **The data is in LPDDR before the index points to it.** A client writes its page, waits for that write's
+  confirmation, and only then sends the update. So a reader that sees the new entry, in the cache or in LPDDR, finds
+  the page behind it.
+- **A direct read sees the update because of the wait, not because of ordering on the bus.** The cache's write and a
+  client's later read are on different AXI ports, and AXI promises no order between them. The reply is held until
+  the write's response, so a read issued after the reply is after the write.
+- **One writer for a file at a time.** Two clients updating the same index page would each read it directly while
+  the other's update was in flight. The file system keeps that from happening; the cache does not.
+- **An `update` only ever writes an index line,** and the Tracer only ever writes data lines, so a line is never both
+  dirty and in flight for an update.
+- **Proposed: the walk checks ownership.** If an index page on the path is not the file's own, the cache replies with
+  an error and writes nothing. The client is meant to have copied the page first; this stops a mistake there from
+  changing a frozen file.
+- **An error from LPDDR goes back in the reply.** The line in the cache then holds an entry LPDDR does not; the
+  client treats it as fatal (`ERRORS.lpddr_error`).
 
 ## 5. The order of the work
 

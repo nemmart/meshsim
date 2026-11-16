@@ -11,7 +11,7 @@ Checked on Ubuntu 24.04.
 |---|---|---|
 | the simulator, its tests and tools | `make`, g++ and clang++ (C++20): clang for the release build, both for `make check` | `apt install make g++ clang` |
 | `pipeline/`, the offline input tools | a JDK, Java 21 (`pipeline/README.md`) | `apt install openjdk-21-jdk-headless` |
-| the firmware images (`fw/build.sh`) | xPack `riscv-none-elf-gcc` 15.2.0-1 (GCC 15.2.0, binutils 2.45), the toolchain the committed images were built with, on `PATH` or named by `RISCV_PREFIX` | not packaged: the release `v15.2.0-1` of xpack-dev-tools' `riscv-none-elf-gcc-xpack`, unpacked (`fw/build.sh` prints where) |
+| the firmware images (`fw/build.sh`) | xPack `riscv-none-elf-gcc` 15.2.0-1 (GCC 15.2.0, binutils 2.45), the toolchain the committed images were built with, on `PATH` or named by `RISCV_PREFIX`; and a C++ compiler (`c++`, or `CXX`), with which its part `runs` builds `tools/fwimage/` | not packaged: the release `v15.2.0-1` of xpack-dev-tools' `riscv-none-elf-gcc-xpack`, unpacked (`fw/build.sh` prints where) |
 | riscv-tests' and CoreMark's images, with the above | a checkout of each at the revision `fw/core/riscv-tests/riscv-tests.toml` and `fw/core/coremark/coremark.toml` pin, named by `RISCV_TESTS` and `COREMARK` | `git clone` at that revision |
 
 **Without the RISC-V toolchain, everything else builds and runs.** The firmware images are committed (`fw/images/`,

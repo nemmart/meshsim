@@ -12,8 +12,8 @@ arrived that day, with a program for the memory tile, and its own checks pass on
 
 1. **Gold writes the host's frames** (`v1.4_wip/planning/HOST-FRAMES.md`), with a reader and a reference that turns
    the frames into the memory images. **Done** (WORKER1).
-2. **The Updater** in the simulator, against a simple stand-in for the cache. The Tracer running on the Updater's
-   images is the check.
+2. **The Updater** in the simulator, as the master tile's peripheral (`v1.4_wip/planning/UPDATER-INTERFACE.md`),
+   against a simple stand-in for the cache. The Tracer running on the Updater's images is the check.
 3. **The cache controller** replaces the stand-in.
 
 Steps 2 and 3 are not planned in detail yet.

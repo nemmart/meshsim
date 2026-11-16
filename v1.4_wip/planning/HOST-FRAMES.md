@@ -7,6 +7,10 @@ DECISIONS-v1.3 section 16's frames 1 to 7. A dagger (†) marks a field or rule 
 **Written in v1.35's terms, before v1.36 was read:** `V136-SCOPE.md`. C&C 1, 2 and 3 are v1.36's master, memory and
 tracer tiles.
 
+**Since this was written the Updater has moved to the master tile** (third design note, section 10). The "goes to"
+column below predates that: the master tile now reads the header frames itself and asks the file system for roots.
+The frames' contents are unchanged. The link under the frames is `HOST-LINK.md`.
+
 ## Frame types
 
 In the order sent. Frames 1 and 2 are sent once per program; frames 3 to 9 once per proof. A base jump table is frames
@@ -299,6 +303,9 @@ Both workloads at 2²⁹, 128 segments (`updater_wip`, WORKER1's `REPORT.md`, be
   in 128-bit words, has no such cap; whether Ingress needs one, with the frame continuing in further frames, is open.
 - The advice count is in two places (frame 7's word 1 and frame 8's table); they must agree.
 - The fall-back from a base table to a full new table happened on no run; gold is to test it with a made-up case.
+
+- Whether a frame for the Updater should carry its own head, the names and counts, instead of a header frame before
+  it (the owner's objection that the data frames name no file; third design note, section 10).
 
 ## Closed on 2026-11-16
 

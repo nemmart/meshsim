@@ -76,7 +76,7 @@ v1.36 it is the attach port, and a peripheral's DMA enters on an unused link inp
 |---|---|---|
 | 1 | the links between the special tiles | **added:** master tile to memory tile to tracer tile; Tony can add links as desired (`RTL-CHANGE-REQUESTS.md`, 1) |
 | 2 | Ingress/Egress and the host's stream | **no collision:** Ingress is this design's to specify in full, and is set aside for now |
-| 3 | the RW engine's place | **Tony's RW engine stays peripheral 1; the Updater is peripheral 2** (the owner has no preference; the choice that changes the RTL least) |
+| 3 | the RW engine's place | **Tony's RW engine stays peripheral 1; the Updater is peripheral 2** (the owner has no preference; the choice that changes the RTL least). *Later on 2026-11-16 the Updater moved to the master tile, so the two no longer share a tile (third note, section 10)* |
 | 4 | `lpddr` | **this design's to specify: AXI with multiple IDs,** a comment back to Tony. He did the least that got the simulation running, and did not design the LPDDR side |
 | 5 | the window's layout and bits | **the Updater takes the RTL's** (`UPDATER-INTERFACE.md`, rewritten); item 161 itself is still the owner's to rule on |
 | 6 | the Tracer's jump cache | for consideration only |

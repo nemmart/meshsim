@@ -18,6 +18,7 @@ running.
 | A | **`lpddr`, the port to the memory controller** | AXI4 with one ID, so no ID signals, and answers in order (3, 17.7) | **multiple IDs,** one for each client of the AXI arbiter | a cache line for the Tracer can come back ahead of a page requested earlier |
 | B | **the path to LPDDR** | the RW engine is `lpddr`'s only master | **an AXI arbiter** between the clients (the RW engine, the Updater, the cache) and the memory controller; round robin, a turn one burst of capped length | the Updater and the cache need LPDDR too; the RW engine plugs in unchanged |
 | C | **Ingress/Egress's host interface** | two stream ports with FIFOs of 4 beats, read by the core; the beats have no meaning yet (17.6, item 166) | this design's to specify in full; set aside for now | the host's frames and the stream to the Updater |
+| D | **where the Updater sits** | not in the RTL | **the master tile's peripheral,** beside Ingress/Egress (owner, 2026-11-16). Either it sits by the master tile, and its AXI port to the arbiter and its narrow look-up port to the cache reach across to the memory side; or it sits by the arbiter and the cache, and its control port and its feed from Ingress reach across instead | which is cheaper is a floorplan question. Latency on either does not matter: the Updater works in big bursts. The tracer tile and the cache are what should be near the memory controller |
 
 ## For consideration, not requests
 

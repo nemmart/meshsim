@@ -18,17 +18,18 @@ before v1.36 was read; `planning/V136-SCOPE.md` says where the two meet and wher
 | `planning/DESIGN-NOTES-2026-11-15.md` | the second day's: the v1.4 deliverable, the AXI arbiter (first called the bus driver), the cache and its look-up interface, the Updater's page faults and runs, the frames and the jump table; and what changed on 2026-11-16 |
 | `planning/DESIGN-NOTES-2026-11-16.md` | the third day's: the cache as a controller and a cache memory, flush and discard, updates that write through to LPDDR and their sequence, and the order of the work (software prototypes of the two controllers before the specification) |
 | `planning/HOST-FRAMES.md` | the nine frames the host sends, field by field: what gold is to produce |
-| `planning/UPDATER-INTERFACE.md` | the Updater's registers, events, errors and queue ports |
+| `planning/UPDATER-INTERFACE.md` | the Updater's registers, events, errors and queue ports, as walked through with the owner; the Updater is the master tile's peripheral |
+| `planning/HOST-LINK.md` | the link under the frames: two streams, chunks with a 128-bit header, the two checks, and recovery from a loss of sync |
 | `planning/V136-SCOPE.md` | v1.36 against this design: the names, seven collisions and how the first pass ruled on them, what v1.36 already gives, what was not yet read |
 | `planning/RTL-CHANGE-REQUESTS.md` | what the design asks Tony to change in hardware the RTL has built |
-| `diagrams/svg/fig_m1_lpddr_path.svg` | the figure: LPDDR, the memory controller, the AXI arbiter, the cache and their clients |
+| `diagrams/svg/fig_m1_lpddr_path.svg` | the figure: LPDDR, the memory controller, the AXI arbiter, the cache and their clients. **Stale since 2026-11-16:** it shows the Updater on the memory tile, fed over the peripheral bus |
 | `diagrams/src/fig_m1_lpddr_path.py` | its generator; it uses `wip/diagrams/src/common.py` |
 
 ## Reading order
 
 1. `planning/V136-SCOPE.md`, for what must be ruled on first.
 2. The three design notes, in order. Where they disagree, the later one stands.
-3. `planning/HOST-FRAMES.md` and `planning/UPDATER-INTERFACE.md`, with the figure.
+3. `planning/HOST-FRAMES.md`, `planning/UPDATER-INTERFACE.md` and `planning/HOST-LINK.md`, with the figure.
 
 Each document marks what the owner decided, what is proposed and what is open.
 

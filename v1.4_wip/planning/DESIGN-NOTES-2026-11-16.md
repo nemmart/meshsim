@@ -200,7 +200,7 @@ What follows for the Updater:
   image and raises `done`. The firmware freezes the start image and makes the final image and the Tracer's copy.
   The Updater is started again for segment *s* and the rest, while the stream waits in the segment queue.
 - **Decided (owner): minding the Updater is the file system firmware's job,** as minding the Tracer is the tracer
-  tile's.
+  tile's. (*Later the same day the Updater moved to the master tile, and the minding with it: section 10.*)
 - **`SRC_ROOT` and the "empty" setting leave the Updater:** it always starts on a file that exists and has a root.
 - **No new modes** (owner's condition): a program image and a base table are the whole-pages run into an empty
   file that a full new jump table already is.
@@ -214,3 +214,111 @@ What gold measured, both workloads at 2²⁹:
 - **Frame 9 is at most 17.7 MB raw;** LRU brings it to 0.53 to 0.61 of that.
 - **The static table as the base takes nearly every target:** a run adds 0 to 3 pages, against 257 for a full table.
 - **Every image is depth 2.**
+
+## 10. The Updater moves to the master tile
+
+Reached while working out how a frame gets from Ingress to the Updater. In v1.35's names the master tile is C&C 1,
+the memory tile C&C 2 and the tracer tile C&C 3.
+
+How the question arose:
+
+- **The owner's first sketch:** a frame comes in on Ingress; the master tile reads its header word; it sends the
+  file system a request to set up for the frame; the file system allocates room and says where to write, with a
+  counter, as an open does.
+  - **Decided (owner): a request is the way between the special tiles.** v1.36 has it already: any tile, the master
+    tile included, sends a 128-bit request to the memory tile, and the reply names an address and an armed counter
+    (machine-spec 11.5, the memory tile's `WRITE`). It has no mailboxes.
+- **The owner's objection:** the frames that go to the Updater carry no file name; they rely on something having
+  been set up earlier.
+- **The owner's question: what does the Updater get from the file system?** Very little:
+
+| what the Updater is given | where it really comes from |
+|---|---|
+| the file's root, and the Tracer's copy's root | the file system: it turns a path into a root, creating or copying the file |
+| free pages | whoever owns the page map |
+| the depth | the file's length |
+| the word count, the page count, the compression type | the frame |
+| which run comes next, and `START` | whoever runs the proof's sequence |
+
+So:
+
+- **Decided (owner): the Updater is the master tile's peripheral,** beside Ingress/Egress, not the memory tile's.
+- **What it buys:**
+  - **The frame's data never crosses the mesh.** Ingress and the Updater are on one tile. The credits across tiles,
+    the private signal from the Updater to Ingress and the worry about the control row's bandwidth (first note,
+    section 8) all go.
+  - **Ingress and the Updater have to be integrated, and that is easier on one tile** (owner): "less weirdness".
+  - **The master tile has everything from the frame,** so it writes the Updater's registers itself. The names and
+    the data are handled by one core, in order, which answers the owner's objection.
+  - **The file system becomes a plain service:** create a file, copy one, freeze one, and give back a root.
+- **What it costs:**
+  - **The master tile runs the proof's sequence:** which copy when, and the freeze and the two copies at the cut.
+    Section 9 gave "minding the Updater" to the file system's firmware; it is now the master tile's.
+  - **Free pages come from another tile.**
+  - **The Updater's AXI port and its look-up port reach across to the memory side.**
+- **Decided (owner): that distance does not matter.** The Updater and the RW engine work in big bursts, so latency
+  is nothing to them. Where latency may matter is the tracer tile and the cache.
+- **The page map is probably the tracer tile's** (owner). For this deliverable the stand-in on the memory tile
+  (second note, section 1) stands; the master tile asks for pages by request either way.
+- **"The master tile's peripheral" says which core controls it and where its data comes from, not where it sits.**
+  The Updater could sit by the arbiter and the cache with its control and its feed stretched instead. That is a
+  floorplan question, put to Tony (`RTL-CHANGE-REQUESTS.md`, comment D).
+
+**Proposed: one frame's path.**
+
+1. Ingress tells the master tile a frame has arrived. The master tile reads the header word, then the names and the
+   counts.
+2. It asks the file system for what it needs, by request: create, copy or freeze a file; the root comes back. It
+   fetches the run's page list into its own memory.
+3. It writes the Updater's registers, fills the free page queue, and starts the run.
+4. Ingress streams the data into the segment queue, on the same tile, paced by the queue's credit.
+5. The master tile refills the free page queue from its list as credits come back.
+6. On `done` it does the sequence's next step: the freeze and the two copies at the cut, then the next run.
+
+**Open:** whether a frame for the Updater should carry its own head (the names and counts first, then the data,
+with the head's length in the frame header), instead of a header frame before it. It was proposed in answer to the
+owner's objection, before the move; with one core handling both frames in order it may not be needed.
+`HOST-FRAMES.md` is unchanged.
+
+## 11. The Updater's registers, walked through
+
+`UPDATER-INTERFACE.md` now has them. What was ruled:
+
+| | ruling |
+|---|---|
+| `RUN_CONFIG` | **Decided (owner): fine as proposed.** There is no `type`: every run applies a number of update words to a file, and three bits say how: `lru`, `continue` (the same frame as the last run) and `tracer_copy` |
+| the depth | **Decided (owner):** a 2-bit `depth` in `RUN_CONFIG`, named as the Tracer's `memory_depth` is. No file length: the Updater needs the depth and nothing else |
+| the two roots | **Decided (owner): `IMAGE_ROOT` and `TRACER_ROOT`.** The first is the file a run updates, whichever file that is; the second is the Tracer's copy |
+| the page count | **Decided (owner): `PAGE_COUNT` is read/write and counts down.** The firmware writes how many pages it will queue; read while running it may be stale. Needing a page at 0 sets an error bit, `out_of_pages` |
+| left-over input | **Decided (owner): never an error.** The replayer has `ERRORS.leftover`; the Updater must not, since its stream runs on across runs. A run's end touches nothing |
+| the two queues | **Decided (owner): the replayer's and the Tracer's credit scheme, identically.** 256 entries; a credit is half a queue, counted to depth 2, returned as 128 entries leave, taken by a load of `EVENTS` |
+| the word count | **Proposed:** `WORD_COUNT`, read/write and counting down as `PAGE_COUNT` does, in place of a count and a separate progress register. The owner asked what it counts: the words of this one run, never the total |
+| three runs for memory segments | **Proposed:** before *s*, segment *s*, after *s*. The Tracer's copy is complete when the second ends |
+| window words, not a state record | **Proposed.** The Tracer's depths are in its state record because that is its working state |
+
+**The owner's sequence for the images**, which the runs follow:
+
+1. Build the cycle-0 image.
+2. Make a copy of it.
+3. Run the segments up to *s* into the copy.
+4. Freeze it and make two copies of it. (The owner said three; the frozen file is itself the kept copy.)
+5. Run segment *s*'s updates. For every page written, the data goes into one file, and the other file gets a copy
+   of the page with its original data.
+6. Run the rest into the first of those.
+
+## 12. The link from the host
+
+The owner then made notes on Ingress and the link under the frames. They are `HOST-LINK.md`: two streams (the active
+proof and the background), chunks with a 128-bit header word, the two checks, "resend", and recovery by zeros and
+"I'm lost".
+
+## 13. What sections 10 to 12 change elsewhere
+
+| where | what |
+|---|---|
+| the figure | stale: it shows the Updater by the RW engine, fed over the peripheral bus, with credits going off to Ingress |
+| `HOST-FRAMES.md`, the "goes to" column | written when the Updater was the memory tile's; the master tile now reads the header frames |
+| the first note, section 8 | the credits from the Updater to Ingress across tiles are gone |
+| the second note, section 4 | the segment queue is fed on the master tile, and the free page queue by the master tile's core |
+| `V136-SCOPE.md`, outcome 3 | the Updater is the master tile's peripheral 2, not the memory tile's |
+| `updater_wip` | the Updater is built on the master tile; the firmware that minds it is the master tile's |

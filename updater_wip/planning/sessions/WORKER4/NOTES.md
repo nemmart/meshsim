@@ -4,7 +4,7 @@ Branch `updater-w4`, from `main` at `5b92d1f2` (the prompt with the 8 KB segment
 threshold the smaller of 256 and the words left in the frame). Paths without a folder are in `v1.37_wip/`. II is
 `INGRESS-INTERFACE.md`, HL `HOST-LINK.md`, UI `UPDATER-INTERFACE.md`.
 
-**Status: the plan, waiting for the owner's go-ahead. No code yet.**
+**Status: the owner's go-ahead (2026-11-16, 20:54): "Go ahead with your plan. Your choices stand." The header-only frame: from gold if it can make one, otherwise the tests' writer. Built; section 9 says where it differs from the plan.**
 
 ## 1. What changes, and where
 
@@ -145,3 +145,34 @@ Where the documents are silent, the simplest reading:
 ## Questions
 
 None yet: every † taken is workable as written. `QUESTIONS.md` is opened if one is not.
+
+## 9. As built, where it differs from the plan
+
+- **The header-only frame is gold's.** Gold already makes them: `kin-lru`'s frame 5 (the table added to its base with
+  nothing new), `jumps-base`'s frames 6 and 9, `divs`'s frame 6, all 0 words. No writer was needed.
+- **A fifth fixture, `kin-big`** (gold, `make_fixtures.sh`): keccak256 with 24 KB of untrusted advice, a data image of
+  1,584 words. With the segment queue at 512 the old fixtures' largest frame for the Updater (334) no longer reached
+  the allowance, so `fw_teeth.sh`'s "the pump without the allowance" would have gone uncaught; `kin-big`'s frame is
+  larger than Ingress's buffer and three credits. The four old fixtures are made again byte for byte.
+- **C14: the scrap is 256 rows, and frame 7's records are routed in runs.** The per-frame counts showed frame 7 (68 N
+  words: the records) taking a transfer a record and 32 rows at most to scrap: 195 transfers for `kin-big`'s 4,352
+  words. The scrap grew into the unused rows after it (`ML_SCRAP_ROWS` 256; the advice log starts 32 rows later, at
+  0x48880), and the records before s, and those after s + 1, go as one run each: 24 transfers. Without it the
+  threshold would gain nothing on frame 7.
+- **The planted bugs.** "The count loaded with a transfer in flight" (C7 broken) is not planted: it counts words twice
+  only when a flag comes in the middle of a transfer that took every word the master knew of, and the master then
+  reads words that have arrived and loads an exact count again, so no run goes wrong (planted, it passed every test,
+  at 1 to 8 bytes a cycle and thresholds of 1 to 64). `fw_teeth.sh`'s header says so, as it does for the handshakes
+  whose races no run provokes. In its place: the threshold set to the frame's whole length (frame 7 is longer than
+  the buffer: the master never wakes). Added and caught: the threshold not lowered at a frame's tail (caught by
+  `divs` at 32, whose frame 9 of 51 words is the file's last), not set back to 1 at a frame's end (caught by the new
+  slow-link test, where the master is ahead of the link at every frame), and the record-routing bug moved to the new
+  code.
+- **Tests added beyond the plan:** `master_slow_link` (4 cycles a byte), `master_fast_link_small_thresholds`
+  (thresholds 1 and 32 as fast as taken), both on every fixture.
+- **The master's cycles awake to the hand-over** are taken by the harness at segment s's run's done (the hand-over
+  follows it); the link rate the firmware keeps up with is the link's bytes over them. They include the boot (about
+  100,000 cycles of `map_format` and the LOADs), which is small at 2^29 and not on the guests.
+- **The tasks:** Quest 206 (`suites`), 207 (`check`), 208 (`faster`, a new item of `v137-check`: the 2^29 and matrix
+  runs at 2, 4, 8 bytes a cycle and the matrix at thresholds 32, 64, 128, in parallel).
+

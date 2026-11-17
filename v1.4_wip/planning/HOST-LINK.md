@@ -200,7 +200,11 @@ Nothing in the exchange is relied on to arrive, because the noise can cover it: 
   wants now, 1 for "stop sending me this stream" and 0 for "send". Resuming is the bit going back to 0.
   - A "resume" sent as a message could be lost in noise, and the stream would hang. A bit that is in every header
     is put right by the next packet that gets through.
-- **The queue behind a stream keeps some room when it says stop:** the packets already on the wire still arrive.
+- **The queue behind a stream keeps room when it says stop:** the packets already on the wire, and in every hop of
+  the chain, still arrive.
+- **Decided (owner): Ingress's buffers are oversized, 16 KB on each stream,** "to make sure we can stop the remote
+  side". That is 32 full packets.
+- † A stream says stop when its buffer is half full, which leaves 8 KB, 16 full packets, for what is on its way.
 - This replaces the per-stream window first proposed here, which did the same job with more machinery.
 
 ## What a sender must keep
@@ -231,6 +235,6 @@ The owner's remark: there must be a mountain of literature on building these. Th
 
 - What the foreground stream carries, and how large its messages are.
 - Whether the recovery packet states the packet number it restarts from, or that is the "lost" packet's number plus one.
-- How much room a stream's queue keeps when it says stop, and how large the queues are.
+- Whether half a buffer, 8 KB, is the right room to keep when a stream says stop: it depends on the chain.
 - The timers: how soon an unacknowledged packet is sent again without a "resend".
 - How large the chip's own window of kept packets is.

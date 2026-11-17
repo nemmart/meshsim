@@ -92,8 +92,9 @@ What it changes above:
 - **The threshold is never more than the words left in the frame.** The firmware knows them from the header word,
   so the tail of a frame needs no timer: the threshold is the smaller of 128 and what is left.
 - **128 words is one credit of the Updater's segment queue,** so a wake, a credit and a transfer go together.
-- **† Ingress holds at least 256 words of each stream,** so that a threshold can always be reached. v1.37's black
-  box holds four packets.
+- **Ingress's buffers are oversized on purpose: 16 KB on each stream** (owner), 1,024 words, 32 full packets. A
+  threshold can always be reached, and there is room to be sure the far side can be stopped (`HOST-LINK.md`).
+  v1.37's black box as merged holds four packets.
 - **The foreground stream keeps its threshold at 1.**
 - **The firmware's cost no longer depends on a packet's size,** so the size can be chosen for the link alone.
 - **Not in v1.37 as merged,** whose Ingress and firmware work a packet at a time.

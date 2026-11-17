@@ -80,7 +80,8 @@ byte sent. The data follows, 16 bytes a word.
     acknowledge it, and an acknowledgement that must itself be acknowledged never settles. Its number field holds
     the number the stream's next data packet will carry, so the field is still never 0. The receiver checks the
     field and does not advance.
-- **Packet numbers are per stream** †, since the streams are flow-controlled apart.
+- **Packet numbers are for each link, and on a link for each stream** (owner, 2026-11-17), since the streams are
+  flow-controlled apart. A packet that is forwarded gets a new number on the next link.
 - **No packet number is 0 or all ones** (owner), so a header word is never all zeros.
 - **18 bits of packet number is enough** (owner; 20 until 2026-11-17, when four bits went to the hops field).
   Only packets not yet acknowledged are outstanding, and that is a small window. A stream's numbers come round
@@ -176,7 +177,8 @@ The data and its checksum pass through unchanged.
   the pace of its slowest ASIC. The foreground stream has its own bit on every link and still gets through.
 - **Why the hops field is under the header CRC:** one flipped bit in it would credit a packet to the wrong ASIC.
   The header CRC is computed again at each hop anyway, since the link's fields change.
-- † Four bits: a chain of up to 16.
+- **Four bits: a chain of at most 16** (owner: the absolute maximum, which is why the field is that wide; 4 are
+  expected). A packet that arrives with hops 15 at an ASIC that would forward it is a bad packet (below).
 - **A hop holds a packet for its length,** since it checks the whole of it first. That is what "The size of a
   packet" assumes.
 
@@ -191,8 +193,8 @@ The data and its checksum pass through unchanged.
   to expect.
 - The packet number is checked as well, since the receiver compares it anyway to keep packets in order.
 
-**Both checks are CRC-32C** (Castagnoli; the one in iSCSI, SCTP and ext4; RFC 3720, appendix B.4). † The choice of
-CRC-32C is proposed; its definition here is exact, and gold's packetizer and its test vectors use it
+**Both checks are CRC-32C** (Castagnoli; the one in iSCSI, SCTP and ext4; RFC 3720, appendix B.4). The choice is
+settled (owner, 2026-11-17: "we can just pick one"); its definition here is exact, and gold's packetizer and its test vectors use it
 (`updater_wip/pipeline/gold/test/packets/VECTORS.txt`).
 
 | | |
@@ -275,7 +277,7 @@ result = crc XOR 0xFFFFFFFF
 |---|---|---|
 | the header is good, the data checksum fails | yes: the length could be trusted | sets **resend** on its next packet back. The link does not stop (owner) |
 | the header's CRC fails | no: the packet's length is unknown | the recovery below |
-| both checks pass but a field cannot be: a stream that does not exist, a length over 32, a reserved bit set | yes | † this is the sender's fault, not noise, and sending again would not help: an error of its own (`ERRORS.format_error` in `INGRESS-INTERFACE.md`) |
+| both checks pass but a field cannot be: a stream that does not exist, a length over 32, a reserved bit set, hops 15 on a packet to forward | yes | **the packet is thrown away, just as one that failed a check** (owner, 2026-11-17): the receiver sets **resend**. There is no path of its own for it. A status bit may say which test failed (`format_error` in `INGRESS-INTERFACE.md`), for diagnosis only |
 
 - **Idle is zero bytes, in any number,** not only whole words: the first byte that is not zero starts a header.
 - **"The first byte is never zero" is how a receiver finds a packet's start, not a check it can make.** A first
@@ -295,7 +297,8 @@ result = crc XOR 0xFFFFFFFF
 
 1. sends 1,024 bytes of zeros;
 2. sends its **recovery** packet, and carries on from the packet after the acknowledged one;
-3. † repeats these until it sees an ordinary acknowledgement.
+3. repeats these until it sees an ordinary acknowledgement (settled 2026-11-17; the owner: "this should be
+   robust"). Neither side ever depends on one packet getting through.
 
 Why the zeros work:
 
@@ -311,10 +314,18 @@ Nothing in the exchange is relied on to arrive, because the noise can cover it: 
 - **Decided (owner): the link has "stop sending" and "resume sending".**
 - **They are for each stream.** Stopping the background stream, when the Updater stalls, leaves the foreground stream
   running. The owner can't imagine the foreground stream ever needing to stop, but it has the bit all the same.
-- **† They are one bit, not two messages:** the `stop` flag in every header a side sends on a stream says what it
+- **They are one bit, in every header:** the `stop` flag in every header a side sends on a stream says what it
   wants now, 1 for "stop sending me this stream" and 0 for "send". Resuming is the bit going back to 0.
-  - A "resume" sent as a message could be lost in noise, and the stream would hang. A bit that is in every header
-    is put right by the next packet that gets through.
+- **When the status is sent** (owner, 2026-11-17):
+  1. **On a change, right then,** as a packet of length 0 if there is nothing else to send.
+  2. **A timer runs from the end of the last packet sent** in that direction. Any packet starts it again.
+  3. **When it reaches 512 cycles, the status is sent again,** a packet of length 0 for each stream, which starts
+     the timer again.
+  - So a side is never more than 512 cycles of silence from telling the other where it stands, stopped or not,
+    and no "resume" can be lost for good. The same packets keep the acknowledgements fresh.
+  - There are no zeros in the rule: an idle line is zeros anyway.
+  - A status packet that is damaged is a damaged packet like any other (owner): the receiver loses its place,
+    says "lost", the link repairs, and the status goes out again.
 - **They are for each link** (owner, 2026-11-17): "stop" goes to the neighbour, not to the host ("The chain").
 - **The queue behind a stream keeps room when it says stop:** the packets already on that link's wire still arrive.
   Only the one link counts, since the neighbour stops within a packet or two of seeing the bit.
@@ -323,15 +334,21 @@ Nothing in the exchange is relied on to arrive, because the noise can cover it: 
   - The owner's sizes that day were 16 KB, "to make sure we can stop the remote side", which is what v1.37 has as
     merged; then 4 KB with the forward count; then 8 KB as a placeholder, the size being arbitrary and changing
     little in the design.
-- † A stream says stop when its queue is half full, which leaves 4 KB, 8 full packets, for what is on its way.
+- **A stream says stop when its queue is half full** (settled 2026-11-17), which leaves 4 KB, 8 full packets.
+  What can still arrive after the bit is sent is two or three: the bit may wait behind a packet being sent, and
+  the neighbour finishes the packet it is in.
 - This replaces the per-stream window first proposed here, which did the same job with more machinery.
 
 ## What a sender must keep
 
 - A sender keeps every packet until it is acknowledged, to send it again.
 - **The host has the memory for that.**
-- **The chip does not.** It keeps a small window of packets on each link it sends on, and stops when the
-  acknowledgements stop.
+- **The chip does not.** It keeps **8 packets a stream** on each link it sends on (owner, 2026-11-17), about 4 KB,
+  and waits when 8 are unacknowledged.
+  - In ordinary running two or three are outstanding: an acknowledgement comes back on every packet the other
+    side sends, and at least every 512 idle cycles with the status.
+- **Sending again is go-back-N** (the owner's rule: "send again from the number after my acknowledge field"): the
+  sender starts again from the oldest packet not acknowledged.
 - **An ASIC sends on two links:** towards the host, its own packets and the ones it forwards; away from the host,
   the host's packets it passes down the chain. It keeps a window for each (owner, 2026-11-17).
 
@@ -347,7 +364,7 @@ The owner's remark: there must be a mountain of literature on building these. Th
 | ATM and GFP | finding where packets start by hunting for a header whose CRC checks |
 | Xilinx Aurora | a light link protocol for FPGAs, if the host's side is one |
 
-- **† The replay buffer is taken from PCI Express,** not invented here. Its flow control is by credits; this link's
+- **The replay buffer is PCI Express's,** not invented here. Its flow control is by credits; this link's
   is the simpler stop bit.
 - One difference: PCI Express never loses its place, because its physical layer marks packet starts with symbols of
   their own. This link marks nothing, which is why it has the zeros and "lost".
@@ -359,4 +376,3 @@ The owner's remark: there must be a mountain of literature on building these. Th
 - The size of Ingress's queues, 8 KB pencilled in. With "stop" for each link, the room to keep when a stream says
   stop is only what one link has in flight, a packet or two, so the size is no longer set by the chain's length.
 - The timers: how soon an unacknowledged packet is sent again without a "resend".
-- How large the chip's own window of kept packets is.

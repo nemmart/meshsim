@@ -357,8 +357,8 @@ along the chain and keeps packet numbers that it shares with both neighbours.
 
 - **A packet that fails a check is fatal** (owner). `ERRORS.crc_error` is set and Ingress accepts no more packets.
 - † A packet number out of order is treated the same way, with `ERRORS.sequence_error`.
-- † So is a packet that passes both checks with a field that cannot be, with `ERRORS.format_error`: that is the
-  sender's fault, not noise.
+- **So is a packet that passes both checks with a field that cannot be** (owner, 2026-11-17: thrown away "just
+  like a CRC error"). `ERRORS.format_error` says which test failed, for diagnosis; the handling is the same.
 - **The order of the tests is `HOST-LINK.md`'s:** the header CRC, the fields, the data checksum, then the number.
   So a packet with a bad data checksum and a wrong number is a `crc_error`.
 - Sending again and recovery need the way back to the host, and are for later (`HOST-LINK.md`).

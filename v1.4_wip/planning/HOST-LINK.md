@@ -8,13 +8,19 @@ ruled on; (owner) marks what the owner said.
 **A packet here is the link's:** a header and its data. It is not a packet of the mesh. How the master tile
 takes packets out of Ingress is `INGRESS-INTERFACE.md`.
 
-**Where this document stands (2026-11-17).** WORKER8 built one link from it and searched it exhaustively: **as
-first written the protocol does not hold.** A single damaged packet can stop a link for ever, in several ways
-(`DESIGN-NOTES-2026-11-16.md`, section 24; `updater_wip/planning/sessions/WORKER8/QUESTIONS.md` on branch
-`updater-w8`). Its rules are accepted to carry on with and go in here once its random campaign and the chain have
-confirmed them. Two things have changed here already: the queues are 16 KB, and **a link has one run of packet
-numbers, not one for each stream, with both streams' stop bits in every header** ("A packet"). Until the rest is
-folded in, do not build from the sections on a bad packet, recovery and the status alone.
+**Where this document stands (2026-11-17).** WORKER8 built the link from the first form of this document and
+searched it exhaustively: **as first written the protocol did not hold.** One damaged packet could stop a link
+for ever, in several ways. **The rules that mend it are now in here,** each marked (WORKER8): in "When a packet is
+bad", "Recovery", "Starting a link again", "Holding the host back", "What a sender must keep" and "The chain".
+
+- **What they rest on:** about 36 million states searched, every search complete, on one link and on chains of 1, 2
+  and 3; 14 planted bugs each caught; 300 random runs on chains of up to 16, 202 million cycles, with none failing.
+  Each flaw has a kept case that fails without its rule (`updater_wip/link/` and
+  `updater_wip/planning/sessions/WORKER8/QUESTIONS.md`, on branch `updater-w8` until it is merged).
+- **What is not yet shown:** those runs were on packet numbers for each stream. **One run of numbers for a link**
+  (below) was decided after them, and WORKER8 is to search it. The rules here do not depend on which, as far as the
+  design session can tell; the claim that a stopped stream cannot block the other does, and is marked.
+- A dagger (†) marks a number or a choice that is proposed and not ruled on.
 
 ## The link
 
@@ -228,6 +234,22 @@ The data and its checksum pass through unchanged.
 - **A hop holds a packet for its length,** since it checks the whole of it first. That is what "The size of a
   packet" assumes.
 
+**What the chain needed besides** (WORKER8; searched on chains of 1, 2 and 3, run at random on up to 16):
+
+- **A node acknowledges a packet when it has taken it in:** into its own queue and into its forwarding buffer,
+  not when it has passed it on.
+- **A node must be told whether it has a neighbour down the chain.** The last has none. † By a pin: it is a fact
+  about the board, and it must be known before any firmware runs.
+  - The restart handshake cannot tell. A lower link that comes up late, because of noise, would look like no
+    link, and the node would take the host's packets without passing them on. Told that it has a neighbour, a
+    node holds what it must forward until that link is up.
+- **A forwarding buffer for each stream and each direction,** † 16 KB like a queue, since the same rule binds it:
+  the window of the end that feeds it must be no more than half of it.
+- **A link's stop bit is up when either is half full:** the node's own queue, or the forwarding buffer behind
+  that link.
+- **Measured:** the fullest a forwarding buffer got was 677 words of 1,024. A foreground packet never waited more
+  than one packet's time for the line.
+
 ## The two checks
 
 1. **The data is checksummed first,** and the result goes into the header (owner).
@@ -325,16 +347,53 @@ result = crc XOR 0xFFFFFFFF
 
 ## When a packet is bad
 
-| what went wrong | still in step? | what the receiver does |
-|---|---|---|
-| the header is good, the data checksum fails | yes: the length could be trusted | sets **resend** on its next packet back. The link does not stop (owner) |
-| the header's CRC fails | no: the packet's length is unknown | the recovery below |
-| both checks pass but a field cannot be: a stream that does not exist, a length over 32, a reserved bit set, hops 15 on a packet to forward | yes | **the packet is thrown away, just as one that failed a check** (owner, 2026-11-17): the receiver sets **resend**. There is no path of its own for it. A status bit may say which test failed (`format_error` in `INGRESS-INTERFACE.md`), for diagnosis only |
+A receiver expects one number next on a link: the one after the last packet it took.
+
+| what the receiver sees | what it does |
+|---|---|
+| a good packet with the number it expects, and room in its stream's queue | takes it; its acknowledge field moves on |
+| the header good, the data checksum failing | throws it away and sets **resend**. The link does not stop (owner) |
+| a good packet with a number **behind** the one expected | throws it away and acknowledges as usual: it has it already (WORKER8) |
+| a good packet with a number **ahead** of the one expected | throws it away and sets **resend:** one was missed (WORKER8) |
+| a packet of length 0 whose number is ahead of the one expected | sets **resend:** the last packet of a burst was lost. This is why no timer is needed at the sender (WORKER8) |
+| a good packet in order, with no room in its stream's queue | throws it away and does not acknowledge it; the sender sends it again. With the sizes right this never happens; it is what catches a wrong size (WORKER8) |
+| the header's CRC failing | it has lost its place: "Recovery" |
+| both checks passing, but a field that cannot be: a stream that does not exist, a reserved bit set, hops 15 on a packet to forward | "A packet made wrong", below |
+| a length over 32 under a good header CRC | it cannot stay in step, not knowing how far to pass over. "A packet made wrong", below |
+
+- **Ahead and behind are judged within half the numbers,** which a window of 8 is far inside.
+- **Without the rows for a wrong number the link stopped for ever after one lost packet:** every packet after
+  the lost one was good, out of order, and had no rule (WORKER8).
+- **† Having asked for a resend, a receiver asks again only after 2,048 cycles** if the sender still shows itself
+  ahead. Otherwise every packet already on its way sets off another going-back. The value only affects speed
+  (WORKER8).
+- **The header of a packet sent again is written afresh,** with the acknowledge field and the flags of now
+  (WORKER8).
+- **A sender goes back exactly as far as it must:** in 5 million packets of random runs no receiver was sent a
+  packet it had already taken (WORKER8).
+
+**A packet made wrong** (the owner asked for a rule; WORKER8's):
+
+- The owner's ruling stands for noise: such a packet is thrown away "just like a CRC error". But if the sender
+  really made it so, asking again brings the same packet back for ever.
+- **So the receiver checks its data all the same.** It does not take the data; it runs it through the CRC unit,
+  which needs no buffer.
+  - **The data fails too:** it was noise that happened to pass the header CRC. Thrown away and asked for again.
+  - **The data passes:** two checks agree that this is what the sender sent. Asking again cannot help. **The
+    receiver starts the link again** ("Starting a link again"), with the error.
+- A length over 32 is passed over by the length it claims, at most 255 words, while its data is checked; if that
+  fails, the receiver has lost its place.
+- `INGRESS-INTERFACE.md`'s `format_error` says which test failed.
+
+**Finding a packet's start:**
 
 - **Idle is zero bytes, in any number,** not only whole words: the first byte that is not zero starts a header.
 - **"The first byte is never zero" is how a receiver finds a packet's start, not a check it can make.** A first
   byte that noise turns to zero is taken for idle; the receiver then fails a header CRC one byte later, which is
   the "lost my place" case.
+- **After a failed header CRC a receiver takes nothing until it has seen a full packet's length of zeros in a
+  row,** 528 †, which no packet can hold. Without this it read the bad packet's data as headers, and one of them
+  can pass: a packet was then lost for good (WORKER8).
 
 ## Recovery
 
@@ -352,6 +411,18 @@ result = crc XOR 0xFFFFFFFF
 3. repeats these until it sees an ordinary acknowledgement (settled 2026-11-17; the owner: "this should be
    robust"). Neither side ever depends on one packet getting through.
 
+**What had to be added** (WORKER8):
+
+- **Both ends lost at once.** As first written each waited for a "recovery" the other could not send, for ever.
+  **A lost end that hears "lost" answers it,** with lost and recovery both set in one packet. It stops answering
+  at the first good packet that does not have lost set.
+- **An acknowledgement counts in any state:** every good packet's acknowledge field releases what it covers. A
+  "lost" packet's is also where the sender goes back to.
+- **A good packet while lost:** its data is not taken; its acknowledge field and its stop bits are.
+- **The answering end sends no data until its answer has been heard:** only rounds of zeros and "recovery".
+- **The recovery packet states its number already:** it has length 0, so its number field is the number the
+  sender carries on from. The receiver checks it against the one it expects, and never takes its place from it.
+
 Why the zeros work:
 
 - **1,024 bytes is longer than the longest packet,** 528 bytes with its header. Whatever length a confused receiver
@@ -360,6 +431,45 @@ Why the zeros work:
 - **The first byte that is not zero starts a header,** since a header's first byte is never zero.
 
 Nothing in the exchange is relied on to arrive, because the noise can cover it: that is why both sides repeat.
+
+## Starting a link again (WORKER8; accepted to carry on with)
+
+Recovery mends a lost place. It cannot mend two ends whose numbers no longer agree, and as first written nothing
+could: the link stopped for ever.
+
+**The restart flag** (bit 7 of the header's first byte):
+
+| the flags | says |
+|---|---|
+| restart with lost | "I have started again" |
+| restart with recovery | "so have I" |
+
+- **An end that hears "I have started again"** drops the packets it was keeping, starts its numbers again from 1,
+  answers, and **raises an error:** what was on its way is gone, and the frames above the link cannot be trusted.
+- **A link carries nothing until both ends are up.** Two ends that power on together bring the link up with no
+  error.
+
+**What starts a link again:**
+
+| the cause | how it is noticed |
+|---|---|
+| one end powers on, or the FPGA is loaded again, while the other runs | the newcomer says so |
+| a kept packet has gone bad in the sender's memory | **the sender runs its CRC unit over the data it sends;** a difference from the checksum it holds is its own memory's fault. As first written the same bad packet was sent again for ever |
+| a packet made wrong | the receiver, above |
+| a false acknowledgement: a damaged header that passed its CRC and released a packet that never arrived | **an acknowledge field never goes backwards and never passes what was sent.** After a false one, every true one is behind it. Two such in a row † and the end starts the link again |
+
+- **Each of these ends as an error the core sees,** never as a link that hangs. On the master tile a peripheral's
+  error is the tile's, which stops everything (owner): the host resets the chip and the proof starts over.
+
+**A known limit, accepted (owner asked; the design session's recommendation):** a damaged header that passes its
+CRC with a **false packet number.** One less than the true number, after a loss, has a packet taken twice and the
+next lost, silently. Nothing in the header can tell.
+
+- The header's CRC catches every pattern of up to 7 flipped bits (WORKER8).
+- **Damaged data that passes its 32-bit checksum is at least 600 times as likely,** and about 10¹¹ times at a bit
+  error rate of 10⁻³ (WORKER8). That was accepted when the data checksum was made 32 bits, so a second check on
+  the header would harden the rarer fault.
+- A wider data check is the lever if a stronger link is wanted. A wrong trace fails the proof's verification.
 
 ## Holding the host back: stop sending and resume sending
 
@@ -382,33 +492,49 @@ Nothing in the exchange is relied on to arrive, because the noise can cover it: 
   - There are no zeros in the rule: an idle line is zeros anyway.
   - A status packet that is damaged is a damaged packet like any other (owner): the receiver loses its place,
     says "lost", the link repairs, and the status goes out again.
+  - **512 is kept** (WORKER8's figures, 100 random runs each): the data rate does not depend on the timer, since
+    the status only goes when the line is idle; the longest a sender waited for an acknowledgement does.
+
+    | the timer | the longest wait |
+    |---|---|
+    | 512 | 2,422 cycles |
+    | 2,048 | 5,240 |
+    | 8,192 | 8,958 |
+
+- **An acknowledgement goes out as soon as the line is free** (owner's ruling on WORKER8's question), as a packet
+  of length 0, not at the next status. It is what short foreground messages need: 400 one-word packets took
+  29,703 cycles without it and 17,553 with. The data rate does not change, since these packets go only when
+  nothing else is going; they are 16 bytes for a packet taken.
 - **They are for each link** (owner, 2026-11-17): "stop" goes to the neighbour, not to the host ("The chain").
-- **The queue behind a stream keeps room when it says stop:** the packets already on that link's wire still arrive.
-  Only the one link counts, since the neighbour stops within a packet or two of seeing the bit.
 - **Ingress's queues are 16 KB on each stream** (owner, 2026-11-17), 32 full packets, behind a buffer that holds
   the one packet being checked.
-  - **Why the size is not arbitrary** (WORKER8's search of the protocol): if the stop bit is lost, the sender
-    goes on until its window is used up, so **the window must be no more than half a queue,** or the queue
-    overruns. A window of 8 packets, 4 KB, against a queue of 8 KB sat exactly at that limit. The owner: "if
-    we're right on the edge of some bad condition, let's go to 16 KB queues."
-  - The sizes before: 16 KB on 2026-11-16, "to make sure we can stop the remote side", which v1.37 had as first
-    merged; then 4 KB with the forward count; then 8 KB as a placeholder, which WORKER7 built.
-- **A stream says stop when its queue is half full** (settled 2026-11-17), which leaves 8 KB, 16 full packets:
-  twice the window.
-  What can still arrive after the bit is sent is two or three: the bit may wait behind a packet being sent, and
-  the neighbour finishes the packet it is in.
+- **A stream says stop when its queue is half full** (settled 2026-11-17), which leaves 8 KB, 16 full packets.
+- **The window must be no more than half a queue** (WORKER8). With the stop bit and the acknowledgements both
+  lost, a sender goes on to the end of its window, and whatever is beyond the room overruns the queue, or is
+  refused.
+  - **The chip's window is 8 packets, 4 KB:** a quarter of a queue. A window of 8 against a queue of 8 KB sat
+    exactly at the limit; the owner: "if we're right on the edge of some bad condition, let's go to 16 KB queues."
+  - **The host must keep to it too,** though it has the memory for more: no more than 16 packets outstanding,
+    † 8 as the chip has. WORKER8 measured no loss of data rate at 8, and with 64 the queue filled and a packet
+    was refused. With an acknowledgement for every packet the host seldom has more than two or three outstanding.
+  - The fullest a queue of 1,024 words got in the random runs was 626; no packet was ever refused.
+- The sizes before: 16 KB on 2026-11-16, "to make sure we can stop the remote side", which v1.37 had as first
+  merged; then 4 KB with the forward count; then 8 KB as a placeholder, which WORKER7 built.
 - This replaces the per-stream window first proposed here, which did the same job with more machinery.
 
 ## What a sender must keep
 
 - A sender keeps every packet until it is acknowledged, to send it again.
-- **The host has the memory for that.**
+- **The host has the memory for that,** and keeps to the window all the same (above).
 - **The chip does not.** It keeps **8 packets** for each direction it sends in (owner, 2026-11-17), about 4 KB,
   of both streams together, and waits when 8 are unacknowledged.
   - In ordinary running two or three are outstanding: an acknowledgement comes back on every packet the other
-    side sends, and at least every 512 idle cycles with the status.
+    side sends, as soon as its line is free.
 - **Sending again is go-back-N** (the owner's rule: "send again from the number after my acknowledge field"): the
   sender starts again from the oldest packet not acknowledged.
+- **No timer sends a packet again unasked** (WORKER8): the receiver always learns what it missed, from a number
+  ahead of the one it expects, and asks. The searches hold with a timer, without one, or with only one.
+- **The sender checks what it keeps as it sends it** ("Starting a link again").
 - **An ASIC sends on two links:** towards the host, its own packets and the ones it forwards; away from the host,
   the host's packets it passes down the chain. It keeps a window for each (owner, 2026-11-17).
 
@@ -431,9 +557,21 @@ The owner's remark: there must be a mountain of literature on building these. Th
 
 ## Open
 
-- What the foreground stream carries, and how large its messages are.
-- Whether the recovery packet states the packet number it restarts from, or that is the "lost" packet's number plus one.
-- Whether the host, which keeps every packet, must also hold itself to the window of 8: with more
-  outstanding, a lost stop bit can overrun a queue (WORKER8).
-- The sizes of a forwarding ASIC's buffers, which the same rule binds.
-- The timers: how soon an unacknowledged packet is sent again without a "resend".
+- **What the foreground stream carries,** and how large its messages are.
+- **One run of numbers for a link, searched.** In particular that the foreground keeps moving while the background
+  is stopped, what a damaged background packet costs the foreground, and how long a foreground packet waits when
+  the window is full of background packets (WORKER8, in hand).
+- **Two random runs that failed on the runner** (Quest 227, seeds 200137 and 140162, of 3,777): a sender stood
+  still, with no acknowledgement for 20,801 cycles on a link in step. Both had the host's window at 64, past the
+  limit above. Whether that is the whole cause is not yet known.
+- **A neighbour that goes silent** (WORKER8). Nothing here notices a link whose other end has stopped: the sender
+  waits for ever, which is right if the neighbour is slow and wrong if it is dead. A count of status periods with
+  nothing heard would tell.
+- **The background behind the foreground** (WORKER8). A background packet waits while any foreground packet is
+  ready, so a foreground that never pauses holds the background for as long. That is the order as decided, and
+  not a flaw of the protocol; it is a thing to know.
+- **The numbers marked †:** 2,048 cycles before asking again; two acknowledgements behind before starting again;
+  528 zeros before hunting for a header; the host's window of 8; the forwarding buffers' 16 KB; a pin for the last
+  node.
+- **What the error is called and where it is seen:** a link that started again raises an error to the core. Its
+  bit in Ingress/Egress's `ERRORS` is not yet named (`INGRESS-INTERFACE.md`).

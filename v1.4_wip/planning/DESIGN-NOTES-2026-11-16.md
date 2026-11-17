@@ -828,3 +828,22 @@ WORKER8 built one link from `HOST-LINK.md` and searched it exhaustively at small
     that much.
   - WORKER10 reports the wire built and every check passing where it ran, with a task for the runner
     (`updater-w10`, `670c84b2`).
+
+## 27. The link document brought up to what is known (2026-11-17, about 1:30 p.m.)
+
+- **The owner: "let's update our link doc with the things we know we need."** `HOST-LINK.md` now has WORKER8's
+  rules in place, each marked: the wrong-number rows and the empty packet's number (so no resend timer); the
+  528 zeros before hunting; a lost end answering "lost"; acknowledgements counting in any state; **a new
+  section, "Starting a link again"** (the restart flag, the sender checking what it keeps, a packet made wrong,
+  the false acknowledgement told by acknowledgements going backwards); an acknowledgement as soon as the line is
+  free; the window no more than half a queue, the host included; and in the chain, acknowledging on taking in,
+  the last node told it has no neighbour, forwarding buffers with the same rule as queues.
+- **What they rest on, and what they do not:** the searches and runs were on numbers for each stream. One run of
+  numbers for a link is still to be searched. The document's opening says so.
+- **Kept as open there:** the two failing seeds of Quest 227; a neighbour that goes silent; the numbers marked †;
+  the name of the error a restarted link raises.
+- **The false packet number is recorded as a known limit,** with the figures: the header's CRC catches up to 7
+  flipped bits, and damaged data passing its checksum is at least 600 times as likely.
+- **The runner:** Quests 227 to 229 (WORKER8's campaigns on the 20-byte header) were parked in `tasks/hold` and
+  the running one killed by the owner. The runner has 16 CPUs and 62 GB.
+- WORKER9's step 1 is merged (section 26); WORKER7 is closed.

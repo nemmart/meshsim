@@ -111,7 +111,7 @@ int main(int argc, char** argv) {
     std::vector<uint32_t> power_left;          // by node: the power-ons still allowed (outside the bench's state, so in the hash by hand)
     std::map<std::string, uint64_t> failures;
     uint64_t tried = 0, quiet_runs = 0, quiet_cycles = 0, longest_quiet = 0, deepest = 0, failed_states = 0;
-    bool first_written = false;
+    bool first_written = false, cut_short = false;
     const auto t0 = std::chrono::steady_clock::now();
 
     auto known = [&](Link1& b, uint32_t pl) {
@@ -237,14 +237,15 @@ int main(int argc, char** argv) {
             }
             more = false;
             for (size_t i = 0; i < dims.size(); i++) { if (++digit[i] < dims[i].values.size()) { more = true; break; } digit[i] = 0; }
-            if (o.max_states && nodes.size() >= o.max_states) { frontier.clear(); more = false; printf("stopped at --max-states: NOT complete\n"); }
+            if (o.max_states && nodes.size() >= o.max_states) { frontier.clear(); more = false; cut_short = true; printf("stopped at --max-states: NOT complete\n"); }
         }
     }
     const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     printf("\n%zu states, %llu steps between them tried, the latest at cycle %llu; %llu runs to rest, the longest %llu cycles, %llu on average; %.1f s\n",
            nodes.size(), (unsigned long long)tried, (unsigned long long)deepest, (unsigned long long)quiet_runs,
            (unsigned long long)longest_quiet, (unsigned long long)(quiet_runs ? quiet_cycles / quiet_runs : 0), sec);
-    if (failures.empty()) printf("RESULT: every property held in every state\n");
+    if (failures.empty() && cut_short) printf("RESULT: no failure in the states tried, and NOT complete: there are more\n");
+    else if (failures.empty()) printf("RESULT: every property held in every state\n");
     else { printf("RESULT: FAILED in %llu states:\n", (unsigned long long)failed_states); for (const auto& f : failures) printf("  %8llu  %s\n", (unsigned long long)f.second, f.first.c_str()); }
     return failures.empty() ? 0 : 1;
 }

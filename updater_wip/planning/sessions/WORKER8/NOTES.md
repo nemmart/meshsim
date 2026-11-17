@@ -446,6 +446,9 @@ source's packets: end 0's foreground and background, end 1's. 28,261,334 states 
 | `--packets 1 0 1 0 --damage 1 --whole` | 47,478 | holds |
 | `--packets 1 0 1 0 --damage 1` | 33,450 | holds |
 
+- **One search larger than this machine was started and not finished:** `--packets 2 0 2 0 --damage 2`, two
+  packets each way and two damaged. 30,000,000 states tried, no failure, about 750,000 still waiting when it
+  was stopped for memory (4 GB of 7). It is first on `searches.sh big`.
 - The last two are the same search with the states kept whole and by the hash: the same verdict; 47,478 whole
   states are 33,450 by what can still matter.
 - The longest any state took to come to rest was 567 cycles of the small sizes.
@@ -532,4 +535,5 @@ minutes; `make check` in about 2 minutes from a clean tree.
 
 **Next,** after the owner's word: the random processes and the campaign on one link (step 4), then the chain
 (step 5). The larger searches (`searches.sh big`: two packets each way with two damaged, and the like) want the
-runner: tens of millions of states each.
+runner, and less memory a state: its unit allows 16 GB and 45 minutes a task, about 100 million states as the
+search stands.

@@ -37,6 +37,23 @@ WHAT TO BUILD, in `updater_wip/link/`
    the link's fields written afresh, hops plus one, the header sealed again, the data and its checksum
    untouched), a forwarded packet before the node's own, and "stop" for each link.
 3. **The host end:** the same protocol with the memory to keep every packet.
+**Randomness drives the conditions, not a list of scenarios** (owner). Items 4 to 6 say what the conditions must
+be able to produce, not tests to script:
+- **Every condition is a random process with its own parameters:** each wire's noise (how often it starts, how
+  long it lasts, how dense it is while it lasts), each consumer's stalls (how often, how long), each sender's
+  traffic (when, how much, which stream), each link's delay.
+- **A run draws its parameters at random too,** over wide ranges and on a log scale where a quantity spans
+  orders of magnitude: so one run is nearly quiet, another is noise most of the time, another has a consumer
+  that almost never takes a word, and most are some mixture nobody would have written down.
+- **Everything happens at once and independently:** noise on one link while another's consumer stalls, a stop
+  lifted in the middle of a recovery, a wrap during a burst. The processes are not synchronized with the
+  protocol's state, except the aimed damage of item 4, which is one more process among them.
+- **Many runs, each from a seed.** The campaign is millions of packets over thousands of seeds, and the report
+  says how many, how long, and how often each rare event actually occurred: a property checked on an event that
+  never happened was not checked.
+- **Fixed cases are kept only for two things:** a failure once found, so that it stays found; and the planted
+  bugs.
+
 4. **A wire that misbehaves,** for each direction of each link, on its own:
    - single bits flipped, and bursts; noise for a long time, hundreds of milliseconds (owner: a phone call in
      the server room);
@@ -85,14 +102,20 @@ HOW YOUR OWN WORK IS CHECKED
   the wrap compared wrongly; the timer not started again; a duplicate delivered after sending again; a header
   not sealed again; a stop ignored; recovery answered once only) and show that the runs or the search catch
   each. A check that catches no planted bug proves nothing.
-- Every random run is from a seed, and a failing seed replays exactly.
+- Every random run is from a seed, and a failing seed replays exactly. A failing run is then cut down to the
+  shortest run that still fails.
+- **Coverage of the rare events is counted,** in the campaign as a whole: each kind of damage at each kind of
+  packet, each state of the link end entered, each transition taken, a stop during a recovery, a recovery
+  during a recovery, a wrap under each of them. What the random processes never reached is listed, and either
+  reached by widening them or handed to the exhaustive search.
 - Builds with gcc and clang, `-Wall -Wextra -Werror`, and passes with the address and undefined-behaviour
   sanitizers.
 
 RULES
 - **Propose your plan first** in `NOTES.md` and wait for the owner's go-ahead before writing code: the link
-  end's parts and states, how the wire and the consumers misbehave, the properties and how each is checked, the
-  shrunken model and how it is searched, how long the runs take.
+  end's parts and states, the random processes that drive the wire, the consumers and the traffic, with their
+  parameters and ranges, the properties and how each is checked, how rare events are counted, the shrunken model
+  and how it is searched, how long the runs take.
 - **Branch `updater-w8`.** Your notes, questions and report are in `updater_wip/planning/sessions/WORKER8/`; the
   code in `updater_wip/link/`, with its own makefile and a `README.md` that says how to run it. You touch
   nothing else. The integrator merges into `main`.
@@ -111,7 +134,7 @@ processes and the driver of the milestone; the specification.
 DELIVERABLES
 - `updater_wip/link/`: the link end, the chain node, the host end, the wires and consumers, the random runs, the
   search, the planted bugs, a `README.md`.
-- `WORKER8/NOTES.md`: the plan, the state diagrams, the "Choices" list.
+- `WORKER8/NOTES.md`: the plan, the state diagrams, the random processes and their ranges, the "Choices" list.
 - `WORKER8/QUESTIONS.md`: every gap and flaw, each with its case and the rule proposed.
 - `WORKER8/REPORT.md`: whether the protocol holds, and under what; each flaw found; the figures (recovery
   times, the longest waits, the most packets ever outstanding, the fullest a queue ever got, which bear on the

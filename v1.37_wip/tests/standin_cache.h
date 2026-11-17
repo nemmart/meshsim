@@ -42,6 +42,7 @@ struct StandInCache final : units::updctl::LookupDev {
     // ---- counts
     uint64_t lookups = 0, updates = 0, discards = 0, lines_read = 0, early = 0, unwritten = 0, busy_cycles = 0;
     std::string early_why;
+    uint64_t replies_by[2][8][4] = {};             // [look up 0, update 1][status][level]: what the tests reached
 
     StandInCache(FileStore& s, uint64_t seed = 0) : store(s), random(seed != 0), rnd(seed ? seed : 1) {}
 
@@ -59,6 +60,7 @@ struct StandInCache final : units::updctl::LookupDev {
             unsigned lines = 0;
             bool wrote = false;
             pending = answer(r, lines, wrote);
+            if (r.op <= lookup::UPDATE) replies_by[r.op][pending.status & 7][pending.level & 3]++;
             pending.client = lookup::UPDATER;
             unsigned cost = 0;
             for (unsigned k = 0; k < lines; k++) cost += random ? unsigned(1 + rnd.below(200)) : line_cycles;

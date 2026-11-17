@@ -150,8 +150,8 @@ java -cp build gold.Main packets-vectors <out dir>
 ```
 
 - **`packets`**, the packetizer: every packet on stream 2; each frame starts a new packet; a frame's packets hold 32
-  words of data but its last, which holds what remains; numbers from 1, and 1 again after 0xFFFFE; the acknowledge
-  field, the flags and the reserved bits 0; both checks CRC-32C. It reads each frame's length and nothing else of the
+  words of data but its last, which holds what remains; numbers from 1, and 1 again after 0x3FFFE; the acknowledge
+  field, the hops field, the flags and the reserved bits 0; both checks CRC-32C. It reads each frame's length and nothing else of the
   frames. It prints the frames, words and packets, the overhead and the packet file's SHA-256. For the tests:
   `--idle=N` puts *N* zero bytes between every two packets; `--first=N` numbers the packets from *N*.
 - **`packets-read`**, the reader: checks every packet and writes the frames back out, byte-identical to the frame
@@ -168,8 +168,9 @@ java -cp build gold.Main packets-vectors <out dir>
 |---|---|
 | 0 | stream in the low four bits (1 foreground, 2 background), flags in the high four |
 | 1 | length: the data's 128-bit words, 0 to 32 |
-| 2, 3, 4 low | packet number, 20 bits |
-| 4 high, 5, 6 | acknowledge, 20 bits |
+| 2, 3, 4's low two bits | packet number [33:16], 18 bits: 1 to 0x3FFFE |
+| 4's high six bits, 5, 6's low four | acknowledge [51:34], 18 bits |
+| 6's high four bits | hops [55:52]: the ASICs that forwarded the packet; its maker writes 0 |
 | 7 | reserved, 0 |
 | 8 to 11 | data checksum: the CRC-32C of the data's bytes in link order; 0x00000000 for no data |
 | 12 to 15 | header CRC: the CRC-32C of header bytes 0 to 11 |
@@ -189,23 +190,27 @@ that is not zero starts a header:
 | `length` | the length is over 32 |
 | `reserved` | byte 7 is not 0 |
 | `data-checksum` | the CRC-32C of the data is not bytes 8 to 11 |
-| `number` | a packet with data: its number is not the next on its stream (1 first, 1 after 0xFFFFE). A packet of length 0: its number is not the one the stream's next packet with data will carry; it takes no number |
+| `number` | a packet with data: its number is not the next on its stream (1 first, 1 after 0x3FFFE). A packet of length 0: its number is not the one the stream's next packet with data will carry; it takes no number |
 | `frame-end` | on stream 2, a frame ends before the end of the packet its last word is in |
 | `first-byte` | with `--no-idle` only: a zero byte where a header is expected |
 
 Frames are tracked on stream 2 only. Stream 1's packets are checked and counted, and their data kept nowhere. The
-flags and the acknowledge field are not checked, only counted.
+flags, the acknowledge field and the hops field are not checked, only counted: no value of them is an error.
+
+The header changed on 2026-11-17 (owner; HOST-LINK.md, "The chain, and the hops field"): the packet number and the
+acknowledge field went from 20 bits each, [35:16] and [55:36], to 18, [33:16] and [51:34], and the hops field took
+[55:52]. A packet whose number is under 0x10000, with acknowledge and hops 0, has the same bytes as before.
 
 **The test vectors,** for an Ingress written from the documents (WORKER3's), in `test/packets/`:
 
 | file | what |
 |---|---|
-| `VECTORS.txt` | the definitions; CRC-32C values; 43 single packets, good and bad, each with every field, both checks stored and computed, its bytes and what a reader must say; the files below with their counts and SHA-256; 32 lines each changing one byte of a file and naming the check that must refuse it. Its heading describes its format |
+| `VECTORS.txt` | the definitions; CRC-32C values; 51 single packets (HOST-LINK.md's three example headers among them), good and bad, each with every field, both checks stored and computed, its bytes and what a reader must say; the files below with their counts and SHA-256; 38 lines each changing one byte of a file and naming the check that must refuse it. Its heading describes its format |
 | `small.frames` | nine made-up frames of 1, 2, 3, 31, 32, 33, 34, 64 and 65 words: every way a frame meets a packet's end. Not a proof |
 | `small.packets` | `small.frames` as the packetizer writes it: 14 packets |
 | `small-idle.packets` | the same with zero bytes before, between and after the packets (runs of 1 to 1,025) and three packets of length 0 |
 | `small-split.packets` | the same frames cut into packets of other legal lengths |
-| `wrap.packets` | the same numbered from 0xFFFFA, passing 0xFFFFE to 1 (`--first=0xFFFFA`) |
+| `wrap.packets` | the same numbered from 0x3FFFA, passing 0x3FFFE to 1 (`--first=0x3FFFA`) |
 | `two-streams.packets` | the same with stream 1's packets among stream 2's; v1.37's file has none |
 
 The writing side (`Packets`, with `java.util.zip.CRC32C`) and the reading side (`PacketFile`, with its own CRC-32C;
@@ -215,8 +220,8 @@ The writing side (`Packets`, with `java.util.zip.CRC32C`) and the reading side (
 
 | script | what |
 |---|---|
-| `test/packets/packets.sh` | the committed vectors are what `packets-vectors` writes; `check_vectors.py`, a third implementation in Python written from `VECTORS.txt`'s heading, gets every value and every expected answer; the commands on keccak256's frames, with their refusals; `PacketsTest`: the round trip on made-up frame files of every length around the cuts, 275 changes to the fields of a real file's packets (the checks left, and the checks made right again), each refused by the check it should be, packets dropped, repeated and swapped, the file cut short at every byte, every single bit of the five small files changed in turn (209,752 files, each refused), the wrap by `--first` and by a file of 1,048,600 packets, idle zeros in many counts, packets of length 0, the two streams |
-| `test/frames/guests.sh`, `workloads.sh` | every frame file they write is wrapped in packets, read back and compared byte for byte (on the guests also with idle bytes and numbered from 0xFFFFE) |
+| `test/packets/packets.sh` | the committed vectors are what `packets-vectors` writes; `check_vectors.py`, a third implementation in Python written from `VECTORS.txt`'s heading, gets every value and every expected answer; the commands on keccak256's frames, with their refusals; `PacketsTest`: the round trip on made-up frame files of every length around the cuts, 293 changes to the fields of a real file's packets (the checks left, and the checks made right again), each refused by the check it should be, packets dropped, repeated and swapped, the file cut short at every byte, every single bit of the five small files changed in turn (209,752 files, each refused), the wrap by `--first` and by a file of 262,200 packets, idle zeros in many counts, packets of length 0, the two streams |
+| `test/frames/guests.sh`, `workloads.sh` | every frame file they write is wrapped in packets, read back and compared byte for byte (on the guests also with idle bytes and numbered from 0x3FFFE) |
 | `test/packets/frames_unchanged.sh <another gold> [<prog> <input> <cuts>]...` | the `frames` command's file, side file and output byte-identical to another gold's (main's before this work), on every guest four times and on the runs given |
 
 Results: `updater_wip/planning/sessions/WORKER2-REPORT.md`.

@@ -9,8 +9,8 @@ Commands run from this folder.
 
 | | |
 |---|---|
-| the input | **a packet file:** gold's frame file (`HOST-FRAMES.md`) wrapped in the link's packets (`HOST-LINK.md`), read by Ingress at a byte a cycle (or 2, 4, 8: `--link-rate`) into a buffer of 1,024 words a stream. **N and s:** how many ASICs the proof is cut for, and which segment this one runs. No frame carries them |
-| the master tile | runs `fw/cc/master.c`: reads the frames out of Ingress, keeps the page map, drives the Updater through its runs, and hands the tracer tile segment s. It wakes by **the threshold** (`INGRESS-INTERFACE.md`; WORKER4): 1 word between frames, after a frame's header word the smaller of 256 (a credit of the Updater's segment queue) and the words left in the frame, so that a wake, a credit and a transfer go together |
+| the input | **a packet file:** gold's frame file (`HOST-FRAMES.md`) wrapped in the link's packets (`HOST-LINK.md`), read by Ingress at a byte a cycle (or 2, 4, 8: `--link-rate`) into a queue of 512 words a stream (8 KB, pencilled in). **N and s:** how many ASICs the proof is cut for, and which segment this one runs. No frame carries them |
+| the master tile | runs `fw/cc/master.c`: reads the frames out of Ingress, keeps the page map, drives the Updater through its runs, and hands the tracer tile segment s. **The forward count** (`INGRESS-INTERFACE.md`; WORKER7): it copies a frame's header word by Ingress's DMA, and for a frame of update words starts the Updater's run and writes the frame's length to `DMA_FORWARD_COUNT` once: Ingress sends the words to the Updater's word port itself. Frames 7 and 8 are dropped up to the ASIC's own record or log, which is copied, and the rest dropped |
 | Ingress's host side, the Updater | software black boxes behind their real registers (`INGRESS-INTERFACE.md`, `UPDATER-INTERFACE.md`) |
 | the Updater | builds the memory images in LPDDR: the program image, the jump table, the cycle-0 image, the start image of segment s, the Tracer's copy, the final image |
 | the tracer tile, the compute tiles | v1.36's, unchanged: the Tracer traces segment s on the Tracer's copy, window by window; each window is delivered to its tile and replayed |
@@ -20,7 +20,7 @@ Commands run from this folder.
 
 ```
 build/clang-suite/proof_run FRAMES --asics N --segment S [--windows W] [--rows R] [--gold IMAGES.txt]
-                            [--packets FILE] [--recorded RUN] [--fast-link] [--link-rate B] [--threshold W]
+                            [--packets FILE] [--recorded RUN] [--fast-link] [--link-rate B]
                             [--limit CYCLES] [--quiet]
 ```
 
@@ -34,14 +34,14 @@ build/clang-suite/proof_run FRAMES --asics N --segment S [--windows W] [--rows R
 | `--recorded RUN` | `evm-zone-23` or `cyclone-22`: every row, record and stream of windows 64 S to 64 S + 63 against the recorded files of `MESHSIM_INPUTS`, as `segment-real` |
 | `--fast-link` | the link's bytes as fast as the master takes them, in place of a byte a cycle |
 | `--link-rate B` | the link at B bytes a cycle: 1 (the default, HL's 1 GB a second at 1 GHz), 2, 4, 8 |
-| `--threshold W` | the master's threshold after a frame's header word, 1 to 1,024 words, in place of 256 (a word placed with its image, `system_config`). The images are the same at any |
 
 It prints `run_chip`'s lines (`segment_bench.h`) and the proof's (`proof_bench.h`), then each of the Updater's runs
 (the cycle of its done, its cycles busy, of them waiting on data, on pages and on memory, the pages and half pages it
 read and wrote, `PAGE_COUNT` at its done), the link's packets, the pages the page map marks, and the cycles the
-master's core was awake; then the threshold and the link's rate, the master's wakes and Ingress's transfers in all
-and to the hand-over, its cycles awake to the hand-over, the cycle of the link's last byte and the cycles it waited
-for room in Ingress, and each frame's wakes and transfers. It exits 1 on any failed check.
+master's core was awake; then the link's rate, the master's wakes and Ingress's DMA transfers in all and to the
+hand-over, the count's stores, the words forwarded and dropped, its cycles awake to the hand-over and their share of
+the hand-over's cycle, the cycle of the link's last byte and the cycles it waited for room in Ingress, its cycles
+awake at the first frame (the boot), and each frame's wakes and transfers. It exits 1 on any failed check.
 
 **The checks** (`tests/proof_bench.h` has the list): the master's status and every request answered; `PAGE_COUNT` 0
 at every done; no error bit anywhere; the link read to its end; every image as its run ended against gold's, and
@@ -81,8 +81,9 @@ About 30 million cycles, half a minute.
 committed (`tests/updater/`, with `make_fixtures.sh`, which makes them again where there is a JDK), cut for N 64 into
 segments of 50 rows. It runs them at several s, then the error path (a damaged packet, a packet left out, a page count
 too small: the master's NMI, its results, its exit), a file cut inside a packet, and three runs that must fail; and
-the threshold (WORKER4): `kin-big`'s data image of 1,584 words, every guest at thresholds of 1 to 1,024, frames
-ending inside packets, links slower and faster than a byte a cycle.
+the forward count (WORKER7): `kin-big`'s data image of 1,584 words, three times Ingress's queue; `divs` at s 60, whose
+log is empty after logs that are not; every guest with the timing varied (the link from 4 cycles a byte to as fast
+as taken, the Updater's memory side fast and slow); frames ending inside packets; links of 2, 4 and 8 bytes a cycle.
 
 ```
 build/clang-suite/test_master                      # all of it, 20 seconds
@@ -119,9 +120,9 @@ the Updater writes. The Updater is still the black box and writes the store dire
 
 The Updater is the black box (`src/units/updater.*`) unless asked otherwise. With the setting it is its real
 controller (`src/units/updater_ctl.h`, in the shape of hardware; `../updater_wip/planning/sessions/WORKER6-NOTES.md`),
-behind the same registers: its data comes in on the word port from the shim, which is v1.37's segment queue
-(`src/units/segment_shim.h`), so the master's firmware is unchanged; its AXI port goes to a test LPDDR and its look-up
-port to the stand-in cache, both on the file store the Tracer reads (`tests/test_lpddr.h`, `tests/standin_cache.h`:
+behind the same registers: its data comes in on the word port from Ingress's forward count, as the black box's does
+(the slot wires either the same way), so the master's firmware is the same for both; its AXI port goes to a test LPDDR
+and its look-up port to the stand-in cache, both on the file store the Tracer reads (`tests/test_lpddr.h`, `tests/standin_cache.h`:
 test pieces, for WORKER5's arbiter, LPDDR model and cache to replace). The setting is `proof::Case::updater_ctl`, or
 the environment variable `MESHSIM_UPDATER_CTL` for every run of a process (any value: on; a number above 0: the test
 pieces' timing varied with that seed).
@@ -130,7 +131,7 @@ pieces' timing varied with that seed).
 |---|---|
 | one proof on the controller | `proof_run ... --updater-ctl` (`--updater-ctl-seed SEED`: the timing varied); a check of the test pieces (a read of a page nothing wrote, an update before its page's write was answered) fails the run |
 | the guests on it | `MESHSIM_UPDATER_CTL=1 test_master` |
-| the controller alone and against the black box | `test_updater_ctl` (the step `updater-ctl`): gold's fixtures on its port, the same runs on both, random streams, varied timing, the errors; `test_updater_ctl ctl_figures_a_page` prints what a page costs by kind |
+| the controller alone and against the black box | `test_updater_ctl` (the step `updater-ctl`): gold's fixtures, the same runs on both (each fed on its word port), random streams, varied timing, the errors; `test_updater_ctl ctl_figures_a_page` prints what a page costs by kind |
 | bugs planted in the controller, each caught | `tests/updater_ctl_teeth.sh` (a rebuild a bug; ten minutes) |
 | everything on it | `MESHSIM_UPDATER_CTL=1 MESHSIM_INPUTS=... ./run_tests.sh all --check`: every step with the Updater (`master`, `proof-real`, `proof-matrix`, `proof-29`) on the controller |
 

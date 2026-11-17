@@ -1,7 +1,18 @@
 # WORKER9 notes: joining the controllers
 
-**Status (2026-11-17): the plan, for the owner's go-ahead. No code is written.** Branch `updater-w9`, from `main` at
-`1e062236`.
+**Status (2026-11-17): step 1 built (the merge, the shim out); its runner items queued.** Branch `updater-w9`, from
+`main` at `1e062236`. Step 1 is checked on the runner and handed to the integrator before step 2 starts (owner).
+
+**The go-ahead (owner, 2026-11-17, 05:26):** "Go ahead with the plan as written."
+
+1. `UpdaterTop::source` and `WordDev` go; the sink methods are the only way in.
+2. Joined is `--cache` with `--updater-ctl`; the two together unjoined go.
+3. Two proofs on the bench as described. The chip's version waits for a ruling on the firmware; the report says what
+   it would take.
+4. The xPack toolchain may be downloaded from its official release, verified against the release's published SHA-256
+   before unpacking, kept outside the repository, its hash recorded here ("The toolchain", below).
+5. **Added:** when step 1 is pushed and its runner items pass, stop and say so. The integrator merges that much into
+   `main`, so that `main` has the forward count and the new header, before the joint.
 
 Abbreviations: UI `UPDATER-INTERFACE.md`, AI `AXI-INTERFACE.md`, CI `CACHE-INTERFACE.md`, II `INGRESS-INTERFACE.md`.
 "The black box" is `src/units/updater.*`; "the controller" is `updater_ctl.h` inside `updater_top.h`. Paths without a
@@ -208,6 +219,51 @@ A commit and a push after each, `main` merged in before each, `git status` clean
 **The runner.** The Quest repository attaches to this session with the token in my preferences. I will claim
 numbers in `NUMBERS.md` as `PIPELINE.md` says and queue the items myself, unless the owner would rather the
 integrator did.
+
+## Step 1 as built
+
+- **The merge** is `updater-w7` at `4844852a` into `updater-w9`, `--no-ff`. The two conflicts were resolved as section
+  1 has it: `proof_run_main.cpp` takes WORKER7's options (`--threshold` gone) with WORKER6's two flags;
+  `proof_bench.cpp` keeps WORKER6's view and takes WORKER7's message and checks, the view reading `input_words()`.
+- **`updater_top.h`:** every `shim` line gone, and `source` with `WordDev`. `EVENTS` [2] reads 0, with the black box's
+  depth 0 and no fault flag; region part 1 is undefined, as on the black box. `port_sink()` is the controller's
+  `ready` register. **The cycle** is `step(t)` (the outputs of t taken, the events posted, the far side's edges
+  stepped, the controller's inputs kept), `port_take(t, word)` (the word added to those inputs), `settle(t)` (the
+  controller's one edge). Each checks the order and stops the simulator if it is broken: a word outside its cycle, two
+  words, a step with the last edge not taken. **`idle()`** no longer looks at the port; the slot adds it.
+- **The controller is unchanged** but for one comment, about the shim's overrun bit.
+- **`ctl_bench.h`:** `Bench<U>::cycle()` is the slot's order for either unit (the port's outputs, `step`, the move,
+  then `settle` if the unit has one). The port's `valid` comes and goes at random from `Options::valid_seed`, for the
+  black box too. The stream not yet decoded (`rest()`) reads the black box's 4 words behind the port in place of its
+  segment queue.
+- **`test_updater_ctl.cpp`:** `port(seed)` became `timing(seed)`, which varies the test LPDDR, the stand-in and the
+  port's `valid`. The comparisons against the black box vary `valid` too, now that both are on the port.
+  `ctl_error_full_queues` became `ctl_error_full_queue` (the free page queue alone). Two tests are new:
+  `ctl_port_holds_four_words` (both units take four words while idle, `ready` then 0, the reset empties them,
+  `EVENTS` [2] reads 0) and `ctl_region_part_1_is_unmapped`. 24 tests.
+- **`standin_cache.h`:** `WordFeeder` gone. **`updater_view.h`:** `input_words()` for `segment_entries()`.
+- **The documents:** `CHANGES-v1.37.md` (the shim's row replaced by the sink's), `RUNNING-v1.37.md`, the task's
+  comment.
+
+**Checked here** (gcc release, on the merged tree):
+
+| check | result |
+|---|---|
+| `test_updater_ctl` | 24 pass: gold's fixtures alone, fixed and varied; against the black box on gold's fixtures and the 90 random scenarios, the stores byte for byte; the cut halves (57); frames back to back; the errors |
+| `updater_ctl_teeth.sh`: WORKER6's 14 bugs | **14 of 14 caught** |
+| `test_ingress_link`, `test_packet_vectors`, `test_updater`, `test_master` | 43, 6, 23, 34 pass |
+| `test_master` with `MESHSIM_UPDATER_CTL` 1, 3 and 7 | 34 pass each |
+| `proof_run divs.frames`, *s* 20: off, `--updater-ctl`, `--updater-ctl-seed 9`, `--cache` | pass: 230,400, 231,424, 232,960 and 230,400 cycles |
+| `fw/build.sh --check` with the pinned toolchain | 18 images equal to `fw/images/`, 5 to `tests/core-programs/elf/` |
+| `fw_teeth.sh`: WORKER7's 20 bugs (`master:` 18, `host.h:` 2), with the pinned toolchain | **20 of 20 caught** (4 of them by the simulator's stop on an undefined case) |
+
+### The toolchain
+
+xPack `riscv-none-elf-gcc` 15.2.0-1, linux-x64, from the release's assets on GitHub
+(`xpack-dev-tools/riscv-none-elf-gcc-xpack`, tag `v15.2.0-1`), 433,494,794 bytes. Checked against the release's own
+`.sha` asset before unpacking: **SHA-256
+`aaaa8060c914851a3e5ee1ba82cc3d6f80972f90638a05c6e823a37557a33758`**, `xpack-riscv-none-elf-gcc-15.2.0-1-linux-x64.tar.gz`:
+OK. Unpacked in `~/toolchains/`, outside the repository; `riscv-none-elf-gcc --version` says 15.2.0.
 
 ## Choices
 

@@ -2,13 +2,15 @@
 // check drives both the same way (NOTES section 9). Test-side code: the STL throughout.
 //
 // `Bench<U>` is updater_bench.h's bench made generic: U is units::Updater (the black box) or units::UpdaterTop (the
-// controller, with the test LPDDR, the stand-in cache and, in port mode, the word feeder in place of the shim). It
-// writes block 2, queues free pages on the free page queue's credits, sends the stream (into the segment queue on its
-// credits, or offered on the word port), and starts each run, calling the unit as the slot does: one accept a cycle at
-// most, a store's effect at the end of its cycle, step(t) for cycle t. Pages are handed out in order from page 1, so
-// two benches given the same runs hand out the same pages.
+// controller, with the test LPDDR and the stand-in cache). It writes block 2, queues free pages on the free page
+// queue's credits, offers the stream on the unit's word port (word_port.h; `valid` always, or at random from a seed),
+// and starts each run, calling the unit as the slot does (periph_slot.h): one accept a cycle at most, a store's effect
+// at the end of its cycle; the port's outputs of t taken before step(t), the word that moved in t given after it, then
+// the unit's settle(t) if it has one (`cycle`). Both units are fed the same way (updater_wip, WORKER9: the segment
+// queue and the shim that stood in front of the controller are gone). Pages are handed out in order from page 1, so two
+// benches given the same runs hand out the same pages.
 //
-// `play` is updater_bench's play over a frame file (a copy: that file is the black box's and WORKER7 changes it).
+// `plan` is updater_bench's play over a frame file, as a list of runs.
 // `Compare` checks two benches against each other at a run's end (NOTES section 9).
 #pragma once
 
@@ -43,10 +45,9 @@ constexpr uint32_t config(bool lru, bool cont, bool tracer_copy, int depth, unsi
 }
 
 struct Options {
-    bool port = false;                             // the controller fed on its port by the feeder, no shim
     units::axi::LpddrTiming lpddr;                 // the test LPDDR's timing (jitter, seed)
     uint64_t cache_seed = 0;                       // the stand-in at random (0: 80 a line, 80 the write)
-    uint64_t feeder_seed = 0;                      // the feeder's valid at random (0: always)
+    uint64_t valid_seed = 0;                       // the port's valid at random, three cycles in four (0: always)
     bool rules = true;                             // the write rule checked (NOTES section 8)
 };
 
@@ -63,30 +64,29 @@ struct Bench {
     Options opt;
     int64_t t = 1;
     uint32_t next_page = 1;
-    unsigned allowance = 0, page_allowance = 0;
+    unsigned page_allowance = 0;
     std::vector<Word> words;                       // the stream being sent
-    size_t sent = 0;                               // shim mode: words sent into the segment queue
+    size_t sent = 0;                               // its words that have moved on the port
+    uint64_t valid_rnd = 0;                        // the random valid's state (a xorshift; 0: valid always)
+    uint64_t offered_cycles = 0;
     struct Account { uint32_t pages_asked, pages_left, cycles, stall_data, stall_pages, stall_memory, pages_read, pages_written; bool done; };
     std::vector<Account> accounts;
-    uint64_t dones = 0, page_credits = 0, segment_credits = 0;
+    uint64_t dones = 0, page_credits = 0;
     int64_t cycle_limit = int64_t(1) << 24;        // a run of the tests ends in far fewer: a hang is a failure
     // the controller's other side
     std::unique_ptr<test_pieces::TestLpddr> lpddr;
     std::unique_ptr<test_pieces::StandInCache> cache;
-    std::unique_ptr<test_pieces::WordFeeder> feeder;
     // the write rule's state: pages queued and named by no entry; roots being made; owned data pages of the image
     std::set<uint32_t> fresh, roots, owned_data;
     uint32_t cur_image = 0;
     unsigned cur_depth = 0;
 
-    explicit Bench(const Options& o = {}) : opt(o) {
+    explicit Bench(const Options& o = {}) : opt(o), valid_rnd(o.valid_seed) {
         if constexpr (CTL) {
             lpddr = std::make_unique<test_pieces::TestLpddr>(store, o.lpddr);
             cache = std::make_unique<test_pieces::StandInCache>(store, o.cache_seed);
             cache->lpddr = lpddr.get();
-            feeder = std::make_unique<test_pieces::WordFeeder>(o.feeder_seed);
             u.lpddr = lpddr.get(); u.cache = cache.get(); u.store = &store;
-            if (o.port) { u.shim_on = false; u.source = feeder.get(); u.reset(0); }
             if (o.rules) {
                 lpddr->allow_write = [this](uint32_t p, std::string& why) {
                     if (fresh.count(p) || roots.count(p) || owned_data.count(p)) return true;
@@ -104,21 +104,26 @@ struct Bench {
     }
 
     int32_t new_page() { return int32_t(next_page++ * 32u); }
-    bool port() const { return CTL && opt.port; }
-    void stream(std::vector<Word> w) {
-        words = std::move(w); sent = 0;
-        if constexpr (CTL) { feeder->words = &words; feeder->restart(); }
-    }
+    void stream(std::vector<Word> w) { words = std::move(w); sent = 0; }
     void stream(const frames::File& f, const frames::Frame& fr) {
         std::vector<Word> w(fr.length);
         for (size_t k = 0; k < fr.length; k++) w[k] = {f.lo(fr, k), f.hi(fr, k)};
         stream(std::move(w));
     }
-    size_t words_sent() const {
-        if constexpr (CTL) if (opt.port) return feeder->next;
-        return sent;
+    size_t words_sent() const { return sent; }
+    bool stream_left() const { return sent < words.size(); }
+
+    // One cycle of the unit, as the slot runs it: the port's two outputs of t, the step, the word's move at the edge.
+    void cycle() {
+        units::wordport::SourceOut src;
+        src.valid = sent < words.size();
+        if (valid_rnd) { valid_rnd ^= valid_rnd << 13; valid_rnd ^= valid_rnd >> 7; valid_rnd ^= valid_rnd << 17; src.valid = src.valid && (valid_rnd & 3) != 0; }
+        if (src.valid) { src.data[0] = words[sent][0]; src.data[1] = words[sent][1]; offered_cycles++; }
+        const bool move = units::wordport::moves(src, u.port_sink());
+        u.step(t);
+        if (move) { u.port_take(t, src); sent++; }
+        if constexpr (requires { u.settle(t); }) u.settle(t);
     }
-    bool stream_left() const { return words_sent() < words.size(); }
 
     uint32_t word(int w) { uint32_t v = 0; u.word(t, w, v); return v; }
 
@@ -143,14 +148,13 @@ struct Bench {
             else walk_owned(uint32_t(r.image), 0, depth);
         }
         const uint32_t ws[6] = {r.config, r.words, r.pages, uint32_t(r.image), uint32_t(r.tracer), uint32_t(r.source)};
-        for (int w = 0; w < 6; w++) { u.step(t); u.write_word(t, 32 + w, ws[w]); t++; }
+        for (int w = 0; w < 6; w++) { cycle(); u.write_word(t, 32 + w, ws[w]); t++; }
         uint32_t stat0[6];
         for (int k = 0; k < 6; k++) stat0[k] = word(48 + k);
-        u.step(t); u.run(t); t++;
+        cycle(); u.run(t); t++;
         uint32_t pages_to_queue = r.pages > u.free_page_entries() ? r.pages - u.free_page_entries() : 0;
-        const bool shim = !port();
         bool done = false;
-        const uint32_t mask = 1u << Updater::EV_DONE | (shim ? 1u << Updater::EV_SEGMENT_CREDIT : 0) | 1u << Updater::EV_FREE_PAGE_CREDIT;
+        const uint32_t mask = 1u << Updater::EV_DONE | 1u << Updater::EV_FREE_PAGE_CREDIT;
         for (int64_t limit = t + cycle_limit; !done && t < limit; t++) {
             const uint32_t ev = u.ev.value(t) & mask;
             if (pages_to_queue > 0 && page_allowance > 0) {
@@ -158,19 +162,15 @@ struct Bench {
                 fresh.insert(uint32_t(p));
                 u.accept(t - 3, 64, Updater::PART_FREE_PAGES << 20, int(units::lw::SIZE_128), uint32_t(p), 0);
                 pages_to_queue--; page_allowance--;
-            } else if (shim && sent < words.size() && allowance > 0) {
-                u.accept(t - 3, 64, Updater::PART_SEGMENT << 20, int(units::lw::SIZE_128), words[sent][0], words[sent][1]);
-                sent++; allowance--;
             }
-            u.step(t);
+            cycle();
             u.ev.consume_late(t, ev);
-            if (ev & 1u << Updater::EV_SEGMENT_CREDIT) { allowance += 256; segment_credits++; }
             if (ev & 1u << Updater::EV_FREE_PAGE_CREDIT) { page_allowance += 128; page_credits++; }
             if (ev & 1u << Updater::EV_DONE) { done = true; dones++; }
             if (u.errors(t) & ~Updater::ERR_QUEUE_OVERRUN) break;
         }
         // a stopped controller: let what is in flight land (it sinks every beat), for the stores to compare
-        if constexpr (CTL) for (int k = 0; k < 2000 && !u.idle(t); k++, t++) u.step(t);
+        if constexpr (CTL) for (int k = 0; k < 2000 && !u.idle(t); k++, t++) cycle();
         Account a;
         a.pages_asked = r.pages;
         a.pages_left = word(34);
@@ -191,12 +191,11 @@ struct Bench {
             const auto& q = u.ctl.q;
             bits(q.bb, q.nb);
             for (unsigned k = 0; k < q.fifo_n; k++) bits(q.fifo[(q.fifo_head + k) % units::updctl::Ctl::FIFO], 128);
-            if (u.shim_on) for (unsigned k = 0; k < u.shim.n; k++) bits(u.shim.mem[(u.shim.head + k) % units::SegmentShim::SIZE], 128);
         } else {
             bits(u.bits_, u.nbits_);
-            for (unsigned k = 0; k < u.segments_.n; k++) {
-                const unsigned at = (u.segments_.head + k) % u.segments_.size;
-                const uint64_t w[2] = {u.segments_.lo[at], u.segments_.hi[at]};
+            for (unsigned k = 0; k < u.in_n_; k++) {
+                const unsigned at = (u.in_head_ + k) % Updater::INPUT_WORDS;
+                const uint64_t w[2] = {u.in_lo_[at], u.in_hi_[at]};
                 bits(w, 128);
             }
         }

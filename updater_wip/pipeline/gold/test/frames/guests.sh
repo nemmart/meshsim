@@ -7,7 +7,7 @@
 # --seg against the segments command's file at the same cuts. Then FramesTest: the page counts two ways, the checks
 # caught on files broken from keccak256 with inputs, and the forced fall-back on the jumps guest.
 # Each frame file is also wrapped in the link's packets (WORKER2: packets), read back (packets-read) and compared byte for
-# byte: as the packetizer writes it for N 128; with 17 idle bytes between packets and numbered from 0xFFFFE for N 64;
+# byte: as the packetizer writes it for N 128; with 17 idle bytes between packets and numbered from 0x3FFFE for N 64;
 # with 1,024 idle bytes for N 256.
 #   test/frames/guests.sh     from gold's directory, after build.sh
 set -e
@@ -39,7 +39,7 @@ for g in $GUESTS jumps kin; do
     set -- $v
     out=$(java -cp $CP gold.Main frames "$d" "$i" "$W/$g.frames" --segment-rows=$R --base=$1 --compression=$2 --asics=$3 --verify) || true
     chk=$(java -cp $CP gold.Main frames-read "$W/$g.frames" --check --seg="$W/$g.seg" --brief | tail -2 | tr '\n' ' ') || true
-    case $3 in 64) pi=--idle=17; pf=--first=0xFFFFE;; 256) pi=--idle=1024; pf=--first=1;; *) pi=--idle=0; pf=--first=1;; esac
+    case $3 in 64) pi=--idle=17; pf=--first=0x3FFFE;; 256) pi=--idle=1024; pf=--first=1;; *) pi=--idle=0; pf=--first=1;; esac
     rm -f "$W/$g.packets" "$W/$g.back"
     pk=$( { java -cp $CP gold.Main packets "$W/$g.frames" "$W/$g.packets" $pi $pf > /dev/null \
       && java -cp $CP gold.Main packets-read "$W/$g.packets" "$W/$g.back" --compare="$W/$g.frames" $pf | tail -1; } 2>&1 ) || true

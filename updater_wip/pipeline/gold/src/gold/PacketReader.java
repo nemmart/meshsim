@@ -74,9 +74,9 @@ public final class PacketReader {
     } else {
       System.out.printf(Locale.ROOT, "data: %,d words on stream 2; the frames not looked at%n", p.words);
     }
-    if (p.flagged != 0 || p.acknowledged != 0 || p.foregroundWords != 0) {
-      System.out.printf(Locale.ROOT, "flags set on %,d packets, acknowledge on %,d; %,d words on stream 1, kept nowhere%n", p.flagged,
-          p.acknowledged, p.foregroundWords);
+    if (p.flagged != 0 || p.acknowledged != 0 || p.hopped != 0 || p.foregroundWords != 0) {
+      System.out.printf(Locale.ROOT, "flags set on %,d packets, acknowledge on %,d, hops on %,d; %,d words on stream 1, kept nowhere%n",
+          p.flagged, p.acknowledged, p.hopped, p.foregroundWords);
     }
     System.out.printf(Locale.ROOT, "against the frames: %,d bytes; overhead %,d bytes (%s): %,d header words, %,d idle bytes%s; the"
         + " frames' SHA-256 %s%n", frameBytes, over, frameBytes == 0 ? "no frames" : String.format(Locale.ROOT, "%.3f%%",
@@ -87,14 +87,14 @@ public final class PacketReader {
   static String numbers(PacketFile p, int stream) {
     if (p.onStream[stream] == 0) return "";
     return String.format(" (numbers %d to %d%s)", p.firstNumber[stream], p.lastNumber[stream],
-        p.wraps[stream] == 0 ? "" : ", passing 0xFFFFE " + (p.wraps[stream] == 1 ? "once" : p.wraps[stream] + " times"));
+        p.wraps[stream] == 0 ? "" : ", passing 0x3FFFE " + (p.wraps[stream] == 1 ? "once" : p.wraps[stream] + " times"));
   }
 
   static void list(PacketFile p) {
     long k = 0;
     for (PacketFile.Packet q : p.list) {
-      System.out.printf(Locale.ROOT, "packet %,d at byte %,d: stream %d, number %d, length %d, flags %d, acknowledge %d, data checksum"
-          + " 0x%08x, header CRC 0x%08x%s%n", ++k, q.at, q.stream, q.number, q.length, q.flags, q.acknowledge, q.dataChecksum,
+      System.out.printf(Locale.ROOT, "packet %,d at byte %,d: stream %d, number %d, length %d, flags %d, acknowledge %d, hops %d, data"
+          + " checksum 0x%08x, header CRC 0x%08x%s%n", ++k, q.at, q.stream, q.number, q.length, q.flags, q.acknowledge, q.hops, q.dataChecksum,
           q.headerCrc, q.frame == 0 ? "" : ", frame " + q.frame);
     }
   }

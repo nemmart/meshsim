@@ -5,10 +5,9 @@
 # PATH or named by RISCV_PREFIX) and the chip's tests (clang release, built here first) run on them (FW_IMAGES):
 # test_sort sort_16_kv32, test_memory and test_segment's generated segments. A bug is caught when a test fails or
 # stops; the table names the tests that failed. Not planted: a handshake sent early or not waited for (ARMED,
-# STREAMS_ARMED), whose race these runs' timings never provoke, so that no test can catch it; nor, in cc/master.c, the
-# count of words loaded while a transfer of Ingress's DMA is in flight (WORKER4): it counts words twice only when a flag
-# comes in the middle of a transfer that took every word the master knew of, and the master then reads words that have
-# already arrived and loads an exact count again, so no run here goes wrong (planted, it passes every test).
+# STREAMS_ARMED), whose race these runs' timings never provoke, so that no test can catch it. (WORKER4's unplanted bug in
+# cc/master.c, the count of words loaded with a transfer in flight, went with the thresholds: WORKER7.) A bug that
+# breaks one of the forward count's undefined cases is caught by the simulator's stop, "died".
 #
 # The bugs are slips in each program v1.36 carries over from v1.35 (cc/cc1.c, replay/replay_ctl.c, tracer/tracer_ctl.c,
 # crt0.S, the sort's port and schedule), in the port layer (port/mesh.h), and in the two programs new in v1.36
@@ -85,15 +84,20 @@ BUGS=(
   "master: the cycle-0 image from an empty root~cc/master.c~s/run_config(lru, 0, 0, image_depth, UPD_ROOT_COPY), data_words64/run_config(lru, 0, 0, image_depth, UPD_ROOT_EMPTY), data_words64/"
   "master: word 66 without the table's root~cc/master.c~s/uint32_t w1 = (image_depth >> 1 \& 1) | root_table << 1;/uint32_t w1 = (image_depth >> 1 \& 1);/"
   "master: the advice count one short~cc/master.c~s/write128(advice_values, table_k, table_p3, table_p1);/write128(advice_values - 1, table_k, table_p3, table_p1);/"
-  "master: record s + 1 taken for record s~cc/master.c~s/        route(RECORD_WORDS \* S, 0);/        route(RECORD_WORDS * (S + 1), 0);/"
+  "master: record s + 1 kept for record s~cc/master.c~s/        skip(RECORD_WORDS \* S);/        skip(RECORD_WORDS * (S + 1));/"
+  "master: log s - 1 kept for log s~cc/master.c~s/if (k < S) before += rows;/if (k + 1 < S) before += rows;/"
   "master: the page map's last row not written back~cc/master.c~/^        map_flush();$/d"
   "master: page 0 not marked~cc/master.c~s/map_row\[0\] = 1; map_row\[1\] = 0;/map_row[0] = 0; map_row[1] = 0;/"
   "master: the tracer tile's result unanswered~cc/master.c~s/op == OP_RESULT \&\& who <= TILE_TRACER/op == OP_RESULT \&\& who < TILE_TRACER/"
-  "master: the pump without the allowance~cc/master.c~/    if (allowance < n) n = allowance;/d"
-  "master: the threshold not lowered at a frame's tail~cc/master.c~s/if (left \&\& left < threshold) set_threshold(left);/(void)left;/"
-  "master: the threshold not set back to 1 at a frame's end~cc/master.c~/between frames: the next header word/d"
-  "master: the threshold the frame's length, not at most a credit~cc/master.c~s/set_threshold(min32(credit_threshold, length))/set_threshold(length)/"
-  "host.h: the segment queue at the free page queue's part~include/host.h~s/#define UPD_QUEUE_SEGMENT           (PERIPHERAL_BASE(2) + 0x100000)/#define UPD_QUEUE_SEGMENT           (PERIPHERAL_BASE(2) + 0x200000)/"
+  "master: an update frame's count one long~cc/master.c~s/if (frame_left) forward(frame_left);            \/\* a frame of its header/if (frame_left) forward(frame_left + 1);            \/* a frame of its header/"
+  "master: frame 9's count one short~cc/master.c~s/if (frame_left) forward(frame_left);        \/\* one count for the three runs/if (frame_left) forward(frame_left - 1);        \/* one count for the three runs/"
+  "master: an update frame dropped, not sent~cc/master.c~s/if (frame_left) forward(frame_left);            \/\* a frame of its header/if (frame_left) forward(HL_FORWARD_DISCARD | frame_left);            \/* a frame of its header/"
+  "master: the drops sent to the Updater~cc/master.c~s/    forward(HL_FORWARD_DISCARD | drop);/    forward(drop);/"
+  "master: drops in a row as two counts, the second over the first~cc/master.c~s/static void skip(uint32_t n) { drop += n; frame_left -= n; }/static void skip(uint32_t n) { drop += n; frame_left -= n; drop_now(); }/"
+  "master: a copy started without the count's 0~cc/master.c~s/        if ((host_link->DMA_FORWARD_COUNT \& HL_FORWARD_COUNT) == 0) {/        if (1) {/"
+  "master: a copy's landing not waited for~cc/master.c~/^        wait_counter(CTR_LINK);$/d"
+  "master: a run started without the last one's done~cc/master.c~/^    if (run_out) run_wait();$/d"
+  "host.h: DMA_FORWARD_COUNT's discard at bit 30~include/host.h~s/#define HL_FORWARD_DISCARD          0x80000000u/#define HL_FORWARD_DISCARD          0x40000000u/"
   "host.h: background_service at the foreground's bit~include/host.h~s/#define HL_EVENT_BACKGROUND_SERVICE (1 << 9)/#define HL_EVENT_BACKGROUND_SERVICE (1 << 8)/"
 )
 bad=0

@@ -2,7 +2,7 @@
 // below; HOST-FRAMES.md for the update words; DESIGN-NOTES-2026-11-15.md section 4 for what it does to a page). It is a
 // peripheral of the slot (units/peripheral.h's method set); the control block (17.1-17.2) is the slot's.
 //
-// A BLACK BOX. Behind UI's registers, its two queues and their credits, its events and its errors, this is software on
+// A BLACK BOX. Behind UI's registers, its data input, its free page queue and its credit, its events and its errors, this is software on
 // the file store (units/file_store.h): it is not the Updater's hardware design, and it reaches no cache and no AXI port.
 // It is written to be right and to be read. What a master tile's program sees of it is UI's, so that the program stands
 // when the real controller takes this one's place.
@@ -11,7 +11,7 @@
 // applies WORD_COUNT update words to the file in IMAGE_ROOT:
 //   1. THE ROOT (UI, "For v1.37"). With RUN_CONFIG.root 1 it first writes an empty root at IMAGE_ROOT; with 2, a copy of
 //      SOURCE_ROOT's root with the owned bits cleared, and with tracer_copy the same copy at TRACER_ROOT.
-//   2. THE DECODER pops the segment queue as it needs bits: the update words as they are (two an entry, the low one
+//   2. THE DECODER takes words from its data input as it needs bits: the update words as they are (two an entry, the low one
 //      first), or LRU-coded: bit-packed, least significant bit first, a hit 1 and a 5-bit index, a miss 0, then 0 and 32
 //      bits or 1 and 64, against 32 entries, move to front. RUN_CONFIG.continue 0 clears it at START (the table, the
 //      bits left over, the run of values it was in); 1 keeps all three, the run carrying on in the last one's frame.
@@ -26,9 +26,17 @@
 //      own one, then the image takes its own: the two trees stay in step, and the Tracer's copy ends up owning every
 //      page the run writes, with the contents it had before.
 //   6. THE PAGE IS WRITTEN when a value needs another page, or the run ends: the page, then the entry that names it.
-// A run's end touches nothing else: what is left in the queues and in the decoder stays for the next run.
+// A run's end touches nothing else: what is left in the data input, the free page queue and the decoder stays for the
+// next run.
 //
-// ERRORS (UI). queue_overrun: a push into a full queue, dropped. beyond: a word past what the depth reaches.
+// THE DATA INPUT (UI, "The data input"; word_port.h): the sink of the word port from Ingress, which the slot wires
+// (periph_slot.h, THE WORD PORT). Behind it the black box keeps INPUT_WORDS = 4 words (WORKER7's C5: the decoder takes
+// at most 66 bits a cycle, under a word, so 2 would keep it fed with ready registered; 4 is WORKER6's controller's
+// input FIFO, so the two hold the same backlog). `ready` in cycle t: fewer than 4 held at the start of t, whether a run
+// is on or not; a word that moves in t is held from the end of t, after this unit's step of t. Only the reset empties
+// it; a START does not. There are no credits and no event: EVENTS [2], which was segment_credit, reads 0.
+//
+// ERRORS (UI). queue_overrun: a push into a full free page queue, dropped. beyond: a word past what the depth reaches.
 // out_of_pages: a page needed with PAGE_COUNT at 0. lpddr_error: here, a root or a free page that is not a page's
 // address in LPDDR (the black box has no other LPDDR error). not_owned is never set: the black box makes each level the
 // file's own before it writes below it. beyond, out_of_pages and lpddr_error stop the run: STATUS.busy stays 1 and
@@ -41,7 +49,7 @@
 // or written and confirmed, 80 + 256; half a page 80 + 128; an entry's update 80. A page is read as UI's table says, by
 // halves: a half that the run of values covers whole, or that is a hole, is not read; a page copied for the Tracer is
 // read whole. The statistics count these: STAT_PAGES_READ and STAT_PAGES_WRITTEN pages and half pages, STAT_STALL_DATA
-// and STAT_STALL_PAGES the cycles spent waiting on an empty segment queue and free page queue, STAT_STALL_MEMORY the
+// and STAT_STALL_PAGES the cycles spent waiting on an empty data input and free page queue, STAT_STALL_MEMORY the
 // cycles of the costs above. No cycle count of a run on this black box is a figure of the design.
 //
 // THE PAGE MEMORY'S CONTENTS are always the page's true contents here (the file store's, or zeros for a hole): what is
@@ -60,6 +68,7 @@
 #include "units/event_counts.h"
 #include "units/file_store.h"
 #include "units/peripheral.h"
+#include "units/word_port.h"
 
 namespace units {
 
@@ -71,14 +80,14 @@ struct Updater : PeripheralBase<Updater> {
     // RUN_CONFIG's fields
     enum : uint32_t { RC_LRU = 1u << 0, RC_CONTINUE = 1u << 1, RC_TRACER_COPY = 1u << 2, RC_DEPTH_LO = 3, RC_ROOT_LO = 5, RC_BITS = 0x7F };
     enum : unsigned { ROOT_EXISTS = 0, ROOT_EMPTY = 1, ROOT_COPY = 2 };
-    enum : unsigned { EV_DONE = 0, EV_DMA_DONE = 1, EV_SEGMENT_CREDIT = 2, EV_FREE_PAGE_CREDIT = 3, EV_BITS = 4 };
+    enum : unsigned { EV_DONE = 0, EV_DMA_DONE = 1, EV_UNUSED = 2, EV_FREE_PAGE_CREDIT = 3, EV_BITS = 4 };   // [2]: segment_credit until WORKER7
     enum : int { ERR_QUEUE_OVERRUN = 1 << 0, ERR_BEYOND = 1 << 1, ERR_LPDDR = 1 << 2, ERR_OUT_OF_PAGES = 1 << 3, ERR_NOT_OWNED = 1 << 4 };
-    // the region's parts (offset bits [22:20])
-    enum : unsigned { PART_SEGMENT = 1, PART_FREE_PAGES = 2 };
-    // a queue's entries, and its credit: half a queue (UI, "The region"): the segment queue 512 and 256, 8 KB (owner,
-    // 2026-11-16; v1.37 as WORKER3 merged it had 256 and 128); the free page queue 256 and 128
-    static constexpr unsigned SEGMENT_QUEUE = 512, SEGMENT_HALF = 256, FREE_PAGE_QUEUE = 256, FREE_PAGE_HALF = 128;
-    static constexpr unsigned QUEUE_MAX = SEGMENT_QUEUE;
+    // the region's parts (offset bits [22:20]): part 2 alone (part 1 was the segment queue's, until WORKER7)
+    enum : unsigned { PART_FREE_PAGES = 2 };
+    // the free page queue's entries, and its credit: half the queue (UI, "The region")
+    static constexpr unsigned FREE_PAGE_QUEUE = 256, FREE_PAGE_HALF = 128;
+    static constexpr unsigned QUEUE_MAX = FREE_PAGE_QUEUE;
+    static constexpr unsigned INPUT_WORDS = 4;            // the words behind the data input (header, THE DATA INPUT)
     static constexpr unsigned LRU_ENTRIES = 32;
     static constexpr int PAGE_WORDS = tracer::FileStore::PAGE_WORDS;
     static constexpr int DIGEST_N = 3;
@@ -108,7 +117,9 @@ struct Updater : PeripheralBase<Updater> {
     bool busy_ = false, stopped_ = false;      // stopped: an error ended the work; busy stays 1
     uint32_t run_config_ = 0, word_count_ = 0, page_count_ = 0, image_root_ = 0, tracer_root_ = 0, source_root_ = 0;
     uint32_t stat_[6] = {};                    // words 48-53
-    Queue segments_{SEGMENT_QUEUE, SEGMENT_HALF}, free_pages_{FREE_PAGE_QUEUE, FREE_PAGE_HALF};
+    Queue free_pages_{FREE_PAGE_QUEUE, FREE_PAGE_HALF};
+    uint64_t in_lo_[INPUT_WORDS] = {}, in_hi_[INPUT_WORDS] = {};   // the data input's words, from in_head_ on
+    unsigned in_head_ = 0, in_n_ = 0;
     // the run as START took it
     bool lru_ = false, tracer_copy_ = false;
     int depth_ = 0;
@@ -132,7 +143,7 @@ struct Updater : PeripheralBase<Updater> {
     uint64_t held_mem_[PAGE_WORDS] = {};
     int64_t wait_ = 0;                         // cycles of a cost still to pass
     // ---- statistics of the model (not state)
-    uint64_t runs = 0, words_applied = 0, pages_taken = 0, unwritten_reads = 0;
+    uint64_t runs = 0, words_applied = 0, pages_taken = 0, unwritten_reads = 0, words_in = 0;
 
     Updater();
 
@@ -157,8 +168,12 @@ struct Updater : PeripheralBase<Updater> {
     void digest_words(int64_t* out) const;
     void reset(int64_t t);
 
-    // ---- for a harness: the queues' room, as the credits promise it
-    unsigned segment_entries() const { return segments_.n; }
+    // ---- the data input: the word port's sink (header, THE DATA INPUT)
+    wordport::SinkOut port_sink() const { wordport::SinkOut o; o.ready = in_n_ < INPUT_WORDS; return o; }
+    void port_take(int64_t t, const wordport::SourceOut& w);
+
+    // ---- for a harness
+    unsigned input_words() const { return in_n_; }
     unsigned free_page_entries() const { return free_pages_.n; }
 
 private:

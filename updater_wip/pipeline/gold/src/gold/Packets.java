@@ -17,20 +17,21 @@ import java.util.zip.CRC32C;
  *   a packet   a header word of 128 bits, then 0 to 32 words of data; every word least significant byte first
  *   byte 0     stream [3:0] (1 foreground, 2 background), flags [7:4]
  *   byte 1     length, the data's 128-bit words
- *   bytes 2-4  packet number [35:16], 20 bits: 1 to 0xFFFFE on its stream, then 1 again
- *   bytes 4-6  acknowledge [55:36], 20 bits
+ *   bytes 2-4  packet number [33:16], 18 bits: 1 to 0x3FFFE on its stream, then 1 again (owner, 2026-11-17; 20 bits before)
+ *   bytes 4-6  acknowledge [51:34], 18 bits
+ *   byte 6     hops [55:52] in its high four bits: the ASICs that forwarded the packet; whoever makes one writes 0
  *   byte 7     reserved, 0
  *   bytes 8-11 data checksum: CRC-32C of the data's bytes in link order
  *   bytes 12-15 header CRC: CRC-32C of bytes 0 to 11
  * </pre>
  *
  * The packetizer's file: every packet on stream 2; each frame starts a new packet; a frame's packets hold 32 words
- * but its last, which holds what remains; numbers from 1; acknowledge, flags and reserved 0; no idle bytes.
+ * but its last, which holds what remains; numbers from 1; acknowledge, hops, flags and reserved 0; no idle bytes.
  */
 public final class Packets {
   public static final int FOREGROUND = 1, BACKGROUND = 2;
   public static final int MAX_WORDS = 32;
-  public static final int FIRST_NUMBER = 1, LAST_NUMBER = 0xFFFFE;
+  public static final int FIRST_NUMBER = 1, LAST_NUMBER = 0x3FFFE;
 
   private Packets() {}
 
@@ -41,12 +42,12 @@ public final class Packets {
     return (int) c.getValue();
   }
 
-  /** The number after this one on a stream: after 0xFFFFE comes 1. */
+  /** The number after this one on a stream: after 0x3FFFE comes 1. */
   public static int next(int number) { return number == LAST_NUMBER ? FIRST_NUMBER : number + 1; }
 
   /** One packet with every field free, for the tests and the vectors: a wrong field can be given right checks. */
   public static final class Packet {
-    public int stream = BACKGROUND, flags, number = FIRST_NUMBER, acknowledge, reserved;
+    public int stream = BACKGROUND, flags, number = FIRST_NUMBER, acknowledge, hops, reserved;
     public byte[] data = new byte[0];
     /** The length field; -1: the data's words. */
     public int length = -1;
@@ -64,9 +65,9 @@ public final class Packets {
       h[1] = (byte) lengthField();
       h[2] = (byte) number;
       h[3] = (byte) (number >>> 8);
-      h[4] = (byte) (((number >>> 16) & 15) | (acknowledge & 15) << 4);
-      h[5] = (byte) (acknowledge >>> 4);
-      h[6] = (byte) (acknowledge >>> 12);
+      h[4] = (byte) (((number >>> 16) & 3) | (acknowledge & 63) << 2);   // number [33:32], acknowledge [39:34]
+      h[5] = (byte) (acknowledge >>> 6);                                 // acknowledge [47:40]
+      h[6] = (byte) (((acknowledge >>> 14) & 15) | (hops & 15) << 4);     // acknowledge [51:48], hops [55:52]
       h[7] = (byte) reserved;
       le32(h, 8, dataChecksumField());
       return h;
@@ -102,7 +103,7 @@ public final class Packets {
     /** The number the stream's next data packet takes. */
     public Writer first(int stream, int number) {
       if (number < FIRST_NUMBER || number > LAST_NUMBER) {
-        throw new IllegalArgumentException("a packet number is 1 to 0xFFFFE, not " + number);
+        throw new IllegalArgumentException("a packet number is 1 to 0x3FFFE, not " + number);
       }
       next[stream] = number;
       return this;

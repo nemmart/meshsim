@@ -1,7 +1,8 @@
 // updater_view.h: the whole chip with the Updater's controller (updater_wip, WORKER6). `install_ctl` puts the controller
-// (units/updater_top.h) in the black box's place on a machine built with the host link, with the shim, the test LPDDR
-// and the stand-in cache on the file store the Tracer reads; `UpdaterView` is what the proof bench reads of whichever is
-// installed. Test-side code.
+// (units/updater_top.h) in the black box's place on a machine built with the host link, with the test LPDDR and the
+// stand-in cache on the file store the Tracer reads; the slot wires Ingress's forwarder to its word port as it does to
+// the black box's (WORKER7, WORKER9). `UpdaterView` is what the proof bench reads of whichever is installed. Test-side
+// code.
 //
 // THE SETTING: proof::Case::updater_ctl, off by default; or, for every case of a run, the environment variable
 // MESHSIM_UPDATER_CTL (unset or empty: off; any other value: on; a number above 0: the seed of the varied timing, the test LPDDR's jitter and the
@@ -83,7 +84,7 @@ struct UpdaterView {
     int errors(int64_t t) const { return bb ? bb->errors(t) : top->errors(t); }
     // reads of a page nothing wrote, and for the controller every check of its test pieces
     uint64_t unwritten_reads() const { return bb ? bb->unwritten_reads : top->violation_count(); }
-    unsigned segment_entries() const { return bb ? bb->segment_entries() : top->segment_entries(); }
+    unsigned input_words() const { return bb ? bb->input_words() : top->input_words(); }   // the words held behind the data input
     unsigned free_page_entries() const { return bb ? bb->free_page_entries() : top->free_page_entries(); }
     // a slow memory side: the black box's cycles for a look-up; the stand-in's for each line it reads
     void set_lookup(int cycles) {

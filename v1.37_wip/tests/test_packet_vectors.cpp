@@ -38,6 +38,7 @@ struct PacketVector {
     uint32_t next_number = 1, next_after = 0;
     unsigned stream = 0, flags = 0, length = 0, reserved = 0;
     uint32_t number = 0, acknowledge = 0;
+    unsigned hops = 0;
     std::vector<uint8_t> bytes, data;
 };
 struct FileVector {
@@ -117,6 +118,7 @@ const Vectors& vectors() {
             else if (key == "length") p->length = number;
             else if (key == "number") p->number = number;
             else if (key == "acknowledge") p->acknowledge = number;
+            else if (key == "hops") p->hops = number;
             else if (key == "reserved") p->reserved = number;
             else if (key == "data") { const auto b = hex(a); p->data.insert(p->data.end(), b.begin(), b.end()); }
             else if (key == "bytes") { const auto b = hex(a); p->bytes.insert(p->bytes.end(), b.begin(), b.end()); }
@@ -200,12 +202,41 @@ TEST(vectors_packets_by_the_reader) {
         good++;
         CHECK_EQ(taken, p.bytes.size());
         CHECK_EQ(got.stream, p.stream); CHECK_EQ(got.flags, p.flags); CHECK_EQ(got.length, p.length);
-        CHECK_EQ(got.number, p.number); CHECK_EQ(got.acknowledge, p.acknowledge);
+        CHECK_EQ(got.number, p.number); CHECK_EQ(got.acknowledge, p.acknowledge); CHECK_EQ(got.hops, p.hops);
         CHECK_EQ(p.data.size(), size_t(16) * p.length);
         for (unsigned w = 0; w < p.length; w++) { CHECK_EQ(got.lo[w], half(p.data, 16 * w)); CHECK_EQ(got.hi[w], half(p.data, 16 * w + 8)); }
         CHECK_EQ(r.expect[p.stream - 1], p.next_after);
     }
     CHECK(good >= 12);
+}
+
+// HL's three example headers ("The two checks"; owner, 2026-11-17), copied from the document: gold's vectors of them
+// hold exactly those bytes, and the reader takes each (the black box does too: the test below plays every vector).
+TEST(vectors_host_links_examples) {
+    const Vectors& v = vectors();
+    if (!v.present) return;
+    const struct { const char* name; uint8_t header[16]; uint32_t number, acknowledge; unsigned hops; } ex[] = {
+        {"host-link-example", {0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0xEA, 0x9A, 0x70, 0x42, 0xA0, 0x8C, 0x06, 0xE1}, 1, 0, 0},
+        {"host-link-example-one-hop", {0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x10, 0x00, 0xEA, 0x9A, 0x70, 0x42, 0x9E, 0xBC, 0x0A, 0x21}, 1, 0, 1},
+        {"host-link-example-hops-3", {0x02, 0x01, 0xCD, 0xAB, 0x56, 0x55, 0x35, 0x00, 0xEA, 0x9A, 0x70, 0x42, 0xC9, 0xC4, 0x23, 0x30}, 0x2ABCD, 0x15555, 3},
+    };
+    for (const auto& e : ex) {
+        const PacketVector* found = nullptr;
+        for (const PacketVector& p : v.packets) if (p.name == e.name) found = &p;
+        CHECK(found != nullptr);
+        if (!found) continue;
+        CHECK(found->bytes.size() == 32 && std::equal(e.header, e.header + 16, found->bytes.begin()));
+        CHECK(found->expect == "ok");
+        hostlink::Reader r;
+        r.open(found->bytes.data(), found->bytes.size());
+        r.expect[1] = e.number;
+        hostlink::Packet got;
+        hostlink::Check check;
+        size_t taken;
+        CHECK(r.next(got, check, taken) == hostlink::Reader::Next::PACKET);
+        CHECK(check == hostlink::Check::OK);
+        CHECK_EQ(got.number, e.number); CHECK_EQ(got.acknowledge, e.acknowledge); CHECK_EQ(got.hops, e.hops);
+    }
 }
 
 TEST(vectors_packets_through_the_black_box) {

@@ -1,7 +1,9 @@
 // ingress_bench.h: the master tile's slot with Ingress's host link, driven directly (v1.37; tests/test_ingress_link.cpp
 // and tests/test_packet_vectors.cpp): SlotCore with Ingress/Egress and its host link as peripheral 1, a load, a store
 // and a consuming load of EVENTS at cycle t as the slot's own calls, then the slot's cycle t (as test_tracer_slot's
-// reference run drives a slot). The DMA's packets are kept as they leave it.
+// reference run drives a slot). The DMA's packets are kept as they leave it. The word port's sink is the bench's own
+// (SlotCore::ext_sink): its ready always 1, always 0, or at random from a seed (a register of its own, a xorshift
+// stepped every cycle), and every word it takes kept with its cycle.
 #pragma once
 
 #include <cstdint>
@@ -21,17 +23,22 @@ using namespace units;
 constexpr uint32_t ST_FOREGROUND_READY = 1u << 3, ST_BACKGROUND_READY = 1u << 4;
 constexpr uint32_t EVENT_DMA_DONE = 1u << 1, EVENT_FOREGROUND_SERVICE = 1u << 8, EVENT_BACKGROUND_SERVICE = 1u << 9;
 constexpr uint32_t ERR_CRC = 1u << 1, ERR_SEQUENCE = 1u << 2, ERR_FORMAT = 1u << 3;
-constexpr unsigned W_FOREGROUND_WORDS = 80, W_BACKGROUND_WORDS = 81;
-constexpr unsigned W_FOREGROUND_THRESHOLD = 82, W_BACKGROUND_THRESHOLD = 83;
+constexpr unsigned W_FOREGROUND_WORDS = 80, W_BACKGROUND_WORDS = 81, W_DMA_FORWARD_COUNT = 82;
+constexpr uint32_t DISCARD = 1u << 31;                        // DMA_FORWARD_COUNT [31]
 constexpr uint32_t EVENT_IDLE = 1u << 5 | 1u << 7;            // 17.6: uart_tx and stream_out read 1 while it is idle
 
 struct Landed { int64_t t; uint64_t lo, hi; uint32_t addr; unsigned dst, counter, mode, size; };
+struct Ported { int64_t t; uint64_t lo, hi; };                 // a word the sink took, at the end of cycle t
 
 struct Bench {
     SlotCore s;
     std::vector<uint8_t> file;
     std::vector<Landed> out;
+    std::vector<Ported> ported;
     int64_t t = 1;
+    enum Ready { ALWAYS, NEVER, RANDOM } ready = ALWAYS;
+    uint64_t rng = 0x2545F4914F6CDD1Dull;                     // the sink's register, for RANDOM
+    int64_t rng_at = 0;                                       // the cycle it was last stepped for
     explicit Bench(std::vector<uint8_t> bytes, int64_t cycles_per_byte = 0) : file(std::move(bytes)) {
         s.tile = lw::CC1;
         PeriphSlotConfig c;
@@ -39,6 +46,21 @@ struct Bench {
         s.install(1, PT_INGRESS, c);
         ie().link_cycles_per_byte = cycles_per_byte;
         ie().set_link(file.data(), file.size());
+        s.ext_sink.ctx = this;
+        s.ext_sink.out = [](void* x, int64_t at) {
+            Bench& b = *static_cast<Bench*>(x);
+            units::wordport::SinkOut o;
+            o.ready = b.ready == ALWAYS || (b.ready == RANDOM && (b.random_at(at) & 3) != 0);
+            return o;
+        };
+        s.ext_sink.take = [](void* x, int64_t at, const units::wordport::SourceOut& w) {
+            static_cast<Bench*>(x)->ported.push_back({at, w.data[0], w.data[1]});
+        };
+    }
+    // The sink's random register as it stands in cycle `at` (stepped once a cycle; a function of the cycle alone).
+    uint64_t random_at(int64_t at) {
+        while (rng_at < at) { rng ^= rng << 13; rng ^= rng >> 7; rng ^= rng << 17; rng_at++; }
+        return rng;
     }
     IngressEgress& ie() { return s.ingress_egress(1); }
     void tick() {

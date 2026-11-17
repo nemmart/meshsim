@@ -21,6 +21,9 @@ running.
 | D | **where the Updater sits** | not in the RTL | **the master tile's peripheral,** beside Ingress/Egress (owner, 2026-11-16). Either it sits by the master tile, and its AXI port to the arbiter and its narrow look-up port to the cache reach across to the memory side; or it sits by the arbiter and the cache, and its control port and its feed from Ingress reach across instead | which is cheaper is a floorplan question. Latency on either does not matter: the Updater works in big bursts. The tracer tile and the cache are what should be near the memory controller |
 | E | **`fill` has no status for an LPDDR error on a read** | `read_response.status` is 2 bits, and all four values are used | the cache answers such a read `beyond`, so the Tracer sets `ERRORS.page_missing` and stops, and the cache's own error flag says why (`CACHE-INTERFACE.md`, section 5) | nothing to change. A third bit of status would say it directly, if the Tracer is ever opened for another reason |
 
+A and B are specified in `AXI-INTERFACE.md`: section 3 (the arbiter: turns of one piece of 32 beats) and section 4
+(the controller's port: a 2-bit ID, one ID a client). Both are built in v1.37's simulator (WORKER5).
+
 ## For consideration, not requests
 
 - **The Tracer's jump cache, from 64 entries to 128** (17.9.4). To look at again as more of the design is done

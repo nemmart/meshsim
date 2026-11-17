@@ -777,3 +777,28 @@ WORKER8 built one link from `HOST-LINK.md` and searched it exhaustively at small
 - **An Updater error is not recovered from** (owner): a peripheral's error is its tile's error, which kills
   everything. The host resets the chip; the boot firmware drops what is left in the queues with the discard
   count, says it is ready, and the proof starts over.
+
+## 25. The header grows to 20 bytes and speaks for both streams (2026-11-17, about 7:30 a.m.)
+
+- **The owner saw the starvation at once** ("if one stream is banging away, the other stream can get stuck") and
+  asked what it costs: on a direction that one stream fills, the other's status as packets of its own would be
+  about 3% on top of the headers' 3%.
+- **The ways weighed:**
+  - one status packet for both streams, using the fields a packet of length 0 does not need: it fits, and does
+    nothing for the busy case;
+  - a longer repeat interval: safe up to about 2,048 cycles with a window of 8 and queues of 16 KB;
+  - both streams' status in every header of 16 bytes: only with the numbers cut to 10 or 11 bits. Enough for a
+    window of 8, since a wire cannot reorder packets (PCI Express uses 12);
+  - the numbers kept at 18 bits by moving the data checksum to the end of the data;
+  - **the owner's: a header of 20 bytes.** "It's header info that gets stripped anyway."
+- **Decided (owner): 20 bytes.** Four 18-bit fields, the foreground's number and acknowledgement and the
+  background's, in the same place in every header; stop and resend for each stream; lost, recovery and restart
+  for the link; hops; the data checksum; the header CRC over the 16 bytes before it. `HOST-LINK.md`, "A packet",
+  with four example headers.
+  - It sets aside the rule that everything rides in 128 bits: the header is not a word. The data still is.
+  - 3.8% of a link, flat, where the worst case was heading for 6%.
+  - One status timer a direction is enough again, as the owner first ruled, and "lost" and recovery need one
+    packet, not one for each stream.
+- **WORKER8 takes the new header as its baseline** before its random campaign and the chain, and searches it.
+- **What is built has the 16-byte header:** gold, the vectors, v1.37 (and `updater-w7` its 18-bit form). The change
+  is step 2c of the milestone, after WORKER8 confirms it.

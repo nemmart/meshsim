@@ -118,7 +118,7 @@ the Updater writes. The Updater is still the black box and writes the store dire
 ## On the Updater's controller
 
 The Updater is the black box (`src/units/updater.*`) unless asked otherwise. With the setting it is its real
-controller (`src/units/updater_ctl.h`, in the shape of hardware; `../updater_wip/planning/sessions/WORKER6/NOTES.md`),
+controller (`src/units/updater_ctl.h`, in the shape of hardware; `../updater_wip/planning/sessions/WORKER6-NOTES.md`),
 behind the same registers: its data comes in on the word port from the shim, which is v1.37's segment queue
 (`src/units/segment_shim.h`), so the master's firmware is unchanged; its AXI port goes to a test LPDDR and its look-up
 port to the stand-in cache, both on the file store the Tracer reads (`tests/test_lpddr.h`, `tests/standin_cache.h`:

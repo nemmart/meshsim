@@ -716,3 +716,24 @@ The owner set the next milestone; the plan is `updater_wip/planning/MILESTONE-v1
   window alone rose to 21% (Quest 215), only because the same work was divided by less time.
 - Quests 213 to 216 pass: WORKER7's forward count on the 37 proof runs, `make check` and the faster links; and
   WORKER6's controller in the chip on the 37 proof runs.
+
+## 23. The link's proposed items ruled on; a simulation of the protocol; the merges (2026-11-17, about 5 a.m.)
+
+- **The owner went through `HOST-LINK.md`'s eight proposed items** and ruled on each; the document has them:
+  numbers for each link and stream; hops 4 bits, 16 the absolute maximum; CRC-32C; a packet with a field that
+  cannot be is thrown away like one that failed a check; the recovery answer repeated until acknowledged; the
+  stop or start status sent at once on a change and again whenever 512 cycles pass since the last packet sent
+  (the owner's rule, in place of a heartbeat with zeros); stop at half a queue; 8 packets kept a stream.
+  - **Still to review:** Ingress/Egress's proposed items, 11 when grouped, starting with the register and bit
+    numbers; then the Updater's.
+- **A robust simulation of the protocol before any hardware** (owner): WORKER8, in `updater_wip/link/`, with no
+  chip. Randomness drives every condition (owner): each wire's noise, each consumer's stalls (up to 1 ms), each
+  sender's traffic, with each run's parameters drawn at random too; rare events counted; an exhaustive search of
+  a shrunken model beside it; every gap in the document reported with a rule proposed. Its link end becomes the
+  black box's link part.
+- **Quests 213 to 221 all pass.** `updater-w6` is merged and WORKER6 closed.
+- **`updater-w7` is checked and not merged.** It takes the segment queue out of the black box, and WORKER6's
+  bench and view feed the black box through that queue, so the two cannot both be on `main` and working without
+  the shim coming out. That is the joining step's first piece (`MILESTONE-v1.37.md`, step 3).
+- **A spec session** was asked about by the owner, to fold the agreed design into v1.37's specification. Its
+  scope and brief are not written yet; the review of proposed items came first.

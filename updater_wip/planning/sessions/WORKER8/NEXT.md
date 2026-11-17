@@ -8,6 +8,18 @@ now has all of it and is meant to be complete: read it in full before anything e
 **The job:** make the changes below in `updater_wip/link/`, then test the protocol as it now stands, as hard as you
 tested the first. No plan to propose first: go straight to it. Use the runner as you need.
 
+## When to stop (owner)
+
+**Stop as soon as you are sure the protocol as it now stands is not sound, and you have identified a cause.**
+
+- "Not sound" is a property that fails because of the rules, not because of a mistake in your code: a link that
+  stops for good, a word lost, doubled or out of order with no error raised, a queue overrun, a stream that
+  stands still behind the other.
+- **Then do not mend it and do not carry on testing.** Keep the shortest case that shows it, say in a few lines
+  what fails and why, and what you would change, and report to the owner. The rule is the owner's to choose.
+- A mistake of your own is not a reason to stop: fix it and go on.
+- If nothing fails, carry on to the end of this brief.
+
 ## First: the two seeds that failed
 
 Quest 227's first attempt finished and **failed on 2 seeds of 3,777:** 200137 (4 nodes) and 140162 (1 node), each

@@ -246,9 +246,11 @@ The data passes through unchanged.
 **What the chain needed besides** (WORKER8; searched on chains of 1, 2 and 3, run at random on up to 16):
 
 - **A node acknowledges a packet when it has taken it in:** into its own queue and into its forwarding buffer,
-  not when it has passed it on.
-- **A node must be told whether it has a neighbour down the chain.** The last has none. † By a pin: it is a fact
-  about the board, and it must be known before any firmware runs.
+  not when it has passed it on. The owner: "it's the problem of ASIC0 to send it. The driver's job is done as soon
+  as ASIC0 has received it successfully."
+
+- **A node must be told whether it has a neighbour down the chain.** The last has none. **By a pin** (owner,
+  2026-11-17): it is a fact about the board, and it must be known before any firmware runs.
   - The restart handshake cannot tell. A lower link that comes up late, because of noise, would look like no
     link, and the node would take the host's packets without passing them on. Told that it has a neighbour, a
     node holds what it must forward until that link is up.
@@ -630,7 +632,6 @@ The owner's remark: there must be a mountain of literature on building these. Th
   ready, so a foreground that never pauses holds the background for as long. That is the order as decided, and
   not a flaw of the protocol; it is a thing to know.
 - **The numbers marked †:** 2,048 cycles before asking again; the second wrong packet running before the error;
-  528 zeros before hunting for a header; the host's window of 8; the forwarding buffers' 16 KB; a pin for the last
-  node.
+  528 zeros before hunting for a header; the host's window of 8; the forwarding buffers' 16 KB.
 - **What the error is called and where it is seen:** a link that started again raises an error to the core. Its
   bit in Ingress/Egress's `ERRORS` is not yet named (`INGRESS-INTERFACE.md`).

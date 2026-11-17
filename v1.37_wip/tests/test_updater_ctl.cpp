@@ -569,3 +569,100 @@ TEST(ctl_error_full_queues) {
     CHECK_EQ(c.u.errors(c.t), int(Updater::ERR_QUEUE_OVERRUN));
     CHECK_EQ(c.u.segment_entries(), 512u);
 }
+
+// Frames back to back in one stream, as Ingress's forward count may offer the next frame while the decoder still holds
+// the last one's tail (the next count written when the frame's header arrives): each frame a new file (root 1,
+// continue 0), raw or LRU, its last codes often short hits. The decoder must take no word it does not need, or the
+// next frame's first word is lost when continue 0 clears it. On the port (the feeder offering every frame from the
+// start) and against the black box (the same stream behind the shim), with the model.
+TEST(ctl_frames_back_to_back) {
+    for (uint64_t seed = 1; seed <= 40; seed++) {
+        test::Rng rng(seed * 977);
+        std::vector<Word> stream;
+        std::vector<Model> files;
+        std::vector<Run> runs;
+        for (int f = 0; f < 4; f++) {
+            std::vector<uint64_t> u;
+            const uint64_t page = rng.below(1000);
+            const unsigned n = 1 + unsigned(rng.below(40));
+            u.push_back((page << 9) | uint64_t(n) << 32);
+            for (unsigned k = 0; k < n; k++) u.push_back(rng.below(4) ? 7 : rng.next());   // mostly one value: LRU hits of 6 bits
+            Model m; m.apply(u); files.push_back(m);
+            const bool lru = (seed + f) % 3 != 0;
+            const auto w = encode(u, lru);
+            stream.insert(stream.end(), w.begin(), w.end());
+            runs.push_back({ctl_bench::config(lru, false, false, 1, 1), uint32_t(u.size()), 4, int32_t(0x80000 * 32 + 32 * f), 0, 0});
+        }
+        Bench<UpdaterTop> b(port(seed % 2 ? seed : 0));
+        Bench<Updater> a;
+        Bench<UpdaterTop> c;
+        b.stream(stream); a.stream(stream); c.stream(stream);
+        for (size_t f = 0; f < runs.size(); f++) {
+            const bool okb = b.run(runs[f]), oka = a.run(runs[f]), okc = c.run(runs[f]);
+            const std::string d = ctl_bench::compare(a, c);
+            if (!okb || !oka || !okc || !d.empty()) {
+                ::test::fail(__FILE__, __LINE__, "seed %llu, frame %zu: ended %d %d %d;%s", (unsigned long long)seed, f, okb, oka, okc, d.c_str());
+                break;
+            }
+            const auto want = files[f].image();
+            CHECK(updater_bench::image(b.store, runs[f].image, 1) == want);
+            CHECK(updater_bench::image(a.store, runs[f].image, 1) == want);
+        }
+        CHECK(b.violations().empty());
+    }
+}
+
+// ================================================================================================ the figures
+// What a page costs, by kind, on a depth-2 file with the timing fixed (the test LPDDR's 70 and 70, the stand-in's 80 a
+// line and 80 a write): each case one run of the Updater holding one run of values, the data and the free pages already
+// there, on the controller (port mode) and on the black box. Prints the table; checks that each run ends, and the
+// controller's test pieces' checks.
+namespace {
+struct PageFigure { uint32_t cycles = 0, stall_data = 0, stall_pages = 0, stall_memory = 0, reads = 0, writes = 0; uint64_t lookups = 0, updates = 0; };
+template <class U>
+PageFigure page_figure(Bench<U>& x, const std::vector<uint64_t>& base, const std::vector<uint64_t>& u, unsigned root, bool tracer, uint32_t image) {
+    const uint32_t F0 = 0x80000 * 32, T2 = F0 + 96;
+    x.stream(encode(base, false));
+    if (!x.run({ctl_bench::config(false, false, false, 2, 1), uint32_t(base.size()), 20, int32_t(F0), 0, 0})) ::test::fail(__FILE__, __LINE__, "the build did not end");
+    for (int k = 0; k < 300; k++) { x.u.step(x.t); x.t++; }
+    x.stream(encode(u, false));
+    for (int k = 0; k < 20; k++) { x.u.step(x.t); x.t++; }
+    uint64_t l0 = 0, u0 = 0;
+    if constexpr (std::is_same_v<U, UpdaterTop>) { l0 = x.u.ctl.lookups; u0 = x.u.ctl.updates; }
+    if (!x.run({ctl_bench::config(false, false, tracer, 2, root), uint32_t(u.size()), 20, int32_t(image), int32_t(tracer ? T2 : 0), int32_t(F0)}))
+        ::test::fail(__FILE__, __LINE__, "the run did not end");
+    const auto& a = x.accounts.back();
+    PageFigure f;
+    f.cycles = a.cycles; f.stall_data = a.stall_data; f.stall_pages = a.stall_pages; f.stall_memory = a.stall_memory; f.reads = a.pages_read; f.writes = a.pages_written;
+    if constexpr (std::is_same_v<U, UpdaterTop>) { f.lookups = x.u.ctl.lookups - l0; f.updates = x.u.ctl.updates - u0; }
+    return f;
+}
+}  // namespace
+TEST(ctl_figures_a_page) {
+    const uint32_t F0 = 0x80000 * 32, F1 = F0 + 32, F2 = F0 + 64;
+    std::vector<uint64_t> base;                    // F0: pages 0 to 3, written whole
+    for (uint64_t p = 0; p < 4; p++) { base.push_back((p << 9) | uint64_t(512) << 32); for (int k = 0; k < 512; k++) base.push_back(p * 7 + uint64_t(k) + 1); }
+    auto run_of = [](uint64_t start, uint64_t n) { std::vector<uint64_t> u{start | n << 32}; for (uint64_t k = 0; k < n; k++) u.push_back(0x5000 + k); return u; };
+    struct Case { const char* name; std::vector<uint64_t> u; unsigned root; bool tracer; uint32_t image; };
+    const Case cases[] = {
+        {"owned: 1 value (a half read, written in place)", run_of(1 * 512 + 3, 1), 0, false, F0},
+        {"owned: a whole page (nothing read)", run_of(2 * 512, 512), 0, false, F0},
+        {"new, its index page owned: a whole page", run_of(9 * 512, 512), 0, false, F0},
+        {"new, its index page owned: 1 value (a half filled)", run_of(10 * 512 + 5, 1), 0, false, F0},
+        {"new, a hole at level 0: 1 value (a new index page too)", run_of(2048 * 512 + 5, 1), 0, false, F0},
+        {"copied, shared at level 0: 1 value (an index page and the page copied)", run_of(3 * 512 + 5, 1), 2, false, F1},
+        {"copied, shared at level 0: a whole page (the index page copied)", run_of(3 * 512, 512), 2, false, F1},
+        {"with the Tracer's copy, shared at level 0: 1 value", run_of(3 * 512 + 5, 1), 2, true, F2},
+        {"with the Tracer's copy, shared at level 0: a whole page", run_of(3 * 512, 512), 2, true, F2},
+    };
+    std::printf("  %-72s %7s %7s %5s %5s %5s %6s  %s\n", "the page (the root's copy, with root 2, in the run's figures)", "cycles", "bb's", "looks", "upds",
+                "reads", "writes", "waiting: data, pages, memory");
+    for (const Case& c : cases) {
+        Bench<UpdaterTop> b(port());
+        Bench<Updater> a;
+        const PageFigure f = page_figure(b, base, c.u, c.root, c.tracer, c.image), g = page_figure(a, base, c.u, c.root, c.tracer, c.image);
+        std::printf("  %-72s %7u %7u %5llu %5llu %5u %6u  %u, %u, %u\n", c.name, f.cycles, g.cycles, (unsigned long long)f.lookups, (unsigned long long)f.updates,
+                    f.reads, f.writes, f.stall_data, f.stall_pages, f.stall_memory);
+        CHECK(b.violations().empty());
+    }
+}

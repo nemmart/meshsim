@@ -115,6 +115,25 @@ the Updater writes. The Updater is still the black box and writes the store dire
 | the Tracer alone on the cache | `TRACER_CACHE=1 tracer_block --synthetic SEED` (the step `cache-synth`); `tracer_block ... --fill cache` on the real segments |
 | everything on the cache | `CACHE_CTL=1 MESHSIM_INPUTS=... ./run_tests.sh all --check`: the proof steps with `--cache`, and the step `tracer-block-cache` |
 
+## On the Updater's controller
+
+The Updater is the black box (`src/units/updater.*`) unless asked otherwise. With the setting it is its real
+controller (`src/units/updater_ctl.h`, in the shape of hardware; `../updater_wip/planning/sessions/WORKER6/NOTES.md`),
+behind the same registers: its data comes in on the word port from the shim, which is v1.37's segment queue
+(`src/units/segment_shim.h`), so the master's firmware is unchanged; its AXI port goes to a test LPDDR and its look-up
+port to the stand-in cache, both on the file store the Tracer reads (`tests/test_lpddr.h`, `tests/standin_cache.h`:
+test pieces, for WORKER5's arbiter, LPDDR model and cache to replace). The setting is `proof::Case::updater_ctl`, or
+the environment variable `MESHSIM_UPDATER_CTL` for every run of a process (any value: on; a number above 0: the test
+pieces' timing varied with that seed).
+
+| | command |
+|---|---|
+| one proof on the controller | `proof_run ... --updater-ctl` (`--updater-ctl-seed SEED`: the timing varied); a check of the test pieces (a read of a page nothing wrote, an update before its page's write was answered) fails the run |
+| the guests on it | `MESHSIM_UPDATER_CTL=1 test_master` |
+| the controller alone and against the black box | `test_updater_ctl` (the step `updater-ctl`): gold's fixtures on its port, the same runs on both, random streams, varied timing, the errors; `test_updater_ctl ctl_figures_a_page` prints what a page costs by kind |
+| bugs planted in the controller, each caught | `tests/updater_ctl_teeth.sh` (a rebuild a bug; ten minutes) |
+| everything on it | `MESHSIM_UPDATER_CTL=1 MESHSIM_INPUTS=... ./run_tests.sh all --check`: every step with the Updater (`master`, `proof-real`, `proof-matrix`, `proof-29`) on the controller |
+
 ## When a run fails
 
 - **The master's status** is the first line: 1 is a proof made; 2 its error path (the line gives the tile's,

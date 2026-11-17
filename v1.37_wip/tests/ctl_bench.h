@@ -69,7 +69,7 @@ struct Bench {
     struct Account { uint32_t pages_asked, pages_left, cycles, stall_data, stall_pages, stall_memory, pages_read, pages_written; bool done; };
     std::vector<Account> accounts;
     uint64_t dones = 0, page_credits = 0, segment_credits = 0;
-    int64_t cycle_limit = int64_t(1) << 32;
+    int64_t cycle_limit = int64_t(1) << 24;        // a run of the tests ends in far fewer: a hang is a failure
     // the controller's other side
     std::unique_ptr<test_pieces::TestLpddr> lpddr;
     std::unique_ptr<test_pieces::StandInCache> cache;

@@ -5,8 +5,14 @@ The plan and the choices are in `NOTES.md` (the owner's go-ahead, 2026-11-16 23:
 section 9 there says where the work differs from the plan. No questions: every † was workable as written. Paths
 without a folder are in `v1.37_wip/`. II is `INGRESS-INTERFACE.md`, UI `UPDATER-INTERFACE.md`, HL `HOST-LINK.md`.
 
-**Status: built and checked here. The runs that need the workloads' data (the three proof steps, `make check`, the
-faster links at 2²⁹) are not run: the Quest repository could not be attached to this session (below, "Not done").**
+**Status: built and checked, here and on the runner.** The integrator queued the runner's runs, and all pass: **Quest
+213** (`suites`: the 37 proof runs, `proof-real`, `proof-matrix`, `proof-29`), **214** (`make check`) and **215**
+(`faster`: the link at 2, 4 and 8 bytes a cycle). The owner's 10% question is closed (`DESIGN-NOTES-2026-11-16.md`,
+section 22): a proof is 50 to 100 million cycles, and the master is awake 200,000 to 315,000 of them before the
+hand-over, 0.2 to 0.6%. On a faster link the set-up window's share rose to 21% (Quest 215), only because the same
+work is divided by less time.
+
+**A second item, the link's packet header (owner, 2026-11-17),** is at the end: "The header's new layout".
 
 ## What was built
 
@@ -54,12 +60,15 @@ The orders it relies on, with why each holds, are `NOTES.md`'s O1 to O6. Each is
 | **`fw_teeth.sh`**, 20 bugs: in `master.c`, the 9 earlier ones that still apply (the record's rewritten for the new code) and 9 on the count (one long, frame 9's one short, an update frame dropped, the drops sent to the Updater, drops in a row as two counts, a copy without the count's 0, a copy's landing not waited for, a run without the last `done`, the wrong log); in `host.h`, the service flag's bit and `DMA_FORWARD_COUNT`'s discard at bit 30. WORKER4's bugs on the allowance, the thresholds and the segment queue are gone with them | here | **every one caught**; 3 of the new ones by the simulator's stop on an undefined case. "Drops in a row" is caught only by `master_divs_empty_log` with logs after *s* (NOTES section 9) |
 | `fw/build.sh --check` | here | 18 images equal to `fw/images/` |
 | **`./run_tests.sh quick --check` and `all --check`** (at `6dc61724`'s tree; after it only the master's per-frame stamps changed, and `test_master`, the teeth and `fw/build.sh --check` were run again on the final image) | here, gcc (clang's ASan runtime is missing on this machine, so `suite_bus`'s debug build fails with clang before any step; it is not this work's) | **all passed**; no log differs. 5 steps SKIPPED: the workloads' data (`tracer-block`, `segment-real`, `proof-real`, `proof-matrix`, `proof-29`) |
-| `proof-real`, `proof-matrix`, `proof-29`; `make check`; the faster links at 2²⁹ | the runner | **not run** (below) |
+| `proof-real`, `proof-matrix`, `proof-29` (the 37 proof runs); `make check`; the link at 2, 4 and 8 bytes a cycle at 2²⁹ and on the matrix | the runner: Quest 213, 214, 215, queued by the integrator | **pass** |
 
 ## The figures
 
 The simulator's cycles, with the black boxes' timing (the link a byte a cycle; a page read or written 336 cycles),
-not the RTL's. **Only the guests could be run here.** Their full tables, before and after, are `GUESTS-FIGURES.md`.
+not the RTL's. The guests were run here; their full tables, before and after, are `GUESTS-FIGURES.md`. The real
+workloads' figures are the runner's (Quest 213, 215), read by the owner in `DESIGN-NOTES-2026-11-16.md`, section 22;
+this session could not read them, so the estimate below stands as it was written, beside the owner's measured 0.2 to
+0.6%.
 
 ### The guests at a byte a cycle, before (WORKER4's threshold at 256) and after
 
@@ -105,12 +114,7 @@ not the RTL's. **Only the guests could be run here.** Their full tables, before 
 
 ## Not done
 
-- **The runner's runs.** Attaching `nemmart/quest` to this session (needed to claim Quest numbers and push the
-  tasks) was refused by the session's permission check, so `proof-real`, `proof-matrix`, `proof-29`, `make check`
-  and the `faster` item were not run. The tasks are ready: `updater_wip/tasks/v137-check/make_task.sh NNN-name
-  suites|check|faster` on this branch's head. Their figures (the master's share at 2²⁹ at 1, 2, 4 and 8 bytes a cycle,
-  set beside WORKER4's Quest 206 and 208) are what the 10% is to be judged on.
-- `make check` (four builds and TSan) was not run here either: two CPUs, and clang's ASan runtime is missing.
+- `make check` was not run here (two CPUs, and clang's ASan runtime is missing); it passed on the runner (Quest 214).
 
 ## What I would change in INGRESS-INTERFACE.md (for the owner)
 
@@ -153,3 +157,40 @@ not the RTL's. **Only the guests could be run here.** Their full tables, before 
    `port_sent(t)`, a sink `port_sink()` and `port_take(t, word)`, and the slot calls `port_sent` and `port_take` after
    every step of the cycle the word moves in. WORKER6's `UpdaterTop` needs those two names to take the black box's
    place behind the port; today they are in `periph_slot.h`'s header, not here.
+
+## The header's new layout (owner, 2026-11-17)
+
+`main` merged first (`0f25c4a3`). The layout is `HOST-LINK.md`'s "A packet" and "The chain, and the hops field":
+packet number [33:16], 18 bits, 1 to 0x3FFFE and then 1 again; acknowledge [51:34], 18 bits; hops [55:52], written 0
+by whoever makes a packet and tested by no receiver. Reserved, the stream, the flags, the length, the two checks and
+the order of the tests are unchanged. Forwarding, Egress and the UART are not part of this.
+
+| where | what changed |
+|---|---|
+| gold's packetizer, `src/gold/Packets.java` | the header's bytes 4 to 6; `LAST_NUMBER` 0x3FFFE; a `hops` field, 0 unless a test sets it |
+| gold's reader, `src/gold/PacketFile.java`, `PacketReader.java` | the fields taken from the header as one 64-bit number by their bits, not by bytes (the packetizer builds bytes): still sharing no code with it; 0 and 0x3FFFF refused; hops read, counted and listed, never tested |
+| the vectors, `PacketVectors.java` and `test/packets/`, regenerated | 51 single packets (43 before): number 0x10000, the first above 16 bits; the wrap 0x3FFFE → 1 (and 0x3FFFF there refused); hops 3 and hops 15 (with the acknowledge field all ones), taken; HOST-LINK.md's three example headers; a bit of the hops field and the number's top bit with the checks left, refused; number 0x3FFFF with hops 15, refused. 38 one-byte damages of a whole file (32): the number's top bit and the hops field added. `wrap.packets` numbered from 0x3FFFA. `small.packets` and the other three whole files are the same bytes as before: their numbers are under 0x10000, with acknowledge and hops 0 |
+| the third reader, `test/packets/check_vectors.py` | the fields at their new bits; HOST-LINK.md's three headers checked against the vectors, copied from the document |
+| gold's tests, `test/gold/PacketsTest.java`, `test/packets/packets.sh`, `test/frames/guests.sh` | the wrap at 0x3FFFE, by `--first` (from 0x3FFFA, 0x3FFFE, 0x3FFFD, 0x3FFF0, 0xFFFF, 0x10000, 2, 1) and by a file of 262,200 packets from 1 (0x10000 after 0xFFFF on the way); hops 1 to 15 on a real file's packets, each taken; the example headers from the packetizer byte for byte; the commands' numbers from 0x3FFFD; the guests numbered from 0x3FFFE |
+| v1.37: `src/units/host_link.h` (Ingress's black box reads with it) | the fields at their new bits; `LAST_NUMBER` 0x3FFFE; `hops` read and kept in the packet, never tested |
+| v1.37: `tests/packet_writer.h` | the header written at the new bits, with a `hops` field |
+| v1.37: `tests/test_ingress_link.cpp`, `test_packet_vectors.cpp` | HOST-LINK.md's three headers from the tests' writer byte for byte, taken by the reader and by the black box; the fields at their bits with hops 0xC; the numbers past 0xFFFF and the wrap at 0x3FFFE in the black box, 0x3FFFF and 0 refused; the vectors' hops field checked; a test that gold's vectors of the three examples are HOST-LINK.md's bytes |
+| `updater_wip/pipeline/gold/README.md` | the layout, the counts |
+
+**The checks:**
+
+| check | result |
+|---|---|
+| HOST-LINK.md's three example headers: from gold's packetizer and from v1.37's writer byte for byte; taken by gold's reader, the Python reader, `host_link.h`'s reader and the black box. The first is the same bytes as before | **pass** |
+| the new vectors: a number above 0xFFFF, the wrap from 0x3FFFE to 1, hops not 0 taken, 0 and 0x3FFFF refused; by gold's reader, the Python reader and v1.37's reader and black box | **pass** |
+| `test/packets/packets.sh`: the committed vectors are what the generator writes; the Python reader; the commands; `PacketsTest` (293 field changes, every single bit of the five small files changed, 209,752 files, each refused; the wrap; the round trips) | **all ok** |
+| `test/frames/guests.sh`: every guest's frame file at four settings wrapped in packets, read back and compared byte for byte (80 runs) | **all ok**. Run with `JAVA_TOOL_OPTIONS` unset: this machine's JVM prints a notice on stderr, which the script's comparison of the reader's last line catches |
+| `test_ingress_link` (43), `test_packet_vectors` (6), `test_master` (34) | **pass** |
+| `./run_tests.sh quick --check` (gcc) | **all passed**; 1 step SKIPPED for the workloads' data |
+
+**For the runner:** `updater_wip/tasks/v137-check/`'s **`suites`** and **`check`** items on this branch's head.
+`suites` builds the host's side again with this branch's gold (its step 2b, `pipeline/frames/build.sh`): every real
+workload's packet file from gold's packetizer, read back by gold's reader and compared byte for byte with v1.37's
+own packetizer, then the 37 proof runs from those files through `host_link.h` and the black box. So it covers the
+new layout end to end. (The real workloads' files are 32,000 packets at most, under 0x10000 a stream, so they should
+come out the same bytes as before.) `faster` need not run again.

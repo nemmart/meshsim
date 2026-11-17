@@ -6,9 +6,11 @@
 # byte first: byte i of a word holds its bits [8i+7:8i]. The header word:
 #   byte 0       stream [3:0] (1 foreground, 2 background; never 0), flags [7:4]
 #   byte 1       length [15:8]: the data's 128-bit words, 0 to 32
-#   bytes 2-4    packet number [35:16], 20 bits (byte 4's low four bits are its top four)
-#   bytes 4-6    acknowledge [55:36], 20 bits (byte 4's high four bits are its low four)
+#   bytes 2-4    packet number [33:16], 18 bits, 1 to 0x3FFFE (byte 4's low two bits are its top two)
+#   bytes 4-6    acknowledge [51:34], 18 bits (byte 4's high six bits are its low six; byte 6's low four its top four)
+#   byte 6       hops [55:52] in its high four bits: the ASICs that forwarded the packet; its maker writes 0
 #   byte 7       reserved [63:56], 0
+#   (owner, 2026-11-17: the number and acknowledge were 20 bits each, [35:16] and [55:36], before the hops field)
 #   bytes 8-11   data checksum [95:64]: the CRC-32C of the data's bytes, in link order; of no data, 0x00000000
 #   bytes 12-15  header CRC [127:96]: the CRC-32C of header bytes 0 to 11, in link order
 #
@@ -25,19 +27,19 @@
 #   length         the length is over 32
 #   reserved       bits [63:56] are not 0
 #   data-checksum  the CRC-32C of the data is not bytes 8 to 11
-#   number         a packet with data: its number is not the next on its stream (1 first; after 0xFFFFE, 1).
+#   number         a packet with data: its number is not the next on its stream (1 first; after 0x3FFFE, 1).
 #                  A packet of length 0: its number is not the one the stream's next packet with data will carry;
 #                  it takes no number, and the next packet with data carries the same one (owner, 2026-11-16)
 #   frame-end      whole files only: on stream 2 a frame ends before the end of the packet its last word is in
 #   truncated      whole files only: the file ends inside a packet or inside a frame
-# The flags and the acknowledge field are not checked. Between packets, zero bytes are idle and are skipped, in
+# The flags, the acknowledge field and the hops field are not checked: no value of them is an error. Between packets, zero bytes are idle and are skipped, in
 # any number: the first byte that is not zero starts a header.
 #
 # THIS FILE: a line is a key and its value; "#" starts a comment; hex strings are bytes in link order.
 #   crc32c <bytes, or - for none> <the CRC-32C, as a number>
 #   packet <name> ... end     one packet alone. Frames are not looked at here: Ingress knows only packets.
 #       next-number        the number the receiver expects next on this packet's stream, before the packet
-#       stream, flags, length, number, acknowledge, reserved     the header's fields as the bytes hold them
+#       stream, flags, length, number, acknowledge, hops, reserved     the header's fields as the bytes hold them
 #       data               one line for each word of data
 #       data-checksum      the header's field;   data-crc32c    the CRC-32C of the data (equal in a good packet)
 #       header-0-11        header bytes 0 to 11: what the header CRC is over
@@ -71,6 +73,7 @@ packet one-zero-word
   length             1
   number             0x00001
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               00000000000000000000000000000000
   data-checksum      0x42709aea
@@ -92,6 +95,7 @@ packet two-words
   length             2
   number             0x00002
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               c15c0289ec2d0a9167ec8e65a18debbe
   data               5e5532fbeea293f80bc942ee9086c171
@@ -116,6 +120,7 @@ packet full
   length             32
   number             0x00003
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               b9b501d1d854bb7180021590ff0b4dc3
   data               a53c36d76cec99e0758527120fbbe785
@@ -200,6 +205,7 @@ packet full-of-ones
   length             32
   number             0x12345
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               ffffffffffffffffffffffffffffffff
   data               ffffffffffffffffffffffffffffffff
@@ -277,13 +283,14 @@ packet full-of-ones
 end
 
 packet last-number
-  # the last number, 0xFFFFE: the next is 1
-  next-number        0xffffe
+  # the last number, 0x3FFFE: the next is 1
+  next-number        0x3fffe
   stream             2
   flags              0
   length             4
-  number             0xffffe
+  number             0x3fffe
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               a966de0c4d6d8691bb139892d767b91e
   data               6125eca09e3e66298711a227eb1ec6d2
@@ -291,11 +298,11 @@ packet last-number
   data               0e33d26ca0b6cc904387666847837878
   data-checksum      0x125f9116
   data-crc32c        0x125f9116
-  header-0-11        0204feff0f00000016915f12
-  header-crc         0xb7a5e6c6
-  header-crc32c      0xb7a5e6c6
-  header-word        0xb7a5e6c6125f91160000000ffffe0402
-  bytes              0204feff0f00000016915f12c6e6a5b7
+  header-0-11        0204feff0300000016915f12
+  header-crc         0xd4836071
+  header-crc32c      0xd4836071
+  header-word        0xd4836071125f911600000003fffe0402
+  bytes              0204feff0300000016915f12716083d4
   bytes              a966de0c4d6d8691bb139892d767b91e
   bytes              6125eca09e3e66298711a227eb1ec6d2
   bytes              75d528a35a1502f973cf1d6f4e09ebb0
@@ -305,13 +312,14 @@ packet last-number
 end
 
 packet after-the-wrap
-  # number 1 again, after 0xFFFFE
+  # number 1 again, after 0x3FFFE
   next-number        0x00001
   stream             2
   flags              0
   length             4
   number             0x00001
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               53aa54953596bd9fbe63ca97bb2033dc
   data               55fb0fc142a345ce9d777d2e4d99ea1b
@@ -332,6 +340,29 @@ packet after-the-wrap
   next-number-after  0x00002
 end
 
+packet number-above-0xffff
+  # number 0x10000: the first that needs bit [32], byte 4's low two bits
+  next-number        0x10000
+  stream             2
+  flags              0
+  length             1
+  number             0x10000
+  acknowledge        0x00000
+  hops               0
+  reserved           0x00
+  data               09615769aeba60afb10e602e27d8daf0
+  data-checksum      0xf9af3d2f
+  data-crc32c        0xf9af3d2f
+  header-0-11        02010000010000002f3daff9
+  header-crc         0xd56a71fc
+  header-crc32c      0xd56a71fc
+  header-word        0xd56a71fcf9af3d2f0000000100000102
+  bytes              02010000010000002f3daff9fc716ad5
+  bytes              09615769aeba60afb10e602e27d8daf0
+  expect             ok
+  next-number-after  0x10001
+end
+
 packet foreground
   # stream 1
   next-number        0x00009
@@ -340,16 +371,17 @@ packet foreground
   length             1
   number             0x00009
   acknowledge        0x00000
+  hops               0
   reserved           0x00
-  data               09615769aeba60afb10e602e27d8daf0
-  data-checksum      0xf9af3d2f
-  data-crc32c        0xf9af3d2f
-  header-0-11        01010900000000002f3daff9
-  header-crc         0x4248e020
-  header-crc32c      0x4248e020
-  header-word        0x4248e020f9af3d2f0000000000090101
-  bytes              01010900000000002f3daff920e04842
-  bytes              09615769aeba60afb10e602e27d8daf0
+  data               79c31138407e25c06ef281fe6db27220
+  data-checksum      0xdd8840cf
+  data-crc32c        0xdd8840cf
+  header-0-11        0101090000000000cf4088dd
+  header-crc         0xdbe75f13
+  header-crc32c      0xdbe75f13
+  header-word        0xdbe75f13dd8840cf0000000000090101
+  bytes              0101090000000000cf4088dd135fe7db
+  bytes              79c31138407e25c06ef281fe6db27220
   expect             ok
   next-number-after  0x0000a
 end
@@ -361,21 +393,140 @@ packet flags-and-acknowledge
   flags              15
   length             2
   number             0x00006
-  acknowledge        0xabcde
+  acknowledge        0x2bcde
+  hops               0
   reserved           0x00
-  data               79c31138407e25c06ef281fe6db27220
   data               5c3160b579e94d2d40baf3b56d5bf3bc
-  data-checksum      0xa26be048
-  data-crc32c        0xa26be048
-  header-0-11        f2020600e0cdab0048e06ba2
-  header-crc         0x2c9954ff
-  header-crc32c      0x2c9954ff
-  header-word        0x2c9954ffa26be04800abcde0000602f2
-  bytes              f2020600e0cdab0048e06ba2ff54992c
-  bytes              79c31138407e25c06ef281fe6db27220
+  data               a851a9de2d57c9c73ec8f0747e0b5b63
+  data-checksum      0x7e8c035d
+  data-crc32c        0x7e8c035d
+  header-0-11        f202060078f30a005d038c7e
+  header-crc         0xa55bc3f4
+  header-crc32c      0xa55bc3f4
+  header-word        0xa55bc3f47e8c035d000af378000602f2
+  bytes              f202060078f30a005d038c7ef4c35ba5
   bytes              5c3160b579e94d2d40baf3b56d5bf3bc
+  bytes              a851a9de2d57c9c73ec8f0747e0b5b63
   expect             ok
   next-number-after  0x00007
+end
+
+packet hops-3
+  # hops 3: not tested, no value of it is an error
+  next-number        0x00006
+  stream             2
+  flags              0
+  length             1
+  number             0x00006
+  acknowledge        0x00000
+  hops               3
+  reserved           0x00
+  data               c21028765e0ac8184b29d172b1a4f0f3
+  data-checksum      0x02a42fb7
+  data-crc32c        0x02a42fb7
+  header-0-11        0201060000003000b72fa402
+  header-crc         0xd8da4558
+  header-crc32c      0xd8da4558
+  header-word        0xd8da455802a42fb70030000000060102
+  bytes              0201060000003000b72fa4025845dad8
+  bytes              c21028765e0ac8184b29d172b1a4f0f3
+  expect             ok
+  next-number-after  0x00007
+end
+
+packet hops-15
+  # hops 15 and the acknowledge field all ones, number 0x2ABCD: every bit of bytes 4 to 6 used
+  next-number        0x2abcd
+  stream             2
+  flags              0
+  length             2
+  number             0x2abcd
+  acknowledge        0x3ffff
+  hops               15
+  reserved           0x00
+  data               ae8673e143ffd098f8013d34d62b0a18
+  data               814a3ec10a2920db90130db3ff9103d8
+  data-checksum      0xaa01d132
+  data-crc32c        0xaa01d132
+  header-0-11        0202cdabfeffff0032d101aa
+  header-crc         0x3ed1a67e
+  header-crc32c      0x3ed1a67e
+  header-word        0x3ed1a67eaa01d13200fffffeabcd0202
+  bytes              0202cdabfeffff0032d101aa7ea6d13e
+  bytes              ae8673e143ffd098f8013d34d62b0a18
+  bytes              814a3ec10a2920db90130db3ff9103d8
+  expect             ok
+  next-number-after  0x2abce
+end
+
+packet host-link-example
+  # HOST-LINK.md's example: stream 2, length 1, number 1, the data one zero word. Its header is the same bytes as
+  # before the hops field
+  next-number        0x00001
+  stream             2
+  flags              0
+  length             1
+  number             0x00001
+  acknowledge        0x00000
+  hops               0
+  reserved           0x00
+  data               00000000000000000000000000000000
+  data-checksum      0x42709aea
+  data-crc32c        0x42709aea
+  header-0-11        0201010000000000ea9a7042
+  header-crc         0xe1068ca0
+  header-crc32c      0xe1068ca0
+  header-word        0xe1068ca042709aea0000000000010102
+  bytes              0201010000000000ea9a7042a08c06e1
+  bytes              00000000000000000000000000000000
+  expect             ok
+  next-number-after  0x00002
+end
+
+packet host-link-example-one-hop
+  # HOST-LINK.md's example after one hop: hops 1
+  next-number        0x00001
+  stream             2
+  flags              0
+  length             1
+  number             0x00001
+  acknowledge        0x00000
+  hops               1
+  reserved           0x00
+  data               00000000000000000000000000000000
+  data-checksum      0x42709aea
+  data-crc32c        0x42709aea
+  header-0-11        0201010000001000ea9a7042
+  header-crc         0x210abc9e
+  header-crc32c      0x210abc9e
+  header-word        0x210abc9e42709aea0010000000010102
+  bytes              0201010000001000ea9a70429ebc0a21
+  bytes              00000000000000000000000000000000
+  expect             ok
+  next-number-after  0x00002
+end
+
+packet host-link-example-hops-3
+  # HOST-LINK.md's example with number 0x2ABCD, acknowledge 0x15555 and hops 3
+  next-number        0x2abcd
+  stream             2
+  flags              0
+  length             1
+  number             0x2abcd
+  acknowledge        0x15555
+  hops               3
+  reserved           0x00
+  data               00000000000000000000000000000000
+  data-checksum      0x42709aea
+  data-crc32c        0x42709aea
+  header-0-11        0201cdab56553500ea9a7042
+  header-crc         0x3023c4c9
+  header-crc32c      0x3023c4c9
+  header-word        0x3023c4c942709aea00355556abcd0102
+  bytes              0201cdab56553500ea9a7042c9c42330
+  bytes              00000000000000000000000000000000
+  expect             ok
+  next-number-after  0x2abce
 end
 
 packet empty
@@ -386,6 +537,7 @@ packet empty
   length             0
   number             0x00007
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data-checksum      0x00000000
   data-crc32c        0x00000000
@@ -406,6 +558,7 @@ packet empty-first
   length             0
   number             0x00001
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data-checksum      0x00000000
   data-crc32c        0x00000000
@@ -419,23 +572,24 @@ packet empty-first
 end
 
 packet empty-at-the-last-number
-  # length 0 when 0xFFFFE is next
-  next-number        0xffffe
+  # length 0 when 0x3FFFE is next
+  next-number        0x3fffe
   stream             2
   flags              0
   length             0
-  number             0xffffe
+  number             0x3fffe
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data-checksum      0x00000000
   data-crc32c        0x00000000
-  header-0-11        0200feff0f00000000000000
-  header-crc         0x44916538
-  header-crc32c      0x44916538
-  header-word        0x44916538000000000000000ffffe0002
-  bytes              0200feff0f0000000000000038659144
+  header-0-11        0200feff0300000000000000
+  header-crc         0x27b7e38f
+  header-crc32c      0x27b7e38f
+  header-word        0x27b7e38f0000000000000003fffe0002
+  bytes              0200feff03000000000000008fe3b727
   expect             ok
-  next-number-after  0xffffe
+  next-number-after  0x3fffe
 end
 
 packet empty-foreground
@@ -446,6 +600,7 @@ packet empty-foreground
   length             0
   number             0x00004
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data-checksum      0x00000000
   data-crc32c        0x00000000
@@ -466,6 +621,7 @@ packet base
   length             3
   number             0x00005
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               ed8f01dbe4140b1d89a9817b8a6f46b3
   data               01dd50d0a6e8eb9ccfc9ab66fb64a712
@@ -492,6 +648,7 @@ packet bit-stream
   length             3
   number             0x00005
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               ed8f01dbe4140b1d89a9817b8a6f46b3
   data               01dd50d0a6e8eb9ccfc9ab66fb64a712
@@ -517,6 +674,7 @@ packet bit-flags
   length             3
   number             0x00005
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               ed8f01dbe4140b1d89a9817b8a6f46b3
   data               01dd50d0a6e8eb9ccfc9ab66fb64a712
@@ -542,6 +700,7 @@ packet bit-length
   length             2
   number             0x00005
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               ed8f01dbe4140b1d89a9817b8a6f46b3
   data               01dd50d0a6e8eb9ccfc9ab66fb64a712
@@ -567,6 +726,7 @@ packet bit-number-low
   length             3
   number             0x00004
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               ed8f01dbe4140b1d89a9817b8a6f46b3
   data               01dd50d0a6e8eb9ccfc9ab66fb64a712
@@ -585,24 +745,25 @@ packet bit-number-low
 end
 
 packet bit-number-high
-  # base with header bit 35 changed (the number's top bit)
+  # base with header bit 33 changed (the number's top bit)
   next-number        0x00005
   stream             2
   flags              0
   length             3
-  number             0x80005
+  number             0x20005
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               ed8f01dbe4140b1d89a9817b8a6f46b3
   data               01dd50d0a6e8eb9ccfc9ab66fb64a712
   data               9699b7caad8d6837074f1f093777dfa2
   data-checksum      0x1522ef22
   data-crc32c        0x1522ef22
-  header-0-11        020305000800000022ef2215
+  header-0-11        020305000200000022ef2215
   header-crc         0xe9421c1a
-  header-crc32c      0xab7918c0
-  header-word        0xe9421c1a1522ef220000000800050302
-  bytes              020305000800000022ef22151a1c42e9
+  header-crc32c      0x7b3ae654
+  header-word        0xe9421c1a1522ef220000000200050302
+  bytes              020305000200000022ef22151a1c42e9
   bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
   bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
   bytes              9699b7caad8d6837074f1f093777dfa2
@@ -616,7 +777,8 @@ packet bit-acknowledge
   flags              0
   length             3
   number             0x00005
-  acknowledge        0x00010
+  acknowledge        0x00040
+  hops               0
   reserved           0x00
   data               ed8f01dbe4140b1d89a9817b8a6f46b3
   data               01dd50d0a6e8eb9ccfc9ab66fb64a712
@@ -634,6 +796,32 @@ packet bit-acknowledge
   expect             header-crc
 end
 
+packet bit-hops
+  # base with header bit 52 changed (hops becomes 1): the header CRC covers it
+  next-number        0x00005
+  stream             2
+  flags              0
+  length             3
+  number             0x00005
+  acknowledge        0x00000
+  hops               1
+  reserved           0x00
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1522ef22
+  data-crc32c        0x1522ef22
+  header-0-11        020305000000100022ef2215
+  header-crc         0xe9421c1a
+  header-crc32c      0x294e2c24
+  header-word        0xe9421c1a1522ef220010000000050302
+  bytes              020305000000100022ef22151a1c42e9
+  bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777dfa2
+  expect             header-crc
+end
+
 packet bit-reserved
   # base with header bit 63 changed (reserved)
   next-number        0x00005
@@ -642,6 +830,7 @@ packet bit-reserved
   length             3
   number             0x00005
   acknowledge        0x00000
+  hops               0
   reserved           0x80
   data               ed8f01dbe4140b1d89a9817b8a6f46b3
   data               01dd50d0a6e8eb9ccfc9ab66fb64a712
@@ -667,6 +856,7 @@ packet bit-data-checksum
   length             3
   number             0x00005
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               ed8f01dbe4140b1d89a9817b8a6f46b3
   data               01dd50d0a6e8eb9ccfc9ab66fb64a712
@@ -692,6 +882,7 @@ packet bit-header-crc
   length             3
   number             0x00005
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               ed8f01dbe4140b1d89a9817b8a6f46b3
   data               01dd50d0a6e8eb9ccfc9ab66fb64a712
@@ -717,6 +908,7 @@ packet bit-data-first
   length             3
   number             0x00005
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               ec8f01dbe4140b1d89a9817b8a6f46b3
   data               01dd50d0a6e8eb9ccfc9ab66fb64a712
@@ -742,6 +934,7 @@ packet bit-data-last
   length             3
   number             0x00005
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               ed8f01dbe4140b1d89a9817b8a6f46b3
   data               01dd50d0a6e8eb9ccfc9ab66fb64a712
@@ -767,6 +960,7 @@ packet stream-0
   length             3
   number             0x00005
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               ed8f01dbe4140b1d89a9817b8a6f46b3
   data               01dd50d0a6e8eb9ccfc9ab66fb64a712
@@ -792,6 +986,7 @@ packet stream-3
   length             3
   number             0x00005
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               ed8f01dbe4140b1d89a9817b8a6f46b3
   data               01dd50d0a6e8eb9ccfc9ab66fb64a712
@@ -817,6 +1012,7 @@ packet stream-15
   length             3
   number             0x00005
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               ed8f01dbe4140b1d89a9817b8a6f46b3
   data               01dd50d0a6e8eb9ccfc9ab66fb64a712
@@ -842,6 +1038,7 @@ packet length-33
   length             33
   number             0x00005
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               ca8a33e272e3736e30b0984b6ac674e4
   data               5f847b8efc19efdb9ef8f3260cebe47d
@@ -927,6 +1124,7 @@ packet length-64
   length             64
   number             0x00005
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               5ac389a30c3b0363f83697934d3197c0
   data               47c16b10f0d3923b45b905dac24e6e19
@@ -1074,6 +1272,7 @@ packet reserved-low
   length             3
   number             0x00005
   acknowledge        0x00000
+  hops               0
   reserved           0x01
   data               ed8f01dbe4140b1d89a9817b8a6f46b3
   data               01dd50d0a6e8eb9ccfc9ab66fb64a712
@@ -1099,6 +1298,7 @@ packet reserved-high
   length             3
   number             0x00005
   acknowledge        0x00000
+  hops               0
   reserved           0x80
   data               ed8f01dbe4140b1d89a9817b8a6f46b3
   data               01dd50d0a6e8eb9ccfc9ab66fb64a712
@@ -1124,6 +1324,7 @@ packet data-checksum-wrong
   length             3
   number             0x00005
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               ed8f01dbe4140b1d89a9817b8a6f46b3
   data               01dd50d0a6e8eb9ccfc9ab66fb64a712
@@ -1149,6 +1350,7 @@ packet number-0
   length             3
   number             0x00000
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               ed8f01dbe4140b1d89a9817b8a6f46b3
   data               01dd50d0a6e8eb9ccfc9ab66fb64a712
@@ -1167,24 +1369,25 @@ packet number-0
 end
 
 packet number-all-ones
-  # number 0xFFFFF; both checks right
+  # number 0x3FFFF; both checks right
   next-number        0x00005
   stream             2
   flags              0
   length             3
-  number             0xfffff
+  number             0x3ffff
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               ed8f01dbe4140b1d89a9817b8a6f46b3
   data               01dd50d0a6e8eb9ccfc9ab66fb64a712
   data               9699b7caad8d6837074f1f093777dfa2
   data-checksum      0x1522ef22
   data-crc32c        0x1522ef22
-  header-0-11        0203ffff0f00000022ef2215
-  header-crc         0xc73d1198
-  header-crc32c      0xc73d1198
-  header-word        0xc73d11981522ef220000000fffff0302
-  bytes              0203ffff0f00000022ef221598113dc7
+  header-0-11        0203ffff0300000022ef2215
+  header-crc         0xa41b972f
+  header-crc32c      0xa41b972f
+  header-word        0xa41b972f1522ef2200000003ffff0302
+  bytes              0203ffff0300000022ef22152f971ba4
   bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
   bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
   bytes              9699b7caad8d6837074f1f093777dfa2
@@ -1199,6 +1402,7 @@ packet number-again
   length             3
   number             0x00004
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               ed8f01dbe4140b1d89a9817b8a6f46b3
   data               01dd50d0a6e8eb9ccfc9ab66fb64a712
@@ -1224,6 +1428,7 @@ packet number-skipped
   length             3
   number             0x00006
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               ed8f01dbe4140b1d89a9817b8a6f46b3
   data               01dd50d0a6e8eb9ccfc9ab66fb64a712
@@ -1242,24 +1447,25 @@ packet number-skipped
 end
 
 packet number-no-wrap
-  # 0xFFFFF after 0xFFFFE, where 1 is next
+  # 0x3FFFF after 0x3FFFE, where 1 is next
   next-number        0x00001
   stream             2
   flags              0
   length             3
-  number             0xfffff
+  number             0x3ffff
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               ed8f01dbe4140b1d89a9817b8a6f46b3
   data               01dd50d0a6e8eb9ccfc9ab66fb64a712
   data               9699b7caad8d6837074f1f093777dfa2
   data-checksum      0x1522ef22
   data-crc32c        0x1522ef22
-  header-0-11        0203ffff0f00000022ef2215
-  header-crc         0xc73d1198
-  header-crc32c      0xc73d1198
-  header-word        0xc73d11981522ef220000000fffff0302
-  bytes              0203ffff0f00000022ef221598113dc7
+  header-0-11        0203ffff0300000022ef2215
+  header-crc         0xa41b972f
+  header-crc32c      0xa41b972f
+  header-word        0xa41b972f1522ef2200000003ffff0302
+  bytes              0203ffff0300000022ef22152f971ba4
   bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
   bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
   bytes              9699b7caad8d6837074f1f093777dfa2
@@ -1267,13 +1473,14 @@ packet number-no-wrap
 end
 
 packet number-2-after-the-wrap
-  # 2 after 0xFFFFE, where 1 is next
+  # 2 after 0x3FFFE, where 1 is next
   next-number        0x00001
   stream             2
   flags              0
   length             3
   number             0x00002
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               ed8f01dbe4140b1d89a9817b8a6f46b3
   data               01dd50d0a6e8eb9ccfc9ab66fb64a712
@@ -1291,6 +1498,32 @@ packet number-2-after-the-wrap
   expect             number
 end
 
+packet number-0x3ffff-with-hops
+  # number 0x3FFFF with hops 15: the hops field does not make it good
+  next-number        0x00005
+  stream             2
+  flags              0
+  length             3
+  number             0x3ffff
+  acknowledge        0x00000
+  hops               15
+  reserved           0x00
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1522ef22
+  data-crc32c        0x1522ef22
+  header-0-11        0203ffff0300f00022ef2215
+  header-crc         0xf3ef5da1
+  header-crc32c      0xf3ef5da1
+  header-word        0xf3ef5da11522ef2200f00003ffff0302
+  bytes              0203ffff0300f00022ef2215a15deff3
+  bytes              ed8f01dbe4140b1d89a9817b8a6f46b3
+  bytes              01dd50d0a6e8eb9ccfc9ab66fb64a712
+  bytes              9699b7caad8d6837074f1f093777dfa2
+  expect             number
+end
+
 packet foreground-wrong-number
   # stream 1 with a number that is not its stream's next
   next-number        0x00005
@@ -1299,6 +1532,7 @@ packet foreground-wrong-number
   length             3
   number             0x00007
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data               ed8f01dbe4140b1d89a9817b8a6f46b3
   data               01dd50d0a6e8eb9ccfc9ab66fb64a712
@@ -1324,6 +1558,7 @@ packet empty-with-the-last-number
   length             0
   number             0x00004
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data-checksum      0x00000000
   data-crc32c        0x00000000
@@ -1343,6 +1578,7 @@ packet empty-one-ahead
   length             0
   number             0x00006
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data-checksum      0x00000000
   data-crc32c        0x00000000
@@ -1362,6 +1598,7 @@ packet empty-number-0
   length             0
   number             0x00000
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data-checksum      0x00000000
   data-crc32c        0x00000000
@@ -1381,6 +1618,7 @@ packet empty-with-a-checksum
   length             0
   number             0x00005
   acknowledge        0x00000
+  hops               0
   reserved           0x00
   data-checksum      0x42709aea
   data-crc32c        0x00000000
@@ -1452,10 +1690,10 @@ file small-split.packets
 end
 
 file wrap.packets
-  # small.frames numbered from 0xFFFFA: the numbers pass 0xFFFFE and go on from 1
+  # small.frames numbered from 0x3FFFA: the numbers pass 0x3FFFE and go on from 1
   bytes              4464
-  sha256             19f7646f64d4aa12e93055b266c4de54741f9efe3fe5dfde239085c0c90374cc
-  first-number       0xffffa
+  sha256             ccb4b7636e12231c34d3a4d55dd890064f6136109a084ce224818c251cf2de8c
+  first-number       0x3fffa
   packets            14
   packets-stream-2   14
   packets-stream-1   0
@@ -1491,7 +1729,9 @@ end
 damage small.packets byte 0 xor 0x01 expect header-crc packet 1 at 0    # the stream
 damage small.packets byte 1 xor 0x01 expect header-crc packet 1 at 0    # the length
 damage small.packets byte 2 xor 0x01 expect header-crc packet 1 at 0    # the packet number
+damage small.packets byte 4 xor 0x02 expect header-crc packet 1 at 0    # the packet number's top bit
 damage small.packets byte 5 xor 0x04 expect header-crc packet 1 at 0    # the acknowledge field
+damage small.packets byte 6 xor 0x10 expect header-crc packet 1 at 0    # the hops field
 damage small.packets byte 7 xor 0x80 expect header-crc packet 1 at 0    # a reserved bit
 damage small.packets byte 8 xor 0x01 expect header-crc packet 1 at 0    # the data checksum
 damage small.packets byte 15 xor 0x80 expect header-crc packet 1 at 0    # the header CRC
@@ -1501,7 +1741,9 @@ damage small.packets byte 0 xor 0x02 expect header-crc packet 1 at 1    # the fi
 damage small.packets byte 1712 xor 0x01 expect header-crc packet 7 at 1712    # the stream
 damage small.packets byte 1713 xor 0x01 expect header-crc packet 7 at 1712    # the length
 damage small.packets byte 1714 xor 0x01 expect header-crc packet 7 at 1712    # the packet number
+damage small.packets byte 1716 xor 0x02 expect header-crc packet 7 at 1712    # the packet number's top bit
 damage small.packets byte 1717 xor 0x04 expect header-crc packet 7 at 1712    # the acknowledge field
+damage small.packets byte 1718 xor 0x10 expect header-crc packet 7 at 1712    # the hops field
 damage small.packets byte 1719 xor 0x80 expect header-crc packet 7 at 1712    # a reserved bit
 damage small.packets byte 1720 xor 0x01 expect header-crc packet 7 at 1712    # the data checksum
 damage small.packets byte 1727 xor 0x80 expect header-crc packet 7 at 1712    # the header CRC
@@ -1511,7 +1753,9 @@ damage small.packets byte 1712 xor 0x02 expect header-crc packet 7 at 1713    # 
 damage small.packets byte 4432 xor 0x01 expect header-crc packet 14 at 4432    # the stream
 damage small.packets byte 4433 xor 0x01 expect header-crc packet 14 at 4432    # the length
 damage small.packets byte 4434 xor 0x01 expect header-crc packet 14 at 4432    # the packet number
+damage small.packets byte 4436 xor 0x02 expect header-crc packet 14 at 4432    # the packet number's top bit
 damage small.packets byte 4437 xor 0x04 expect header-crc packet 14 at 4432    # the acknowledge field
+damage small.packets byte 4438 xor 0x10 expect header-crc packet 14 at 4432    # the hops field
 damage small.packets byte 4439 xor 0x80 expect header-crc packet 14 at 4432    # a reserved bit
 damage small.packets byte 4440 xor 0x01 expect header-crc packet 14 at 4432    # the data checksum
 damage small.packets byte 4447 xor 0x80 expect header-crc packet 14 at 4432    # the header CRC

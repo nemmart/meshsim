@@ -85,34 +85,60 @@ TEST(link_documents_example) {
     f.length = 1; f.number = 1;
     packet_writer::packet(written, f, zeros);
     CHECK(written == bytes);
+    // the same packet after one hop, and with number 0x2ABCD, acknowledge 0x15555 and hops 3 (owner, 2026-11-17):
+    // the writer's bytes, the reader's fields, and the black box takes them
+    static const uint8_t hop1[16] = {0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x10, 0x00, 0xEA, 0x9A, 0x70, 0x42, 0x9E, 0xBC, 0x0A, 0x21};
+    static const uint8_t hop3[16] = {0x02, 0x01, 0xCD, 0xAB, 0x56, 0x55, 0x35, 0x00, 0xEA, 0x9A, 0x70, 0x42, 0xC9, 0xC4, 0x23, 0x30};
+    const struct { const uint8_t* h; uint32_t number, acknowledge; unsigned hops; } more[] = {{hop1, 1, 0, 1}, {hop3, 0x2ABCD, 0x15555, 3}};
+    for (const auto& m : more) {
+        std::vector<uint8_t> w;
+        packet_writer::Fields g;
+        g.length = 1; g.number = m.number; g.acknowledge = m.acknowledge; g.hops = m.hops;
+        packet_writer::packet(w, g, zeros);
+        CHECK(w.size() == 32 && std::equal(m.h, m.h + 16, w.begin()));
+        CHECK_EQ(crc32c(m.h, 16), 0x48674BC7u);
+        hostlink::Reader rd;
+        rd.open(w.data(), w.size());
+        rd.expect[1] = m.number;
+        CHECK(rd.next(p, check, taken) == hostlink::Reader::Next::PACKET);
+        CHECK(check == hostlink::Check::OK);
+        CHECK_EQ(p.number, m.number); CHECK_EQ(p.acknowledge, m.acknowledge); CHECK_EQ(p.hops, m.hops);
+        Bench b(w);
+        b.ie().link.expect[1] = m.number;
+        b.run(3);
+        CHECK_EQ(b.load(P_ERRORS), 0u);
+        CHECK_EQ(b.load(W_BACKGROUND_WORDS), 1u);
+    }
 }
 
 // A header word's fields where HL puts them, and the two checks over the bytes HL names.
 TEST(link_header_fields) {
     packet_writer::Fields f;
-    f.stream = 2; f.flags = 0x9; f.length = 3; f.number = 0xABCDE; f.acknowledge = 0x12345;
+    f.stream = 2; f.flags = 0x9; f.length = 3; f.number = 0x2BCDE; f.acknowledge = 0x3A5A5; f.hops = 0xC;
     const std::vector<uint8_t> d = data_of(7, 3);
     std::vector<uint8_t> file;
     packet_writer::packet(file, f, d.data());
     CHECK_EQ(file.size(), size_t(16 + 48));
     CHECK_EQ(file[0], 0x92u);                               // [3:0] the stream, [7:4] the flags
     CHECK_EQ(file[1], 3u);                                  // [15:8] the length
-    CHECK_EQ(uint32_t(file[2]) | uint32_t(file[3]) << 8 | uint32_t(file[4] & 15) << 16, 0xABCDEu);   // [35:16]
-    CHECK_EQ(uint32_t(file[4] >> 4) | uint32_t(file[5]) << 4 | uint32_t(file[6]) << 12, 0x12345u);   // [55:36]
+    CHECK_EQ(uint32_t(file[2]) | uint32_t(file[3]) << 8 | uint32_t(file[4] & 3) << 16, 0x2BCDEu);          // [33:16]
+    CHECK_EQ(uint32_t(file[4] >> 2) | uint32_t(file[5]) << 6 | uint32_t(file[6] & 15) << 14, 0x3A5A5u);   // [51:34]
+    CHECK_EQ(uint32_t(file[6] >> 4), 0xCu);                                                             // [55:52] hops
     CHECK_EQ(file[7], 0u);                                  // [63:56] reserved
     auto u32 = [&](size_t at) { return uint32_t(file[at]) | uint32_t(file[at + 1]) << 8 | uint32_t(file[at + 2]) << 16 | uint32_t(file[at + 3]) << 24; };
     CHECK_EQ(u32(8), hostlink::crc32c(file.data() + 16, 48));            // [95:64] over the data
     CHECK_EQ(u32(12), hostlink::crc32c(file.data(), 12));                // [127:96] over bits [95:0]
     hostlink::Reader r;
     r.open(file.data(), file.size());
-    r.expect[1] = 0xABCDE;
+    r.expect[1] = 0x2BCDE;
     hostlink::Packet p;
     hostlink::Check check;
     size_t taken;
     CHECK(r.next(p, check, taken) == hostlink::Reader::Next::PACKET);
     CHECK(check == hostlink::Check::OK);
     CHECK_EQ(taken, size_t(64));
-    CHECK_EQ(p.stream, 2u); CHECK_EQ(p.flags, 9u); CHECK_EQ(p.length, 3u); CHECK_EQ(p.number, 0xABCDEu); CHECK_EQ(p.acknowledge, 0x12345u);
+    CHECK_EQ(p.stream, 2u); CHECK_EQ(p.flags, 9u); CHECK_EQ(p.length, 3u); CHECK_EQ(p.number, 0x2BCDEu); CHECK_EQ(p.acknowledge, 0x3A5A5u);
+    CHECK_EQ(p.hops, 0xCu);
     CHECK_EQ(p.lo[2], uint64_t(7) << 32 | 2);
     CHECK_EQ(p.hi[2], ~(uint64_t(7) << 32 | 2));
     CHECK(r.next(p, check, taken) == hostlink::Reader::Next::END);
@@ -577,23 +603,31 @@ TEST(ingress_link_idle_zeros) {
     for (uint32_t k = 0; k < 3; k++) { const size_t from = b.out.size(); b.dma(1, k == 0 ? 2 : 1, 64, 0x100, 1); CHECK(b.sent(from, 0xA + k, 0, k == 0 ? 2 : 1, 0x100, 64, 1)); }
 }
 
-// The packet number: 1 first, and after 0xFFFFE, 1 again.
+// The packet number, 18 bits (owner, 2026-11-17): 1 first, past 0xFFFF, and after 0x3FFFE, 1 again.
 TEST(ingress_link_number_wraps) {
     std::vector<uint8_t> file;
-    add(file, 2, 0xFFFFD, 1, 1);
-    add(file, 2, 0xFFFFE, 2, 1);
+    add(file, 2, 0xFFFF, 5, 1);
+    add(file, 2, 0x10000, 6, 1);                            // the first number above 16 bits
+    Bench a(file);
+    a.ie().link.expect[1] = 0xFFFF;
+    a.run(3);
+    CHECK_EQ(a.load(P_ERRORS), 0u);
+    CHECK_EQ(a.ie().link_packets, 2u);
+    file.clear();
+    add(file, 2, 0x3FFFD, 1, 1);
+    add(file, 2, 0x3FFFE, 2, 1);
     add(file, 2, 1, 3, 1);
     add(file, 2, 2, 4, 1);
     Bench b(file);
-    b.ie().link.expect[1] = 0xFFFFD;                        // as if 0xFFFFC packets had come
+    b.ie().link.expect[1] = 0x3FFFD;                        // as if 0x3FFFC packets had come
     b.run(3);
     CHECK_EQ(b.load(P_ERRORS), 0u);
     CHECK_EQ(b.ie().link_packets, 4u);
-    std::vector<uint8_t> bad;                               // 0xFFFFF is no packet number
-    add(bad, 2, 0xFFFFE, 1, 1);
-    add(bad, 2, 0xFFFFF, 2, 1);
+    std::vector<uint8_t> bad;                               // 0x3FFFF is no packet number
+    add(bad, 2, 0x3FFFE, 1, 1);
+    add(bad, 2, 0x3FFFF, 2, 1);
     Bench c(bad);
-    c.ie().link.expect[1] = 0xFFFFE;
+    c.ie().link.expect[1] = 0x3FFFE;
     c.run(3);
     CHECK_EQ(c.load(P_ERRORS), ERR_SEQUENCE);
     std::vector<uint8_t> zero;                              // nor is 0, and the first is 1

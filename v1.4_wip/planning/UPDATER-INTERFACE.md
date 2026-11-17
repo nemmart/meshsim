@@ -1,8 +1,10 @@
 # The Updater's peripheral interface
 
 Draft for review, in v1.36's register layout and names (`v1.36/spec/machine-spec.md` 5.2, 5.3, 17.1). Revised on
-2026-11-16 after the walk through the registers with the owner; it replaces that morning's draft. A dagger (†) marks
-a choice that is proposed and not yet ruled on. Where a line says (owner), the owner ruled it.
+2026-11-16 after the walk through the registers with the owner; it replaces that morning's draft. Revised again
+that evening: the data comes from Ingress by a flow-controlled word port, and the segment queue and its credits are
+gone. A dagger (†) marks a choice that is proposed and not yet ruled on. Where a line says (owner), the owner ruled
+it.
 
 **The Updater is the master tile's peripheral** (owner, 2026-11-16), beside Ingress/Egress. It was the memory tile's.
 Why, and what follows, is `DESIGN-NOTES-2026-11-16.md` section 10.
@@ -49,12 +51,12 @@ The same words as on every peripheral. The Updater adds bits [2] and up.
 |---|---|---|
 | [0] | `done` | the run has ended; counted, depth 1 |
 | [1] | `dma_done` | never set: no DMA |
-| [2] | `segment_credit` | the segment queue's credit; counted, depth 2 |
+| [2] | unused † | reads 0. It was `segment_credit`, which went with the segment queue; the bits are packed again when the numbers are settled |
 | [3] | `free_page_credit` | the free page queue's credit; counted, depth 2 |
 
 | `ERRORS` bit | name | meaning |
 |---|---|---|
-| [0] | `queue_overrun` | a push into a full segment queue or free page queue; the push is dropped |
+| [0] | `queue_overrun` | a push into a full free page queue; the push is dropped |
 | [1] | `beyond` | an address past what the file's depth can reach |
 | [2] | `lpddr_error` | a read beat or a write response from LPDDR that is not OKAY (the RW engine's name for it) |
 | [3] | `out_of_pages` | a page was needed with `PAGE_COUNT` at 0 (owner) |
@@ -93,7 +95,7 @@ units, the form an index entry stores, and the form the Tracer's state record ho
 - **`WORD_COUNT` and `PAGE_COUNT` read during a run may be stale** (owner). They are written only while the Updater is
   idle.
 - **After `done`, `PAGE_COUNT` is the pages not used.** With the host's count written in it should be 0.
-- **A run's end touches nothing** (owner): what is left in the segment queue, in the decoder and in the free page
+- **A run's end touches nothing** (owner): what is left in the data input, in the decoder and in the free page
   queue stays, and is no error. The next run picks it up.
 - **There is no file length** (owner). The depth is all the Updater needs, to ask the cache for a page and to build
   index pages on a fault. An address past what the depth reaches is `ERRORS.beyond`, as on the Tracer.
@@ -124,7 +126,7 @@ system takes it over, is decided when the file system is built.
 | word | offset | register | access | meaning |
 |---|---|---|---|---|
 | 48 | 0x0C0 | `STAT_CYCLES` | R | cycles with `STATUS.busy` at 1 |
-| 49 | 0x0C4 | `STAT_STALL_DATA` | R | cycles waiting on an empty segment queue |
+| 49 | 0x0C4 | `STAT_STALL_DATA` | R | cycles waiting for a word on the data input |
 | 50 | 0x0C8 | `STAT_STALL_PAGES` | R | cycles waiting on an empty free page queue |
 | 51 | 0x0CC | `STAT_STALL_MEMORY` | R | cycles waiting on the cache or on LPDDR |
 | 52 | 0x0D0 | `STAT_PAGES_READ` | R | pages and half pages read |
@@ -155,34 +157,64 @@ Blocks 4 to 7 are unused.
 - **Whole pages are not a mode.** A program image or a jump table arrives as whole pages and so is never read first;
   the Updater is not told.
 
-## The region: the two queues
+## The data input: a word port from Ingress
+
+**The Updater's data comes from Ingress, on the same tile, by a flow-controlled port** (owner, 2026-11-16). It is
+the only way in. The master tile's firmware starts it by writing a frame's length to Ingress's `DMA_FORWARD_COUNT`
+and does not handle the words (`INGRESS-INTERFACE.md`).
+
+| signal | from | meaning |
+|---|---|---|
+| `valid` | Ingress | a word is offered |
+| `data` [127:0] | Ingress | 128 bits of a frame's data |
+| `ready` | the Updater | it can take a word this cycle |
+
+- **A word moves in a cycle in which `valid` and `ready` are both 1.**
+- **There are no credits and no event** (owner: "updater uses flow control rather than credits since the units are
+  so tightly coupled"). When the Updater cannot take a word, Ingress's background queue fills, and the link holds
+  the host back.
+- **† What the Updater keeps behind the port is its own:** a few words, so that the decoder is not starved, and
+  nothing a program can see. The buffer that matters is Ingress's 4 KB background queue.
+- **† `ready` does not depend on `busy`.** An idle Updater takes words until what it keeps is full, and they wait
+  for the next run.
+- **Only the reset empties it.** A `START` does not: the stream carries on from one run to the next.
+- **A frame's padding:** a frame is a whole number of 128-bit words, so its last word may hold bits no run uses.
+  They are left in the decoder, and a run with `continue` 0 clears them.
+
+**It replaces the segment queue** (8 KB, filled by `WRITE` packets from Ingress's DMA, with a 256-word credit that
+the firmware managed). v1.37 as merged still has that queue; "In v1.37" below.
+
+## The region: the free page queue
 
 Region 0x05 on the master tile, `WRITE` packets of 128 bits only, the part picked by offset bits [22:20] as in the
 Tracer's region. A packet is appended at the queue's tail and the rest of its address is ignored.
 
 | part | queue | size | an entry | filled by |
 |---|---|---|---|---|
-| 1 | segment queue | **512 entries of 128 bits, 8 KB** (owner, 2026-11-16) | 128 bits of a frame's data | Ingress, on the same tile |
 | 2 | free page queue | 256 entries | one free page, in [31:0] † | the master tile's core, from its page map |
-| 0, 3-7 | unmapped | | | |
+| 0, 1, 3-7 | unmapped † | | | part 1 was the segment queue |
 
-**The credits are the replayer's and the Tracer's, unchanged** (owner; replayer chapter 17.8.8):
+**The credit is the replayer's and the Tracer's, unchanged** (owner; replayer chapter 17.8.8):
 
-- A queue's credit is a counted event of depth 2. One credit is leave to push up to half a queue: **256 entries for
-  the segment queue** (owner), 128 for the free page queue.
-- A credit is returned each time half a queue's entries have left the queue since the last return.
-- A credit is taken by a consuming load of `EVENTS`, one from each credit that `EVENTS_MASK` selects.
+- The queue's credit is a counted event of depth 2. One credit is leave to push up to half the queue, 128 entries.
+- A credit is returned each time half the queue's entries have left the queue since the last return.
+- A credit is taken by a consuming load of `EVENTS`, if `EVENTS_MASK` selects it.
 - A push into a full queue is dropped and sets `ERRORS.queue_overrun`.
+- **Only the reset empties the queue and fills the credit to 2.** A `START` does neither, because the Updater has
+  no state write and its pages carry on from one run to the next.
 
-- **The segment queue is twice the replayer's size** (owner): 8 KB with a credit of 256 words, so that a wake of
-  the master tile moves 4 KB. The scheme is the same. v1.37 as merged has 4 KB and 128.
+## In v1.37
 
-Two differences, both because the Updater has no state write and its stream runs across runs:
+| | as merged (WORKER3, WORKER4) | this design |
+|---|---|---|
+| the data | region part 1, a segment queue of 512 entries, 8 KB; `EVENTS` [2] `segment_credit`, one credit 256 words | the word port |
+| who moves it | the firmware, by Ingress's DMA, a transfer of up to 256 words at a time | Ingress's forward count |
+| the free page queue | as above | unchanged |
 
-- **Only the reset empties the queues and fills the credits to 2.** A `START` does neither.
-- **The segment queue's credits come to the master tile to manage** (owner). Its core takes a credit, and sends a
-  background packet's words from Ingress into the queue only when its allowance covers them
-  (`INGRESS-INTERFACE.md`). There is no signal from the Updater to Ingress.
+- **WORKER6 builds the real controller to the word port,** with the merged segment queue in front of it as a shim,
+  so that today's firmware runs on it unchanged.
+- **WORKER7 puts the forward count into v1.37:** Ingress's black box, the port, and the firmware. The segment queue
+  and the shim go then.
 
 ## Its other connections
 

@@ -1,71 +1,90 @@
-# Worker 7 (updater_wip): tuning the master tile's firmware
+# Worker 7 (updater_wip): the forward count in v1.37
+
+(This replaces WORKER7's first brief, tuning the master tile's firmware, which was withdrawn before it started: the
+owner's design of 2026-11-16 takes the firmware out of the data's path instead.)
 
 **The project.** meshsim is the simulator and specification for a parallel compute mesh, part of an ASIC for proving
 the Jolt zkVM. **v1.37 runs** (`v1.37_wip/`, `RUNNING-v1.37.md`): the host's data arrives over a link as packets;
 the master tile's firmware (`fw/cc/master.c`) reads the frames out of Ingress and feeds the Updater, which builds
 the memory images the Tracer runs on. Ingress and the Updater are software black boxes behind their real registers.
 
-**Where it stands.** The firmware tells Ingress how many words to gather before waking it (the threshold), and
-moves up to 256 words, 4 KB, a transfer. That cut its cost by three. It is still not tuned: a transfer costs 2.3
-to 3 wakes (the flag, the transfer's landing, a credit every other one) and about 360 instructions. With the link
-at a byte a cycle the master's core is awake for 0.17 to 0.20 of the link's time.
+**Where it stands.** The firmware moves every word of the bulk data itself: it tells Ingress how many words to
+gather (a threshold), and sends them by Ingress's DMA into the Updater's 8 KB segment queue, under credits it
+keeps. The master's core is awake for 0.17 to 0.20 of the link's time. The owner wants feeding the Updater to be at
+most 10% of the master tile's load.
 
-**The owner's target: feeding the Updater is at most 10% of the master tile's load,** so that the core has slack
-for the command stream, which will come on the foreground stream. **Your part is to get there by tuning the
-firmware,** and to say exactly what it took and what is left.
+**The owner's design, which you build:** a register in Ingress, `DMA_FORWARD_COUNT`. While it is not 0, Ingress
+itself moves a word a cycle from its background queue to the Updater over a flow-controlled port, or discards it.
+The firmware writes a frame's length once and wakes once a frame. The thresholds, the segment queue and its
+credits go.
 
 READ FIRST: the top-level `README.md`; `updater_wip/README.md`; in `v1.4_wip/planning/`:
-**`INGRESS-INTERFACE.md`** and **`UPDATER-INTERFACE.md`** in full, and `DESIGN-NOTES-2026-11-16.md` sections 14 to
-16; **`updater_wip/planning/sessions/WORKER4-REPORT.md`** and `WORKER4-NOTES.md` (the figures, the wakes a frame,
-the choices C1 to C14), and `WORKER3-REPORT.md` (Stage 2); in `v1.37_wip/`: `RUNNING-v1.37.md`, `CHANGES-v1.37.md`,
-`fw/README.md`, `fw/cc/master.c`, `fw/include/host.h`, `fw/port/`, `spec/machine-spec.md` 5 to 9 and 17.1 to 17.4
-(events, `WFI`, counters, a peripheral's DMA), `tests/test_master.cpp`, the master's teeth script, `tests/proof_*`
-and `tests/proof_numbers.py`.
+**`INGRESS-INTERFACE.md`** and **`UPDATER-INTERFACE.md`** in full (both rewritten for this design; each has an "In
+v1.37" table of what is merged against what you build), `HOST-LINK.md` ("Holding the host back"),
+`HOST-FRAMES.md`, and `DESIGN-NOTES-2026-11-16.md` sections 14 to 17; **`v1.37_wip/src/units/word_port.h`** (the
+port, agreed); `updater_wip/planning/sessions/WORKER4-REPORT.md` and `WORKER4-NOTES.md` (what you are replacing,
+its figures and its choices) and `WORKER3-REPORT.md`; in `v1.37_wip/`: `RUNNING-v1.37.md`, `CHANGES-v1.37.md`,
+`src/units/ingress_egress.h`, `host_link.h`, `updater.h` and `updater.cpp`, `fw/README.md`, `fw/cc/master.c`,
+`fw/include/host.h`, `spec/machine-spec.md` 5 to 9 and 17.1 to 17.4 (events, `WFI`, counters, a peripheral's DMA),
+`tests/test_ingress_link.cpp`, `tests/test_updater.cpp`, `tests/test_master.cpp`, the master's teeth script,
+`tests/proof_*` and `tests/proof_numbers.py`.
 
-THE TARGET, EXACTLY
-- **The measure:** the master's cycles awake over the link's time, up to the hand-over to the tracer tile, with
-  the link at a byte a cycle and the threshold at 256. `proof_numbers.py` prints it.
-- **The target: 0.10 or less** on both workloads at 2²⁹ (EVM Zone and Cyclone, every *s* WORKER4 ran) and on the
-  three recorded segments. That is about 53 cycles awake a packet's worth, 420 for each 4 KB.
-- **Report also:** the same on the matrix of small inputs; the wakes and the instructions a transfer; the link rate
-  at which the firmware is at 10%, and the rate it could keep up with at all.
+**The names.** The notes use v1.35's names in places: C&C 1, 2 and 3 are the master, memory and tracer tiles.
 
-THE WORK
-1. **Measure first.** Where the cycles awake go, by kind of wake and by frame: the instructions a wake, what each
-   is for, and what the figures' own counters cost. Put the table in your plan.
-2. **Fewer wakes a transfer.** Aim at one in the steady state. Places to look, none of them an instruction:
-   - the landing and `dma_done`: whether the next flag can come before the transfer has landed, and so whether
-     either needs a wake of its own, or can be found done at the next one;
-   - the credit: taken when the core is awake anyway, and waited for only when the allowance runs out;
-   - what `EVENTS_MASK` selects in each state.
-3. **Cheaper wakes.** The path from the wake to the transfer's start; what is recomputed that could be kept; the
-   compiler's options as `fw/build.sh` has them.
-4. **The frames that are not the Updater's** (the records, the advice, the headers) by the same measure.
-5. **If tuning does not reach 0.10,** say how far it got and why, and what each of these would give, by
-   measurement where you can and by argument where you cannot. Do not build them:
-   - a larger credit and queue (16 KB and 512 words);
-   - a transfer that discards its words (WORKER4's suggestion, for frames 7 and 8);
-   - Ingress feeding the Updater under credits kept in hardware, the firmware waking once a frame.
+THE WORK, in `v1.37_wip/`
+1. **Ingress's black box,** to `INGRESS-INTERFACE.md`:
+   - the queues at 4 KB a stream, 256 words;
+   - the thresholds and their words gone;
+   - `DMA_FORWARD_COUNT` at word 82: the count in [30:0], `discard` in [31]; it waits on an empty queue; a store
+     replaces it and a store of 0 stops it; a load gives what remains;
+   - the source side of the word port (`word_port.h`), in its cycle convention;
+   - the rule for a service flag as the document has it;
+   - the undefined cases stop the simulator, as the DMA's do today: a DMA transfer from the background queue with
+     the count not 0, a store of a count with such a transfer in flight, a DMA count beyond the words in the queue.
+2. **The black box Updater's input:** the sink side of the word port. Its segment queue, region part 1,
+   `segment_credit` and the segment queue's part of `queue_overrun` go. What it keeps behind the port is a few
+   words; say how many and why. `ready` does not depend on `busy`. Nothing else about the black box changes.
+3. **The wiring in the chip:** Ingress's source to the Updater's sink, in a way that does not care which Updater is
+   behind the port. WORKER6 is building the Updater's real controller to the same port.
+4. **The master tile's firmware:** a frame's header word by the DMA; for update words, the Updater's run set up and
+   the frame's length written to `DMA_FORWARD_COUNT`; the headers by the DMA, copying what is in the queue;
+   frames 7 and 8 by discarding up to its own record or log, copying that, and discarding the rest. The allowance,
+   the thresholds, the credits for data and the scrap area go.
+   - The memory segments frame feeds three runs. Say how the count and the three `START`s are ordered, and why
+     nothing is lost or taken twice between runs.
+5. **The figures,** with `proof_numbers.py`: the master's cycles awake over the link's time, up to the hand-over to
+   the tracer tile; the wakes a frame; the same with the link at 2, 4 and 8 bytes a cycle; and where the limit is
+   now. Set them beside WORKER4's.
 
 HOW IT IS CHECKED
-- **Nothing the firmware builds changes:** `test_master`, `proof-real`, `proof-matrix` and `proof-29`, every image
-  equal to gold's, `PAGE_COUNT` 0 at every `done`, no error bit. The thresholds 32, 64 and 128 and the link at 2, 4
-  and 8 bytes a cycle, as WORKER4 ran them.
-- **Every planted bug of the master is still caught,** and each shortcut you take gets a planted bug of its own:
-  a wake dropped must not become a transfer started too soon, a credit spent twice, or a frame's tail left in
-  Ingress.
-- **The races:** every place where the firmware now relies on an order of events (a landing before a flag, a
-  credit before a transfer) is listed in your notes with why the order holds, and tested with the timing varied.
+- **Nothing the chip builds changes:** `test_master`, `proof-real`, `proof-matrix` and `proof-29`, every image
+  equal to gold's, `PAGE_COUNT` 0 at every `done`, no error bit; the link at 1, 2, 4 and 8 bytes a cycle.
+- **The black boxes on their own:** `test_ingress_link` and `test_updater` brought to the new interface. For
+  Ingress: the count written before, during and after the words arrive; a count across many packets; send and
+  discard; a store of 0 mid-frame; the Updater's `ready` coming and going at random; forwarding while a DMA
+  transfer runs from the foreground queue (a test file with both streams); a full queue holding the link; every
+  line of the service rule, with a case that would post a flag too many and one that would post one too few.
+- **Every planted bug of the master is still caught,** the ones about the allowance and the credits replaced by
+  ones about the count: a frame's length one short and one long, send for discard, the wrong record or log kept,
+  a count written while the last is still running.
+- **The orders the firmware relies on** are listed in your notes with why each holds (the count against `START`,
+  a run's `done` against the next frame's flag, a copy's landing against the next discard), and tested with the
+  timing varied.
 - `./run_tests.sh all --check` and `make check`, as before.
 
+WHERE THE DOCUMENTS ARE OPEN
+- A dagger (†) marks what is proposed and not ruled on. Take each as written, unless it cannot work; then say so in
+  `QUESTIONS.md` with the evidence, take the nearest thing that does, and carry on.
+- What they do not say and you must settle: the simplest reading, in `NOTES.md` under "Choices", with the reason
+  and the alternative.
+- **Do not edit anything in `v1.4_wip/`,** nor `word_port.h`. List what you would change.
+
 RULES
-- **Propose your plan first** in `NOTES.md`, with the measurements of step 1, and wait for the owner's go-ahead
-  before changing the firmware.
-- **You change the master tile's firmware and its tests, and nothing else.** Ingress's and the Updater's black
-  boxes and their interfaces stay as they are; if an interface is in the way, it is a finding for step 5, with the
-  figure it would give. Do not edit anything in `v1.4_wip/`.
-- **WORKER5 and WORKER6 are working in `v1.37_wip/`** on the cache's and the Updater's controllers. Neither changes
-  `fw/cc/master.c`. Merge `main` in often (never rebase).
+- **Propose your plan first** in `NOTES.md` and wait for the owner's go-ahead before writing code.
+- **WORKER5 and WORKER6 are working in `v1.37_wip/`** on the cache's and the Updater's controllers, each beside its
+  black box and behind a setting. You do not touch their units; they do not touch Ingress, the black box Updater's
+  input or `fw/cc/master.c`. Merge `main` in often (never rebase).
+- Gold and the packetizer are not changed.
 - The firmware is built with the toolchain v1.36 pins (xPack `riscv-none-elf-gcc` 15.2.0-1); the runner does not
   have it, so the images you build are committed with their hashes.
 - **Branch `updater-w7`.** Your notes, questions and report are in `updater_wip/planning/sessions/WORKER7/`. The
@@ -79,9 +98,13 @@ RULES
 - Commit and push after each completed piece, and end each turn with a clean `git status`.
 - Keep replies to the owner short.
 
+NOT YOUR WORK: the Updater's real controller and its shim (WORKER6); the cache's controller, the AXI arbiter and
+the LPDDR model (WORKER5); the link's way back to the host; the specification.
+
 DELIVERABLES
-- `v1.37_wip/`: the tuned firmware, its image and hash, its tests and planted bugs; the running guide and
-  `CHANGES-v1.37.md` brought up to date.
-- `WORKER7/NOTES.md`: the plan, the measurements, the orders the firmware relies on, the "Choices" list.
-- `WORKER7/REPORT.md`: the figures before and after, by workload; whether the target is met; what each change
-  gave; step 5's findings; and what you would change in `INGRESS-INTERFACE.md` and `UPDATER-INTERFACE.md`.
+- `v1.37_wip/`: Ingress's black box, the Updater black box's input, the wiring, the firmware with its image and
+  hash, the tests and planted bugs; the running guide and `CHANGES-v1.37.md` brought up to date.
+- `WORKER7/NOTES.md`: the plan, the orders the firmware relies on, the "Choices" list.
+- `WORKER7/REPORT.md`: what was built; each check's result; the figures beside WORKER4's, and whether the owner's
+  10% is met; and what you would change in `INGRESS-INTERFACE.md`, `UPDATER-INTERFACE.md` and `word_port.h`, as
+  lists for the owner.

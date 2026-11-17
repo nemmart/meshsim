@@ -21,13 +21,16 @@ end first, with software black boxes, and the real controllers afterwards.
    of Ingress and drives the Updater; the Tracer traces on the images the Updater built. Ingress and the Updater
    are software black boxes behind their real registers (`INGRESS-INTERFACE.md`, `UPDATER-INTERFACE.md`); the cache
    is v1.36's software model; nothing runs on the memory tile. WORKER3, in `v1.37_wip/`.
-4. **The threshold** in Ingress's black box and the firmware (`v1.4_wip/planning/INGRESS-INTERFACE.md`). **Done**
-   (WORKER4). The firmware is still to be tuned to the owner's target: the Updater at most 10% of the master tile's
-   load.
+4. **The threshold** in Ingress's black box and the firmware. **Done** (WORKER4), and since replaced in the design
+   by item 6.
 5. **The two real controllers, by two workers who share no code** (owner): the cache's (WORKER5) and the Updater's
-   (WORKER6), each behind a setting beside its black box. WORKER5 first writes the interface between them,
-   `AXI-INTERFACE.md` and `CACHE-INTERFACE.md`; when those are agreed WORKER6 starts. Ingress stays a black box.
-6. **Joining them:** the Updater on the arbiter, talking to the real cache, on the proof runs.
+   (WORKER6), each behind a setting beside its black box. WORKER5 first wrote the interface between them,
+   `AXI-INTERFACE.md` and `CACHE-INTERFACE.md`, now agreed. Ingress stays a black box.
+6. **The forward count** (owner, 2026-11-16; `v1.4_wip/planning/INGRESS-INTERFACE.md`): Ingress moves the bulk
+   data to the Updater itself, over a flow-controlled word port, and the firmware wakes once a frame. It is how
+   the owner's target is to be met: the Updater at most 10% of the master tile's load. WORKER7, in v1.37's Ingress
+   black box and firmware; WORKER6 builds its controller to the same port.
+7. **Joining them:** the Updater on the arbiter, talking to the real cache, fed by Ingress, on the proof runs.
 
 ## What is here
 
@@ -59,5 +62,5 @@ into `main`.
 | WORKER3 | v1.37 in `v1.37_wip/`: the Ingress and Updater black boxes behind their real registers, the master tile's firmware (`fw/cc/master.c`) with the page map, and the Tracer running on the images the Updater built from a packet file; 37 proof runs on both workloads, small and at 2²⁹, every image equal to gold's; all of v1.36's checks still pass (Quests 202 to 205). Closed and merged 2026-11-16 | `WORKER3-REPORT.md`, `WORKER3-NOTES.md`, `WORKER3-QUESTIONS.md`; its tasks are `tasks/v137-check/` |
 | WORKER4 | the threshold in v1.37's Ingress black box and the master tile's firmware, Ingress's buffers at 16 KB a stream, the Updater's segment queue at 8 KB; the master's cost a packet's worth fell from about 330 cycles awake to about 100; 174 more runs with the link at 2, 4 and 8 bytes a cycle, where the Updater becomes the limit (Quests 206 to 208). Closed and merged 2026-11-16 | `WORKER4-REPORT.md`, `WORKER4-NOTES.md` |
 | WORKER5 | Part A, done and merged: the two interface documents, `AXI-INTERFACE.md` and `CACHE-INTERFACE.md`, with their headers, agreed with the owner. Part B, running: the cache's real controller, with the cache memory, the AXI arbiter and the LPDDR model | on branch `updater-w5` (`WORKER5/`) |
-| WORKER6 | the Updater's real controller, in the shape of hardware, behind the black box's registers; built from the documents alone and tested against a cache stand-in | prompt written (`WORKER6/PROMPT.md`), not started |
-| WORKER7 | tuning the master tile's firmware to the owner's target: feeding the Updater at most 10% of the master tile's load | prompt written (`WORKER7/PROMPT.md`), not started |
+| WORKER6 | the Updater's real controller, in the shape of hardware, behind the black box's registers, its data by the word port (with v1.37's segment queue as a shim in front until WORKER7's work lands); built from the documents alone and tested against a cache stand-in | prompt written (`WORKER6/PROMPT.md`), not started |
+| WORKER7 | the forward count in v1.37: Ingress's black box, the word port to the Updater, and the master tile's firmware waking once a frame. (Its first brief, tuning the firmware, was withdrawn before it started) | prompt written (`WORKER7/PROMPT.md`), not started |

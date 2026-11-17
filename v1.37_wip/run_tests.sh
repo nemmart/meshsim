@@ -15,6 +15,9 @@
 #     the RISC-V toolchain (fw/build.sh's header; RISCV_PREFIX names it): the step fw-build. With it, RISCV_TESTS and
 #                         COREMARK name the checkouts that step also rebuilds riscv-tests' and CoreMark's images from
 #   The 64K runs' key file (16 MiB) is built here (the step sort-64k of `all`, into build/sort-64k.keys).
+#   CACHE_CTL=1 (updater_wip, WORKER5): the steps proof-real, proof-matrix and proof-29 run the Tracer on the cache's
+#   controller, the AXI arbiter and the LPDDR model (MachConfig::cache_ctl; proof_run --cache), and a step
+#   tracer-block-cache runs tracer-block's segments on it (tracer_block --fill cache). Without it nothing changes.
 #   The suites build with MODE=suite (release flags, the checker's facts on: src/check.h), into build/$CC_NAME-suite/.
 #
 # ADDING A STEP:
@@ -53,6 +56,7 @@ SUITES="$SUITES suite_replayer suite_memsys suite_rvc suite_tracer tracer_block"
 SUITES="$SUITES fwimage"                                                                   # the runs' keys (tools/fwimage)
 SUITES="$SUITES test_file_store test_updater test_ingress_link test_packet_vectors updater_frames packetize"       # v1.37: the file store's pages by address, the Updater black box, Ingress's host link
 SUITES="$SUITES test_master proof_run"                                                     # v1.37: the master tile's program, the whole chip from a packet file
+SUITES="$SUITES test_lpddr_model test_axi_arbiter test_cache"                               # updater_wip, WORKER5: the LPDDR model, the AXI arbiter, the cache's controller
 
 if [ "$BUILD" = 1 ]; then
   echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
@@ -175,6 +179,26 @@ if [ -d "$INPUTS/v1261/evm-zone-23" ] && [ -d "$INPUTS/v1261/cyclone-22" ] && [ 
 else
   skipped tracer-block "the Tracer alone on the real segments, against gold's files and the RTL's figures" "the workloads' data is not at $INPUTS: MESHSIM_INPUTS"
 fi
+# updater_wip, WORKER5: with CACHE_CTL=1, the same segments on the cache's controller (every run against gold's files;
+# its cycles are the cache's, so not against the RTL's figures)
+tracer_block_cache() {
+  local ps p s c
+  for ps in evm-zone-23:0 evm-zone-23:1 cyclone-22:0; do
+    p=${ps%:*} s=${ps#*:}
+    for c in 0 7; do
+      $S/tracer_block --inputs "$INPUTS" --program $p --segment $s --compression $c --fill cache --quiet || echo "FAIL tracer_block $p segment $s, compression $c, fill cache: exit $?"
+    done
+  done
+}
+if [ "${CACHE_CTL:-}" = 1 ] && [ -d "$INPUTS/v1261/evm-zone-23" ] && [ -d "$INPUTS/v1261/cyclone-22" ] && [ -d "$INPUTS/gold-v1.3" ] && [ -d "$INPUTS/w26-jumpmap" ]; then
+  check tracer-block-cache "WORKER5: the Tracer alone on the real segments on the cache's controller (EVM Zone 0 and 1, Cyclone 0; compression 0 and 7): every run against gold's files" -- tracer_block_cache
+fi
+
+# ---- updater_wip, WORKER5: the path to LPDDR, each unit alone, and the Tracer on the cache's controller ----
+cache_units() { for t in test_lpddr_model test_axi_arbiter test_cache; do $S/$t || echo "FAIL $t: exit $?"; done; }
+check cache "WORKER5: the LPDDR model, the AXI arbiter and the cache's controller alone; the cache against the stand-in with no cache on random traffic (tests/test_lpddr_model.cpp, test_axi_arbiter.cpp, test_cache.cpp)" -- cache_units
+cache_synth() { for seed in 1 2 3 4 5 6 7 8; do TRACER_CACHE=1 $S/tracer_block --synthetic $seed --quiet || echo "FAIL tracer_block --synthetic $seed on the cache: exit $?"; done; }
+check cache-synth "WORKER5: the Tracer alone on the cache's controller, eight synthetic guests against their interpreter (tracer_block --synthetic, with the cache)" -- cache_synth
 
 # ---- v1.37: the units of the Updater's work, each alone (../updater_wip; CHANGES-v1.37.md) ----
 check file-store "v1.37: the file store's pages by address: placed where told, whole pages, beside the pages it hands out (tests/test_file_store.cpp)" -- $S/test_file_store
@@ -216,7 +240,7 @@ if [ "$MODE" != quick ]; then
       for s in $list; do
         rec=""; [ "${2:-}" = --recorded ] && rec="--recorded $name"
         MESHSIM_INPUTS="$INPUTS" $S/proof_run "$d/$name.frames" --packets "$d/$name.packets" --asics "$n" --segment "$s" --windows "$windows" \
-          --gold "$d/$name-s$s.images.txt" $rec --quiet || echo "FAIL proof_run $name, s $s: exit $?"
+          --gold "$d/$name-s$s.images.txt" $rec --quiet $([ "${CACHE_CTL:-}" = 1 ] && echo --cache) || echo "FAIL proof_run $name, s $s: exit $?"
       done
     done < "$d/RUNS"
   }

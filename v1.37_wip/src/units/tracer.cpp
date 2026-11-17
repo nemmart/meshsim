@@ -414,6 +414,7 @@ bool Tracer::state_write_lands_at(int64_t T) const {
 void Tracer::step(int64_t T) {
     settle(T);
     cycle(T);
+    if (fill_port && fill_port->tick) fill_port->tick(fill_port->ctx, T);   // v1.37: a clocked memory system's edge
 }
 
 // The row word's checks and kind (tracer_rows.veryl: head_invalid, head_advice), of the word the templates hold.
@@ -562,8 +563,11 @@ void Tracer::cycle(int64_t T) {
     if (busy) { stat[ST_CYCLES]++; if (!rows_ended_ && !stopped_) run_cycles++; }
 
     // ---------------------------------------------------------------- the fill port's responses (the memory system)
-    const bool read_response_valid = f.read_outstanding && T == f.read_response_at;
-    const bool write_response_valid = f.write_outstanding && T == f.write_response_at;
+    const bool polled = fill_port && fill_port->read_response;     // v1.37: a clocked memory system (FillPort)
+    const bool read_response_valid =
+        f.read_outstanding && (polled ? fill_port->read_response(fill_port->ctx, T, f.response) : T == f.read_response_at);
+    const bool write_response_valid =
+        f.write_outstanding && (polled ? fill_port->write_response(fill_port->ctx, T, f.write_status) : T == f.write_response_at);
     const int fill_status = f.response.status;
     const bool data_read_done = read_response_valid && f.read_owner == OWNER_DATA;
     const bool map_read_done = read_response_valid && f.read_owner == OWNER_MAP;

@@ -1,6 +1,12 @@
 # WORKER5 notes: the interface documents, and the plan for the cache controller
 
-Status, 2026-11-16: **Part A done, waiting for the go-ahead.** Branch `updater-w5`.
+Status, 2026-11-17: **Part A agreed (owner, 2026-11-16); Part B built and checked:** Quest 209 (the setting off),
+210 (the setting on: 37 proof runs, the Tracer alone) and 211 (`make check`) all pass. Branch `updater-w5`. What was built differently from the plan below is section 11; the results are `REPORT.md`.
+
+**The go-ahead (owner, 2026-11-16):** the documents agreed, Part B as planned. One change, made on main: a client has
+one number everywhere, the look-up port's numbers are the AXI IDs (Updater 1, RW engine 2, Binder 3; port 0 spare).
+Q1 and Q2 as proposed (`beyond` and the error flag; the flag on the memory side's error line). Q3 left open: nobody
+discards in v1.37.
 
 | Part A's deliverable | where |
 |---|---|
@@ -208,3 +214,18 @@ rebased).
 | the figure | the cache split into controller and memory (third note, open), the arbiter with its ports and IDs, the Updater on the master tile |
 | `updater_wip/README.md` | WORKER5's row (the integrator's) |
 | the specification, later (the spec session's) | machine-spec 3's `lpddr` as the controller's port with IDs and the clients' ports; 23.6 and 17.9.14 from CI |
+
+## 11. As built, where it differs from the plan
+
+| | plan | as built, and why |
+|---|---|---|
+| B1 | the controller resumes a request where it stopped | **a request that cannot go on is walked again from the top** (a replay): a walk changes nothing until its last step, so a request put back in its port's register needs no saved context. A replay of a fetched line costs about 2 cycles a level, and the miss handler's line is then the most recently used. The miss handler is told the victim by the walker, from the tag row it read |
+| B2 | "write in flight" and "being filled" in registers | so; and the AXI writer holds the line it sends in a register of its own, so the walker may go on |
+| B3 | step 2: hits served while a miss waits | so, with one rule more: a request that touches the miss's set waits too (its tag row is the miss handler's until it installs). A request that would miss waits for the miss handler. A tag row read in the cycle the miss handler writes the same set is read again |
+| B4 | the stale-line check at each hit on a clean line | so; with a record of the lines an LPDDR error left different on purpose (an update whose write failed), which it skips |
+| B5 | the Tracer's hook: a polled response | so (`Tracer::FillPort`'s `read_response`, `write_response`, `tick`), and the cache system is stepped by the Tracer's `tick` at the end of each of its steps, which happen every cycle (the Tracer is never idle-skipped: `idle()` is false) |
+| B6 | the RW engine on the arbiter in the chip | **not on the chip:** its adapter is built and tested on the arbiter (`test_axi_arbiter`), but on the chip the memory tile keeps `ChipLpddr` in its tests and runs nothing in the proof runs; putting it on the arbiter there means stepping two tiles' units in one order, which the project's step 6 does with the Updater |
+| B7 | `segment-real` on the cache | as planned: its three segments are `proof-real`'s, run with `--cache` (the RTL test's `Fill` has no trees to walk); `segment-real` itself is not put on a store |
+| B8 | the Tracer alone | `tracer_block --fill cache` on the real segments (the step `tracer-block-cache`), and the synthetic guest on the cache (`TRACER_CACHE=1`, the step `cache-synth`); `suite_tracer` is not run on it (its logs hold the model's cycles) |
+| B9 | the setting | `MachConfig::cache_ctl` needs `host_link`: the cache's LPDDR is the one store; `CACHE_CTL=1` for `run_tests.sh` |
+| B10 | the controller's limit of 16 bursts | found by `test_axi_arbiter`: a client with more pieces at the controller than its limit holds the arbiter's AR register, so a line's address waits behind it. With the Updater's one page at a time (8 pieces) it does not arise. For `AXI-INTERFACE.md`'s Open list |

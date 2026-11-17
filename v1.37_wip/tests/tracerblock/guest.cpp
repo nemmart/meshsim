@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -19,6 +20,8 @@
 #include "units/mem_system.h"
 #include "units/replay_tables.h"
 #include "units/tracer.h"
+#include "units/cache_system.h"
+#include "../cache_figures.h"
 
 namespace tracer_block {
 
@@ -603,7 +606,9 @@ bool run_setting(const Guest& g, const ReplayTables& tb, const std::string& fill
     Tracer tr(66);
     tr.mem = &ms;
     tr.cold_mem_on_state_write = true;
-    if (fill != "model") tr.fill_latency[0] = tr.fill_latency[1] = std::atoi(fill.c_str());
+    std::unique_ptr<units::CacheSystem> cs;   // `cache` (updater_wip, WORKER5): the cache's controller on the fill port
+    if (fill == "cache") { cs = std::make_unique<units::CacheSystem>(&store); cs->ctl.cfg.map_root_for_stats = map.root; cs->attach(tr); }
+    else if (fill != "model") tr.fill_latency[0] = tr.fill_latency[1] = std::atoi(fill.c_str());
 
     // ---- the record (17.9.2)
     uint64_t rec[2 * Tracer::REC_WORDS] = {};
@@ -704,7 +709,8 @@ bool run_setting(const Guest& g, const ReplayTables& tb, const std::string& fill
         if (o.stat[Tracer::ST_MISS_D] != p.miss_d) d.add("%s: STAT_MISS_D %u, the model's %llu", context, o.stat[Tracer::ST_MISS_D], (unsigned long long)p.miss_d);
         if (o.stat[Tracer::ST_PROBES] != p.probes) d.add("%s: STAT_PROBES %u, the model's %llu", context, o.stat[Tracer::ST_PROBES], (unsigned long long)p.probes);
         const uint64_t reads = p.map_lines + p.miss_i + p.miss_d - uint64_t(tr.take_backs);
-        if (uint64_t(ms.reads) != reads) d.add("%s: the fill port's reads %lld, the models' %llu", context, (long long)ms.reads, (unsigned long long)reads);
+        const int64_t port_reads = cs ? int64_t(cs->ctl.fill_reads) : ms.reads;
+        if (uint64_t(port_reads) != reads) d.add("%s: the fill port's reads %lld, the models' %llu", context, (long long)port_reads, (unsigned long long)reads);
         // ---- the cycles add up (17.9.8), and a quiet run's closed form
         const int64_t schedule = 4 * int64_t(p.rows) + 2 * int64_t(p.m_rows);
         const int64_t fetch = int64_t(o.stat[1] - last[1]), data = int64_t(o.stat[2] - last[2]), mapc = int64_t(o.stat[3] - last[3]);
@@ -747,7 +753,12 @@ bool run_setting(const Guest& g, const ReplayTables& tb, const std::string& fill
     // the interpreter's
     for (int k = 0; k < 16; k++) bench.idle_cycle();
     if (tr.errors(bench.cycle) != 0) d.add("ERRORS 0x%x after the last write-back", unsigned(tr.errors(bench.cycle)));
-    const uint64_t write_backs = uint64_t(ms.writes);
+    const uint64_t write_backs = cs ? cs->ctl.fill_writes : uint64_t(ms.writes);
+    if (cs) {   // the shared cache's dirty lines first: the Tracer's own are newer
+        cachefig::print("the synthetic guest", *cs);
+        if (cachefig::faults("the synthetic guest", *cs)) d.add("the cache's faults");
+        cs->ctl.write_dirty_to(store);
+    }
     tr.write_back_dirty_untimed();
     int64_t cells = 0;
     for (uint64_t a = CODE; a < MEMORY_END; a += 8) {
@@ -783,6 +794,7 @@ int synthetic(uint64_t seed, bool quiet) {
     bool ok = run_setting(g, tb, "1", 0, quiet);
     ok = run_setting(g, tb, "1", 7, quiet) && ok;
     ok = run_setting(g, tb, "model", 0, quiet) && ok;
+    if (std::getenv("TRACER_CACHE")) ok = run_setting(g, tb, "cache", 0, quiet) && ok;   // updater_wip, WORKER5
     return ok ? 0 : 1;
 }
 

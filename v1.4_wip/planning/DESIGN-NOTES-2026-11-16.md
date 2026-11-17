@@ -847,3 +847,30 @@ WORKER8 built one link from `HOST-LINK.md` and searched it exhaustively at small
 - **The runner:** Quests 227 to 229 (WORKER8's campaigns on the 20-byte header) were parked in `tasks/hold` and
   the running one killed by the owner. The runner has 16 CPUs and 62 GB.
 - WORKER9's step 1 is merged (section 26); WORKER7 is closed.
+
+## 28. The owner goes through WORKER8's findings one at a time (2026-11-17, about 2 p.m.)
+
+Rulings as they came; `HOST-LINK.md` has each.
+
+- **Findings 1 to 7 understood and accepted:** a good packet with the wrong number ("clearly a mistake in our
+  rule writing"); the last packet of a burst lost, found from the next number on an idle line; both ends lost
+  ("lost" is a good packet: it tells the last packet received); a lost receiver waiting for the zeros; the lost
+  stop bit and the window; one stream's status behind the other's data ("there is really just one stream with
+  two destination queues"); one end starting again.
+- **The lost side's repeat stays 1,024 zeros and "lost",** not every 512 idle cycles: the other end may be lost
+  too, and a lost receiver reads no header until it has seen a run of zeros longer than a packet.
+- **Decided (owner): the restart packet is a "magic" full packet,** its data the first 32 primes as bytes, 2 to
+  131, repeated 16 times; checksum 0xC8981D21. An end acts on it only if the header, the checksum and the pattern
+  all agree. "Lost" and its answer stay 16 bytes, since they must get through noise.
+  - The owner's first pattern was the primes below 256, 54 bytes, repeated to 512; the second is two whole words.
+  - (The design session first committed the first pattern with a checksum it had not computed, and corrected it
+    in the next commit.)
+- **Decided (owner): both checks are computed afresh whenever a packet is made ready to send,** forwarded ones
+  and resends included: "use the fresh value as the packet checksum, recompute the header checksum."
+  - This replaces WORKER8's rule for a kept packet gone bad (compare with the checksum held; start the link
+    again), and the design session's keeping of the data checksum end to end along the chain.
+  - **Given up, knowingly:** the checks cover the wire and not the memory. A bit that flips in a queue, a kept
+    packet or a forwarding buffer goes out with a matching checksum.
+  - A sending unit now passes over every packet's data once before it leaves.
+- Findings 9 to 12 are still to go through: a packet made wrong; the false acknowledgement; the false packet
+  number; the chain's two rules; and the open one, a neighbour that goes silent.

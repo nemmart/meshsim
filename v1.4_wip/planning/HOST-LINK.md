@@ -173,7 +173,8 @@ so on. Everything in this document but the hops field belongs to one link.
 | sending again, "lost" and recovery, "stop" | the one link: a garbled packet is sent again only over the link that garbled it (owner) |
 | a packet of length 0 | the one link: it is never forwarded |
 | hops | the packet, end to end |
-| the data and the data checksum | the packet, end to end |
+| the data | the packet, end to end |
+| the data checksum | the one link: computed afresh each time a packet is made ready to send (owner, 2026-11-17) |
 
 **An ASIC that forwards a packet, in either direction:**
 
@@ -182,9 +183,10 @@ so on. Everything in this document but the hops field belongs to one link.
 2. **writes the header for the outgoing link:** that link's next packet number, its acknowledge
    field and its flags;
 3. **adds one to hops;**
-4. **computes the header CRC again** (owner: "always recompute the header CRC").
+4. **computes the data checksum afresh, from the data as it holds it** (owner, 2026-11-17);
+5. **computes the header CRC again** (owner: "always recompute the header CRC").
 
-The data and its checksum pass through unchanged.
+The data passes through unchanged.
 
 **What is left of a forwarded packet's header** (owner: "the header gets mostly stripped"):
 
@@ -193,12 +195,19 @@ The data and its checksum pass through unchanged.
 | packet number, acknowledge, flags | dropped, and written afresh: they were the incoming link's |
 | hops | kept, plus one |
 | stream, length | kept: they describe the packet |
-| data checksum | kept, unchanged |
+| data checksum | computed afresh |
 | header CRC | computed again |
 
-- **Why the data checksum is kept:** the data is then covered from the ASIC that made the packet to the host, the
-  time it waits in each forwarding buffer included. Were each hop to compute it again, a bit that flipped in a
-  buffer would be sealed in as good. And the sending unit has only 12 bytes to do for a forwarded packet.
+- **Both checks are made anew whenever a packet is made ready to send** (owner, 2026-11-17: "use the fresh value
+  as the packet checksum, recompute the header checksum"): a packet of the ASIC's own, a forwarded one, and one
+  sent again.
+  - **What it gives:** one rule for every packet that goes out, and no state in which a sender holds a checksum
+    that disagrees with its data. As first written, a kept packet that went bad in memory was sent again for
+    ever; WORKER8's mend was to compare with the checksum held and start the link again.
+  - **What it gives up, knowingly:** the checks then cover the wire and not the memory. A bit that flips in a
+    queue, in the packets kept for sending again, or in a forwarding buffer goes out with a checksum that
+    matches it, and nobody is told. The design session had kept the checksum end to end for that reason and put
+    the choice to the owner. If those memories are to be guarded, it is by a check of their own.
 
 - **Whoever makes a packet sends it with hops 0:** the host, or an ASIC.
 - **Towards the host, hops says which ASIC made the packet:** its place in the chain. It counts hops, but what it
@@ -327,15 +336,18 @@ result = crc XOR 0xFFFFFFFF
   | unit | what it does |
   |---|---|
   | in, from the host's side | checks each packet |
-  | out, down the chain | seals the header again of each of the host's packets it passes down |
+  | out, down the chain | the data checksum and the header CRC of each of the host's packets it passes down |
   | in, from down the chain | checks each packet being passed up |
-  | out, towards the host | the data checksum of the ASIC's own packets; the header of every packet, its own and forwarded |
+  | out, towards the host | the data checksum and the header CRC of every packet, its own and forwarded |
 
   - The two that receive cannot be one: both links can be receiving at once.
-  - The two that send could share a unit, a header being 12 bytes of work against a packet's 528 on the wire. The
-    owner took four: a second unit is cheaper than the sharing.
-- **An ASIC's own packet is checksummed before it is sent,** not as it goes: the data checksum is in the header,
-  which goes first. The words are waiting in the outgoing queue.
+  - The owner took four: one for each direction of each link.
+- **Every packet's data is checksummed before it is sent,** not as it goes: the data checksum is in the header,
+  which goes first. So a sending unit passes over a packet's data once before the packet leaves, each time it is
+  sent.
+  - At a byte a cycle that pass takes as long as the packet's data: 16 cycles for a one-word message, 512 for a
+    full packet. On a busy link it is done while the packet before is going out; on an idle one it is a wait
+    before the header. A unit of 128 bits a cycle (about 2,490 gates) would do a full packet in 32.
 
 **The order a receiver tests in:**
 
@@ -472,7 +484,7 @@ could: the link stopped for ever.
 | the cause | how it is noticed |
 |---|---|
 | one end powers on, or the FPGA is loaded again, while the other runs | the newcomer says so |
-| a kept packet has gone bad in the sender's memory | **the sender runs its CRC unit over the data it sends;** a difference from the checksum it holds is its own memory's fault. As first written the same bad packet was sent again for ever |
+| a kept packet has gone bad in the sender's memory | **no longer a cause** (owner, 2026-11-17). The checksum is computed afresh each time a packet is sent, so it always matches what goes out, and the fault is not seen ("The chain"). WORKER8's rule had the sender compare with the checksum it held and start the link again |
 | a packet made wrong | the receiver, above |
 | a false acknowledgement: a damaged header that passed its CRC and released a packet that never arrived | **an acknowledge field never goes backwards and never passes what was sent.** After a false one, every true one is behind it. Two such in a row † and the end starts the link again |
 
@@ -552,7 +564,7 @@ next lost, silently. Nothing in the header can tell.
   sender starts again from the oldest packet not acknowledged.
 - **No timer sends a packet again unasked** (WORKER8): the receiver always learns what it missed, from a number
   ahead of the one it expects, and asks. The searches hold with a timer, without one, or with only one.
-- **The sender checks what it keeps as it sends it** ("Starting a link again").
+- **What is kept is the data;** the header and both checks are made anew each time a packet is sent (owner).
 - **An ASIC sends on two links:** towards the host, its own packets and the ones it forwards; away from the host,
   the host's packets it passes down the chain. It keeps a window for each (owner, 2026-11-17).
 

@@ -29,7 +29,7 @@ for mode in $MODES; do
     loaded)
         for i in $(seq 1 "$(nproc)"); do (while :; do :; done) & LOADPIDS+=($!); done ;;
     pinned) export TASKSET="taskset -c 0" ;;
-    paused) export WIRE_PAUSE=300:200 NODE_ONLY="--pause 30:300" ;;
+    paused) export WIRE_PAUSE=3000:200 NODE_ONLY="--pause 300:300" ;;
     *) echo "unknown mode $mode"; exit 2 ;;
     esac
     m0=$(date +%s)

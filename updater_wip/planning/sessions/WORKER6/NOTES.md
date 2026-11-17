@@ -1,6 +1,7 @@
 # WORKER6 notes: the Updater's controller
 
-**Status: the plan, with the owner's go-ahead (2026-11-16). Building.**
+**Status: built (2026-11-17); the long runs ready for the runner.** What was built and checked is `REPORT.md`; where it
+differs from the plan below is "As built", at the end.
 
 Abbreviations: UI `UPDATER-INTERFACE.md`, II `INGRESS-INTERFACE.md`, AXI `AXI-INTERFACE.md`, CI `CACHE-INTERFACE.md`,
 HF `HOST-FRAMES.md`, N15 and N16 the design notes of 2026-11-15 and 11-16. "The black box" is `src/units/updater.*`.
@@ -264,3 +265,26 @@ Merging `main` in between pieces; a commit and push after each.
 ## Questions
 
 None yet: nothing in the documents has failed to work on paper. `QUESTIONS.md` is made when one does.
+
+## As built, where it differs from the plan
+
+- **The setting is the proof's, not the machine's:** `proof::Case::updater_ctl`, `proof_run --updater-ctl`, and the
+  environment variable `MESHSIM_UPDATER_CTL` for every run of a process. The proof bench puts the controller in the
+  black box's place at its `place()`, before the first cycle (`tests/updater_view.h`). So `MachConfig`, `mach.cpp`,
+  `segment_bench` and `tile_ctl` are not touched (the owner's note on the shared files); the whole-chip steps need no
+  steps of their own: `MESHSIM_UPDATER_CTL=1 ./run_tests.sh all --check` runs them on the controller.
+- **Header-only units** (`updater_ctl.h`, `updater_top.h`, `segment_shim.h`), as the RW engine, so that no shared
+  makefile list needed them; the test's own rules are `tests/updater_ctl.mk`, one include in the `Makefile`.
+- **No DONE state:** the run's end goes to IDLE with the `done` pulse; the control block posts `done` the next cycle,
+  and `STATUS.busy` holds until it does (`UpdaterTop::running`), so busy falls in the cycle `done` is posted, as on the
+  black box.
+- **The stand-in writes an update's entry when it takes the request** (CI section 8 allows a functional stand-in to
+  write at once); the reply comes after the line and write times. Its check that the page named has no write in
+  flight is made then.
+- **The test LPDDR is for one client** with no IDs (AXI section 5's model cut down); WORKER5's model takes its place.
+- **Frames back to back** were added to the tests: without them, a decoder that takes words early passes, because no
+  bench of v1.37 offers the next frame's words before its run.
+- **`STAT_PAGES_READ` against the black box:** compared with the black box's count plus the halves its "covered" test
+  skips, which the controller counts in a shadow (not a register) as it reads them.
+- **Errors compared:** `WORD_COUNT` is equal at the stop (both have decoded the value that stopped it and nothing
+  after); the stream not yet decoded is not compared there.

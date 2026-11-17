@@ -785,7 +785,16 @@ rare events, counted:
 - **How long it takes here:** about half a million cycles a second on one core, the chains mixed; 300 seeds in
   7 minutes.
 
-### Queued for the runner
+### Queued for the runner (Quest attached to the session; `tasks/make_task.sh` writes the tasks)
 
-The campaign proper (thousands of seeds, 2 million cycles each, 16 at once), the runs with noise of hundreds
-of milliseconds, and the larger searches: Quest tasks, numbers in `REPORT.md` when they are back.
+| Quest | what | |
+|---|---|---|
+| 227 `link-w8-campaign` | the random runs: 16 slices of seeds at once for 30 minutes, 2 million cycles of traffic and noise a seed, chains of 1, 2, 4 and 16; the slices added up (`sum_runs.py`) | queued |
+| 228 `link-w8-long-noise` | 16 runs with bursts up to 300 ms (3 × 10⁸ cycles): 10 on a chain of 1 for 1.5 × 10⁹ cycles, 6 on a chain of 2 for 7 × 10⁸ | queued |
+| 229 `link-w8-searches` | six searches larger than this machine, 20 million states each at most, three at a time: a chain of 2 with a packet on each stream and a reply from each node, one damaged; a chain of 2 with two damaged; a chain of 2 with small queues and buffers; a chain of 3; one link with three packets each way and two damaged; one link with three sources | queued |
+
+All three are of `updater_wip/link` at `ac4d3078`. Their results go into `REPORT.md`.
+
+**Still to do after them:** `REPORT.md`; the state diagrams with their transitions numbered; cutting a failing
+random run down, if one ever fails; the list of changes for `HOST-LINK.md`, which is `QUESTIONS.md`'s rules once
+the campaign has confirmed them.

@@ -3,7 +3,7 @@
 Branch `updater-w7`, from `main` at `a9ebf875`. Paths without a folder are in `v1.37_wip/`. II is
 `INGRESS-INTERFACE.md`, UI `UPDATER-INTERFACE.md`, HL `HOST-LINK.md`, HF `HOST-FRAMES.md`.
 
-**Status: the plan, for the owner's go-ahead. No code yet.**
+**Status: the owner's go-ahead (2026-11-16, 23:49): "Go ahead with the plan as written." C1 approved, in the owner's words below; `main` merged first (WORKER5's Part B, the cache's controller behind `cache_ctl`).**
 
 ## 1. What changes, and where
 
@@ -155,7 +155,7 @@ matrix at 2, 4 and 8, beside WORKER4's (Quest 206 and 208):
 
 | | choice | why; the alternative |
 |---|---|---|
-| C1 | a DMA transfer is "in flight" from its `DMA_START` to the slot's end of it (`dma_done`'s cycle), told to Ingress by a new optional hook `out_end` | II's "when a DMA transfer ends" is `dma_done`'s "the transfer has ended"; the alternative, until the queue's last word is taken, would need no slot change but posts the flag a cycle or more before `dma_done` |
+| C1 | **a DMA transfer is in flight from a queue while the DMA is busy with a transfer whose `DMA_HDR.queue` names that queue, ending at `dma_done`** (the owner, 2026-11-16: `STATUS.dma_busy` is the signal the hardware has). The slot tells Ingress the end by a new optional hook `out_end(t, q)`, in the cycle `dma_done` is set | II's "when a DMA transfer ends" is `dma_done`'s "the transfer has ended". The alternative, until the queue's last word is taken, needed no slot change but posted the flag a cycle or more before `dma_done` |
 | C2 | the service flag is posted on the rise of the asking level, evaluated at the end of each cycle | it is II's three lines exactly, with no special cases to get wrong |
 | C3 | `discard` stays as written when `count` reaches 0; a load reads both fields | it is one register; the firmware masks [30:0]. Alternative: the whole register to 0 |
 | C4 | a discarded word leaves only if it was in the queue at the start of the cycle | "every output a flip-flop": a word arriving at the end of t is the queue's from t + 1, for both ways out |

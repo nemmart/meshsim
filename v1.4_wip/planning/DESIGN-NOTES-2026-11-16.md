@@ -556,3 +556,37 @@ box, the port, the firmware. `INGRESS-INTERFACE.md` and `UPDATER-INTERFACE.md` a
   packet of its own. It fills the gaps with its own.
 - **What it changes that is built:** gold's packetizer, its reader and the vectors; v1.37's link header and
   Ingress's black box. The first example header is the same bytes as before. Given to WORKER7.
+
+## 20. The rest of Ingress/Egress: Egress, the UART, the reset (2026-11-17, about 1 to 2 a.m.)
+
+The owner: "I think that's the vast majority of ingress/egress." What was added to the link and the forward count:
+
+- **Egress** (owner): the core builds a frame in its own memory, registers a transmission, and sends the words
+  into one outgoing queue. A register holds the frame's length; a credit event says there is room for 4 KB more.
+  The firmware turns the event's mask bit on only while a transmission is registered.
+  - **Replies are on the foreground stream only** (owner).
+  - The owner weighed reading the length off the frame's header word against a register, and took the register:
+    Egress then knows nothing of frames, as Ingress knows nothing.
+  - † Proposed here: the queue is 8 KB and the credit the replayer's (half the queue, depth 2); the count runs
+    down as words are pushed, not as they leave, so the core can queue the next frame without waiting for the
+    link.
+- **The old host interface goes** (owner, agreed with Tony): `STREAM_SEND`, `STREAM_RECEIVE` and their words, bits
+  and events. This design no longer sits beside it.
+- **The UART is redesigned** (owner). `UART_TX` and `UART_RX` move to words 30 and 31. `UART_CONTROL`, at 32 or
+  above, is a plain register with the divider, enable read and enable write. The FIFO levels and the two line
+  errors move into `STATUS`. `UART_DIVISOR` and `UART_STATUS` go.
+  - **The value 0 in `UART_CONTROL` is the UART's reset,** and it is 0 at start-up: the core turns the UART on
+    with one store. "If the uart is running and no one is polling it, well, it's pointless."
+  - **The enables only gate the line,** to ignore noise.
+  - What the owner asked first, and what it gives: of the peripherals' registers at 32 and above, only
+    Ingress/Egress's had loads that act (`UART_RX`, `STREAM_RECEIVE`). Now none does, on any peripheral.
+  - The UART is built in the RTL, so this is request 2 in `RTL-CHANGE-REQUESTS.md`.
+- **Ingress/Egress has no reset of its own, and cannot have** (owner): it carries the chain's packets and shares
+  packet numbers with its neighbours. The link and the queues the core sees are cleared only at power-on; the
+  reset reaches the UART alone.
+  - Ways the design session offered and the owner did not take: bits of `UART_CONTROL` that clear when written;
+    the enables holding the FIFOs empty; `START` as the UART's reset.
+- **In v1.37 none of this is built.** WORKER7 is in Ingress's black box for the forward count and the header's
+  new widths. Taking the old words out, the UART and Egress are a later step.
+
+`INGRESS-INTERFACE.md` now covers the whole peripheral.

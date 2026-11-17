@@ -14,6 +14,7 @@
 #include "units/test_peripheral.h"
 #include "units/tracer.h"
 #include "units/updater.h"
+#include "units/updater_top.h"
 
 namespace units {
 
@@ -27,6 +28,7 @@ decltype(auto) SlotCore::visit(unsigned n, F&& f) {
         case PT_INGRESS: return f(*static_cast<IngressEgress*>(per[n].p));
         case PT_RW: return f(*static_cast<RwEngine*>(per[n].p));
         case PT_UPDATER: return f(*static_cast<Updater*>(per[n].p));
+        case PT_UPDATER_CTL: return f(*static_cast<UpdaterTop*>(per[n].p));
         default: FATAL("slot %u: peripheral %u of type %u has no dispatch case", tile, n, unsigned(per[n].type));
     }
 }
@@ -44,6 +46,7 @@ SlotCore::Ref::~Ref() {
         case PT_INGRESS: delete static_cast<IngressEgress*>(p); break;
         case PT_RW: delete static_cast<RwEngine*>(p); break;
         case PT_UPDATER: delete static_cast<Updater*>(p); break;
+        case PT_UPDATER_CTL: delete static_cast<UpdaterTop*>(p); break;
         default: break;
     }
 }

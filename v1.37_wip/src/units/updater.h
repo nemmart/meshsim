@@ -75,7 +75,10 @@ struct Updater : PeripheralBase<Updater> {
     enum : int { ERR_QUEUE_OVERRUN = 1 << 0, ERR_BEYOND = 1 << 1, ERR_LPDDR = 1 << 2, ERR_OUT_OF_PAGES = 1 << 3, ERR_NOT_OWNED = 1 << 4 };
     // the region's parts (offset bits [22:20])
     enum : unsigned { PART_SEGMENT = 1, PART_FREE_PAGES = 2 };
-    static constexpr unsigned QUEUE = 256, HALF = 128;   // a queue's entries; a credit
+    // a queue's entries, and its credit: half a queue (UI, "The region"): the segment queue 512 and 256, 8 KB (owner,
+    // 2026-11-16; v1.37 as WORKER3 merged it had 256 and 128); the free page queue 256 and 128
+    static constexpr unsigned SEGMENT_QUEUE = 512, SEGMENT_HALF = 256, FREE_PAGE_QUEUE = 256, FREE_PAGE_HALF = 128;
+    static constexpr unsigned QUEUE_MAX = SEGMENT_QUEUE;
     static constexpr unsigned LRU_ENTRIES = 32;
     static constexpr int PAGE_WORDS = tracer::FileStore::PAGE_WORDS;
     static constexpr int DIGEST_N = 3;
@@ -91,7 +94,8 @@ struct Updater : PeripheralBase<Updater> {
 
     // ---- a queue of 128-bit entries with the replayer's credits (17.8.8)
     struct Queue {
-        uint64_t lo[QUEUE] = {}, hi[QUEUE] = {};
+        unsigned size = 0, half = 0;           // its entries; a credit (fixed at construction)
+        uint64_t lo[QUEUE_MAX] = {}, hi[QUEUE_MAX] = {};
         unsigned head = 0, n = 0;
         unsigned left = 0;                     // entries that have left since the last credit was returned
         uint64_t pushed = 0, popped = 0, dropped = 0;
@@ -104,7 +108,7 @@ struct Updater : PeripheralBase<Updater> {
     bool busy_ = false, stopped_ = false;      // stopped: an error ended the work; busy stays 1
     uint32_t run_config_ = 0, word_count_ = 0, page_count_ = 0, image_root_ = 0, tracer_root_ = 0, source_root_ = 0;
     uint32_t stat_[6] = {};                    // words 48-53
-    Queue segments_, free_pages_;
+    Queue segments_{SEGMENT_QUEUE, SEGMENT_HALF}, free_pages_{FREE_PAGE_QUEUE, FREE_PAGE_HALF};
     // the run as START took it
     bool lru_ = false, tracer_copy_ = false;
     int depth_ = 0;

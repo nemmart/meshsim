@@ -7,17 +7,24 @@ images the Tracer runs on. Today the Updater is a software black box (`src/units
 nothing like hardware. It does a page's whole job in one call on the file store, and it never touches an AXI port
 or the cache.
 
-**Your part: the Updater's real controller.** A state machine with its one page memory, its decoder, an AXI port
-to LPDDR and a look-up port to the cache, **behind the same registers and queues as the black box,** so that the
-master tile's firmware runs on it unchanged. It is written in the shape of hardware: the RTL engineer should be
-able to read a design off it.
+**Your part: the Updater's real controller.** A state machine with its one page memory, its decoder, a word port
+for its data, an AXI port to LPDDR and a look-up port to the cache, **behind the black box's registers.** It is
+written in the shape of hardware: the RTL engineer should be able to read a design off it.
+
+**The data input changed on 2026-11-16 (owner), and v1.37 has not caught up.** In the design, the Updater's data
+comes from Ingress by a flow-controlled port of 128-bit words: no queue a program can see, no credits. v1.37 as
+merged still has the 8 KB segment queue, filled by `WRITE`s from Ingress's DMA under credits the firmware keeps.
+**You build the controller to the port,** and put the merged segment queue in front of it as a shim, so that the
+master tile's firmware runs on your controller unchanged. WORKER7 will put the new path into Ingress and the
+firmware; the shim is deleted then.
 
 **You and WORKER5 share no code** (owner). WORKER5 builds the cache's controller, the AXI arbiter and the LPDDR
-model. What you share is three documents and two headers, agreed with the owner:
+model. What you share is these documents and headers:
 
 | | |
 |---|---|
-| `v1.4_wip/planning/UPDATER-INTERFACE.md` | the Updater from outside: its registers, queues, credits, events, errors, and the runs |
+| `v1.4_wip/planning/UPDATER-INTERFACE.md` | the Updater from outside: its registers, the data input, the free page queue and its credit, events, errors, and the runs; "In v1.37" says what the black box still has |
+| `v1.4_wip/planning/INGRESS-INTERFACE.md` ("The forward count", "The word port to the Updater"), `v1.37_wip/src/units/word_port.h` | your data input: who drives it, and when a word moves |
 | `v1.4_wip/planning/AXI-INTERFACE.md`, `v1.37_wip/src/units/axi_port.h` | your AXI port, client 1, and what you may count on |
 | `v1.4_wip/planning/CACHE-INTERFACE.md`, `v1.37_wip/src/units/lookup_port.h` | your look-up port, port 1: every reply in every case, what the cache guarantees, **what it asks of you** (section 3), and the stand-in you test against (section 8) |
 
@@ -25,10 +32,10 @@ model. What you share is three documents and two headers, agreed with the owner:
 joins them, and that meeting is the test of the documents. If a document is unclear or cannot work, it is a
 question (`QUESTIONS.md`), not something to settle by looking.
 
-READ FIRST: the top-level `README.md`; `updater_wip/README.md`; `v1.4_wip/README.md`; the three documents and two
-headers above, in full; `v1.4_wip/planning/HOST-FRAMES.md` ("Update words", "Files, lengths and page counts",
+READ FIRST: the top-level `README.md`; `updater_wip/README.md`; `v1.4_wip/README.md`; the documents and headers
+above, in full; `v1.4_wip/planning/HOST-FRAMES.md` ("Update words", "Files, lengths and page counts",
 frame 9); `DESIGN-NOTES-2026-11-15.md` section 4 (the page memory, the decoder and its type line, the page-fault
-sequence; its first step, a flush, is gone); `DESIGN-NOTES-2026-11-16.md` sections 3, 4, 9, 10, 11 and 15. In
+sequence; its first step, a flush, is gone); `DESIGN-NOTES-2026-11-16.md` sections 3, 4, 9, 10, 11, 15 and 17. In
 `v1.37_wip/`: `README.md`, `RUNNING-v1.37.md`, `CHANGES-v1.37.md`; `src/units/updater.h` and `updater.cpp` (the black
 box: your reference for what a run does, and for the registers); `peripheral.h`, `periph_slot.*`, `file_store.*`,
 `lru_coder.h`, `rw_engine.h` (how a unit of the RTL is written here: "this cycle's decisions, from the state at its
@@ -42,7 +49,10 @@ to make its own".
 WHAT THE CONTROLLER IS (owner's decisions, from the notes)
 - **One 4 KB page memory,** and the work strictly in sequence. While a page is being read, nothing is taken from
   the decoder.
-- **The decoder** sits after the segment queue and gives, for each update word, a 32-bit address, a 64-bit value
+- **The data input** is the word port (`word_port.h`): `valid` and 128 bits from the source, `ready` from you.
+  What you keep behind it is yours: a few words, so that the decoder is not starved, and nothing a program can
+  see. `ready` does not depend on `busy`.
+- **The decoder** sits after the data input and gives, for each update word, a 32-bit address, a 64-bit value
   and a type: words, half a page, or a whole page, from the run's start and the values still to come. A half or a
   page that the run covers whole is not read first.
 - **After a page is written the Updater idles until the write's response,** and only then sends the update that
@@ -53,12 +63,16 @@ WHAT THE CONTROLLER IS (owner's decisions, from the notes)
   above changed.
 - **With `tracer_copy`,** each page the run changes goes twice: unchanged into the file in `TRACER_ROOT`, and
   updated into the file in `IMAGE_ROOT`; and so do the index pages above it, wherever a file does not own them.
-- **A run's end touches nothing:** what is left in the queues and in the decoder stays for the next run.
+- **A run's end touches nothing:** what is left in the data input, in the decoder and in the free page queue
+  stays for the next run.
 - **Roots** (`UPDATER-INTERFACE.md`, "For v1.37"): the controller makes them too.
 
 THE WORK, in `v1.37_wip/`
 1. **The controller,** as a unit beside the black box, chosen by a setting that is off by default. With it off,
    every run is as today.
+   - **The shim:** the merged segment queue (region part 1, 512 entries, `EVENTS` [2] `segment_credit`, its part of
+     `queue_overrun`) as a small unit of its own that drives your word port as a source. The controller knows
+     nothing of it. Removing it must be deleting it and wiring Ingress to the port.
 2. **In the shape of hardware:**
    - its registers in one place, the state machine's state an enumeration among them, and nothing else kept
      between cycles;
@@ -80,21 +94,23 @@ THE WORK, in `v1.37_wip/`
    Check it against every line of "What the cache asks of its clients". A new page is written whole.
 
 HOW IT IS CHECKED
-- **The controller alone, against gold:** fed gold's frames directly, its images equal gold's reference
+- **The controller alone, against gold:** fed gold's frames directly on the word port, with no shim, its images
+  equal gold's reference
   (`frames-images`) page for page, on every case `test_updater` runs on the black box; `PAGE_COUNT` is 0 at every
   `done`.
-- **Against the black box:** the same registers, the same queues, the same words, and at each `done` the same file
-  contents, the same `PAGE_COUNT`, the same events and errors; on gold's frames and on random update streams
+- **Against the black box:** with the shim: the same registers, the same queues, the same words, and at each `done`
+  the same file contents, the same `PAGE_COUNT`, the same events and errors; on gold's frames and on random update
+  streams
   (holes, shared pages at every level, runs that end inside a page, `continue` across runs, raw and LRU).
   - Say whether your controller takes its free pages in the black box's order. If it does, the two stores are
     compared byte for byte; if it does not, say why, and compare the files.
-- **The timing varied:** every check again with the test LPDDR and the stand-in answering at random times. The
-  results do not change.
+- **The timing varied:** every check again with the test LPDDR and the stand-in answering at random times, and the
+  word port's `valid` coming and going at random. The results do not change.
 - **Errors:** an error response to a read and to a write; a reply of `lpddr_error` and of `not_owned` to an
-  update; a word beyond the file; a page needed with `PAGE_COUNT` at 0; a full queue. Each sets its bit, and the
-  run stops as the black box's does.
-- **The whole chip, with the setting on:** `test_master`, `proof-real`, `proof-matrix` and `proof-29`. The master
-  tile's firmware is not changed. Every image, every row and every record as with the black box.
+  update; a word beyond the file; a page needed with `PAGE_COUNT` at 0; a full free page queue (and, through the
+  shim, a full segment queue). Each sets its bit, and the run stops as the black box's does.
+- **The whole chip, with the setting on and the shim in:** `test_master`, `proof-real`, `proof-matrix` and
+  `proof-29`. The master tile's firmware is not changed. Every image, every row and every record as with the black box.
 - **With the setting off,** `./run_tests.sh all --check` and `make check` as before.
 - **The figures:** the cycles a page takes by kind (new, copied, patched; with the Tracer's copy), the bursts and
   look-ups a page, where the Updater waits (data, pages, LPDDR, the cache), and the whole run against the black
@@ -105,15 +121,16 @@ WHERE THE DOCUMENTS ARE OPEN
   `QUESTIONS.md` with the evidence, take the nearest thing that does, and carry on.
 - What they do not say and you must settle: the simplest reading, in `NOTES.md` under "Choices", with the reason
   and the alternative.
-- **Do not edit anything in `v1.4_wip/`,** nor the two headers. List what you would change.
+- **Do not edit anything in `v1.4_wip/`,** nor the three headers. List what you would change.
 
 RULES
 - **Propose your plan first** in `NOTES.md` and wait for the owner's go-ahead before writing code: the controller's
   parts and their registers, the state diagram, the page memory's ports, the decoder, the order of the traffic for
   each kind of fault, the test pieces, the checks.
-- **WORKER4 is changing things you touch:** the segment queue's size (8 KB, a credit of 256 words) in the black
-  box, Ingress's black box, and `fw/cc/master.c`. Merge `main` in often (never rebase), and build the queues to
-  `UPDATER-INTERFACE.md`.
+- **WORKER7 will change things next to yours:** Ingress's black box (the forward count), the black box Updater's
+  input, and `fw/cc/master.c`. It may run while you do. You do not touch those; it does not touch your
+  controller. Merge `main` in often (never rebase). If its work reaches `main` before you finish, the integrator
+  will say so: the shim then goes, Ingress drives your port, and the whole-chip checks run on the new firmware.
 - **Branch `updater-w6`.** Your notes, questions and report are in `updater_wip/planning/sessions/WORKER6/`. The
   integrator merges into `main`. Frozen folders are never edited.
 - The black box stays, unchanged in what it does. Gold and the packetizer are not changed. The firmware is not
@@ -127,12 +144,13 @@ RULES
 - Commit and push after each completed piece, and end each turn with a clean `git status`.
 - Keep replies to the owner short.
 
-NOT YOUR WORK: the cache's controller, the AXI arbiter and the LPDDR model (WORKER5); Ingress and the master
-tile's firmware (WORKER4); joining the two controllers (the integrator); the file system; the specification.
+NOT YOUR WORK: the cache's controller, the AXI arbiter and the LPDDR model (WORKER5); Ingress, the forward count
+and the master tile's firmware (WORKER7); joining the controllers and taking the shim out (the integrator); the
+file system; the specification.
 
 DELIVERABLES
-- `v1.37_wip/`: the controller, its page memory and decoder, the setting, the test pieces and the tests; the
+- `v1.37_wip/`: the controller, its page memory and decoder, the shim, the setting, the test pieces and the tests; the
   running guide and `CHANGES-v1.37.md` brought up to date.
 - `WORKER6/NOTES.md` with the plan, the state diagram, the order of the traffic, and the "Choices" list.
 - `WORKER6/REPORT.md`: what was built; each check's result; the figures; what a hardware designer must still
-  choose; and what you would change in the three documents, as lists for the owner.
+  choose; and what you would change in the documents, as lists for the owner.

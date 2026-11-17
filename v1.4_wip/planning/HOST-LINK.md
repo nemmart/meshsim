@@ -99,7 +99,7 @@ Considered and not taken:
 
 | | what it is | why not |
 |---|---|---|
-| 1,024-byte packets | half as many packets for the firmware to wake for | twice the foreground's wait at every hop. The firmware's cost is met by the threshold instead (`INGRESS-INTERFACE.md`) |
+| 1,024-byte packets | half as many packets for the firmware to wake for | twice the foreground's wait at every hop. The firmware's cost is met instead by taking it out of the data's path: Ingress forwards the bulk data to the Updater itself (`INGRESS-INTERFACE.md`) |
 | a second link for the foreground, one LVDS line beside the eight | no waiting behind bulk data at all | a line carries an eighth of the rate, so any message over about 75 bytes is slower than on the shared link at its worst; with no update running the shared link is eight times faster; and it costs pins, a second receiver, and finding byte boundaries on one line |
 
 **Open:** the chain itself: how many ASICs are on it, and whether a hop forwards whole packets or passes bytes
@@ -202,9 +202,11 @@ Nothing in the exchange is relied on to arrive, because the noise can cover it: 
     is put right by the next packet that gets through.
 - **The queue behind a stream keeps room when it says stop:** the packets already on the wire, and in every hop of
   the chain, still arrive.
-- **Decided (owner): Ingress's buffers are oversized, 16 KB on each stream,** "to make sure we can stop the remote
-  side". That is 32 full packets.
-- † A stream says stop when its buffer is half full, which leaves 8 KB, 16 full packets, for what is on its way.
+- **Ingress's queues are 4 KB on each stream** (owner, 2026-11-16, with the forward count; `INGRESS-INTERFACE.md`),
+  8 full packets, behind a buffer that holds the one packet being checked.
+  - Earlier the same day the owner had made them 16 KB, "to make sure we can stop the remote side", and that is
+    what v1.37 has as merged. The aim stands; whether 4 KB meets it depends on the chain (Open).
+- † A stream says stop when its queue is half full, which leaves 2 KB, 4 full packets, for what is on its way.
 - This replaces the per-stream window first proposed here, which did the same job with more machinery.
 
 ## What a sender must keep
@@ -235,6 +237,7 @@ The owner's remark: there must be a mountain of literature on building these. Th
 
 - What the foreground stream carries, and how large its messages are.
 - Whether the recovery packet states the packet number it restarts from, or that is the "lost" packet's number plus one.
-- Whether half a buffer, 8 KB, is the right room to keep when a stream says stop: it depends on the chain.
+- Whether half a 4 KB queue, 2 KB or 4 full packets, is enough room to keep when a stream says stop: it depends on
+  how many packets the chain holds in flight. If it is not, the queue grows; nothing else changes.
 - The timers: how soon an unacknowledged packet is sent again without a "resend".
 - How large the chip's own window of kept packets is.

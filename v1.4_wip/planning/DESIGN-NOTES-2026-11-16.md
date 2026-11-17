@@ -412,3 +412,94 @@ Two more rulings the same evening:
 - **Decided (owner): the Updater's segment queue is 8 KB, with a credit of 256 words.** Proposed with it: the
   threshold after a frame's header is a credit's worth, 256 words, where the owner first said 128.
 - WORKER4 (`updater_wip`) puts the threshold and both sizes into v1.37.
+
+## 16. The threshold built, the two interfaces agreed, and a target for the master tile
+
+- **The threshold is in v1.37** (WORKER4, merged; `updater_wip/planning/sessions/WORKER4-REPORT.md`), with Ingress's
+  16 KB buffers and the Updater's 8 KB queue. All 37 proof runs pass, and another 174 with the link at 2, 4 and 8
+  bytes a cycle and the threshold at 32, 64 and 128, every image the same.
+  - **The master's cost fell by three:** about 100 cycles awake a packet's worth where it was 330; 0.17 to 0.20 of
+    the link's time at a byte a cycle.
+  - **A transfer still costs 2.3 to 3 wakes,** and the firmware is not tuned.
+  - **With a faster link the Updater is the limit, not the firmware:** from 4 bytes a cycle the black box is busy 94
+    to 97% of the time, its memory work 53 to 61% of that and decoding the rest. It does the two one after the
+    other; a controller that overlaps them moves the limit to decoding, then to the firmware.
+- **Decided (owner): the Updater is at most 10% of the master tile's load,** so that its core has slack for the
+  command stream. At a byte a cycle that is 53 cycles awake a packet's worth, about 420 for each 4 KB. Today's
+  figure is 18 to 23%.
+  - If tuning the firmware does not reach it: a larger credit, or Ingress feeding the Updater under credits kept in
+    hardware, the firmware waking once a frame.
+- **The two real controllers are being built by two workers who share no code** (owner): the cache's by WORKER5,
+  the Updater's by WORKER6. Ingress stays a black box.
+  - **WORKER5 wrote the interface between them first:** `AXI-INTERFACE.md` and `CACHE-INTERFACE.md`, with a header
+    each. They were reviewed and agreed the same day, with one change: a client has one number on AXI and on the
+    look-up port.
+  - **What they settle:** the look-up port's fields and every reply in every case; the arbiter cutting bursts into
+    32-beat pieces that a client never sees; one LPDDR model on the file store's pages; and a stand-in cache that
+    holds nothing, which WORKER6 tests against and WORKER5 uses as its reference.
+- **The mesh's two regimes** (the owner asked): v1.36's hardware has only the strict one. Links have no flow
+  control and a full router queue is always an error. The elastic regime, with a flag in each tile, is recorded in
+  v1.36's `spec/OVERVIEW.md` and `GUIDELINES.md` as proposed, "in neither the spec, the RTL nor meshsim". Nothing
+  in v1.37 needs it, now that the Updater's stream does not cross the mesh.
+
+## 17. The forward count: the firmware leaves the path of the bulk data (that evening)
+
+Section 16's target, the Updater at most 10% of the master tile's load, was to be met by tuning the firmware. The
+owner replaced the question instead.
+
+**The owner's pipeline:** the link; a buffer that holds a packet while it is checked, and accepts or rejects it; a
+4 KB queue for each stream; then two ways out.
+
+| way out | what it is |
+|---|---|
+| the DMA | the standard one, with its `queue` field choosing the foreground or the background queue. For what the firmware must see |
+| `DMA_FORWARD_COUNT` | a register. While it is not 0, a word a cycle leaves the background queue for the Updater, when the Updater can take one. The only way into the Updater's data input |
+
+- **The Updater's input is flow-controlled, with no credits** (owner): the two units are side by side.
+- **The count may be written before the words have arrived** (owner). It waits on an empty queue. So the firmware
+  writes a frame's length once.
+- **Its top bit says send or discard** (owner). A frame, or part of one, that nobody on this ASIC needs is dropped
+  at the link's rate.
+- **Service** (owner): Ingress asks when the foreground queue has data, or when the background queue has data and
+  the count is 0.
+- **Undefined** (owner): a DMA transfer from the background queue while the count is not 0. Forwarding and a DMA
+  transfer from the foreground queue may share a cycle.
+
+**How it came to this form.** The owner's first sketch gave the background stream a DMA of its own, with a mode
+that sent to the Updater's queue and a count that could run ahead of the words. v1.36's DMA (17.4) has a 12-bit
+count, three unused header bits and two reserved modes. Rather than stretch it, the owner cut the idea down to one
+register beside the standard DMA.
+
+**What it removes:**
+
+- the thresholds (section 16), built that afternoon;
+- the Updater's 8 KB segment queue, its region part and `segment_credit`;
+- the firmware's allowance and its transfers of 256 words;
+- the tuning of the firmware (WORKER7's first brief, withdrawn before it started).
+
+**Frames 7 and 8 stay as they are.** They carry *N* records and *N* logs, and an ASIC needs two records and one
+log. Moving the advice to a file was considered (owner), since each log is short; the discard bit does the same
+job with no path from a file to the tracer tile. The firmware discards up to its own, copies it with the DMA, and
+discards the rest.
+
+| gold's runs, *N* 128 | all of frame 8 | one log, on average |
+|---|---|---|
+| EVM Zone | 30 KB | about 15 words |
+| Cyclone, small | 2.8 KB | 1 or 2 words |
+| Cyclone 2²⁹ | 774 KB | about 380 words |
+
+**Proposed here, not ruled on (†):**
+
+- a queue asks for service only while nothing is taking its words, and a flag is posted when it starts to ask and
+  when a DMA transfer from it ends with words left;
+- a store of 0 stops the forwarding; a load gives what remains;
+- the DMA does not wait for words that have not arrived, because there is one DMA and a foreground message would
+  wait behind it. The firmware copies what is in the queue;
+- the Updater keeps only a few words behind its port; `EVENTS` [2] is left unused for now.
+
+**Open:** whether 4 KB a queue leaves room for the packets in flight when a stream says stop. The owner had made
+the queues 16 KB that afternoon for that reason.
+
+**The work:** WORKER6 builds the Updater's controller to the word port, with today's segment queue as a shim in
+front so that it can be checked on v1.37 as it stands. WORKER7 puts the forward count into v1.37: Ingress's black
+box, the port, the firmware. `INGRESS-INTERFACE.md` and `UPDATER-INTERFACE.md` are rewritten to it.

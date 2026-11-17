@@ -13,6 +13,10 @@
 #   check    make check from a clean tree: every test, debug and release, gcc and clang, and the TSan runs.
 #   suites-cache  (WORKER5) as suites, with CACHE_CTL=1: the proof steps on the cache's controller (proof_run --cache)
 #            and the step tracer-block-cache; every other step as suites runs it.
+#   faster   (WORKER4) 1, 2 and 2b as for suites; then 5: proof_run (clang suite) on every run of the 29 and matrix sets
+#            with the link at 2, 4 and 8 bytes a cycle (--link-rate), and on the matrix with the master's threshold at
+#            32, 64 and 128 (--threshold), in parallel; each run must pass (gold's images, every check of proof_run);
+#            the figures of each set in faster-numbers.md and threshold-numbers.md.
 # VERDICTS: one line per item. TIMES: each item's wall time. Scratch in /tmp, removed first and at the end.
 FAIL=0; T0=$(date +%s); N=$(nproc)
 sec() { echo; echo "==== $* ($(date -u +%T), +$(( $(date +%s) - T0 )) s)"; }
@@ -31,7 +35,7 @@ verdict machine PASS
 [ -n "${DRY:-}" ] && { echo "DRY: stopping after the kit and the machine"; rm -rf "$W"; exit 0; }
 
 CACHE=""; [ "$ITEM" = suites-cache ] && CACHE=1
-if [ "$ITEM" = suites ] || [ "$ITEM" = suites-cache ]; then
+if [ "$ITEM" = suites ] || [ "$ITEM" = suites-cache ] || [ "$ITEM" = faster ]; then
   sec "1. convert_delivery (clang release), which the inputs' build needs"
   t=$(date +%s)
   if ( cd "$KS" && make -j"$N" MODE=release CC_NAME=clang build/clang-release/convert_delivery ) > "$RES/build-convert.log" 2>&1
@@ -67,6 +71,40 @@ if [ "$ITEM" = suites ] || [ "$ITEM" = suites-cache ]; then
   else tail -8 "$RES/frames.log" 2>/dev/null; verdict frames FAIL; fi
   cat "$IN"/v137/*/SHA256SUMS > "$RES/frames-sha256.txt" 2>/dev/null
   took frames "$t"
+fi
+
+if [ "$ITEM" = faster ]; then
+  sec "5. the link at 2, 4 and 8 bytes a cycle (29, matrix); the threshold at 32, 64 and 128 (matrix)"
+  t=$(date +%s)
+  ( cd "$KS" && make -j"$N" MODE=suite CC_NAME=clang build/clang-suite/proof_run ) > "$RES/build-proof_run.log" 2>&1 || tail -5 "$RES/build-proof_run.log"
+  mkdir -p "$W/runs"; : > "$W/jobs"
+  for set in 29 matrix; do
+    while read -r name n windows list; do for s in $list; do
+      for rate in 2 4 8; do echo "$set $name $n $windows $s --link-rate $rate faster-$set-$rate" >> "$W/jobs"; done
+      [ $set = matrix ] && for th in 32 64 128; do echo "$set $name $n $windows $s --threshold $th threshold-$set-$th" >> "$W/jobs"; done
+    done; done < "$IN/v137/$set/RUNS"
+  done
+  wc -l < "$W/jobs"
+  one() {   # SET NAME N WINDOWS S OPTION VALUE GROUP
+    local d=$IN/v137/$1
+    cd "$KS" && ./build/clang-suite/proof_run "$d/$2.frames" --packets "$d/$2.packets" --asics "$3" --segment "$5" --windows "$4" \
+      --gold "$d/$2-s$5.images.txt" "$6" "$7" --quiet > "$W/runs/$8.$2.s$5.log" 2>&1 || echo "FAIL proof_run $2, s $5, $6 $7: exit $?" >> "$W/runs/$8.$2.s$5.log"
+  }
+  export -f one; export IN KS W
+  xargs -P "$N" -L 1 bash -c 'one "$@"' _ < "$W/jobs"
+  for g in faster-29-2 faster-29-4 faster-29-8 faster-matrix-2 faster-matrix-4 faster-matrix-8 threshold-matrix-32 threshold-matrix-64 threshold-matrix-128; do
+    cat "$W"/runs/$g.*.log > "$RES/$g.log" 2>/dev/null
+    want=24; case $g in *-29-*) want=10;; esac
+    got=$(grep -c '^PASS proof_run' "$RES/$g.log"); bad=$(grep -c '^FAIL' "$RES/$g.log")
+    if [ "$got" = "$want" ] && [ "$bad" = 0 ]; then verdict "$g" "PASS-$got-runs"; else verdict "$g" "FAIL-$got-of-$want-passed"; fi
+  done
+  ( cd "$KS" && python3 tests/proof_numbers.py "$RES"/faster-29-*.log "$RES"/faster-matrix-*.log --frames ) > "$RES/faster-numbers.md" 2>&1
+  ( cd "$KS" && python3 tests/proof_numbers.py "$RES"/threshold-matrix-*.log --frames ) > "$RES/threshold-numbers.md" 2>&1
+  tail -2 "$RES/faster-numbers.md"; tail -2 "$RES/threshold-numbers.md"
+  took faster "$t"
+fi
+
+if [ "$ITEM" = suites ] || [ "$ITEM" = suites-cache ]; then
 
   sec "3. ./run_tests.sh all --check (JOBS=$N; MESHSIM_INPUTS=$IN; CACHE_CTL=$CACHE)"
   t=$(date +%s)
@@ -85,7 +123,7 @@ if [ "$ITEM" = suites ] || [ "$ITEM" = suites-cache ]; then
     cp "$L" "$RES/" 2>/dev/null
     if [ "${got:-0}" = "$want" ] && [ "${bad:-0}" = 0 ]; then verdict "proof-${p%%:*}" "PASS-$got-runs"; else verdict "proof-${p%%:*}" "FAIL-${got:-0}-of-$want-passed"; fi
   done
-  ( cd "$KS" && python3 tests/proof_numbers.py results/proof-real.log results/proof-matrix.log results/proof-29.log ) > "$RES/proof-numbers.md" 2>&1
+  ( cd "$KS" && python3 tests/proof_numbers.py results/proof-real.log results/proof-matrix.log results/proof-29.log --frames ) > "$RES/proof-numbers.md" 2>&1
   [ -z "$CACHE" ] || { cp "$KS/results/tracer-block-cache.log" "$RES/" 2>/dev/null; grep -h 'the cache:\|LPDDR:' "$KS"/results/proof-*.log > "$RES/cache-figures.txt" 2>/dev/null; }
   tail -3 "$RES/proof-numbers.md"
   SK=$(grep -c 'SKIPPED (' "$RES/run_tests.log")

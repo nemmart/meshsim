@@ -1,7 +1,7 @@
 # WORKER5 notes: the interface documents, and the plan for the cache controller
 
-Status, 2026-11-17: **Part A agreed (owner, 2026-11-16), Part B built;** the long checks on the runner (Quest 209 to
-211). Branch `updater-w5`. What was built differently from the plan below is section 11; the results are `REPORT.md`.
+Status, 2026-11-17: **Part A agreed (owner, 2026-11-16); Part B built and checked:** Quest 209 (the setting off),
+210 (the setting on: 37 proof runs, the Tracer alone) and 211 (`make check`) all pass. Branch `updater-w5`. What was built differently from the plan below is section 11; the results are `REPORT.md`.
 
 **The go-ahead (owner, 2026-11-16):** the documents agreed, Part B as planned. One change, made on main: a client has
 one number everywhere, the look-up port's numbers are the AXI IDs (Updater 1, RW engine 2, Binder 3; port 0 spare).

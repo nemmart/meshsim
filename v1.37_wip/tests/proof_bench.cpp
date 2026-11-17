@@ -38,8 +38,9 @@ enum : unsigned { MD_H_MAGIC = 0, MD_H_TILES = 1, MD_H_TRACER = 6, MD_H_TR_RECOR
 enum : unsigned { MR_STATUS = 0, MR_DETAIL, MR_FRAMES, MR_RUNS, MR_PAGES_TAKEN, MR_LOADS, MR_RESULTS, MR_OTHERS, MR_ROOT_PROGRAM, MR_ROOT_BASE,
                   MR_ROOT_TABLE, MR_ROOT_CYCLE0, MR_ROOT_START, MR_ROOT_FINAL, MR_ROOT_TRACER, MR_DEPTHS, MR_TILE_ERRORS, MR_INGRESS_ERRORS,
                   MR_UPDATER_ERRORS, MR_ERROR_LINES, MR_MCAUSE = 22, MR_MEPC, MR_BOOT, MR_HANDED, MR_RELEASED, MR_END, MR_PAGES_QUEUED,
-                  MR_LINK_WORDS, MR_PAGE_COUNT = 32, MR_RUN_START = 40, MR_RUN_DONE = 48, MR_FRAME_TYPE = 56, MR_FRAME_START = 72,
-                  MR_WORDS = 88 };
+                  MR_LINK_WORDS, MR_WAKES, MR_LINK_READS, MR_PAGE_COUNT = 32, MR_RUN_START = 40, MR_RUN_DONE = 48, MR_FRAME_TYPE = 56,
+                  MR_FRAME_START = 72, MR_FRAME_WAKES = 88, MR_FRAME_READS = 104, MR_THRESHOLD_STORES = 120, MR_HANDED_WAKES, MR_HANDED_READS,
+                  MR_WORDS };
 constexpr uint32_t MR_OK = 1, MR_TRAP = 2;
 // ---- fw/tracer/tracer_layout.h's header words the master writes
 enum : unsigned { TL_H_EXPECT = 8, TL_H_ADVICE_N = 10, TL_H_HASH_MUL = 12, TL_H_HASH_STEP = 13, TL_H_HASH_LINES = 14 };
@@ -79,6 +80,8 @@ struct ChipProof final : segment::Proof {
     struct Done { int64_t t; uint32_t config, page_count, image_root, tracer_root, stat[6]; std::string image, tracer; };
     std::vector<Done> done;
     uint32_t stat_before[6] = {};
+    const units::Rv32* master_rv = nullptr;       // the master's core, for its cycles awake at the hand-over
+    uint64_t awake_handed = 0;
 
     ChipProof(const Case& c_, const char* name_, Numbers* numbers_) : c(c_), name(name_), numbers(numbers_) { parse(); }
 
@@ -134,6 +137,7 @@ struct ChipProof final : segment::Proof {
         const int depth = int(d.config >> Updater::RC_DEPTH_LO & 3);
         const size_t i = done.size();
         const bool partial = i < run_names.size() && run_names[i] == "tracer";      // the final image, half made: not compared
+        if (partial && master_rv) awake_handed = master_rv->mcycle - master_rv->cycles_wfi;   // the hand-over follows this done
         if (!partial) d.image = sha(updater_bench::image(*u.store, int32_t(d.image_root), depth));
         if (d.config & Updater::RC_TRACER_COPY) d.tracer = sha(updater_bench::image(*u.store, int32_t(d.tracer_root), depth));
         done.push_back(d);
@@ -147,11 +151,13 @@ struct ChipProof final : segment::Proof {
         desc[MD_H_TR_RECORD] = p.tr_record; desc[MD_H_TR_EXPECT] = p.tr_expect; desc[MD_H_TR_ADVICE] = p.tr_advice;
         desc[MD_H_TR_ADVICE_ROWS] = p.tr_advice_rows; desc[MD_H_GO_LATENCY] = 1;
         m.place(units::ID_MASTER, rtl_images::elf_symbol(master_elf, "boot_desc"), desc);
-        m.place(units::ID_MASTER, rtl_images::elf_symbol(master_elf, "system_config"), {MS_MAGIC, c.asics, c.segment});
+        m.place(units::ID_MASTER, rtl_images::elf_symbol(master_elf, "system_config"), {MS_MAGIC, c.asics, c.segment, c.threshold});
         results_at = rtl_images::elf_symbol(master_elf, "master_results");
         m.set_link(c.packets);
         m.ingress().link_cycles_per_byte = c.cycles_per_byte;
+        m.ingress().link_bytes_per_cycle = c.link_rate;
         if (c.updater_lookup) m.updater().timing.lookup = c.updater_lookup;
+        master_rv = &m.c.unit<units::TileCore>(units::unit_prefix(units::ID_MASTER) + "core").rv;
         m.updater().on_done = &on_done;
         m.updater().on_done_ctx = this;
     }
@@ -171,9 +177,9 @@ struct ChipProof final : segment::Proof {
             Updater& u = m.updater();
             units::IngressEgress& link = m.ingress();
             std::printf("%s: stopped with: the Updater busy %d, WORD_COUNT %u, PAGE_COUNT %u, %u segment words and %u free pages queued, %u dones; the link: %llu packets "
-                        "and %llu words arrived, %u words read out, %u and %u packets waiting; %u pages queued by the master\n", name, int(u.busy_), u.word_count_,
+                        "and %llu words arrived, %u words read out, %u and %u words waiting; %u pages queued by the master\n", name, int(u.busy_), u.word_count_,
                         u.page_count_, u.segment_entries(), u.free_page_entries(), unsigned(done.size()), (unsigned long long)link.link_packets,
-                        (unsigned long long)link.link_words, R[MR_LINK_WORDS], unsigned(link.link_stream[0].n), unsigned(link.link_stream[1].n), R[MR_PAGES_QUEUED]);
+                        (unsigned long long)link.link_words, R[MR_LINK_WORDS], link.link_stream[0].held, link.link_stream[1].held, R[MR_PAGES_QUEUED]);
         }
     }
 
@@ -208,6 +214,8 @@ struct ChipProof final : segment::Proof {
             const auto& core = m.c.unit<units::TileCore>(units::unit_prefix(units::ID_MASTER) + "core").rv;
             numbers->master_awake = core.mcycle - core.cycles_wfi;
             numbers->master_instructions = core.instructions;
+            numbers->link_room_cycles = link.link_room_cycles; numbers->link_last_at = link.link_at;
+            numbers->master_awake_handed = awake_handed;
             for (size_t i = 0; i < done.size(); i++) {
                 RunAccount a;
                 a.name = i < run_names.size() ? run_names[i] : "?";

@@ -64,6 +64,8 @@ inline void packet(std::vector<uint8_t>& out, const Fields& f, const uint8_t* da
 struct Options {
     uint32_t first_number = 1;
     unsigned idle_zeros = 0;        // zero bytes before every packet
+    unsigned packed = 0;            // not 0: the whole file cut into packets of this many words, frames or not, so that a
+                                    // frame may end inside a packet (WORKER4: not what HOST-LINK.md's packetizer makes)
 };
 // A frame file's bytes as a packet file's. False and `err` if the frame file is not whole frames.
 inline bool packetize(const std::vector<uint8_t>& frames, std::vector<uint8_t>& out, std::string& err, const Options& o = Options()) {
@@ -74,6 +76,7 @@ inline bool packetize(const std::vector<uint8_t>& frames, std::vector<uint8_t>& 
         const uint32_t length = uint32_t(frames[at + 12]) | uint32_t(frames[at + 13]) << 8 | uint32_t(frames[at + 14]) << 16 | uint32_t(frames[at + 15]) << 24;
         const size_t words = 1 + size_t(length);                      // the frame's header word and its data
         if (at + 16 * words > frames.size()) { err = "a frame's data past the file's end"; return false; }
+        if (o.packed) { at += 16 * words; continue; }                 // whole frames, checked; cut below
         for (size_t w = 0; w < words; w += 32) {
             Fields f;
             f.length = unsigned(words - w < 32 ? words - w : 32);
@@ -84,6 +87,15 @@ inline bool packetize(const std::vector<uint8_t>& frames, std::vector<uint8_t>& 
         }
         at += 16 * words;
     }
+    if (o.packed)
+        for (size_t w = 0, all = frames.size() / 16; w < all; w += o.packed) {
+            Fields f;
+            f.length = unsigned(all - w < o.packed ? all - w : o.packed);
+            f.number = number;
+            number = number == 0xFFFFE ? 1 : number + 1;
+            out.insert(out.end(), o.idle_zeros, 0);
+            packet(out, f, &frames[16 * w]);
+        }
     return true;
 }
 

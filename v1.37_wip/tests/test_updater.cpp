@@ -155,21 +155,22 @@ TEST(updater_reset) {
 TEST(updater_queues_and_credits) {
     Bench b;
     const int size = int(units::lw::SIZE_128);
-    for (unsigned i = 0; i < 256; i++) b.u.accept(b.t, 64, Updater::PART_SEGMENT << 20 | 0x40, size, i, 0);   // the rest of the address is ignored
-    CHECK_EQ(b.u.segment_entries(), 256u);
+    // the segment queue: 512 entries, 8 KB (owner)
+    for (unsigned i = 0; i < 512; i++) b.u.accept(b.t, 64, Updater::PART_SEGMENT << 20 | 0x40, size, i, 0);   // the rest of the address is ignored
+    CHECK_EQ(b.u.segment_entries(), 512u);
     CHECK_EQ(b.u.errors(b.t), 0);
-    b.u.accept(b.t, 64, Updater::PART_SEGMENT << 20, size, 999, 0);        // a push into a full queue: dropped
-    CHECK_EQ(b.u.segment_entries(), 256u);
+    b.u.accept(b.t, 64, Updater::PART_SEGMENT << 20, size, 999, 0);        // the 513th: a push into a full queue, dropped
+    CHECK_EQ(b.u.segment_entries(), 512u);
     CHECK_EQ(b.u.errors(b.t), int(Updater::ERR_QUEUE_OVERRUN));
     for (unsigned i = 0; i < 256; i++) b.u.accept(b.t, 64, Updater::PART_FREE_PAGES << 20, size, 32 * (i + 1), 0);
     b.u.accept(b.t, 64, Updater::PART_FREE_PAGES << 20, size, 32 * 300, 0);
     CHECK_EQ(b.u.free_page_entries(), 256u);
-    // a run that reads 512 raw words out of the 256 entries: a credit after 128 entries, another after 256
+    // a run that reads 1,024 raw words out of the 512 entries: a credit after 256 entries, another after 512
     const uint32_t credits = 1u << Updater::EV_SEGMENT_CREDIT;
     b.u.ev.consume(credits); b.u.ev.consume(credits);
     const int32_t root = 32 * 400;
     b.u.write_word(b.t, Updater::W_RUN_CONFIG, Bench::config(false, false, false, 1, Updater::ROOT_EMPTY));
-    b.u.write_word(b.t, Updater::W_WORD_COUNT, 512);
+    b.u.write_word(b.t, Updater::W_WORD_COUNT, 1024);
     b.u.write_word(b.t, Updater::W_PAGE_COUNT, 10);
     b.u.write_word(b.t, Updater::W_IMAGE_ROOT, uint32_t(root));
     b.u.run(b.t);
@@ -177,12 +178,12 @@ TEST(updater_queues_and_credits) {
     for (unsigned c = 0; c < 20000 && b.u.running(b.t); c++) {
         b.u.step(b.t++);
         const unsigned left = b.u.segment_entries();
-        if (!first_credit_at && b.u.ev.count_of(Updater::EV_SEGMENT_CREDIT) == 1) first_credit_at = 256 - left;
-        if (!second_credit_at && b.u.ev.count_of(Updater::EV_SEGMENT_CREDIT) == 2) second_credit_at = 256 - left;
+        if (!first_credit_at && b.u.ev.count_of(Updater::EV_SEGMENT_CREDIT) == 1) first_credit_at = 512 - left;
+        if (!second_credit_at && b.u.ev.count_of(Updater::EV_SEGMENT_CREDIT) == 2) second_credit_at = 512 - left;
     }
     CHECK(!b.u.running(b.t));
-    CHECK_EQ(first_credit_at, 128u);
-    CHECK_EQ(second_credit_at, 256u);
+    CHECK_EQ(first_credit_at, 256u);
+    CHECK_EQ(second_credit_at, 512u);
     CHECK_EQ(b.u.segment_entries(), 0u);
 }
 

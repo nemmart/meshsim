@@ -81,24 +81,34 @@
 // word. It is the new host interface, beside the stream words above, which the RTL's images use: a black box that
 // reads a packet file (the link's bytes) in place of the LVDS pins, checks every packet, and presents the packets of
 // each stream, foreground (queue 0) and background (queue 1), to the master tile's core:
-//   STATUS [3] foreground_ready, [4] background_ready   a packet is waiting on the stream (live)
-//   EVENTS [8] foreground_service, [9] background_service   counted, depth 1: a packet asks to be read out
+//   STATUS [3] foreground_ready, [4] background_ready   a word is waiting on the stream (live)
+//   EVENTS [8] foreground_service, [9] background_service   counted, depth 1: the stream asks to be read out
 //   ERRORS [1] crc_error, [2] sequence_error, [3] format_error   sticky; after one nothing more is presented
-//   word 80 FOREGROUND_WORDS, word 81 BACKGROUND_WORDS   R: the words of the packet that asked; 0 when none waits
-//   block 1, the DMA (17.4): DMA_HDR.queue 0 the foreground, 1 the background; reads the packet's next words out
-//   - THE RULE FOR A SERVICE FLAG (II): a packet reaches the front of its stream; its flag is posted; the core reads
-//     its words out with the DMA, in one transfer or several; the stream posts no further flag until as many words as
-//     the register showed have been read out; then the next packet, if there is one, is at the front, and its flag is
-//     posted. `..._WORDS` holds the packet's length until then. The two streams are independent.
-//   - A DMA transfer of more words than are left of the packet at the front is UB (II), and stops the simulator.
+//   word 80 FOREGROUND_WORDS, word 81 BACKGROUND_WORDS   R, live: the words waiting on the stream, in every packet that
+//                                                       has arrived and passed its checks, not yet read out
+//   word 82 FOREGROUND_THRESHOLD, word 83 BACKGROUND_THRESHOLD   R/W, 1 at the reset: the words that must be waiting
+//                                                       before the stream's flag is posted (II, "the threshold")
+//   block 1, the DMA (17.4): DMA_HDR.queue 0 the foreground, 1 the background; reads the stream's next words out, in
+//   one transfer across packets, up to the words waiting
+//   - THE RULE FOR A SERVICE FLAG (II, with the threshold; WORKER4's C3, C4, C6): a stream keeps the words it owes,
+//     what the register showed when its last flag was posted. Its flag is posted when it owes nothing and the words
+//     waiting reach its threshold (a threshold of 0 acts as 1: a flag needs a word); at the post it owes the words
+//     waiting. The DMA counts the words owed down as it takes words. So after a flag there is none until the core has
+//     read out what the register showed. The stream is looked at on a packet's arrival, when the last word owed is
+//     taken, and at a store to its threshold, which is the same as looking in every cycle. The two streams are
+//     independent.
+//   - A DMA transfer of more words than the stream holds at its start is UB (II), and stops the simulator.
 //   - A packet of length 0 is checked, and asks for no service.
 //   - A packet that fails a check sets its error bit in the cycle its last byte would have arrived, and the link is
-//     dead: nothing more is read from the file. Packets already at a stream stay, and can be read out.
-//   - TIMING, PLAIN: the file arrives at `link_cycles_per_byte` cycles a byte (1: HL's 1 GB a second at a 1 GHz clock),
-//     its first byte in cycle 1, the first after the reset. A packet whose last byte arrives in cycle c is at its
-//     stream at the end of c, and is seen by the loads of c + 1. Each stream holds LINK_QUEUE packets; the file's next
-//     packet is not taken while its stream is full (what "stop sending" does on the real link), and its bytes then
-//     start in the cycle after the one that made room. It is not the hardware's timing.
+//     dead: nothing more is read from the file. Words already at a stream stay, and can be read out.
+//   - TIMING, PLAIN: the file arrives at `link_bytes_per_cycle` bytes a cycle (1: HL's 1 GB a second at a 1 GHz clock;
+//     2, 4, 8 to run it faster), or at `link_cycles_per_byte` cycles a byte, its first byte in cycle 1, the first after
+//     the reset: a packet of b bytes takes ceil(b * cycles_per_byte / bytes_per_cycle) cycles after the last. A packet
+//     whose last byte arrives in cycle c is at its stream at the end of c, and is seen by the loads of c + 1. Each
+//     stream holds BUFFER_WORDS words of data, 16 KB (owner; the headers are not kept); the file's next packet is not
+//     taken while its data does not fit in the room left (what "stop sending" does on the real link), and its bytes
+//     then start in the cycle after the one that made room. A threshold store presented in p takes effect at the end
+//     of p, and a flag it posts is seen by the loads of p + 1. It is not the hardware's timing.
 //   - The file ending inside a packet: that packet never arrives, and `link_cut` says so. The reset rewinds the file.
 //
 // WHAT IS NOT THE RTL'S (OPEN-v1.36.md, (a)):
@@ -122,12 +132,13 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
     enum : int { ERROR_LINES_0 = 32, ARRIVALS_0 = 35, ARRIVE_EXPECT_0 = 37, RELEASE = 39, WATCHDOG = 40, LED = 41,
                  UART_TX = 42, UART_RX = 43, UART_DIVISOR = 44, UART_STATUS = 45,
                  STREAM_OUT_W0 = 64, STREAM_SEND = 67, STREAM_SEND_LAST = 68, STREAM_IN_W0 = 69, STREAM_RECEIVE = 72,
-                 FOREGROUND_WORDS = 80, BACKGROUND_WORDS = 81 };                       // v1.37: the host link's
+                 FOREGROUND_WORDS = 80, BACKGROUND_WORDS = 81,                         // v1.37: the host link's
+                 FOREGROUND_THRESHOLD = 82, BACKGROUND_THRESHOLD = 83 };
     enum : unsigned { EV_DONE = 0, EV_DMA_DONE = 1, EV_ALL_ARRIVED = 2, EV_WATCHDOG = 3, EV_UART_RX = 4, EV_UART_TX = 5,
                       EV_STREAM_IN = 6, EV_STREAM_OUT = 7, EV_FOREGROUND_SERVICE = 8, EV_BACKGROUND_SERVICE = 9 };
     enum : int { ERR_TILE = 1 << 0, ERR_CRC = 1 << 1, ERR_SEQUENCE = 1 << 2, ERR_FORMAT = 1 << 3 };
     enum : uint32_t { ST_STREAM_LAST = 1u << 2, ST_FOREGROUND_READY = 1u << 3, ST_BACKGROUND_READY = 1u << 4 };
-    static constexpr unsigned LINK_QUEUE = 4;                 // v1.37: the packets a stream of the host link holds
+    static constexpr unsigned BUFFER_WORDS = 1024;            // v1.37: the words a stream of the host link holds, 16 KB (owner)
     static constexpr unsigned FIFO = 16, kSerial = 4096;      // UART_FIFO_DEPTH (19)
     static constexpr unsigned STREAM_DEPTH = 4;               // (19)
     static constexpr int DIGEST_N = 5;
@@ -195,11 +206,13 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
     // ---- v1.37: the host link (header, THE HOST LINK) ----
     bool host_link = false;            // configuration: host_link_on()
     int64_t link_cycles_per_byte = 1;  // configuration: the link's rate; 0: a packet is there as soon as there is room
+    int64_t link_bytes_per_cycle = 1;  // configuration: the link's rate, bytes a cycle (1, 2, 4, 8)
     hostlink::Reader link;             // the packet file (set_link)
     struct LinkStream {
-        hostlink::Packet q[LINK_QUEUE];
-        unsigned head = 0, n = 0;
-        unsigned read = 0;             // the words of the packet at the front read out so far
+        uint64_t lo[BUFFER_WORDS], hi[BUFFER_WORDS];   // the words waiting, from head on
+        unsigned head = 0, held = 0;
+        unsigned owed = 0;             // the words the register showed at the last flag, not yet read out
+        uint32_t threshold = 1;        // ..._THRESHOLD
     } link_stream[2];                  // 0 the foreground, 1 the background
     int link_errors = 0;               // ERRORS [3:1]
     bool link_dead = false, link_cut = false;   // a check failed, or the file is at its end: nothing more is read
@@ -211,6 +224,7 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
     size_t link_next_bytes = 0;
     int64_t link_next_at = 0, link_at = 0;   // link_at: the cycle at whose end the last byte taken arrived
     uint64_t link_packets = 0, link_words = 0, link_bytes = 0;   // statistics: what has arrived
+    uint64_t link_room_cycles = 0;     // statistics: the cycles the link waited for room at a stream
     // ---- statistics and logs (not state) ----
     uint64_t releases = 0, last_release_at = 0;
     char serial_out[kSerial] = {}; unsigned serial_n = 0;   // the bytes the transmitter took, each as its frame starts
@@ -317,6 +331,12 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
         }
         case 32: case 33: case 34: case 35: case 36: case UART_RX: case 69: case 70: case 71: case STREAM_RECEIVE: return 0;
         case FOREGROUND_WORDS: case BACKGROUND_WORDS: return host_link ? 0 : -1;
+        case FOREGROUND_THRESHOLD: case BACKGROUND_THRESHOLD: {     // v1.37: the stream is looked at again (C6)
+            if (!host_link) return -1;
+            link_stream[w - FOREGROUND_THRESHOLD].threshold = v;
+            look(t, unsigned(w - FOREGROUND_THRESHOLD));
+            return 1;
+        }
         default: return -1;
         }
     }
@@ -337,8 +357,8 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
     uint32_t status_bits(int64_t) const {                    // [2] stream_last; v1.37: [3], [4] a packet waiting on a stream
         uint32_t s = 0;
         if (in_n > 0 && in_q[in_head].last) s |= ST_STREAM_LAST;
-        if (link_stream[0].n > 0) s |= ST_FOREGROUND_READY;
-        if (link_stream[1].n > 0) s |= ST_BACKGROUND_READY;
+        if (link_stream[0].held > 0) s |= ST_FOREGROUND_READY;
+        if (link_stream[1].held > 0) s |= ST_BACKGROUND_READY;
         return s;
     }
     EventCounts& events() { return ev; }
@@ -362,12 +382,14 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
         case STREAM_RECEIVE: v = in_n > 0 ? in_q[in_head].w[top_word()] : 0; return true;
         case RELEASE: case UART_TX: case 64: case 65: case 66: case STREAM_SEND: case STREAM_SEND_LAST:   // W: a load reads 0
             v = 0; return true;
-        case FOREGROUND_WORDS: case BACKGROUND_WORDS: {      // v1.37: the words of the packet at the stream's front
+        case FOREGROUND_WORDS: case BACKGROUND_WORDS:        // v1.37: the words waiting on the stream
             if (!host_link) return false;
-            const LinkStream& s = link_stream[w - FOREGROUND_WORDS];
-            v = s.n > 0 ? s.q[s.head].length : 0;
+            v = link_stream[w - FOREGROUND_WORDS].held;
             return true;
-        }
+        case FOREGROUND_THRESHOLD: case BACKGROUND_THRESHOLD:
+            if (!host_link) return false;
+            v = link_stream[w - FOREGROUND_THRESHOLD].threshold;
+            return true;
         default: return false;
         }
     }
@@ -380,28 +402,25 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
     bool may_stall(int w) const { return w == UART_TX || w == STREAM_SEND || w == STREAM_SEND_LAST; }
     // The static map (peripheral.h): the defined words a store writes; the others are R: a store is an access fault.
     bool writable(int w) const {
-        return (w >= ARRIVE_EXPECT_0 && w <= UART_TX) || w == UART_DIVISOR || w == UART_STATUS || (w >= STREAM_OUT_W0 && w <= STREAM_SEND_LAST);
+        return (w >= ARRIVE_EXPECT_0 && w <= UART_TX) || w == UART_DIVISOR || w == UART_STATUS || (w >= STREAM_OUT_W0 && w <= STREAM_SEND_LAST) ||
+               (host_link && (w == FOREGROUND_THRESHOLD || w == BACKGROUND_THRESHOLD));
     }
 
-    // ---- v1.37: the DMA's side (17.4; periph_slot.h, THE CONTRACT): output queue q is stream q's packet at the front ----
+    // ---- v1.37: the DMA's side (17.4; periph_slot.h, THE CONTRACT): output queue q is stream q's words, across packets ----
     int out_queues() const { return host_link ? 2 : 0; }
-    bool out_ready(int64_t, int q) const { const LinkStream& s = link_stream[q]; return s.n > 0 && s.read < s.q[s.head].length; }
+    bool out_ready(int64_t, int q) const { return link_stream[q].held > 0; }
     void out_start(int64_t t, int q, int64_t words) {
-        const LinkStream& s = link_stream[q];
-        const int64_t left = s.n > 0 ? int64_t(s.q[s.head].length) - int64_t(s.read) : 0;
-        if (words > left)
-            FATAL("Ingress/Egress: undefined behavior at %lld: a DMA transfer of %lld words from the %s stream, whose packet has %lld left "
-                  "(INGRESS-INTERFACE.md: a count beyond what is left of the packet)", (long long)t, (long long)words, q ? "background" : "foreground", (long long)left);
+        const int64_t held = link_stream[q].held;
+        if (words > held)
+            FATAL("Ingress/Egress: undefined behavior at %lld: a DMA transfer of %lld words from the %s stream, which holds %lld "
+                  "(INGRESS-INTERFACE.md: a count beyond the words waiting)", (long long)t, (long long)words, q ? "background" : "foreground", (long long)held);
     }
     void out_take(int64_t t, int q, uint64_t w[2]) {
         LinkStream& s = link_stream[q];
-        if (!out_ready(t, q)) FATAL("Ingress/Egress: out_take at %lld with no word of a packet on stream %d", (long long)t, q);
-        const hostlink::Packet& p = s.q[s.head];
-        w[0] = p.lo[s.read]; w[1] = p.hi[s.read];
-        if (++s.read == p.length) {                          // read out in full: the next packet, if any, asks for service
-            s.head = (s.head + 1) % LINK_QUEUE; s.n--; s.read = 0;
-            if (s.n > 0) ev.post(t, EV_FOREGROUND_SERVICE + unsigned(q));
-        }
+        if (!out_ready(t, q)) FATAL("Ingress/Egress: out_take at %lld with no word on stream %d", (long long)t, q);
+        w[0] = s.lo[s.head]; w[1] = s.hi[s.head];
+        s.head = (s.head + 1) % BUFFER_WORDS; s.held--;
+        if (s.owed > 0 && --s.owed == 0) look(t, unsigned(q));   // what the register showed is read out: looked at again
     }
 
     // The outputs' levels in the next cycle to step: every one a flip-flop (18).
@@ -454,8 +473,9 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
                                           rx_bit_divisor, rx_overrun, framing));
         out[4] = int64_t(sim::hash_fields(out_head, out_n, in_head, in_n, out_low, in_ready_ff));
         if (host_link)
-            out[4] ^= int64_t(sim::hash_fields(link.at, link.expect, link_stream[0].head, link_stream[0].n, link_stream[0].read, link_stream[1].head,
-                                               link_stream[1].n, link_stream[1].read, link_errors, link_dead, link_has_next, link_scheduled, link_next_at, link_at));
+            out[4] ^= int64_t(sim::hash_fields(link.at, link.expect, link_stream[0].head, link_stream[0].held, link_stream[0].owed, link_stream[0].threshold,
+                                               link_stream[1].head, link_stream[1].held, link_stream[1].owed, link_stream[1].threshold, link_errors, link_dead,
+                                               link_has_next, link_scheduled, link_next_at, link_at));
     }
     void reset(int64_t) {
         if (stream_bytes < 1 || stream_bytes > 16) FATAL("Ingress/Egress: STREAM_BYTES must be 1 to 16 (19): %u", stream_bytes);
@@ -478,9 +498,9 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
     }
     // v1.37: the link at the reset: both streams empty, no error, the file from its start.
     void link_reset() {
-        for (LinkStream& s : link_stream) { s.head = s.n = s.read = 0; }
+        for (LinkStream& s : link_stream) { s.head = s.held = s.owed = 0; s.threshold = 1; }
         link_errors = 0; link_dead = link_cut = false; link_has_next = link_scheduled = link_waited = false;
-        link_at = 0; link_packets = link_words = link_bytes = 0;
+        link_at = 0; link_packets = link_words = link_bytes = link_room_cycles = 0;
         link.rewind();
     }
 
@@ -490,6 +510,12 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
     bool all_arrived(int64_t t) const { return expect != 0 && (arrivals(t) & expect) == expect; }
 
 private:
+    // v1.37: the stream looked at (header, THE RULE FOR A SERVICE FLAG): with nothing owed and the words waiting at its
+    // threshold, its flag is posted and it owes them.
+    void look(int64_t t, unsigned q) {
+        LinkStream& s = link_stream[q];
+        if (s.owed == 0 && s.held > 0 && s.held >= s.threshold) { s.owed = s.held; ev.post(t, EV_FOREGROUND_SERVICE + q); }
+    }
     // v1.37: the link's edge that ends t (header, THE HOST LINK): the packets whose last byte has arrived by t, each
     // checked and put at its stream; then the file's next packet taken, if its stream has room, and its arrival set.
     void link_step(int64_t t) {
@@ -505,10 +531,12 @@ private:
             }
             if (!link_scheduled) {
                 // a packet that passed its checks waits for room at its stream; one that failed needs none
-                if (link_next_check == hostlink::Check::OK && link_stream[link_next.stream - 1].n == LINK_QUEUE) { link_waited = true; return; }
+                if (link_next_check == hostlink::Check::OK && link_stream[link_next.stream - 1].held + link_next.length > BUFFER_WORDS) { link_waited = true; return; }
                 // its bytes follow the last packet's, or, after a wait for room, start in the next cycle
                 const int64_t from = link_waited ? t : link_at;
-                link_next_at = link_cycles_per_byte == 0 ? t : from + int64_t(link_next_bytes) * link_cycles_per_byte;
+                if (link_waited && t > link_at) link_room_cycles += uint64_t(t - link_at);
+                link_next_at = link_cycles_per_byte == 0 ? t
+                             : from + (int64_t(link_next_bytes) * link_cycles_per_byte + link_bytes_per_cycle - 1) / link_bytes_per_cycle;
                 link_scheduled = true; link_waited = false;
             }
             if (link_next_at > t) return;
@@ -522,9 +550,13 @@ private:
             }
             link_packets++; link_words += link_next.length;
             if (link_next.length == 0) continue;                     // no data: no service
-            LinkStream& s = link_stream[link_next.stream - 1];
-            s.q[(s.head + s.n++) % LINK_QUEUE] = link_next;
-            if (s.n == 1) ev.post(t, EV_FOREGROUND_SERVICE + (link_next.stream - 1));   // at the front: it asks for service
+            const unsigned q = link_next.stream - 1;
+            LinkStream& s = link_stream[q];
+            for (unsigned k = 0; k < link_next.length; k++) {
+                const unsigned at = (s.head + s.held++) % BUFFER_WORDS;
+                s.lo[at] = link_next.lo[k]; s.hi[at] = link_next.hi[k];
+            }
+            look(t, q);
         }
     }
     // The transmitter's edge (uart.veryl, "The TX FIFO and the transmitter"), from the registers at the cycle's start.

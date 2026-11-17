@@ -1,7 +1,11 @@
 // proof_run: the whole chip from a packet file (v1.37; tests/proof_bench.h), for one frame file, N and s.
 //
 //   proof_run FRAMES --asics N --segment S [--windows W] [--rows R] [--gold IMAGES.txt] [--packets FILE]
+<<<<<<< HEAD
 //             [--recorded RUN] [--fast-link] [--limit CYCLES] [--quiet] [--cache]
+=======
+//             [--recorded RUN] [--fast-link] [--link-rate B] [--threshold W] [--limit CYCLES] [--quiet]
+>>>>>>> origin/main
 //
 // FRAMES is gold's frame file (`gold frames`), cut for N ASICs into segments of W windows of R rows (--windows, 64, and
 // --rows, 65,536: gold's --segment-rows is their product; no frame carries them). The link's bytes are FRAMES in the
@@ -9,12 +13,18 @@
 // tests' writer makes them (the same bytes). --gold is gold's reference for this s (`gold frames-images FRAMES S`,
 // its output): each image's SHA-256. --recorded RUN (evm-zone-23, cyclone-22) adds the recorded windows' checks, every
 // row and delivery, from $MESHSIM_INPUTS: windows 64 S to 64 S + 63, so W must be 64 and R 65,536. --fast-link gives
+<<<<<<< HEAD
 // the link's bytes as fast as the master takes them, in place of a byte a cycle. --cache runs the Tracer on the cache's
 // controller, the AXI arbiter and the LPDDR model (MachConfig::cache_ctl; updater_wip, WORKER5) in place of v1.37's
 // memory model, and prints the cache's figures.
+=======
+// the link's bytes as fast as the master takes them, in place of a byte a cycle; --link-rate B, B bytes a cycle (1, 2,
+// 4, 8). --threshold W is the master's threshold after a frame's header word (system_config; default 256, a credit of
+// the Updater's segment queue), 1 to 1,024.
+>>>>>>> origin/main
 //
 // Prints the run's lines (segment_bench.h's and proof_bench.h's), then its figures: each of the Updater's runs, the
-// link, the page map, the master's core. Exit 1 on any failed check.
+// link, the page map, the master's core, its wakes and Ingress's transfers in all and for each frame. Exit 1 on any failed check.
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -38,7 +48,11 @@ bool read_file(const std::string& path, std::vector<uint8_t>& out) {
 }
 int usage() {
     std::fprintf(stderr, "usage: proof_run FRAMES --asics N --segment S [--windows W] [--rows R] [--gold IMAGES.txt] [--packets FILE] "
+<<<<<<< HEAD
                          "[--recorded RUN] [--fast-link] [--limit CYCLES] [--quiet] [--cache]\n");
+=======
+                         "[--recorded RUN] [--fast-link] [--link-rate B] [--threshold W] [--limit CYCLES] [--quiet]\n");
+>>>>>>> origin/main
     return 2;
 }
 
@@ -65,12 +79,17 @@ int main(int argc, char** argv) {
         else if (a == "--recorded" && more) recorded = argv[++i];
         else if (a == "--limit" && more) limit = std::strtoull(argv[++i], nullptr, 10);
         else if (a == "--fast-link") c.cycles_per_byte = 0;
+<<<<<<< HEAD
         else if (a == "--cache") cache = true;
+=======
+        else if (a == "--link-rate" && more) c.link_rate = std::atoi(argv[++i]);
+        else if (a == "--threshold" && more) c.threshold = uint32_t(std::atol(argv[++i]));
+>>>>>>> origin/main
         else if (a == "--quiet") quiet = true;
         else if (path.empty() && a[0] != '-') path = a;
         else return usage();
     }
-    if (path.empty() || windows == 0 || windows > 64 || rows == 0) return usage();
+    if (path.empty() || windows == 0 || windows > 64 || rows == 0 || c.link_rate < 1 || c.threshold > 1024) return usage();
     std::string err;
     if (!c.file.read(path, err)) { std::printf("FAIL proof_run: %s\n", err.c_str()); return 1; }
     if (packets.empty()) c.packets = proof::packets_of(c.file);
@@ -128,6 +147,18 @@ int main(int argc, char** argv) {
     if (n.master.size() > 27)   // fw/cc/master_layout.h: MR_HANDED, MR_RELEASED, MR_END, the master's mcycle at each
         std::printf("the master: the tracer tile's load at its cycle %u, the windows landed and the replay released at %u, its exit at %u\n",
                     n.master[25], n.master[26], n.master[27]);
+    if (n.master.size() > 122) {   // fw/cc/master_layout.h: MR_WAKES, MR_LINK_READS, MR_FRAME_WAKES, MR_FRAME_READS, MR_THRESHOLD_STORES, MR_HANDED_*
+        const std::vector<uint32_t>& R = n.master;
+        std::printf("the threshold: %u; the link at %d bytes a cycle; the master's wakes: %u, %u to the hand-over; Ingress read out in %u transfers, %u to the hand-over; %u threshold stores; "
+                    "the master awake %llu cycles to the hand-over; the link: its last byte at %lld, %llu cycles waiting for room\n", c.threshold ? c.threshold : 256,
+                    c.cycles_per_byte == 0 ? 0 : c.link_rate, R[30], R[121], R[31], R[122], R[120], (unsigned long long)n.master_awake_handed, (long long)n.link_last_at, (unsigned long long)n.link_room_cycles);
+        std::printf("each frame, its type: wakes/transfers:");
+        for (uint32_t k = 0; k < R[2] && k < 16; k++) {
+            const bool last = k + 1 == R[2] || k == 15;
+            std::printf(" %u: %u/%u", R[56 + k], (last ? R[121] : R[88 + k + 1]) - R[88 + k], (last ? R[122] : R[104 + k + 1]) - R[104 + k]);
+        }
+        std::printf(" (the last to the hand-over)\n");
+    }
     std::printf("%s proof_run %s: %d checks failed\n", run.failures ? "FAIL" : "PASS", seg.name.c_str(), run.failures);
     return run.failures ? 1 : 0;
 }

@@ -1,12 +1,13 @@
 // tracer_block_main.cpp: the Tracer alone (tracer_block.h's bench), as the RTL's acceptance runs it (Snarky One's
 // tracer_acceptance_test, which this follows check for check), on a segment of a real workload or on a synthetic guest:
-//   tracer_block --inputs DIR --program NAME [--segment S] [--windows N] [--compression C] [--fill L[,M] | --fill model]
+//   tracer_block --inputs DIR --program NAME [--segment S] [--windows N] [--compression C] [--fill L[,M] | --fill model | --fill cache]
 //                [--ref FILE] [--rows DIR] [--quiet]
 //   tracer_block --synthetic [SEED] [--quiet]
 //
 // A REAL SEGMENT. DIR is the inputs' directory (~/meshsim-inputs, read only: gold-v1.3/NAME, w26-jumpmap/NAME,
 // v1261/NAME). --fill: the fill port's read latency in cycles, the guest's file's and the map's (the RTL bench's memory
-// system; 1 by default), or `model`, the simulator's own memory system (17.9.14).
+// system; 1 by default), or `model`, the simulator's own memory system (17.9.14), or `cache`, the cache's controller,
+// the AXI arbiter and the LPDDR model (units/cache_system.h; updater_wip, WORKER5).
 //   Checked, every run, against the window's files (tests/tracerblock/gold.h): output queue 0's 68 words; output
 //   queues 1-3 entry for entry through each stream's last value, their number and the length words; STATE_LENGTH,
 //   ROWS_RUN, STATUS 0 and ERRORS 0 after done, no live event; each post's code value and row offset; STAT_MISS_I,
@@ -37,6 +38,9 @@
 #include "tracerblock/guest.h"
 #include "tracerblock/report.h"
 #include "units/mem_system.h"
+#include "units/cache_system.h"
+#include "cache_figures.h"
+#include <memory>
 
 namespace {
 
@@ -92,7 +96,7 @@ int real_segment(const std::string& inputs, const std::string& program, unsigned
                  const std::string& fill, const std::string& ref, const std::string& rows_dir, bool quiet) {
     const auto began = std::chrono::steady_clock::now();
     int lat[2] = {0, 0};
-    if (fill != "model") {
+    if (fill != "model" && fill != "cache") {
         lat[0] = std::atoi(fill.c_str());
         const size_t c = fill.find(',');
         lat[1] = c == std::string::npos ? lat[0] : std::atoi(fill.c_str() + c + 1);
@@ -152,6 +156,10 @@ int real_segment(const std::string& inputs, const std::string& program, unsigned
     tr.mem = &ms;
     tr.cold_mem_on_state_write = true;
     tr.fill_latency[0] = lat[0]; tr.fill_latency[1] = lat[1];
+    std::unique_ptr<units::CacheSystem> cs;   // --fill cache (updater_wip, WORKER5): the cache's controller on the fill port
+    if (fill == "cache") { cs = std::make_unique<units::CacheSystem>(&store); cs->ctl.cfg.map_root_for_stats = w.map.root; cs->attach(tr); }
+    auto port_reads = [&]() { return cs ? int64_t(cs->ctl.fill_reads) : ms.reads; };
+    auto port_writes = [&]() { return cs ? int64_t(cs->ctl.fill_writes) : ms.writes; };
     Rows rows;
     tr.on_row = on_row; tr.on_row_ctx = &rows;
 
@@ -209,8 +217,8 @@ int real_segment(const std::string& inputs, const std::string& program, unsigned
         // (a data miss on the line in the write-back buffer takes it back with no read, 17.9.5: none at the RTL bench's
         // latencies, where a write is answered the next cycle; the simulator's count of them otherwise)
         const uint64_t expected_reads = account.map_lines + account.instruction_cache.misses + account.data_cache.misses - uint64_t(tr.take_backs);
-        if (uint64_t(ms.reads) != expected_reads)
-            diffs.add("%s: the fill port's reads %lld, the models' %llu (the map's %llu and the caches' misses, less %lld lines taken back)", context, (long long)ms.reads,
+        if (uint64_t(port_reads()) != expected_reads)
+            diffs.add("%s: the fill port's reads %lld, the models' %llu (the map's %llu and the caches' misses, less %lld lines taken back)", context, (long long)port_reads(),
                       (unsigned long long)expected_reads, (unsigned long long)account.map_lines, (long long)tr.take_backs);
         // ---- the cycles add up (17.9.8): the rows' schedules, the three stall counters, the waits on the core, and
         // the measure's 3 cycles a run (START's own, and the two to the load that shows state_ready)
@@ -248,7 +256,7 @@ int real_segment(const std::string& inputs, const std::string& program, unsigned
                                     o.stat[0], o.stat[1], o.stat[2], o.stat[3], o.stat[4], o.stat[5], o.stat[6], o.stat[7],
                                     int64_t(account.instructions - before.instructions), int64_t(account.padding_rows - before.padding_rows), m_rows,
                                     int64_t(account.loads - before.loads), int64_t(account.stores - before.stores), int64_t(o.post_opcode.size()),
-                                    schedule, rest, ms.reads - tr.probe_reads, tr.probe_reads, ms.writes};
+                                    schedule, rest, port_reads() - tr.probe_reads, tr.probe_reads, port_writes()};
             const int col[] = {8, 10, 11, 13, 14, 15, 16, 25, 26, 27, 28, 29, 30, 31, 32, 17, 18, 19, 20, 21, 22, 23, 24, 33, 34, 35};
             const char* name[] = {"START's cycle", "first row's start", "last row's done", "state_ready's load", "done's load", "rows' cycles",
                                   "drain cycles", "STAT_CYCLES", "STAT_STALL_FETCH", "STAT_STALL_DATA", "STAT_STALL_MAP", "STAT_STALL_OUTPUT",
@@ -303,6 +311,11 @@ int real_segment(const std::string& inputs, const std::string& program, unsigned
         // cache holds
         for (int k = 0; k < 16; k++) bench.idle_cycle();
         if (tr.errors(bench.cycle) != 0) diffs.add("%s segment %u: ERRORS 0x%x after the last write-back", program.c_str(), segment, unsigned(tr.errors(bench.cycle)));
+        if (cs) {   // the shared cache's dirty lines into LPDDR (the store) before the cells are read from it
+            cachefig::print(program.c_str(), *cs);
+            if (cachefig::faults(program.c_str(), *cs)) diffs.add("%s segment %u: the cache's faults", program.c_str(), segment);
+            cs->ctl.write_dirty_to(store);
+        }
         const std::set<uint64_t> held(account.data_cache.entries.begin(), account.data_cache.entries.end());
         cells_checked = 0;
         for (const auto& u : gs.updates) {
@@ -321,7 +334,7 @@ int real_segment(const std::string& inputs, const std::string& program, unsigned
     for (int k = 0; k < Tracer::STAT_N; k++) fig.counters[k] = last[k];
     fig.fetch_lookups = account.instruction_cache.lookups; fig.data_lookups = account.data_cache.lookups;
     fig.jump_lookups = account.jump_lru.lookups; fig.map_lines = account.map_lines;
-    fig.write_backs = uint64_t(ms.writes); fig.take_backs = uint64_t(tr.take_backs);
+    fig.write_backs = uint64_t(port_writes()); fig.take_backs = uint64_t(tr.take_backs);
     fig.model_cycles = bench.cycle;
     fig.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - began).count();
     tracer_block::report(program + " segment " + std::to_string(segment), compression, fill, fig);

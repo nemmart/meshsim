@@ -1,6 +1,7 @@
 #!/bin/bash
 # make_task.sh -- v1.37_wip's checks as a Quest task (WORKER3; v136-check's generator, for v1.37_wip).
-#   updater_wip/tasks/v137-check/make_task.sh NNN-name suites|check|faster > NNN-name.sh     (commit first: the kit is HEAD's)
+#   updater_wip/tasks/v137-check/make_task.sh NNN-name suites|suites-cache|check|faster > NNN-name.sh     (commit first: the kit is HEAD's)
+# (suites-cache, WORKER5's: suites with CACHE_CTL=1, the proof steps on the cache's controller; body.sh's header)
 # Writes a self-contained task with an embedded kit: v1.37_wip/ and updater_wip/pipeline/gold at HEAD (git archive),
 # gold's and jumpmap's classes built here (pipeline/inputs/lib/classes.sh) and the frames' gold's (updater_wip/pipeline/
 # gold: classes-frames), so that the runner needs no javac, and, for suites, the link's test vectors:
@@ -10,8 +11,8 @@
 # Reads no persistent data and writes none; writes only results/NNN-name/. Safe to re-run.
 set -eu
 export LC_ALL=C
-NAME=${1:?usage: make_task.sh NNN-name suites|check|faster}; ITEM=${2:?suites, check or faster}
-case $ITEM in suites|check|faster) ;; *) echo "ITEM is suites, check or faster" >&2; exit 1;; esac
+NAME=${1:?usage: make_task.sh NNN-name suites|suites-cache|check|faster}; ITEM=${2:?suites, suites-cache, check or faster}
+case $ITEM in suites|suites-cache|check|faster) ;; *) echo "ITEM is suites, suites-cache, check or faster" >&2; exit 1;; esac
 TOP=$(git rev-parse --show-toplevel); HERE=$(cd "$(dirname "$0")" && pwd)
 R=$(cd "$TOP" && git rev-parse --short HEAD); BR=$(cd "$TOP" && git rev-parse --abbrev-ref HEAD)
 [ -z "$(cd "$TOP" && git status --porcelain -- v1.37_wip updater_wip/pipeline/gold | grep -v '^??')" ] || { echo "make_task.sh: v1.37_wip/ or gold has uncommitted changes" >&2; exit 1; }

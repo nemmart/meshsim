@@ -296,8 +296,9 @@ edge with the other side's outputs of *t*. A unit never reads another's insides.
 
 ## Open
 
-1. **`TURN_BEATS`, 32** †. Smaller cuts a line's wait and costs the controller efficiency; the figures of Part B will
-   show the cache's waits.
+1. **`TURN_BEATS`, 32** †. Smaller cuts a line's wait and costs the controller efficiency; as built, a line
+   through the arbiter takes 80 cycles from its address to its last beat, and a fill read that misses on a clean
+   way waits 261 at most (WORKER5's report).
 2. **`CLIENT_BURSTS`, 4** † a direction. The cache needs two writes at once (an update's and a write-back) and one
    read; the Updater one or two of each.
 3. **One ID a client, `ID_BITS` 2** †. A client with reads that must pass each other would need two.
@@ -313,3 +314,8 @@ edge with the other side's outputs of *t*. A unit never reads another's insides.
 9. **`LPDDR_ADDRESS_BITS`:** 32 by default, so 4 GB, where the 31-bit stored form reaches 256 GB.
 10. **The figure** (`diagrams/svg/fig_m1_lpddr_path.svg`) shows the buses rightly but still has the Updater by the RW
     engine; the arbiter, the ports and the IDs to be drawn when it is redone.
+11. **A client's pieces can hold a line's address behind them** (found by WORKER5's arbiter test): a client with
+    more pieces at the controller than the controller's own limit of bursts outstanding (16) holds the arbiter's
+    address register until one is answered, and a cache line's address waits behind it. The Updater's one page at
+    a time, 8 pieces, stays under the limit, so it does not arise today. If a client ever sends more, the arbiter
+    should hold that client's pieces back past a share of the limit.

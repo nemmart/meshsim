@@ -1,6 +1,8 @@
 // proof_bench.cpp: proof_bench.h's run: segment_bench.h's `Proof` for the master tile's program (fw/cc/master.c).
 #include "proof_bench.h"
 
+#include "cache_figures.h"
+
 #include <cstdarg>
 #include <cstdio>
 #include <fstream>
@@ -170,6 +172,7 @@ struct ChipProof final : segment::Proof {
                     "ERRORS: the tile's 0x%x, Ingress's 0x%x, the Updater's 0x%x\n", name, R[MR_STATUS], R[MR_DETAIL], R[MR_FRAMES], R[MR_RUNS],
                     R[MR_PAGES_TAKEN], R[MR_LOADS], R[MR_RESULTS], R[MR_OTHERS], R[MR_BOOT], R[MR_TILE_ERRORS], R[MR_INGRESS_ERRORS],
                     R[MR_UPDATER_ERRORS]);
+        if (m.c.cfg().cache_ctl) cachefig::print(name, m.cache_system());   // updater_wip, WORKER5
         if (R[MR_STATUS] != MR_OK) {                 // where it stopped
             Updater& u = m.updater();
             units::IngressEgress& link = m.ingress();
@@ -198,6 +201,7 @@ struct ChipProof final : segment::Proof {
     bool ends_early() const override { return c.expect.trap || c.expect.cut; }
     void check(mach::Mach& m, segment::Run& run) override {
         check_all(m, run);
+        if (m.c.cfg().cache_ctl) run.failures += cachefig::faults(name, m.cache_system());
         run.failures += failures;
     }
     void check_all(mach::Mach& m, const segment::Run& run) {

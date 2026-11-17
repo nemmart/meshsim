@@ -7,10 +7,12 @@ it is `RUNNING-v1.37.md`; how it was checked, with its figures, is
 notes beside each (`../updater_wip/planning/sessions/WORKER3-NOTES.md`, `../updater_wip/planning/sessions/WORKER4-NOTES.md`).
 
 **The specification is not changed** (`spec/` is v1.36's). What v1.37 adds is specified by the design documents of
-`../v1.4_wip/planning/`: `INGRESS-INTERFACE.md`, `UPDATER-INTERFACE.md`, `HOST-FRAMES.md` and `HOST-LINK.md`.
+`../v1.4_wip/planning/`: `INGRESS-INTERFACE.md`, `UPDATER-INTERFACE.md`, `HOST-FRAMES.md` and `HOST-LINK.md`; and, for
+the cache's controller and the path to LPDDR (`../updater_wip`, WORKER5), `AXI-INTERFACE.md` and `CACHE-INTERFACE.md`.
 
 **v1.36's machine is unchanged.** The additions are a different master tile, built only when a machine asks for it
-(`MachConfig::host_link`, off by default).
+(`MachConfig::host_link`, off by default), and with it the Tracer on the cache's real controller
+(`MachConfig::cache_ctl`, off by default).
 
 | what | where | specified by | status |
 |---|---|---|---|
@@ -31,3 +33,11 @@ notes beside each (`../updater_wip/planning/sessions/WORKER3-NOTES.md`, `../upda
 | a guest whose segments carry advice and write memory, for the fixtures | `tests/updater/make_div_guest.py`, `tests/updater/divs.frames` | | built |
 | the threshold's figures: `proof_run --threshold W` (the master's threshold after a header word, placed in `system_config`) and `--link-rate B`; the master's wakes and Ingress's transfers, in all, to the hand-over and by frame, in its results (`MR_WAKES`, `MR_LINK_READS`, `MR_FRAME_WAKES`, ...); `tests/proof_numbers.py`'s second and third tables | `tests/proof_run_main.cpp`, `tests/proof_bench.*`, `tests/proof_numbers.py`; `fw/cc/master_layout.h` | WORKER4's prompt | built |
 | the tests' packet writer can cut a frame file into packets regardless of frames (`Options::packed`), so that a frame ends inside a packet | `tests/packet_writer.h` | WORKER4's prompt, item 4 | built; `test_master`'s `master_frames_across_packets` |
+| **WORKER5:** the AXI port's types and the look-up port's (no logic: what the cache's and the Updater's controllers compile against) | `src/units/axi_port.h`, `src/units/lookup_port.h` | `AXI-INTERFACE.md`, `CACHE-INTERFACE.md` | built |
+| the LPDDR model: the controller and LPDDR behind the AXI arbiter, with IDs, on the file store's pages; its latencies, the jitter mode, a test's faults, the rules checked | `src/units/lpddr_model.h`, `lpddr_model.cpp` | `AXI-INTERFACE.md`, sections 4 and 5 | built; `tests/test_lpddr_model.cpp` (11 tests) |
+| the AXI arbiter: round robin, reads and writes apart, bursts cut into pieces of 32 beats and seen whole, one write piece at a time, a client's ID, bursts outstanding; the RW engine's adapter | `src/units/axi_arbiter.h`, `axi_arbiter.cpp` | `AXI-INTERFACE.md`, section 3 | built; `tests/test_axi_arbiter.cpp` (10 tests, the RW engine through its adapter among them) |
+| the cache memory: the tag memory and the data memory, one read port and one write port each | `src/units/cache_memory.h` | `DESIGN-NOTES-2026-11-16.md`, section 1 | built |
+| the cache's controller: four look-up ports and the shared reply bus, the fill port, its AXI port; the front end, the walker, the miss handler, the AXI writer, the update slot, discard; hits served while a miss waits (`cache::Config::hits_under_miss`) | `src/units/cache_ctl.h`, `cache_ctl.cpp` | `CACHE-INTERFACE.md` | built; `tests/test_cache.cpp` (10 tests, random traffic against the stand-in with no cache, `tests/cache_ref.h`, among them) |
+| the cache, the arbiter and the LPDDR model as one, and the Tracer's fill port on it | `src/units/cache_system.h`; `src/units/tracer.h`, `tracer.cpp` (`Tracer::FillPort`'s polled responses and `tick`: unset, the port is as before) | `CACHE-INTERFACE.md`, section 5 | built |
+| the setting: the Tracer on the cache's controller (`MachConfig::cache_ctl`, setting `cacheCtl`, with `host_link`; off by default); `proof_run --cache`; `tracer_block --fill cache`; the synthetic guest on it (`TRACER_CACHE=1`); the cache's figures | `tests/mach.h`, `tests/mach.cpp`; `tests/segment_bench.h`, `segment_bench.cpp`, `tests/proof_bench.cpp`, `tests/proof_run_main.cpp`; `tests/tracer_block_main.cpp`, `tests/tracerblock/guest.cpp`; `tests/cache_figures.h` | `../updater_wip/planning/sessions/WORKER5-NOTES.md`, section 6 | built; with it off every run is as before; `test_master`'s `master_cache_*` (6 runs) |
+| the steps: `cache` and `cache-synth` (quick); `CACHE_CTL=1` runs `proof-real`, `proof-matrix` and `proof-29` on the cache and adds `tracer-block-cache` | `run_tests.sh`; `../updater_wip/tasks/v137-check/` (the item `suites-cache`) | | |

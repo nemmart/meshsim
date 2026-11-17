@@ -11,6 +11,8 @@
 #            (3 recorded segments, 24 of the matrix, 10 at 2^29: each must have passed) and their figures
 #            (tests/proof_numbers.py) in proof-numbers.md.
 #   check    make check from a clean tree: every test, debug and release, gcc and clang, and the TSan runs.
+#   suites-cache  (WORKER5) as suites, with CACHE_CTL=1: the proof steps on the cache's controller (proof_run --cache)
+#            and the step tracer-block-cache; every other step as suites runs it.
 #   faster   (WORKER4) 1, 2 and 2b as for suites; then 5: proof_run (clang suite) on every run of the 29 and matrix sets
 #            with the link at 2, 4 and 8 bytes a cycle (--link-rate), and on the matrix with the master's threshold at
 #            32, 64 and 128 (--threshold), in parallel; each run must pass (gold's images, every check of proof_run);
@@ -32,7 +34,8 @@ sec "the machine"
 verdict machine PASS
 [ -n "${DRY:-}" ] && { echo "DRY: stopping after the kit and the machine"; rm -rf "$W"; exit 0; }
 
-if [ "$ITEM" = suites ] || [ "$ITEM" = faster ]; then
+CACHE=""; [ "$ITEM" = suites-cache ] && CACHE=1
+if [ "$ITEM" = suites ] || [ "$ITEM" = suites-cache ] || [ "$ITEM" = faster ]; then
   sec "1. convert_delivery (clang release), which the inputs' build needs"
   t=$(date +%s)
   if ( cd "$KS" && make -j"$N" MODE=release CC_NAME=clang build/clang-release/convert_delivery ) > "$RES/build-convert.log" 2>&1
@@ -101,11 +104,11 @@ if [ "$ITEM" = faster ]; then
   took faster "$t"
 fi
 
-if [ "$ITEM" = suites ]; then
+if [ "$ITEM" = suites ] || [ "$ITEM" = suites-cache ]; then
 
-  sec "3. ./run_tests.sh all --check (JOBS=$N; MESHSIM_INPUTS=$IN)"
+  sec "3. ./run_tests.sh all --check (JOBS=$N; MESHSIM_INPUTS=$IN; CACHE_CTL=$CACHE)"
   t=$(date +%s)
-  ( cd "$KS" && MESHSIM_INPUTS=$IN PACKET_VECTORS=$KIT/updater_wip/pipeline/gold/test/packets STEP_TIMES=1 JOBS=$N ./run_tests.sh all --check ) > "$RES/run_tests.log" 2>&1; R=$?
+  ( cd "$KS" && CACHE_CTL=$CACHE MESHSIM_INPUTS=$IN PACKET_VECTORS=$KIT/updater_wip/pipeline/gold/test/packets STEP_TIMES=1 JOBS=$N ./run_tests.sh all --check ) > "$RES/run_tests.log" 2>&1; R=$?
   took run_tests "$t"
   tail -45 "$RES/run_tests.log"
   cp "$KS/results/.step-times" "$RES/step-times.txt" 2>/dev/null; cp "$KS/results/.differs" "$RES/differs.txt" 2>/dev/null
@@ -121,6 +124,7 @@ if [ "$ITEM" = suites ]; then
     if [ "${got:-0}" = "$want" ] && [ "${bad:-0}" = 0 ]; then verdict "proof-${p%%:*}" "PASS-$got-runs"; else verdict "proof-${p%%:*}" "FAIL-${got:-0}-of-$want-passed"; fi
   done
   ( cd "$KS" && python3 tests/proof_numbers.py results/proof-real.log results/proof-matrix.log results/proof-29.log --frames ) > "$RES/proof-numbers.md" 2>&1
+  [ -z "$CACHE" ] || { cp "$KS/results/tracer-block-cache.log" "$RES/" 2>/dev/null; grep -h 'the cache:\|LPDDR:' "$KS"/results/proof-*.log > "$RES/cache-figures.txt" 2>/dev/null; }
   tail -3 "$RES/proof-numbers.md"
   SK=$(grep -c 'SKIPPED (' "$RES/run_tests.log")
   [ "$SK" = 0 ] || verdict run_tests-skipped "SKIPPED-$SK-steps: $(grep 'SKIPPED (' "$RES/run_tests.log" | sed 's/^[^a-z]*//; s/ .*//' | sort -u | tr '\n' ' ')"

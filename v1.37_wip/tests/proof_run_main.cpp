@@ -136,10 +136,18 @@ int main(int argc, char** argv) {
         const std::vector<uint32_t>& R = n.master;
         std::printf("the forward count: the link at %d bytes a cycle; the master's wakes: %u, %u to the hand-over; Ingress's DMA: %u transfers, %u to the hand-over, "
                     "%u words; %u count stores; %llu words forwarded, %llu dropped; the master awake %llu cycles to the hand-over at %u: %.2f%%; the link: its "
-                    "last byte at %lld, %llu cycles waiting for room; awake %u cycles at the first frame\n",
+                    "last byte at %lld, %llu cycles waiting for room; awake %u cycles at the first frame, at its cycle %u\n",
                     c.cycles_per_byte == 0 ? 0 : c.link_rate, R[30], R[121], R[31], R[122], R[29], R[120], (unsigned long long)n.link_forwarded,
                     (unsigned long long)n.link_discarded, (unsigned long long)n.master_awake_handed, R[25],
-                    R[25] ? 100.0 * double(n.master_awake_handed) / double(R[25]) : 0.0, (long long)n.link_last_at, (unsigned long long)n.link_room_cycles, R.size() > 123 ? R[123] : 0u);
+                    R[25] ? 100.0 * double(n.master_awake_handed) / double(R[25]) : 0.0, (long long)n.link_last_at, (unsigned long long)n.link_room_cycles, R.size() > 123 ? R[123] : 0u, R[72]);
+        if (R.size() > 138) {                              // MR_FRAME_AWAKE: each frame's cycles awake, from its header word to the next's
+            std::printf("each frame, its type: cycles awake:");
+            for (uint32_t k = 0; k < R[2] && k < 16; k++) {
+                const bool last = k + 1 == R[2] || k == 15;
+                std::printf(" %u: %llu", R[56 + k], (unsigned long long)((last ? n.master_awake_handed : R[123 + k + 1]) - R[123 + k]));
+            }
+            std::printf(" (the last to the hand-over)\n");
+        }
         std::printf("each frame, its type: wakes/transfers:");
         for (uint32_t k = 0; k < R[2] && k < 16; k++) {
             const bool last = k + 1 == R[2] || k == 15;

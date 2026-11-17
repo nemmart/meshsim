@@ -40,7 +40,7 @@ enum : unsigned { MR_STATUS = 0, MR_DETAIL, MR_FRAMES, MR_RUNS, MR_PAGES_TAKEN, 
                   MR_UPDATER_ERRORS, MR_ERROR_LINES, MR_MCAUSE = 22, MR_MEPC, MR_BOOT, MR_HANDED, MR_RELEASED, MR_END, MR_PAGES_QUEUED,
                   MR_LINK_WORDS, MR_WAKES, MR_LINK_READS, MR_PAGE_COUNT = 32, MR_RUN_START = 40, MR_RUN_DONE = 48, MR_FRAME_TYPE = 56,
                   MR_FRAME_START = 72, MR_FRAME_WAKES = 88, MR_FRAME_READS = 104, MR_COUNT_STORES = 120, MR_HANDED_WAKES, MR_HANDED_READS,
-                  MR_AWAKE_FIRST_FRAME, MR_WORDS };
+                  MR_FRAME_AWAKE, MR_WORDS = MR_FRAME_AWAKE + 16 };
 constexpr uint32_t MR_OK = 1, MR_TRAP = 2;
 // ---- fw/tracer/tracer_layout.h's header words the master writes
 enum : unsigned { TL_H_EXPECT = 8, TL_H_ADVICE_N = 10, TL_H_HASH_MUL = 12, TL_H_HASH_STEP = 13, TL_H_HASH_LINES = 14 };

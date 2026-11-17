@@ -86,8 +86,9 @@
 #define MR_COUNT_STORES      120  /* stores to DMA_FORWARD_COUNT */
 #define MR_HANDED_WAKES      121  /* MR_WAKES's count at the start of the tracer tile's load */
 #define MR_HANDED_READS      122  /* MR_LINK_READS's then */
-#define MR_AWAKE_FIRST_FRAME 123  /* mcycle less the cycles in WFI, when the first frame's header word was in: the boot's (WORKER7) */
-#define MR_WORDS             124
+#define MR_FRAME_AWAKE       123  /* 123-138: mcycle less the cycles in WFI when each frame's header word was in (WORKER7):
+                                   * the first is the boot's cost */
+#define MR_WORDS             139
 #define MR_MAX_RUNS          8
 #define MR_MAX_FRAMES        16
 

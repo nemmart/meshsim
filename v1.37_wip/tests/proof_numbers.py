@@ -10,7 +10,8 @@ pages read and written); the cycles the master's core was awake, and their share
 Then, for runs that print them, a second table. For WORKER7's forward count: the link's rate; the master's wakes, in
 all and to the hand-over; its cycles awake to the hand-over, and their share of the hand-over's cycle (the owner's
 target, the Updater at most 10% of the master tile's load, is this share: everything before the hand-over is the
-frames); the share without the boot (the master awake when the first frame's header word was in, MR_AWAKE_FIRST_FRAME);
+frames); the share after the boot (from the first frame's header word, MR_FRAME_START's first, to the hand-over: the
+cycles awake then, less those at the first frame, MR_AWAKE_FIRST_FRAME, over the cycles between);
 Ingress's DMA transfers and the count's stores; the words forwarded and dropped; the cycle of the hand-over, of the
 link's last byte, and the cycles the link waited for room. For WORKER4's threshold (its logs): the threshold, the
 wakes, the cycles awake to the hand-over and a packet, and the link rate the firmware could keep up with. The rate is
@@ -47,11 +48,15 @@ def runs(path):
             continue
         m = re.match(r"the forward count: the link at (\d+) bytes a cycle; the master's wakes: (\d+), (\d+) to the hand-over; Ingress's DMA: (\d+) transfers, (\d+) to the hand-over, "
                      r"(\d+) words; (\d+) count stores; (\d+) words forwarded, (\d+) dropped; the master awake (\d+) cycles to the hand-over at (\d+): [0-9.]+%; "
-                     r"the link: its last byte at (\d+), (\d+) cycles waiting for room(?:; awake (\d+) cycles at the first frame)?", line)
+                     r"the link: its last byte at (\d+), (\d+) cycles waiting for room(?:; awake (\d+) cycles at the first frame, at its cycle (\d+))?", line)
         if m:
             cur.update(forward=True, rate=int(m[1]), wakes=int(m[2]), wakes_handed=int(m[3]), reads=int(m[4]), reads_handed=int(m[5]), dma_words=int(m[6]),
                        stores=int(m[7]), forwarded=int(m[8]), dropped=int(m[9]), awake_handed=int(m[10]), handed=int(m[11]), link_last=int(m[12]),
-                       room=int(m[13]), awake_boot=int(m[14] or 0))
+                       room=int(m[13]), awake_boot=int(m[14] or 0), first_frame=int(m[15] or 0))
+            continue
+        m = re.match(r"each frame, its type: cycles awake:(.*) \(the last to the hand-over\)", line)
+        if m:
+            cur["frame_awake"] = m[1].strip()
             continue
         m = re.match(r"each frame, its type: wakes/transfers:(.*) \(the last to the hand-over\)", line)
         if m:
@@ -77,7 +82,7 @@ def main():
         print("\n| run | N | s | link, bytes a cycle | wakes | to the hand-over | awake to the hand-over | hand-over at | share | share after the boot | DMA transfers | count stores | forwarded | dropped | link's last byte | link waited |")
         print("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
         for r in f:
-            after = (r["awake_handed"] - r["awake_boot"]) / max(1, r["handed"]) if r["awake_boot"] else None
+            after = (r["awake_handed"] - r["awake_boot"]) / max(1, r["handed"] - r["first_frame"]) if r["awake_boot"] else None
             print(f"| {r['name']} | {r['n']} | {r['s']} | {r['rate'] or 'as taken'} | {r['wakes']:,} | {r['wakes_handed']:,} | {r['awake_handed']:,} | {r['handed']:,} | "
                   f"{100.0 * r['awake_handed'] / max(1, r['handed']):.2f}% | {'' if after is None else f'{100.0 * after:.2f}%'} | {r['reads']:,} | {r['stores']} | "
                   f"{r['forwarded']:,} | {r['dropped']:,} | {r['link_last']:,} | {r['room']:,} |")
@@ -90,9 +95,9 @@ def main():
             print(f"| {r['name']} | {r['n']} | {r['s']} | {r['threshold']} | {r['rate'] or 'as taken'} | {r.get('packets', 0):,} | {r['wakes']:,} | {r['wakes_handed']:,} | {r['awake_handed']:,} | "
                   f"{r.get('awake', 0) / p:.1f} | {r.get('bytes', 0) / max(1, r.get('awake', 0)):.2f} | {r.get('handed', 0):,} | {r['link_last']:,} | {r['room']:,} |")
     if frames and (t or f):
-        print("\n| run | N | s | wakes/transfers by frame type, in order |")
-        print("|---|---|---|---|")
-        for r in t + f: print(f"| {r['name']} | {r['n']} | {r['s']} | {r.get('frames', '')} |")
+        print("\n| run | N | s | wakes/transfers by frame type, in order | cycles awake by frame type |")
+        print("|---|---|---|---|---|")
+        for r in t + f: print(f"| {r['name']} | {r['n']} | {r['s']} | {r.get('frames', '')} | {r.get('frame_awake', '')} |")
     print(f"\n{len(rows)} runs, {sum(1 for r in rows if r['ok'])} passed")
 
 if __name__ == "__main__":

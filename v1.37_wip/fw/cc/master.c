@@ -435,7 +435,7 @@ static void frame(void) {
     if (frames == MR_MAX_FRAMES) finish(MR_ROOM, 2);
     R[MR_FRAME_TYPE + frames] = type; R[MR_FRAME_START + frames] = mcycle();
     R[MR_FRAME_WAKES + frames] = wakes; R[MR_FRAME_READS + frames] = reads;
-    if (!frames) R[MR_AWAKE_FIRST_FRAME] = mcycle() - asleep;   /* the boot's cost, for the figures */
+    R[MR_FRAME_AWAKE + frames] = mcycle() - asleep;   /* the figures: the boot's cost, and each frame's */
     R[MR_FRAMES] = ++frames;
     if (compression > 1) bad_frame(type, MR_D_TYPE);
     frame_left = length;

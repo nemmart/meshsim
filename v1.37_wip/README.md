@@ -12,7 +12,7 @@
 > |---|---|
 > | run it | `RUNNING-v1.37.md` |
 > | see what v1.37 adds, piece by piece, and what specifies each | `CHANGES-v1.37.md` |
-> | see how it was checked, and its figures | `../updater_wip/planning/sessions/WORKER3-REPORT.md`; for the threshold, `../updater_wip/planning/sessions/WORKER4/REPORT.md` |
+> | see how it was checked, and its figures | `../updater_wip/planning/sessions/WORKER3-REPORT.md`; for the threshold, `../updater_wip/planning/sessions/WORKER4-REPORT.md` |
 >
 > **Everything else in this folder is v1.36's, copied unchanged (main, 67aaeb86), and reads as v1.36:** this page
 > below the line, `BUILDING.md` and `RUNNING.md` but for what they mark v1.37, `OPEN-v1.36.md`, `spec/`,

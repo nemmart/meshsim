@@ -1,5 +1,8 @@
 # WORKER4 report: the threshold, in v1.37's Ingress and the master tile's firmware
 
+*Closed and merged into `main` on 2026-11-16. The files this one calls `NOTES.md` and `REPORT.md` are
+`WORKER4-NOTES.md` and `WORKER4-REPORT.md`, beside it; its prompt is in the repository's history.*
+
 Branch `updater-w4`, from `main` at `5b92d1f2`. The plan and the choices are in `NOTES.md` (the owner's go-ahead,
 2026-11-16 20:54: "your choices stand"); section 9 there says where the work differs from the plan. No questions:
 every † was workable as written. Paths without a folder are in `v1.37_wip/`. II is `INGRESS-INTERFACE.md`, HL

@@ -1,5 +1,8 @@
 # WORKER4 notes: the threshold, in v1.37's Ingress and the master tile's firmware
 
+*Closed and merged into `main` on 2026-11-16. The files this one calls `NOTES.md` and `REPORT.md` are
+`WORKER4-NOTES.md` and `WORKER4-REPORT.md`, beside it; its prompt is in the repository's history.*
+
 Branch `updater-w4`, from `main` at `5b92d1f2` (the prompt with the 8 KB segment queue, the 256-word credit, and the
 threshold the smaller of 256 and the words left in the frame). Paths without a folder are in `v1.37_wip/`. II is
 `INGRESS-INTERFACE.md`, HL `HOST-LINK.md`, UI `UPDATER-INTERFACE.md`.

@@ -412,3 +412,32 @@ Two more rulings the same evening:
 - **Decided (owner): the Updater's segment queue is 8 KB, with a credit of 256 words.** Proposed with it: the
   threshold after a frame's header is a credit's worth, 256 words, where the owner first said 128.
 - WORKER4 (`updater_wip`) puts the threshold and both sizes into v1.37.
+
+## 16. The threshold built, the two interfaces agreed, and a target for the master tile
+
+- **The threshold is in v1.37** (WORKER4, merged; `updater_wip/planning/sessions/WORKER4-REPORT.md`), with Ingress's
+  16 KB buffers and the Updater's 8 KB queue. All 37 proof runs pass, and another 174 with the link at 2, 4 and 8
+  bytes a cycle and the threshold at 32, 64 and 128, every image the same.
+  - **The master's cost fell by three:** about 100 cycles awake a packet's worth where it was 330; 0.17 to 0.20 of
+    the link's time at a byte a cycle.
+  - **A transfer still costs 2.3 to 3 wakes,** and the firmware is not tuned.
+  - **With a faster link the Updater is the limit, not the firmware:** from 4 bytes a cycle the black box is busy 94
+    to 97% of the time, its memory work 53 to 61% of that and decoding the rest. It does the two one after the
+    other; a controller that overlaps them moves the limit to decoding, then to the firmware.
+- **Decided (owner): the Updater is at most 10% of the master tile's load,** so that its core has slack for the
+  command stream. At a byte a cycle that is 53 cycles awake a packet's worth, about 420 for each 4 KB. Today's
+  figure is 18 to 23%.
+  - If tuning the firmware does not reach it: a larger credit, or Ingress feeding the Updater under credits kept in
+    hardware, the firmware waking once a frame.
+- **The two real controllers are being built by two workers who share no code** (owner): the cache's by WORKER5,
+  the Updater's by WORKER6. Ingress stays a black box.
+  - **WORKER5 wrote the interface between them first:** `AXI-INTERFACE.md` and `CACHE-INTERFACE.md`, with a header
+    each. They were reviewed and agreed the same day, with one change: a client has one number on AXI and on the
+    look-up port.
+  - **What they settle:** the look-up port's fields and every reply in every case; the arbiter cutting bursts into
+    32-beat pieces that a client never sees; one LPDDR model on the file store's pages; and a stand-in cache that
+    holds nothing, which WORKER6 tests against and WORKER5 uses as its reference.
+- **The mesh's two regimes** (the owner asked): v1.36's hardware has only the strict one. Links have no flow
+  control and a full router queue is always an error. The elastic regime, with a flag in each tile, is recorded in
+  v1.36's `spec/OVERVIEW.md` and `GUIDELINES.md` as proposed, "in neither the spec, the RTL nor meshsim". Nothing
+  in v1.37 needs it, now that the Updater's stream does not cross the mesh.

@@ -31,81 +31,88 @@ Ingress/Egress is the master tile's peripheral 1 (`v1.36/spec/machine-spec.md` 1
 
 | where | register or bit | access | meaning |
 |---|---|---|---|
-| `STATUS` [3] † | `foreground_ready` | R, live | a packet is waiting on the foreground stream |
-| `STATUS` [4] † | `background_ready` | R, live | a packet is waiting on the background stream |
-| `EVENTS` [8] † | `foreground_service` | counted, depth 1 | a foreground packet asks to be read out |
-| `EVENTS` [9] † | `background_service` | counted, depth 1 | a background packet asks to be read out |
+| `STATUS` [3] † | `foreground_ready` | R, live | words are waiting on the foreground stream |
+| `STATUS` [4] † | `background_ready` | R, live | words are waiting on the background stream |
+| `EVENTS` [8] † | `foreground_service` | counted, depth 1 | the words waiting on the foreground stream reached its threshold |
+| `EVENTS` [9] † | `background_service` | counted, depth 1 | the same for the background |
 | `EVENTS` [1] | `dma_done` | counted, depth 1 | the DMA's transfer has ended (17.4) |
 | `ERRORS` [1] † | `crc_error` | sticky | a packet failed its header CRC or its data checksum |
 | `ERRORS` [2] † | `sequence_error` | sticky | a packet's number was not the next one on its stream |
 | `ERRORS` [3] † | `format_error` | sticky | a packet passed both checks but a field cannot be: its stream, its length, or a reserved bit |
-| word 80 † | `FOREGROUND_WORDS` | R | the words in the foreground packet that asked for service; 0 when none is waiting |
-| word 81 † | `BACKGROUND_WORDS` | R | the same for the background |
-| block 1 | `DMA_HDR`, `DMA_DEST_ADDR`, `DMA_START` | 17.4's | reads words out of a packet (below) |
+| word 80 † | `FOREGROUND_WORDS` | R, live | the words waiting on the foreground stream, in every packet that has arrived and passed its checks; 0 when none |
+| word 81 † | `BACKGROUND_WORDS` | R, live | the same for the background |
+| word 82 † | `FOREGROUND_THRESHOLD` | R/W | the words that must be waiting on the foreground stream before its service flag is posted; 1 at the reset |
+| word 83 † | `BACKGROUND_THRESHOLD` | R/W | the same for the background |
+| block 1 | `DMA_HDR`, `DMA_DEST_ADDR`, `DMA_START` | 17.4's | reads words out of a stream (below) |
 
 - **Two service flags, one for each stream** (owner).
-- **`STATUS` says whether there are packets to read on each stream** (owner).
-- **A register for each stream gives the number of words in the packet that just asked for service** (owner).
+- **`STATUS` says whether there is something to read on each stream** (owner).
+- **A register for each stream gives the number of words waiting** (owner: "the number of 128 bit words in the packet
+  that just requested service"; since the threshold, the words of every packet waiting).
+- **The master tile tells Ingress how many words to gather before it wakes it** (owner, 2026-11-16).
 
 ## The rule for a service flag
 
-1. A packet reaches the front of its stream, having passed both of its checks. Its stream's `…_WORDS` shows its
-   length and its `…_ready` bit is 1.
-2. **Its service flag is posted.**
+As built in v1.37 (WORKER4), from the owner's rule: after a flag, no further flag until the core has read out the
+words that were presented.
+
+1. **A flag is posted when the stream owes nothing and the words waiting reach its threshold.**
+2. **At the post the stream owes the words then waiting.** The DMA's read-outs count that debt down.
 3. **The core wakes, and the flag is cleared** by the load of `EVENTS` (owner).
-4. The core reads the packet's words out with the DMA, in one transfer or several.
-5. **The stream posts no further service flag until the core has read out as many words as the register showed**
-   (owner). Then the next packet, if there is one, is at step 1.
+4. **No further flag while anything is owed** (owner).
+5. **The stream is looked at again** when a packet arrives, when the last owed word is read out, and when the
+   threshold is stored.
 
-- † `…_WORDS` holds the packet's length until the packet has been read out in full.
-- The two streams are independent: a packet waiting on one does not hold the other.
+- **`…_WORDS` is live,** so a core that loads it after the flag may see more than was owed. Those words may be read
+  out too.
+- **For firmware writers:** a flag can be posted while the core is still reading words it has already counted. So
+  the core loads the count only after a flag, with no transfer of its own in flight and what it last loaded used
+  up. The count is then exact, and may be 0.
+- **A threshold of 0 acts as 1.** A threshold above the buffer, 1,024 words, is never reached: the firmware's
+  mistake.
+- The two streams are independent: words waiting on one do not hold the other.
 
-## Waking for more than a packet: the threshold
+## The threshold in use
 
-**Decided (owner, 2026-11-16, after v1.37 ran).** v1.37's firmware wakes for every packet, about 330 cycles awake
-against a packet's 528 on the link, so it could keep up with a link about 1.6 times faster and no more. The cure is
-not larger packets (`HOST-LINK.md`, "The size of a packet"): **the master tile tells Ingress how many words to gather
-before it wakes it** (owner).
-
-| where | register | access | meaning |
-|---|---|---|---|
-| word 82 † | `FOREGROUND_THRESHOLD` | R/W | the words that must be waiting on the foreground stream before its service flag is posted; 1 at the reset |
-| word 83 † | `BACKGROUND_THRESHOLD` | R/W | the same for the background |
-
-What it changes above:
-
-- **`…_WORDS` is the words waiting on the stream,** in every packet that has arrived and passed its checks, not the
-  first packet's alone.
-- **A service flag is posted when the words waiting reach the stream's threshold.**
-- **One transfer of the DMA may run across packets,** up to the words waiting.
-- **The rule for a service flag stands as the owner worded it:** after a flag, no further flag until the core has
-  read out the words the register showed. † Then, and whenever the threshold is written, the stream is looked at
-  again.
+Why it is there: v1.37's first firmware woke for every packet, about 330 cycles awake against a packet's 528 on the
+link. Larger packets are not the cure (`HOST-LINK.md`, "The size of a packet").
 
 **The firmware, as the owner put it:**
 
 1. It says: 1 word to start.
 2. It is woken, and reads the frame's header word. Now it knows how many words are coming.
 3. If the frame is a big one, which it almost always is, it says: wake me when 2 KB, 128 words, is available.
-   († 4 KB, 256 words, since the owner then raised the Updater's credit to 256.)
+   (Built as 4 KB, 256 words, since the owner then raised the Updater's credit to 256.)
 4. At the frame's end it says 1 again.
 
-- **The threshold is never more than the words left in the frame.** The firmware knows them from the header word,
-  so the tail of a frame needs no timer: the threshold is the smaller of a credit, 256, and what is left.
-- **256 words is one credit of the Updater's segment queue** (owner: the queue is 8 KB, with a 256-word credit), so
-  a wake, a credit and a transfer go together.
-- **Ingress's buffers are oversized on purpose: 16 KB on each stream** (owner), 1,024 words, 32 full packets. A
-  threshold can always be reached, and there is room to be sure the far side can be stopped (`HOST-LINK.md`).
-  v1.37's black box as merged holds four packets.
+- **The threshold is never more than the words left in the frame,** so the tail of a frame needs no timer. It is
+  lowered as the tail comes, not only set at the header word: "what is left" means what is left when the core next
+  waits.
+- **256 words is one credit of the Updater's segment queue** (owner: the queue is 8 KB, with a 256-word credit).
+- **Ingress's buffers are oversized on purpose: 16 KB on each stream** (owner), 1,024 words of data. A threshold can
+  always be reached, and there is room to be sure the far side can be stopped (`HOST-LINK.md`). The link waits when
+  a packet's data does not fit.
 - **The foreground stream keeps its threshold at 1.**
-- **The firmware's cost no longer depends on a packet's size,** so the size can be chosen for the link alone.
-- **Not in v1.37 as merged,** whose Ingress and firmware work a packet at a time.
-- **Open:** with a read-out that runs across packets, the firmware can no longer check that a frame's header word
-  is a packet's first word, as v1.37's does. Either Ingress shows where packets start, or the check is dropped.
+- **The firmware's cost does not depend on a packet's size,** so the size can be chosen for the link alone.
+
+**What it gave** (WORKER4's report, at a byte a cycle):
+
+| | a packet at a time | with the threshold at 256 |
+|---|---|---|
+| the master awake a packet's worth | about 330 cycles | about 100 |
+| the master awake, of the link's time | about 0.6 | 0.17 to 0.20 |
+| the link rate the firmware could keep up with | 1.6 bytes a cycle | 4.3 to 5.4 |
+
+- **A transfer still costs 2.3 to 3 wakes:** the flag, the transfer's landing, and a credit every other one. The
+  firmware is not tuned.
+- **The owner's target (2026-11-16): the Updater is at most 10% of the master tile's load,** so that the core has
+  slack for the command stream. That is 53 cycles awake a packet's worth, or about 420 for each 4 KB.
+- **With a faster link the Updater is the next limit,** its memory work first, near 2 bytes a cycle in v1.37's
+  black box.
 
 ## Reading words out: the DMA
 
-The core tells Ingress to copy the next *n* words of a stream's packet to an address (owner).
+The core tells Ingress to copy the next *n* words of a stream to an address (owner).
 
 | register | what the core writes |
 |---|---|
@@ -113,10 +120,13 @@ The core tells Ingress to copy the next *n* words of a stream's packet to an add
 | `DMA_DEST_ADDR` | the address the first word goes to; it advances by 16 a word |
 | `DMA_START` | starts the transfer |
 
-- **A packet may be read out in pieces** (owner): the core copies the first word into its own memory, works out what
-  the packet is, and sends the rest where it belongs, for example to the Updater.
-- **† A count beyond what is left of the packet is undefined,** as other misuse of a DMA is (17.4).
+- **A stream may be read out in pieces** (owner): the core copies the first word into its own memory, works out what
+  the frame is, and sends the rest where it belongs, for example to the Updater.
+- **One transfer may run across packets,** up to the words waiting.
+- **† A count beyond the words waiting is undefined,** as other misuse of a DMA is (17.4).
 - **Each word is sent as one 128-bit `WRITE`,** as every peripheral's DMA sends.
+- **Suggested by WORKER4, not decided:** a transfer that discards its words. The master tile reads every record of
+  frame 7 but its own, and every advice log of frame 8 but its own, into a scrap area.
 
 ## Knowing a transfer is complete
 
@@ -137,16 +147,18 @@ This is how v1.36's replay firmware refills a replayer's queues. The next servic
 ## Frames
 
 - **A frame ends at the end of a packet** (owner). The next frame starts at the start of a packet, so the first word
-  of that packet is the frame's header word.
+  of that packet is the frame's header word. This is the sender's rule: since the threshold the chip does not depend
+  on it, and the firmware's check of it is dropped. A frame header with a wrong length is then caught only by the
+  frames' own fields.
 - **The core keeps track of frames, not Ingress.** It reads a frame's length from the header word and counts the
   words that follow. Ingress knows only packets.
 
-What the core does with a background packet:
+What the core does with a background frame:
 
 1. **At the start of a frame:** copy one word into its own memory. It is the frame's header word: the type, the
    length and the compression.
 2. **Decide** from the type where the frame's data goes.
-3. **Send the rest of this packet there,** and each following packet of the frame, until the frame's length is used
+3. **Send the frame's words there,** in transfers of up to the threshold's worth, until the frame's length is used
    up.
 
 ## Credits for the Updater
@@ -157,8 +169,7 @@ What the core does with a background packet:
    (`UPDATER-INTERFACE.md`).
 2. The master tile keeps an allowance: a credit adds 256 words; a transfer into the segment queue takes off what it
    sent. One credit covers eight full packets.
-3. It reads a background packet out to the Updater only when the allowance covers it. Otherwise the packet stays in
-   Ingress.
+3. It reads out to the Updater as many words as the allowance covers. The rest stay in Ingress.
 4. Ingress knows nothing of the Updater: its background stream simply backs up.
 5. With the real link, a backed-up background stream is what makes Ingress tell the host to stop sending it
    (`HOST-LINK.md`). The foreground stream is not touched.

@@ -627,7 +627,8 @@ The owner's remark: there must be a mountain of literature on building these. Th
   limit above. Whether that is the whole cause is not yet known.
 - **A neighbour that goes silent** (WORKER8). Nothing here notices a link whose other end has stopped: the sender
   waits for ever, which is right if the neighbour is slow and wrong if it is dead. A count of status periods with
-  nothing heard would tell.
+  nothing heard would tell. **Not designed for now** (owner, 2026-11-17): it stays an open question. Any such
+  count would have to outlast the longest noise, hundreds of milliseconds, so it is a matter of seconds.
 - **The background behind the foreground** (WORKER8). A background packet waits while any foreground packet is
   ready, so a foreground that never pauses holds the background for as long. That is the order as decided, and
   not a flaw of the protocol; it is a thing to know.

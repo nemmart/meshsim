@@ -872,5 +872,18 @@ Rulings as they came; `HOST-LINK.md` has each.
   - **Given up, knowingly:** the checks cover the wire and not the memory. A bit that flips in a queue, a kept
     packet or a forwarding buffer goes out with a matching checksum.
   - A sending unit now passes over every packet's data once before it leaves.
-- Findings 9 to 12 are still to go through: a packet made wrong; the false acknowledgement; the false packet
-  number; the chain's two rules; and the open one, a neighbour that goes silent.
+- **A packet made wrong** (owner): asked for again the first time, since it may be noise; the error only if it
+  fails the same way again. One flag in the receiver tells: set by a wrong packet with the number expected,
+  cleared only when a packet is taken. This replaces WORKER8's rule, which judged at the first time by whether
+  the data was whole, and would have blamed the sender for noise in the header alone.
+- **A false acknowledgement** (owner): not watched for. If the other end later asks for a packet no longer kept,
+  that is the error. "If a resend is never requested, then no harm, no foul": the packets let go early usually
+  arrive whole. This replaces WORKER8's rule (acknowledgements going backwards twice), which would have raised
+  the error with no harm done.
+- **A false packet number: "we can live with that"** (owner). Higher than expected is a resend; lower is taken
+  for a duplicate; only a number that lands exactly on the one expected, on the packet after a lost one, does
+  harm.
+- **The chain** (owner): a node's job on a packet is done when it has received it; the last node is told by a
+  pin.
+- **A neighbour that goes silent: not designed for now;** left open.
+- The walk through is complete. WORKER8 is to be told what changed in its rules.

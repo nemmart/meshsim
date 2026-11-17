@@ -1,5 +1,7 @@
 # What is open in v1.36
 
+> *v1.36's page, kept as it was at v1.36's freeze. What v1.37 adds is `CHANGES-v1.37.md`.*
+
 *For whoever takes v1.36 further, and for anyone who needs to know how far its simulator can be trusted: where the
 simulator still differs from the RTL, what of the RTL's tests has no counterpart here, what the simulator takes from
 the RTL's sources where the specification is silent, what was retired, and which firmware is not built here.* This is the record at the freeze. What is

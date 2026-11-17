@@ -20,7 +20,8 @@
 #   sort      the sort's tile image: sort/ -> sort/tile/sort.elf
 #   runs      the 16-record runs' keys (tools/fwimage, built here with the host's C++ compiler, CXX): sort/sort.keys
 #   cc        C&C 1's program, the master tile's: cc/cc1.c -> cc/cc1.elf; the memory tile's, cc/memory.c, and the
-#             memory run's master, cc/cc_mem.c -> cc/memory.elf, cc/cc_mem.elf
+#             memory run's master, cc/cc_mem.c -> cc/memory.elf, cc/cc_mem.elf; v1.37's master program, cc/master.c ->
+#             cc/master.elf
 #   replay    the replay controller: replay/replay_ctl.c -> replay/replay_ctl.elf
 #   tracer    the tracer tile's program: tracer/tracer_ctl.c -> tracer/tracer_ctl.elf
 #   core      the core's own programs that are ours: core/isa_edges.S and the interrupt programs -> core/*.elf
@@ -229,6 +230,9 @@ end=$($NM "$OUT/cc/cc1.elf" | awk '$3 == "_end" { print $1 }')
 NEWCC="$V135 -std=gnu11 -O2 -Wall -Wextra -Werror -ffreestanding -nostdlib -nostartfiles -static -fno-builtin -Wl,--no-relax -I$FW/include"
 v135 cc/memory.c "$NEWCC" "$OUT/cc/memory.elf"
 v135 cc/cc_mem.c "$NEWCC" "$OUT/cc/cc_mem.elf"
+# v1.37's master program (the frames from the host link, the Updater, the hand-over to the tracer tile), on v1.36's
+# interface and include/host.h
+v135 cc/master.c "$NEWCC" "$OUT/cc/master.elf"
 fi  # cc
 if part replay; then v135 replay/replay_ctl.c "$CTLCC" "$OUT/replay/replay_ctl.elf"; fi
 if part tracer; then v135 tracer/tracer_ctl.c "$CTLCC" "$OUT/tracer/tracer_ctl.elf"; fi

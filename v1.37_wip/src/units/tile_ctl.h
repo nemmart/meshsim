@@ -511,6 +511,8 @@ struct G1Config {
     unsigned read_latency = 3;         // READ_LATENCY (15, 19): the RTL's scratchpad's
     unsigned read_port_depth = 64;     // READ_QUEUE_DEPTH (10)
     bool sram_running_sum = true;      // D31: BigSram keeps its fingerprint sum per store; false in timing runs
+    bool host_link = false;            // v1.37: the master tile's Ingress/Egress has the host link and its DMA, and the
+                                       //   master tile has the Updater as its peripheral 2 (CHANGES-v1.37.md)
 };
 
 // A tile's control part, as the tile builder meets it: chip.h's `ControlIO`, returned by a `ControlBuilder`.

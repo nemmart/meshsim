@@ -10,6 +10,8 @@
 #                ("name/" or `name`); deeper, the nearest README above speaks for it; planning/ needs none
 #   DOC-MISSING  a source file's comment names a document (*.md) that isn't in the tree (by its name: documents keep their
 #                names when they move, rule 7)
+# v1.37: a document of ../v1.4_wip/planning/, the design documents that specify what v1.37 adds, counts as in the tree
+# under its name.
 # The history (planning/ and spec/history/, but their own README.md) and v1.35's sort documents, copied verbatim
 # (fw/sort/skew/, fw/sort/split/, fw/sort/program/; fw/README.md), are kept whole and not checked for paths. A path in
 # a command beginning with "cd DIR" is also tried from DIR (and skipped when DIR is not a plain path). Exemptions, by
@@ -27,6 +29,10 @@ tools/freeze/frozen.sh --untracked > "$LIST"
 awk -F/ '{ p = ""; for (i = 1; i < NF; i++) { p = p (i > 1 ? "/" : "") $i; print p } }' "$LIST" | sort -u > "$LIST.dirs"
 HIST='^(planning|spec/history|fw/sort/(skew|split|program))/'
 EXT='md|h|hpp|cpp|c|S|s|sh|mk|py|ld|inc|txt|csv|log|json|gz|tgz|hex|bin|sym|java|patch|sha256|out|fp|dig|trace|tb|ref|cfg|html|svg|tsv'
+
+# ---- v1.37: what v1.37 adds is specified by design documents of the version ahead, in ../v1.4_wip/planning/
+# (CHANGES-v1.37.md): a document of that folder, cited by its name, counts as there
+DESIGN=$(ls ../v1.4_wip/planning/*.md 2>/dev/null | sed 's|.*/||' | tr '\n' ' ')
 
 # ---- the exemptions: DOC<TAB>cited path<TAB>kind<TAB>why (tools/doccheck-exempt.txt), by document and path, not line
 EX=tools/doccheck-exempt.txt
@@ -68,7 +74,7 @@ while IFS= read -r doc; do
     }' "$doc" | while IFS=$'\t' read -r line kind p cdir; do printf '%s\t%s\t%s\t%s\t%s\n' "$doc" "$line" "$kind" "$p" "$cdir"; done
 done < "$LIST.docs" > "$LIST.cites"
 
-awk -F'\t' -v FILES="$LIST" -v DIRS="$LIST.dirs" -v V=$V -v EXF="$LIST.ex" '
+awk -F'\t' -v FILES="$LIST" -v DIRS="$LIST.dirs" -v V=$V -v EXF="$LIST.ex" -v DESIGN="$DESIGN" '
   function norm(p,   n, a, o, i, k) {   # resolve . and .. ; "" if it climbs out of the root
     n = split(p, a, "/"); k = 0
     for (i = 1; i <= n; i++) { if (a[i] == "" || a[i] == ".") continue; if (a[i] == "..") { if (k == 0) return "\001"; k--; continue } o[++k] = a[i] }
@@ -76,6 +82,7 @@ awk -F'\t' -v FILES="$LIST" -v DIRS="$LIST.dirs" -v V=$V -v EXF="$LIST.ex" '
   }
   function there(p) { return (p in F) || (p in D) }
   BEGIN { while ((getline l < FILES) > 0) { F[l] = 1; b = l; sub(/.*\//, "", b); B[b] = 1 }
+          nd = split(DESIGN, dd, " "); for (i = 1; i <= nd; i++) B[dd[i]] = 1
           while ((getline l < DIRS) > 0) { D[l] = 1; t = l; sub(/\/.*/, "", t); TOP[t] = 1 }
           while ((getline l < EXF) > 0) { split(l, e, "\t"); EX[e[1] SUBSEP e[2]] = 1 } }
   {
@@ -125,8 +132,9 @@ while IFS= read -r f; do
       while (match(c, /[A-Za-z0-9_.\/+-]*[A-Za-z0-9_+-]\.md([^A-Za-z0-9_]|$)/)) {
         t = substr(c, RSTART, RLENGTH); sub(/[^A-Za-z0-9_]$/, "", t); printf "%s\t%s\t%s\n", F, FNR, t; c = substr(c, RSTART + RLENGTH) } }' "$f" 2>/dev/null
 done > "$LIST.named" || true
-awk -F'\t' -v FILES="$LIST" -v EXF="$LIST.ex" '
+awk -F'\t' -v FILES="$LIST" -v EXF="$LIST.ex" -v DESIGN="$DESIGN" '
   BEGIN { while ((getline l < FILES) > 0) { F[l] = 1; b = l; sub(/.*\//, "", b); B[b] = 1 }
+          nd = split(DESIGN, dd, " "); for (i = 1; i <= nd; i++) B[dd[i]] = 1
           while ((getline l < EXF) > 0) { split(l, e, "\t"); EX[e[1] SUBSEP e[2]] = 1 } }
   { f = $1; p = $3; b = p; sub(/.*\//, "", b)
     if ((f SUBSEP p) in EX) next

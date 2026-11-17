@@ -89,8 +89,11 @@
 #include "config.h"
 #include "sim.h"
 #include "units/chip.h"
+#include "units/file_store.h"
 #include "units/regblock.h"
 #include "units/regmap.h"
+
+namespace units { struct IngressEgress; struct Updater; }   // v1.37: the master tile's, with MachConfig::host_link
 
 namespace mach {
 
@@ -107,6 +110,9 @@ struct MachConfig {
     bool special_tiles = false;        // THE CHIP (units::build_chip; chip()): the master, memory and tracer tiles as units
                                        //   64-66, the request tree, the nets. false: a test bench's machine, the 64
                                        //   compute tiles with v1.35's model of C&C in the master's place (above)
+    bool host_link = false;            // v1.37 (the chip only; CHANGES-v1.37.md): the master tile's Ingress/Egress has the host
+                                       //   link and its DMA (ingress_egress.h), the Updater is its peripheral 2 (updater.h), and
+                                       //   the Updater and the Tracer's memory system share one file store. false: v1.36's chip
     // ---- the network (16) ----
     unsigned link_latency = 3, queue_depth = 16, intra_tile_latency = 1;
     bool skew = true;                  // v1.35's start skew: +0 or +1 a tile on the release's link
@@ -450,6 +456,13 @@ public:
     bool run(const std::function<bool()>& cond, uint64_t max) { return c.run_until(cond, max); }
     bool all_in_wfi() const { return c.all_in_wfi(); }
     uint32_t word(unsigned unit, uint32_t byte_addr) const; // TileRef::peek_local
+
+    // ---- v1.37's chip (MachConfig::host_link) ----
+    // The packet file Ingress reads, the link's bytes (kept here), before the first cycle.
+    void set_link(std::vector<uint8_t> bytes);
+    units::IngressEgress& ingress();                        // the master tile's Ingress/Egress
+    units::Updater& updater();                              // the master tile's peripheral 2
+    units::tracer::FileStore& store();                      // LPDDR as files: the Updater's and the Tracer's memory system's
 };
 
 // ===================================================================== a machine fed from the harness (Net)

@@ -95,6 +95,7 @@ include tools/delivery/delivery.mk
 include tools/fwimage/fwimage.mk
 include tests/p7b.mk
 include tests/bus.mk
+include tests/updater.mk
 include tools/doccheck.mk
 
 # Acceptance A (v1.36's platform): the RTL's tile programs on one compute tile (tests/test_rtl_tile.cpp).

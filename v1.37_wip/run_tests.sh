@@ -51,6 +51,8 @@ SUITES="$SUITES test_periph_slot test_ingress_egress test_rw_engine"            
 SUITES="$SUITES test_rtl_tile test_rtl_stream test_sort test_memory test_segment"           # the firmware on the tile and the chip
 SUITES="$SUITES suite_replayer suite_memsys suite_rvc suite_tracer tracer_block"            # the replayer and the Tracer
 SUITES="$SUITES fwimage"                                                                   # the runs' keys (tools/fwimage)
+SUITES="$SUITES test_file_store test_updater test_ingress_link test_packet_vectors updater_frames packetize"       # v1.37: the file store's pages by address, the Updater black box, Ingress's host link
+SUITES="$SUITES test_master proof_run"                                                     # v1.37: the master tile's program, the whole chip from a packet file
 
 if [ "$BUILD" = 1 ]; then
   echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
@@ -174,6 +176,24 @@ else
   skipped tracer-block "the Tracer alone on the real segments, against gold's files and the RTL's figures" "the workloads' data is not at $INPUTS: MESHSIM_INPUTS"
 fi
 
+# ---- v1.37: the units of the Updater's work, each alone (../updater_wip; CHANGES-v1.37.md) ----
+check file-store "v1.37: the file store's pages by address: placed where told, whole pages, beside the pages it hands out (tests/test_file_store.cpp)" -- $S/test_file_store
+check updater "v1.37: the Updater black box alone: registers, queues and credits, update words raw and LRU, copy-on-write, the Tracer's copy, errors; gold's fixtures, each image against gold's (tests/test_updater.cpp)" -- $S/test_updater
+check ingress-link "v1.37: Ingress's host link, the black box: the link's checks, the rule for a service flag, reading out by the DMA, both streams, the errors, the timing (tests/test_ingress_link.cpp)" -- $S/test_ingress_link
+VECTORS=${PACKET_VECTORS:-../updater_wip/pipeline/gold/test/packets}
+if [ -f "$VECTORS/VECTORS.txt" ]; then
+  check packet-vectors "v1.37: Ingress's host link against gold's packetizer: every vector, packet file and damaged file of $VECTORS, by the reader and through the black box (tests/test_packet_vectors.cpp)" -- env PACKET_VECTORS="$VECTORS" $S/test_packet_vectors
+else
+  skipped packet-vectors "v1.37: Ingress's host link against gold's packetizer's vectors and packet files" "no $VECTORS/VECTORS.txt: gold's packetizer is not on this branch yet (PACKET_VECTORS names another folder)"
+fi
+if command -v javac > /dev/null && [ -d ../updater_wip/pipeline/gold/src ]; then
+  check updater-fixtures "v1.37: the fixtures made again by gold (../updater_wip/pipeline/gold), equal to the committed ones (tests/updater/make_fixtures.sh --check)" -- bash tests/updater/make_fixtures.sh --check
+else
+  skipped updater-fixtures "v1.37: the fixtures made again by gold, against the committed ones" "no javac, or no ../updater_wip/pipeline/gold"
+fi
+check master "v1.37: the master tile's program on the whole chip, from a packet file: gold's frames of the guests in the link's packets, the Updater's images against gold's, the hand-over, the segment traced and replayed; the error path; the checks' teeth (tests/test_master.cpp)" -- $S/test_master
+
+
 # ---- the long steps ----
 if [ "$MODE" != quick ]; then
   # The 64K runs' keys: SortTest's uniform set, built here (16 MiB, not committed) and checked against its committed sha256.
@@ -186,6 +206,35 @@ if [ "$MODE" != quick ]; then
     check segment-real "the segment on the real workloads' windows: EVM Zone's 0-63 and 64-127 and Cyclone's 0-63, every row and delivery against the recorded files (about a minute)" -- env MESHSIM_INPUTS="$INPUTS" $S/test_segment real_
   else
     skipped segment-real "the segment on the real workloads' windows (EVM Zone, Cyclone), against the recorded files" "the workloads' data is not at $INPUTS: MESHSIM_INPUTS"
+  fi
+  # v1.37: the whole chip from a packet file, on the real workloads (tests/proof_run_main.cpp). The host's side, gold's
+  # frame files, the link's packet files and gold's reference for each segment, is made by pipeline/frames/build.sh
+  # into $INPUTS/v137/SET/; its RUNS lists each run's name, N, a segment's windows and the segments to run.
+  proof_set() {   # proof_set SET [--recorded]: every run of the set, every segment listed
+    local d=$INPUTS/v137/$1 name n windows list s rec
+    while read -r name n windows list; do
+      for s in $list; do
+        rec=""; [ "${2:-}" = --recorded ] && rec="--recorded $name"
+        MESHSIM_INPUTS="$INPUTS" $S/proof_run "$d/$name.frames" --packets "$d/$name.packets" --asics "$n" --segment "$s" --windows "$windows" \
+          --gold "$d/$name-s$s.images.txt" $rec --quiet || echo "FAIL proof_run $name, s $s: exit $?"
+      done
+    done < "$d/RUNS"
+  }
+  V137="the host's side is not at $INPUTS/v137 (pipeline/frames/build.sh makes it: MESHSIM_INPUTS)"
+  if [ -f "$INPUTS/v137/real/RUNS" ] && [ -f "$INPUTS/w26-jumpmap/evm-zone-23/proof.json" ] && [ -f "$INPUTS/v1261/cyclone-22/window_00000.rows.bin" ]; then
+    check proof-real "v1.37: segment-real's three segments from packet files: the master builds the images with the Updater and hands the tracer tile its segment; every row and delivery against the recorded files, every image against gold's" -- proof_set real --recorded
+  else
+    skipped proof-real "v1.37: segment-real's three segments from packet files, against the recorded files and gold's images" "the recorded windows or $V137"
+  fi
+  if [ -f "$INPUTS/v137/matrix/RUNS" ]; then
+    check proof-matrix "v1.37: the small inputs from packet files, segments of 8 windows: EVM Zone and Cyclone, raw and LRU-coded, with and without a base table, s = 0, 1 and the middle; every image against gold's, the Tracer's last record against record s + 1 (24 runs)" -- proof_set matrix
+  else
+    skipped proof-matrix "v1.37: the small inputs from packet files, raw and LRU-coded, with and without a base table" "$V137"
+  fi
+  if [ -f "$INPUTS/v137/29/RUNS" ]; then
+    check proof-29 "v1.37: both workloads at 2^29 from packet files, N 128: five segments of each (the first two, the middle, the last two), every image against gold's, the Tracer's last record against record s + 1 (10 runs)" -- proof_set 29
+  else
+    skipped proof-29 "v1.37: both workloads at 2^29 from packet files" "$V137"
   fi
 fi
 

@@ -1,5 +1,9 @@
 # Building v1.36
 
+> *v1.37: this page is v1.36's, and holds for this folder: v1.37 adds nothing to install. Its master program
+> (`fw/cc/master.c`) is built by `fw/build.sh` with the same toolchain; the host's side of its proof steps
+> (`pipeline/frames/build.sh`) needs a JDK (Java 21), as `pipeline/` does.*
+
 *For anyone building v1.36: what to install, which build to use for what, and one command for each thing you build.*
 Commands run from this folder. Running the suites, tools and kits is `RUNNING.md`.
 

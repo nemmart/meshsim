@@ -22,7 +22,8 @@ equal to its committed copy. Two kinds of firmware are here:
 | `build.sh` | builds every image from the sources below; `--check` proves each byte-equal to its committed copy |
 | `check_images.sh` | checks every committed image against its hash list, without the toolchain |
 | `crt0.S`, `app.ld` | v1.35's start-up file and image layout, for `cc/`, `replay/` and `tracer/` |
-| `cc/` | the controllers' programs: C&C 1's, `cc1.c`, the master tile's; and, new in v1.36, the memory tile's, `memory.c`, and the memory run's master, `cc_mem.c` |
+| `cc/` | the controllers' programs: C&C 1's, `cc1.c`, the master tile's; and, new in v1.36, the memory tile's, `memory.c`, and the memory run's master, `cc_mem.c`. New in v1.37: `master.c`, the master tile's program for a proof sent as the host's frames, with `master_layout.h`, its scratchpad, what the harness tells it and its results |
+| `include/host.h` | v1.37, written by hand beside the generated `mesh.h`: the host link's words in Ingress/Egress and the Updater's window, bits and queues, and the frames' types (`../CHANGES-v1.37.md`) |
 | `replay/` | the replay controller, `replay_ctl.c`, with its scratchpad layout, `replay_layout.h` (its `README.md` is v1.35's history) |
 | `tracer/` | the Tracer's controller, `tracer_ctl.c`, the tracer tile's program, with its layout, `tracer_layout.h` |
 | `sort/` | the sort, v1.35's: the program (`program/sw/`), the skew planner (`skew/`), the split (`split/`), their patches (`program/patches/`), on the port layer's start-up, layout and input stand-in (`port/`; `PORTING.md` lists every change) |
@@ -89,6 +90,7 @@ riscv-tests checkout at the revision `core/riscv-tests/riscv-tests.toml` pins) r
 |---|---|---|---|
 | `images/cc/cc1.elf` | `cc/cc1.c`, `crt0.S`, `app.ld` | `cc` | the master tile in `test_sort` and `test_segment`, placed with its `boot_desc` and commands |
 | `images/cc/memory.elf`, `images/cc/cc_mem.elf` | `cc/memory.c`, `cc/cc_mem.c` | `cc` | the memory tile in every chip test; the master in `test_memory` |
+| `images/cc/master.elf` | `cc/master.c`, `cc/master_layout.h`, `include/host.h`, `crt0.S`, `app.ld` | `cc` | v1.37: the master tile on a machine with the host link, in `test_master` and `proof_run`, placed with its `boot_desc` and `system_config` (N and s) |
 | `images/replay/replay_ctl.elf` | `replay/` | `replay` | every compute tile in `test_segment`, loaded by C&C 1 |
 | `images/tracer/tracer_ctl.elf` | `tracer/` | `tracer` | the tracer tile in `test_segment`, loaded by C&C 1 |
 | `images/sort/tile/sort.elf` | `sort/` | `sort` | every compute tile in `test_sort`, loaded by C&C 1 |
@@ -106,7 +108,7 @@ an image stops the simulator: a test reads the programs' results in place (`cc1.
 `tracer_ctl.c`'s `tr_results`, `replay_ctl.c`'s `rp_results`, `sim_exit_word`), by their symbols.
 
 **Which header a program takes its addresses from.** `include/mesh.h` is generated, for a program written against
-v1.36 (`cc/memory.c`, `cc/cc_mem.c`). v1.35's programs take `port/mesh.h`. The RTL's programs keep their own:
+v1.36 (`cc/memory.c`, `cc/cc_mem.c`, and v1.37's `cc/master.c`, which adds `include/host.h`). v1.35's programs take `port/mesh.h`. The RTL's programs keep their own:
 `tile/tile_map.h` also holds their protocol with the test and their assembler macros; `tests/test_regs.cpp` requires
 its registers to be where `include/mesh.h` puts them. The RTL's sources are Snarky One's bytes, so their comments
 name its build ("cargo xtask", "Veryl.toml"): here that is `build.sh` and its configuration.

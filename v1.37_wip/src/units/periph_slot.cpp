@@ -13,6 +13,7 @@
 #include "units/rw_engine.h"
 #include "units/test_peripheral.h"
 #include "units/tracer.h"
+#include "units/updater.h"
 
 namespace units {
 
@@ -25,6 +26,7 @@ decltype(auto) SlotCore::visit(unsigned n, F&& f) {
         case PT_TRACER: return f(*static_cast<tracer::Tracer*>(per[n].p));
         case PT_INGRESS: return f(*static_cast<IngressEgress*>(per[n].p));
         case PT_RW: return f(*static_cast<RwEngine*>(per[n].p));
+        case PT_UPDATER: return f(*static_cast<Updater*>(per[n].p));
         default: FATAL("slot %u: peripheral %u of type %u has no dispatch case", tile, n, unsigned(per[n].type));
     }
 }
@@ -41,6 +43,7 @@ SlotCore::Ref::~Ref() {
         case PT_TRACER: delete static_cast<tracer::Tracer*>(p); break;   // its memory with it
         case PT_INGRESS: delete static_cast<IngressEgress*>(p); break;
         case PT_RW: delete static_cast<RwEngine*>(p); break;
+        case PT_UPDATER: delete static_cast<Updater*>(p); break;
         default: break;
     }
 }
@@ -94,8 +97,15 @@ void SlotCore::install(unsigned n, PeriphType type, const PeriphSlotConfig& c) {
         case PT_TRACER: per[n].p = new tracer::Tracer(int(tile)); break;
         // the master tile's Ingress/Egress (its own ports: the nets, wired by the chip) and the memory tile's RW engine
         // (rw_engine.h: its LPDDR controller comes from the harness after the build, rw_engine(n).attach(slave))
-        case PT_INGRESS: per[n].p = new IngressEgress(); break;
+        case PT_INGRESS: {
+            auto* ie = new IngressEgress();
+            if (c.host_link) ie->host_link_on();           // v1.37: with the host link, and its DMA
+            per[n].p = ie;
+            break;
+        }
         case PT_RW: per[n].p = new RwEngine(tile, c.rw); break;
+        // v1.37: the Updater black box; its file store comes from the harness after the build (updater(n).store)
+        case PT_UPDATER: per[n].p = new Updater(); break;
         default: FATAL("slot %u: peripheral type %u can't be created here yet", tile, unsigned(type));
     }
 }
@@ -120,6 +130,10 @@ IngressEgress& SlotCore::ingress_egress(unsigned n) {
 RwEngine& SlotCore::rw_engine(unsigned n) {
     if (per[n].type != PT_RW) FATAL("slot %u: peripheral %u is not the RW engine", tile, n);
     return *static_cast<RwEngine*>(per[n].p);
+}
+Updater& SlotCore::updater(unsigned n) {
+    if (per[n].type != PT_UPDATER) FATAL("slot %u: peripheral %u is not the Updater", tile, n);
+    return *static_cast<Updater*>(per[n].p);
 }
 
 void SlotCore::violate(int64_t t, uint16_t code, uint32_t a, uint32_t b) {

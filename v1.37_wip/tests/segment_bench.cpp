@@ -5,6 +5,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 
 #include "base/fatal.h"
 #include "rtl_images.h"
@@ -294,10 +295,11 @@ Run run_chip(const Segment& s, const Rtl* rtl, const Options& o) {
     Fails fail{run, name};
     const auto wall0 = std::chrono::steady_clock::now();
     const std::string fw = o.fw ? o.fw : rtl_images::fw_images(), tables_dir = o.tables;
-    const std::string cc1_elf = fw + "cc/cc1.elf", memory_elf = fw + "cc/memory.elf";
+    const std::string cc1_elf = fw + (o.proof ? "cc/master.elf" : "cc/cc1.elf"), memory_elf = fw + "cc/memory.elf";   // v1.37: master.c with a proof
     const std::string tracer_elf = fw + "tracer/tracer_ctl.elf", replay_elf = fw + "replay/replay_ctl.elf";
-    const uint32_t boot_desc = rtl_images::elf_symbol(cc1_elf, "boot_desc"), mbox = rtl_images::elf_symbol(cc1_elf, "mbox");
+    const uint32_t boot_desc = o.proof ? 0 : rtl_images::elf_symbol(cc1_elf, "boot_desc"), mbox = o.proof ? 0 : rtl_images::elf_symbol(cc1_elf, "mbox");
     const uint32_t exit_word = rtl_images::elf_symbol(cc1_elf, "sim_exit_word");
+    const bool recorded = !s.window.empty();                           // v1.37: a guest with no recorded windows has none to check
     const uint32_t tr_results = rtl_images::elf_symbol(tracer_elf, "tr_results"), rp_results = rtl_images::elf_symbol(replay_elf, "rp_results");
 
     // ---- the test data, as the host places it
@@ -328,6 +330,7 @@ Run run_chip(const Segment& s, const Rtl* rtl, const Options& o) {
     // ---- the chip, its images and the segment, before the first cycle
     mach::MachConfig mc = mach::Mach::chip_cfg(-1);
     mc.parts = o.parts; mc.threads = o.parts;
+    mc.host_link = o.proof != nullptr;                                 // v1.37
     mach::Mach m(mc);
     m.place_elf(units::ID_MASTER, cc1_elf);
     m.place_elf(units::ID_MEMORY, memory_elf);
@@ -346,24 +349,36 @@ Run run_chip(const Segment& s, const Rtl* rtl, const Options& o) {
     for (unsigned u = 0; u < 2; u++) for (unsigned i = 0; i < IMAGE_WORDS; i++) desc[BOOT_UNIT + (u + 1) * IMAGE_WORDS + i] = units_images[u][i];
     desc[BOOT_GO_LATENCY] = 1;
     desc[BOOT_SCRIPT] = CC_SEGMENT << 24; desc[BOOT_SCRIPT + 4] = CC_WAIT << 24 | (T + 1); desc[BOOT_SCRIPT + 8] = CC_EXIT << 24;
-    m.place(units::ID_MASTER, boot_desc, desc);
+    if (!o.proof) m.place(units::ID_MASTER, boot_desc, desc);
+    else {                                                             // v1.37: master.c's own description, and the link
+        segment::MasterPlaces places{};
+        for (unsigned i = 0; i < 5; i++) { places.tracer[i] = units_images[0][i]; places.tiles[i] = units_images[1][i]; }
+        places.tr_record = TRACER_RECORD; places.tr_expect = EXPECTED; places.tr_final = FINAL; places.tr_advice = ADVICE;
+        places.tr_advice_rows = (mc.mem_chunks - ADVICE) / 4;              // to the end of the tracer tile's scratchpad
+        o.proof->place(m, cc1_elf, places);
+    }
     auto place_tables = [&](unsigned unit) { place(m, unit, TABLES, table_rows); place(m, unit, INDEX, index); place(m, unit, TEMPLATES, templates); };
     place(m, units::ID_TRACER, 0, tracer_header);
     place_tables(units::ID_TRACER);
-    place(m, units::ID_TRACER, TRACER_RECORD, words_of(s.start, RECORD_WORDS));
-    std::vector<uint32_t> advice;
-    for (uint64_t v : s.advice) { advice.push_back(uint32_t(v)); advice.push_back(uint32_t(v >> 32)); }
-    advice.resize((advice.size() + 3) / 4 * 4, 0);
-    place(m, units::ID_TRACER, ADVICE, advice);
-    place(m, units::ID_TRACER, EXPECTED, words_of(s.end, RECORD_WORDS));
+    if (!o.proof) {                                                    // v1.37: with a proof they come from the master
+        place(m, units::ID_TRACER, TRACER_RECORD, words_of(s.start, RECORD_WORDS));
+        std::vector<uint32_t> advice;
+        for (uint64_t v : s.advice) { advice.push_back(uint32_t(v)); advice.push_back(uint32_t(v >> 32)); }
+        advice.resize((advice.size() + 3) / 4 * 4, 0);
+        place(m, units::ID_TRACER, ADVICE, advice);
+        place(m, units::ID_TRACER, EXPECTED, words_of(s.end, RECORD_WORDS));
+    }
     for (unsigned tile = 0; tile < T; tile++) {
         replay_header[RL_WAIT] = tile < s.windows ? RL_WAIT_HANDSHAKE : RL_WAIT_BARRIERS;
         place(m, tile, 0, replay_header);
         if (tile < s.windows) place_tables(tile);
     }
     // the memory system on the tracer tile's fill port, and every compute tile's row port's consumer
-    Fill fill(s.guest, s.map, s.seed + 1, CYCLE_OFFSET);
-    m.c.unit<units::PeriphSlot>(units::unit_prefix(units::ID_TRACER) + "slot").s.tracer(1).fill_port = &fill.port;
+    std::unique_ptr<Fill> fill_model;                                  // v1.37: with a proof the Tracer's memory is the Updater's store
+    if (!o.proof) {
+        fill_model = std::make_unique<Fill>(s.guest, s.map, s.seed + 1, CYCLE_OFFSET);
+        m.c.unit<units::PeriphSlot>(units::unit_prefix(units::ID_TRACER) + "slot").s.tracer(1).fill_port = &fill_model->port;
+    }
     run.rows.resize(T); run.row_cycles.resize(T);
     std::vector<units::Replayer*> replayer(T);
     for (unsigned tile = 0; tile < T; tile++) {
@@ -393,23 +408,39 @@ Run run_chip(const Segment& s, const Rtl* rtl, const Options& o) {
     for (unsigned i = 0; i < 8; i++) run.summary[i] = mb(i);
     run.report.resize(16);
     for (unsigned i = 0; i < 16; i++) run.report[i] = tr(i);
+    if (o.proof) {                                                      // v1.37: the master's results are the proof's
+        o.proof->finished(m, run);
+        std::printf("%s: the master's exit 0x%x; the tracer tile: status %u, %u windows, ERRORS 0x%x, advice left %u, end differs at %u, %u strays; "
+                    "%llu cycles from the reset\n", name, m.word(units::ID_MASTER, exit_word + 4), tr(TR_STATUS), tr(TR_WINDOWS), tr(TR_ERRORS),
+                    tr(TR_ADVICE_LEFT), tr(TR_END_DIFF), tr(TR_STRAYS), (unsigned long long)run.cycles);
+    } else {
     run.released = mb(MBOX_RELEASED);                                   // the last GO: the windows' landing's release
     std::printf("%s: C&C 1: %u commands, boot %u, %u LOADs, %u results, %u others, exit 0x%x; the tracer tile: status %u, %u windows, "
                 "ERRORS 0x%x, advice left %u, end differs at %u, %u strays; %llu cycles from the reset\n", name, mb(MBOX_COMMANDS),
                 mb(MBOX_BOOT), mb(MBOX_LOADS), mb(MBOX_RESULTS), mb(MBOX_OTHERS), m.word(units::ID_MASTER, exit_word + 4), tr(TR_STATUS),
                 tr(TR_WINDOWS), tr(TR_ERRORS), tr(TR_ADVICE_LEFT), tr(TR_END_DIFF), tr(TR_STRAYS), (unsigned long long)run.cycles);
+    }
     if (!o.quiet) {
         std::printf("%s: the rows each tile sent:", name);
         for (unsigned tile = 0; tile < s.windows; tile++) std::printf(" %zu", run.rows[tile].size() / ROW_LONGS);
         std::printf("\n");
     }
 
+    if (o.proof && o.proof->ends_early()) {                             // v1.37: a run that must end early: the proof's checks alone
+        o.proof->check(m, run);
+        run.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - wall0).count();
+        std::printf("%s: %s in %llu cycles, %.1f s of simulation\n", name, run.failures ? "FAILED" : "passed", (unsigned long long)run.cycles, run.seconds);
+        return run;
+    }
+
     // ---- C&C 1's, the tracer tile's and every compute tile's results
     if (!run.finished) fail("no exit in %llu cycles", (unsigned long long)s.cycle_limit);
+    if (!o.proof) {
     if (mb(MBOX_COMMANDS) != 3 || mb(MBOX_BOOT) != 2) fail("C&C 1 completed %u commands, its boot %u", mb(MBOX_COMMANDS), mb(MBOX_BOOT));
     if (mb(MBOX_RESULTS) != T + 1) fail("%u results, of 64 compute tiles and the tracer tile", mb(MBOX_RESULTS));
     if (mb(MBOX_LOADS) != 2 * (T + 1)) fail("%u LOADs: the boot's 65 and one after each result", mb(MBOX_LOADS));
     if (mb(MBOX_OTHERS) != 0) fail("%u other requests at C&C 1", mb(MBOX_OTHERS));
+    }
     if (tr(TR_STATUS) != 1) fail("the tracer tile's status %u (tracer_layout.h; the word with no template 0x%x)", tr(TR_STATUS), tr(TR_MISSING));
     if (tr(TR_WINDOWS) != s.windows) fail("the tracer tile ran %u windows of %u", tr(TR_WINDOWS), s.windows);
     if (tr(TR_ERRORS) != 0 || tr(TR_CONDITIONS) != 0) fail("the Tracer's ERRORS 0x%x, the tracer tile's 0x%x", tr(TR_ERRORS), tr(TR_CONDITIONS));
@@ -428,6 +459,7 @@ Run run_chip(const Segment& s, const Rtl* rtl, const Options& o) {
     for (unsigned tile = 0; tile < T; tile++) {
         const size_t got = run.rows[tile].size() / ROW_LONGS;
         if (tile >= s.windows) { if (got != 0) fail("tile %u, with no window, sent %zu rows", tile, got); continue; }
+        if (!recorded) { if (got != s.rows) fail("tile %u sent %zu rows, its window has %u", tile, got, s.rows); continue; }   // v1.37
         const Window& w = s.window[tile];
         if (got != w.row_count()) fail("tile %u sent %zu rows, its window has %zu", tile, got, w.row_count());
         for (size_t row = 0; row < got && row < w.row_count(); row++)
@@ -444,12 +476,13 @@ Run run_chip(const Segment& s, const Rtl* rtl, const Options& o) {
 
     // ---- every window's delivery: its record and its streams, in its tile's replay region
     static const char* const kStream[3] = {"code", "read-log", "write-log"};
-    for (unsigned tile = 0; tile < s.windows; tile++) {
+    for (unsigned tile = 0; recorded && tile < s.windows; tile++) {
         const Window& w = s.window[tile];
         for (unsigned word = 0; word < RECORD_WORDS; word++) {
             const U128 got = scratchpad_row(m, tile, RECORD + 4 * word);
-            if (got != w.record[word]) fail("tile %u's record word %u is %016llx%016llx, the segment's %016llx%016llx", tile, word,
-                                            (unsigned long long)got.hi, (unsigned long long)got.lo, (unsigned long long)w.record[word].hi, (unsigned long long)w.record[word].lo);
+            const U128 want = o.proof && word == 66 ? o.proof->files_word(w.record[word]) : w.record[word];   // v1.37: the master's roots
+            if (got != want) fail("tile %u's record word %u is %016llx%016llx, the segment's %016llx%016llx", tile, word,
+                                            (unsigned long long)got.hi, (unsigned long long)got.lo, (unsigned long long)want.hi, (unsigned long long)want.lo);
         }
         const uint32_t base[3] = {CODE, READ_LOG, WRITE_LOG};
         for (unsigned stream = 0; stream < 3; stream++) {
@@ -469,7 +502,7 @@ Run run_chip(const Segment& s, const Rtl* rtl, const Options& o) {
     U128 last[RECORD_WORDS];
     for (unsigned word = 0; word < RECORD_WORDS; word++) {
         last[word] = scratchpad_row(m, units::ID_TRACER, FINAL + 4 * word);
-        if (last[word] != s.end[word]) fail("the Tracer's last record, word %u: %016llx%016llx, the segment's %016llx%016llx", word, (unsigned long long)last[word].hi,
+        if (!o.proof && last[word] != s.end[word]) fail("the Tracer's last record, word %u: %016llx%016llx, the segment's %016llx%016llx", word, (unsigned long long)last[word].hi,
                                             (unsigned long long)last[word].lo, (unsigned long long)s.end[word].hi, (unsigned long long)s.end[word].lo);
     }
     for (unsigned tile = 0; tile < s.windows; tile++)
@@ -482,12 +515,17 @@ Run run_chip(const Segment& s, const Rtl* rtl, const Options& o) {
         }
 
     // ---- the fill port and the error lines
+    if (fill_model) {
+    Fill& fill = *fill_model;
     if (!fill.fault.empty()) fail("the fill port: %s", fill.fault.c_str());
     for (unsigned i = 0; i < 4; i++) run.fill_counts[i] = fill.counts[i];
     std::printf("%s: the fill port: %llu code lines, %llu data lines, %llu map lines read, %llu lines written back\n", name,
                 (unsigned long long)fill.counts[0], (unsigned long long)fill.counts[1], (unsigned long long)fill.counts[2], (unsigned long long)fill.counts[3]);
+    }
     if (m.c.toast()) fail("the toast pin: the master's error line rose");
-    if (s.misses) {
+    if (o.proof) o.proof->check(m, run);                               // v1.37: the proof's own checks
+    if (s.misses && fill_model) {
+        Fill& fill = *fill_model;
         if (fill.counts[0] <= 128) fail("the code lines read: the instruction cache never missed past its 128 lines");
         if (fill.counts[2] <= 3 * uint64_t(s.windows)) fail("the map lines read: the jump LRU seldom missed");
         if (fill.counts[3] == 0) fail("no line written back");

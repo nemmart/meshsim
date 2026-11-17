@@ -27,8 +27,9 @@ enum Op : uint8_t { LOOK_UP = 0, UPDATE = 1, DISCARD = 2 };   // 3 reserved (†
 // ---- a reply's status (CI section 2). 0 to 3 are the fill port's numbers (machine-spec 3, 17.9.5).
 enum Status : uint8_t { OK = 0, HOLE = 1, NOT_OWNED = 2, BEYOND = 3, LPDDR_ERROR = 4 };   // 5 to 7 reserved
 
-// ---- the clients: a port each, numbered as its replies' `client` (†)
-enum Client : uint8_t { UPDATER = 0, RW_ENGINE = 1, BINDER = 2 };   // 3 spare: a test's
+// ---- the clients: a port each, numbered as its replies' `client`. A client has one number everywhere: its AXI ID
+// (axi_port.h's Client). 0 is the cache's own number there, so port 0 is spare: a test's.
+enum Client : uint8_t { UPDATER = 1, RW_ENGINE = 2, BINDER = 3 };
 constexpr unsigned CLIENTS = 4;
 
 // ---- the stored forms (machine-spec 23.5; UPDATER-INTERFACE.md)

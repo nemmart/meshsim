@@ -188,8 +188,8 @@ Two differences, both because the Updater has no state write and its stream runs
 
 | to | what |
 |---|---|
-| the AXI arbiter | an AXI port of its own: pages and half pages, read and written |
-| the cache | a look-up port: look up and update; replies on the shared reply bus. An update's reply comes once the changed line has landed in LPDDR (`DESIGN-NOTES-2026-11-16.md`, section 4) |
+| the AXI arbiter | an AXI port of its own, client 1: pages and half pages, read and written (`AXI-INTERFACE.md`) |
+| the cache | look-up port 1: look up and update; replies on the shared reply bus. An update's reply comes once the changed line has landed in LPDDR (`CACHE-INTERFACE.md`). A reply of `not_owned` to an update sets `ERRORS.not_owned`, and one of `lpddr_error` sets `ERRORS.lpddr_error` |
 
 Both reach across to the memory side. Latency on them does not matter (owner): the Updater works in big bursts.
 

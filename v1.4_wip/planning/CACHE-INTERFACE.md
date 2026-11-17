@@ -1,6 +1,8 @@
 # The cache from outside: the look-up port, the fill port, and what the cache promises
 
-Draft for review, 2026-11-16 (`updater_wip`, WORKER5). A dagger (†) marks a choice that is proposed here and not yet
+Written 2026-11-16 (`updater_wip`, WORKER5) and **agreed at the review with the owner the same day,** with one
+change: a client's number is the same on the look-up port and on AXI. It is what WORKER5 builds the cache to and
+WORKER6 the Updater's controller. A dagger (†) marks a choice that is proposed here and not yet
 ruled on. Where a line says (owner), the design notes record it as the owner's ruling. The open questions are at the
 end.
 
@@ -17,9 +19,9 @@ updates that write through; the sequence of an `update`) and 7; `UPDATER-INTERFA
 `v1.36/spec/jolt/tracer.md` 17.9.5, 17.9.14). Where the notes disagree, the later stands.
 
 ```
- the Updater ─────── look-up port 0 ──┐                               ┌── the fill port ── the Tracer
- the RW engine ───── look-up port 1 ──┤   ┌─────────────────────┐     │   (v1.36's, unchanged)
- the Binder (later)─ look-up port 2 ──┼──►│ the cache's          │◄────┘
+ the Updater ─────── look-up port 1 ──┐                               ┌── the fill port ── the Tracer
+ the RW engine ───── look-up port 2 ──┤   ┌─────────────────────┐     │   (v1.36's, unchanged)
+ the Binder (later)─ look-up port 3 ──┼──►│ the cache's          │◄────┘
                                       │   │ controller           │── its AXI port (ID 0) ── the AXI arbiter
  the shared reply bus ◄───────────────┘   │ + the cache memory   │
    (to every look-up client)              └─────────────────────┘
@@ -86,10 +88,13 @@ A depth-0 file is its root alone, with no entry: † every request with depth 0 
 
 | port, and its replies' `client` | client |
 |---|---|
-| 0 | the Updater |
-| 1 | the RW engine, for the file system |
-| 2 | the Binder |
-| 3 | spare: a test's |
+| 0 | none: 0 is the cache's own number on AXI. Spare: a test's |
+| 1 | the Updater |
+| 2 | the RW engine, for the file system |
+| 3 | the Binder |
+
+**A client has one number everywhere** (agreed at the review, 2026-11-16): its look-up port's number is its AXI ID
+(`AXI-INTERFACE.md`, section 1).
 
 ### The handshake
 
@@ -339,8 +344,9 @@ same LPDDR,** differing only in when.
    In v1.37 the master tile's core hands the pages out through the free page queue and has no look-up port; it frees
    no page, so no page is handed out twice and none is needed. For v1.4: a look-up port for the file system's core,
    or the Updater discarding each page it takes from the free page queue. `WORKER5/QUESTIONS.md`.
-4. **An LPDDR error on a fill read** has no status on `fill`: † `beyond` and the error flag. A third bit of status is
-   a change to the built Tracer. `WORKER5/QUESTIONS.md`.
+4. **An LPDDR error on a fill read** has no status on `fill`: `beyond` and the error flag (taken at the review). A
+   third bit of status is a change to the built Tracer: a comment to Tony (`RTL-CHANGE-REQUESTS.md`, E), not a
+   request.
 5. **Where the cache's error flag goes** †: the memory side's error line, as a peripheral's errors do. `WORKER5/QUESTIONS.md`.
 6. **Depth 0** † answered `beyond`: no file of depth 0 arises (every image is depth 2; gold gives every file an index
    level).

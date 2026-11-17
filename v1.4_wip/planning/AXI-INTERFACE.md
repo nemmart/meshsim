@@ -1,6 +1,7 @@
 # The path to LPDDR: a client's AXI port, the AXI arbiter and the LPDDR model
 
-Draft for review, 2026-11-16 (`updater_wip`, WORKER5). A dagger (†) marks a choice that is proposed here and not yet
+Written 2026-11-16 (`updater_wip`, WORKER5) and **agreed at the review with the owner the same day.** It is what
+WORKER5 builds the arbiter and the LPDDR model to and WORKER6 the Updater's controller. A dagger (†) marks a choice that is proposed here and not yet
 ruled on. Where a line says (owner), the design notes record it as the owner's ruling. The open questions are at the
 end.
 

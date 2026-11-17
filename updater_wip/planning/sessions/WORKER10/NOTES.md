@@ -1,7 +1,14 @@
 # WORKER10 notes: the plan for the wire between processes
 
-Status, 2026-11-17: **plan proposed, waiting for the owner's go-ahead.** Branch `updater-w10`, from main `f6ea4570`.
-No code yet.
+Status, 2026-11-17: **the plan has the owner's go-ahead, as written.** Branch `updater-w10`, from main `f6ea4570`.
+
+**The go-ahead (owner, 2026-11-17, 06:04),** with the answers to section 8:
+
+1. **The anonymous region,** inherited from the launcher. One process must be startable under a debugger through
+   the launcher; the README says how.
+2. **An explicit `--driver`.**
+3. **On the runner:** the checks must pass, only slower, when there are fewer cores than processes; the tasks
+   work at whatever the runner has and report how long they took. (The owner is being asked the core count.)
 
 Names: *N* clients, so *N* + 1 processes: P0 is the driver, P*k*+1 is client *k*. Link *i* joins P*i* (up) to
 P*i*+1 (down); each link has a **down** direction and an **up** direction. *W* is the window in cycles (64), *B*

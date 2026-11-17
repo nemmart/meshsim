@@ -6,6 +6,7 @@
 #   plant1..5 the check build with a planted bug (tests/plants.sh)
 #   asan      address and undefined-behaviour sanitizers, with WIRE_CHECK
 #   tsan      the thread sanitizer: wire-threads only
+#   tsan-plantN  the thread sanitizer on a planted bug (it must report it)
 CXX ?= g++
 COMPILER := $(notdir $(firstword $(CXX)))
 TOP := build/$(COMPILER)
@@ -20,6 +21,8 @@ else ifeq ($(VARIANT),asan)
   VFLAGS := -O1 -DWIRE_CHECK -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer
 else ifeq ($(VARIANT),tsan)
   VFLAGS := -O1 -DWIRE_CHECK -fsanitize=thread
+else ifneq ($(filter tsan-plant%,$(VARIANT)),)
+  VFLAGS := -O1 -DWIRE_CHECK -fsanitize=thread -DWIRE_PLANT=$(patsubst tsan-plant%,%,$(VARIANT))
 else ifneq ($(filter plant%,$(VARIANT)),)
   VFLAGS := -O2 -DWIRE_CHECK -DWIRE_PLANT=$(patsubst plant%,%,$(VARIANT))
 else
@@ -31,7 +34,7 @@ LIB_SRC := wire.cpp wire_args.cpp
 NODE_SRC := standin.cpp node_loop.cpp
 HDRS := $(wildcard *.h)
 
-ifeq ($(VARIANT),tsan)
+ifneq ($(filter tsan%,$(VARIANT)),)
   PROGS := $(OUT)/wire-threads
 else
   PROGS := $(OUT)/wire-launch $(OUT)/wire-node $(OUT)/wire-ref $(OUT)/wire-threads

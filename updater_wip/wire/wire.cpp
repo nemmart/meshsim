@@ -1,17 +1,19 @@
 // The wire: see wire.h for the region, NOTES.md for why it is exact and cannot deadlock.
 //
 // Memory ordering, at every access between processes:
-//   - The producer writes a window's bytes into its slot with plain stores, then sent = w + 1 with RELEASE.
-//     The consumer loads sent with ACQUIRE before reading the slot, so the bytes are visible to it.
-//   - The consumer, done with a window, stores consumed with RELEASE; the producer loads it with ACQUIRE before
-//     writing into that slot again, so the consumer's reads come before the producer's overwrite.
-//   - final_w and gone: RELEASE on store, ACQUIRE on load, for the same reasons (final_w is stored after the
-//     last sent; a consumer that sees it sees every window before it).
-//   - The sleep handshake is a store-then-load on each side (the waiter stores its sleeping flag and loads the
-//     counter; the publisher stores the counter and loads the flag), so each side puts a SEQ_CST fence between
-//     the two: at least one sees the other's store, so a wake is never lost. The futex wait is also timed.
-//   - waiting_on, windows, cycles, state: read only by the launcher's watchdog and messages; RELAXED (state
-//     RELEASE, so a launcher that sees "finished" sees the final_w before it).
+//   - The producer writes a window's bytes into its slot with plain stores, then stores sent = w + 1. The consumer
+//     loads sent before reading the slot. RELEASE and ACQUIRE would make the bytes visible; the store is SEQ_CST
+//     for the sleep handshake below (on x86 one locked instruction a window; loads cost the same either way).
+//   - The consumer, done with a window, stores consumed (SEQ_CST, at least RELEASE); the producer loads it (at
+//     least ACQUIRE) before writing into that slot again, so the consumer's reads come before the overwrite.
+//   - final_w and gone: the same. final_w is stored after the last sent, so a consumer that sees it sees every
+//     window before it.
+//   - The sleep handshake is a store-then-load on each side: the waiter stores its sleeping flag and loads the
+//     counter; the publisher stores the counter and loads the flag. With all four SEQ_CST they are in one total
+//     order, so at least one side sees the other's store: a wake is never lost. (No fences: the thread sanitizer
+//     does not model them, and this way it checks the same code that runs.) The futex wait is also timed.
+//   - waiting_on, windows, cycles: read only by the launcher's watchdog and messages; RELAXED. state: RELEASE and
+//     ACQUIRE, so a launcher that sees "finished" sees the final_w before it.
 #include "wire.h"
 
 #include <linux/futex.h>
@@ -62,10 +64,9 @@ void futex_wake(std::atomic<uint32_t>& word) {
     syscall(SYS_futex, futex_addr(word), FUTEX_WAKE, 0x7fffffff, nullptr, nullptr, 0);
 }
 
-// The publisher's half of the handshake: the counter was just stored (RELEASE).
+// The publisher's half of the handshake: the counter was just stored (SEQ_CST).
 inline void ring(std::atomic<uint32_t>& bell, std::atomic<uint32_t>& waiter_sleeping) {
-    std::atomic_thread_fence(std::memory_order_seq_cst);
-    if (waiter_sleeping.load(std::memory_order_relaxed) != 0) {
+    if (waiter_sleeping.load(std::memory_order_seq_cst) != 0) {
         bell.fetch_add(1, std::memory_order_release);
         futex_wake(bell);
     }
@@ -197,7 +198,7 @@ void region_init(void* mem, const Params& p, const char* name, int32_t launcher_
             pr->final_w.store(kNever, std::memory_order_relaxed);
             new (region_cons(mem, int(i), d)) ConsLine{};
         }
-    std::atomic_thread_fence(std::memory_order_release);
+    // No fence: the children see the region through fork and exec, the threads through their creation.
 }
 
 bool region_check(const void* cmem, size_t size, Params* p, char* err, size_t n) {
@@ -434,8 +435,7 @@ void Wire::wait_until(Ready ready, std::atomic<uint32_t>& bell, std::atomic<uint
     for (;;) {
         check_abort();
         const uint32_t b = bell.load(std::memory_order_acquire);
-        my_sleeping.store(1, std::memory_order_relaxed);
-        std::atomic_thread_fence(std::memory_order_seq_cst);  // the waiter's half of the handshake
+        my_sleeping.store(1, std::memory_order_seq_cst);  // the waiter's half of the handshake
         if (ready()) break;
         futex_wait(bell, b, 100000000ull);  // 100 ms: for the abort check, not for correctness
         my_sleeping.store(0, std::memory_order_relaxed);
@@ -466,7 +466,7 @@ uint64_t LinkEnd::slot(uint64_t w) const {
 }
 
 void LinkEnd::publish(uint64_t n) {
-    out_prod_->sent.store(n, std::memory_order_release);  // the window's bytes, then this
+    out_prod_->sent.store(n, std::memory_order_seq_cst);  // the window's bytes, then this
     ring(out_prod_->bell, out_cons_->cons_sleeping);
 }
 
@@ -478,8 +478,8 @@ void LinkEnd::begin_window() {
         ConsLine* c = out_cons_;
         wire_->wait_until(
             [c, need] {
-                return c->consumed.load(std::memory_order_acquire) >= need ||
-                       c->gone.load(std::memory_order_acquire) != 0;
+                return c->consumed.load(std::memory_order_seq_cst) >= need ||
+                       c->gone.load(std::memory_order_seq_cst) != 0;
             },
             c->bell, out_prod_->prod_sleeping, peer_);
         if (c->gone.load(std::memory_order_acquire) != 0) out_free_ = true;
@@ -500,8 +500,8 @@ void LinkEnd::begin_window() {
         ProdLine* p = in_prod_;
         wire_->wait_until(
             [p, w] {
-                return p->sent.load(std::memory_order_acquire) >= w ||
-                       p->final_w.load(std::memory_order_acquire) <= w - 1;
+                return p->sent.load(std::memory_order_seq_cst) >= w ||
+                       p->final_w.load(std::memory_order_seq_cst) <= w - 1;
             },
             p->bell, in_cons_->cons_sleeping, peer_);
         if (p->final_w.load(std::memory_order_acquire) <= w - 1) {
@@ -522,7 +522,7 @@ void LinkEnd::end_window() {
     publish(w + 1);
 #endif
     if (w >= 1 && !in_done_) {
-        in_cons_->consumed.store(w, std::memory_order_release);  // done reading the far end's window w - 1
+        in_cons_->consumed.store(w, std::memory_order_seq_cst);  // done reading the far end's window w - 1
         ring(in_cons_->bell, in_prod_->prod_sleeping);
     }
     hook();
@@ -570,9 +570,9 @@ void LinkEnd::finish() {
     } else {
         f = win_;  // sent == win_ already
     }
-    out_prod_->final_w.store(f, std::memory_order_release);
+    out_prod_->final_w.store(f, std::memory_order_seq_cst);
     ring(out_prod_->bell, out_cons_->cons_sleeping);
-    in_cons_->gone.store(1, std::memory_order_release);
+    in_cons_->gone.store(1, std::memory_order_seq_cst);
     ring(in_cons_->bell, in_prod_->prod_sleeping);
 }
 

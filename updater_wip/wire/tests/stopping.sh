@@ -176,6 +176,8 @@ done
 if command -v gdb >/dev/null; then
     NAME=gdb$$
     "$BIN/wire-ref" --clients 2 --window 64 --lane-bytes 1 --seed 3 --cycles 500000 --out "$TMP/gref.txt"
+    # LeakSanitizer cannot run under ptrace: off for this step in the asan build.
+    ASAN_OPTIONS=${ASAN_OPTIONS:+$ASAN_OPTIONS:}detect_leaks=0 \
     "$BIN/wire-launch" --clients 2 --link $NAME --debug 0 --debugger "gdb -q -batch -ex run --args" \
         -- "$BIN/wire-node" --seed 3 --cycles 500000 --out "$TMP/g-p{p}.txt" \
         -- "$BIN/wire-node" --seed 3 --cycles 500000 --out "$TMP/g-p{p}.txt" > "$TMP/gdb.out" 2> "$TMP/$NAME.err"

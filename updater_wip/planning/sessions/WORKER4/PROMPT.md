@@ -9,7 +9,8 @@ its report is `updater_wip/planning/sessions/WORKER3-REPORT.md`.
 **What it showed, and your part.** The firmware wakes for every packet: about 330 cycles awake against a packet's
 528 on the link. The owner's cure is **the threshold**: the master tile tells Ingress how many words to gather
 before it is woken. It says 1 word to start; it is woken and reads the frame's header word; it then knows how many
-words are coming, and says: wake me when 128 words are available. You put that into Ingress's black box and the
+words are coming, and says: wake me when a credit's worth of words is available. You put that into Ingress's black
+box and the
 firmware, and measure what it gains.
 
 READ FIRST: the top-level `README.md`; `updater_wip/README.md`; **`v1.4_wip/planning/INGRESS-INTERFACE.md` in full**,
@@ -31,14 +32,17 @@ THE WORK, in `v1.37_wip/`
    - one transfer of the DMA may run across packets, up to the words waiting;
    - each stream's buffer is 16 KB, 1,024 words (owner). The link waits when a buffer is full, as it does today
      at four packets.
-2. **The master tile's firmware:** the owner's sequence. The threshold is 1 between frames; after the header word
-   it is the smaller of 128 and the words left in the frame; at the frame's end it is 1 again. It applies to every
+2. **The Updater's segment queue grows to 8 KB, 512 entries, with a credit of 256 words** (owner;
+   `UPDATER-INTERFACE.md`). The scheme is unchanged: a credit is half a queue, counted to depth 2. This is the one
+   change to the Updater's black box.
+3. **The master tile's firmware:** the owner's sequence. The threshold is 1 between frames; after the header word
+   it is the smaller of 256 and the words left in the frame; at the frame's end it is 1 again. It applies to every
    frame, those that go to the Updater and those that go to the firmware's own memory or to the tracer tile. For
-   the Updater a wake, a credit of 128 words and a transfer go together.
-3. **The check that a frame's header word is a packet's first word** cannot be made by the firmware once a
+   the Updater a wake, a credit of 256 words and a transfer go together.
+4. **The check that a frame's header word is a packet's first word** cannot be made by the firmware once a
    read-out runs across packets, and Ingress knows packets, not frames. † Drop the check. Say in your report what
    a file whose frame ends in the middle of a packet now does.
-4. **Measure,** on the runs WORKER3 reported: the master's cycles awake a packet and its share of the run, before
+5. **Measure,** on the runs WORKER3 reported: the master's cycles awake a packet and its share of the run, before
    and after; the wakes a frame; the Updater's cycles waiting on data; and what link rate the firmware could now
    keep up with. Then **run the link faster** in the black box (2, 4 and 8 bytes a cycle) to find where the
    firmware, the Updater or the memory becomes the limit, and say which.
@@ -50,9 +54,9 @@ HOW IT IS CHECKED
 - **Ingress alone:** thresholds of 1, of a part of a packet, of several packets, and of the whole buffer; a
   threshold written while words wait; a read-out across a packet's end; the rule for a second flag; both streams
   at once; WORKER2's vectors and damaged files as before.
-- **The firmware's tail:** frames whose length is not a multiple of 128 words or of a packet, frames shorter than
+- **The firmware's tail:** frames whose length is not a multiple of 256 words or of a packet, frames shorter than
   one packet, and a frame of the header word alone.
-- **The threshold at other sizes** (32, 64, 256 words) gives the same images.
+- **The threshold at other sizes** (32, 64, 128 words) gives the same images.
 
 WHERE THE DOCUMENTS ARE OPEN
 - A dagger (†) marks what is proposed and not ruled on. Take each as written, unless it cannot work; then say so in
@@ -77,7 +81,7 @@ RULES
 - Commit and push after each completed piece, and end each turn with a clean `git status`.
 - Keep replies to the owner short.
 
-NOT YOUR WORK: the Updater's black box and its real controller; the cache; the link's sending side, "stop" and
+NOT YOUR WORK: the rest of the Updater's black box, and its real controller; the cache; the link's sending side, "stop" and
 recovery; gold and the packetizer; the specification.
 
 DELIVERABLES

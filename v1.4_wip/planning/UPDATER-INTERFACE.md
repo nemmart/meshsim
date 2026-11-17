@@ -162,16 +162,20 @@ Tracer's region. A packet is appended at the queue's tail and the rest of its ad
 
 | part | queue | size | an entry | filled by |
 |---|---|---|---|---|
-| 1 | segment queue | 256 entries of 128 bits, 4 KB | 128 bits of a frame's data | Ingress, on the same tile |
+| 1 | segment queue | **512 entries of 128 bits, 8 KB** (owner, 2026-11-16) | 128 bits of a frame's data | Ingress, on the same tile |
 | 2 | free page queue | 256 entries | one free page, in [31:0] † | the master tile's core, from its page map |
 | 0, 3-7 | unmapped | | | |
 
 **The credits are the replayer's and the Tracer's, unchanged** (owner; replayer chapter 17.8.8):
 
-- A queue's credit is a counted event of depth 2. One credit is leave to push up to half a queue, 128 entries.
-- A credit is returned each time 128 entries have left the queue since the last return.
+- A queue's credit is a counted event of depth 2. One credit is leave to push up to half a queue: **256 entries for
+  the segment queue** (owner), 128 for the free page queue.
+- A credit is returned each time half a queue's entries have left the queue since the last return.
 - A credit is taken by a consuming load of `EVENTS`, one from each credit that `EVENTS_MASK` selects.
 - A push into a full queue is dropped and sets `ERRORS.queue_overrun`.
+
+- **The segment queue is twice the replayer's size** (owner): 8 KB with a credit of 256 words, so that a wake of
+  the master tile moves 4 KB. The scheme is the same. v1.37 as merged has 4 KB and 128.
 
 Two differences, both because the Updater has no state write and its stream runs across runs:
 

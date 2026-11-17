@@ -87,11 +87,13 @@ What it changes above:
 1. It says: 1 word to start.
 2. It is woken, and reads the frame's header word. Now it knows how many words are coming.
 3. If the frame is a big one, which it almost always is, it says: wake me when 2 KB, 128 words, is available.
+   († 4 KB, 256 words, since the owner then raised the Updater's credit to 256.)
 4. At the frame's end it says 1 again.
 
 - **The threshold is never more than the words left in the frame.** The firmware knows them from the header word,
-  so the tail of a frame needs no timer: the threshold is the smaller of 128 and what is left.
-- **128 words is one credit of the Updater's segment queue,** so a wake, a credit and a transfer go together.
+  so the tail of a frame needs no timer: the threshold is the smaller of a credit, 256, and what is left.
+- **256 words is one credit of the Updater's segment queue** (owner: the queue is 8 KB, with a 256-word credit), so
+  a wake, a credit and a transfer go together.
 - **Ingress's buffers are oversized on purpose: 16 KB on each stream** (owner), 1,024 words, 32 full packets. A
   threshold can always be reached, and there is room to be sure the far side can be stopped (`HOST-LINK.md`).
   v1.37's black box as merged holds four packets.
@@ -151,10 +153,10 @@ What the core does with a background packet:
 
 **The credits come to the master tile to manage** (owner). There is no signal from the Updater to Ingress.
 
-1. The Updater posts `segment_credit` to the master tile each time half its segment queue, 128 words, has drained
+1. The Updater posts `segment_credit` to the master tile each time half its segment queue, 256 words, has drained
    (`UPDATER-INTERFACE.md`).
-2. The master tile keeps an allowance: a credit adds 128 words; a transfer into the segment queue takes off what it
-   sent. One credit covers four full packets.
+2. The master tile keeps an allowance: a credit adds 256 words; a transfer into the segment queue takes off what it
+   sent. One credit covers eight full packets.
 3. It reads a background packet out to the Updater only when the allowance covers it. Otherwise the packet stays in
    Ingress.
 4. Ingress knows nothing of the Updater: its background stream simply backs up.

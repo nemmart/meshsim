@@ -405,3 +405,10 @@ The report's full lists, about fifteen points over the four documents, are not y
 
 **Next:** the Updater's real controller in place of its black box, then the cache's. v1.37's Ingress and firmware
 also want the threshold.
+
+Two more rulings the same evening:
+
+- **Decided (owner): Ingress's buffers are oversized, 16 KB on each stream,** to be sure the far side can be stopped.
+- **Decided (owner): the Updater's segment queue is 8 KB, with a credit of 256 words.** Proposed with it: the
+  threshold after a frame's header is a credit's worth, 256 words, where the owner first said 128.
+- WORKER4 (`updater_wip`) puts the threshold and both sizes into v1.37.

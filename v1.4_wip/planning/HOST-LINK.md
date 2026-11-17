@@ -505,15 +505,18 @@ could: the link stopped for ever.
 | a false acknowledgement: a damaged header that passed its CRC and released packets that never arrived | **nothing is done about the false one itself** (owner, 2026-11-17: "just ignore it"). It shows when it matters: **the other end asks for a packet the sender no longer keeps.** The sender cannot send it, raises the error, and the link starts again |
 
 - **A false acknowledgement, in full:** the sender has sent up to 20 and keeps 13 to 20. A damaged header says
-  "acknowledged 18", and the sender lets 13 to 18 go. The receiver has only up to 12, so when 19 arrives, or a
-  packet of length 0 saying the next number is 21, it asks for a resend from 13. The sender has no 13. That is
-  the error.
-  - It is always found, because the receiver always learns it is missing packets and always asks.
+  "acknowledged 18", and the sender lets 13 to 18 go, though they are still on their way.
+  - **Usually they arrive whole.** The receiver takes them, nothing is asked for again, and nothing is lost. The
+    owner: "if a resend is never requested, then no harm, no foul."
+  - **Only if one of them is damaged on the way** does the receiver ask for it, and then the sender has no copy.
+    That is the error, and it is raised only when there is real harm.
+  - It is always found when it matters, because the receiver always learns it is missing a packet and always
+    asks.
   - An acknowledge field that claims more than was ever sent releases nothing, since there is nothing there to
     release.
-  - (WORKER8's rule watched for acknowledgements going backwards, two in a row. The owner's needs no watching:
-    the request that cannot be met is the sign.)
-  - What it costs is at most a window of packets, and it is reported.
+  - (WORKER8's rule watched for acknowledgements going backwards, two in a row. After a false one the true ones
+    are behind it whether or not anything was lost, so that rule would have raised the error with no harm done.
+    The owner's needs no watching and raises none.)
 - **Each of these ends as an error the core sees,** never as a link that hangs. On the master tile a peripheral's
   error is the tile's, which stops everything (owner): the host resets the chip and the proof starts over.
 

@@ -15,9 +15,9 @@
 #     the RISC-V toolchain (fw/build.sh's header; RISCV_PREFIX names it): the step fw-build. With it, RISCV_TESTS and
 #                         COREMARK name the checkouts that step also rebuilds riscv-tests' and CoreMark's images from
 #   The 64K runs' key file (16 MiB) is built here (the step sort-64k of `all`, into build/sort-64k.keys).
-#   CACHE_CTL=1 (updater_wip, WORKER5): the steps tracer-block, proof-real, proof-matrix and proof-29 also run the Tracer
-#   on the cache's controller, the AXI arbiter and the LPDDR model (MachConfig::cache_ctl; tracer_block --fill cache;
-#   proof_run --cache). Without it they are as they were.
+#   CACHE_CTL=1 (updater_wip, WORKER5): the steps proof-real, proof-matrix and proof-29 run the Tracer on the cache's
+#   controller, the AXI arbiter and the LPDDR model (MachConfig::cache_ctl; proof_run --cache), and a step
+#   tracer-block-cache runs tracer-block's segments on it (tracer_block --fill cache). Without it nothing changes.
 #   The suites build with MODE=suite (release flags, the checker's facts on: src/check.h), into build/$CC_NAME-suite/.
 #
 # ADDING A STEP:
@@ -172,13 +172,26 @@ tracer_block_real() {   # every segment at both compressions and both latencies 
         --ref tests/tracerblock/rtl/windows-$p-s$s-c$c-l${f/,/-}.txt || echo "FAIL tracer_block $p segment $s, compression $c, fill $f: exit $?"
     done; done
     $S/tracer_block --inputs "$INPUTS" --program $p --segment $s --fill model --quiet || echo "FAIL tracer_block $p segment $s, fill model: exit $?"
-    [ "${CACHE_CTL:-}" != 1 ] || $S/tracer_block --inputs "$INPUTS" --program $p --segment $s --fill cache --quiet || echo "FAIL tracer_block $p segment $s, fill cache: exit $?"
   done
 }
 if [ -d "$INPUTS/v1261/evm-zone-23" ] && [ -d "$INPUTS/v1261/cyclone-22" ] && [ -d "$INPUTS/gold-v1.3" ] && [ -d "$INPUTS/w26-jumpmap" ]; then
   step tracer-block 1 "the Tracer alone on the real segments (EVM Zone 0 and 1, Cyclone 0): every run against gold's files and the RTL's figures, cycle for cycle" tests/tracerblock/tracer-block.log -- tracer_block_real
 else
   skipped tracer-block "the Tracer alone on the real segments, against gold's files and the RTL's figures" "the workloads' data is not at $INPUTS: MESHSIM_INPUTS"
+fi
+# updater_wip, WORKER5: with CACHE_CTL=1, the same segments on the cache's controller (every run against gold's files;
+# its cycles are the cache's, so not against the RTL's figures)
+tracer_block_cache() {
+  local ps p s c
+  for ps in evm-zone-23:0 evm-zone-23:1 cyclone-22:0; do
+    p=${ps%:*} s=${ps#*:}
+    for c in 0 7; do
+      $S/tracer_block --inputs "$INPUTS" --program $p --segment $s --compression $c --fill cache --quiet || echo "FAIL tracer_block $p segment $s, compression $c, fill cache: exit $?"
+    done
+  done
+}
+if [ "${CACHE_CTL:-}" = 1 ] && [ -d "$INPUTS/v1261/evm-zone-23" ] && [ -d "$INPUTS/v1261/cyclone-22" ] && [ -d "$INPUTS/gold-v1.3" ] && [ -d "$INPUTS/w26-jumpmap" ]; then
+  check tracer-block-cache "WORKER5: the Tracer alone on the real segments on the cache's controller (EVM Zone 0 and 1, Cyclone 0; compression 0 and 7): every run against gold's files" -- tracer_block_cache
 fi
 
 # ---- updater_wip, WORKER5: the path to LPDDR, each unit alone, and the Tracer on the cache's controller ----

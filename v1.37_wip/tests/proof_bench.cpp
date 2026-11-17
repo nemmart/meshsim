@@ -19,6 +19,7 @@
 #include "units/tile_ctl.h"
 #include "units/updater.h"
 #include "updater_bench.h"
+#include "updater_view.h"
 
 namespace proof {
 
@@ -127,17 +128,17 @@ struct ChipProof final : segment::Proof {
     int image_depth() const { return frames::depth_of(program.file_pages); }
     int table_depth() const { return frames::depth_of(frames::table_pages(table.k)); }
 
-    static void on_done(void* ctx, Updater& u, int64_t t) { static_cast<ChipProof*>(ctx)->run_done(u, t); }
-    void run_done(Updater& u, int64_t t) {
+    static void on_done(void* ctx, updater_view::UpdaterView& u, int64_t t) { static_cast<ChipProof*>(ctx)->run_done(u, t); }
+    void run_done(updater_view::UpdaterView& u, int64_t t) {
         Done d;
-        d.t = t; d.config = u.run_config_; d.page_count = u.page_count_; d.image_root = u.image_root_; d.tracer_root = u.tracer_root_;
-        for (int k = 0; k < 6; k++) { d.stat[k] = u.stat_[k] - stat_before[k]; stat_before[k] = u.stat_[k]; }
+        d.t = t; d.config = u.run_config(); d.page_count = u.page_count(); d.image_root = u.image_root(); d.tracer_root = u.tracer_root();
+        for (int k = 0; k < 6; k++) { d.stat[k] = u.stat(k) - stat_before[k]; stat_before[k] = u.stat(k); }
         const int depth = int(d.config >> Updater::RC_DEPTH_LO & 3);
         const size_t i = done.size();
         const bool partial = i < run_names.size() && run_names[i] == "tracer";      // the final image, half made: not compared
         if (partial && master_rv) awake_handed = master_rv->mcycle - master_rv->cycles_wfi;   // the hand-over follows this done
-        if (!partial) d.image = sha(updater_bench::image(*u.store, int32_t(d.image_root), depth));
-        if (d.config & Updater::RC_TRACER_COPY) d.tracer = sha(updater_bench::image(*u.store, int32_t(d.tracer_root), depth));
+        if (!partial) d.image = sha(updater_bench::image(*u.store(), int32_t(d.image_root), depth));
+        if (d.config & Updater::RC_TRACER_COPY) d.tracer = sha(updater_bench::image(*u.store(), int32_t(d.tracer_root), depth));
         done.push_back(d);
     }
 
@@ -154,12 +155,15 @@ struct ChipProof final : segment::Proof {
         m.set_link(c.packets);
         m.ingress().link_cycles_per_byte = c.cycles_per_byte;
         m.ingress().link_bytes_per_cycle = c.link_rate;
-        if (c.updater_lookup) m.updater().timing.lookup = c.updater_lookup;
+        const int64_t ctl = c.updater_ctl ? int64_t(c.updater_ctl_seed) : updater_view::env_setting();   // WORKER6: the controller
+        if (ctl >= 0) updater_view::install_ctl(m, uint64_t(ctl));
+        view.attach(m);
+        if (c.updater_lookup) view.set_lookup(c.updater_lookup);
         master_rv = &m.c.unit<units::TileCore>(units::unit_prefix(units::ID_MASTER) + "core").rv;
-        m.updater().on_done = &on_done;
-        m.updater().on_done_ctx = this;
+        view.on_done(&on_done, this);
     }
     uint32_t results_at = 0;
+    updater_view::UpdaterView view;              // the black box or the controller (WORKER6)
 
     void finished(mach::Mach& m, segment::Run& run) override {
         R.resize(MR_WORDS);
@@ -171,11 +175,11 @@ struct ChipProof final : segment::Proof {
                     R[MR_PAGES_TAKEN], R[MR_LOADS], R[MR_RESULTS], R[MR_OTHERS], R[MR_BOOT], R[MR_TILE_ERRORS], R[MR_INGRESS_ERRORS],
                     R[MR_UPDATER_ERRORS]);
         if (R[MR_STATUS] != MR_OK) {                 // where it stopped
-            Updater& u = m.updater();
+            updater_view::UpdaterView& u = view;
             units::IngressEgress& link = m.ingress();
             std::printf("%s: stopped with: the Updater busy %d, WORD_COUNT %u, PAGE_COUNT %u, %u segment words and %u free pages queued, %u dones; the link: %llu packets "
-                        "and %llu words arrived, %u words read out, %u and %u words waiting; %u pages queued by the master\n", name, int(u.busy_), u.word_count_,
-                        u.page_count_, u.segment_entries(), u.free_page_entries(), unsigned(done.size()), (unsigned long long)link.link_packets,
+                        "and %llu words arrived, %u words read out, %u and %u words waiting; %u pages queued by the master\n", name, int(u.busy()), u.word_count(),
+                        u.page_count(), u.segment_entries(), u.free_page_entries(), unsigned(done.size()), (unsigned long long)link.link_packets,
                         (unsigned long long)link.link_words, R[MR_LINK_WORDS], link.link_stream[0].held, link.link_stream[1].held, R[MR_PAGES_QUEUED]);
         }
     }
@@ -201,9 +205,9 @@ struct ChipProof final : segment::Proof {
         run.failures += failures;
     }
     void check_all(mach::Mach& m, const segment::Run& run) {
-        Updater& u = m.updater();
+        updater_view::UpdaterView& u = view;
         units::IngressEgress& link = m.ingress();
-        const FileStore& store = m.store();
+        const FileStore& store = *u.store();
         if (numbers) {
             numbers->master = R;
             numbers->link_packets = link.link_packets; numbers->link_words = link.link_words; numbers->link_bytes = link.link_bytes;
@@ -266,7 +270,7 @@ struct ChipProof final : segment::Proof {
             fail("an error bit: the tile's 0x%x, Ingress's 0x%x, the Updater's 0x%x, the error lines 0x%x 0x%x 0x%x", R[MR_TILE_ERRORS], R[MR_INGRESS_ERRORS],
                  R[MR_UPDATER_ERRORS], R[MR_ERROR_LINES], R[MR_ERROR_LINES + 1], R[MR_ERROR_LINES + 2]);
         if (u.errors(0) != 0 || link.link_errors != 0) fail("ERRORS at the end: the Updater's 0x%x, the link's 0x%x", unsigned(u.errors(0)), unsigned(link.link_errors));
-        if (u.unwritten_reads != 0) fail("%llu reads of a page nothing wrote", (unsigned long long)u.unwritten_reads);
+        if (u.unwritten_reads() != 0) fail("%llu reads of a page nothing wrote%s", (unsigned long long)u.unwritten_reads(), u.ctl() ? ", or checks of the test pieces" : "");
         if (u.segment_entries() != 0 || u.free_page_entries() != 0) fail("entries left in the Updater's queues: %u segment words, %u free pages", u.segment_entries(), u.free_page_entries());
         const uint64_t words = c.file.bytes.size() / 16;
         if (link.link_cut || link.link_words != words || R[MR_LINK_WORDS] != words)

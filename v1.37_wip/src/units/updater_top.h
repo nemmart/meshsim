@@ -16,6 +16,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 
 #include "sim.h"
 #include "base/fatal.h"
@@ -74,6 +75,7 @@ struct UpdaterTop : PeripheralBase<UpdaterTop> {
     // A harness's observer of a run's end (null: none), called in the cycle done is posted: the images are whole then.
     void (*on_done)(void* ctx, UpdaterTop& u, int64_t t) = nullptr;
     void* on_done_ctx = nullptr;
+    std::shared_ptr<void> keep;                    // what a harness gives it to own (the test pieces behind its ports)
 
     UpdaterTop() { reset(0); }
 

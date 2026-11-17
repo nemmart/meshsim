@@ -2,6 +2,9 @@
 //
 //   proof_run FRAMES --asics N --segment S [--windows W] [--rows R] [--gold IMAGES.txt] [--packets FILE]
 //             [--recorded RUN] [--fast-link] [--link-rate B] [--threshold W] [--limit CYCLES] [--quiet]
+//             [--updater-ctl] [--updater-ctl-seed SEED]
+// --updater-ctl: the Updater's controller in the black box's place, behind the shim, with the test LPDDR and the
+// stand-in cache (WORKER6; tests/updater_view.h); --updater-ctl-seed SEED, the same with their timing varied.
 //
 // FRAMES is gold's frame file (`gold frames`), cut for N ASICs into segments of W windows of R rows (--windows, 64, and
 // --rows, 65,536: gold's --segment-rows is their product; no frame carries them). The link's bytes are FRAMES in the
@@ -38,7 +41,8 @@ bool read_file(const std::string& path, std::vector<uint8_t>& out) {
 }
 int usage() {
     std::fprintf(stderr, "usage: proof_run FRAMES --asics N --segment S [--windows W] [--rows R] [--gold IMAGES.txt] [--packets FILE] "
-                         "[--recorded RUN] [--fast-link] [--link-rate B] [--threshold W] [--limit CYCLES] [--quiet]\n");
+                         "[--recorded RUN] [--fast-link] [--link-rate B] [--threshold W] [--limit CYCLES] [--quiet] "
+                         "[--updater-ctl] [--updater-ctl-seed SEED]\n");
     return 2;
 }
 
@@ -66,6 +70,8 @@ int main(int argc, char** argv) {
         else if (a == "--fast-link") c.cycles_per_byte = 0;
         else if (a == "--link-rate" && more) c.link_rate = std::atoi(argv[++i]);
         else if (a == "--threshold" && more) c.threshold = uint32_t(std::atol(argv[++i]));
+        else if (a == "--updater-ctl") c.updater_ctl = true;                                       // WORKER6: the controller
+        else if (a == "--updater-ctl-seed" && more) { c.updater_ctl = true; c.updater_ctl_seed = std::strtoull(argv[++i], nullptr, 10); }
         else if (a == "--quiet") quiet = true;
         else if (path.empty() && a[0] != '-') path = a;
         else return usage();

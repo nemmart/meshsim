@@ -444,6 +444,17 @@ could: the link stopped for ever.
 | restart with lost | "I have started again" |
 | restart with recovery | "so have I" |
 
+- **The restart packet is a full packet with a fixed pattern as its data** (owner, 2026-11-17: "a magic 512 byte
+  packet"): length 32, the data being **the primes below 256 as bytes, 2, 3, 5, 7, … 251, which is 54 bytes,
+  repeated until 512 bytes are filled.** Its data checksum is 0xDB9B1A2B.
+  - **An end acts on it only if the header, the data checksum and the pattern all agree.** Anything less is a
+    damaged packet.
+  - **Why:** starting again is drastic. As a flag in a 16-byte packet it was guarded by the header's CRC alone,
+    and a badly damaged header could be read as "I have started again". Noise cannot make this.
+  - **"Lost" and its answer stay 16 bytes:** they must get through a noisy line, where a short packet is the one
+    that arrives, and a false one only sends the sender back a few packets.
+  - † Its data goes to no queue and it takes no packet number; its number field is 1, the number its sender's
+    first packet will carry.
 - **An end that hears "I have started again"** drops the packets it was keeping, starts its numbers again from 1,
   answers, and **raises an error:** what was on its way is gone, and the frames above the link cannot be trusted.
 - **A link carries nothing until both ends are up.** Two ends that power on together bring the link up with no

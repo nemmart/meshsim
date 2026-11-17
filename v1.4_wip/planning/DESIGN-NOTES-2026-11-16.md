@@ -737,3 +737,43 @@ The owner set the next milestone; the plan is `updater_wip/planning/MILESTONE-v1
   the shim coming out. That is the joining step's first piece (`MILESTONE-v1.37.md`, step 3).
 - **A spec session** was asked about by the owner, to fold the agreed design into v1.37's specification. Its
   scope and brief are not written yet; the review of proposed items came first.
+
+## 24. The protocol does not hold as written; what WORKER8 found (2026-11-17, about 7 a.m.)
+
+WORKER8 built one link from `HOST-LINK.md` and searched it exhaustively at small sizes: about 49 million states
+(`updater_wip/planning/sessions/WORKER8/QUESTIONS.md` on `updater-w8`; each flaw has a kept case).
+
+| | as written | with the rule proposed |
+|---|---|---|
+| a good packet with the wrong number | the link stops for ever after one lost packet | holds |
+| the last packet of a burst lost | stops for ever | holds, **and no resend timer is needed:** a packet of length 0 carries the sender's next number |
+| both ends lost at once | stops for ever | holds: a lost side answers a "lost" |
+| a lost receiver hunting in the data | takes data for a packet | holds: it waits for 528 zeros first |
+| the stop bit lost | a queue overruns | holds **if the window is no more than half a queue** |
+| one stream's status behind the other's data | the background stands still 102,447 cycles | 544: a status timer for each stream |
+| one end starts again from power-on | stops for ever | a restart handshake, bit 0 of the reserved byte; the link starts again and raises an error |
+| a bit flipped in a kept packet | the same packet sent again for ever | the sender checks what it sends; the link starts again and raises an error |
+| a false acknowledgement (a forged header) | a packet released that never arrived | the link tells, starts again, raises an error |
+| a false packet number (a forged header) | a packet delivered twice and the next lost, silently | **not fixed** |
+
+- **Decided (owner): Ingress's queues are 16 KB a stream.** The window of 8 packets against 8 KB sat exactly at
+  the overrun's limit. v1.37 has 8 KB as one constant (WORKER7); it goes back.
+- **The false packet number, recommended by the design session and put to the owner:** no change to the header.
+  It needs a damaged header to pass its CRC (2⁻³²) and to land on the number the receiver expects (about 2⁻¹⁸
+  more). The 32-bit data checksum was accepted knowingly, and damaged data that passes it is the likelier silent
+  fault. A wider data check is the lever if a stronger link is wanted; a wrong trace fails verification.
+- **Recommended and put to the owner:** an acknowledgement as soon as the line is free (400 one-word foreground
+  packets: 28,463 cycles as written, 15,313 with it).
+- **`HOST-LINK.md` still has the protocol as first written.** WORKER8's rules go in once its random campaign and
+  the chain have confirmed them.
+- WORKER10's plan for the wire between processes is agreed in outline: a process waits only for its neighbours;
+  an anonymous region inherited from the launcher; an explicit `--driver`.
+- Ingress/Egress's register and bit numbers are to be **packed, like the other peripherals'** (owner):
+  `STATUS` [2], [3] for the two queues' flags; `EVENTS` [6], [7], [8] for the three new events; words 64 to 67
+  for the four host words. v1.37 changes over when the old stream words come out. The document's tables are
+  still to be brought to this.
+- The forward count's small rules are accepted (owner): a store replaces and a store of 0 stops; a load gives
+  what remains; `discard` stays as written; a store with a background transfer in flight is undefined.
+- **An Updater error is not recovered from** (owner): a peripheral's error is its tile's error, which kills
+  everything. The host resets the chip; the boot firmware drops what is left in the queues with the discard
+  count, says it is ready, and the proof starts over.

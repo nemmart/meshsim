@@ -52,7 +52,7 @@ peripheral 1; the Updater is peripheral 2 (`UPDATER-INTERFACE.md`).
 |---|---|
 | the link | packets of up to 512 bytes of data |
 | the packet buffer | holds one packet while its checks are made. A packet that passes is accepted: its header word is dropped and its data words go into its stream's queue. A packet that fails is rejected (`HOST-LINK.md`) |
-| the two queues | foreground and background, **8 KB each,** 512 words: pencilled in (owner), the size to be settled (Open). A stream that fills tells the host to stop sending it (`HOST-LINK.md`) |
+| the two queues | foreground and background, **16 KB each,** 1,024 words (owner, 2026-11-17: twice what the link's window needs, `HOST-LINK.md`). A stream that fills tells the host to stop sending it (`HOST-LINK.md`) |
 | the DMA | the standard one (17.4): copies words out of either queue to an address, on this tile or another |
 | the forward count | moves words from the background queue straight to the Updater, or discards them |
 
@@ -378,7 +378,7 @@ along the chain and keeps packet numbers that it shares with both neighbours.
 
 | | as merged (WORKER4) | being built (WORKER7) |
 |---|---|---|
-| the queues | 16 KB a stream | 8 KB a stream, pencilled in |
+| the queues | 16 KB a stream | 8 KB a stream, one constant. **The design is 16 KB again** (owner, 2026-11-17): to be changed back |
 | words 82 and 83 | a threshold for each stream | `DMA_FORWARD_COUNT` at 82; 83 unmapped |
 | the service flag | posted when the words waiting reach the threshold, and none while words are owed | the rule above |
 | the Updater's data | by DMA into its segment queue, under credits the firmware keeps | by the word port |
@@ -433,7 +433,4 @@ Gold's packetizer and its vectors are `updater_wip/pipeline/gold/` (`packets`, `
 - The word numbers and bit numbers marked †.
 - The foreground stream: what the host's commands and the chip's replies are, as frames.
 - Whether another tile may push words into the outgoing queue itself, by its DMA, or only the master tile's core.
-- **The size of the two queues.** 8 KB each is pencilled in (owner): the size is arbitrary, and 4 KB or 16 KB
-  changes little in the design. The room needed when a stream says stop is small, a packet or two, since "stop"
-  is for each link (`HOST-LINK.md`).
 - Whether the forward count wants an event of its own for reaching 0.

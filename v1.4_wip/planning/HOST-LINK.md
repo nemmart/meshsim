@@ -329,12 +329,16 @@ Nothing in the exchange is relied on to arrive, because the noise can cover it: 
 - **They are for each link** (owner, 2026-11-17): "stop" goes to the neighbour, not to the host ("The chain").
 - **The queue behind a stream keeps room when it says stop:** the packets already on that link's wire still arrive.
   Only the one link counts, since the neighbour stops within a packet or two of seeing the bit.
-- **Ingress's queues are pencilled in at 8 KB on each stream** (owner, 2026-11-16; `INGRESS-INTERFACE.md`), 16
-  full packets, behind a buffer that holds the one packet being checked. The size is to be settled (Open).
-  - The owner's sizes that day were 16 KB, "to make sure we can stop the remote side", which is what v1.37 has as
-    merged; then 4 KB with the forward count; then 8 KB as a placeholder, the size being arbitrary and changing
-    little in the design.
-- **A stream says stop when its queue is half full** (settled 2026-11-17), which leaves 4 KB, 8 full packets.
+- **Ingress's queues are 16 KB on each stream** (owner, 2026-11-17), 32 full packets, behind a buffer that holds
+  the one packet being checked.
+  - **Why the size is not arbitrary** (WORKER8's search of the protocol): if the stop bit is lost, the sender
+    goes on until its window is used up, so **the window must be no more than half a queue,** or the queue
+    overruns. A window of 8 packets, 4 KB, against a queue of 8 KB sat exactly at that limit. The owner: "if
+    we're right on the edge of some bad condition, let's go to 16 KB queues."
+  - The sizes before: 16 KB on 2026-11-16, "to make sure we can stop the remote side", which v1.37 had as first
+    merged; then 4 KB with the forward count; then 8 KB as a placeholder, which WORKER7 built.
+- **A stream says stop when its queue is half full** (settled 2026-11-17), which leaves 8 KB, 16 full packets:
+  twice the window.
   What can still arrive after the bit is sent is two or three: the bit may wait behind a packet being sent, and
   the neighbour finishes the packet it is in.
 - This replaces the per-stream window first proposed here, which did the same job with more machinery.
@@ -373,6 +377,7 @@ The owner's remark: there must be a mountain of literature on building these. Th
 
 - What the foreground stream carries, and how large its messages are.
 - Whether the recovery packet states the packet number it restarts from, or that is the "lost" packet's number plus one.
-- The size of Ingress's queues, 8 KB pencilled in. With "stop" for each link, the room to keep when a stream says
-  stop is only what one link has in flight, a packet or two, so the size is no longer set by the chain's length.
+- Whether the host, which keeps every packet, must also hold itself to the window of 8 a stream: with more
+  outstanding, a lost stop bit can overrun a queue (WORKER8).
+- The sizes of a forwarding ASIC's buffers, which the same rule binds.
 - The timers: how soon an unacknowledged packet is sent again without a "resend".

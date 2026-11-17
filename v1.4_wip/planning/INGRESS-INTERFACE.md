@@ -23,6 +23,29 @@ come.
 | **a queue** | where a stream's words wait in Ingress: the foreground queue and the background queue. Egress has one, the outgoing queue |
 | **a frame** | one of `HOST-FRAMES.md`'s, sent as one or more packets of a stream |
 
+## The peripheral in short
+
+**The master tile has two peripherals** (owner's summary, 2026-11-17): Ingress/Egress, with the UART, is
+peripheral 1; the Updater is peripheral 2 (`UPDATER-INTERFACE.md`).
+
+| in Ingress/Egress | what it is |
+|---|---|
+| two incoming queues | foreground and background, the host's words after the packets' checks |
+| the DMA | the standard one, copying words out of either incoming queue |
+| the forward count | a register: words from the background queue straight to the Updater, or dropped |
+| one outgoing queue | the core's replies to the host, foreground only, with a frame count and a credit |
+| the UART | a byte a store out, a byte a load in, behind FIFOs of 16 bytes |
+| v1.36's control lines | the other tiles' error lines, the barrier's master side, the watchdog, the LED |
+| the link | the packets' checks, numbering and forwarding along the chain (`HOST-LINK.md`); nothing of it is a register |
+
+- **How the core is woken:** the tile has one bit for each peripheral. `peripheral_1` is up while any event of
+  Ingress/Egress that its `EVENTS_MASK` selects is pending; the core then loads the peripheral's `EVENTS` to see
+  which. The Updater's events come by `peripheral_2`.
+- **The two incoming queues have a service flag each** (owner), two bits of that `EVENTS` word with a mask bit
+  each, so the firmware can listen to one and not the other. The UART's two events, the outgoing queue's credit,
+  `dma_done`, the watchdog and the barrier's `all_arrived` are in the same word.
+- **Each incoming queue has a word count** the core can read.
+
 ## The pipeline (owner, 2026-11-16)
 
 | stage | what it does |
@@ -119,9 +142,19 @@ Ingress/Egress is the master tile's peripheral 1 (`v1.36/spec/machine-spec.md` 1
 - **Starting a DMA transfer from the background queue while `count` is not 0 is undefined** (owner).
   - † So is a store of a count while a DMA transfer from the background queue is in flight.
 - **† A store replaces the count.** A store of 0 stops the forwarding: for when the Updater halts on an error.
-- **† A load gives what remains,** and may be stale by the time it is used.
-- **There is no event for the count reaching 0.** The firmware learns that a frame is through from the Updater's
-  `done`, or from the next service flag.
+- **† A load gives what remains,** and may be stale by the time it is used. A load of 0 is exact: only the core
+  raises the count.
+- **There is no event for the count reaching 0,** and none is needed (WORKER7). The firmware learns that a frame
+  is through from the Updater's `done`, or from the next service flag.
+- **`count` reaches 0 when the frame's last word has entered the Updater,** not when it has been decoded. So the
+  next frame's flag can come before the last run's `done`.
+
+**As built in v1.37 (WORKER7), each †:**
+
+- **A cycle works from the registers as they stood at its start.** A word that arrives at the end of a cycle is
+  the queue's from the next, for both ways out.
+- **`discard` stays as written when `count` reaches 0,** and a load reads both fields; the firmware masks [30:0].
+- **A store takes effect at the end of its cycle,** as a store to any window word does.
 
 ## The word port to the Updater
 
@@ -153,9 +186,27 @@ service").
 3. **Not for words that arrive while it is already asking.** After a flag, the next one comes only when the core
    has started something that takes words from the queue, and that has ended.
 
+- **The same rule as one signal** (WORKER7, as built): "asks" is a level, and the flag is posted in the cycle the
+  level rises. That gives the three lines above exactly, with no special case.
+- **"In flight"** (owner, 2026-11-17): a DMA transfer is in flight from a queue while the DMA is busy with a
+  transfer whose `DMA_HDR.queue` names that queue, from `DMA_START` to `dma_done`. It is `STATUS.dma_busy`, a
+  signal the hardware has.
+- † A transfer of 0 words counts as a transfer: at its end, with words waiting, a flag is posted.
 - **The core wakes, and the flag is cleared** by the load of `EVENTS` (owner).
 - **`…_WORDS` is live,** so a core that loads it after the flag sees every word that has arrived by then.
 - The two streams are independent: words waiting on one do not hold the other.
+
+**For firmware writers** (WORKER7's firmware, which keeps to these):
+
+- **A flag is a reason to look, never proof.** A transfer's end can post a flag that is still pending when the
+  next count is stored. On each wake the core loads `DMA_FORWARD_COUNT` and `BACKGROUND_WORDS`, and acts only on
+  a count of 0 with words waiting.
+- **A count is stored, or a background transfer started, only after a load of the count reads 0** and with no
+  background transfer in flight.
+- **Drops that follow one another are one count:** a store replaces a running count, so two drop counts stored
+  back to back lose the first's remainder.
+- **A frame for the Updater waits for the last run's `done`** before it sets the next run up; a frame that is not
+  the Updater's goes ahead, and the run overlaps it.
 
 ## Reading words out: the DMA
 
@@ -332,7 +383,25 @@ along the chain and keeps packet numbers that it shares with both neighbours.
 | the service flag | posted when the words waiting reach the threshold, and none while words are owed | the rule above |
 | the Updater's data | by DMA into its segment queue, under credits the firmware keeps | by the word port |
 | the firmware | about 100 cycles awake a packet's worth, 0.17 to 0.20 of the link's time | a wake a frame |
-| the packet's header | 20-bit numbers | 18-bit numbers and the hops field |
+| the packet's header | 20-bit numbers | 18-bit numbers and the hops field: asked for, not yet done |
+
+**WORKER7's work is built and on its branch, `updater-w7`, not yet merged** (2026-11-17). The 37 proof runs pass
+on it, every image equal to gold's (Quest 213). Measured there, at a byte a cycle:
+
+| | with the thresholds (WORKER4) | with the forward count |
+|---|---|---|
+| the master's wakes a proof, on the small guests | 79 to 97 | 46 to 54 |
+| a frame of update words | a transfer of 256 words every 4 KB, 2.3 to 3 wakes each | 2 to 4 wakes and 450 to 1,200 cycles awake, whatever its length |
+| the master awake, of the link's time to the hand-over | 17 to 20% | **2.4 to 7.0%** at 2²⁹ (EVM Zone 4.5 to 7.0%, Cyclone 2.4 to 4.1%) |
+| the same, the boot left out | | 2.0 to 4.2% |
+
+- **The owner's target, at most 10%, is met on every run.** The figure is all of the master's time awake, of
+  which feeding the Updater is a part.
+- **What is left is a cost a proof, not a cost a word:** the boot (about 86,000 cycles), parsing the proof header
+  (about 14,000 at *N* 64) and frame 8's counts. So the share now mostly measures how long the link takes, and
+  rises on a faster link only because the same work is divided by less time.
+- **The hand-over comes about 3% later on the small guests:** that is the queues going from 16 KB to 8 KB, which
+  holds the link sooner during the boot, not the forward count.
 
 **To come, in no worker's brief yet:**
 

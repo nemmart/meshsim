@@ -133,6 +133,20 @@ so on. Everything in this document but the hops field belongs to one link.
 
 The data and its checksum pass through unchanged.
 
+**What is left of a forwarded packet's header** (owner: "the header gets mostly stripped"):
+
+| field | on the outgoing link |
+|---|---|
+| packet number, acknowledge, flags | dropped, and written afresh: they were the incoming link's |
+| hops | kept, plus one |
+| stream, length | kept: they describe the packet |
+| data checksum | kept, unchanged |
+| header CRC | computed again |
+
+- **Why the data checksum is kept:** the data is then covered from the ASIC that made the packet to the host, the
+  time it waits in each forwarding buffer included. Were each hop to compute it again, a bit that flipped in a
+  buffer would be sealed in as good. And the sending unit has only 12 bytes to do for a forwarded packet.
+
 - **Whoever makes a packet sends it with hops 0:** the host, or an ASIC.
 - **Towards the host, hops says which ASIC made the packet:** its place in the chain. It counts hops, but what it
   is for is this (owner): the FPGA sorts what arrives by it and so rebuilds each ASIC's replies. No ASIC has to
@@ -209,6 +223,43 @@ result = crc XOR 0xFFFFFFFF
   - The same packet after one hop, hops 1: `02 01 01 00 00 00 10 00 EA 9A 70 42 9E BC 0A 21`.
   - With number 0x2ABCD, acknowledge 0x15555 and hops 3: `02 01 CD AB 56 55 35 00 EA 9A 70 42 C9 C4 23 30`.
 - A cross-check for any implementation: the CRC-32C of all 16 header bytes of a good packet is 0x48674BC7.
+
+### The CRC as hardware (2026-11-17)
+
+- **A CRC unit is small,** and can take any number of bits a cycle. For CRC-32C, counted from the polynomial
+  (2-input XOR gates before any sharing; synthesis will share terms and come out lower; not synthesized):
+
+  | bits a cycle | XOR gates | levels of logic | flip-flops |
+  |---|---|---|---|
+  | 1 | about 17, the feedback shared | 2 | 32 |
+  | 8 | about 270 | 4 | 32 |
+  | 32 | about 1,040 | 6 | 32 |
+  | 128 | about 2,490 | 7 | 32 |
+
+- **A byte a cycle is the fit:** the link is 8 lines, a byte a transfer, so the unit takes each byte as it
+  arrives and is done when the packet is. The definition above is already byte by byte.
+- **Checking a header** (owner): bytes 0 to 11 go through the unit and the result is compared with bytes 12 to 15.
+  - The same thing, simpler to build: all 16 bytes go through, and the result is compared with the constant
+    0x48674BC7. The unit then never holds a result while four more bytes arrive.
+  - Bytes 8 to 11 are kept as they pass: they are the data checksum.
+- **Checking the data** (owner): the unit is set back to its starting value, **all ones, not zero,** the 16 ×
+  length data bytes go through, and the result is compared with the four bytes kept. The constant does not serve
+  here, since the checksum is in the header and not after the data.
+  - A packet of length 0 has no bytes to put through: the result is 0x00000000, and the header must carry that.
+- **Four units an ASIC** (owner), one for each direction of each of its two links:
+
+  | unit | what it does |
+  |---|---|
+  | in, from the host's side | checks each packet |
+  | out, down the chain | seals the header again of each of the host's packets it passes down |
+  | in, from down the chain | checks each packet being passed up |
+  | out, towards the host | the data checksum of the ASIC's own packets; the header of every packet, its own and forwarded |
+
+  - The two that receive cannot be one: both links can be receiving at once.
+  - The two that send could share a unit, a header being 12 bytes of work against a packet's 528 on the wire. The
+    owner took four: a second unit is cheaper than the sharing.
+- **An ASIC's own packet is checksummed before it is sent,** not as it goes: the data checksum is in the header,
+  which goes first. The words are waiting in the outgoing queue.
 
 **The order a receiver tests in:**
 

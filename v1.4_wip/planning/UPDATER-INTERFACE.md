@@ -175,11 +175,17 @@ and does not handle the words (`INGRESS-INTERFACE.md`).
   the host back.
 - **† What the Updater keeps behind the port is its own:** a few words, so that the decoder is not starved, and
   nothing a program can see. The buffer that matters is Ingress's background queue, 8 KB.
+  - As built: 4 words, in the black box (WORKER7) and in the real controller (WORKER6) alike, with `ready` a
+    flip-flop. Two would keep a decoder of one word a cycle fed. Nothing outside depends on the number.
+- **The decoder takes no word before a code needs it** (WORKER6, WORKER7). The forward count may offer the next
+  frame's first word early; were the decoder to pull it in, a run with `continue` 0 would clear it away with the
+  last frame's padding.
 - **† `ready` does not depend on `busy`.** An idle Updater takes words until what it keeps is full, and they wait
   for the next run.
 - **Only the reset empties it.** A `START` does not: the stream carries on from one run to the next.
 - **A frame's padding:** a frame is a whole number of 128-bit words, so its last word may hold bits no run uses.
-  They are left in the decoder, and a run with `continue` 0 clears them.
+  They are left in the decoder, and a run with `continue` 0 clears them. The padding is always under 128 bits, so
+  it is never a whole word left on the input. The firmware relies on this.
 
 **It replaces the segment queue** (8 KB, filled by `WRITE` packets from Ingress's DMA, with a 256-word credit that
 the firmware managed). v1.37 as merged still has that queue; "In v1.37" below.

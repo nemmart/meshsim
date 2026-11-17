@@ -33,7 +33,7 @@ its figures and its choices) and `WORKER3-REPORT.md`; in `v1.37_wip/`: `RUNNING-
 
 THE WORK, in `v1.37_wip/`
 1. **Ingress's black box,** to `INGRESS-INTERFACE.md`:
-   - the queues at 4 KB a stream, 256 words;
+   - the queues at 8 KB a stream, 512 words: pencilled in, so make the size one constant;
    - the thresholds and their words gone;
    - `DMA_FORWARD_COUNT` at word 82: the count in [30:0], `discard` in [31]; it waits on an empty queue; a store
      replaces it and a store of 0 stops it; a load gives what remains;

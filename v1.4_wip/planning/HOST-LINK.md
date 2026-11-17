@@ -202,11 +202,12 @@ Nothing in the exchange is relied on to arrive, because the noise can cover it: 
     is put right by the next packet that gets through.
 - **The queue behind a stream keeps room when it says stop:** the packets already on the wire, and in every hop of
   the chain, still arrive.
-- **Ingress's queues are 4 KB on each stream** (owner, 2026-11-16, with the forward count; `INGRESS-INTERFACE.md`),
-  8 full packets, behind a buffer that holds the one packet being checked.
-  - Earlier the same day the owner had made them 16 KB, "to make sure we can stop the remote side", and that is
-    what v1.37 has as merged. The aim stands; whether 4 KB meets it depends on the chain (Open).
-- † A stream says stop when its queue is half full, which leaves 2 KB, 4 full packets, for what is on its way.
+- **Ingress's queues are pencilled in at 8 KB on each stream** (owner, 2026-11-16; `INGRESS-INTERFACE.md`), 16
+  full packets, behind a buffer that holds the one packet being checked. The size is to be settled (Open).
+  - The owner's sizes that day were 16 KB, "to make sure we can stop the remote side", which is what v1.37 has as
+    merged; then 4 KB with the forward count; then 8 KB as a placeholder, the size being arbitrary and changing
+    little in the design.
+- † A stream says stop when its queue is half full, which leaves 4 KB, 8 full packets, for what is on its way.
 - This replaces the per-stream window first proposed here, which did the same job with more machinery.
 
 ## What a sender must keep
@@ -237,7 +238,8 @@ The owner's remark: there must be a mountain of literature on building these. Th
 
 - What the foreground stream carries, and how large its messages are.
 - Whether the recovery packet states the packet number it restarts from, or that is the "lost" packet's number plus one.
-- Whether half a 4 KB queue, 2 KB or 4 full packets, is enough room to keep when a stream says stop: it depends on
+- The size of Ingress's queues, 8 KB pencilled in: whether half of one, 4 KB or 8 full packets, is enough room to
+  keep when a stream says stop. It depends on
   how many packets the chain holds in flight. If it is not, the queue grows; nothing else changes.
 - The timers: how soon an unacknowledged packet is sent again without a "resend".
 - How large the chip's own window of kept packets is.

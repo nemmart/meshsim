@@ -174,7 +174,7 @@ and does not handle the words (`INGRESS-INTERFACE.md`).
   so tightly coupled"). When the Updater cannot take a word, Ingress's background queue fills, and the link holds
   the host back.
 - **† What the Updater keeps behind the port is its own:** a few words, so that the decoder is not starved, and
-  nothing a program can see. The buffer that matters is Ingress's 4 KB background queue.
+  nothing a program can see. The buffer that matters is Ingress's background queue, 8 KB.
 - **† `ready` does not depend on `busy`.** An idle Updater takes words until what it keeps is full, and they wait
   for the next run.
 - **Only the reset empties it.** A `START` does not: the stream carries on from one run to the next.

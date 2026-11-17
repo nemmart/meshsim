@@ -27,7 +27,7 @@ come.
 |---|---|
 | the link | packets of up to 512 bytes of data |
 | the packet buffer | holds one packet while its checks are made. A packet that passes is accepted: its header word is dropped and its data words go into its stream's queue. A packet that fails is rejected (`HOST-LINK.md`) |
-| the two queues | foreground and background, **4 KB each,** 256 words. A stream that fills tells the host to stop sending it (`HOST-LINK.md`) |
+| the two queues | foreground and background, **8 KB each,** 512 words: pencilled in (owner), the size to be settled (Open). A stream that fills tells the host to stop sending it (`HOST-LINK.md`) |
 | the DMA | the standard one (17.4): copies words out of either queue to an address, on this tile or another |
 | the forward count | moves words from the background queue straight to the Updater, or discards them |
 
@@ -220,7 +220,7 @@ What the core does with a background frame:
 
 | | as merged (WORKER4) | this design (WORKER7) |
 |---|---|---|
-| the queues | 16 KB a stream | 4 KB a stream |
+| the queues | 16 KB a stream | 8 KB a stream, pencilled in |
 | words 82 and 83 | a threshold for each stream | `DMA_FORWARD_COUNT` at 82; 83 unmapped |
 | the service flag | posted when the words waiting reach the threshold, and none while words are owed | the rule above |
 | the Updater's data | by DMA into its segment queue, under credits the firmware keeps | by the word port |
@@ -246,8 +246,9 @@ Gold's packetizer and its vectors are `updater_wip/pipeline/gold/` (`packets`, `
 ## Open
 
 - The word numbers and bit numbers marked †.
-- Whether a 4 KB queue leaves enough room for the packets still on their way when a stream says stop
-  (`HOST-LINK.md`).
+- **The size of the two queues.** 8 KB each is pencilled in (owner): the size is arbitrary, and 4 KB or 16 KB
+  changes little in the design. What decides it is the room needed for the packets still on their way when a
+  stream says stop (`HOST-LINK.md`).
 - Whether the forward count wants an event of its own for reaching 0.
 - The sending side, Egress: nothing goes back to the host in v1.37.
 - Whether the foreground stream's messages are frames of the same kind, and what they are.

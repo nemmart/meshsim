@@ -448,7 +448,7 @@ Section 16's target, the Updater at most 10% of the master tile's load, was to b
 owner replaced the question instead.
 
 **The owner's pipeline:** the link; a buffer that holds a packet while it is checked, and accepts or rejects it; a
-4 KB queue for each stream; then two ways out.
+queue for each stream; then two ways out.
 
 | way out | what it is |
 |---|---|
@@ -497,8 +497,9 @@ discards the rest.
   wait behind it. The firmware copies what is in the queue;
 - the Updater keeps only a few words behind its port; `EVENTS` [2] is left unused for now.
 
-**Open:** whether 4 KB a queue leaves room for the packets in flight when a stream says stop. The owner had made
-the queues 16 KB that afternoon for that reason.
+**Open: the size of the two queues.** The owner's sketch had 4 KB; that afternoon they had been made 16 KB so
+that the far side could be stopped in time. The owner: the sizes are arbitrary and change little in the design,
+so 8 KB each is pencilled in and the size is to be settled, by the room the chain's packets in flight need.
 
 **The work:** WORKER6 builds the Updater's controller to the word port, with today's segment queue as a shim in
 front so that it can be checked on v1.37 as it stands. WORKER7 puts the forward count into v1.37: Ingress's black

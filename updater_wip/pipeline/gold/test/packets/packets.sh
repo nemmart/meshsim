@@ -39,12 +39,12 @@ says 0 "^checks: ok" $J packets-read "$P" --no-idle
 says 0 "the frames not looked at" $J packets-read "$P" --packets-only
 [ "$($J packets-read "$P" --list | grep -c "^packet [0-9,]* at byte")" = 148 ] || bad "--list"
 rm -f "$B"
-says 0 "(numbers 1048573 to 146); 2,499 idle bytes" $J packets "$F" "$P" --idle=17 --first=0xFFFFD
-says 0 "passing 0xFFFFE once" $J packets-read "$P" "$B" --first=0xFFFFD --compare="$F"
+says 0 "(numbers 262141 to 146); 2,499 idle bytes" $J packets "$F" "$P" --idle=17 --first=0x3FFFD
+says 0 "passing 0x3FFFE once" $J packets-read "$P" "$B" --first=0x3FFFD --compare="$F"
 cmp -s "$B" "$F" || bad "the frames written back differ (--idle, --first)"
 rm -f "$B"
-says 1 "^REFUSED number: packet 1 at byte 0: number 1048573 on stream 2, 1 expected" $J packets-read "$P" "$B"
-says 1 "^REFUSED first-byte: packet 2 at byte " $J packets-read "$P" "$B" --first=0xFFFFD --no-idle
+says 1 "^REFUSED number: packet 1 at byte 0: number 262141 on stream 2, 1 expected" $J packets-read "$P" "$B"
+says 1 "^REFUSED first-byte: packet 2 at byte " $J packets-read "$P" "$B" --first=0x3FFFD --no-idle
 $J packets "$F" "$P" > /dev/null
 python3 -c "
 import sys; b=bytearray(open('$P','rb').read()); b[1000]^=0x20; open('$W/bad.packets','wb').write(b)

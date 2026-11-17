@@ -121,27 +121,4 @@ private:
     }
 };
 
-// The word port's source for a test: offers a list of 128-bit words in order, `valid` always or, with a seed, now and
-// then (it may drop `valid` between words, as nothing in word_port.h forbids).
-struct WordFeeder final : units::updctl::WordDev {
-    const std::vector<std::array<uint64_t, 2>>* words = nullptr;
-    size_t next = 0;
-    bool random = false;
-    uint64_t offered_cycles = 0;
-
-    explicit WordFeeder(uint64_t seed = 0) : random(seed != 0), rnd(seed ? seed : 1) {}
-    units::wordport::SourceOut out() const override { return o; }
-    bool quiet() const override { return !o.valid && !(words && next < words->size()); }
-    void edge(int64_t, const units::wordport::SinkOut& k) override {
-        if (units::wordport::moves(o, k)) next++;
-        o.valid = words && next < words->size() && (!random || rnd.below(3) != 0);
-        if (o.valid) { o.data[0] = (*words)[next][0]; o.data[1] = (*words)[next][1]; offered_cycles++; }
-    }
-    void restart() { next = 0; o = units::wordport::SourceOut{}; }
-
-private:
-    Rand rnd;
-    units::wordport::SourceOut o;
-};
-
 }  // namespace test_pieces

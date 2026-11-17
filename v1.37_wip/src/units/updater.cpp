@@ -11,24 +11,23 @@ int digit(int64_t pg, int level, int depth) { return int(uint64_t(pg) >> (10 * (
 }  // namespace
 
 Updater::Updater() {
-    static const uint8_t depth[EV_BITS] = {1, 1, 2, 2};
-    static const bool flags[EV_BITS] = {false, false, true, true};   // a credit returned past its depth is a fault
+    static const uint8_t depth[EV_BITS] = {1, 1, 0, 2};               // [2] unused: reads 0
+    static const bool flags[EV_BITS] = {false, false, false, true};  // a credit returned past its depth is a fault
     ev.init(EV_BITS, depth, flags);
     reset(0);
 }
 
-// The reset, and nothing else, empties the queues and fills the credits to 2 (UI, "The region").
+// The reset, and nothing else, empties the free page queue and the data input, and fills the credit to 2 (UI).
 void Updater::reset(int64_t t) {
     errors_ = 0; busy_ = stopped_ = false;
     run_config_ = word_count_ = page_count_ = image_root_ = tracer_root_ = source_root_ = 0;
     std::memset(stat_, 0, sizeof stat_);
-    segments_.clear(); free_pages_.clear();
+    free_pages_.clear(); in_head_ = in_n_ = 0;
     std::memset(bits_, 0, sizeof bits_); nbits_ = 0;
     std::memset(lru_table_, 0, sizeof lru_table_);
     run_addr_ = run_left_ = 0; have_value_ = false;
     held_ = false; wait_ = 0; root_pending_ = false;
     ev.clear_all();
-    ev.set(t, EV_SEGMENT_CREDIT, 2);
     ev.set(t, EV_FREE_PAGE_CREDIT, 2);
 }
 
@@ -40,8 +39,7 @@ void Updater::push(int64_t, Queue& q, unsigned, uint64_t lo, uint64_t hi) {
     q.lo[at] = lo; q.hi[at] = hi;
     q.pushed++;
 }
-// A credit is returned each time half the queue's entries (256 for the segment queue, 128 for the free page queue)
-// have left it since the last return.
+// A credit is returned each time half the queue's entries, 128, have left it since the last return.
 void Updater::pop(int64_t t, Queue& q, unsigned credit, uint64_t& lo, uint64_t& hi) {
     lo = q.lo[q.head]; hi = q.hi[q.head];
     q.head = (q.head + 1) % q.size; q.n--;
@@ -54,10 +52,17 @@ void Updater::accept(int64_t t, int src, uint32_t offset, int size, uint64_t lo,
     if (size != int(lw::SIZE_128))
         FATAL("the Updater: undefined behavior at %lld: a WRITE of another size than 128 bits into its region (offset 0x%x, from %d)",
               (long long)t, offset, src);
-    if (part == PART_SEGMENT) push(t, segments_, EV_SEGMENT_CREDIT, lo, hi);
-    else if (part == PART_FREE_PAGES) push(t, free_pages_, EV_FREE_PAGE_CREDIT, lo, hi);
-    else FATAL("the Updater: undefined behavior at %lld: a WRITE to part %u of its region, which maps parts 1 and 2 (offset 0x%x, from %d)",
+    if (part == PART_FREE_PAGES) push(t, free_pages_, EV_FREE_PAGE_CREDIT, lo, hi);
+    else FATAL("the Updater: undefined behavior at %lld: a WRITE to part %u of its region, which maps part 2 alone (offset 0x%x, from %d)",
                (long long)t, part, offset, src);
+}
+
+// The word that moved on the data input in t, held from the end of t (updater.h, THE DATA INPUT).
+void Updater::port_take(int64_t t, const wordport::SourceOut& w) {
+    if (in_n_ >= INPUT_WORDS) FATAL("the Updater: a word on its data input at %lld with %u held: ready was 0", (long long)t, in_n_);
+    const unsigned at = (in_head_ + in_n_++) % INPUT_WORDS;
+    in_lo_[at] = w.data[0]; in_hi_[at] = w.data[1];
+    words_in++;
 }
 
 // ================================================================================================ the window
@@ -115,12 +120,12 @@ void Updater::run(int64_t t) {
 }
 
 // ================================================================================================ the decoder
-// The stream's next entries into the bit buffer, until it holds `need` bits; false while the segment queue is empty.
-bool Updater::fill(int64_t t, unsigned need) {
+// The stream's next words into the bit buffer, until it holds `need` bits; false while the data input is empty.
+bool Updater::fill(int64_t, unsigned need) {
     while (nbits_ < need) {
-        if (segments_.n == 0) return false;
-        uint64_t lo, hi;
-        pop(t, segments_, EV_SEGMENT_CREDIT, lo, hi);
+        if (in_n_ == 0) return false;
+        const uint64_t lo = in_lo_[in_head_], hi = in_hi_[in_head_];
+        in_head_ = (in_head_ + 1) % INPUT_WORDS; in_n_--;
         const unsigned word = nbits_ / 64, shift = nbits_ % 64;   // fewer than `need` <= 66 bits are held: room for 128 more
         bits_[word] |= lo << shift;
         if (shift) { bits_[word + 1] |= lo >> (64 - shift) | hi << shift; bits_[word + 2] |= hi >> (64 - shift); }
@@ -367,7 +372,7 @@ void Updater::step(int64_t t) {
 
 void Updater::digest_words(int64_t* out) const {
     out[0] = int64_t(sim::hash_fields(errors_, busy_, stopped_, run_config_, word_count_, page_count_, image_root_, tracer_root_, source_root_, stat_));
-    out[1] = int64_t(sim::hash_fields(segments_.head, segments_.n, segments_.left, free_pages_.head, free_pages_.n, free_pages_.left,
+    out[1] = int64_t(sim::hash_fields(in_head_, in_n_, in_lo_, in_hi_, free_pages_.head, free_pages_.n, free_pages_.left,
                                       ev.count, ev.last_post_at));
     out[2] = int64_t(sim::hash_fields(bits_, nbits_, lru_table_, run_addr_, run_left_, have_value_, value_, held_, held_page_, held_at_, wait_));
 }

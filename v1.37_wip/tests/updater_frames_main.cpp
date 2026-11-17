@@ -82,7 +82,7 @@ int main(int argc, char** argv) {
     }
     if (b.u.errors(b.t) != 0) { std::printf("FAIL updater_frames %s, s %u: ERRORS 0x%x\n", path.c_str(), s, unsigned(b.u.errors(b.t))); failures++; }
     if (b.u.unwritten_reads != 0) { std::printf("FAIL updater_frames %s, s %u: %llu reads of a page nothing wrote\n", path.c_str(), s, (unsigned long long)b.u.unwritten_reads); failures++; }
-    if (b.u.free_page_entries() != 0 || b.u.segment_entries() != 0) { std::printf("FAIL updater_frames %s, s %u: entries left in the queues (%u segment words, %u free pages)\n", path.c_str(), s, b.u.segment_entries(), b.u.free_page_entries()); failures++; }
+    if (b.u.free_page_entries() != 0 || b.u.input_words() != 0 || b.stream_left()) { std::printf("FAIL updater_frames %s, s %u: words or pages left (%u words in the Updater's input, %u free pages)\n", path.c_str(), s, b.u.input_words(), b.u.free_page_entries()); failures++; }
     std::printf("%s updater_frames %s, N %u, s %u: %zu runs, %llu pages taken from the queue, %zu given out with the roots, %lld cycles\n",
                 failures ? "FAIL" : "PASS", path.c_str(), asics, s, b.accounts.size(), (unsigned long long)taken, b.pages_given.size(), (long long)b.t);
     return failures ? 1 : 0;

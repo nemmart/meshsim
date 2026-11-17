@@ -34,18 +34,21 @@ bool Bench::run(const Run& r) {
     bool done = false;
     for (int64_t limit = t + cycle_limit; !done && t < limit; t++) {
         // a load of EVENTS under a mask of done and both credits: one count from each that is set
-        const uint32_t ev = u.ev.value(t) & (1u << Updater::EV_DONE | 1u << Updater::EV_SEGMENT_CREDIT | 1u << Updater::EV_FREE_PAGE_CREDIT);
-        // one WRITE a cycle into the region: a free page first, else the stream's next word
+        const uint32_t ev = u.ev.value(t) & (1u << Updater::EV_DONE | 1u << Updater::EV_FREE_PAGE_CREDIT);
+        // one WRITE a cycle into the region: a free page
         if (pages_to_queue > 0 && page_allowance > 0) {
             u.accept(t - 3, 64, Updater::PART_FREE_PAGES << 20, int(units::lw::SIZE_128), uint32_t(new_page()), 0);
             pages_to_queue--; page_allowance--;
-        } else if (stream_left() && allowance > 0) {
-            u.accept(t - 3, 64, Updater::PART_SEGMENT << 20, int(units::lw::SIZE_128), file->lo(*frame, sent), file->hi(*frame, sent));
-            sent++; allowance--;
         }
+        // the word port: both outputs of t, then the step, then the move at the edge
+        units::wordport::SourceOut src;
+        src.valid = stream_left();
+        if (valid_seed) { valid_seed ^= valid_seed << 13; valid_seed ^= valid_seed >> 7; valid_seed ^= valid_seed << 17; src.valid = src.valid && (valid_seed & 3) != 0; }
+        if (src.valid) { src.data[0] = file->lo(*frame, sent); src.data[1] = file->hi(*frame, sent); }
+        const bool move = units::wordport::moves(src, u.port_sink());
         u.step(t);
+        if (move) { u.port_take(t, src); sent++; }
         u.ev.consume_late(t, ev);
-        if (ev & 1u << Updater::EV_SEGMENT_CREDIT) allowance += Updater::SEGMENT_HALF;
         if (ev & 1u << Updater::EV_FREE_PAGE_CREDIT) page_allowance += Updater::FREE_PAGE_HALF;
         if (ev & 1u << Updater::EV_DONE) done = true;
         if (u.errors(t) & ~Updater::ERR_QUEUE_OVERRUN) break;

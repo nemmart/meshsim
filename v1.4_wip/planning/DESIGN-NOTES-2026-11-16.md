@@ -802,3 +802,88 @@ WORKER8 built one link from `HOST-LINK.md` and searched it exhaustively at small
 - **WORKER8 takes the new header as its baseline** before its random campaign and the chain, and searches it.
 - **What is built has the 16-byte header:** gold, the vectors, v1.37 (and `updater-w7` its 18-bit form). The change
   is step 2c of the milestone, after WORKER8 confirms it.
+
+## 26. One run of packet numbers for a link; the header is 16 bytes again (2026-11-17, about 10 a.m.)
+
+- **The owner:** "why have separate packet numbers for the streams? The packet number is about the link, not the
+  stream."
+- **Decided (owner): a direction of a link has one run of numbers, shared by both streams.** One acknowledgement,
+  one resend flag, one window of 8 packets, one set of kept packets. Both streams' stop bits are in every header.
+  `HOST-LINK.md`, "One run of numbers for a link".
+- **The header is one 128-bit word again,** nearly the one WORKER7 built: the stop bits move to bits [57:56] and
+  restart takes the old stop bit's place. Section 25's header of 20 bytes lasted two and a half hours; WORKER8
+  had built it.
+- **The design session's reason for numbers of their own was wrong** (item 1 of the link's review: "a stopped
+  stream leaves gaps"). A stopped stream has no packets sent, and the other's numbers stay consecutive.
+- **Why a stopped stream cannot block the other:** both stop bits reach the sender in anything it hears; a queue
+  says stop with 8 KB free, and a window is 4 KB; so a good packet always has room and is never refused.
+  - **To be shown by WORKER8's search,** not assumed.
+- **What it costs:** a damaged background packet has the foreground packets behind it sent again; the window is
+  shared.
+- **While this was decided the workers moved on:**
+  - WORKER8 built the 20-byte header, the chain and the random runs (`updater-w8`, `e8f28bcd`). It goes to one
+    run of numbers next.
+  - WORKER9 finished step 1: `updater-w7` merged, the shim out; Quests 222 to 226 pass, the 37 proof runs' cycles
+    equal to Quest 220's with every setting off (`updater-w9`, `b32cca91`). It waits for the integrator to merge
+    that much.
+  - WORKER10 reports the wire built and every check passing where it ran, with a task for the runner
+    (`updater-w10`, `670c84b2`).
+
+## 27. The link document brought up to what is known (2026-11-17, about 1:30 p.m.)
+
+- **The owner: "let's update our link doc with the things we know we need."** `HOST-LINK.md` now has WORKER8's
+  rules in place, each marked: the wrong-number rows and the empty packet's number (so no resend timer); the
+  528 zeros before hunting; a lost end answering "lost"; acknowledgements counting in any state; **a new
+  section, "Starting a link again"** (the restart flag, the sender checking what it keeps, a packet made wrong,
+  the false acknowledgement told by acknowledgements going backwards); an acknowledgement as soon as the line is
+  free; the window no more than half a queue, the host included; and in the chain, acknowledging on taking in,
+  the last node told it has no neighbour, forwarding buffers with the same rule as queues.
+- **What they rest on, and what they do not:** the searches and runs were on numbers for each stream. One run of
+  numbers for a link is still to be searched. The document's opening says so.
+- **Kept as open there:** the two failing seeds of Quest 227; a neighbour that goes silent; the numbers marked †;
+  the name of the error a restarted link raises.
+- **The false packet number is recorded as a known limit,** with the figures: the header's CRC catches up to 7
+  flipped bits, and damaged data passing its checksum is at least 600 times as likely.
+- **The runner:** Quests 227 to 229 (WORKER8's campaigns on the 20-byte header) were parked in `tasks/hold` and
+  the running one killed by the owner. The runner has 16 CPUs and 62 GB.
+- WORKER9's step 1 is merged (section 26); WORKER7 is closed.
+
+## 28. The owner goes through WORKER8's findings one at a time (2026-11-17, about 2 p.m.)
+
+Rulings as they came; `HOST-LINK.md` has each.
+
+- **Findings 1 to 7 understood and accepted:** a good packet with the wrong number ("clearly a mistake in our
+  rule writing"); the last packet of a burst lost, found from the next number on an idle line; both ends lost
+  ("lost" is a good packet: it tells the last packet received); a lost receiver waiting for the zeros; the lost
+  stop bit and the window; one stream's status behind the other's data ("there is really just one stream with
+  two destination queues"); one end starting again.
+- **The lost side's repeat stays 1,024 zeros and "lost",** not every 512 idle cycles: the other end may be lost
+  too, and a lost receiver reads no header until it has seen a run of zeros longer than a packet.
+- **Decided (owner): the restart packet is a "magic" full packet,** its data the first 32 primes as bytes, 2 to
+  131, repeated 16 times; checksum 0xC8981D21. An end acts on it only if the header, the checksum and the pattern
+  all agree. "Lost" and its answer stay 16 bytes, since they must get through noise.
+  - The owner's first pattern was the primes below 256, 54 bytes, repeated to 512; the second is two whole words.
+  - (The design session first committed the first pattern with a checksum it had not computed, and corrected it
+    in the next commit.)
+- **Decided (owner): both checks are computed afresh whenever a packet is made ready to send,** forwarded ones
+  and resends included: "use the fresh value as the packet checksum, recompute the header checksum."
+  - This replaces WORKER8's rule for a kept packet gone bad (compare with the checksum held; start the link
+    again), and the design session's keeping of the data checksum end to end along the chain.
+  - **Given up, knowingly:** the checks cover the wire and not the memory. A bit that flips in a queue, a kept
+    packet or a forwarding buffer goes out with a matching checksum.
+  - A sending unit now passes over every packet's data once before it leaves.
+- **A packet made wrong** (owner): asked for again the first time, since it may be noise; the error only if it
+  fails the same way again. One flag in the receiver tells: set by a wrong packet with the number expected,
+  cleared only when a packet is taken. This replaces WORKER8's rule, which judged at the first time by whether
+  the data was whole, and would have blamed the sender for noise in the header alone.
+- **A false acknowledgement** (owner): not watched for. If the other end later asks for a packet no longer kept,
+  that is the error. "If a resend is never requested, then no harm, no foul": the packets let go early usually
+  arrive whole. This replaces WORKER8's rule (acknowledgements going backwards twice), which would have raised
+  the error with no harm done.
+- **A false packet number: "we can live with that"** (owner). Higher than expected is a resend; lower is taken
+  for a duplicate; only a number that lands exactly on the one expected, on the packet after a lost one, does
+  harm.
+- **The chain** (owner): a node's job on a packet is done when it has received it; the last node is told by a
+  pin.
+- **A neighbour that goes silent: not designed for now;** left open.
+- The walk through is complete. WORKER8 is to be told what changed in its rules.

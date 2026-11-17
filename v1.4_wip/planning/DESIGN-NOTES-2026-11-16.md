@@ -551,5 +551,8 @@ box, the port, the firmware. `INGRESS-INTERFACE.md` and `UPDATER-INTERFACE.md` a
     chain's background stream moves at its slowest ASIC's pace. The room a queue must keep is then one link's
     packets in flight, not the chain's.
   - (The design session first read it as numbers kept between the host and each ASIC. The owner corrected it.)
+- **The chain comes before an ASIC's own data** (owner). Towards the host an ASIC sends, in this order: a
+  foreground packet to forward, a foreground packet of its own, a background packet to forward, a background
+  packet of its own. It fills the gaps with its own.
 - **What it changes that is built:** gold's packetizer, its reader and the vectors; v1.37's link header and
   Ingress's black box. The first example header is the same bytes as before. Given to WORKER7.

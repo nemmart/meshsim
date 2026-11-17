@@ -146,6 +146,16 @@ The data and its checksum pass through unchanged.
   It happens to be the receiving ASIC's own place in the chain.
 - **On an outgoing link an ASIC's own packets and the ones it forwards share one run of packet numbers** on each
   stream.
+- **The chain comes before an ASIC's own data** (owner). Towards the host, what an ASIC sends next is the first of
+  these that is waiting:
+  1. a foreground packet to forward;
+  2. a foreground packet of its own;
+  3. a background packet to forward;
+  4. a background packet of its own.
+  - The stream decides first; within a stream the chain wins. An ASIC fills the gaps with its own data (owner).
+  - It keeps the forwarding short, so a chain does not back up behind an ASIC with much to say. The ASIC nearest
+    the host waits longest, behind every ASIC further down.
+  - Away from the host there is nothing to order: an ASIC makes no packets of its own in that direction.
 - **An ASIC keeps what it has sent until its neighbour acknowledges it,** in both directions (owner): towards the
   host its own packets and the ones it forwards, and away from the host the host's packets it passes down.
 - **"Stop" is for each link** (owner). An ASIC whose background queue fills stops its neighbour up the chain. That

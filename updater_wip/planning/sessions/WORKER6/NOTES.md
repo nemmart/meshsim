@@ -1,6 +1,6 @@
 # WORKER6 notes: the Updater's controller
 
-**Status: the plan, for the owner's go-ahead. No code yet.**
+**Status: the plan, with the owner's go-ahead (2026-11-16). Building.**
 
 Abbreviations: UI `UPDATER-INTERFACE.md`, II `INGRESS-INTERFACE.md`, AXI `AXI-INTERFACE.md`, CI `CACHE-INTERFACE.md`,
 HF `HOST-FRAMES.md`, N15 and N16 the design notes of 2026-11-15 and 11-16. "The black box" is `src/units/updater.*`.
@@ -95,8 +95,19 @@ read's data is in its register the next cycle.**
   other.
 - **It decodes only while busy and `WORD_COUNT` is not 0,** and counts `WORD_COUNT` down for each word, header or
   value, as the black box does. A header word sets `run_addr` and `run_left` and gives nothing out.
-- **Its output register** holds the next value with its address and **type**: page if the address is a multiple of
-  512 and `run_left` ≥ 512; half if a multiple of 256 and ≥ 256; words otherwise. It decodes one value ahead.
+- **Its output register** holds the next value with its address and **type**. It decodes one value ahead.
+- **The type counts only the values this run will deliver** (owner, at the go-ahead). A run of the Updater can end
+  inside a run of values: `WORD_COUNT` reaches 0 first, and the held page is written at the run's end. So with *n* =
+  min(`run_left`, `WORD_COUNT`), both counted with this value (the values of a run of values come before any header
+  word, so `WORD_COUNT` bounds them): page if the address is a multiple of 512 and *n* ≥ 512; half if a multiple of
+  256 and *n* ≥ 256; words otherwise. A half that the run leaves part-written is read before it is patched.
+  - **The black box does not do this:** its "covered" test is `run_left` ≥ 256 alone (`updater.cpp`, `patch`). Its
+    images are still right, because its page memory always holds the true page, but it does not count the read it
+    should have made, so its `STAT_PAGES_READ` is one low for each such half. The comparison adds those halves, which
+    the bench counts exactly from the stream it sent (section 9). A finding for the report; the black box is not
+    changed.
+  - Gold's frames never reach the case (a run ends at a segment's end, where its runs of values end); the random
+    streams do, and a fixed case ends a run 1, 255 and 256 words into a covered half and 511 into a covered page.
 - `continue` 0 at `START` clears the bit buffer, the table and the run; 1 keeps them (UI).
 
 ## 6. The state machine
@@ -196,7 +207,7 @@ The test LPDDR and the stand-in check the first and third rows as they run (sect
 | check | how | on what |
 |---|---|---|
 | **the controller alone against gold** | `updater_bench` with the controller, the feeder on the port (no shim), the test LPDDR and the stand-in; the images against gold's `frames-images`, `PAGE_COUNT` 0 at every `done` | every fixture `test_updater` runs on the black box, at its four *s*; `updater_frames --ctl` on any frame file |
-| **against the black box** | the same driver for both, with the shim. At each `done`: block 2 and the errors equal; the stores byte for byte; the `done` and free page credits posted; the stream not yet decoded equal (the shim's entries, the FIFO's and the bit buffer's against the black box's queue and bits); `STAT_PAGES_READ` and `_WRITTEN` equal. The cycle statistics are not compared (the black box's timing is not a design's) | gold's fixtures; random streams: depths 1 to 3, holes, shared pages at every level (files built by copying roots of trees made first), runs ending inside a page, `continue` across runs at odd counts, raw and LRU, `tracer_copy`, the three root modes |
+| **against the black box** | the same driver for both, with the shim. At each `done`: block 2 and the errors equal; the stores byte for byte; the `done` and free page credits posted; the stream not yet decoded equal (the shim's entries, the FIFO's and the bit buffer's against the black box's queue and bits); `STAT_PAGES_WRITTEN` equal, and `STAT_PAGES_READ` equal to the black box's plus the halves its "covered" test skips (section 5). The cycle statistics are not compared (the black box's timing is not a design's) | gold's fixtures; random streams: depths 1 to 3, holes, shared pages at every level (files built by copying roots of trees made first), runs ending inside a page, `continue` across runs at odd counts, raw and LRU, `tracer_copy`, the three root modes |
 | **the timing varied** | every check above again with the test LPDDR's jitter, the stand-in at random, and the feeder's `valid` at random, several seeds: the same results | |
 | **errors** | an error on a read and on a write; `lpddr_error` and `not_owned` to an update; a word beyond; a page with `PAGE_COUNT` 0; a full free page queue; through the shim a full segment queue. Each against the black box where it has the case: the same bits, stopped, no `done` | |
 | **the whole chip** | the setting on and the shim in: `test_master`, `proof-real`, `proof-matrix`, `proof-29` (`proof_run --updater-ctl`). The firmware unchanged. Every image, row and record as with the black box | the `ctl` steps of `run_tests.sh`, on the runner |
@@ -218,6 +229,15 @@ statistics registers and the test pieces' counts, on the fixtures and the proof 
 6. The figures, the running guide and `CHANGES-v1.37.md`, `REPORT.md`.
 
 Merging `main` in between pieces; a commit and push after each.
+
+## The go-ahead (owner, 2026-11-16)
+
+- **Go ahead as written,** with two notes. (1) The decoder's type must allow for a run that ends inside a run of
+  values: section 5, and a random-stream case that hits it. (2) WORKER5 and WORKER7 edit the same shared files (the
+  config structs, `periph_slot`, `run_tests.sh`, the makefiles): **my edits there as small as possible, and in one
+  place each.**
+- **The two departures from CI section 3** (the roots of v1.37 not from the free page queue; no discards) are
+  accepted as document changes, to be listed in the report.
 
 ## Choices
 

@@ -73,7 +73,7 @@ struct Ctl {
     enum : unsigned { S_CYCLES, S_STALL_DATA, S_STALL_PAGES, S_STALL_MEMORY, S_PAGES_READ, S_PAGES_WRITTEN };
     enum : uint32_t { RC_LRU = 1u << 0, RC_CONTINUE = 1u << 1, RC_TRACER_COPY = 1u << 2, RC_DEPTH_LO = 3, RC_ROOT_LO = 5, RC_BITS = 0x7F };
     enum : unsigned { ROOT_EXISTS = 0, ROOT_EMPTY = 1, ROOT_COPY = 2 };
-    // ERRORS' bits (UI): bit 0 is the free page queue's overrun here; the top ORs the shim's in
+    // ERRORS' bits (UI): bit 0 is the free page queue's overrun
     enum : uint8_t { ERR_QUEUE_OVERRUN = 1 << 0, ERR_BEYOND = 1 << 1, ERR_LPDDR = 1 << 2, ERR_OUT_OF_PAGES = 1 << 3, ERR_NOT_OWNED = 1 << 4 };
 
     static constexpr unsigned FIFO = 4;            // words kept behind the port (NOTES C1)

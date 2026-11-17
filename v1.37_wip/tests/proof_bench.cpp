@@ -40,8 +40,8 @@ enum : unsigned { MR_STATUS = 0, MR_DETAIL, MR_FRAMES, MR_RUNS, MR_PAGES_TAKEN, 
                   MR_ROOT_TABLE, MR_ROOT_CYCLE0, MR_ROOT_START, MR_ROOT_FINAL, MR_ROOT_TRACER, MR_DEPTHS, MR_TILE_ERRORS, MR_INGRESS_ERRORS,
                   MR_UPDATER_ERRORS, MR_ERROR_LINES, MR_MCAUSE = 22, MR_MEPC, MR_BOOT, MR_HANDED, MR_RELEASED, MR_END, MR_PAGES_QUEUED,
                   MR_LINK_WORDS, MR_WAKES, MR_LINK_READS, MR_PAGE_COUNT = 32, MR_RUN_START = 40, MR_RUN_DONE = 48, MR_FRAME_TYPE = 56,
-                  MR_FRAME_START = 72, MR_FRAME_WAKES = 88, MR_FRAME_READS = 104, MR_THRESHOLD_STORES = 120, MR_HANDED_WAKES, MR_HANDED_READS,
-                  MR_WORDS };
+                  MR_FRAME_START = 72, MR_FRAME_WAKES = 88, MR_FRAME_READS = 104, MR_COUNT_STORES = 120, MR_HANDED_WAKES, MR_HANDED_READS,
+                  MR_FRAME_AWAKE, MR_WORDS = MR_FRAME_AWAKE + 16 };
 constexpr uint32_t MR_OK = 1, MR_TRAP = 2;
 // ---- fw/tracer/tracer_layout.h's header words the master writes
 enum : unsigned { TL_H_EXPECT = 8, TL_H_ADVICE_N = 10, TL_H_HASH_MUL = 12, TL_H_HASH_STEP = 13, TL_H_HASH_LINES = 14 };
@@ -152,7 +152,7 @@ struct ChipProof final : segment::Proof {
         desc[MD_H_TR_RECORD] = p.tr_record; desc[MD_H_TR_EXPECT] = p.tr_expect; desc[MD_H_TR_ADVICE] = p.tr_advice;
         desc[MD_H_TR_ADVICE_ROWS] = p.tr_advice_rows; desc[MD_H_GO_LATENCY] = 1;
         m.place(units::ID_MASTER, rtl_images::elf_symbol(master_elf, "boot_desc"), desc);
-        m.place(units::ID_MASTER, rtl_images::elf_symbol(master_elf, "system_config"), {MS_MAGIC, c.asics, c.segment, c.threshold});
+        m.place(units::ID_MASTER, rtl_images::elf_symbol(master_elf, "system_config"), {MS_MAGIC, c.asics, c.segment, 0});
         results_at = rtl_images::elf_symbol(master_elf, "master_results");
         m.set_link(c.packets);
         m.ingress().link_cycles_per_byte = c.cycles_per_byte;
@@ -180,10 +180,12 @@ struct ChipProof final : segment::Proof {
         if (R[MR_STATUS] != MR_OK) {                 // where it stopped
             updater_view::UpdaterView& u = view;
             units::IngressEgress& link = m.ingress();
-            std::printf("%s: stopped with: the Updater busy %d, WORD_COUNT %u, PAGE_COUNT %u, %u segment words and %u free pages queued, %u dones; the link: %llu packets "
-                        "and %llu words arrived, %u words read out, %u and %u words waiting; %u pages queued by the master\n", name, int(u.busy()), u.word_count(),
-                        u.page_count(), u.segment_entries(), u.free_page_entries(), unsigned(done.size()), (unsigned long long)link.link_packets,
-                        (unsigned long long)link.link_words, R[MR_LINK_WORDS], link.link_stream[0].held, link.link_stream[1].held, R[MR_PAGES_QUEUED]);
+            std::printf("%s: stopped with: the Updater busy %d, WORD_COUNT %u, PAGE_COUNT %u, %u words on its input and %u free pages queued, %u dones; the link: "
+                        "%llu packets and %llu words arrived, %u words read out by the DMA, %llu forwarded, %llu discarded, DMA_FORWARD_COUNT 0x%x, %u and %u words "
+                        "waiting; %u pages queued by the master\n", name, int(u.busy()), u.word_count(), u.page_count(), u.input_words(), u.free_page_entries(),
+                        unsigned(done.size()), (unsigned long long)link.link_packets, (unsigned long long)link.link_words, R[MR_LINK_WORDS],
+                        (unsigned long long)link.link_forwarded, (unsigned long long)link.link_discarded, link.forward, link.link_stream[0].held,
+                        link.link_stream[1].held, R[MR_PAGES_QUEUED]);
         }
     }
 
@@ -219,6 +221,7 @@ struct ChipProof final : segment::Proof {
             numbers->master_awake = core.mcycle - core.cycles_wfi;
             numbers->master_instructions = core.instructions;
             numbers->link_room_cycles = link.link_room_cycles; numbers->link_last_at = link.link_at;
+            numbers->link_forwarded = link.link_forwarded; numbers->link_discarded = link.link_discarded;
             numbers->master_awake_handed = awake_handed;
             for (size_t i = 0; i < done.size(); i++) {
                 RunAccount a;
@@ -275,10 +278,12 @@ struct ChipProof final : segment::Proof {
                  R[MR_UPDATER_ERRORS], R[MR_ERROR_LINES], R[MR_ERROR_LINES + 1], R[MR_ERROR_LINES + 2]);
         if (u.errors(0) != 0 || link.link_errors != 0) fail("ERRORS at the end: the Updater's 0x%x, the link's 0x%x", unsigned(u.errors(0)), unsigned(link.link_errors));
         if (u.unwritten_reads() != 0) fail("%llu reads of a page nothing wrote%s", (unsigned long long)u.unwritten_reads(), u.ctl() ? ", or checks of the test pieces" : "");
-        if (u.segment_entries() != 0 || u.free_page_entries() != 0) fail("entries left in the Updater's queues: %u segment words, %u free pages", u.segment_entries(), u.free_page_entries());
-        const uint64_t words = c.file.bytes.size() / 16;
-        if (link.link_cut || link.link_words != words || R[MR_LINK_WORDS] != words)
-            fail("the link: %llu words arrived, %u read out by the master, of %llu%s", (unsigned long long)link.link_words, R[MR_LINK_WORDS], (unsigned long long)words, link.link_cut ? "; the file ends inside a packet" : "");
+        if (u.input_words() != 0 || u.free_page_entries() != 0) fail("left in the Updater: %u words on its input, %u free pages", u.input_words(), u.free_page_entries());
+        const uint64_t words = c.file.bytes.size() / 16, out = R[MR_LINK_WORDS] + link.link_forwarded + link.link_discarded;
+        if (link.link_cut || link.link_words != words || out != words || (link.forward & units::IngressEgress::FWD_COUNT) != 0)
+            fail("the link: %llu words arrived, %u read out by the DMA, %llu forwarded, %llu discarded, of %llu; DMA_FORWARD_COUNT 0x%x at the end%s",
+                 (unsigned long long)link.link_words, R[MR_LINK_WORDS], (unsigned long long)link.link_forwarded, (unsigned long long)link.link_discarded,
+                 (unsigned long long)words, link.forward, link.link_cut ? "; the file ends inside a packet" : "");
 
         // ---- each image as its run ended, against gold's; the frozen ones again at the end
         for (size_t i = 0; i < done.size() && i < run_names.size(); i++) {

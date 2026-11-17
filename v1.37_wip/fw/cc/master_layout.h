@@ -10,8 +10,8 @@
  *   0x48000    record s, 68 rows, as frame 7 has it, its word 66 with the roots and depths
  *   0x48200    record s + 1, 68 rows: the end state the tracer tile checks its last record against
  *   0x48400    two rows for the tracer tile's header: HASH_MUL, HASH_STEP, HASH_LINES, ADVICE_N; then zeros
- *   0x48480    scrap, 256 rows, a credit's worth (WORKER4; 32 before): where the words of a frame that nobody wants are
- *              read out to
+ *   0x48480    unused, 256 rows: the scrap area until WORKER7 (what nobody wants is now dropped by the forward count);
+ *              kept so that no address after it moves
  *   0x48880    advice log s, a row for each two values, to the scratchpad's end
  */
 #ifndef MASTER_LAYOUT_H
@@ -22,8 +22,6 @@
 #define ML_RECORD            0x48000u
 #define ML_EXPECT            0x48200u
 #define ML_HEADER            0x48400u
-#define ML_SCRAP             0x48480u
-#define ML_SCRAP_ROWS        256u
 #define ML_ADVICE            0x48880u
 #define ML_ADVICE_ROWS       ((0x100000u - ML_ADVICE) / 4u)
 
@@ -44,8 +42,7 @@
 #define MS_H_MAGIC           0
 #define MS_H_ASICS           1    /* N: 64, 128 or 256 */
 #define MS_H_SEGMENT         2    /* s: the segment this ASIC runs, below N */
-#define MS_H_THRESHOLD       3    /* the threshold after a frame's header word, before the words left cap it: 1 to 1,024
-                                   * words; 0 is the default, 256, a credit of the Updater's segment queue (WORKER4's C10) */
+#define MS_H_UNUSED          3    /* 0: the threshold until WORKER7; kept so that the layout does not move */
 #define MS_H_WORDS           4
 
 /* master_results, by word; the harness finds it by its symbol */
@@ -76,7 +73,7 @@
 #define MR_RELEASED          26   /* mcycle at the last release: the windows have landed */
 #define MR_END               27   /* mcycle at the exit */
 #define MR_PAGES_QUEUED      28   /* pages pushed into the free page queue */
-#define MR_LINK_WORDS        29   /* words read out of Ingress */
+#define MR_LINK_WORDS        29   /* words copied out of Ingress by its DMA (the forward count's are Ingress's to count) */
 #define MR_WAKES             30   /* the core's wakes: the WFIs it returned from, from the reset to the exit */
 #define MR_LINK_READS        31   /* the transfers of Ingress's DMA it started */
 #define MR_PAGE_COUNT        32   /* 32-39: PAGE_COUNT at each run's done */
@@ -86,10 +83,12 @@
 #define MR_FRAME_START       72   /* 72-87: mcycle when its header word was in */
 #define MR_FRAME_WAKES       88   /* 88-103: MR_WAKES's count when its header word was in */
 #define MR_FRAME_READS       104  /* 104-119: MR_LINK_READS's count then */
-#define MR_THRESHOLD_STORES  120  /* stores to BACKGROUND_THRESHOLD */
+#define MR_COUNT_STORES      120  /* stores to DMA_FORWARD_COUNT */
 #define MR_HANDED_WAKES      121  /* MR_WAKES's count at the start of the tracer tile's load */
 #define MR_HANDED_READS      122  /* MR_LINK_READS's then */
-#define MR_WORDS             123
+#define MR_FRAME_AWAKE       123  /* 123-138: mcycle less the cycles in WFI when each frame's header word was in (WORKER7):
+                                   * the first is the boot's cost */
+#define MR_WORDS             139
 #define MR_MAX_RUNS          8
 #define MR_MAX_FRAMES        16
 

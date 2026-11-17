@@ -54,7 +54,7 @@ def read(f, first=(None, 1, 1), frames=True):
             raise Refused("header-crc", k, pos)
         stream = word & 15
         length = (word >> 8) & 0xFF
-        number = (word >> 16) & 0xFFFFF
+        number = (word >> 16) & 0x3FFFF            # [33:16]; acknowledge [51:34] and hops [55:52] are not tested
         if stream not in (1, 2):
             raise Refused("stream", k, pos)
         if length > 32:
@@ -66,14 +66,14 @@ def read(f, first=(None, 1, 1), frames=True):
             raise Refused("truncated", k, pos)
         if (word >> 64) & 0xFFFFFFFF != crc32c(data):
             raise Refused("data-checksum", k, pos)
-        if number != expect[stream]:               # 0 and 0xFFFFF are never expected
+        if number != expect[stream]:               # 0 and 0x3FFFF are never expected
             raise Refused("number", k, pos)
         c["packets"] += 1
         c["s2" if stream == 2 else "s1"] += 1
         if length == 0:
             c["empty"] += 1                        # it takes no number
         else:
-            expect[stream] = 1 if number == 0xFFFFE else number + 1
+            expect[stream] = 1 if number == 0x3FFFE else number + 1
             if stream == 1:
                 c["words1"] += length
             else:
@@ -138,8 +138,8 @@ def main(directory):
         data, all_bytes = b"".join(v["data"]), b"".join(v["bytes"])
         header = all_bytes[:16]
         # the header rebuilt from the fields
-        low = (num("stream") | num("flags") << 4 | num("length") << 8 | num("number") << 16 | num("acknowledge") << 36
-               | num("reserved") << 56 | num("data-checksum") << 64)
+        low = (num("stream") | num("flags") << 4 | num("length") << 8 | num("number") << 16 | num("acknowledge") << 34
+               | num("hops") << 52 | num("reserved") << 56 | num("data-checksum") << 64)
         word = low | num("header-crc") << 96
         expect(word.to_bytes(16, "little") == header, name + ": the fields make the header bytes")
         expect(low.to_bytes(12, "little") == bytes.fromhex(v["header-0-11"]), name + ": header-0-11")
@@ -159,8 +159,17 @@ def main(directory):
         expect(got == v["expect"], f"{name}: expect {v['expect']}, this reader says {got}")
         if good and got == "ok":
             expect(result[0]["after"] == num("next-number-after"), name + ": next-number-after")
-            expect(num("next-number-after") == (nxt if num("length") == 0 else 1 if nxt == 0xFFFFE else nxt + 1),
+            expect(num("next-number-after") == (nxt if num("length") == 0 else 1 if nxt == 0x3FFFE else nxt + 1),
                    name + ": a packet with data takes a number, one of length 0 does not")
+
+    # HOST-LINK.md's three example headers (its "The two checks"), copied from the document
+    host_link = {"host-link-example": "02 01 01 00 00 00 00 00 EA 9A 70 42 A0 8C 06 E1",
+                 "host-link-example-one-hop": "02 01 01 00 00 00 10 00 EA 9A 70 42 9E BC 0A 21",
+                 "host-link-example-hops-3": "02 01 CD AB 56 55 35 00 EA 9A 70 42 C9 C4 23 30"}
+    by_name = {v["name"]: v for v in packets}
+    for name, want in host_link.items():
+        v = by_name.get(name)
+        expect(v is not None and b"".join(v["bytes"])[:16] == bytes.fromhex(want), f"HOST-LINK.md's example {name}: the header's bytes")
 
     frames = (d / "small.frames").read_bytes()
     files = {}

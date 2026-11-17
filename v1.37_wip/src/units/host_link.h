@@ -5,7 +5,8 @@
 // A PACKET (HL) is a header word of 128 bits, then its data, 0 to 32 words of 128 bits, every word as 16 bytes on the
 // link, the least significant byte first. The header word:
 //   [3:0] stream (1 foreground, 2 background; never 0)   [7:4] flags   [15:8] length, the data's words
-//   [35:16] packet number   [55:36] acknowledge   [63:56] reserved, 0
+//   [33:16] packet number, 18 bits   [51:34] acknowledge, 18 bits   [55:52] hops   [63:56] reserved, 0
+//   (owner, 2026-11-17: the number and the acknowledge field were 20 bits, [35:16] and [55:36], before the hops field)
 //   [95:64] the data checksum, over the data's bytes   [127:96] the header CRC, over bits [95:0], the word's first 12 bytes
 // Both checks are CRC-32C (Castagnoli): the polynomial 0x1EDC6F41, bits reflected, the register starting at 0xFFFFFFFF
 // and its complement taken at the end, over the bytes in the order they go on the link; the ASCII string "123456789"
@@ -20,9 +21,10 @@
 //      above 32, a reserved bit                                                  -> FORMAT
 //   3. the data checksum                                                         -> CRC
 //   4. the packet number: the next one of its stream, 1 first and 1 again after
-//      0xFFFFE. A packet of length 0 takes no number: its field holds the number
+//      0x3FFFE. A packet of length 0 takes no number: its field holds the number
 //      the stream's next packet with data will carry (owner, 2026-11-16)         -> SEQUENCE
-// The flags and the acknowledge field need the way back to the host, and are not looked at.
+// The flags and the acknowledge field need the way back to the host, and are not looked at. The hops field is not
+// tested: no value of it is an error (HL, "The chain, and the hops field"); it is read, and kept in the packet.
 #pragma once
 
 #include <cstddef>
@@ -32,7 +34,7 @@ namespace units::hostlink {
 
 constexpr unsigned MAX_WORDS = 32;                 // a packet's data
 constexpr unsigned FOREGROUND = 1, BACKGROUND = 2;  // the streams' numbers on the link
-constexpr uint32_t FIRST_NUMBER = 1, LAST_NUMBER = 0xFFFFE;
+constexpr uint32_t FIRST_NUMBER = 1, LAST_NUMBER = 0x3FFFE;
 
 // CRC-32C of n bytes (above).
 inline uint32_t crc32c(const uint8_t* bytes, size_t n) {
@@ -47,6 +49,7 @@ inline uint32_t crc32c(const uint8_t* bytes, size_t n) {
 struct Packet {
     unsigned stream = 0, flags = 0, length = 0;    // stream: 1 or 2
     uint32_t number = 0, acknowledge = 0;
+    unsigned hops = 0;
     uint64_t lo[MAX_WORDS] = {}, hi[MAX_WORDS] = {};   // the data's words
 };
 
@@ -77,7 +80,7 @@ struct Reader {
         auto u32 = [&](unsigned i) { return uint32_t(h[i]) | uint32_t(h[i + 1]) << 8 | uint32_t(h[i + 2]) << 16 | uint32_t(h[i + 3]) << 24; };
         const uint64_t low = uint64_t(u32(0)) | uint64_t(u32(4)) << 32;
         p.stream = unsigned(low & 15); p.flags = unsigned(low >> 4 & 15); p.length = unsigned(low >> 8 & 0xFF);
-        p.number = uint32_t(low >> 16 & 0xFFFFF); p.acknowledge = uint32_t(low >> 36 & 0xFFFFF);
+        p.number = uint32_t(low >> 16 & 0x3FFFF); p.acknowledge = uint32_t(low >> 34 & 0x3FFFF); p.hops = unsigned(low >> 52 & 15);
         at += 16; taken += 16;
         check = Check::OK;
         if (crc32c(h, 12) != u32(12)) { check = Check::CRC; return Next::PACKET; }

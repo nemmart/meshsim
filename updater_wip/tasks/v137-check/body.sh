@@ -14,12 +14,12 @@
 #   suites-cache  (WORKER5) as suites, with CACHE_CTL=1: the proof steps on the cache's controller (proof_run --cache)
 #            and the step tracer-block-cache; every other step as suites runs it.
 #   suites-ctl, suites-ctl-varied  (WORKER6) as suites, with MESHSIM_UPDATER_CTL=1 (or 5, the timing varied): every
-#            step with the Updater (master, proof-real, proof-matrix, proof-29) on the Updater's controller behind the
-#            shim, with the test LPDDR and the stand-in cache; every other step as suites runs it.
+#            step with the Updater (master, proof-real, proof-matrix, proof-29) on the Updater's controller, fed by
+#            Ingress's forward count, with the test LPDDR and the stand-in cache; every other step as suites runs it.
 #   faster   (WORKER4) 1, 2 and 2b as for suites; then 5: proof_run (clang suite) on every run of the 29 and matrix sets
-#            with the link at 2, 4 and 8 bytes a cycle (--link-rate), and on the matrix with the master's threshold at
-#            32, 64 and 128 (--threshold), in parallel; each run must pass (gold's images, every check of proof_run);
-#            the figures of each set in faster-numbers.md and threshold-numbers.md.
+#            with the link at 2, 4 and 8 bytes a cycle (--link-rate), and on the matrix with the link as fast as taken
+#            (--fast-link; WORKER7, in place of WORKER4's thresholds), in parallel; each run must pass (gold's images,
+#            every check of proof_run); the figures in faster-numbers.md and fast-numbers.md.
 # VERDICTS: one line per item. TIMES: each item's wall time. Scratch in /tmp, removed first and at the end.
 FAIL=0; T0=$(date +%s); N=$(nproc)
 sec() { echo; echo "==== $* ($(date -u +%T), +$(( $(date +%s) - T0 )) s)"; }
@@ -78,14 +78,14 @@ if [ "$ITEM" = suites ] || [ "$ITEM" = suites-cache ] || [ "$ITEM" = faster ]; t
 fi
 
 if [ "$ITEM" = faster ]; then
-  sec "5. the link at 2, 4 and 8 bytes a cycle (29, matrix); the threshold at 32, 64 and 128 (matrix)"
+  sec "5. the link at 2, 4 and 8 bytes a cycle (29, matrix); as fast as taken (matrix)"
   t=$(date +%s)
   ( cd "$KS" && make -j"$N" MODE=suite CC_NAME=clang build/clang-suite/proof_run ) > "$RES/build-proof_run.log" 2>&1 || tail -5 "$RES/build-proof_run.log"
   mkdir -p "$W/runs"; : > "$W/jobs"
   for set in 29 matrix; do
     while read -r name n windows list; do for s in $list; do
       for rate in 2 4 8; do echo "$set $name $n $windows $s --link-rate $rate faster-$set-$rate" >> "$W/jobs"; done
-      [ $set = matrix ] && for th in 32 64 128; do echo "$set $name $n $windows $s --threshold $th threshold-$set-$th" >> "$W/jobs"; done
+      [ $set = matrix ] && echo "$set $name $n $windows $s --fast-link --quiet fast-$set" >> "$W/jobs"
     done; done < "$IN/v137/$set/RUNS"
   done
   wc -l < "$W/jobs"
@@ -96,15 +96,15 @@ if [ "$ITEM" = faster ]; then
   }
   export -f one; export IN KS W
   xargs -P "$N" -L 1 bash -c 'one "$@"' _ < "$W/jobs"
-  for g in faster-29-2 faster-29-4 faster-29-8 faster-matrix-2 faster-matrix-4 faster-matrix-8 threshold-matrix-32 threshold-matrix-64 threshold-matrix-128; do
+  for g in faster-29-2 faster-29-4 faster-29-8 faster-matrix-2 faster-matrix-4 faster-matrix-8 fast-matrix; do
     cat "$W"/runs/$g.*.log > "$RES/$g.log" 2>/dev/null
     want=24; case $g in *-29-*) want=10;; esac
     got=$(grep -c '^PASS proof_run' "$RES/$g.log"); bad=$(grep -c '^FAIL' "$RES/$g.log")
     if [ "$got" = "$want" ] && [ "$bad" = 0 ]; then verdict "$g" "PASS-$got-runs"; else verdict "$g" "FAIL-$got-of-$want-passed"; fi
   done
   ( cd "$KS" && python3 tests/proof_numbers.py "$RES"/faster-29-*.log "$RES"/faster-matrix-*.log --frames ) > "$RES/faster-numbers.md" 2>&1
-  ( cd "$KS" && python3 tests/proof_numbers.py "$RES"/threshold-matrix-*.log --frames ) > "$RES/threshold-numbers.md" 2>&1
-  tail -2 "$RES/faster-numbers.md"; tail -2 "$RES/threshold-numbers.md"
+  ( cd "$KS" && python3 tests/proof_numbers.py "$RES"/fast-matrix.log --frames ) > "$RES/fast-numbers.md" 2>&1
+  tail -2 "$RES/faster-numbers.md"; tail -2 "$RES/fast-numbers.md"
   took faster "$t"
 fi
 

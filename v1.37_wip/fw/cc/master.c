@@ -20,25 +20,26 @@
  * the tile itself and the next fetched with the read unit. Page 0 is never given out. Pages are taken in order by a
  * cursor that only moves up; v1.37 frees nothing.
  *
- * THE FRAME LOOP (INGRESS-INTERFACE.md, "Frames" and "the threshold"): the frame's header word into DMEM; by its type
- * the rest goes
- *   1, 3, 4   to the parser, through a 32-word buffer in DMEM, as a stream of 32-bit words;
- *   2, 5, 6   to the Updater's segment queue, in a run of the Updater;
- *   7         record s and record s + 1 to the staging area, the others to scrap; record s's word 66 to DMEM;
- *   8         the counts to the parser, log s to the staging area, the others to scrap;
- *   9         to the Updater, in three runs.
- * Words are read out to the Updater only as far as the allowance covers them: a segment_credit adds 256 words, a
- * transfer takes its words off. The free page queue gets exactly PAGE_COUNT pages for each run, from the map, under its
- * own credits. Every root is a page from the map, made by the Updater at the run's start (RUN_CONFIG.root, v1.37).
+ * THE FRAME LOOP (INGRESS-INTERFACE.md, "Frames", "The forward count"; WORKER7): the frame's header word into DMEM by
+ * Ingress's DMA; then by its type the rest
+ *   1, 3, 4   to the parser, through a 32-word buffer in DMEM, as a stream of 32-bit words, copied as it arrives;
+ *   2, 5, 6   to the Updater: its run started, then DMA_FORWARD_COUNT = the frame's length, once;
+ *   7         dropped up to record s; records s and s + 1 copied to the staging area (record s's word 66 to DMEM); the
+ *             rest dropped;
+ *   8         the counts copied to the parser; dropped up to log s; log s copied to the staging area; the rest dropped;
+ *   9         to the Updater, in three runs, with one count.
+ * The program moves none of the bulk data: it wakes once for a frame of update words, and its run's done is waited for
+ * only by the next frame that needs the Updater, so frames 7 and 8 go on while frame 6's run does. The free page queue
+ * gets exactly PAGE_COUNT pages for each run, from the map, under its own credits. Every root is a page from the map,
+ * made by the Updater at the run's start (RUN_CONFIG.root, v1.37).
  *
- * THE THRESHOLD (INGRESS-INTERFACE.md, "Waking for more than a packet"; the owner's sequence; WORKER4): Ingress posts the
- * background flag when the words waiting reach BACKGROUND_THRESHOLD, and none after it until the words its count showed
- * are read out. The threshold is 1 between frames; after a frame's header word it is the smaller of 256 (a credit:
- * system_config's threshold word) and the words left in the frame, and as the frame's tail comes it is lowered to what
- * is left; at the frame's end it is 1 again. It is stored only when it changes. The program knows nothing of packets:
- * `avail` is the words it knows are waiting and has not started to read; it loads BACKGROUND_WORDS only after a flag,
- * with no transfer of its own in flight and `avail` used up, so the count is exact and covers what Ingress owes. A
- * transfer may run across packets, so a frame's header word need not be a packet's first word: nothing checks it.
+ * ITS DISCIPLINE WITH INGRESS (WORKER7's NOTES, the orders O1 to O6): a count is stored, or a DMA transfer from the
+ * background started, only with the count at 0 and no transfer of its own in flight. It knows the count is 0 by loading
+ * it: a 0 is exact (only the core raises it), more may be stale. The background flag is a reason to look, never proof:
+ * a transfer that ends with words left posts one that may still be pending when a count is stored. So a wait for words
+ * loads the count and BACKGROUND_WORDS, and sleeps until the count is 0 and words are there; then a copy of at most
+ * BACKGROUND_WORDS is defined. A copy is waited for to its landing (its counter), which follows the transfer's end
+ * (dma_done), before the next count. Drops in a row are written as one count.
  *
  * THE RUNS, UPDATER-INTERFACE.md's ("The runs"), IMAGE_ROOT and what it starts as:
  *   frame 2          the program image, empty
@@ -65,7 +66,7 @@
  * that cannot be (master_layout.h, MR_FRAME) ends the same way.
  *
  * Waiting: every wait sleeps in WFI and, on each wake, takes every event there is into the program's own state
- * (poll), serves the requests and moves the frame's data on (the pump), so nothing waits on anything else. */
+ * (poll) and serves the requests, so nothing waits on anything else. */
 #include "host.h"
 #include "master_layout.h"
 #include "../tracer/tracer_layout.h"
@@ -85,8 +86,8 @@ extern volatile uint32_t sim_exit_word[2];
 #define CTR_SELF             3             /* the write unit's rows to the master's own scratchpad */
 #define TILE_MASK   (EVENT_REQUEST_PENDING | EVENT_PERIPHERAL(1) | EVENT_PERIPHERAL(2) | EVENT_DMA_DONE | \
                      EVENT_COUNTER_DONE(CTR_LINK) | EVENT_COUNTER_DONE(CTR_READ) | EVENT_COUNTER_DONE(CTR_SELF))
-#define LINK_MASK   (HL_EVENT_BACKGROUND_SERVICE | P_EVENT_DMA_DONE)
-#define UPD_MASK    (P_EVENT_DONE | UPD_EVENT_SEGMENT_CREDIT | UPD_EVENT_FREE_PAGE_CREDIT)
+#define LINK_MASK   HL_EVENT_BACKGROUND_SERVICE    /* dma_done masked off: only a copy's landing matters (II) */
+#define UPD_MASK    (P_EVENT_DONE | UPD_EVENT_FREE_PAGE_CREDIT)
 #define SELF(counter, size)  (HDR_DST(TILE_MASTER) | HEADER(MODE_WRITE, counter, size))
 
 /* ---- what the harness fills (master_layout.h), and what it reads */
@@ -97,19 +98,15 @@ volatile uint32_t master_results[MR_WORDS];
 
 /* ---- the program's state */
 static uint32_t N, S;                       /* the system's configuration */
-static uint32_t tile_seen, link_seen;       /* counted events taken by a load of EVENTS and not yet used */
+static uint32_t tile_seen;                  /* counted events taken by a load of EVENTS and not yet used */
 static uint32_t upd_done;                   /* the Updater's done, taken */
-static uint32_t avail;                      /* the words waiting in Ingress that the program knows of and has not started to read */
-static uint32_t flag_seen;                  /* a background flag taken, its count not yet loaded */
-static uint32_t in_flight;                  /* a transfer of Ingress's DMA has started and not yet landed */
-static uint32_t credit_threshold;           /* system_config's threshold word: 256 by default */
-static uint32_t threshold;                  /* BACKGROUND_THRESHOLD as last stored */
-static uint32_t frame_open;                 /* a frame's header word is in, and its end not yet reached */
-static uint32_t wakes, reads;               /* the WFIs returned from; the transfers started */
-static uint32_t allowance, page_allowance;  /* the segment queue's words and the free page queue's entries the credits taken cover */
-static uint32_t pump_left, pump_busy;       /* the frame's words still to go to the Updater; a transfer of them is in flight */
+static uint32_t run_out;                    /* a run is started and its done not yet waited for */
+static uint32_t wakes, reads;               /* the WFIs returned from; the transfers of Ingress's DMA started */
+static uint32_t asleep;                     /* mcycle's cycles spent in WFI: the figures' "awake" is mcycle less this */
+static uint32_t page_allowance;             /* the free page queue's entries the credits taken cover */
 static uint32_t pages_due;                  /* pages still to queue for the runs started */
-static uint32_t frame_left;                 /* the frame's words not yet read out of Ingress (but the pump's) */
+static uint32_t frame_left;                 /* the frame's words not yet copied, counted or dropped */
+static uint32_t drop;                       /* words to drop, not yet written to the count (drops in a row are one count) */
 #define PARSE_ROWS           32             /* the parser's buffer, in 128-bit words */
 static uint32_t frames, runs;
 
@@ -155,7 +152,7 @@ void master_trap(void) {
     finish(MR_TRAP, 0);
 }
 
-/* ---------------------------------------------------------------- events, requests and the pump */
+/* ---------------------------------------------------------------- events and requests */
 /* The requests (11.5): a LOAD is counted (the boot and the hand-over answer them); a tile's result is answered where
  * its word 0 says, which ends the tile's image (crt0.S); anything else is counted. Never pops an empty queue. */
 static void drain_requests(void) {
@@ -171,79 +168,42 @@ static void drain_requests(void) {
         } else R[MR_OTHERS]++;
     }
 }
-/* Ingress's DMA (INGRESS-INTERFACE.md): the next n words waiting on the background stream, n at most `avail`, to an
- * address of the master's own (DMEM, the scratchpad, the Updater's segment queue), counted on CTR_LINK, armed first. */
+/* Ingress's DMA (INGRESS-INTERFACE.md): the next n words of the background queue, n at most what it holds, to an address
+ * of the master's own (DMEM, the scratchpad), counted on CTR_LINK, armed first. Only with the count at 0. */
 static void link_read(uint32_t n, uint32_t address) {
-    tile_seen &= ~EVENT_COUNTER_DONE(CTR_LINK); link_seen &= ~P_EVENT_DMA_DONE;
+    tile_seen &= ~EVENT_COUNTER_DONE(CTR_LINK);
     *counter(CTR_LINK) = n;
     host_link->DMA_HDR = SELF(CTR_LINK, SIZE_128) | DMA_HDR_COUNT(n) | DMA_HDR_QUEUE(HL_QUEUE_BACKGROUND);
     host_link->DMA_DEST_ADDR = address;
     host_link->DMA_START = 1;
-    avail -= n; in_flight = 1; reads++;
+    reads++;
     R[MR_LINK_WORDS] += n;
 }
-static inline int link_read_done(void) { return (tile_seen & EVENT_COUNTER_DONE(CTR_LINK)) && (link_seen & P_EVENT_DMA_DONE); }
-static void set_threshold(uint32_t v) {
-    if (v == threshold) return;
-    host_link->BACKGROUND_THRESHOLD = v;
-    threshold = v;
-    R[MR_THRESHOLD_STORES]++;
-}
-/* With nothing known waiting and nothing in flight: the frame's tail lowers the threshold to what is left of it; after
- * a flag, the count is loaded. 1 if words became known (no event comes for them: the caller must not sleep). */
-static int link_refill(void) {
-    if (avail || in_flight) return 0;
-    if (frame_open) {
-        uint32_t left = frame_left + pump_left;     /* the frame's words not yet read out */
-        if (left && left < threshold) set_threshold(left);
-    }
-    if (!flag_seen) return 0;
-    flag_seen = 0;
-    avail = host_link->BACKGROUND_WORDS;
-    return avail != 0;
-}
-/* The pump: the frame's data on to the Updater's segment queue, a packet (or what is left of one) at a time, only
- * when the allowance covers it (INGRESS-INTERFACE.md, "Credits for the Updater"). Never waits. */
-static void pump(void) {
-    if (pump_busy) {
-        if (!link_read_done()) return;
-        pump_busy = 0;
-    }
-    uint32_t n = min32(avail, pump_left);
-    if (allowance < n) n = allowance;               /* what the allowance covers; the rest stays in Ingress */
-    if (!n) return;
-    allowance -= n; pump_left -= n;
-    link_read(n, UPD_QUEUE_SEGMENT);
-    pump_busy = 1;
+/* DMA_FORWARD_COUNT, stored: only with the count at 0 and no transfer of Ingress's DMA in flight. */
+static void forward(uint32_t v) {
+    host_link->DMA_FORWARD_COUNT = v;
+    R[MR_COUNT_STORES]++;
 }
 /* Every event there is, into the program's state: one load of the tile's EVENTS, and of each peripheral's that has
  * one (a load consumes one count of each counted event its mask selects, 7.2: a queue's second credit is the next
- * wake's). Then the requests and the pump. Never waits. */
+ * wake's). Ingress's flag is only consumed: whoever waits on Ingress loads what it needs. Then the requests. Never
+ * waits. */
 static void poll(void) {
     uint32_t e = tile->EVENTS;
     tile_seen |= e & (EVENT_DMA_DONE | EVENT_COUNTER_DONE(CTR_LINK) | EVENT_COUNTER_DONE(CTR_READ) | EVENT_COUNTER_DONE(CTR_SELF));
     if (e & EVENT_REQUEST_PENDING) drain_requests();
-    if (e & EVENT_PERIPHERAL(1)) {
-        uint32_t l = host_link->EVENTS;
-        if (l & HL_EVENT_BACKGROUND_SERVICE) flag_seen = 1;   /* cleared by the load; its count is loaded when it is exact */
-        link_seen |= l & P_EVENT_DMA_DONE;
-    }
+    if (e & EVENT_PERIPHERAL(1)) (void)host_link->EVENTS;   /* the background flag: a reason to look */
     if (e & EVENT_PERIPHERAL(2)) {
         uint32_t u = updater->EVENTS;
-        if (u & UPD_EVENT_SEGMENT_CREDIT) allowance += UPD_CREDIT;
         if (u & UPD_EVENT_FREE_PAGE_CREDIT) page_allowance += UPD_FREE_PAGE_CREDIT;
         if (u & P_EVENT_DONE) upd_done = 1;
     }
-    if (in_flight && link_read_done()) in_flight = 0;
-    link_refill();
-    pump();
 }
-/* The one sleep: WFI, then poll. Whoever waits re-checks what it waits for after it. The pump first: what the
- * program has set since the last poll (a frame for the Updater) may let it start, and nothing else would wake it. */
+/* The one sleep: WFI, then poll. Whoever waits re-checks what it waits for after it. */
 static void idle(void) {
-    if (link_refill()) return;                      /* words known: the caller looks again before any sleep */
-    pump();
+    uint32_t t = mcycle();
     __asm__ volatile ("wfi" ::: "memory");
+    asleep += mcycle() - t;
     wakes++;
     poll();
 }
@@ -354,33 +314,42 @@ static void boot(void) {
 }
 
 /* ---------------------------------------------------------------- a frame's words */
-static void packet_wait(void) { while (!avail) work(); }
-/* n words of the packet at the front to an address of the master's own, landed. Not while the pump runs. */
-static void take(uint32_t n, uint32_t address) {
-    link_read(n, address);
-    while (!link_read_done()) idle();
-    frame_left -= n;
+/* The words to drop, written as one count; with nothing in flight and the count known to be 0. */
+static void drop_now(void) {
+    if (!drop) return;
+    forward(HL_FORWARD_DISCARD | drop);
+    drop = 0;
 }
-/* The frame's next n words to the scratchpad from `word` on, or, with word 0, to scrap. */
-static void route(uint32_t n, uint32_t word) {
-    while (n) {
-        packet_wait();
-        uint32_t c = min32(n, avail);
-        if (!word) c = min32(c, ML_SCRAP_ROWS);
-        take(c, SCRATCHPAD_ADDRESS(word ? word : ML_SCRAP));
-        if (word) word += 4 * c;
-        n -= c;
+/* The frame's next n words dropped (II: the discard), with the next drops if no copy comes between. */
+static void skip(uint32_t n) { drop += n; frame_left -= n; }
+/* Words to copy: sleeps until the count is 0 and the background queue holds words, and gives how many (O4, O6). */
+static uint32_t words_ready(void) {
+    drop_now();
+    for (;;) {
+        if ((host_link->DMA_FORWARD_COUNT & HL_FORWARD_COUNT) == 0) {
+            uint32_t n = host_link->BACKGROUND_WORDS;
+            if (n) return n;
+        }
+        work();
     }
 }
-/* The parser's words: a section of the frame, `rows` 128-bit words, as 32-bit words, a packet at a time. */
+/* The frame's next n words to an address of the master's own, as they arrive, each piece landed (O3). */
+static void copy(uint32_t n, uint32_t address) {
+    while (n) {
+        uint32_t c = min32(n, words_ready());
+        link_read(c, address);
+        wait_counter(CTR_LINK);
+        address += 16 * c; n -= c; frame_left -= c;
+    }
+}
+/* The parser's words: a section of the frame, `rows` 128-bit words, as 32-bit words, as many as are there at a time. */
 static uint32_t parse_left, parse_words, parse_at, parse_type;
 static void parse_begin(uint32_t type, uint32_t rows) { parse_type = type; parse_left = rows; parse_words = parse_at = 0; }
 static uint32_t next32(void) {
     if (parse_at == parse_words) {
         if (!parse_left) bad_frame(parse_type, MR_D_SHORT);
-        packet_wait();
-        uint32_t n = min32(min32(avail, parse_left), PARSE_ROWS);
-        take(n, (uint32_t)buffer);
+        uint32_t n = min32(min32(words_ready(), parse_left), PARSE_ROWS);
+        copy(n, (uint32_t)buffer);
         parse_left -= n; parse_words = 4 * n; parse_at = 0;
     }
     return buffer[parse_at++];
@@ -400,7 +369,10 @@ static uint32_t run_config(uint32_t lru, uint32_t carry_on, uint32_t tracer_copy
     return (lru ? UPD_RUN_CONFIG_LRU : 0) | (carry_on ? UPD_RUN_CONFIG_CONTINUE : 0) | (tracer_copy ? UPD_RUN_CONFIG_TRACER_COPY : 0) |
            UPD_RUN_CONFIG_DEPTH(depth) | UPD_RUN_CONFIG_ROOT(root);
 }
+static void run_wait(void);
+/* A run: the last one's done first, if it is out (a store to block 2 during a run is UB; O2). */
 static void run_start(uint32_t config, uint32_t words, uint32_t pages, uint32_t image, uint32_t tracer_root, uint32_t source) {
+    if (run_out) run_wait();
     if (runs == MR_MAX_RUNS) finish(MR_ROOM, 1);
     updater->RUN_CONFIG = config; updater->WORD_COUNT = words; updater->PAGE_COUNT = pages;
     updater->IMAGE_ROOT = image; updater->TRACER_ROOT = tracer_root; updater->SOURCE_ROOT = source;
@@ -408,19 +380,21 @@ static void run_start(uint32_t config, uint32_t words, uint32_t pages, uint32_t 
     pages_due += pages;
     R[MR_RUN_START + runs] = mcycle();
     updater->START = 1;
+    run_out = 1;
 }
 static void run_wait(void) {
     while (!upd_done) work();
+    run_out = 0;
     R[MR_PAGE_COUNT + runs] = updater->PAGE_COUNT;  /* the pages not used: 0 with the frames' counts */
     R[MR_RUN_DONE + runs] = mcycle();
     R[MR_RUNS] = ++runs;
 }
-/* A frame of update words as one run: its data to the segment queue as the allowance lets it, to the run's done. */
+/* A frame of update words as one run: the run started, then the frame's length to the count, once (O1). Its done is
+ * the next run's to wait for. */
 static void update_frame(uint32_t config, uint32_t words, uint32_t pages, uint32_t image, uint32_t source) {
-    pump_left = frame_left; frame_left = 0;
     run_start(config, words, pages, image, 0, source);
-    run_wait();
-    while (pump_left || pump_busy) work();
+    if (frame_left) forward(frame_left);            /* a frame of its header word alone moves nothing */
+    frame_left = 0;
 }
 
 /* ---------------------------------------------------------------- the hand-over */
@@ -454,19 +428,17 @@ static void hand_over(void) {
 
 /* ---------------------------------------------------------------- the frames */
 static void frame(void) {
-    packet_wait();
     frame_left = 1;
-    take(1, (uint32_t)frame_header);                /* the frame's header word (HOST-FRAMES.md, "Every frame") */
+    copy(1, (uint32_t)frame_header);                /* the frame's header word (HOST-FRAMES.md, "Every frame") */
     const uint32_t type = frame_header[2], length = frame_header[3], compression = FRAME_COMPRESSION(frame_header[0]);
     const uint32_t lru = compression == 1;
     if (frames == MR_MAX_FRAMES) finish(MR_ROOM, 2);
     R[MR_FRAME_TYPE + frames] = type; R[MR_FRAME_START + frames] = mcycle();
     R[MR_FRAME_WAKES + frames] = wakes; R[MR_FRAME_READS + frames] = reads;
+    R[MR_FRAME_AWAKE + frames] = mcycle() - asleep;   /* the figures: the boot's cost, and each frame's */
     R[MR_FRAMES] = ++frames;
     if (compression > 1) bad_frame(type, MR_D_TYPE);
     frame_left = length;
-    frame_open = 1;
-    if (length) set_threshold(min32(credit_threshold, length));   /* wake me when a credit's worth is there */
     switch (type) {
     case FRAME_PROGRAM_HEADER: {
         parse_begin(type, length);
@@ -543,15 +515,15 @@ static void frame(void) {
         break;
     case FRAME_REGISTERS:
         if (length != RECORD_WORDS * N) bad_frame(type, MR_D_LENGTH);
-        /* N records in segment order: those before s to scrap in one run of words; record s, its word 66 to DMEM (the
-         * hand-over completes it); record s + 1 as the expected end state; the rest to scrap */
-        route(RECORD_WORDS * S, 0);
-        route(66, ML_RECORD);
-        packet_wait();
-        take(1, (uint32_t)files_word);
-        route(1, ML_RECORD + 4 * 67);
-        if (S + 1 < N) route(RECORD_WORDS, ML_EXPECT);
-        route(frame_left, 0);
+        /* N records in segment order: those before s dropped; record s, its word 66 to DMEM (the hand-over completes
+         * it); record s + 1 as the expected end state; the rest dropped */
+        skip(RECORD_WORDS * S);
+        copy(66, SCRATCHPAD_ADDRESS(ML_RECORD));
+        copy(1, (uint32_t)files_word);
+        copy(1, SCRATCHPAD_ADDRESS(ML_RECORD + 4 * 67));
+        if (S + 1 < N) copy(RECORD_WORDS, SCRATCHPAD_ADDRESS(ML_EXPECT));
+        skip(frame_left);
+        drop_now();
         break;
     case FRAME_ADVICE: {
         uint32_t before = 0;
@@ -562,18 +534,20 @@ static void frame(void) {
         }
         parse_end();
         if (advice_rows > ML_ADVICE_ROWS || advice_rows > boot_desc[MD_H_TR_ADVICE_ROWS]) finish(MR_ROOM, 3);
-        route(before, 0);
-        route(advice_rows, ML_ADVICE);
-        route(frame_left, 0);
+        skip(before);
+        copy(advice_rows, SCRATCHPAD_ADDRESS(ML_ADVICE));
+        skip(frame_left);
+        drop_now();
         break;
     }
     case FRAME_SEGMENTS: {
         if (!have_proof || !root_cycle0 || !root_table) bad_frame(type, MR_D_ORDER);
         if (length != segments_words128) bad_frame(type, MR_D_LENGTH);
-        pump_left = frame_left; frame_left = 0;     /* one stream for the three runs */
         const uint32_t start = new_root();
         R[MR_ROOT_START] = start;
         run_start(run_config(lru, 0, 0, image_depth, UPD_ROOT_COPY), words_before, pages_start, start, 0, root_cycle0);
+        if (frame_left) forward(frame_left);        /* one count for the three runs (O1) */
+        frame_left = 0;
         run_wait();                                 /* the start image is frozen */
         const uint32_t final = new_root(), copy = new_root();
         root_tracer = copy;
@@ -586,14 +560,11 @@ static void frame(void) {
         R[MR_BOOT] = 5;
         while (R[MR_RESULTS] < TILES_LOADING || R[MR_LOADS] < 2 * TILES_LOADING) work();   /* each result, and the LOAD after it */
         run_wait();
-        while (pump_left || pump_busy) work();
         break;
     }
     default: bad_frame(type, MR_D_TYPE);
     }
     if (frame_left) bad_frame(type, MR_D_LONG);
-    frame_open = 0;
-    set_threshold(1);                               /* between frames: the next header word */
     if (type == FRAME_SEGMENTS) {                   /* the proof's last frame */
         map_flush();
         finish(MR_OK, 0);
@@ -606,10 +577,7 @@ int main(void) {
     host_link->EVENTS_MASK = LINK_MASK;
     updater->EVENTS_MASK = UPD_MASK;
     N = system_config[MS_H_ASICS]; S = system_config[MS_H_SEGMENT];
-    credit_threshold = system_config[MS_H_THRESHOLD] ? system_config[MS_H_THRESHOLD] : UPD_CREDIT;
-    threshold = 1;                                  /* BACKGROUND_THRESHOLD's reset value */
-    if (boot_desc[MD_H_MAGIC] != MD_MAGIC || system_config[MS_H_MAGIC] != MS_MAGIC || (N != 64 && N != 128 && N != 256) || S >= N ||
-        credit_threshold > HL_BUFFER_WORDS)
+    if (boot_desc[MD_H_MAGIC] != MD_MAGIC || system_config[MS_H_MAGIC] != MS_MAGIC || (N != 64 && N != 128 && N != 256) || S >= N)
         finish(MR_CONFIG, 0);
     boot();
     map_format();

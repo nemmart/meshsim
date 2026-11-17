@@ -4,15 +4,15 @@
 > file, the packets that come over the link from the host, and with N and s; the master tile's firmware
 > (`fw/cc/master.c`) reads the frames out of Ingress and drives the Updater; the Updater builds the memory images;
 > the Tracer traces its segment on them, and the compute tiles replay it. Ingress's host side and the Updater are
-> software black boxes behind their real registers. **The threshold** (WORKER4): the master tells Ingress how many
-> words to gather before it is woken, a credit's worth of the Updater's segment queue (256 words) once a frame's length
-> is known, so that it no longer wakes for every packet.
+> software black boxes behind their real registers. **The forward count** (WORKER7, the owner's design; in place of
+> WORKER4's threshold): Ingress moves a frame's bulk data to the Updater itself, over a flow-controlled word port, or
+> drops it; the master writes the frame's length once and wakes a few times a frame, not for its words.
 >
 > | to | read |
 > |---|---|
 > | run it | `RUNNING-v1.37.md` |
 > | see what v1.37 adds, piece by piece, and what specifies each | `CHANGES-v1.37.md` |
-> | see how it was checked, and its figures | `../updater_wip/planning/sessions/WORKER3-REPORT.md`; for the threshold, `../updater_wip/planning/sessions/WORKER4-REPORT.md` |
+> | see how it was checked, and its figures | `../updater_wip/planning/sessions/WORKER3-REPORT.md`; for the threshold, `../updater_wip/planning/sessions/WORKER4-REPORT.md`; for the forward count, `WORKER7/REPORT.md` there |
 >
 > **Everything else in this folder is v1.36's, copied unchanged (main, 67aaeb86), and reads as v1.36:** this page
 > below the line, `BUILDING.md` and `RUNNING.md` but for what they mark v1.37, `OPEN-v1.36.md`, `spec/`,

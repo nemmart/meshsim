@@ -1,9 +1,10 @@
 // test_updater_ctl: the Updater's controller (src/units/updater_ctl.h, updater_top.h; updater_wip, WORKER6), with the
 // test LPDDR and the stand-in cache (tests/test_lpddr.h, standin_cache.h). NOTES section 9's checks:
-//   - alone against gold: gold's frame files of the guests (tests/updater/) offered on the word port, no shim; every
-//     image against gold's reference, PAGE_COUNT 0 at every done; the timing fixed, then varied;
-//   - against the black box: the same runs on both, the controller behind the shim; at each run's end the registers,
-//     the errors, the events, the stores byte for byte, the stream not yet decoded and the page counts equal;
+//   - alone against gold: gold's frame files of the guests (tests/updater/) offered on the word port; every image
+//     against gold's reference, PAGE_COUNT 0 at every done; the timing fixed, then varied;
+//   - against the black box: the same runs on both, each fed on its word port (WORKER9: the shim is gone); at each
+//     run's end the registers, the errors, the events, the stores byte for byte, the stream not yet decoded and the
+//     page counts equal;
 //   - random streams (holes, shared pages at every level, runs of the Updater ending inside a run of values, continue
 //     across runs, raw and LRU, the Tracer's copy), against the black box and against a model of the files;
 //   - the errors, each against the black box where it has the case.
@@ -80,14 +81,14 @@ void gold_alone(const char* name, const Options& o) {
         CHECK_EQ(b.u.free_page_entries(), 0u);
     }
 }
-Options port(uint64_t seed = 0) {
+// The test pieces' timing and the port's valid: fixed, or with a seed all three varied.
+Options timing(uint64_t seed = 0) {
     Options o;
-    o.port = true;
-    if (seed) { o.lpddr.jitter = true; o.lpddr.seed = uint32_t(seed); o.cache_seed = seed * 7 + 1; o.feeder_seed = seed * 13 + 5; }
+    if (seed) { o.lpddr.jitter = true; o.lpddr.seed = uint32_t(seed); o.cache_seed = seed * 7 + 1; o.valid_seed = seed * 13 + 5; }
     return o;
 }
 
-// The same plan on the black box and on the controller behind the shim, compared after every run.
+// The same plan on the black box and on the controller, each on its word port, compared after every run.
 void gold_against(const char* name, uint64_t seed) {
     frames::File file;
     std::string err;
@@ -96,7 +97,7 @@ void gold_against(const char* name, uint64_t seed) {
         std::vector<ctl_bench::Step> steps;
         if (!ctl_bench::plan(file, 64, s, steps, err)) { ::test::fail(__FILE__, __LINE__, "%s: %s", name, err.c_str()); return; }
         Options o;
-        if (seed) { o.lpddr.jitter = true; o.lpddr.seed = uint32_t(seed); o.cache_seed = seed * 3 + 1; }
+        if (seed) { o.lpddr.jitter = true; o.lpddr.seed = uint32_t(seed); o.cache_seed = seed * 3 + 1; o.valid_seed = seed * 13 + 5; }
         Bench<Updater> a;
         Bench<UpdaterTop> b(o);
         ctl_bench::Images ia, ib;
@@ -282,12 +283,12 @@ std::string check_images(Bench<U>& b, const Scenario& x) {
     return d;
 }
 
-// The scenario on the black box and on the controller behind the shim, compared after every run; both against the
+// The scenario on the black box and on the controller, each on its word port, compared after every run; both against the
 // model at the end.
 void random_against(uint64_t seed, uint64_t timing_seed) {
     const Scenario x = make_scenario(seed);
     Options o;
-    if (timing_seed) { o.lpddr.jitter = true; o.lpddr.seed = uint32_t(timing_seed); o.cache_seed = timing_seed * 5 + 3; }
+    if (timing_seed) { o.lpddr.jitter = true; o.lpddr.seed = uint32_t(timing_seed); o.cache_seed = timing_seed * 5 + 3; o.valid_seed = timing_seed * 11 + 7; }
     Bench<Updater> a;
     Bench<UpdaterTop> b(o);
     const auto runs = runs_of(x);
@@ -306,10 +307,10 @@ void random_against(uint64_t seed, uint64_t timing_seed) {
         ::test::fail(__FILE__, __LINE__, "seed %llu: images against the model: the black box's%s; the controller's%s;%s", (unsigned long long)seed,
                      ia.c_str(), ib.c_str(), v.c_str());
 }
-// The scenario on the controller alone, on its port with the feeder, against the model.
+// The scenario on the controller alone against the model.
 void random_alone(uint64_t seed, uint64_t timing_seed) {
     const Scenario x = make_scenario(seed);
-    Bench<UpdaterTop> b(port(timing_seed));
+    Bench<UpdaterTop> b(timing(timing_seed));
     const auto runs = runs_of(x);
     for (size_t k = 0; k < runs.size(); k++) {
         if (runs[k].first) stream_frame(b, x, runs[k].frame);
@@ -327,13 +328,13 @@ void random_alone(uint64_t seed, uint64_t timing_seed) {
 
 }  // namespace
 
-TEST(ctl_gold_kin_raw) { gold_alone("kin-raw", port()); }
-TEST(ctl_gold_kin_lru) { gold_alone("kin-lru", port()); }
-TEST(ctl_gold_jumps_base) { gold_alone("jumps-base", port()); }
-TEST(ctl_gold_divs) { gold_alone("divs", port()); }
-TEST(ctl_gold_kin_big) { gold_alone("kin-big", port()); }
+TEST(ctl_gold_kin_raw) { gold_alone("kin-raw", timing()); }
+TEST(ctl_gold_kin_lru) { gold_alone("kin-lru", timing()); }
+TEST(ctl_gold_jumps_base) { gold_alone("jumps-base", timing()); }
+TEST(ctl_gold_divs) { gold_alone("divs", timing()); }
+TEST(ctl_gold_kin_big) { gold_alone("kin-big", timing()); }
 TEST(ctl_gold_varied) {
-    for (uint64_t seed : {1, 2, 3}) { gold_alone("kin-lru", port(seed)); gold_alone("divs", port(seed)); gold_alone("jumps-base", port(seed)); }
+    for (uint64_t seed : {1, 2, 3}) { gold_alone("kin-lru", timing(seed)); gold_alone("divs", timing(seed)); gold_alone("jumps-base", timing(seed)); }
 }
 TEST(ctl_gold_against_black_box) {
     for (const char* n : {"kin-raw", "kin-lru", "jumps-base", "divs", "kin-big"}) gold_against(n, 0);
@@ -354,7 +355,7 @@ TEST(ctl_random_reaches_its_cases) {
     for (uint64_t seed = 1; seed <= 90; seed++) {
         const Scenario x = make_scenario(seed);
         depths[x.depth]++;
-        Bench<UpdaterTop> b(port());
+        Bench<UpdaterTop> b(timing());
         for (const auto& r : runs_of(x)) {
             if (r.first) stream_frame(b, x, r.frame);
             CHECK(b.run(r.run));
@@ -542,39 +543,54 @@ TEST(ctl_error_beyond_pages_root) {
         stopped_like(&a, b, b.run(r), units::updctl::Ctl::ERR_LPDDR, "a root off a page");
     }
 }
-// A push into a full free page queue, and (through the shim) into a full segment queue: the bit set, the push
-// dropped, nothing stopped. The segment queue fills four words later than the black box's: the controller's FIFO takes
-// them while idle (NOTES C16).
-TEST(ctl_error_full_queues) {
+// A push into a full free page queue: the bit set, the push dropped, nothing stopped. (The segment queue's overrun
+// went with the queue: the word port cannot overrun, its `ready` holds the source.)
+TEST(ctl_error_full_queue) {
     Bench<Updater> a;
     Bench<UpdaterTop> b;
     for (unsigned k = 0; k < 257; k++) {
         a.u.accept(a.t - 3, 64, Updater::PART_FREE_PAGES << 20, int(units::lw::SIZE_128), 32 * (k + 1), 0);
         b.u.accept(b.t - 3, 64, Updater::PART_FREE_PAGES << 20, int(units::lw::SIZE_128), 32 * (k + 1), 0);
-        a.u.step(a.t++); b.u.step(b.t++);
+        a.cycle(); a.t++; b.cycle(); b.t++;
     }
     CHECK_EQ(a.u.errors(a.t), int(Updater::ERR_QUEUE_OVERRUN));
     CHECK_EQ(b.u.errors(b.t), int(Updater::ERR_QUEUE_OVERRUN));
     CHECK_EQ(a.u.free_page_entries(), 256u);
     CHECK_EQ(b.u.free_page_entries(), 256u);
     CHECK(!b.u.running(b.t));
+}
 
-    Bench<UpdaterTop> c;
-    unsigned k = 0;
-    for (; k < 600 && c.u.errors(c.t) == 0; k++) {
-        c.u.accept(c.t - 3, 64, Updater::PART_SEGMENT << 20, int(units::lw::SIZE_128), k, 0);
-        c.u.step(c.t++);
-    }
-    CHECK_EQ(k, 512u + units::updctl::Ctl::FIFO + 1);
-    CHECK_EQ(c.u.errors(c.t), int(Updater::ERR_QUEUE_OVERRUN));
-    CHECK_EQ(c.u.segment_entries(), 512u);
+// The port's sink, as the black box's (test_updater's): four words held behind it, idle or busy; ready 0 while four
+// are held; emptied by the reset; EVENTS [2] reads 0; region part 1 is unmapped. (That a START keeps them is every
+// run of ctl_frames_back_to_back.)
+TEST(ctl_port_holds_four_words) {
+    Bench<Updater> a;
+    Bench<UpdaterTop> b;
+    std::vector<Word> w;
+    for (uint64_t k = 0; k < 9; k++) w.push_back({0x1000 + k, k});
+    a.stream(w); b.stream(w);
+    for (int k = 0; k < 12; k++) { a.cycle(); a.t++; b.cycle(); b.t++; }
+    CHECK_EQ(a.u.input_words(), 4u);                      // idle: both take four and hold the source
+    CHECK_EQ(b.u.input_words(), 4u);
+    CHECK_EQ(a.sent, 4u);
+    CHECK_EQ(b.sent, 4u);
+    CHECK(!a.u.port_sink().ready);
+    CHECK(!b.u.port_sink().ready);
+    CHECK_EQ(b.u.ev.value(b.t) & 1u << UpdaterTop::EV_UNUSED, 0u);
+    b.u.reset(b.t);
+    CHECK_EQ(b.u.input_words(), 0u);                      // only the reset empties them
+    CHECK(b.u.port_sink().ready);
+}
+DEATH_TEST(ctl_region_part_1_is_unmapped, "a WRITE to part 1 of its region, which maps part 2 alone") {
+    Bench<UpdaterTop> b;
+    b.u.accept(b.t - 3, 64, 1u << 20, int(units::lw::SIZE_128), 1, 0);
 }
 
 // Frames back to back in one stream, as Ingress's forward count may offer the next frame while the decoder still holds
 // the last one's tail (the next count written when the frame's header arrives): each frame a new file (root 1,
 // continue 0), raw or LRU, its last codes often short hits. The decoder must take no word it does not need, or the
-// next frame's first word is lost when continue 0 clears it. On the port (the feeder offering every frame from the
-// start) and against the black box (the same stream behind the shim), with the model.
+// next frame's first word is lost when continue 0 clears it. The port offers every frame from the start; the controller
+// with its timing varied and fixed, the black box, and the model.
 TEST(ctl_frames_back_to_back) {
     for (uint64_t seed = 1; seed <= 40; seed++) {
         test::Rng rng(seed * 977);
@@ -593,7 +609,7 @@ TEST(ctl_frames_back_to_back) {
             stream.insert(stream.end(), w.begin(), w.end());
             runs.push_back({ctl_bench::config(lru, false, false, 1, 1), uint32_t(u.size()), 4, int32_t(0x80000 * 32 + 32 * f), 0, 0});
         }
-        Bench<UpdaterTop> b(port(seed % 2 ? seed : 0));
+        Bench<UpdaterTop> b(timing(seed % 2 ? seed : 0));
         Bench<Updater> a;
         Bench<UpdaterTop> c;
         b.stream(stream); a.stream(stream); c.stream(stream);
@@ -624,9 +640,9 @@ PageFigure page_figure(Bench<U>& x, const std::vector<uint64_t>& base, const std
     const uint32_t F0 = 0x80000 * 32, T2 = F0 + 96;
     x.stream(encode(base, false));
     if (!x.run({ctl_bench::config(false, false, false, 2, 1), uint32_t(base.size()), 20, int32_t(F0), 0, 0})) ::test::fail(__FILE__, __LINE__, "the build did not end");
-    for (int k = 0; k < 300; k++) { x.u.step(x.t); x.t++; }
+    for (int k = 0; k < 300; k++) { x.cycle(); x.t++; }
     x.stream(encode(u, false));
-    for (int k = 0; k < 20; k++) { x.u.step(x.t); x.t++; }
+    for (int k = 0; k < 20; k++) { x.cycle(); x.t++; }
     uint64_t l0 = 0, u0 = 0;
     if constexpr (std::is_same_v<U, UpdaterTop>) { l0 = x.u.ctl.lookups; u0 = x.u.ctl.updates; }
     if (!x.run({ctl_bench::config(false, false, tracer, 2, root), uint32_t(u.size()), 20, int32_t(image), int32_t(tracer ? T2 : 0), int32_t(F0)}))
@@ -658,7 +674,7 @@ TEST(ctl_figures_a_page) {
     std::printf("  %-72s %7s %7s %5s %5s %5s %6s  %s\n", "the page (the root's copy, with root 2, in the run's figures)", "cycles", "bb's", "looks", "upds",
                 "reads", "writes", "waiting: data, pages, memory");
     for (const Case& c : cases) {
-        Bench<UpdaterTop> b(port());
+        Bench<UpdaterTop> b(timing());
         Bench<Updater> a;
         const PageFigure f = page_figure(b, base, c.u, c.root, c.tracer, c.image), g = page_figure(a, base, c.u, c.root, c.tracer, c.image);
         std::printf("  %-72s %7u %7u %5llu %5llu %5u %6u  %u, %u, %u\n", c.name, f.cycles, g.cycles, (unsigned long long)f.lookups, (unsigned long long)f.updates,
@@ -666,7 +682,7 @@ TEST(ctl_figures_a_page) {
         CHECK(b.violations().empty());
     }
 }
-// A whole proof's runs on gold's fixtures, the controller behind the shim against the black box, the timing fixed:
+// A whole proof's runs on gold's fixtures, the controller against the black box, the timing fixed:
 // each run's cycles and where the controller waited. Prints the table; the runs are checked as ctl_gold_against_*.
 TEST(ctl_figures_runs) {
     for (const char* name : {"kin-big", "divs", "jumps-base"}) {

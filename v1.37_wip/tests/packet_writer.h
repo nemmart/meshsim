@@ -10,8 +10,9 @@
 // CRC-32C is table-driven, the reader's bit by bit.
 //
 // A frame file's packets: every packet on the background stream (2); each frame starts a new packet; a frame's packets
-// hold 32 words of data but its last, which holds what remains; packet numbers from 1, and after 0xFFFFE, 1; the
-// acknowledge field, the flags and the reserved bits 0.
+// hold 32 words of data but its last, which holds what remains; packet numbers from 1, and after 0x3FFFE, 1; the
+// acknowledge field, the hops field, the flags and the reserved bits 0. The header (HL, "A packet"; owner, 2026-11-17):
+// number [33:16], acknowledge [51:34], hops [55:52].
 //
 // Test-side code (the configuration regime): the STL throughout.
 #pragma once
@@ -42,11 +43,13 @@ inline uint32_t crc32c(const uint8_t* bytes, size_t n) {
 struct Fields {
     unsigned stream = 2, flags = 0, length = 0, reserved = 0;
     uint32_t number = 1, acknowledge = 0;
+    unsigned hops = 0;
 };
 // A header word's 16 bytes for these fields and this data, both checks right.
 inline void header(uint8_t out[16], const Fields& f, const uint8_t* data, size_t data_bytes) {
     const uint64_t low = uint64_t(f.stream & 15) | uint64_t(f.flags & 15) << 4 | uint64_t(f.length & 0xFF) << 8 |
-                         uint64_t(f.number & 0xFFFFF) << 16 | uint64_t(f.acknowledge & 0xFFFFF) << 36 | uint64_t(f.reserved & 0xFF) << 56;
+                         uint64_t(f.number & 0x3FFFF) << 16 | uint64_t(f.acknowledge & 0x3FFFF) << 34 | uint64_t(f.hops & 15) << 52 |
+                         uint64_t(f.reserved & 0xFF) << 56;
     for (unsigned b = 0; b < 8; b++) out[b] = uint8_t(low >> (8 * b));
     const uint32_t check = crc32c(data, data_bytes);
     for (unsigned b = 0; b < 4; b++) out[8 + b] = uint8_t(check >> (8 * b));
@@ -81,7 +84,7 @@ inline bool packetize(const std::vector<uint8_t>& frames, std::vector<uint8_t>& 
             Fields f;
             f.length = unsigned(words - w < 32 ? words - w : 32);
             f.number = number;
-            number = number == 0xFFFFE ? 1 : number + 1;
+            number = number == 0x3FFFE ? 1 : number + 1;
             out.insert(out.end(), o.idle_zeros, 0);
             packet(out, f, &frames[at + 16 * w]);
         }
@@ -92,7 +95,7 @@ inline bool packetize(const std::vector<uint8_t>& frames, std::vector<uint8_t>& 
             Fields f;
             f.length = unsigned(all - w < o.packed ? all - w : o.packed);
             f.number = number;
-            number = number == 0xFFFFE ? 1 : number + 1;
+            number = number == 0x3FFFE ? 1 : number + 1;
             out.insert(out.end(), o.idle_zeros, 0);
             packet(out, f, &frames[16 * w]);
         }

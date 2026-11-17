@@ -446,7 +446,8 @@ could: the link stopped for ever.
 
 - **The restart packet is a full packet with a fixed pattern as its data** (owner, 2026-11-17: "a magic 512 byte
   packet"): length 32, the data being **the primes below 256 as bytes, 2, 3, 5, 7, … 251, which is 54 bytes,
-  repeated until 512 bytes are filled.** Its data checksum is 0xDB9B1A2B.
+  repeated until 512 bytes are filled.** It begins `02 03 05 07 0B 0D 11 13` and ends `53 59 61 65`; its
+  CRC-32C, the packet's data checksum, is 0x12140895.
   - **An end acts on it only if the header, the data checksum and the pattern all agree.** Anything less is a
     damaged packet.
   - **Why:** starting again is drastic. As a flag in a 16-byte packet it was guarded by the header's CRC alone,

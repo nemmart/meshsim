@@ -802,3 +802,29 @@ WORKER8 built one link from `HOST-LINK.md` and searched it exhaustively at small
 - **WORKER8 takes the new header as its baseline** before its random campaign and the chain, and searches it.
 - **What is built has the 16-byte header:** gold, the vectors, v1.37 (and `updater-w7` its 18-bit form). The change
   is step 2c of the milestone, after WORKER8 confirms it.
+
+## 26. One run of packet numbers for a link; the header is 16 bytes again (2026-11-17, about 10 a.m.)
+
+- **The owner:** "why have separate packet numbers for the streams? The packet number is about the link, not the
+  stream."
+- **Decided (owner): a direction of a link has one run of numbers, shared by both streams.** One acknowledgement,
+  one resend flag, one window of 8 packets, one set of kept packets. Both streams' stop bits are in every header.
+  `HOST-LINK.md`, "One run of numbers for a link".
+- **The header is one 128-bit word again,** nearly the one WORKER7 built: the stop bits move to bits [57:56] and
+  restart takes the old stop bit's place. Section 25's header of 20 bytes lasted two and a half hours; WORKER8
+  had built it.
+- **The design session's reason for numbers of their own was wrong** (item 1 of the link's review: "a stopped
+  stream leaves gaps"). A stopped stream has no packets sent, and the other's numbers stay consecutive.
+- **Why a stopped stream cannot block the other:** both stop bits reach the sender in anything it hears; a queue
+  says stop with 8 KB free, and a window is 4 KB; so a good packet always has room and is never refused.
+  - **To be shown by WORKER8's search,** not assumed.
+- **What it costs:** a damaged background packet has the foreground packets behind it sent again; the window is
+  shared.
+- **While this was decided the workers moved on:**
+  - WORKER8 built the 20-byte header, the chain and the random runs (`updater-w8`, `e8f28bcd`). It goes to one
+    run of numbers next.
+  - WORKER9 finished step 1: `updater-w7` merged, the shim out; Quests 222 to 226 pass, the 37 proof runs' cycles
+    equal to Quest 220's with every setting off (`updater-w9`, `b32cca91`). It waits for the integrator to merge
+    that much.
+  - WORKER10 reports the wire built and every check passing where it ran, with a task for the runner
+    (`updater-w10`, `670c84b2`).

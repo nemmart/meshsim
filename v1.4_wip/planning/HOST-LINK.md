@@ -12,16 +12,16 @@ takes packets out of Ingress is `INGRESS-INTERFACE.md`.
 first written the protocol does not hold.** A single damaged packet can stop a link for ever, in several ways
 (`DESIGN-NOTES-2026-11-16.md`, section 24; `updater_wip/planning/sessions/WORKER8/QUESTIONS.md` on branch
 `updater-w8`). Its rules are accepted to carry on with and go in here once its random campaign and the chain have
-confirmed them. Two things have changed here already: the queues are 16 KB, and **the header is 20 bytes and
-speaks for both streams** ("A packet"). Until the rest is folded in, do not build from the sections on a bad
-packet, recovery and the status alone.
+confirmed them. Two things have changed here already: the queues are 16 KB, and **a link has one run of packet
+numbers, not one for each stream, with both streams' stop bits in every header** ("A packet"). Until the rest is
+folded in, do not build from the sections on a bad packet, recovery and the status alone.
 
 ## The link
 
 - **8 LVDS data lines** (owner): one byte per transfer. Byte alignment comes from the wires, so the receiver only
   ever has to find where a packet starts.
-- **About 1 GB a second.** A full packet is 20 bytes of header in 532, so the frames get 96.2% of it. (With the
-  16-byte header of before, gold measured 3.13% of overhead on both workloads; now about 3.9%.)
+- **About 1 GB a second.** A full packet is 16 bytes of header in 528, so the frames get 32/33 of it: gold measures
+  3.13% of overhead on both workloads.
 - **A 128-bit word is 16 transfers,** least significant byte first, as everywhere in the design.
 - **Noise can last hundreds of milliseconds** (owner: a phone call in the server room). The link has to come back
   from that by itself.
@@ -42,75 +42,97 @@ packet, recovery and the status alone.
 
 ## A packet
 
-**A header of 20 bytes, then 0 to 32 words of data** (owner, 2026-11-17). It was one 128-bit word; it grew by four
-bytes so that **every header says where both streams stand.**
-
-- **Why:** a header used to speak for its own stream only. With one stream filling a direction, the other
-  stream's acknowledgements and stop bit had no packet to ride on, and that stream stood still on a wire with no
-  damage at all (WORKER8: 102,447 cycles). Sending the other stream's status as packets of its own would have cost
-  a busy link about 6%.
-- **What it costs:** 20 bytes in 532, 3.8%, flat. The owner: "it's header info that gets stripped anyway."
-- **The header is no longer one word.** The data after it is whole 128-bit words, as before, and the link is a
-  byte at a time, so nothing physical minds. This sets aside the earlier rule that everything rides in 128 bits.
+**A header word of 128 bits, then 0 to 32 words of data.**
 
 | bits | field | meaning |
 |---|---|---|
 | [3:0] | stream | whose data this packet carries: 1 foreground, 2 background; never 0 |
-| [4] | lost | "I have lost my place" (below) |
-| [5] | recovery | the answer to "lost": the first packet after the zeros |
-| [6] | restart | proposed by WORKER8, accepted to carry on with: with lost, "I have started again"; with recovery, "so have I" |
-| [7] | reserved | 0 |
+| [4] | resend | "your last packet was bad: send again from the number after my acknowledge field" |
+| [5] | lost | "I have lost my place" (below) |
+| [6] | recovery | the answer to "lost": the first packet after the zeros |
+| [7] | restart | proposed by WORKER8, accepted to carry on with: with lost, "I have started again"; with recovery, "so have I" |
 | [15:8] | length | the data's length in 128-bit words, 0 to 32 |
-| [33:16] | foreground number | 18 bits. In a foreground packet with data: this packet's number. In any other packet: the number the foreground's next packet with data will carry |
-| [51:34] | foreground acknowledge | 18 bits. The last foreground packet number received in order; 0 for none yet |
-| [69:52] | background number | as the foreground's |
-| [87:70] | background acknowledge | as the foreground's |
-| [91:88] | hops | the ASICs that have forwarded this packet along the chain (below). Whoever makes a packet sends 0 |
-| [92] | foreground stop | "stop sending me the foreground stream"; 0 is "send" |
-| [93] | foreground resend | "your last foreground packet was bad: send again from the number after my acknowledge field" |
-| [94] | background stop | as the foreground's |
-| [95] | background resend | as the foreground's |
-| [127:96] | data checksum | over the data |
-| [159:128] | header CRC | over bits [127:0] |
-
-- **A stream's fields are in the same place in every header,** whichever stream the packet's data belongs to.
-- **Lost, recovery and restart are the link's,** not a stream's: one packet says them for both.
+| [33:16] | packet number | 18 bits. This packet's number **on the link:** the first is 1, they run to 0x3FFFE, then 1 again. In a packet of length 0: the number the next packet with data will carry |
+| [51:34] | acknowledge | 18 bits. The last packet number received in order on the link; 0 for none yet |
+| [55:52] | hops | the ASICs that have forwarded this packet along the chain (below). Whoever makes a packet sends 0 |
+| [56] | foreground stop | "stop sending me the foreground stream"; 0 is "send" |
+| [57] | background stop | "stop sending me the background stream"; 0 is "send" |
+| [63:58] | reserved | 0 |
+| [95:64] | data checksum | over the data |
+| [127:96] | header CRC | over bits [95:0] |
 
 The same header byte by byte, as it goes on the link. Byte *i* holds bits [8*i* + 7 : 8*i*] and is the (*i* + 1)th
 byte sent. The data follows, 16 bytes a word.
 
 | byte | holds |
 |---|---|
-| 0 | the stream in its low four bits; lost, recovery and restart in bits 4, 5 and 6; bit 7 is 0. A background packet with none of them is 0x02 |
+| 0 | the stream in its low four bits; resend, lost, recovery and restart in bits 4 to 7. A background packet with none of them is 0x02 |
 | 1 | the length, 0 to 32 |
-| 2, 3 | foreground number bits 0 to 15, low byte first |
-| 4 | low two bits: foreground number bits 16 and 17; high six bits: foreground acknowledge bits 0 to 5 |
-| 5 | foreground acknowledge bits 6 to 13 |
-| 6 | low four bits: foreground acknowledge bits 14 to 17; high four bits: background number bits 0 to 3 |
-| 7 | background number bits 4 to 11 |
-| 8 | low six bits: background number bits 12 to 17; high two bits: background acknowledge bits 0 and 1 |
-| 9, 10 | background acknowledge bits 2 to 17, low byte first |
-| 11 | low four bits: hops; then foreground stop, foreground resend, background stop, background resend in bits 4 to 7 |
-| 12 to 15 | the data checksum, low byte first |
-| 16 to 19 | the header CRC, low byte first |
+| 2, 3 | packet number bits 0 to 15, low byte first |
+| 4 | low two bits: packet number bits 16 and 17; high six bits: acknowledge bits 0 to 5 |
+| 5 | acknowledge bits 6 to 13 |
+| 6 | low four bits: acknowledge bits 14 to 17; high four bits: hops |
+| 7 | bit 0: foreground stop; bit 1: background stop; the rest 0 |
+| 8 to 11 | the data checksum, low byte first |
+| 12 to 15 | the header CRC, low byte first |
 
+### One run of numbers for a link (owner, 2026-11-17)
+
+**A direction of a link has one run of packet numbers, shared by both streams.** The owner: "why have separate
+packet numbers for the streams? The packet number is about the link, not the stream."
+
+- **A number is given to a packet when it is sent,** whichever stream its data is on. A stream that is stopped
+  simply has no packets sent, and the numbers of the other's stay consecutive.
+- **So one acknowledgement, one resend flag, one window and one set of kept packets** for a direction of a link.
+- **Both streams' stop bits are in every header.** They are what is a stream's; everything else in the header is
+  the link's or the packet's.
+- **Why a stopped stream cannot block the other,** which was the reason for numbers of their own:
+  1. a sender that hears anything from the other side hears both stop bits;
+  2. a queue says stop at half full, 8 KB still free, and at most a window, 8 packets or 4 KB, can be on its
+     way. So a good packet always has room, the receiver never has to refuse one, and nothing waits behind a
+     refused packet.
+- **What it costs:**
+  - a damaged background packet has the foreground packets behind it sent again too: a few packets, and only
+    when there is damage;
+  - the window is shared: with 8 background packets not yet acknowledged, a foreground packet waits for the next
+    acknowledgement, about a packet's time.
+- **What it saves:** the header stays one 128-bit word, 3.0% of a full packet, and the link end is one machine
+  where it was two.
+- **It is still to be shown by WORKER8's search** that the foreground keeps moving while the background is
+  stopped, with one run of numbers.
+
+**How it came to this,** in a morning:
+
+- With numbers for each stream and a header that spoke for its own stream only, one stream filling a direction
+  starved the other of acknowledgements and its stop bit: WORKER8 measured the background standing still for
+  102,447 cycles on a wire with no damage.
+- Sending the other stream's status as packets of its own would cost a busy direction about 3% on top of the
+  headers' 3%.
+- The owner then made the header 20 bytes, with both streams' numbers, acknowledgements and flags in each. It
+  was written up here, and WORKER8 built it.
+- Then the owner asked why the streams had numbers of their own at all. They need not, and the header is 16 bytes
+  again.
+
+### The rest of the rules
+
+- **Everything rides in 128 bits** (owner): the header is one word, and the data is whole words, so the link is
+  word-aligned throughout.
 - **The length is any number of words up to 32,** 16 to 512 bytes of data (owner). Any frame then cuts exactly into
   packets.
 - **A frame ends at the end of a packet** (owner): the next frame never starts in the middle of one.
 - **A length of 0 is a header with no data** (owner): a way to say where the link stands with nothing else to send.
   - **It takes no packet number** (ruled 2026-11-16, on WORKER2's question): if it did, the other side would have to
-    acknowledge it, and an acknowledgement that must itself be acknowledged never settles. Both number fields
-    hold the numbers the streams' next packets with data will carry, so they are still never 0. Its stream field
-    is 1 or 2, so that the first byte is not zero; it means nothing.
-- **Packet numbers are for each link, and on a link for each stream** (owner, 2026-11-17), since the streams are
-  flow-controlled apart. A packet that is forwarded gets a new number on the next link. The first is 1, they run
-  to 0x3FFFE, then 1 again.
-- **No packet number is 0 or all ones** (owner).
-- **18 bits of packet number is enough** (owner; 20 until 2026-11-17). Only packets not yet acknowledged are
-  outstanding, and that is a small window. A stream's numbers come round again after 262,142 packets, about 138 MB.
+    acknowledge it, and an acknowledgement that must itself be acknowledged never settles. Its number field holds
+    the number the next packet with data will carry, so the field is still never 0. Its stream field is 1 or 2,
+    so that the first byte is not zero; it means nothing.
+  - **That number is how a receiver learns that the last packet of a burst was lost,** with no timer (WORKER8):
+    it sees a number ahead of the one it expects.
+- **A packet that is forwarded gets a new number** on the next link (owner).
+- **No packet number is 0 or all ones** (owner), so a header word is never all zeros.
+- **18 bits of packet number is enough** (owner; 20 until 2026-11-17, when four bits went to the hops field).
+  Only packets not yet acknowledged are outstanding, and that is a small window. A link's numbers come round
+  again after 262,142 packets, about 138 MB.
 - **The first byte on the link is never zero** (owner): it holds the stream, which is never 0.
-- **A stream's next number in every header** is how a receiver learns that the last packet of a burst was lost,
-  with no timer (WORKER8): it sees a number ahead of the one it expects.
 
 ## The size of a packet
 
@@ -151,7 +173,7 @@ so on. Everything in this document but the hops field belongs to one link.
 
 1. **takes the whole packet in and checks it,** as any receiver does. A bad packet is the incoming link's
    business: it is asked for again there, and is not forwarded;
-2. **writes the header for the outgoing link:** that link's next packet number on the stream, its acknowledge
+2. **writes the header for the outgoing link:** that link's next packet number, its acknowledge
    field and its flags;
 3. **adds one to hops;**
 4. **computes the header CRC again** (owner: "always recompute the header CRC").
@@ -170,7 +192,7 @@ The data and its checksum pass through unchanged.
 
 - **Why the data checksum is kept:** the data is then covered from the ASIC that made the packet to the host, the
   time it waits in each forwarding buffer included. Were each hop to compute it again, a bit that flipped in a
-  buffer would be sealed in as good. And the sending unit has only 16 bytes to do for a forwarded packet.
+  buffer would be sealed in as good. And the sending unit has only 12 bytes to do for a forwarded packet.
 
 - **Whoever makes a packet sends it with hops 0:** the host, or an ASIC.
 - **Towards the host, hops says which ASIC made the packet:** its place in the chain. It counts hops, but what it
@@ -183,8 +205,8 @@ The data and its checksum pass through unchanged.
 - **From the host, every ASIC gets the same data.** Each ASIC takes a packet for itself and forwards it on; the
   last has nobody to forward to. The field is ignored (owner): it is not tested, and no value of it is an error.
   It happens to be the receiving ASIC's own place in the chain.
-- **On an outgoing link an ASIC's own packets and the ones it forwards share one run of packet numbers** on each
-  stream.
+- **On an outgoing link an ASIC's own packets and the ones it forwards share the link's one run of packet
+  numbers.**
 - **Towards the host, data is on the foreground stream only** (owner). The background stream appears there only
   as packets of length 0, carrying its acknowledgements and its stop bit, and those never leave their link.
 - **The chain comes before an ASIC's own data** (owner). Towards the host, an ASIC sends a packet it is forwarding
@@ -243,18 +265,18 @@ result = crc XOR 0xFFFFFFFF
 
 - **The data checksum** is the CRC-32C of the packet's data, all 16 × length bytes, in the order they go on the
   link. For a packet of length 0 it is 0x00000000, and it is checked.
-- **The header CRC** is the CRC-32C of header bytes 0 to 15, the data checksum included.
-- **Examples,** each header's 20 bytes:
-  1. A background packet, length 1, its number 1, the foreground's next number 1, both acknowledgements 0, no
-     flags, hops 0, the data one zero word:
-     `02 01 01 00 00 00 10 00 00 00 00 00 EA 9A 70 42 45 94 1A E9`.
-  2. The same after one hop, hops 1: `02 01 01 00 00 00 10 00 00 00 00 01 EA 9A 70 42 E9 FB 0B D1`.
-  3. A foreground packet, length 1, its number 0x2ABCD, foreground acknowledge 0x15555, the background's next
-     number 0x00123, background acknowledge 0x3FFFE, hops 3, foreground stop and background resend set, the data
-     one zero word: `01 01 CD AB 56 55 35 12 80 FF FF 93 EA 9A 70 42 57 AE 78 15`.
-  4. A packet of length 0: stream 1, the foreground's next number 5 and acknowledge 4, the background's 9 and 8:
-     `01 00 05 00 10 00 90 00 00 02 00 00 00 00 00 00 00 DD 0F 8F`.
-- A cross-check for any implementation: the CRC-32C of all 20 header bytes of a good packet is 0x48674BC7.
+- **The header CRC** is the CRC-32C of header bytes 0 to 11, the data checksum included.
+- **Examples,** each header's 16 bytes:
+  1. A background packet, length 1, number 1, acknowledge 0, no flags, hops 0, the data one zero word:
+     `02 01 01 00 00 00 00 00 EA 9A 70 42 A0 8C 06 E1`.
+  2. The same after one hop, hops 1: `02 01 01 00 00 00 10 00 EA 9A 70 42 9E BC 0A 21`.
+  3. A foreground packet, length 1, number 0x2ABCD, acknowledge 0x15555, hops 3, resend and background stop
+     set, the data one zero word: `11 01 CD AB 56 55 35 02 EA 9A 70 42 D2 BF BA 0A`.
+  4. A packet of length 0: stream 1, the next number 5, acknowledge 4, foreground stop set:
+     `01 00 05 00 10 00 00 01 00 00 00 00 57 09 4D 4E`.
+  - The first two are the same bytes as with the header before, which WORKER7 built: only the stop bits and the
+    restart flag have moved.
+- A cross-check for any implementation: the CRC-32C of all 16 header bytes of a good packet is 0x48674BC7.
 
 ### The CRC as hardware (2026-11-17)
 
@@ -270,10 +292,10 @@ result = crc XOR 0xFFFFFFFF
 
 - **A byte a cycle is the fit:** the link is 8 lines, a byte a transfer, so the unit takes each byte as it
   arrives and is done when the packet is. The definition above is already byte by byte.
-- **Checking a header** (owner): bytes 0 to 15 go through the unit and the result is compared with bytes 16 to 19.
-  - The same thing, simpler to build: all 20 bytes go through, and the result is compared with the constant
+- **Checking a header** (owner): bytes 0 to 11 go through the unit and the result is compared with bytes 12 to 15.
+  - The same thing, simpler to build: all 16 bytes go through, and the result is compared with the constant
     0x48674BC7. The unit then never holds a result while four more bytes arrive.
-  - Bytes 12 to 15 are kept as they pass: they are the data checksum.
+  - Bytes 8 to 11 are kept as they pass: they are the data checksum.
 - **Checking the data** (owner): the unit is set back to its starting value, **all ones, not zero,** the 16 ×
   length data bytes go through, and the result is compared with the four bytes kept. The constant does not serve
   here, since the checksum is in the header and not after the data.
@@ -288,7 +310,7 @@ result = crc XOR 0xFFFFFFFF
   | out, towards the host | the data checksum of the ASIC's own packets; the header of every packet, its own and forwarded |
 
   - The two that receive cannot be one: both links can be receiving at once.
-  - The two that send could share a unit, a header being 16 bytes of work against a packet's 532 on the wire. The
+  - The two that send could share a unit, a header being 12 bytes of work against a packet's 528 on the wire. The
     owner took four: a second unit is cheaper than the sharing.
 - **An ASIC's own packet is checksummed before it is sent,** not as it goes: the data checksum is in the header,
   which goes first. The words are waiting in the outgoing queue.
@@ -332,7 +354,7 @@ result = crc XOR 0xFFFFFFFF
 
 Why the zeros work:
 
-- **1,024 bytes is longer than the longest packet,** 532 bytes with its header. Whatever length a confused receiver
+- **1,024 bytes is longer than the longest packet,** 528 bytes with its header. Whatever length a confused receiver
   believes it is in the middle of, it has run out before the zeros end.
 - **A zero word is never a header,** so between packets it is plainly idle.
 - **The first byte that is not zero starts a header,** since a header's first byte is never zero.
@@ -346,17 +368,17 @@ Nothing in the exchange is relied on to arrive, because the noise can cover it: 
   running. The owner can't imagine the foreground stream ever needing to stop, but it has the bit all the same.
 - **They are one bit a stream, in every header:** each stream's `stop` flag, in every header a side sends, says
   what it wants now, 1 for "stop sending me this stream" and 0 for "send". Resuming is the bit going back to 0.
-  Since the header of 20 bytes, a packet of either stream carries both.
+  A packet of either stream carries both bits.
 - **When the status is sent** (owner, 2026-11-17):
   1. **On a change, right then,** as a packet of length 0 if there is nothing else to send.
   2. **A timer runs from the end of the last packet sent** in that direction. Any packet starts it again.
-  3. **When it reaches 512 cycles, the status is sent again,** one packet of length 0, which speaks for both
-     streams and starts the timer again.
+  3. **When it reaches 512 cycles, the status is sent again,** one packet of length 0, which starts the timer
+     again.
   - So a side is never more than 512 cycles of silence from telling the other where it stands, stopped or not,
     and no "resume" can be lost for good. The same packets keep the acknowledgements fresh.
-  - **One timer a direction is enough,** as the owner first put it, because every packet now carries both
-    streams' status. With the 16-byte header it was not: one stream's data started the timer again and the other
-    stream's status never went out (WORKER8), and a timer for each stream was the fix proposed.
+  - **One timer a direction is enough,** as the owner first put it, because every packet carries the link's
+    acknowledgement and both stop bits. With numbers for each stream it was not: one stream's data started the
+    timer again and the other stream's status never went out (WORKER8).
   - There are no zeros in the rule: an idle line is zeros anyway.
   - A status packet that is damaged is a damaged packet like any other (owner): the receiver loses its place,
     says "lost", the link repairs, and the status goes out again.
@@ -381,8 +403,8 @@ Nothing in the exchange is relied on to arrive, because the noise can cover it: 
 
 - A sender keeps every packet until it is acknowledged, to send it again.
 - **The host has the memory for that.**
-- **The chip does not.** It keeps **8 packets a stream** on each link it sends on (owner, 2026-11-17), about 4 KB,
-  and waits when 8 are unacknowledged.
+- **The chip does not.** It keeps **8 packets** for each direction it sends in (owner, 2026-11-17), about 4 KB,
+  of both streams together, and waits when 8 are unacknowledged.
   - In ordinary running two or three are outstanding: an acknowledgement comes back on every packet the other
     side sends, and at least every 512 idle cycles with the status.
 - **Sending again is go-back-N** (the owner's rule: "send again from the number after my acknowledge field"): the
@@ -411,7 +433,7 @@ The owner's remark: there must be a mountain of literature on building these. Th
 
 - What the foreground stream carries, and how large its messages are.
 - Whether the recovery packet states the packet number it restarts from, or that is the "lost" packet's number plus one.
-- Whether the host, which keeps every packet, must also hold itself to the window of 8 a stream: with more
+- Whether the host, which keeps every packet, must also hold itself to the window of 8: with more
   outstanding, a lost stop bit can overrun a queue (WORKER8).
 - The sizes of a forwarding ASIC's buffers, which the same rule binds.
 - The timers: how soon an unacknowledged packet is sent again without a "resend".

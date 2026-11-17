@@ -1,14 +1,16 @@
-# Ingress and the master tile: the interface
+# Ingress/Egress and the master tile: the interface
 
 Draft, 2026-11-16, from the discussion with the owner; rewritten that evening for the owner's forward count, which
-takes the firmware out of the path of the bulk data. How the master tile's core (C&C 1 in v1.35's names) takes what
-the host sends out of Ingress. It is written so that a worker need not guess: where the owner did not rule, a choice
-is made and marked with a dagger (†). (owner) marks what the owner said.
+takes the firmware out of the path of the bulk data; and extended on 2026-11-17 to the whole peripheral: Egress,
+the UART, and what a reset does. How the master tile's core (C&C 1 in v1.35's names) takes what the host sends out
+of Ingress, and sends its replies through Egress. It is written so that a worker need not guess: where the owner
+did not rule, a choice is made and marked with a dagger (†). (owner) marks what the owner said.
+
+(The file keeps its name, `INGRESS-INTERFACE.md`, because sessions at work refer to it.)
 
 The link itself, its packets and its checks, is `HOST-LINK.md`. The frames inside the packets are `HOST-FRAMES.md`.
 
-**What v1.37 has today is the design before this one** (WORKER4): a threshold for each stream, and the firmware
-moving every word to the Updater by DMA under credits. "In v1.37", at the end, says what is built and what is to
+**v1.37 is behind this document.** "In v1.37", at the end, says what is built, what is being built and what is to
 come.
 
 ## Terms
@@ -18,8 +20,31 @@ come.
 | **a packet** | one packet of the link: a header word, then 0 to 32 words of data. Not a packet of the mesh, which this document calls a `WRITE` |
 | **a word** | 128 bits |
 | **a stream** | foreground or background (owner's names). The foreground carries what the host sends for the proof being worked on; the background sets up the next proof |
-| **a queue** | where a stream's words wait in Ingress: the foreground queue and the background queue |
+| **a queue** | where a stream's words wait in Ingress: the foreground queue and the background queue. Egress has one, the outgoing queue |
 | **a frame** | one of `HOST-FRAMES.md`'s, sent as one or more packets of a stream |
+
+## The peripheral in short
+
+**The master tile has two peripherals** (owner's summary, 2026-11-17): Ingress/Egress, with the UART, is
+peripheral 1; the Updater is peripheral 2 (`UPDATER-INTERFACE.md`).
+
+| in Ingress/Egress | what it is |
+|---|---|
+| two incoming queues | foreground and background, the host's words after the packets' checks |
+| the DMA | the standard one, copying words out of either incoming queue |
+| the forward count | a register: words from the background queue straight to the Updater, or dropped |
+| one outgoing queue | the core's replies to the host, foreground only, with a frame count and a credit |
+| the UART | a byte a store out, a byte a load in, behind FIFOs of 16 bytes |
+| v1.36's control lines | the other tiles' error lines, the barrier's master side, the watchdog, the LED |
+| the link | the packets' checks, numbering and forwarding along the chain (`HOST-LINK.md`); nothing of it is a register |
+
+- **How the core is woken:** the tile has one bit for each peripheral. `peripheral_1` is up while any event of
+  Ingress/Egress that its `EVENTS_MASK` selects is pending; the core then loads the peripheral's `EVENTS` to see
+  which. The Updater's events come by `peripheral_2`.
+- **The two incoming queues have a service flag each** (owner), two bits of that `EVENTS` word with a mask bit
+  each, so the firmware can listen to one and not the other. The UART's two events, the outgoing queue's credit,
+  `dma_done`, the watchdog and the barrier's `all_arrived` are in the same word.
+- **Each incoming queue has a word count** the core can read.
 
 ## The pipeline (owner, 2026-11-16)
 
@@ -41,35 +66,63 @@ come.
 
 Ingress/Egress is the master tile's peripheral 1 (`v1.36/spec/machine-spec.md` 17.6).
 
-- **What the RTL has built stays as it is:** the error lines, the barrier's master side, the watchdog, the LED and
-  the UART (words 32 to 45, `EVENTS` bits 2 to 5).
-- **The host interface is replaced by this design's, below.** v1.36 pencilled in two stream ports read a beat at a
-  time by the core (words 64 to 72, `STATUS.stream_last`, `EVENTS.stream_in` and `stream_out`).
-  - † For now the new interface sits beside the old one, at words and bits of its own: the RTL's firmware images
-    and v1.36's stream tests use the old words, and those run unchanged.
-- **Ingress gains a DMA,** the standard one of 17.4. v1.36's Ingress/Egress has none.
-- **Ingress gains a word port to the Updater** (below).
+| part | in v1.36 | here |
+|---|---|---|
+| the error lines, the barrier's master side, the watchdog, the LED | built | **as they are** (words 32 to 41, `EVENTS` bits 2 and 3) |
+| the host interface | pencilled in: two stream ports read and written a beat at a time by the core (`STREAM_OUT_W0`–`W2`, `STREAM_SEND`, `STREAM_SEND_LAST`, `STREAM_IN_W0`–`W2`, `STREAM_RECEIVE`, words 64 to 72; `STATUS.stream_last`; `EVENTS.stream_in` and `stream_out`) | **removed** (owner, agreed with Tony, 2026-11-17), and replaced by this document's: Ingress and Egress, below |
+| the UART | built: four words at 42 to 45 | **redesigned** (owner, 2026-11-17), below. A request to Tony (`RTL-CHANGE-REQUESTS.md`) |
+| a DMA | none | **the standard one** of 17.4, reading out of Ingress's queues |
+| a region | takes no `WRITE`s | **takes the outgoing queue's words** |
+| a port to the Updater | | **the word port,** below |
 
 ## The registers
 
+**The control block and the DMA block, words 0 to 31:**
+
 | where | register or bit | access | meaning |
 |---|---|---|---|
+| `STATUS` [1] | `dma_busy` | R, live | the DMA's (17.4) |
 | `STATUS` [3] † | `foreground_ready` | R, live | the foreground queue holds words |
 | `STATUS` [4] † | `background_ready` | R, live | the background queue holds words |
-| `EVENTS` [8] † | `foreground_service` | counted, depth 1 | the foreground queue asks for service (below) |
-| `EVENTS` [9] † | `background_service` | counted, depth 1 | the background queue asks for service (below) |
-| `EVENTS` [1] | `dma_done` | counted, depth 1 | the DMA's transfer has ended (17.4) |
+| `STATUS` [12:8] † | `uart_tx_bytes` | R, live | the bytes in the UART's TX FIFO (owner: the UART's flags are in `STATUS`) |
+| `STATUS` [20:16] † | `uart_rx_bytes` | R, live | the bytes in its RX FIFO |
+| `STATUS` [24] † | `rx_overrun` | R | a byte arrived with the RX FIFO full and was dropped; stays until the UART's reset |
+| `STATUS` [25] † | `framing_error` | R | a frame's stop bit was 0 and the frame was dropped; stays until the UART's reset |
+| `ERRORS` [0] | `tile_error` | live | v1.36's: another tile's error line is up |
 | `ERRORS` [1] † | `crc_error` | sticky | a packet failed its header CRC or its data checksum |
 | `ERRORS` [2] † | `sequence_error` | sticky | a packet's number was not the next one on its stream |
 | `ERRORS` [3] † | `format_error` | sticky | a packet passed both checks but a field cannot be: its stream, its length, or a reserved bit |
-| word 80 † | `FOREGROUND_WORDS` | R, live | the foreground queue's length in words; 0 when empty |
-| word 81 † | `BACKGROUND_WORDS` | R, live | the background queue's length in words |
-| word 82 † | `DMA_FORWARD_COUNT` | R/W | the forward count (below). 0 at the reset |
-| block 1 | `DMA_HDR`, `DMA_DEST_ADDR`, `DMA_START` | 17.4's | copies words out of a queue (below) |
+| `ERRORS` [4] † | `egress_error` | sticky | a word pushed into a full outgoing queue, or with `EGRESS_COUNT` at 0; the word is dropped |
+| `EVENTS` [1] | `dma_done` | counted, depth 1 | the DMA's transfer has ended (17.4) |
+| `EVENTS` [2], [3] | `all_arrived`, `watchdog` | | v1.36's |
+| `EVENTS` [4], [5] | `uart_rx`, `uart_tx` | live | v1.36's: a byte in the RX FIFO; room in the TX FIFO |
+| `EVENTS` [8] † | `foreground_service` | counted, depth 1 | the foreground queue asks for service (below) |
+| `EVENTS` [9] † | `background_service` | counted, depth 1 | the background queue asks for service (below) |
+| `EVENTS` [10] † | `egress_credit` | counted, depth 2 | the outgoing queue's credit (below) |
+| words 16 to 18 | `DMA_HDR`, `DMA_DEST_ADDR`, `DMA_START` | 17.4's | copies words out of one of Ingress's queues (below) |
+| word 30 | `UART_TX` | W | [7:0] a byte to send. A store pushes it (owner: word 30) |
+| word 31 | `UART_RX` | R | [7:0] the oldest byte received; [8] `valid`. A load pops it (owner: word 31) |
+
+**Its own words, 32 and up:**
+
+| word | register | access | meaning |
+|---|---|---|---|
+| 32 to 41 | `ERROR_LINES_0`–`2`, `ARRIVALS_0`, `_1`, `ARRIVE_EXPECT_0`, `_1`, `RELEASE`, `WATCHDOG`, `LED` | v1.36's | unchanged |
+| 42 † | `UART_CONTROL` | R/W | the UART's divider and enables; 0 is its reset (below). 0 at the reset (owner) |
+| 80 † | `FOREGROUND_WORDS` | R, live | the foreground queue's length in words; 0 when empty |
+| 81 † | `BACKGROUND_WORDS` | R, live | the background queue's length in words |
+| 82 † | `DMA_FORWARD_COUNT` | R/W | the forward count (below). 0 at power-on |
+| 83 † | `EGRESS_COUNT` | R/W | the words of the frame being queued for the host that are still to come (below). 0 at power-on |
 
 - **Two service flags, one for each stream** (owner).
 - **Two readable registers: the foreground queue's length and the background queue's** (owner).
 - **There are no thresholds.** They were how the firmware kept its cost down while it moved every word itself.
+- **Gone:** words 43 to 45 (`UART_RX`, `UART_DIVISOR`, `UART_STATUS`) and 64 to 72 (the old host interface);
+  `STATUS` [2] and `EVENTS` [6] and [7] read 0.
+- **`START` stays undefined,** as in v1.36: the peripheral has no run.
+- **No load of a word from 32 up has a side effect.** With `STREAM_RECEIVE` gone and `UART_RX` moved, that is now
+  true of every peripheral. The loads that act are all below 32: `EVENTS`, which consumes, and `UART_RX`, which
+  pops.
 
 ## The forward count
 
@@ -89,9 +142,19 @@ Ingress/Egress is the master tile's peripheral 1 (`v1.36/spec/machine-spec.md` 1
 - **Starting a DMA transfer from the background queue while `count` is not 0 is undefined** (owner).
   - † So is a store of a count while a DMA transfer from the background queue is in flight.
 - **† A store replaces the count.** A store of 0 stops the forwarding: for when the Updater halts on an error.
-- **† A load gives what remains,** and may be stale by the time it is used.
-- **There is no event for the count reaching 0.** The firmware learns that a frame is through from the Updater's
-  `done`, or from the next service flag.
+- **† A load gives what remains,** and may be stale by the time it is used. A load of 0 is exact: only the core
+  raises the count.
+- **There is no event for the count reaching 0,** and none is needed (WORKER7). The firmware learns that a frame
+  is through from the Updater's `done`, or from the next service flag.
+- **`count` reaches 0 when the frame's last word has entered the Updater,** not when it has been decoded. So the
+  next frame's flag can come before the last run's `done`.
+
+**As built in v1.37 (WORKER7), each †:**
+
+- **A cycle works from the registers as they stood at its start.** A word that arrives at the end of a cycle is
+  the queue's from the next, for both ways out.
+- **`discard` stays as written when `count` reaches 0,** and a load reads both fields; the firmware masks [30:0].
+- **A store takes effect at the end of its cycle,** as a store to any window word does.
 
 ## The word port to the Updater
 
@@ -123,9 +186,27 @@ service").
 3. **Not for words that arrive while it is already asking.** After a flag, the next one comes only when the core
    has started something that takes words from the queue, and that has ended.
 
+- **The same rule as one signal** (WORKER7, as built): "asks" is a level, and the flag is posted in the cycle the
+  level rises. That gives the three lines above exactly, with no special case.
+- **"In flight"** (owner, 2026-11-17): a DMA transfer is in flight from a queue while the DMA is busy with a
+  transfer whose `DMA_HDR.queue` names that queue, from `DMA_START` to `dma_done`. It is `STATUS.dma_busy`, a
+  signal the hardware has.
+- † A transfer of 0 words counts as a transfer: at its end, with words waiting, a flag is posted.
 - **The core wakes, and the flag is cleared** by the load of `EVENTS` (owner).
 - **`…_WORDS` is live,** so a core that loads it after the flag sees every word that has arrived by then.
 - The two streams are independent: words waiting on one do not hold the other.
+
+**For firmware writers** (WORKER7's firmware, which keeps to these):
+
+- **A flag is a reason to look, never proof.** A transfer's end can post a flag that is still pending when the
+  next count is stored. On each wake the core loads `DMA_FORWARD_COUNT` and `BACKGROUND_WORDS`, and acts only on
+  a count of 0 with words waiting.
+- **A count is stored, or a background transfer started, only after a load of the count reads 0** and with no
+  background transfer in flight.
+- **Drops that follow one another are one count:** a store replaces a running count, so two drop counts stored
+  back to back lose the first's remainder.
+- **A frame for the Updater waits for the last run's `done`** before it sets the next run up; a frame that is not
+  the Updater's goes ahead, and the run overlaps it.
 
 ## Reading words out: the DMA
 
@@ -192,8 +273,85 @@ What the core does with a background frame:
 ## Holding the host back
 
 - **Nothing is counted.** The Updater takes words when it can; when it cannot, the background queue fills; a full
-  queue tells the host to stop sending that stream (`HOST-LINK.md`). The foreground stream is not touched.
+  queue tells its neighbour up the chain to stop sending that stream (`HOST-LINK.md`: "stop" is for each link). The
+  foreground stream is not touched.
 - **The firmware has no part in it.**
+
+## Egress: sending to the host
+
+**The core builds a frame in its own memory, tells Egress how long it is, and sends the words into Egress's
+queue. Egress cuts them into packets** (owner, 2026-11-17).
+
+| piece | what it is |
+|---|---|
+| the outgoing queue | 512 words, 8 KB †. Filled by 128-bit `WRITE`s into the peripheral's region, 0x04 on the master tile, part 1 † (offset bits [22:20], as on the other peripherals; the other parts unmapped) |
+| `EGRESS_COUNT` | the frame's length in words (owner: "we set the number of words we want to write in the frame") |
+| `egress_credit` | the wake that says there is room (owner: "we get the wakeup saying we can send up to 4KB") |
+
+- **Replies are on the foreground stream only** (owner). Every packet Egress makes is on stream 1. The background
+  stream appears on the way back only as packets of length 0, carrying its acknowledgements and its stop bit.
+- **The count:** the core stores a frame's length, then pushes that many words.
+  - † It counts down as the words land in the queue, not as they leave: the word that takes it to 0 is the
+    frame's last, and is marked so in the queue. So the core, which pushes the words, knows when the count is 0,
+    and can store the next frame's length without waiting for the link.
+  - † A store while the count is not 0 is undefined. A load gives what remains.
+- **Packets:** Egress makes a packet when the queue holds 32 words of a frame, or the frame's last word. A frame's
+  last packet is the short one, and the next frame starts a new packet: a frame ends at the end of a packet, as on
+  the way in.
+- **Each packet goes out with hops 0,** behind any packet the ASIC is forwarding along the chain (`HOST-LINK.md`).
+- **The credit is the replayer's and the free page queue's** (17.8.8): a counted event of depth 2; one credit is
+  leave to push 256 words, 4 KB; a credit comes back each time 256 words have left the queue. There are 2 at
+  power-on, so a reply of up to 8 KB needs no wake.
+- **In the firmware** (owner): it registers a transmission; that turns the credit's bit on in `EVENTS_MASK`; on
+  each wake it sends what the credit allows. With nothing registered the bit is off, and the credits wait.
+- **What the frames are** is not settled: the replies' formats come with the foreground stream's (Open).
+
+## The UART
+
+Redesigned by the owner on 2026-11-17. v1.36's is built, so this is a request to Tony
+(`RTL-CHANGE-REQUESTS.md`). The line, the frames (8 data bits, no parity, 1 stop bit), the two FIFOs of 16 bytes
+and the two events are v1.36's.
+
+| word | register | access | |
+|---|---|---|---|
+| 30 | `UART_TX` | W | [7:0] a byte to send. A store pushes it into the TX FIFO, and stalls while the FIFO is full, as today |
+| 31 | `UART_RX` | R | [7:0] the oldest byte received; [8] `valid`. A load pops it. With the RX FIFO empty it reads 0 and pops nothing |
+| 42 † | `UART_CONTROL` | R/W | [15:0] the divider, the cycles a bit; [16] enable read; [17] enable write |
+| `STATUS` | | R | the two FIFOs' bytes, `rx_overrun`, `framing_error` (above) |
+
+- **`UART_CONTROL` is a plain register** (owner: "just a read write register like any other"). No bit of it acts
+  when written.
+- **The value 0 is the UART's reset** (owner): while it is 0, both FIFOs are empty, `rx_overrun` and
+  `framing_error` are 0, the line out is idle and the line in is ignored. A program resets the UART by storing 0,
+  and starts it by storing its setting in a later cycle.
+- **It is 0 at the reset** (owner), so the UART is off until the master tile's core turns it on. A UART that runs
+  with nobody reading it is pointless, and the store is one instruction.
+- **The enables only gate the line** (owner: "ignore any crap noise on the uart"):
+  - enable read 0: the line in is ignored. No frame starts and no error is raised. What is in the RX FIFO stays;
+  - enable write 0: nothing is sent. † A store to `UART_TX` is then dropped, so that it cannot stall for ever.
+- **The line errors are status, not errors,** as in v1.36: noise on the line never raises the toast pin. They are
+  cleared only by the UART's reset.
+- † A value that is not 0 with a divider of 0 is undefined, as a divisor of 0 is today. A new divider takes effect
+  at each direction's next idle point.
+- † While the UART is in reset, `EVENTS.uart_rx` and `uart_tx` read 0, a store to `UART_TX` is dropped, and
+  `UART_RX` reads 0.
+
+## Reset
+
+**The host link cannot be reset from inside** (owner). An ASIC's Ingress/Egress carries the other ASICs' packets
+along the chain and keeps packet numbers that it shares with both neighbours.
+
+| part | cleared by |
+|---|---|
+| the link: the packet buffer and the checks, the packet numbers and acknowledgements, the packets kept until acknowledged, the forwarding | power-on only. If it loses its place, "lost" and recovery are how it comes back (`HOST-LINK.md`) |
+| what the core sees of the host: the two incoming queues, `DMA_FORWARD_COUNT`, the outgoing queue, `EGRESS_COUNT` and the credits | power-on only † |
+| the UART | `UART_CONTROL` at 0, which the reset makes it (owner: the reset "just clears the UART queues / UART status") |
+| the barrier's side, the watchdog, the LED | the reset, as v1.36 says |
+
+- **v1.36 has one reset, the whole chip's,** and marks hard and soft open (item 124). This is what a soft reset
+  must leave alone. Its proposal already keeps "the host interface's link".
+- † Nothing empties the queues the core sees short of power-on. If a way is wanted, for a core that starts again
+  with the link up, it is a design of its own: the words dropped were already acknowledged to the neighbour.
 
 ## Errors
 
@@ -216,15 +374,41 @@ What the core does with a background frame:
 | what the black box does | checks each packet (both checks, and the packet numbers in order), strips the header word, and puts the packet's words in the queue |
 | what it leaves out | everything that needs the way back to the host: acknowledgements, "resend", "lost" and recovery, "stop". The file's next packet simply waits while the queue has no room for it |
 
-**What is built, and what is to come:**
+**What is built, what is being built, and what is to come:**
 
-| | as merged (WORKER4) | this design (WORKER7) |
+| | as merged (WORKER4) | being built (WORKER7) |
 |---|---|---|
 | the queues | 16 KB a stream | 8 KB a stream, pencilled in |
 | words 82 and 83 | a threshold for each stream | `DMA_FORWARD_COUNT` at 82; 83 unmapped |
 | the service flag | posted when the words waiting reach the threshold, and none while words are owed | the rule above |
 | the Updater's data | by DMA into its segment queue, under credits the firmware keeps | by the word port |
 | the firmware | about 100 cycles awake a packet's worth, 0.17 to 0.20 of the link's time | a wake a frame |
+| the packet's header | 20-bit numbers | 18-bit numbers and the hops field: asked for, not yet done |
+
+**WORKER7's work is built and on its branch, `updater-w7`, not yet merged** (2026-11-17). The 37 proof runs pass
+on it, every image equal to gold's (Quest 213). Measured there, at a byte a cycle:
+
+| | with the thresholds (WORKER4) | with the forward count |
+|---|---|---|
+| the master's wakes a proof, on the small guests | 79 to 97 | 46 to 54 |
+| a frame of update words | a transfer of 256 words every 4 KB, 2.3 to 3 wakes each | 2 to 4 wakes and 450 to 1,200 cycles awake, whatever its length |
+| the master awake, of the link's time to the hand-over | 17 to 20% | **2.4 to 7.0%** at 2²⁹ (EVM Zone 4.5 to 7.0%, Cyclone 2.4 to 4.1%) |
+| the same, the boot left out | | 2.0 to 4.2% |
+
+- **The owner's target, at most 10%, is met on every run.** The figure is all of the master's time awake, of
+  which feeding the Updater is a part.
+- **What is left is a cost a proof, not a cost a word:** the boot (about 86,000 cycles), parsing the proof header
+  (about 14,000 at *N* 64) and frame 8's counts. So the share now mostly measures how long the link takes, and
+  rises on a faster link only because the same work is divided by less time.
+- **The hand-over comes about 3% later on the small guests:** that is the queues going from 16 KB to 8 KB, which
+  holds the link sooner during the boot, not the forward count.
+
+**To come, in no worker's brief yet:**
+
+- the old host interface's words taken out of the black box, with v1.36's stream tests and any of the RTL's
+  firmware images that use them;
+- the UART as redesigned, with the store to `UART_CONTROL` added to every image that prints;
+- Egress: nothing goes back to the host in v1.37.
 
 **The packetizer** makes the file from gold's frames:
 
@@ -237,7 +421,8 @@ What the core does with a background frame:
 
 - † zero bytes between packets are idle, and it skips them;
 - † a packet of length 0 takes no number and asks for no service: it is checked and passed over;
-- † the flags and the acknowledge field are ignored, since there is no way back to the host;
+- † the flags and the acknowledge field are ignored, since there is no way back to the host; the hops field is
+  ignored, as it is on every packet from the host (`HOST-LINK.md`), and the packetizer writes 0;
 - † at the end of the file no more packets come, which is not an error.
 
 Gold's packetizer and its vectors are `updater_wip/pipeline/gold/` (`packets`, `packets-read`,
@@ -246,9 +431,9 @@ Gold's packetizer and its vectors are `updater_wip/pipeline/gold/` (`packets`, `
 ## Open
 
 - The word numbers and bit numbers marked †.
+- The foreground stream: what the host's commands and the chip's replies are, as frames.
+- Whether another tile may push words into the outgoing queue itself, by its DMA, or only the master tile's core.
 - **The size of the two queues.** 8 KB each is pencilled in (owner): the size is arbitrary, and 4 KB or 16 KB
-  changes little in the design. What decides it is the room needed for the packets still on their way when a
-  stream says stop (`HOST-LINK.md`).
+  changes little in the design. The room needed when a stream says stop is small, a packet or two, since "stop"
+  is for each link (`HOST-LINK.md`).
 - Whether the forward count wants an event of its own for reaching 0.
-- The sending side, Egress: nothing goes back to the host in v1.37.
-- Whether the foreground stream's messages are frames of the same kind, and what they are.

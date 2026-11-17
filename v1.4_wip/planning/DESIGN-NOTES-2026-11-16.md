@@ -526,3 +526,193 @@ box, the port, the firmware. `INGRESS-INTERFACE.md` and `UPDATER-INTERFACE.md` a
   Open list.
 - **WORKER6's plan is agreed** (the Updater's controller, to the word port, with the shim), and **WORKER7 is
   started** (the forward count in v1.37).
+
+## 19. The link's header: 18-bit numbers and a hops field (just after midnight, 2026-11-17)
+
+- **Decided (owner): the packet number and the acknowledge field are 18 bits each,** down from 20, and the four
+  bits go to a new field. A stream's numbers come round after 262,142 packets, about 138 MB.
+- **The field counts hops** (owner). Whoever makes a packet sends 0, and every ASIC that forwards it along the
+  daisy chain adds one. Towards the host it then says which ASIC sent the packet, by its place in the chain, and
+  Egress along the chain is "check, count, forward" with no ASIC knowing its own place.
+  - The owner's first form was a source number that each ASIC filled in; the count needs no numbering.
+- **The same rule in both directions** (owner). From the host every ASIC gets the same data, so the field is
+  ignored there.
+- **A hop always computes the header CRC again** (owner), since the field is under it. Left outside the CRC, one
+  flipped bit would credit a packet to the wrong ASIC.
+- **A chain is probably no more than 4 ASICs** (owner).
+- **Every link of the chain is a link of its own** (owner). Packet numbers, acknowledgements, the flags, sending
+  again, recovery and "stop" mean something only on the link a header is travelling on. A garbled packet is sent
+  again only over the link that garbled it.
+  - A forwarding ASIC takes the whole packet in, checks it, writes the outgoing link's fields, adds one to hops
+    and computes the header CRC again. It keeps what it has sent on each link until its neighbour acknowledges it.
+  - **What the field is for** (owner): the FPGA sorts what arrives by it, and so rebuilds each ASIC's replies to
+    a query sent to all of them.
+  - **"Stop" for each link:** a full background queue stops the neighbour up the chain, and so on upward, so a
+    chain's background stream moves at its slowest ASIC's pace. The room a queue must keep is then one link's
+    packets in flight, not the chain's.
+  - (The design session first read it as numbers kept between the host and each ASIC. The owner corrected it.)
+- **The chain comes before an ASIC's own data** (owner). Towards the host an ASIC sends, in this order: a
+  foreground packet to forward, a foreground packet of its own, a background packet to forward, a background
+  packet of its own. It fills the gaps with its own.
+- **What it changes that is built:** gold's packetizer, its reader and the vectors; v1.37's link header and
+  Ingress's black box. The first example header is the same bytes as before. Given to WORKER7.
+
+## 20. The rest of Ingress/Egress: Egress, the UART, the reset (2026-11-17, about 1 to 2 a.m.)
+
+The owner: "I think that's the vast majority of ingress/egress." What was added to the link and the forward count:
+
+- **Egress** (owner): the core builds a frame in its own memory, registers a transmission, and sends the words
+  into one outgoing queue. A register holds the frame's length; a credit event says there is room for 4 KB more.
+  The firmware turns the event's mask bit on only while a transmission is registered.
+  - **Replies are on the foreground stream only** (owner).
+  - The owner weighed reading the length off the frame's header word against a register, and took the register:
+    Egress then knows nothing of frames, as Ingress knows nothing.
+  - † Proposed here: the queue is 8 KB and the credit the replayer's (half the queue, depth 2); the count runs
+    down as words are pushed, not as they leave, so the core can queue the next frame without waiting for the
+    link.
+- **The old host interface goes** (owner, agreed with Tony): `STREAM_SEND`, `STREAM_RECEIVE` and their words, bits
+  and events. This design no longer sits beside it.
+- **The UART is redesigned** (owner). `UART_TX` and `UART_RX` move to words 30 and 31. `UART_CONTROL`, at 32 or
+  above, is a plain register with the divider, enable read and enable write. The FIFO levels and the two line
+  errors move into `STATUS`. `UART_DIVISOR` and `UART_STATUS` go.
+  - **The value 0 in `UART_CONTROL` is the UART's reset,** and it is 0 at start-up: the core turns the UART on
+    with one store. "If the uart is running and no one is polling it, well, it's pointless."
+  - **The enables only gate the line,** to ignore noise.
+  - What the owner asked first, and what it gives: of the peripherals' registers at 32 and above, only
+    Ingress/Egress's had loads that act (`UART_RX`, `STREAM_RECEIVE`). Now none does, on any peripheral.
+  - The UART is built in the RTL, so this is request 2 in `RTL-CHANGE-REQUESTS.md`.
+- **Ingress/Egress has no reset of its own, and cannot have** (owner): it carries the chain's packets and shares
+  packet numbers with its neighbours. The link and the queues the core sees are cleared only at power-on; the
+  reset reaches the UART alone.
+  - Ways the design session offered and the owner did not take: bits of `UART_CONTROL` that clear when written;
+    the enables holding the FIFOs empty; `START` as the UART's reset.
+- **In v1.37 none of this is built.** WORKER7 is in Ingress's black box for the forward count and the header's
+  new widths. Taking the old words out, the UART and Egress are a later step.
+
+`INGRESS-INTERFACE.md` now covers the whole peripheral.
+
+## 21. Ingress/Egress: where everything is, and where it stands (2026-11-17, about 3 a.m.)
+
+Written at the owner's request, so that a session starting cold can pick this up.
+
+### Where it is written
+
+| document | what it holds |
+|---|---|
+| `HOST-LINK.md` | the link: 8 LVDS lines; the two streams; the packet and its header (18-bit numbers, hops); CRC-32C, its definition, its hardware and the four units; the order of the tests; a bad packet; "lost" and recovery; stop and resume; **the chain** (every link its own, what a forwarding ASIC does, what is left of a forwarded header, the order of sending) |
+| `INGRESS-INTERFACE.md` | the peripheral as the master tile's core sees it: "The peripheral in short"; the registers; the forward count; the word port; the service rule; the DMA; frames; **Egress**; **the UART**; **reset**; errors; "In v1.37" |
+| `UPDATER-INTERFACE.md` | the Updater, peripheral 2: its data input is the word port from Ingress |
+| `HOST-FRAMES.md` | the frames inside the packets |
+| `RTL-CHANGE-REQUESTS.md` | request 2, the UART; comment C, the old host interface removed (agreed with Tony) |
+| `v1.37_wip/src/units/word_port.h` | the word port's types |
+| this file, sections 12, 14, 16, 17, 19, 20 | how each decision was reached |
+
+### The decisions, in one list (all the owner's unless marked †)
+
+1. **The link:** 8 LVDS lines, about 1 GB/s; packets of a 128-bit header and 0 to 32 words; small packets (512
+   bytes, perhaps 256); two streams, foreground and background, that never block each other.
+2. **The header:** stream, flags (resend, lost, recovery, stop), length, an 18-bit packet number, an 18-bit
+   acknowledge, 4 bits of hops, 8 reserved, the data checksum, the header CRC. Both checks CRC-32C †.
+3. **The chain:** probably no more than 4 ASICs. Every link is a link of its own: numbers, acknowledgements,
+   flags, sending again, recovery and stop belong to one link. A forwarding ASIC checks the whole packet, writes
+   the link's fields afresh, adds one to hops, seals the header again, and keeps the packet until its neighbour
+   acknowledges it. The data and its checksum go through untouched. The FPGA sorts what arrives by hops.
+4. **Towards the host:** data on the foreground stream only; a forwarded packet before the ASIC's own.
+5. **Four CRC units an ASIC,** a byte a cycle.
+6. **In:** two queues (8 KB each pencilled in); a service flag and a word count for each; the standard DMA with
+   its queue field; `DMA_FORWARD_COUNT`, top bit discard, the only way into the Updater's data, flow-controlled.
+7. **Out:** one queue; `EGRESS_COUNT`, the frame's length; a credit event worth 4 KB; the firmware turns the
+   event's mask on only while a transmission is registered.
+8. **The UART:** `UART_TX` at word 30, `UART_RX` at 31; `UART_CONTROL` at 32 or above, a plain register (the
+   divider, enable read, enable write), 0 its reset and its value at start-up; the flags in `STATUS`.
+9. **Reset:** none of its own. The link and the host's queues are cleared only at power-on; the reset reaches
+   the UART.
+10. **The old host interface** (`STREAM_SEND`, `STREAM_RECEIVE` and theirs) is removed.
+
+### What is proposed and not ruled on (†)
+
+- Every word number and bit number of the new registers (`UART_TX` and `UART_RX` at 30 and 31 are the owner's).
+- The service rule's details: a queue asks only while nothing takes its words; a zero-word transfer counts.
+- A store of 0 to the forward count stops it; a load gives what remains.
+- The DMA does not wait for words that have not arrived (one DMA; a foreground message would wait behind it).
+- `EGRESS_COUNT` runs down as words are pushed, not as they leave; the outgoing queue is 8 KB, filled by
+  `WRITE`s into region 0x04, part 1; its credit is the replayer's.
+- With enable write off, a store to `UART_TX` is dropped.
+- What the Updater keeps behind the port (4 words as built).
+- CRC-32C as the CRC; a stream says stop at half a queue.
+
+### Open
+
+- **The foreground stream's content:** the host's commands and the chip's replies as frames. Nothing is defined.
+- The size of the queues (8 KB is a placeholder; with stop for each link the room needed is a packet or two).
+- Whether another tile may push into the outgoing queue itself.
+- The link's timers and the size of the window of kept packets; whether the recovery packet states its number.
+- What a soft reset is (machine-spec item 124), and whether anything short of power-on empties the host's queues.
+- Egress's wiring of acknowledgements into outgoing headers, and the way back to the host in general, are designed
+  only as far as `HOST-LINK.md` goes: nothing of it is built or simulated.
+
+### Where v1.37 stands
+
+| piece | state |
+|---|---|
+| gold's frames, the packetizer, the vectors | merged (WORKER1, WORKER2). **The header there is still the 20-bit one** |
+| Ingress's black box with thresholds; the firmware moving every word | merged (WORKER3, WORKER4): what `main` runs today |
+| the cache's controller, the arbiter, the LPDDR model | merged, behind a setting (WORKER5) |
+| **the forward count,** the word port, the firmware waking once a frame | built on `updater-w7` at `18b16507` (WORKER7). Quest 213 passes: the 37 proof runs. Quests 214 (`make check`) and 215 (the link at 2, 4, 8) queued. **Not merged** |
+| **the Updater's real controller,** behind a setting, with the segment queue as a shim | built on `updater-w6` at `5c1faf4b` (WORKER6); passes alone, against the black box, and in the chip on `test_master`. Quests 216 to 219 queued. **Not merged** |
+| the 18-bit header and hops in the packetizer, the reader, the vectors and `host_link.h` | **not done.** The message asking WORKER7 for it had not reached it when its report came |
+| the old stream words out of the black box; the UART as redesigned; Egress | not started, in no brief |
+
+**The figure the owner asked for** (Quest 213): the master's time awake is 2.4 to 7.0% of the link's time at
+2²⁹, where the target was 10%. `INGRESS-INTERFACE.md`, "In v1.37", has the table.
+
+### What comes next, in order
+
+1. **Read Quests 214 to 219** when they are back.
+2. **Merge `updater-w6`, then `updater-w7`** (the integrator; `git merge --no-ff`). They touch the same shared
+   files in small ways (`periph_slot`, `proof_bench`, `proof_run_main.cpp`, `run_tests.sh`, `CHANGES-v1.37.md`).
+   WORKER6 compares against the black box with the segment queue, which WORKER7 removes: after both are in, the
+   shim goes.
+3. **Join them:** in `updater_top.h`, delete the lines marked `shim` and give `UpdaterTop::source` Ingress's
+   forwarder; give `UpdaterTop::lpddr` the arbiter's client port 1 and `UpdaterTop::cache` the cache's look-up
+   port 1. WORKER7's slot wires peripheral 1's source to peripheral 2's sink by four method names:
+   `port_source()` and `port_sent(t)` on the source, `port_sink()` and `port_take(t, word)` on the sink.
+   `UpdaterTop` needs the two sink methods.
+4. **A run with two proofs,** so that the Updater building the next proof's images overlaps the Tracer on the
+   cache (the owner: in reality they overlap; the single-proof runs cannot show it).
+5. **The header change** in gold and v1.37, then the proof runs again, since the packet files change.
+6. **Later, as briefs of their own:** the old words out and the new UART in v1.37 (with a store to `UART_CONTROL`
+   added to each firmware image that prints); Egress in v1.37, once there is something to send.
+
+### The workers' lists not yet applied to the documents
+
+- **WORKER6, for `UPDATER-INTERFACE.md`:** the decoder's type counts min(`run_left`, `WORD_COUNT`); after an
+  error a run stops with `busy` 1 and no `done`; `beyond` is the Updater's own check before it writes the held
+  page; a fault's pages are counted before any is taken; a free page entry's unit; what `STAT_PAGES_READ` and
+  `_WRITTEN` count. **For `CACHE-INTERFACE.md`:** the wording of the ask about new pages, so that v1.37's roots
+  fit; nobody discards in v1.37; an update answered `hole` or `beyond` may be treated as fatal.
+- **WORKER6's finding in the black box:** its "covered" test is `run_left` ≥ 256 alone, so when a run ends inside
+  a run of values its `STAT_PAGES_READ` is one low for each such half. Its images are right. Not changed.
+- **WORKER7, for `word_port.h`:** name the four methods the slot wires.
+- Earlier lists still open: WORKER3's and WORKER4's for `HOST-FRAMES.md` (five items); the figure
+  `fig_m1_lpddr_path.svg`, which still shows the Updater on the memory tile.
+
+## 22. The v1.37 milestone (2026-11-17, about 4 a.m.)
+
+The owner set the next milestone; the plan is `updater_wip/planning/MILESTONE-v1.37.md`.
+
+- **v1.37:** the cache's and the Updater's state machines simulated in full; AXI a model; Ingress/Egress and the
+  UART a black box; the master tile's real firmware; no RW engine.
+- **A reply:** at the end of its segment the master writes a frame out that shows it ran. † Proposed: the
+  Tracer's end-state record with a few counts, which the driver can check exactly against gold's record *s* + 1.
+- **The daisy chain made to work:** DRIVER ↔ ASIC0 ↔ ASIC1, the ASICs running segments 0 and 1.
+  - Three processes, joined by shared memory, with a sync every 64 cycles (owner). † The wire's delay is the
+    window, so a run is the same to the cycle every time.
+  - `--clients 2 --client 0` or `1` (owner).
+  - The driver reads gold's data, sends the packets, and checks what comes back (owner).
+- † Left out of the black box for now: acknowledgements, sending again, recovery.
+- **The 10% question is closed** (owner): a proof is 50 to 100 ms, 50 to 100 million cycles, and the master is
+  awake 200,000 to 315,000 of them before the hand-over, 0.2 to 0.6%. On a faster link the share of the set-up
+  window alone rose to 21% (Quest 215), only because the same work was divided by less time.
+- Quests 213 to 216 pass: WORKER7's forward count on the 37 proof runs, `make check` and the faster links; and
+  WORKER6's controller in the chip on the 37 proof runs.

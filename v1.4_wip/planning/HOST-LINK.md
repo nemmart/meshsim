@@ -41,8 +41,9 @@ A header word of 128 bits, then 0 to 32 words of data.
 | [3:0] | stream | 1 foreground, 2 background; never 0 |
 | [7:4] | flags | below |
 | [15:8] | length | the data's length in 128-bit words, 0 to 32 |
-| [35:16] | packet number | this packet's number on its stream: the first is 1, they run to 0xFFFFE, then 1 again |
-| [55:36] | acknowledge | the last packet number received in order on this stream; 0 for none yet |
+| [33:16] | packet number | 18 bits (owner, 2026-11-17). This packet's number on its stream: the first is 1, they run to 0x3FFFE, then 1 again |
+| [51:34] | acknowledge | 18 bits. The last packet number received in order on this stream; 0 for none yet |
+| [55:52] | hops | the ASICs that have forwarded this packet along the chain (owner, 2026-11-17; below). Whoever makes a packet sends 0 |
 | [63:56] | reserved | 0 |
 | [95:64] | data checksum | over the data |
 | [127:96] | header CRC | over bits [95:0] of this word |
@@ -62,8 +63,9 @@ byte sent. The data follows, 16 bytes a word.
 | 0 | the stream in its low four bits, the flags in its high four. A background packet with no flags is 0x02 |
 | 1 | the length, 0 to 32 |
 | 2, 3 | packet number bits 0 to 15, low byte first |
-| 4 | low four bits: packet number bits 16 to 19; high four bits: acknowledge bits 0 to 3 |
-| 5, 6 | acknowledge bits 4 to 19, low byte first |
+| 4 | low two bits: packet number bits 16 and 17; high six bits: acknowledge bits 0 to 5 |
+| 5 | acknowledge bits 6 to 13 |
+| 6 | low four bits: acknowledge bits 14 to 17; high four bits: hops |
 | 7 | reserved, 0 |
 | 8 to 11 | the data checksum, low byte first |
 | 12 to 15 | the header CRC, low byte first |
@@ -80,8 +82,9 @@ byte sent. The data follows, 16 bytes a word.
     field and does not advance.
 - **Packet numbers are per stream** †, since the streams are flow-controlled apart.
 - **No packet number is 0 or all ones** (owner), so a header word is never all zeros.
-- **About 20 bits of packet number is enough** (owner), which left more bits for the checks. Only packets not yet
-  acknowledged are outstanding, and that is a small window.
+- **18 bits of packet number is enough** (owner; 20 until 2026-11-17, when four bits went to the hops field).
+  Only packets not yet acknowledged are outstanding, and that is a small window. A stream's numbers come round
+  again after 262,142 packets, about 138 MB.
 - **The first byte on the link is never zero** (owner): it holds the stream, which is never 0.
 
 ## The size of a packet
@@ -102,8 +105,80 @@ Considered and not taken:
 | 1,024-byte packets | half as many packets for the firmware to wake for | twice the foreground's wait at every hop. The firmware's cost is met instead by taking it out of the data's path: Ingress forwards the bulk data to the Updater itself (`INGRESS-INTERFACE.md`) |
 | a second link for the foreground, one LVDS line beside the eight | no waiting behind bulk data at all | a line carries an eighth of the rate, so any message over about 75 bytes is slower than on the shared link at its worst; with no update running the shared link is eight times faster; and it costs pins, a second receiver, and finding byte boundaries on one line |
 
-**Open:** the chain itself: how many ASICs are on it, and whether a hop forwards whole packets or passes bytes
-straight through. That decides the real delay a hop.
+## The chain, and the hops field (owner, 2026-11-17)
+
+The ASICs sit on a daisy chain from the FPGA: **probably no more than 4 on one chain** (owner). A packet from the
+host passes through the ASICs before its own; a packet to the host passes through the ASICs between its sender and
+the host.
+
+**Every link of the chain is a link of its own** (owner): the FPGA to the first ASIC, the first to the second, and
+so on. Everything in this document but the hops field belongs to one link.
+
+| | belongs to |
+|---|---|
+| the packet number, the acknowledge field, the flags | the one link the header is travelling on (owner: "packet numbers don't mean anything except on the specific link") |
+| sending again, "lost" and recovery, "stop" | the one link: a garbled packet is sent again only over the link that garbled it (owner) |
+| a packet of length 0 | the one link: it is never forwarded |
+| hops | the packet, end to end |
+| the data and the data checksum | the packet, end to end |
+
+**An ASIC that forwards a packet, in either direction:**
+
+1. **takes the whole packet in and checks it,** as any receiver does. A bad packet is the incoming link's
+   business: it is asked for again there, and is not forwarded;
+2. **writes the header for the outgoing link:** that link's next packet number on the stream, its acknowledge
+   field and its flags;
+3. **adds one to hops;**
+4. **computes the header CRC again** (owner: "always recompute the header CRC").
+
+The data and its checksum pass through unchanged.
+
+**What is left of a forwarded packet's header** (owner: "the header gets mostly stripped"):
+
+| field | on the outgoing link |
+|---|---|
+| packet number, acknowledge, flags | dropped, and written afresh: they were the incoming link's |
+| hops | kept, plus one |
+| stream, length | kept: they describe the packet |
+| data checksum | kept, unchanged |
+| header CRC | computed again |
+
+- **Why the data checksum is kept:** the data is then covered from the ASIC that made the packet to the host, the
+  time it waits in each forwarding buffer included. Were each hop to compute it again, a bit that flipped in a
+  buffer would be sealed in as good. And the sending unit has only 12 bytes to do for a forwarded packet.
+
+- **Whoever makes a packet sends it with hops 0:** the host, or an ASIC.
+- **Towards the host, hops says which ASIC made the packet:** its place in the chain. It counts hops, but what it
+  is for is this (owner): the FPGA sorts what arrives by it and so rebuilds each ASIC's replies. No ASIC has to
+  know its own place.
+  - The owner's example: the FPGA sends a query to all the ASICs. Each runs it and writes its reply's packets out,
+    and forwards any that come in from further down the chain.
+  - An ASIC's packets stay in order all the way, because every link delivers in order. Packets of different ASICs
+    interleave.
+- **From the host, every ASIC gets the same data.** Each ASIC takes a packet for itself and forwards it on; the
+  last has nobody to forward to. The field is ignored (owner): it is not tested, and no value of it is an error.
+  It happens to be the receiving ASIC's own place in the chain.
+- **On an outgoing link an ASIC's own packets and the ones it forwards share one run of packet numbers** on each
+  stream.
+- **Towards the host, data is on the foreground stream only** (owner). The background stream appears there only
+  as packets of length 0, carrying its acknowledgements and its stop bit, and those never leave their link.
+- **The chain comes before an ASIC's own data** (owner). Towards the host, an ASIC sends a packet it is forwarding
+  before one of its own, and fills the gaps with its own (owner).
+  - (Were the background stream ever to carry data towards the host: the stream decides first, and within a
+    stream the chain wins.)
+  - It keeps the forwarding short, so a chain does not back up behind an ASIC with much to say. The ASIC nearest
+    the host waits longest, behind every ASIC further down.
+  - Away from the host there is nothing to order: an ASIC makes no packets of its own in that direction.
+- **An ASIC keeps what it has sent until its neighbour acknowledges it,** in both directions (owner): towards the
+  host its own packets and the ones it forwards, and away from the host the host's packets it passes down.
+- **"Stop" is for each link** (owner). An ASIC whose background queue fills stops its neighbour up the chain. That
+  neighbour's forwarding backs up, and it in turn stops the one above it. So a chain's background stream moves at
+  the pace of its slowest ASIC. The foreground stream has its own bit on every link and still gets through.
+- **Why the hops field is under the header CRC:** one flipped bit in it would credit a packet to the wrong ASIC.
+  The header CRC is computed again at each hop anyway, since the link's fields change.
+- † Four bits: a chain of up to 16.
+- **A hop holds a packet for its length,** since it checks the whole of it first. That is what "The size of a
+  packet" assumes.
 
 ## The two checks
 
@@ -143,14 +218,54 @@ result = crc XOR 0xFFFFFFFF
 - **The data checksum** is the CRC-32C of the packet's data, all 16 × length bytes, in the order they go on the
   link. For a packet of length 0 it is 0x00000000, and it is checked.
 - **The header CRC** is the CRC-32C of header bytes 0 to 11, the data checksum included.
-- **An example:** stream 2, no flags, length 1, number 1, acknowledge 0, the data one zero word. The header's bytes
-  are `02 01 01 00 00 00 00 00 EA 9A 70 42 A0 8C 06 E1`.
+- **An example:** stream 2, no flags, length 1, number 1, acknowledge 0, hops 0, the data one zero word. The
+  header's bytes are `02 01 01 00 00 00 00 00 EA 9A 70 42 A0 8C 06 E1`.
+  - The same packet after one hop, hops 1: `02 01 01 00 00 00 10 00 EA 9A 70 42 9E BC 0A 21`.
+  - With number 0x2ABCD, acknowledge 0x15555 and hops 3: `02 01 CD AB 56 55 35 00 EA 9A 70 42 C9 C4 23 30`.
 - A cross-check for any implementation: the CRC-32C of all 16 header bytes of a good packet is 0x48674BC7.
+
+### The CRC as hardware (2026-11-17)
+
+- **A CRC unit is small,** and can take any number of bits a cycle. For CRC-32C, counted from the polynomial
+  (2-input XOR gates before any sharing; synthesis will share terms and come out lower; not synthesized):
+
+  | bits a cycle | XOR gates | levels of logic | flip-flops |
+  |---|---|---|---|
+  | 1 | about 17, the feedback shared | 2 | 32 |
+  | 8 | about 270 | 4 | 32 |
+  | 32 | about 1,040 | 6 | 32 |
+  | 128 | about 2,490 | 7 | 32 |
+
+- **A byte a cycle is the fit:** the link is 8 lines, a byte a transfer, so the unit takes each byte as it
+  arrives and is done when the packet is. The definition above is already byte by byte.
+- **Checking a header** (owner): bytes 0 to 11 go through the unit and the result is compared with bytes 12 to 15.
+  - The same thing, simpler to build: all 16 bytes go through, and the result is compared with the constant
+    0x48674BC7. The unit then never holds a result while four more bytes arrive.
+  - Bytes 8 to 11 are kept as they pass: they are the data checksum.
+- **Checking the data** (owner): the unit is set back to its starting value, **all ones, not zero,** the 16 ×
+  length data bytes go through, and the result is compared with the four bytes kept. The constant does not serve
+  here, since the checksum is in the header and not after the data.
+  - A packet of length 0 has no bytes to put through: the result is 0x00000000, and the header must carry that.
+- **Four units an ASIC** (owner), one for each direction of each of its two links:
+
+  | unit | what it does |
+  |---|---|
+  | in, from the host's side | checks each packet |
+  | out, down the chain | seals the header again of each of the host's packets it passes down |
+  | in, from down the chain | checks each packet being passed up |
+  | out, towards the host | the data checksum of the ASIC's own packets; the header of every packet, its own and forwarded |
+
+  - The two that receive cannot be one: both links can be receiving at once.
+  - The two that send could share a unit, a header being 12 bytes of work against a packet's 528 on the wire. The
+    owner took four: a second unit is cheaper than the sharing.
+- **An ASIC's own packet is checksummed before it is sent,** not as it goes: the data checksum is in the header,
+  which goes first. The words are waiting in the outgoing queue.
 
 **The order a receiver tests in:**
 
 1. the header CRC;
-2. the header's fields: the stream is 1 or 2, the length is at most 32, the reserved bits are 0;
+2. the header's fields: the stream is 1 or 2, the length is at most 32, the reserved bits are 0. The hops field
+   is not tested;
 3. the data checksum;
 4. the packet number, which means something only once the rest has passed.
 
@@ -200,8 +315,9 @@ Nothing in the exchange is relied on to arrive, because the noise can cover it: 
   wants now, 1 for "stop sending me this stream" and 0 for "send". Resuming is the bit going back to 0.
   - A "resume" sent as a message could be lost in noise, and the stream would hang. A bit that is in every header
     is put right by the next packet that gets through.
-- **The queue behind a stream keeps room when it says stop:** the packets already on the wire, and in every hop of
-  the chain, still arrive.
+- **They are for each link** (owner, 2026-11-17): "stop" goes to the neighbour, not to the host ("The chain").
+- **The queue behind a stream keeps room when it says stop:** the packets already on that link's wire still arrive.
+  Only the one link counts, since the neighbour stops within a packet or two of seeing the bit.
 - **Ingress's queues are pencilled in at 8 KB on each stream** (owner, 2026-11-16; `INGRESS-INTERFACE.md`), 16
   full packets, behind a buffer that holds the one packet being checked. The size is to be settled (Open).
   - The owner's sizes that day were 16 KB, "to make sure we can stop the remote side", which is what v1.37 has as
@@ -214,8 +330,10 @@ Nothing in the exchange is relied on to arrive, because the noise can cover it: 
 
 - A sender keeps every packet until it is acknowledged, to send it again.
 - **The host has the memory for that.**
-- **The chip does not.** On the way back to the host it keeps a small window of packets, and stops when the
+- **The chip does not.** It keeps a small window of packets on each link it sends on, and stops when the
   acknowledgements stop.
+- **An ASIC sends on two links:** towards the host, its own packets and the ones it forwards; away from the host,
+  the host's packets it passes down the chain. It keeps a window for each (owner, 2026-11-17).
 
 ## What this is, in other designs
 
@@ -238,8 +356,7 @@ The owner's remark: there must be a mountain of literature on building these. Th
 
 - What the foreground stream carries, and how large its messages are.
 - Whether the recovery packet states the packet number it restarts from, or that is the "lost" packet's number plus one.
-- The size of Ingress's queues, 8 KB pencilled in: whether half of one, 4 KB or 8 full packets, is enough room to
-  keep when a stream says stop. It depends on
-  how many packets the chain holds in flight. If it is not, the queue grows; nothing else changes.
+- The size of Ingress's queues, 8 KB pencilled in. With "stop" for each link, the room to keep when a stream says
+  stop is only what one link has in flight, a packet or two, so the size is no longer set by the chain's length.
 - The timers: how soon an unacknowledged packet is sent again without a "resend".
 - How large the chip's own window of kept packets is.

@@ -1,7 +1,7 @@
 #!/bin/sh
 # searches.sh: the searches of the shrunken model on one link, as a table: what was searched, how many states,
 # what came of it. Each line is one run of linksearch; "complete" means every state within the budgets was tried.
-#   ./searches.sh [list]      list: main (default), starve, rules, window, forged, chain; big, big2 to big6 for the runner
+#   ./searches.sh [list]      list: main (default), starve, rules, window, forged, chain; big, big2 to big10 are larger
 cd "$(dirname "$0")" || exit 1
 one() {
     out=$(build/linksearch "$@" 2>&1)
@@ -98,4 +98,7 @@ big4) one --rules $P --packets 3 0 3 0 --damage 1 --max-states ${MAX:-150000000}
 big5) one --rules $P --chain 2 --cpackets 1 1 1 --damage 1 --max-states ${MAX:-150000000} ;;
 big6) one --rules $P --chain 2 --cpackets 1 0 1 --damage 2 --max-states ${MAX:-150000000} ;;
 big7) one --rules $P --chain 2 --cpackets 0 2 0 --damage 1 --queue 2 --fwd 2 --max-states ${MAX:-150000000} ;;
+big8) one --rules $P --packets 3 0 3 0 --damage 2 --max-states ${MAX:-150000000} ;;
+big9) one --rules $P --packets 2 2 2 0 --damage 1 --max-states ${MAX:-150000000} ;;
+big10) one --rules $P --chain 3 --cpackets 1 0 1 --damage 1 --max-states ${MAX:-150000000} ;;
 esac

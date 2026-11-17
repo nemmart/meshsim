@@ -41,7 +41,7 @@ make check VECTORS=<path to gold's VECTORS.txt>     # also every packet of gold'
 | search it with the proposed rules | `build/linksearch --rules proposed --damage 2 --packets 1 0 1 0` |
 | search a chain | `build/linksearch --chain 2 --cpackets 1 0 1 --damage 1` |
 | run at random | `build/linkrun --seeds 1 100 --cycles 300000`; one seed again: `--seed 47 -v` |
-| the table of searches | `./searches.sh main`, `starve`, `rules`, `window`, `forged`, `chain`; `big` to `big7` are the runner's |
+| the table of searches | `./searches.sh main`, `starve`, `rules`, `window`, `forged`, `chain`; `big` to `big10` are larger: the last six are the runner's |
 | the planted bugs | `./plants.sh`, `./plants_run.sh` |
 | the figures | `./figures.sh a`, `./figures.sh b`; `python3 rates.py` |
 

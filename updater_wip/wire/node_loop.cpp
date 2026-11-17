@@ -120,6 +120,9 @@ int run_node(Wire* w, const NodeCfg& c, uint32_t window, FILE* out) {
     if (!c.null_traffic) s.report(out);
     fprintf(out, "# p %d cycles %llu secs %.3f mcps %.3f sink %llu\n", p, (unsigned long long)T, secs,
             secs > 0 ? double(T) / secs / 1e6 : 0.0, (unsigned long long)(sink & 1));
+    if (w)
+        fprintf(out, "# p %d waits %llu wait_ms %.1f sleeps %llu\n", p, (unsigned long long)w->stats().waits,
+                double(w->stats().wait_ns) / 1e6, (unsigned long long)w->stats().sleeps);
     if (log) fclose(log);
     return 0;
 }

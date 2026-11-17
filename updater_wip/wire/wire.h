@@ -204,6 +204,12 @@ public:
     uint32_t slots() const { return params_.slots; }
 
     // What happens when another process's failure is seen: by default a line on stderr and _exit(3).
+    // Where the time goes: waits that were not ready at once, their total time, and how many went to sleep.
+    struct Stats {
+        uint64_t waits = 0, wait_ns = 0, sleeps = 0;
+    };
+    const Stats& stats() const { return stats_; }
+
     using AbortHandler = void (*)(const char* message);
     void set_abort_handler(AbortHandler h) { on_abort_ = h; }
 
@@ -229,6 +235,7 @@ private:
     uint64_t spin_ns_ = 0;
     int yields_ = 0;
     AbortHandler on_abort_ = nullptr;
+    Stats stats_;
 };
 
 }  // namespace wire

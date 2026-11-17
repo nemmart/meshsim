@@ -418,8 +418,9 @@ template <class Ready>
 void Wire::wait_until(Ready ready, std::atomic<uint32_t>& bell, std::atomic<uint32_t>& my_sleeping, int peer) {
     if (ready()) return;
     me_->waiting_on.store(peer, std::memory_order_relaxed);
+    const uint64_t t0 = now_ns();
+    ++stats_.waits;
     if (spin_ns_) {
-        const uint64_t t0 = now_ns();
         for (;;) {
             for (int i = 0; i < 64; ++i) {
                 if (ready()) goto done;
@@ -432,6 +433,7 @@ void Wire::wait_until(Ready ready, std::atomic<uint32_t>& bell, std::atomic<uint
         sched_yield();
         if (ready()) goto done;
     }
+    ++stats_.sleeps;
     for (;;) {
         check_abort();
         const uint32_t b = bell.load(std::memory_order_acquire);
@@ -443,6 +445,7 @@ void Wire::wait_until(Ready ready, std::atomic<uint32_t>& bell, std::atomic<uint
     }
     my_sleeping.store(0, std::memory_order_relaxed);
 done:
+    stats_.wait_ns += now_ns() - t0;
     me_->waiting_on.store(-1, std::memory_order_relaxed);
     check_abort();
 }

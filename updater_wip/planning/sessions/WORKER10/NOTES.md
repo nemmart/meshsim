@@ -226,4 +226,47 @@ would let it skip. I will measure first and propose it only if the numbers ask f
 
 ## Choices
 
-(To be filled as they are made; those already proposed above are marked †.)
+Where the brief and the milestone are silent, the simplest reading, with the reason and the alternative.
+
+1. **The delay is exactly *W*,** and window 0 receives zeros (nothing was sent before cycle 0). *Alternative:* a
+   delay of its own, separate from the window; the window is then the most the delay can be. Not needed for v1.37.
+2. **Each end syncs on its own:** it publishes inside the call for a window's last cycle and waits inside the call
+   for the next window's first. No per-process "end of cycle" call. Since all of a process's last-cycle calls come
+   before any of its first-cycle calls, a process has published all of window *w* before it waits for anything of
+   *w* + 1 (section 4's argument holds). *Alternative:* a `Wire::cycle()` call after the ends; one more thing for
+   the chip to get right.
+3. **Slots: 4 by default, at least 2.** Two is the least that cannot deadlock (section 4); more let a neighbour run
+   ahead by *K* − 1 windows and so absorb jitter. The checks run 2 and 4 (and 3 in `wire-threads`).
+4. **The sleep handshake is four seq_cst accesses, not fences** (changed from section 3 of the plan): gcc's thread
+   sanitizer does not model `atomic_thread_fence` (`-Werror=tsan`), and this way the sanitizer checks the code that
+   runs. The cost is one locked instruction a window at each end, on x86; loads cost the same.
+5. **A process that finishes** sends zeros to the end of its window, publishes it, and marks `final_w` and `gone`.
+   That is exactly the same as going on sending zeros for ever, so a run with processes finishing at different
+   times is still exact, and the reference's rule is one line ("sends zeros from *T* on").
+6. **A process that exits 0 without calling `finish()`** is treated as failed and the run is stopped: its last part
+   window was never published, so its neighbours cannot go on exactly. (`Wire`'s destructor calls `finish()`, so this
+   happens only on `exit()` or `_exit()` with a `Wire` still alive.) *Alternative:* finish it on its behalf at the
+   last published window; that would silently drop up to a window of its bytes.
+7. **Giving up:** on an abort the library prints one line and calls `_exit(3)`; `Wire::set_abort_handler` lets a
+   program do something first (its own log). Status 3 is "gave up because another failed".
+8. **The watchdog: 300 s by default,** off under `--debug`; the culprit named is the slowest running process,
+   preferring one that is not waiting. A process stuck before its first cycle is also caught (its windows stay 0).
+9. **Stopping what is left:** `--grace` 2 s after the first failure (so the others can print their line), then
+   SIGTERM and SIGCONT, then SIGKILL a second later, all by the PIDs the launcher holds (its own unreaped children).
+10. **Waiting:** spin 20 µs (`WIRE_SPIN_US`), then yield 4 times, then a futex sleep in 100 ms ticks. No spin at all
+    when the process's CPU mask has fewer CPUs than there are processes.
+11. **Numbering:** process 0 is the driver, process *k* + 1 client *k*; link *i* joins processes *i* and *i* + 1.
+12. **The launcher's commands:** one driver command and one client command for every client, `{k}` and `{p}`
+    substituted; the wire's arguments appended at the end (so `gdb --args` passes them on). *Alternative:* a command
+    for each client; not needed while all clients are the same program.
+13. **`--wire-fd FD`** carries the inherited region; `--link NAME` names the run and is checked against the region.
+14. **The launcher's status is 0 only if every process finished and exited 0.**
+15. **Bytes a cycle: up to 64 in the library,** 8 in the stand-in (a 64-bit word).
+16. **The comparison is by digests:** a 64-bit running digest of every cycle's bytes at each end in each direction,
+    a combined one every 2²⁰ cycles (to find a difference to the million), and in short runs, if wanted, every byte
+    (`--log`). A difference that every digest misses has a probability about 2⁻⁶⁴ per end.
+17. **The stand-in's traffic** (`standin.cpp`): about 20% of cycles busy at each end; forwarding after 1 to 300
+    cycles, one word in four not passed on (so echoes die away); bursts of up to 400 own words chosen from a hash of
+    everything received and when; silences up to 3 million cycles; queues of 1,024 that drop (and count) beyond.
+18. **The task generator lives in `wire/tests/make_task.sh`,** not `updater_wip/tasks/` (the brief: nothing outside
+    `wire/` and `WORKER10/`). The integrator may move it.

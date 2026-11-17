@@ -887,3 +887,23 @@ Rulings as they came; `HOST-LINK.md` has each.
   pin.
 - **A neighbour that goes silent: not designed for now;** left open.
 - The walk through is complete. WORKER8 is to be told what changed in its rules.
+
+## 29. One run of numbers was unsound as written; "stop" holds only packets not yet numbered (2026-11-17, about 3 p.m.)
+
+- **WORKER8 stopped as its brief ordered,** within half an hour of starting: the protocol as it stood was not
+  sound. A lost background packet, while the background is stopped, held the foreground for as long as the
+  background stayed stopped. Its search found it in 4 events, 21,208 states in, with a new check: from every
+  state, one stream is never taken again and the other must still finish.
+- **The design session's argument was incomplete.** It showed that a good packet always has room and is never
+  refused. It missed a packet of the stopped stream that is damaged on the way and must be sent again: "stop"
+  was blocking the resend, and with one run of numbers everything behind it waits.
+- **Decided (owner): "stop" holds only packets that have no number yet.** A packet that already has a number is
+  sent again whatever its stream's stop bit. Its room was counted when it was first sent. The other way out was
+  numbers for each stream again; not taken.
+- **The two failing seeds of Quest 227 were a different hole:** a resend request lost, and a receiver that asked
+  again only at a packet of length 0, which a busy sender does not send. **Decided: the receiver asks again at
+  any sign the sender is still ahead.** The host's window of 64 only made the stall long enough to be noticed.
+- **The stop rule earned its place** (owner: "it should stop as soon as it's sure the protocol is not sound and
+  it has identified a cause"): the flaw came back as a four-event case and a one-sentence change, before any
+  campaign was run on it.
+- WORKER8 carries on with its brief on that basis. `HOST-LINK.md` has both rules.

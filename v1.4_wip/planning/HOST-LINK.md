@@ -18,8 +18,9 @@ bad", "Recovery", "Starting a link again", "Holding the host back", "What a send
   Each flaw has a kept case that fails without its rule (`updater_wip/link/` and
   `updater_wip/planning/sessions/WORKER8/QUESTIONS.md`, on branch `updater-w8` until it is merged).
 - **What is not yet shown:** those runs were on packet numbers for each stream. **One run of numbers for a link**
-  (below) was decided after them, and WORKER8 is to search it. The rules here do not depend on which, as far as the
-  design session can tell; the claim that a stopped stream cannot block the other does, and is marked.
+  (below) was decided after them. WORKER8's first search of it found it unsound as first written, in four
+  events, and the rule that mends it is in ("What 'stop' holds back"). The full searches and the random campaign
+  on the protocol as it now stands are in hand.
 - A dagger (†) marks a number or a choice that is proposed and not ruled on.
 
 ## The link
@@ -87,16 +88,31 @@ byte sent. The data follows, 16 bytes a word.
 **A direction of a link has one run of packet numbers, shared by both streams.** The owner: "why have separate
 packet numbers for the streams? The packet number is about the link, not the stream."
 
-- **A number is given to a packet when it is sent,** whichever stream its data is on. A stream that is stopped
-  simply has no packets sent, and the numbers of the other's stay consecutive.
+- **A number is given to a packet when it is first sent,** whichever stream its data is on. A stream that is
+  stopped has no new packets numbered, and the numbers of the other's stay consecutive.
 - **So one acknowledgement, one resend flag, one window and one set of kept packets** for a direction of a link.
 - **Both streams' stop bits are in every header.** They are what is a stream's; everything else in the header is
   the link's or the packet's.
-- **Why a stopped stream cannot block the other,** which was the reason for numbers of their own:
-  1. a sender that hears anything from the other side hears both stop bits;
-  2. a queue says stop at half full, 8 KB still free, and at most a window, 8 packets or 4 KB, can be on its
-     way. So a good packet always has room, the receiver never has to refuse one, and nothing waits behind a
-     refused packet.
+- **What "stop" holds back** (owner, 2026-11-17, on WORKER8's finding): **only packets that have no number yet.**
+  **A packet that already has a number is sent again whatever its stream's stop bit says.**
+  - **Why it must be so.** As first written here, "a stream that is stopped simply has no packets sent", and
+    that was unsound. WORKER8's search found it in four events:
+    1. the background's queue is half full, and its end says "stop";
+    2. background packet 3, already sent, is lost on the wire;
+    3. foreground packet 4 arrives ahead of the 3 expected, is thrown away, and a resend is asked for;
+    4. the sender goes back to 3, which is the background's, and the background is stopped: it is not sent.
+    Packet 4 is behind 3 in the one run of numbers and can never be taken first. The foreground stood still for
+    as long as the background stayed stopped (`cases/stopped-blocks.case`).
+  - **Why it is right, and not only a mend:** the room for a numbered packet was counted when it was first
+    sent. A queue says stop with 8 KB still free so that a window of packets already on their way, 4 KB, can
+    still land. A packet sent again is one of those same packets, not a new one.
+- **Why a stopped stream then cannot block the other:**
+  1. a sender that hears anything from the other side hears both stop bits, and numbers no new packet for a
+     stopped stream;
+  2. at most a window of numbered packets is outstanding, and the queue kept room for a window when it said
+     stop. So a good packet always has room, and the receiver never has to refuse one;
+  3. a numbered packet that is damaged is sent again at once, stopped or not, so nothing waits behind it.
+  - The design session's first argument had 1 and 2 and missed 3: a damaged packet of the stopped stream.
 - **What it costs:**
   - a damaged background packet has the foreground packets behind it sent again too: a few packets, and only
     when there is damage;
@@ -104,8 +120,9 @@ packet numbers for the streams? The packet number is about the link, not the str
     acknowledgement, about a packet's time.
 - **What it saves:** the header stays one 128-bit word, 3.0% of a full packet, and the link end is one machine
   where it was two.
-- **It is still to be shown by WORKER8's search** that the foreground keeps moving while the background is
-  stopped, with one run of numbers.
+- **Shown so far** (WORKER8): with the rule above, the search that failed holds, 604,477 states (1 foreground
+  and 3 background packets, one damaged). A larger one was cut short at 2 million states with no failure. The
+  full searches are in hand.
 
 **How it came to this,** in a morning:
 
@@ -378,9 +395,14 @@ A receiver expects one number next on a link: the one after the last packet it t
 - **Ahead and behind are judged within half the numbers,** which a window of 8 is far inside.
 - **Without the rows for a wrong number the link stopped for ever after one lost packet:** every packet after
   the lost one was good, out of order, and had no rule (WORKER8).
-- **† Having asked for a resend, a receiver asks again only after 2,048 cycles** if the sender still shows itself
-  ahead. Otherwise every packet already on its way sets off another going-back. The value only affects speed
-  (WORKER8).
+- **A receiver that has asked for a resend asks again at any sign that the sender is still ahead** (owner,
+  2026-11-17, on WORKER8's finding), † but no sooner than 2,048 cycles after it last asked: otherwise every
+  packet already on its way sets off another going-back.
+  - **The hole this closes:** the request can be lost. As WORKER8 first had it, the receiver asked again only
+    when it saw a packet of length 0, and a sender busy with new packets sends none. The sender then stood still
+    for the rest of its window. Two random runs of 3,777 failed that way on the runner (Quest 227, seeds 200137
+    and 140162; `cases/seeds-227.case`); the host's window of 64 made the stall long enough to trip the check,
+    and was not the cause.
 - **The header of a packet sent again is written afresh,** with the acknowledge field and the flags of now
   (WORKER8).
 - **A sender goes back exactly as far as it must:** in 5 million packets of random runs no receiver was sent a
@@ -540,6 +562,8 @@ next lost, silently. Nothing in the header can tell.
 - **They are one bit a stream, in every header:** each stream's `stop` flag, in every header a side sends, says
   what it wants now, 1 for "stop sending me this stream" and 0 for "send". Resuming is the bit going back to 0.
   A packet of either stream carries both bits.
+- **"Stop" means: number no new packet of this stream.** A packet that already has a number is sent again when
+  it is asked for, stopped or not ("One run of numbers for a link").
 - **When the status is sent** (owner, 2026-11-17):
   1. **On a change, right then,** as a packet of length 0 if there is nothing else to send.
   2. **A timer runs from the end of the last packet sent** in that direction. Any packet starts it again.
@@ -619,12 +643,9 @@ The owner's remark: there must be a mountain of literature on building these. Th
 ## Open
 
 - **What the foreground stream carries,** and how large its messages are.
-- **One run of numbers for a link, searched.** In particular that the foreground keeps moving while the background
-  is stopped, what a damaged background packet costs the foreground, and how long a foreground packet waits when
-  the window is full of background packets (WORKER8, in hand).
-- **Two random runs that failed on the runner** (Quest 227, seeds 200137 and 140162, of 3,777): a sender stood
-  still, with no acknowledgement for 20,801 cycles on a link in step. Both had the host's window at 64, past the
-  limit above. Whether that is the whole cause is not yet known.
+- **One run of numbers for a link, searched in full,** with "stop" holding only packets not yet numbered: the
+  larger searches and the random campaign; what a damaged background packet costs the foreground; how long a
+  foreground packet waits when the window is full of background packets (WORKER8, in hand).
 - **A neighbour that goes silent** (WORKER8). Nothing here notices a link whose other end has stopped: the sender
   waits for ever, which is right if the neighbour is slow and wrong if it is dead. A count of status periods with
   nothing heard would tell. **Not designed for now** (owner, 2026-11-17): it stays an open question. Any such

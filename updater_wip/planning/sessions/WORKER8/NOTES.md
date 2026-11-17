@@ -1,7 +1,20 @@
 # WORKER8 notes: the plan for the simulation of the host link's protocol
 
-Status, 2026-11-17: **the plan, waiting for the owner's go-ahead. No code is written.** Branch `updater-w8`, from
-main `641bc694`.
+Status, 2026-11-17: **the plan has the owner's go-ahead, as written.** Branch `updater-w8`, from main `641bc694`.
+What is built, and what was built differently from the plan, is at the end of this file as it happens.
+
+**The go-ahead (owner, 2026-11-17),** with the answers to section 15:
+
+1. **Forged headers: yes,** as a form of damage, reported apart.
+2. **One end from power-on: show the failure first,** then propose a rule and build it behind a switch like the
+   others. A restart handshake is wanted; the header's reserved byte has room for a flag.
+3. **A bit flipped in a node's buffer: in scope, at a low rate.** The requirement is that the link never hangs
+   on it: it must end as a reported error.
+4. **On suspicion 3 of section 5** (owner): a random header of length 0 must also carry a zero checksum field,
+   so against made-up packets the check is still 64 bits. The weakness is wider than length 0: on any real
+   packet the header's fields (acknowledge, flags, number) are covered by the header CRC alone. To measure: what
+   a false acknowledgement costs on any packet, and whether the link can tell.
+5. **Report after the search on one link,** before the chain is built.
 
 Names: HL is `v1.4_wip/planning/HOST-LINK.md`, II is `INGRESS-INTERFACE.md` beside it. A dagger (†) marks what I
 propose where HL is silent; (owner) marks what the owner said. A cycle is one byte on the link, about a nanosecond:

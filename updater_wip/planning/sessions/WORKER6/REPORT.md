@@ -48,7 +48,7 @@ forwarder.
 | **the test pieces' checks**, in every run above | no read of a page never written; no update naming a page whose write is unanswered; no write to a page that is neither new, nor a root being made, nor an owned data page of the image; AXI's rules (4 KB, alignment, `wlast`, a request held until it moves) | **none fired** |
 | **the whole chip**, setting on, shim in | `test_master` (35 tests: the fixtures, the thresholds, the links, the error path, the teeth, and WORKER5's cache runs) with `MESHSIM_UPDATER_CTL=1` and `=3` (varied) after `main`'s merge, and `=7` (varied; its 29 tests then) before it; `proof_run --updater-ctl` and `--updater-ctl-seed 9` on `divs` | **pass**. The firmware unchanged |
 | `proof-real`, `proof-matrix`, `proof-29` with the setting | the runner's item `suites-ctl` (and `suites-ctl-varied`) | **not yet run** |
-| **the setting off** | `test_master` 35 pass; `./run_tests.sh quick --check` here | see "The long runs" |
+| **the setting off** | `test_master` 35 pass; `CC_NAME=gcc ./run_tests.sh quick --check` here (clang's sanitizer runtime is not in this sandbox) | **all passed**, two steps skipped for what is not here (the RISC-V toolchain, the workloads' data) |
 | `make check`, `run_tests.sh all --check` | the runner's items `check` and `suites` | **not yet run** |
 | **debug builds** | `test_updater_ctl` with gcc's ASan and UBSan; gcc and clang release | **pass** (clang's sanitizer runtime is not in this sandbox) |
 | **teeth** | 14 bugs (`tests/updater_ctl_teeth.sh`), each caught: an update before its B; owned bits kept; a half taken as covered; the type from `run_left` alone; the decoder taking a word early; the image before the Tracer's copy; the entry caught from the wrong beat; an LRU hit not moved; `WLAST` early; one half written of two dirty; `PAGE_COUNT` not counted; the credit every 64; a hole's page of ones; the FIFO taking a word when full | **14 of 14.** The early-taking decoder was caught only once the back-to-back test was added: before it, no test offered the next frame's words early, as no bench of v1.37 does |
@@ -119,8 +119,8 @@ updater_wip/tasks/v137-check/make_task.sh NNN-w6-suites suites                  
 updater_wip/tasks/v137-check/make_task.sh NNN-w6-check check                          # the setting off: make check
 ```
 
-A kit made here unpacks and runs on this machine (`DRY=1`). `./run_tests.sh quick --check` with the setting off is
-being run here as well (the result in `NOTES.md` when it is in).
+A kit made here unpacks and runs on this machine (`DRY=1`). `./run_tests.sh quick --check` with the setting off passed
+here (gcc).
 
 ## What a hardware designer must still choose
 

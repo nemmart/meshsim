@@ -21,7 +21,8 @@ struct StandInCfg {
     int clients = 1;
     uint32_t lane_bytes = 1;  // at most 8
     uint64_t cycles = 1000000;
-    bool stagger = true;  // each process finishes at a cycle of its own
+    bool stagger = true;  // each process finishes at a cycle of its own, up to a quarter early
+    bool wide = false;    // ... anywhere from cycle 1 to the end
 };
 
 constexpr uint64_t kCheckpoint = 1ull << 20;  // a digest line every this many cycles

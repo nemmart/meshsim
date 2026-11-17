@@ -16,6 +16,8 @@ struct NodeCfg {
     uint32_t pause_ppm = 0;     // random real-time pauses between cycles: per million cycles
     uint32_t pause_max_us = 0;  //   and their longest
     uint64_t hang_at = kNever;  // at this cycle, spin for ever without exchanging (a stuck process)
+    uint64_t exit_at = kNever;  // at this cycle, exit with exit_code without finishing
+    int exit_code = 0;
     const char* log_dir = nullptr;  // every cycle's bytes, to log_dir/p<process>.bin
 };
 

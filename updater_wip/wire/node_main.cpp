@@ -3,7 +3,9 @@
 //   wire-node [stand-in options] --clients N (--driver | --client k) --link NAME --wire-fd FD
 //   wire-node --no-wire --nw-window W --nw-bytes B [stand-in options]    (the cost with no wire)
 //
-// Stand-in options: --seed S --cycles C --no-stagger --null --work-ns NS --pause PPM:MAX_US --hang-at T
+// --fault-on P: --hang-at and --exit-at apply only to process P (0 the driver, k + 1 client k).
+// Stand-in options: --seed S --cycles C --no-stagger --wide --null --work-ns NS --pause PPM:MAX_US --hang-at T
+//                   --exit-at CYCLE:STATUS
 //                   --log DIR --out FILE
 #include <cstdio>
 #include <cstring>
@@ -26,11 +28,14 @@ int main(int argc, char** argv) {
     const char* out_path = nullptr;
     bool no_wire = false;
     uint64_t nw_window = 64, nw_bytes = 1;
+    int64_t fault_on = -1;  // the fault options (--hang-at, --exit-at) apply to this process only
     for (int i = 1; i < argc; ++i) {
         const char* v;
         if (node_opt(argc, argv, &i, &c, &out_path)) continue;
         if (strcmp(argv[i], "--no-wire") == 0) {
             no_wire = true;
+        } else if ((v = opt_value(argc, argv, &i, "--fault-on"))) {
+            fault_on = int64_t(opt_need_u64("--fault-on", v));
         } else if ((v = opt_value(argc, argv, &i, "--nw-window"))) {
             nw_window = opt_need_u64("--nw-window", v);
         } else if ((v = opt_value(argc, argv, &i, "--nw-bytes"))) {
@@ -67,6 +72,10 @@ int main(int argc, char** argv) {
         return 2;
     }
     c.s.process = w.process();
+    if (fault_on >= 0 && fault_on != c.s.process) {
+        c.hang_at = kNever;
+        c.exit_at = kNever;
+    }
     c.s.clients = int(w.clients());
     c.s.lane_bytes = w.lane_bytes();
     const int r = run_node(&w, c, w.window(), out);

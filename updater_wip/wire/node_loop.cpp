@@ -85,6 +85,10 @@ int run_node(Wire* w, const NodeCfg& c, uint32_t window, FILE* out) {
     for (uint64_t t = 0; t < T; ++t) {
         if (t == c.hang_at)
             for (;;) busy(1000000);
+        if (t == c.exit_at) {
+            fflush(nullptr);
+            _exit(c.exit_code);
+        }
         if (c.pause_ppm) {
             prng = mix64(prng + 0x9e3779b97f4a7c15ull);
             if (prng % 1000000u < c.pause_ppm) {

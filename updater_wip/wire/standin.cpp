@@ -14,6 +14,7 @@ inline uint64_t digest(uint64_t d, uint64_t t, uint64_t w, uint64_t tag) {
 
 uint64_t standin_finish(const StandInCfg& c) {
     if (!c.stagger) return c.cycles;
+    if (c.wide) return 1 + mix64(c.seed * 0x100000001b3ull + uint64_t(c.process) + 11) % (c.cycles ? c.cycles : 1);
     // Up to a quarter early, different for each process.
     return c.cycles - mix64(c.seed * 0x100000001b3ull + uint64_t(c.process) + 7) % (c.cycles / 4 + 1);
 }

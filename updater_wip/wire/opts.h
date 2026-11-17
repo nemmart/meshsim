@@ -49,6 +49,8 @@ inline bool node_opt(int argc, char** argv, int* i, NodeCfg* c, const char** out
         c->s.cycles = opt_need_u64("--cycles", v);
     } else if (strcmp(argv[*i], "--no-stagger") == 0) {
         c->s.stagger = false;
+    } else if (strcmp(argv[*i], "--wide") == 0) {
+        c->s.wide = true;
     } else if (strcmp(argv[*i], "--null") == 0) {
         c->null_traffic = true;
         c->s.stagger = false;
@@ -64,6 +66,15 @@ inline bool node_opt(int argc, char** argv, int* i, NodeCfg* c, const char** out
         c->pause_max_us = b;
     } else if ((v = opt_value(argc, argv, i, "--hang-at"))) {
         c->hang_at = opt_need_u64("--hang-at", v);
+    } else if ((v = opt_value(argc, argv, i, "--exit-at"))) {
+        unsigned long long t = 0;
+        int code = 0;
+        if (sscanf(v, "%llu:%d", &t, &code) != 2) {
+            fprintf(stderr, "--exit-at CYCLE:STATUS\n");
+            exit(2);
+        }
+        c->exit_at = t;
+        c->exit_code = code;
     } else if ((v = opt_value(argc, argv, i, "--log"))) {
         c->log_dir = v;
     } else if ((v = opt_value(argc, argv, i, "--out"))) {

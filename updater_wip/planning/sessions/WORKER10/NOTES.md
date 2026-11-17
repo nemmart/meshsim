@@ -1,6 +1,8 @@
 # WORKER10 notes: the plan for the wire between processes
 
-Status, 2026-11-17: **the plan has the owner's go-ahead, as written.** Branch `updater-w10`, from main `f6ea4570`.
+Status, 2026-11-17: **the plan has the owner's go-ahead, as written; built and checked here** (`REPORT.md`); the
+runner's campaign waits to be queued. Branch `updater-w10`, from main `f6ea4570`. What was built differently from
+the plan is in "Choices" (4: seq_cst in place of fences; 18: where the task generator lives).
 
 **The go-ahead (owner, 2026-11-17, 06:04),** with the answers to section 8:
 

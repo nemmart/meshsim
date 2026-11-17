@@ -23,8 +23,9 @@ struct Rules {
     bool restart = true;           // the restart handshake
     bool wrong_twice = true;       // a packet made wrong: asked for again once; the second time running, the error
     bool ask_not_kept = true;      // the other end asks for a packet no longer kept: the error, and the link starts again
-    bool stop_holds_again = true;  // HL: "a stream that is stopped simply has no packets sent": a packet to be sent again
-                                   // waits too while its stream is stopped (off: only new packets wait)
+    bool stop_holds_again = false; // HL as first written: "a stream that is stopped simply has no packets sent", a packet
+                                   // to be sent again too. Unsound (cases/stopped-blocks.case). HL now: "stop" holds only
+                                   // packets not yet numbered; one that has a number is sent again whatever the stop bit
 };
 
 // A flaw put in on purpose, one at a time, to show that the checks catch it. Compiled out unless LINK_PLANTS.

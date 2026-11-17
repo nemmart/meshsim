@@ -1,0 +1,10 @@
+# A forged packet number: a later packet taken for a lost one before it. A KNOWN LIMIT (owner, 2026-11-17): this case fails under HL as it stands
+# found by linksearch --rules hl
+sizes number_bits=3 max_words=1 window=2 zeros=40 flush_zeros=32 status_timer=24 queue=8 reask=96 pass=1 restart_words=1 delay=1 words=1 images=0 window0=0 wrong=0 still=0
+packets 2 0 0 0
+offer 0 1 216
+fate 0 5 gone
+offer 0 1 233
+fate 0 6 forge-number-back
+quiet 271 20000
+run hl fail word 1 delivered where word 0 was next

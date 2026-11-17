@@ -8,8 +8,10 @@
 // A run ends when the traffic and the noise stop: then every queue is emptied and everything must arrive. Every
 // property of the chain's bench is checked every cycle. A failing seed fails again, the same, when run again.
 //
-//   linkrun [--seeds A B] [--cycles N] [--nodes N] [--rules SPEC] [--host-window N] [--status N] [--quiet-wires]
-//           [--saturate] [--forge] [--plant N] [--long-noise] [--seconds S] [-v]
+//   linkrun [--seeds A B] [--cycles N] [--nodes N] [--rules SPEC] [--host-window N] [--window N] [--fwd WORDS] [--status N]
+//           [--quiet-wires] [--saturate] [--forge] [--flips] [--plant N] [--long-noise] [--seconds S] [-v]
+// --flips: bits flipped in the memory of packets kept, at a low rate. They are delivered unseen (HL) and counted;
+// the run must still come to rest.
 // One line a seed with -v; then the totals: the figures, and the count of every rare event (0 is said).
 #include <algorithm>
 #include <cmath>
@@ -68,12 +70,14 @@ struct Totals {
     uint64_t bytes_data = 0, bytes_status = 0, bytes_round = 0;
     uint64_t most_kept = 0, most_kept_host = 0, most_fill = 0, most_fwd = 0, most_waited = 0, most_turn = 0, hop_wait = 0, end_wait = 0, reply_wait = 0;
     uint64_t recoveries = 0, recovery_sum = 0, recovery_max = 0, recovery_max_seed = 0, by_nodes[17] = {};
+    uint64_t fg_ready = 0, fg_full = 0, fg_again = 0, fg_ready_sum = 0, fg_sent = 0, wrong_once = 0, pass_wait = 0, mem_flips = 0, wrong_words = 0;
     double goodput_sum = 0;
 };
 
 struct Options {
     uint64_t seed_from = 1, seed_to = 1, cycles = 1000000;
-    int nodes = 0; std::string rules = "hl"; int host_window = -1, status = 0, plant = 0;
+    int nodes = 0; std::string rules = "hl"; int host_window = -1, window = 0, fwd = 0, status = 0, plant = 0;
+    bool mem_flips = false;
     bool quiet_wires = false, saturate = false, forge = false, long_noise = false, verbose = false;
     std::string forge_not;                 // forged fates left out, by name, between commas
     uint64_t seconds = 0;                  // start no new seed after this long; 0: no limit
@@ -89,7 +93,8 @@ std::string run(const Options& o, uint64_t seed, Totals& tot) {
     cfg.nodes = o.nodes ? unsigned(o.nodes) : lengths[rng.below(10)];
     const bool real_width = rng.chance(0.4);
     cfg.p.number_bits = real_width ? 18 : unsigned(4 + rng.below(7));
-    cfg.p.window = std::min<unsigned>(8, (cfg.p.last_number() - 1) / 2);
+    cfg.p.window = std::min<unsigned>(o.window ? unsigned(o.window) : 8, (cfg.p.last_number() - 1) / 2);
+    if (o.fwd) cfg.fwd_words = unsigned(o.fwd);
     const unsigned host_windows[] = {0, 0, 0, 16, 64};
     cfg.host_window = o.host_window >= 0 ? unsigned(o.host_window) : host_windows[rng.below(5)];
     if (cfg.host_window > (cfg.p.last_number() - 1) / 2) cfg.host_window = (cfg.p.last_number() - 1) / 2;
@@ -135,6 +140,7 @@ std::string run(const Options& o, uint64_t seed, Totals& tot) {
     const bool queries = rng.chance(0.3);                                  // every node replies at once, at a query
     uint64_t next_query = queries ? uint64_t(rng.logu(1e3, 1e5)) : ~0ull;
     // The run.
+    uint64_t mem_flips = 0;
     uint64_t fates[unsigned(Fate::COUNT)][KINDS] = {}, wraps = 0, wraps_again = 0, stop_in_recovery = 0, header_in_recovery = 0, bursts = 0, burst_cycles = 0, flips = 0, stalls = 0;
     auto let_frame = [&](unsigned i, uint64_t words) {                     // a frame, cut into packets; it ends at a packet's end
         ChainSource& so = c.src[i];
@@ -186,6 +192,7 @@ std::string run(const Options& o, uint64_t seed, Totals& tot) {
                 }
             }
         }
+        if (o.mem_flips && (c.t & 1023) == 0 && rng.chance(0.002)) mem_flips += c.flip(unsigned(rng.below(c.ends())));
         c.step();
         // Damage aimed at the packet that has just started; and what is counted from outside.
         for (unsigned w = 0; w < noise.size(); w++) {
@@ -199,7 +206,7 @@ std::string run(const Options& o, uint64_t seed, Totals& tot) {
             }
             if (noise[w].aimed[k] && rng.chance(noise[w].aimed[k])) {
                 Fate f;
-                do f = Fate(1 + rng.below(o.forge ? unsigned(Fate::COUNT) - 1 : 4)); while ((f == Fate::DATA || f == Fate::FORGE_ACK_DATA) && le.tap.bytes == HEADER_BYTES);
+                do f = Fate(1 + rng.below(o.forge ? unsigned(Fate::COUNT) - 1 : unsigned(Fate::HEAD0))); while ((f == Fate::DATA || f == Fate::HEAD0 || f == Fate::FORGE_ACK_DATA) && le.tap.bytes == HEADER_BYTES);
                 if (o.forge_not.find(std::string(",") + fate_name(f) + ",") != std::string::npos) f = Fate::HEADER;
                 c.fate(w, f); fates[unsigned(f)][k]++;
             }
@@ -223,7 +230,7 @@ std::string run(const Options& o, uint64_t seed, Totals& tot) {
         for (unsigned k = 0; k < KINDS; k++) { tot.sent[k] += n.sent[k]; packets += n.sent[k]; }
         tot.bad_header += n.rx_bad_header; tot.bad_data += n.rx_bad_data; tot.bad_fields += n.rx_bad_fields; tot.refused += n.refused;
         tot.ahead += n.ahead; tot.behind += n.behind; tot.went_back += n.went_back; tot.restarts += n.restarts; tot.kept_bad += n.not_kept;
-        tot.made_wrong += n.made_wrong; tot.ack_behind += n.ack_behind; tot.ack_beyond += n.ack_beyond;
+        tot.made_wrong += n.made_wrong; tot.ack_behind += n.ack_behind; tot.ack_beyond += n.ack_beyond; tot.wrong_once += n.wrong_once; tot.pass_wait += n.pass_wait;
         tot.bytes_data += n.bytes_data; tot.bytes_status += n.bytes_status; tot.bytes_round += n.bytes_round;
         (e == 0 ? tot.most_kept_host : tot.most_kept) = std::max<uint64_t>(e == 0 ? tot.most_kept_host : tot.most_kept, n.most_kept);
     }
@@ -237,6 +244,9 @@ std::string run(const Options& o, uint64_t seed, Totals& tot) {
     tot.most_waited = std::max<uint64_t>(tot.most_waited, c.most_waited); tot.most_turn = std::max<uint64_t>(tot.most_turn, c.most_turn);
     tot.hop_wait = std::max(tot.hop_wait, c.hop_wait_max); tot.end_wait = std::max(tot.end_wait, c.end_wait_max); tot.reply_wait = std::max(tot.reply_wait, c.reply_wait_max);
     tot.recoveries += c.recoveries; tot.recovery_sum += c.recovery_sum;
+    tot.fg_ready = std::max<uint64_t>(tot.fg_ready, c.most_fg_ready); tot.fg_full = std::max<uint64_t>(tot.fg_full, c.most_fg_full);
+    tot.fg_again = std::max<uint64_t>(tot.fg_again, c.most_fg_again); tot.fg_ready_sum += c.fg_ready_sum; tot.fg_sent += c.fg_sent;
+    tot.mem_flips += mem_flips; tot.wrong_words += c.wrong_words;
     if (c.recovery_max > tot.recovery_max) { tot.recovery_max = c.recovery_max; tot.recovery_max_seed = seed; }
     tot.goodput_sum += double(c.got_down[2 * (cfg.nodes - 1)] + c.got_down[2 * (cfg.nodes - 1) + 1]) * WORD_BYTES / double(c.t);
     if (!c.bad.empty()) tot.failed++;
@@ -261,6 +271,9 @@ int main(int argc, char** argv) {
         else if (a == "--rules") o.rules = argv[++i];
         else if (a == "--host-window") o.host_window = int(num());
         else if (a == "--status") o.status = int(num());
+        else if (a == "--window") o.window = int(num());
+        else if (a == "--fwd") o.fwd = int(num());
+        else if (a == "--flips") o.mem_flips = true;
         else if (a == "--plant") o.plant = int(num());
         else if (a == "--quiet-wires") o.quiet_wires = true;
         else if (a == "--saturate") o.saturate = true;
@@ -289,10 +302,15 @@ int main(int argc, char** argv) {
     printf("bytes sent: %llu in packets with data, %llu in packets of length 0 in step (%.2f%% of the data's), %llu in recovery and restart rounds\n",
            (unsigned long long)t.bytes_data, (unsigned long long)t.bytes_status, t.bytes_data ? 100.0 * double(t.bytes_status) / double(t.bytes_data) : 0, (unsigned long long)t.bytes_round);
     printf("the last node's bytes of data a cycle, averaged over the runs: %.4f\n", t.runs ? t.goodput_sum / double(t.runs) : 0);
-    printf("the most: packets a node kept on a stream %llu, the host %llu; words in a queue %llu; words in a forwarding buffer %llu\n", (unsigned long long)t.most_kept,
+    printf("the most: packets a node kept %llu, the host %llu; words in a queue %llu; words in a forwarding buffer %llu\n", (unsigned long long)t.most_kept,
            (unsigned long long)t.most_kept_host, (unsigned long long)t.most_fill, (unsigned long long)t.most_fwd);
     printf("the longest: a foreground packet waiting for the line with nothing else to wait for %llu cycles; a sender without an acknowledgement on a link in step %llu\n",
            (unsigned long long)t.most_turn, (unsigned long long)t.most_waited);
+    printf("a foreground packet ready at an end, not stopped, the link in step, until it starts: %llu cycles at most, %.1f on average over %llu packets; "
+           "of that, with the window full %llu at most, behind packets being sent again %llu at most\n", (unsigned long long)t.fg_ready,
+           t.fg_sent ? double(t.fg_ready_sum) / double(t.fg_sent) : 0, (unsigned long long)t.fg_sent, (unsigned long long)t.fg_full, (unsigned long long)t.fg_again);
+    printf("cycles a line stood idle while a packet's data was passed over: %llu\n", (unsigned long long)t.pass_wait);
+    if (o.mem_flips) printf("bits flipped in the memory of kept packets: %llu; wrong words delivered unseen: %llu\n", (unsigned long long)t.mem_flips, (unsigned long long)t.wrong_words);
     printf("the longest, stalls and noise included: a foreground packet from its turn at the host to the first node %llu, to the last %llu; a reply from let out to the host %llu\n",
            (unsigned long long)t.hop_wait, (unsigned long long)t.end_wait, (unsigned long long)t.reply_wait);
     printf("recoveries (a link's last damaged byte to its next delivery, or to nothing owed): %llu, %llu cycles on average, %llu at most (seed %llu)\n", (unsigned long long)t.recoveries,
@@ -302,7 +320,7 @@ int main(int argc, char** argv) {
     for (unsigned k = 1; k < KINDS; k++) printf(" %13s", KIND_NAMES[k]);
     printf("\n");
     for (unsigned f = 1; f < unsigned(Fate::COUNT); f++) {
-        if (f > unsigned(Fate::DATA) && !o.forge) continue;
+        if (f > unsigned(Fate::HEAD0) && !o.forge) continue;
         printf("  %-18s", fate_name(Fate(f)));
         for (unsigned k = 1; k < KINDS; k++) printf(" %13llu", (unsigned long long)t.fate[f][k]);
         printf("\n");
@@ -312,10 +330,11 @@ int main(int argc, char** argv) {
         {"\"lost\" and \"recovery\" together (both ends lost)", t.sent[6]}, {"restart", t.sent[7]},
         {"header CRC failed", t.bad_header}, {"data checksum failed", t.bad_data}, {"a field that cannot be", t.bad_fields},
         {"a header CRC failed during a recovery", t.header_in_recovery}, {"a stop bit taken during a recovery", t.stop_in_recovery},
-        {"a packet ahead of the one expected, or a number ahead", t.ahead}, {"a packet seen before", t.behind}, {"a packet with no room (G11)", t.refused},
+        {"a packet ahead of the one expected, or a number ahead", t.ahead}, {"a packet seen before", t.behind}, {"a packet with no room", t.refused},
         {"a sender went back", t.went_back}, {"the number wrapped on a new packet", t.wraps}, {"the number wrapped on a packet sent again", t.wraps_again},
         {"bursts of noise", t.bursts}, {"cycles inside a burst", t.burst_cycles}, {"single bits flipped", t.flips}, {"consumer stalls", t.stalls},
-        {"an acknowledgement behind (G20)", t.ack_behind}, {"an acknowledgement beyond what was sent (G20)", t.ack_beyond},
+        {"an acknowledgement behind the last one taken", t.ack_behind}, {"an acknowledgement beyond what was sent", t.ack_beyond},
+        {"a packet made wrong, the first time: asked for again", t.wrong_once},
         {"a link started again", t.restarts}, {"asked for a packet no longer kept: error", t.kept_bad}, {"a packet made wrong a second time: error", t.made_wrong}};
     for (const auto& r : rows) printf("  %-58s %14llu%s\n", r.name, (unsigned long long)r.n, r.n ? "" : "   <- never happened");
     return t.failed != 0;

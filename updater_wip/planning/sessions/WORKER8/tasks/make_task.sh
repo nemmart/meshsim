@@ -1,6 +1,6 @@
 #!/bin/bash
 # make_task.sh: writes a Quest task for the runner from this repository's updater_wip/link at a commit.
-#   make_task.sh <number> <item> <commit> <out dir>      item: campaign, long-noise, searches
+#   make_task.sh <number> <item> <commit> <out dir>      item: campaign, long-noise, searches, search-bigN
 # The task holds the link's sources as a kit (base64 of a tar), builds them on the runner, and runs the item. It
 # writes only results/<task>/; its scratch is in /tmp and is removed first and last; it is safe to run again.
 set -eu
@@ -20,6 +20,7 @@ cat <<HEAD
 #               and noise a seed, chains of 1, 2, 4 and 16; then the slices added up. Any failing seed is a FAIL.
 #   long-noise  16 runs with bursts of noise up to 300 ms (3e8 cycles), on chains of 1 and 2.
 #   searches    the searches of the shrunken model too large for a session's machine: six, three at a time.
+#   search-bigN one of them alone (searches.sh bigN), with all the memory the task may use.
 # From an embedded kit. Writes only results/$NAME/. Scratch in /tmp, removed first and at the end. Safe to re-run.
 set -u
 cd "\$(dirname "\$0")/.."
@@ -63,6 +64,21 @@ searches)
     done
     cat "$RES"/search-*.txt | tee "$RES/searches.txt"
     if grep -q 'FAILS\|NO RESULT' "$RES/searches.txt"; then verdict searches "FAIL (searches.txt)"; else verdict searches "PASS ($(grep -c 'NOT complete' "$RES/searches.txt") not complete)"; fi
+    ;;
+search-big*)
+    # One search with the memory there is: the task's own limit if it has one, else what the machine has free. The
+    # search stops by itself at the states that fit (about 480 bytes a state here), and its line then says NOT complete.
+    L=${ITEM#search-}
+    LIM=$(cat "/sys/fs/cgroup$(cut -d: -f3 /proc/self/cgroup | head -1)/memory.max" 2>/dev/null || echo max)
+    FREE=$(awk '/MemAvailable/ {print $2 * 1024}' /proc/meminfo)
+    if [ "$LIM" = max ] || [ "$LIM" -gt "$FREE" ]; then LIM=$FREE; fi
+    MAX=$((LIM / 10 * 8 / 480))
+    echo "memory for the search: $LIM bytes; at most $MAX states" | tee -a "$RES/machine.txt"
+    ( ulimit -v $((LIM / 1024 / 10 * 9)); MAX=$MAX timeout 40m ./searches.sh "$L" > "$RES/search-$L.txt" 2>&1 )
+    cat "$RES/search-$L.txt"
+    if grep -q 'FAILS\|NO RESULT' "$RES/search-$L.txt"; then verdict search "FAIL (search-$L.txt)"
+    elif grep -q 'NOT complete' "$RES/search-$L.txt"; then verdict search "PASS (not complete: no failure in the states tried)"
+    else verdict search PASS; fi
     ;;
 esac
 echo "took $(( $(date +%s) - T0 )) s" | tee "$RES/TIMES"

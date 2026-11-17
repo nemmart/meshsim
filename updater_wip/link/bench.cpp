@@ -8,9 +8,9 @@
 
 namespace hl {
 
-static const char* const FATE_NAMES[] = {"whole", "gone", "first0", "header", "data", "forge-ack", "forge-stop",
+static const char* const FATE_NAMES[] = {"whole", "gone", "first0", "header", "data", "head0", "forge-ack", "forge-stop",
                                           "forge-lost", "forge-recovery", "forge-resend", "forge-number", "forge-number-back", "forge-ack-data",
-                                          "forge-stop-bg", "forge-wrong", "forge-long"};
+                                          "forge-stop-bg", "forge-wrong", "forge-long", "forge-restart"};
 const char* fate_name(Fate f) { return FATE_NAMES[unsigned(f)]; }
 bool fate_from(const std::string& name, Fate& f) {
     for (unsigned i = 0; i < unsigned(Fate::COUNT); i++) if (name == FATE_NAMES[i]) { f = Fate(i); return true; }
@@ -26,6 +26,7 @@ uint8_t Wire::damaged(uint32_t index, uint8_t b) const {
     case Fate::FIRST0: return index == 0 ? 0 : b;
     case Fate::HEADER: return index == 5 ? b ^ 1 : b;
     case Fate::DATA: return index == HEADER_BYTES ? b ^ 1 : b;
+    case Fate::HEAD0: return index < HEADER_BYTES ? 0 : b;
     case Fate::FORGE_ACK_DATA: return index < HEADER_BYTES ? forged[index] : index == HEADER_BYTES ? b ^ 1 : b;
     default: return index < HEADER_BYTES ? forged[index] : b;
     }
@@ -60,6 +61,7 @@ void Wire::set_fate(Fate f, const Numbers& nums) {
     case Fate::FORGE_STOP_BG: h.stop[BG] = !h.stop[BG]; break;
     case Fate::FORGE_WRONG: h.reserved = 1; break;
     case Fate::FORGE_LONG: h.length = MAX_WORDS + 1; break;
+    case Fate::FORGE_RESTART: h.flags |= F_RESTART | F_LOST; break;
     default: break;
     }
     pack(h, forged);
@@ -88,6 +90,17 @@ void flow_word(unsigned from, unsigned stream, uint64_t index, uint8_t out[WORD_
 // a receiver makes of it, if it ever takes a packet's data for a packet.
 void Link1::word(unsigned from, unsigned stream, uint64_t index, uint8_t out[WORD_BYTES]) const {
     if (!cfg.images) { flow_word(from, stream, index, out); return; }
+    if (cfg.images == 2 && index % cfg.words == 0) { memset(out, 0, WORD_BYTES); return; }
+    if (cfg.images == 3) {                                 // a packet inside a packet: its header, then its data
+        if (index % cfg.words) { flow_word(from, stream, index, out); return; }
+        uint8_t inner[MAX_WORDS * WORD_BYTES];
+        for (unsigned w = 1; w < cfg.words; w++) flow_word(from, stream, index + w, inner + (w - 1) * WORD_BYTES);
+        Header h; h.stream = uint8_t(stream + 1); h.length = uint8_t(cfg.words - 1);
+        h.number = uint32_t(index / cfg.words) % end[0].nums.last + 1;      // the number its own packet carries, if nothing else is sent
+        h.dsum = crc32c(inner, size_t(cfg.words - 1) * WORD_BYTES);
+        pack(h, out);
+        return;
+    }
     const uint64_t packet = index / cfg.words;             // a packet's data: the image in every word
     Header h; h.stream = 1; h.flags = F_RECOVERY;
     h.number = uint32_t(packet % 5) + 1; h.ack = uint32_t(packet % 2) + 1;
@@ -175,8 +188,24 @@ void Link1::step() {
         }
         // The error for a packet no longer kept is raised only when one was lost: this end had let go of a packet
         // that the other end had not taken.
-        if (end[e].ev.not_kept && !end[e].nums.ahead(last_was[1 - e], acked_was[e]) && bad.empty())
-            bad = "an error for a packet no longer kept, and the other end had taken every packet this end had let go";
+        if (end[e].ev.not_kept && bad.empty()) {
+            const Header h = unpack(end[e].r.rx_hdr);
+            if (!(h.flags & (F_RESEND | F_LOST))) bad = "an error for a packet no longer kept, and none was asked for";
+            else if (!end[e].nums.ahead(last_was[1 - e], acked_was[e])) bad = "an error for a packet no longer kept, and the other end had taken every packet this end had let go";
+            else { alarm[e][0] = last_was[1 - e]; alarm[e][1] = acked_was[e]; }
+        }
+        // And if the other end then takes one of those packets after all, nothing was lost.
+        // (Until this end hears of the restart: from then on its numbers are the new life's.)
+        if (end[e].ev.restarted || in[e].power_on || (end[e].ev.rx_good && (unpack(end[e].r.rx_hdr).flags & F_RESTART))) alarm[1 - e][0] = alarm[1 - e][1] = 0;
+        if (end[e].ev.delivered && alarm[1 - e][1] && end[e].nums.ahead(alarm[1 - e][0], end[e].r.last) &&
+            !end[e].nums.ahead(alarm[1 - e][1], end[e].r.last) && bad.empty())
+            bad = "an error for a packet no longer kept, and the packet then arrived: nothing was lost";
+        // A restart packet is acted on only with its pattern whole.
+        if (end[e].ev.rx_good && (unpack(end[e].r.rx_hdr).flags & F_RESTART) && bad.empty()) {
+            bool whole = unpack(end[e].r.rx_hdr).length == cfg.p.restart_words;
+            for (unsigned i = 0; whole && i < cfg.p.restart_words * WORD_BYTES; i++) whole = end[e].rx_data()[i] == restart_byte(i);
+            if (!whole) bad = "a restart packet was acted on with its pattern wrong";
+        }
         // A sender whose packets are kept, on a link in step, hears an acknowledgement before long.
         {
             const bool waits = end[e].kept() != 0 && end[e].r.next == end[e].r.tail && end[0].running() && end[1].running() &&
@@ -213,11 +242,14 @@ void Link1::deliver(unsigned e) {
         word(1 - e, s, delivered[e][s], want);
         if (memcmp(got, want, WORD_BYTES) != 0) {
             uint64_t index = 0; bool known = false;        // which word of the flow is it, if any? (the next few, or one before)
-            for (uint64_t i = delivered[e][s] > 64 ? delivered[e][s] - 64 : 0; i < delivered[e][s] + 64 && !known; i++) {
+            for (uint64_t i = delivered[e][s] > 2048 ? delivered[e][s] - 2048 : 0; i < delivered[e][s] + 2048 && !known; i++) {
                 word(1 - e, s, i, want);
                 if (memcmp(got, want, WORD_BYTES) == 0) { known = true; index = i; }
             }
-            if (known && gaps_allowed && (index > delivered[e][s] || fresh[e][s])) { delivered[e][s] = index + 1; fresh[e][s] = false; continue; }
+            if (known && gaps_allowed && (index > delivered[e][s] || fresh[e][s])) {
+                if (index > delivered[e][s]) lost_words += index - delivered[e][s];
+                delivered[e][s] = index + 1; fresh[e][s] = false; continue;
+            }
             if (!known && flipped) { wrong_words++; delivered[e][s]++; continue; }      // the flipped bit, delivered unseen (HL)
             if (bad.empty()) {
                 char m[160];
@@ -288,7 +320,7 @@ Hash128 Link1::canon() const {
     for (const auto& e : end) e.canon(w);
     for (const auto& wi : wire) wi.canon(w);
     for (const auto& e : src) for (const auto& s : e) { w(s.made); w(s.avail); }
-    w(fill); w(delivered); w(gaps_allowed); w(fresh); w(must_report); w(excused); w(flipped); w(stopped); w(waited); w(power); w(budget); w(started_);
+    w(fill); w(delivered); w(gaps_allowed); w(fresh); w(must_report); w(excused); w(flipped); w(alarm); w(stopped); w(waited); w(power); w(budget); w(started_);
     return hash128(v.data(), v.size());
 }
 
@@ -371,7 +403,7 @@ bool parse_case(const std::string& path, Case& c, std::string& err) {
                 if (name == "queue") { c.cfg.queue_words = v; found = true; }
                 if (name == "delay") { c.cfg.delay = v; found = true; }
                 if (name == "words") { c.cfg.words = v; found = true; }
-                if (name == "images") { c.cfg.images = v != 0; found = true; }
+                if (name == "images") { c.cfg.images = v; found = true; }
                 if (name == "window0") { c.cfg.window0 = v; found = true; }
                 if (name == "wrong") { c.cfg.wrong = v; found = true; }
                 if (name == "still") { c.cfg.still = v; found = true; }

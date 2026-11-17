@@ -130,10 +130,10 @@ template <class B> int search(const Options& o, B root, Case blank) {
             const bool has_data = b.the_wire(w).len > HEADER_BYTES;
             if (b.budget[0]) {
                 for (Fate f : {Fate::GONE, Fate::FIRST0, Fate::HEADER}) d.values.push_back(uint32_t(f));
-                if (has_data) d.values.push_back(uint32_t(Fate::DATA));
+                if (has_data) { d.values.push_back(uint32_t(Fate::DATA)); d.values.push_back(uint32_t(Fate::HEAD0)); }
             }
             if (b.budget[2]) for (unsigned f = unsigned(Fate::FORGE_ACK); f < unsigned(Fate::COUNT); f++)
-                if (Fate(f) != Fate::FORGE_ACK_DATA || has_data) d.values.push_back(f);
+                if (Fate(f) != Fate::FORGE_ACK_DATA || has_data) d.values.push_back(f);   // every forged fate
             if (!o.fates.empty())
                 std::erase_if(d.values, [&](uint32_t v) { return v != uint32_t(Fate::WHOLE) && o.fates.find(std::string(",") + fate_name(Fate(v)) + ",") == std::string::npos; });
             if (d.values.size() > 1) dims.push_back(d);
@@ -158,7 +158,7 @@ template <class B> int search(const Options& o, B root, Case blank) {
             uint32_t cost[3] = {0, 0, 0};          // this choice within the budgets?
             for (size_t i = 0; i < dims.size(); i++) {
                 const uint32_t v = dims[i].values[digit[i]];
-                if (dims[i].what == 0 && v != uint32_t(Fate::WHOLE)) cost[Fate(v) > Fate::DATA ? 2 : 0]++;
+                if (dims[i].what == 0 && v != uint32_t(Fate::WHOLE)) cost[Wire::forges(Fate(v)) ? 2 : 0]++;
                 if (dims[i].what == 3 && v) cost[1]++;
             }
             if (cost[0] <= b.budget[0] && cost[1] <= b.budget[1] && cost[2] <= b.budget[2]) {
@@ -167,7 +167,7 @@ template <class B> int search(const Options& o, B root, Case blank) {
                     const uint32_t v = d.values[digit[i]];
                     if (d.what == 0 && v != uint32_t(Fate::WHOLE)) {
                         b.fate(d.i, Fate(v));
-                        b.budget[Fate(v) > Fate::DATA ? 2 : 0]--;
+                        b.budget[Wire::forges(Fate(v)) ? 2 : 0]--;
                         evs.push_back(event(Event::FATE, d.i, b.the_wire(d.i).ordinal, v));
                     } else if (d.what == 1 && v) { b.offer(d.i); evs.push_back(event(Event::OFFER, d.i, b.t, 0)); }
                     else if (d.what == 2 && v != 99) { b.drain(d.i, v); evs.push_back(event(Event::DRAIN, d.i, b.t, v)); }
@@ -247,7 +247,9 @@ int main(int argc, char** argv) {
         else if (a == "--forge") o.forge = uint32_t(num());
         else if (a == "--power") o.power = uint32_t(num());
         else if (a == "--flip") o.flips = uint32_t(num());
-        else if (a == "--images") o.cfg.images = true;
+        else if (a == "--images") o.cfg.images = 1;
+        else if (a == "--images2") o.cfg.images = 2;
+        else if (a == "--images3") o.cfg.images = 3;
         else if (a == "--words") o.cfg.words = unsigned(num());
         else if (a == "--window0") o.cfg.window0 = unsigned(num());
         else if (a == "--wrong") o.cfg.wrong = unsigned(num());

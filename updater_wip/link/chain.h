@@ -90,7 +90,7 @@ public:
     Wire& the_wire(unsigned w) { return wire[w]; }
     uint32_t qfill(unsigned q) const { return fill[q]; }
     static constexpr bool flat = true;     // its sources and queues have one number each
-    void fate(unsigned w, Fate f) { wire[w].set_fate(f, host.nums); if (Wire::forges(f) && f != Fate::FORGE_ACK_DATA) excused = true; }
+    void fate(unsigned w, Fate f) { wire[w].set_fate(f, host.nums); if (Wire::excuses(f)) excused = true; }
     unsigned n_sources() const { return unsigned(src.size()); }
     bool offerable(unsigned i) const { return src[i].left != 0 && !src[i].waiting(); }
     void offer(unsigned i) { if (src[i].left) { src[i].left--; src[i].let(uint8_t(cfg.words)); } }

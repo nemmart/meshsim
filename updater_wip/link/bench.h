@@ -20,12 +20,15 @@ namespace hl {
 // header again, so that it passes its CRC: a wire makes one in 2^32, and they are reported apart.
 enum class Fate : uint8_t {
     WHOLE, GONE, FIRST0, HEADER, DATA,
+    HEAD0,                                 // every byte of the header zero, the data whole: a burst that reads as zeros and ends
+                                           // where the data starts. The receiver sees idle, and then the data
     FORGE_ACK, FORGE_STOP, FORGE_LOST, FORGE_RECOVERY, FORGE_RESEND, FORGE_NUMBER,
     FORGE_NUMBER_BACK,                     // the packet's number one less: a later packet taken for the one before it
     FORGE_ACK_DATA,                        // a forged acknowledge field on a packet whose data is damaged too: must change nothing
     FORGE_STOP_BG,                         // the background's stop bit turned over
     FORGE_WRONG,                           // a reserved bit set: to its receiver, a packet made wrong
     FORGE_LONG,                            // a length of 33
+    FORGE_RESTART,                         // "restart" and "lost" set on a packet that is not the restart packet: must change nothing
     COUNT
 };
 const char* fate_name(Fate f);
@@ -48,7 +51,8 @@ struct Wire {
     uint8_t out() const { return ring[pos]; }
     void push(uint8_t b, const Tap& tap);
     void set_fate(Fate f, const Numbers& nums);     // just after the push of a packet's first byte
-    static bool forges(Fate f) { return f > Fate::DATA; }
+    static bool forges(Fate f) { return f > Fate::HEAD0; }
+    static bool excuses(Fate f) { return forges(f) && f != Fate::FORGE_ACK_DATA && f != Fate::FORGE_RESTART; }   // may be believed
     bool idle() const { return at >= len; }
     bool noise();                                   // a byte put into the idle wire, where the last byte went
     template <class A> void io(A& a) {
@@ -61,7 +65,7 @@ struct Wire {
     void canon(Writer& a) const {
         for (size_t i = 0; i < ring.size(); i++) a(ring[(pos + i) % ring.size()]);
         const uint32_t left = len - at; a(left);
-        if (left) { a(at); a(fate); if (fate > Fate::DATA) a(forged); }
+        if (left) { a(at); a(fate); if (forges(fate)) a(forged); }
         if (at == 1) a(hdr);               // just started: its fate may still be chosen
     }
 private:
@@ -78,7 +82,9 @@ struct Config {
     unsigned delay = 1;                    // the wire's, in cycles, each way
     unsigned words = 32;                   // the words in each packet a source makes
     unsigned packets[2][STREAMS] = {};     // how many packets each source has: [end][stream]
-    bool images = false;                   // every word a source makes is the image of a good header (G10's case)
+    unsigned images = 0;                   // 1: every word a source makes is the image of a good header; 2: a packet's first
+                                           // word is zeros and the rest are images: the longest run of zeros before one; 3: a
+                                           // packet's first word is the image of the header of a packet that holds the rest
 };
 
 struct Source { uint32_t total = 0, made = 0, avail = 0; };   // its packets; those taken by the end; those let out so far
@@ -99,6 +105,10 @@ public:
                                            // was believed, a packet made wrong, a power-on. Without it, starting again is a failure
     bool flipped = false;                  // a bit was flipped in a sender's memory: a wrong word may be delivered, and is counted
     uint64_t wrong_words = 0;
+    uint64_t lost_words = 0;               // the words missing after a restart (a count, not state)
+    uint32_t alarm[2][2] = {};             // end e raised the error for a packet no longer kept: the numbers it had let go that
+                                           // the other end had not taken, after [0] up to [1]; 0 0 for none. If the other end
+                                           // then takes one of them, nothing was lost, and the error was false
     bool stopped[2][STREAMS] = {};         // the stop bit end e last took, each stream: it must not start data there
     uint32_t waited[2] = {};               // the cycles end e has had packets kept, all sent, the link in step, and no acknowledgement
     uint32_t most_waited = 0;
@@ -117,7 +127,7 @@ public:
     // From outside, between cycles.
     void offer(unsigned e, unsigned s) { if (src[e][s].avail < src[e][s].total) src[e][s].avail++; }
     void drain(unsigned e, unsigned s, uint32_t n) { fill[e][s] -= n == 0 || n > fill[e][s] ? fill[e][s] : n; }
-    void fate(unsigned w, Fate f) { wire[w].set_fate(f, end[w].nums); if (Wire::forges(f) && f != Fate::FORGE_ACK_DATA) excused = true; }
+    void fate(unsigned w, Fate f) { wire[w].set_fate(f, end[w].nums); if (Wire::excuses(f)) excused = true; }
     bool flip(unsigned e);                 // a bit of the oldest packet end e keeps: a memory's fault, not the wire's
     void word(unsigned from, unsigned stream, uint64_t index, uint8_t out[WORD_BYTES]) const;   // what a flow carries at an index
 
@@ -146,7 +156,7 @@ public:
         for (auto& e : end) e.io(a);
         for (auto& w : wire) w.io(a);
         for (auto& e : src) for (auto& s : e) { a(s.made); a(s.avail); }
-        a(fill); a(delivered); a(gaps_allowed); a(fresh); a(must_report); a(excused); a(flipped); a(stopped); a(waited); a(power); a(budget); a(t); a(started_);
+        a(fill); a(delivered); a(gaps_allowed); a(fresh); a(must_report); a(excused); a(flipped); a(alarm); a(stopped); a(waited); a(power); a(budget); a(t); a(started_);
     }
     // What the search knows a state by: the hash of everything that can still matter (LinkEnd::canon).
     Hash128 canon() const;

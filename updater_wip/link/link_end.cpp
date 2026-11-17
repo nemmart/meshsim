@@ -111,7 +111,10 @@ void LinkEnd::header_end(const In& in) {
     const bool heeds = !r.lost && !r.restart && !r.restart_answer;
     if (h.length > p.max_words) {          // how far to pass over is not known: a lost place, and counted like a wrong packet
         ev.rx_bad_fields = true; count.rx_bad_fields++;
-        if (heeds && h.number == expect() && made_wrong()) return;
+        if (heeds && h.number == expect() && made_wrong()) {             // the second time: the link starts again, and the
+            r.rx_state = p.rules.flush ? RxState::FLUSH : RxState::HUNT;  // receiver waits for the zeros of its rounds
+            return;
+        }
         lose_place();
         return;
     }
@@ -174,7 +177,11 @@ void LinkEnd::packet_end(const In& in, bool data_ok) {
     if (h.flags & F_RESTART) {             // acted on only if the header, the data checksum and the pattern all agree
         bool whole = data_ok && h.length == p.restart_words;
         for (unsigned i = 0; whole && i < r.rx_bytes; i++) whole = r.rx_buf[i] == restart_byte(i);
-        if (!whole && !HL_PLANT(p, RESTART_ANY_DATA)) { ev.rx_bad_data = true; count.rx_bad_data++; return; }   // "a damaged packet"
+        if (!whole && !HL_PLANT(p, RESTART_ANY_DATA)) {    // "a damaged packet", like any other
+            ev.rx_bad_data = true; count.rx_bad_data++;
+            thrown_away(h.number, h.length > 0);
+            return;
+        }
         ev.rx_good = true; count.rx_good++;
         good_packet(in, h);
         return;
@@ -262,7 +269,7 @@ void LinkEnd::good_packet(const In& in, const Header& h) {
     // The acknowledge field, the stop bits, and a going back.
     if (!was_lost || p.rules.lost_uses_ack || f_rec || hears_lost) {
         const int ack = take_ack(h.ack);
-        if (ack == 1 && HL_PLANT(p, ERROR_ON_RELEASE)) { declare(); return; }
+        if (ack == 1 && HL_PLANT(p, ERROR_ON_RELEASE)) { count.not_kept++; ev.not_kept = true; declare(); return; }
         for (unsigned s = 0; s < STREAMS; s++) {
             ev.stop_taken[s] = h.stop[s] ? 1 : 0;
             r.peer_stop[s] = h.stop[s] && !HL_PLANT(p, STOP_IGNORED);

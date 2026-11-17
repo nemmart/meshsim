@@ -1,9 +1,10 @@
 # WORKER8 notes: the plan for the simulation of the host link's protocol
 
-Status, 2026-11-17, later: **stopped on NEXT.md's order. HL as it now stands (one run of numbers) lets the foreground
-stand still behind a stopped background: `REPORT.md` beside this file.** The code in `updater_wip/link/` is HL's
-header of 16 bytes with one run of numbers; sections 16 and 17 below are results on the headers before it and are
-history. Branch `updater-w8`. Sections 1 to 15 are the plan as agreed.
+Status, 2026-11-17, evening: **stopped a second time on NEXT.md's order: a header that reads as zeros in front of
+data that holds a packet. `REPORT.md` beside this file has it, with what holds so far and what is not done.** The
+code in `updater_wip/link/` is HL as it now stands (the header of 16 bytes, one run of numbers, "stop" holding only
+packets not yet numbered); sections 16 and 17 below are results on the headers before it and are history. Branch
+`updater-w8`. Sections 1 to 15 are the plan as agreed.
 
 **The go-ahead (owner, 2026-11-17),** with the answers to section 15:
 

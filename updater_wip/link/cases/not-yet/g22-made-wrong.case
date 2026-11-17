@@ -1,7 +1,0 @@
-# QUESTIONS.md G22: a packet its own sender made wrong (hops 15 at an end that would forward it)
-# found by linksearch --rules proposed-made_wrong
-sizes number_bits=3 max_words=1 window=2 zeros=44 flush_zeros=36 status_timer=24 queue=8 reask=96 delay=1 words=1 images=0 window0=0 wrong=1 still=0
-packets 2 0 1 0
-quiet 1 20000
-run proposed-made_wrong fail nothing more goes wrong, and it does not finish
-run proposed ok

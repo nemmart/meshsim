@@ -8,8 +8,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <vector>
 
+#include "cache_figures.h"
 #include "cache_ref.h"
 #include "harness.h"
 #include "units/cache_system.h"
@@ -618,6 +620,7 @@ TEST(cache_random_against_no_cache) {
                         (unsigned long long)b.sys.ctl.served_under_miss, (unsigned long long)b.sys.ctl.fill_reads, (unsigned long long)b.sys.ctl.lookups,
                         (unsigned long long)b.sys.ctl.misses[0], (unsigned long long)b.sys.ctl.misses[1], (unsigned long long)b.sys.ctl.misses[4],
                         (unsigned long long)b.sys.ctl.hits[0], (unsigned long long)b.sys.ctl.hits[1], (unsigned long long)b.sys.ctl.hits[4]);
+        if (std::getenv("CACHE_TEST_VERBOSE")) cachefig::print(("seed " + std::to_string(seed)).c_str(), b.sys);
     }
 }
 
@@ -637,4 +640,38 @@ TEST(cache_handshake_rules) {
     }
     CHECK(b.done());
     for (unsigned p = 0; p < lookup::CLIENTS; p++) CHECK_EQ(b.ports[p].got.size(), size_t(10));
+}
+
+// The figures of an idle cache (the fixed LPDDR model), printed for the report and held within bounds: a look-up of a
+// depth-2 file on misses and on hits, an update whose path hits, a fill read on three misses and on hits, a fill write
+// that hits and one that allocates.
+TEST(cache_idle_figures) {
+    Directed w;
+    const int32_t NEW = w.page(false);
+    Bench b(&w.fs);
+    auto one_port = [&](const lookup::Request& r) {
+        PortDriver& d = b.ports[lookup::UPDATER];
+        d.reqs.push_back(r);
+        b.run();
+        return d.got.back().replied - d.got.back().taken;
+    };
+    auto one_fill = [&](const FillOp& o) {
+        b.fill.ops.push_back(o);
+        b.run();
+        return b.fill.ops.back().answered - b.fill.ops.back().taken;
+    };
+    const int64_t look_miss = one_port(look(w.RA, 2, 0)), look_hit = one_port(look(w.RA, 2, 0));
+    const int64_t update_hit = one_port(update(w.RA, 2, 1, 1, own(NEW)));
+    const int64_t fill_miss = one_fill(fread(w.RC, 3, 7 * 32 + 4)), fill_hit = one_fill(fread(w.RC, 3, 7 * 32 + 4));
+    const int64_t fwrite_hit = one_fill(fwrite(w.RC, 3, 7 * 32 + 4, 1)), fwrite_alloc = one_fill(fwrite(w.RC, 3, 7 * 32 + 5, 2));
+    std::printf("an idle cache: a look-up of depth 2 on two misses %lld cycles, on hits %lld; an update on hits %lld; a fill read of depth 3 on "
+                "four misses %lld, on hits %lld; a fill write on hits %lld, allocated %lld\n", (long long)look_miss, (long long)look_hit,
+                (long long)update_hit, (long long)fill_miss, (long long)fill_hit, (long long)fwrite_hit, (long long)fwrite_alloc);
+    CHECK(look_hit <= 8);
+    CHECK(look_miss <= look_hit + 2 * 90);
+    CHECK(update_hit <= look_hit + 90);
+    CHECK(fill_hit <= 10);
+    CHECK(fill_miss <= fill_hit + 4 * 90);
+    CHECK(fwrite_hit <= 10);
+    CHECK(fwrite_alloc <= 20);                        // the miss handler installs it, then the request is walked again
 }

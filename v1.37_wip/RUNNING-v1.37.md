@@ -93,6 +93,21 @@ build/clang-suite/proof_run tests/updater/divs.frames --asics 64 --segment 20 --
 | the Updater, Ingress's host link, the file store: their tests | `build/clang-suite/test_updater`, `test_ingress_link`, `test_packet_vectors`, `test_file_store` |
 | bugs planted in the master's program, each of which `test_master` must catch | `tests/fw_teeth.sh master:` (the RISC-V toolchain; three minutes) |
 
+## On the cache's controller
+
+The Tracer's memory is v1.37's model of the memory system (`src/units/mem_system.h`) unless asked otherwise. With the
+setting `cache_ctl` it is the cache's real controller with the AXI arbiter and the LPDDR model behind it
+(`../v1.4_wip/planning/CACHE-INTERFACE.md`, `AXI-INTERFACE.md`; `src/units/cache_system.h`), on the same file store
+the Updater writes. The Updater is still the black box and writes the store directly.
+
+| | command |
+|---|---|
+| one proof on the cache | `proof_run ... --cache`: the run's lines, the same checks, and the cache's figures (hits and misses by kind of line, evictions, write-backs, the walks, a fill's cycles, LPDDR's bursts); a set error flag or a read of LPDDR nothing wrote fails the run |
+| the guests on the cache | `test_master master_cache` |
+| the units alone | `test_lpddr_model`, `test_axi_arbiter`, `test_cache` (the step `cache`) |
+| the Tracer alone on the cache | `TRACER_CACHE=1 tracer_block --synthetic SEED` (the step `cache-synth`); `tracer_block ... --fill cache` on the real segments |
+| everything on the cache | `CACHE_CTL=1 MESHSIM_INPUTS=... ./run_tests.sh all --check`: the proof steps with `--cache`, and the step `tracer-block-cache` |
+
 ## When a run fails
 
 - **The master's status** is the first line: 1 is a proof made; 2 its error path (the line gives the tile's,

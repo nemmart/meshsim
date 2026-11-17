@@ -74,7 +74,7 @@ search-big*)
     if [ "$LIM" = max ] || [ "$LIM" -gt "$FREE" ]; then LIM=$FREE; fi
     MAX=$((LIM / 10 * 8 / 480))
     echo "memory for the search: $LIM bytes; at most $MAX states" | tee -a "$RES/machine.txt"
-    ( ulimit -v $((LIM / 1024 / 10 * 9)); MAX=$MAX timeout 40m ./searches.sh "$L" > "$RES/search-$L.txt" 2>&1 )
+    ( ulimit -v $((LIM / 1024 / 10 * 9)); MAX=$MAX SECS=2280 ./searches.sh "$L" > "$RES/search-$L.txt" 2>&1 )     # 38 minutes of the 45
     cat "$RES/search-$L.txt"
     if grep -q 'FAILS\|NO RESULT' "$RES/search-$L.txt"; then verdict search "FAIL (search-$L.txt)"
     elif grep -q 'NOT complete' "$RES/search-$L.txt"; then verdict search "PASS (not complete: no failure in the states tried)"

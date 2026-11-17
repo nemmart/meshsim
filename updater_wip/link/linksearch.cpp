@@ -60,7 +60,7 @@ struct Options {
     unsigned chain = 0, cpackets[3] = {1, 1, 1}, fwd = 8;
     uint32_t damage = 1, noise = 0, forge = 0, power = 0, flips = 0;
     unsigned tick = 0;                         // also stop every so many cycles; 0 is never
-    uint64_t bound = 20000, max_states = 0;
+    uint64_t bound = 20000, max_states = 0, seconds = 0;   // max_states, seconds: stop there, and say NOT complete
     std::string out;
     bool all = false, whole = false, quiet_check = true;
     unsigned drains = 3;                       // 2: nothing or all; 3: also one word
@@ -216,6 +216,9 @@ template <class B> int search(const Options& o, B root, Case blank) {
             more = false;
             for (size_t i = 0; i < dims.size(); i++) { if (++digit[i] < dims[i].values.size()) { more = true; break; } digit[i] = 0; }
             if (o.max_states && nodes.size() >= o.max_states) { frontier.clear(); more = false; cut_short = true; printf("stopped at --max-states: NOT complete\n"); }
+            else if (o.seconds && (tried & 1023) == 0 && std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() >= double(o.seconds)) {
+                frontier.clear(); more = false; cut_short = true; printf("stopped at --seconds: NOT complete\n");
+            }
         }
     }
     const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
@@ -259,6 +262,7 @@ int main(int argc, char** argv) {
         else if (a == "--tick") o.tick = unsigned(num());
         else if (a == "--bound") o.bound = num();
         else if (a == "--max-states") o.max_states = num();
+        else if (a == "--seconds") o.seconds = num();
         else if (a == "--drains") o.drains = unsigned(num());
         else if (a == "--out") o.out = argv[++i];
         else if (a == "--fates") o.fates = std::string(",") + argv[++i] + ",";

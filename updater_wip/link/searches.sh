@@ -15,7 +15,7 @@ one() {
     else verdict="FAILS: $(echo "$out" | sed -n '/^RESULT: FAILED/,$p' | tail -n +2 | sed 's/^ *//' | tr '\n' ';')"; fi
     printf '%-96s %10s states  %6s s  rest<=%-4s %s\n' "$*" "$states" "$secs" "$rest" "$verdict"
 }
-M="--max-states ${MAX:-150000000}"
+M="--max-states ${MAX:-150000000} ${SECS:+--seconds $SECS}"     # the runner's: MAX states, SECS seconds, then NOT complete
 F=gone,first0,header,data
 case "${1:-main}" in
 main)    # one link: the list of the headers before, for the state counts side by side

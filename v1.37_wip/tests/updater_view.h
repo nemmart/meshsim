@@ -4,7 +4,7 @@
 // installed. Test-side code.
 //
 // THE SETTING: proof::Case::updater_ctl, off by default; or, for every case of a run, the environment variable
-// MESHSIM_UPDATER_CTL (any value: on; a number above 0: the seed of the varied timing, the test LPDDR's jitter and the
+// MESHSIM_UPDATER_CTL (unset or empty: off; any other value: on; a number above 0: the seed of the varied timing, the test LPDDR's jitter and the
 // stand-in at random). With it off, the chip is v1.37's as merged.
 #pragma once
 
@@ -26,7 +26,7 @@ using units::tracer::FileStore;
 // The environment's setting: -1 off; 0 on, fixed timing; above 0 on, varied with this seed.
 inline int64_t env_setting() {
     const char* v = std::getenv("MESHSIM_UPDATER_CTL");
-    if (!v) return -1;
+    if (!v || !*v) return -1;                      // unset or empty: off
     return std::strtoll(v, nullptr, 10) > 0 ? std::strtoll(v, nullptr, 10) : 0;
 }
 

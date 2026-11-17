@@ -85,7 +85,7 @@ checks it exactly, and a pass shows the whole path: the images built, the segmen
 | a forwarded packet before the ASIC's own | yes |
 | "stop" for each link, carried in packets, the driver included | yes |
 | Egress: the outgoing queue, `EGRESS_COUNT`, the credit | yes |
-| acknowledgements, sending again, "lost" and recovery | † **no.** Nothing in the simulation damages a packet. Later, with a test that does |
+| acknowledgements, sending again, "lost" and recovery | **from WORKER8's link end** (below), once the protocol has been shown to hold. The milestone's own runs damage no packet |
 | v1.36's stream words taken out; the UART as redesigned | † not needed for the chain. Before the freeze, or after: the owner's call (Open) |
 
 ## The order of the work
@@ -94,14 +94,16 @@ checks it exactly, and a pass shows the whole path: the images built, the segmen
 |---|---|---|
 | 1 | **Read Quests 217 to 219,** then merge `updater-w6` and `updater-w7` | the integrator |
 | 2 | **The header change** in gold's packetizer and reader, the vectors and `host_link.h` (the message is written; it had not reached WORKER7) | WORKER7, carried on |
-| 3 | **Join the controllers:** the Updater's controller on the arbiter and the real cache, fed by Ingress's forwarder; its shim taken out; the proof runs with both controllers on | † WORKER8 |
+| 2b | **The protocol on its own** (owner, 2026-11-17: "if this has some hidden flaw, and we go out to hardware with it, we'll be absolutely miserable"): a link end as a state machine, chains of up to 16, wires that misbehave, consumers that stall for up to 1 ms, random runs and an exhaustive search of a shrunken model. No chip. Its link end becomes the black box's link part | **WORKER8** (`planning/sessions/WORKER8/PROMPT.md`) |
+| 3 | **Join the controllers:** the Updater's controller on the arbiter and the real cache, fed by Ingress's forwarder; its shim taken out; the proof runs with both controllers on | † WORKER9 |
 | 4 | **The design for steps 5 and 6:** the reply frame in `HOST-FRAMES.md`; a header for the wire between two link ends, as `word_port.h` is for the word port; the two briefs | the design session |
-| 5 | **The chain in the IEU black box, Egress, and the reply:** two link ends; forwarding; the outgoing queue; the master's firmware sending the reply frame; tested as two black boxes wired back to back, with no chips | † WORKER9 |
-| 6 | **The processes:** the shared-memory wire with its 64-cycle sync, `--clients`, `--client` and `--link`; the driver; tested against a stand-in ASIC that only answers | † WORKER10 |
+| 5 | **The chain in the IEU black box, Egress, and the reply:** two link ends; forwarding; the outgoing queue; the master's firmware sending the reply frame; tested as two black boxes wired back to back, with no chips. Built on WORKER8's link end | † WORKER10 |
+| 6 | **The processes:** the shared-memory wire with its 64-cycle sync, `--clients`, `--client` and `--link`; the driver; tested against a stand-in ASIC that only answers | † WORKER11 |
 | 7 | **Put 5 and 6 together:** DRIVER ↔ ASIC0 ↔ ASIC1 on the real chips; the runner's task | the integrator |
 | 8 | **Freeze v1.37:** the design documents brought into its specification; the two golds made one | the integrator, with the owner |
 
-- **Steps 2 and 3 can run side by side,** and so can 5 and 6. Step 5 waits for 2: it is in the same black box.
+- **Steps 2, 2b and 3 can run side by side,** and so can 5 and 6. Step 5 waits for 2, which is in the same black
+  box, and for 2b, whose link end it uses.
 - **Why 5 and 6 are two workers:** they meet at one small interface, a byte a cycle each way, and each can be
   tested alone. The chain's logic is then tested without three processes, and the processes without a chip.
 - † The joining was to be the integrator's. A fresh worker is proposed for it: it is a day's coding, and this

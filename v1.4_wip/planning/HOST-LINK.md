@@ -502,8 +502,18 @@ could: the link stopped for ever.
 | one end powers on, or the FPGA is loaded again, while the other runs | the newcomer says so |
 | a kept packet has gone bad in the sender's memory | **no longer a cause** (owner, 2026-11-17). The checksum is computed afresh each time a packet is sent, so it always matches what goes out, and the fault is not seen ("The chain"). WORKER8's rule had the sender compare with the checksum it held and start the link again |
 | a packet made wrong, twice running | the receiver, above |
-| a false acknowledgement: a damaged header that passed its CRC and released a packet that never arrived | **an acknowledge field never goes backwards and never passes what was sent.** After a false one, every true one is behind it. Two such in a row † and the end starts the link again |
+| a false acknowledgement: a damaged header that passed its CRC and released packets that never arrived | **nothing is done about the false one itself** (owner, 2026-11-17: "just ignore it"). It shows when it matters: **the other end asks for a packet the sender no longer keeps.** The sender cannot send it, raises the error, and the link starts again |
 
+- **A false acknowledgement, in full:** the sender has sent up to 20 and keeps 13 to 20. A damaged header says
+  "acknowledged 18", and the sender lets 13 to 18 go. The receiver has only up to 12, so when 19 arrives, or a
+  packet of length 0 saying the next number is 21, it asks for a resend from 13. The sender has no 13. That is
+  the error.
+  - It is always found, because the receiver always learns it is missing packets and always asks.
+  - An acknowledge field that claims more than was ever sent releases nothing, since there is nothing there to
+    release.
+  - (WORKER8's rule watched for acknowledgements going backwards, two in a row. The owner's needs no watching:
+    the request that cannot be met is the sign.)
+  - What it costs is at most a window of packets, and it is reported.
 - **Each of these ends as an error the core sees,** never as a link that hangs. On the master tile a peripheral's
   error is the tile's, which stops everything (owner): the host resets the chip and the proof starts over.
 
@@ -616,7 +626,7 @@ The owner's remark: there must be a mountain of literature on building these. Th
 - **The background behind the foreground** (WORKER8). A background packet waits while any foreground packet is
   ready, so a foreground that never pauses holds the background for as long. That is the order as decided, and
   not a flaw of the protocol; it is a thing to know.
-- **The numbers marked †:** 2,048 cycles before asking again; two acknowledgements behind before starting again;
+- **The numbers marked †:** 2,048 cycles before asking again; the second wrong packet running before the error;
   528 zeros before hunting for a header; the host's window of 8; the forwarding buffers' 16 KB; a pin for the last
   node.
 - **What the error is called and where it is seen:** a link that started again raises an error to the core. Its

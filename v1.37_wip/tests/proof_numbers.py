@@ -6,6 +6,11 @@
 A line a run: its name, N and s; the run's cycles from the reset; the link's bytes; the pages the page map marks; the
 Updater's work summed over its runs (cycles busy, of them waiting on data, on pages and on memory; pages and half
 pages read and written); the cycles the master's core was awake, and their share of the run. Markdown.
+
+Then, for runs that print them (WORKER4's threshold), a second table: the threshold; the link's packets; the master's
+wakes, in all and to the hand-over; its cycles awake to the hand-over, and a packet; the link rate in bytes a cycle
+that those cycles could keep up with (the link's bytes over them); the cycle of the hand-over, of the link's last byte,
+and the cycles the link waited for room. With --frames, a third: each run's wakes and Ingress's transfers by frame.
 """
 import re, sys
 
@@ -26,6 +31,20 @@ def runs(path):
         if m:
             cur.update(packets=int(m[1]), words=int(m[2]), bytes=int(m[3]), pages=int(m[4]), awake=int(m[5]))
             continue
+        m = re.match(r"the master: the tracer tile's load at its cycle (\d+)", line)
+        if m:
+            cur["handed"] = int(m[1])
+            continue
+        m = re.match(r"the threshold: (\d+); the master's wakes: (\d+), (\d+) to the hand-over; Ingress read out in (\d+) transfers, (\d+) to the hand-over; "
+                     r"(\d+) threshold stores; the master awake (\d+) cycles to the hand-over; the link: its last byte at (\d+), (\d+) cycles waiting for room", line)
+        if m:
+            cur.update(threshold=int(m[1]), wakes=int(m[2]), wakes_handed=int(m[3]), reads=int(m[4]), reads_handed=int(m[5]), stores=int(m[6]),
+                       awake_handed=int(m[7]), link_last=int(m[8]), room=int(m[9]))
+            continue
+        m = re.match(r"each frame, its type: wakes/transfers:(.*) \(the last to the hand-over\)", line)
+        if m:
+            cur["frames"] = m[1].strip()
+            continue
         m = re.match(r"(PASS|FAIL) proof_run", line)
         if m:
             cur["ok"] = cur["ok"] and m[1] == "PASS"
@@ -33,13 +52,26 @@ def runs(path):
             cur = None
 
 def main():
-    rows = [r for p in sys.argv[1:] for r in runs(p)]
+    frames = "--frames" in sys.argv
+    rows = [r for p in sys.argv[1:] if p != "--frames" for r in runs(p)]
     print("| run | N | s | | cycles | link, bytes | pages | Updater: runs | busy | on data | on pages | on memory | read | written | master awake | share |")
     print("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for r in rows:
         u = r["upd"]
         print(f"| {r['name']} | {r['n']} | {r['s']} | {'pass' if r['ok'] else '**FAIL**'} | {r['cycles']:,} | {r.get('bytes', 0):,} | {r.get('pages', 0):,} | {r['runs']} | "
               f"{u[0]:,} | {u[1]:,} | {u[2]:,} | {u[3]:,} | {u[4]:,} | {u[5]:,} | {r.get('awake', 0):,} | {100.0 * r.get('awake', 0) / max(1, r['cycles']):.1f}% |")
+    t = [r for r in rows if "threshold" in r]
+    if t:
+        print("\n| run | N | s | threshold | packets | wakes | to the hand-over | awake to the hand-over | a packet | keeps up with, bytes a cycle | hand-over at | link's last byte | link waited |")
+        print("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+        for r in t:
+            p = max(1, r.get("packets", 0))
+            print(f"| {r['name']} | {r['n']} | {r['s']} | {r['threshold']} | {r.get('packets', 0):,} | {r['wakes']:,} | {r['wakes_handed']:,} | {r['awake_handed']:,} | "
+                  f"{r['awake_handed'] / p:.1f} | {r.get('bytes', 0) / max(1, r['awake_handed']):.2f} | {r.get('handed', 0):,} | {r['link_last']:,} | {r['room']:,} |")
+    if frames and t:
+        print("\n| run | N | s | wakes/transfers by frame type, in order |")
+        print("|---|---|---|---|")
+        for r in t: print(f"| {r['name']} | {r['n']} | {r['s']} | {r.get('frames', '')} |")
     print(f"\n{len(rows)} runs, {sum(1 for r in rows if r['ok'])} passed")
 
 if __name__ == "__main__":

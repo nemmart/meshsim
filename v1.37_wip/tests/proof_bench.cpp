@@ -78,6 +78,8 @@ struct ChipProof final : segment::Proof {
     struct Done { int64_t t; uint32_t config, page_count, image_root, tracer_root, stat[6]; std::string image, tracer; };
     std::vector<Done> done;
     uint32_t stat_before[6] = {};
+    const units::Rv32* master_rv = nullptr;       // the master's core, for its cycles awake at the hand-over
+    uint64_t awake_handed = 0;
 
     ChipProof(const Case& c_, const char* name_, Numbers* numbers_) : c(c_), name(name_), numbers(numbers_) { parse(); }
 
@@ -133,6 +135,7 @@ struct ChipProof final : segment::Proof {
         const int depth = int(d.config >> Updater::RC_DEPTH_LO & 3);
         const size_t i = done.size();
         const bool partial = i < run_names.size() && run_names[i] == "tracer";      // the final image, half made: not compared
+        if (partial && master_rv) awake_handed = master_rv->mcycle - master_rv->cycles_wfi;   // the hand-over follows this done
         if (!partial) d.image = sha(updater_bench::image(*u.store, int32_t(d.image_root), depth));
         if (d.config & Updater::RC_TRACER_COPY) d.tracer = sha(updater_bench::image(*u.store, int32_t(d.tracer_root), depth));
         done.push_back(d);
@@ -152,6 +155,7 @@ struct ChipProof final : segment::Proof {
         m.ingress().link_cycles_per_byte = c.cycles_per_byte;
         m.ingress().link_bytes_per_cycle = c.link_rate;
         if (c.updater_lookup) m.updater().timing.lookup = c.updater_lookup;
+        master_rv = &m.c.unit<units::TileCore>(units::unit_prefix(units::ID_MASTER) + "core").rv;
         m.updater().on_done = &on_done;
         m.updater().on_done_ctx = this;
     }
@@ -207,6 +211,7 @@ struct ChipProof final : segment::Proof {
             numbers->master_awake = core.mcycle - core.cycles_wfi;
             numbers->master_instructions = core.instructions;
             numbers->link_room_cycles = link.link_room_cycles; numbers->link_last_at = link.link_at;
+            numbers->master_awake_handed = awake_handed;
             for (size_t i = 0; i < done.size(); i++) {
                 RunAccount a;
                 a.name = i < run_names.size() ? run_names[i] : "?";

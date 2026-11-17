@@ -63,6 +63,7 @@ struct Numbers {
     uint64_t master_instructions = 0;            // and the instructions it retired
     uint64_t link_room_cycles = 0;               // the cycles the link waited for room at Ingress
     int64_t link_last_at = 0;                    // the cycle the link's last byte arrived in
+    uint64_t master_awake_handed = 0;            // the master's cycles awake to the done of segment s's run (the hand-over)
 };
 
 // gold's reference file (`gold frames-images FRAMES S`, tests/updater/NAME-sS.images.txt): each line a name and a

@@ -19,6 +19,8 @@ before v1.36 was read; `planning/V136-SCOPE.md` says where the two meet and wher
 | `planning/DESIGN-NOTES-2026-11-16.md` | the third day's: the cache as a controller and a cache memory, flush and discard, updates that write through to LPDDR and their sequence, and the order of the work (software prototypes of the two controllers before the specification) |
 | `planning/HOST-FRAMES.md` | the nine frames the host sends, field by field: what gold is to produce |
 | `planning/UPDATER-INTERFACE.md` | the Updater's registers, events, errors and queue ports, as walked through with the owner; the Updater is the master tile's peripheral |
+| `planning/AXI-INTERFACE.md` | the path to LPDDR: a client's AXI port, the AXI arbiter (round robin, bursts cut into 32-beat pieces, an ID for each client), the controller's port, and the LPDDR model in the simulator. Agreed 2026-11-16 |
+| `planning/CACHE-INTERFACE.md` | the cache from outside: the look-up port's fields and handshake, what look up, update and discard reply in every case, an update's write-through sequence, the fill port, and the stand-in. Agreed 2026-11-16 |
 | `planning/INGRESS-INTERFACE.md` | how the master tile takes the host's packets out of Ingress: a service flag and a word count for each stream, reading out by DMA, the credits for the Updater; and v1.37's black box fed from a packetized file |
 | `planning/HOST-LINK.md` | the link under the frames: two streams, chunks with a 128-bit header, the two checks, and recovery from a loss of sync |
 | `planning/V136-SCOPE.md` | v1.36 against this design: the names, seven collisions and how the first pass ruled on them, what v1.36 already gives, what was not yet read |

@@ -55,9 +55,12 @@ response, the walker's one step, the requests taken at the ports, then the next 
 
 The stale-line check (NOTES section 7) was on in every run above: no clean line in the cache ever differed from LPDDR.
 
-**Quests 209 to 211 ran `updater-w5` at `21197e0`.** What came after it is documents (`CHANGES-v1.37.md`,
-`RUNNING-v1.37.md`, NOTES, this report) and `test_cache`'s eleventh test, the idle figures; `./run_tests.sh quick
---check` was run here again on the final tree.
+**Quests 209 to 211 ran `updater-w5` at `21197e0`.** Then `main` was merged in (WORKER4's threshold in v1.37's
+Ingress and the master tile's firmware; two conflicts, in `proof_run`'s options and `CHANGES-v1.37.md`, resolved in
+`336724a`), and **Quest 212 ran `suites-cache` again at `336724a`: all pass,** the 37 proof runs and the six Tracer-alone
+runs on the cache, every run's error flag clear. `./run_tests.sh quick --check` passes here on that tree
+(`test_master` 35 tests, the six on the cache among them). What else came after `21197e0` is documents and
+`test_cache`'s eleventh test, the idle figures.
 
 ## The figures
 

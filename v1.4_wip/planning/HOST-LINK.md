@@ -384,18 +384,25 @@ A receiver expects one number next on a link: the one after the last packet it t
 - **A sender goes back exactly as far as it must:** in 5 million packets of random runs no receiver was sent a
   packet it had already taken (WORKER8).
 
-**A packet made wrong** (the owner asked for a rule; WORKER8's):
+**A packet made wrong** (owner, 2026-11-17):
 
-- The owner's ruling stands for noise: such a packet is thrown away "just like a CRC error". But if the sender
-  really made it so, asking again brings the same packet back for ever.
-- **So the receiver checks its data all the same.** It does not take the data; it runs it through the CRC unit,
-  which needs no buffer.
-  - **The data fails too:** it was noise that happened to pass the header CRC. Thrown away and asked for again.
-  - **The data passes:** two checks agree that this is what the sender sent. Asking again cannot help. **The
-    receiver starts the link again** ("Starting a link again"), with the error.
-- A length over 32 is passed over by the length it claims, at most 255 words, while its data is checked; if that
-  fails, the receiver has lost its place.
+- **The first time, it is asked for again,** as any bad packet is. It could be noise: a damaged header that
+  happened to pass its CRC. The owner: "a resend in that case is the right option. It just shouldn't fail the
+  same way repeatedly."
+- **If the packet sent again fails the same way,** the sender made it so, and asking again cannot help. † At the
+  second time running, on the same packet number, **the receiver starts the link again** ("Starting a link
+  again"), with the error.
+  - Noise does not do this twice running: each time needs a damaged header to pass a 32-bit CRC.
+  - The error is the point, not the restart. A sender that makes a wrong packet is broken, by a bug or by a chain
+    wired longer than 16, and nothing saves the data. What is left to choose is a link that hangs, one that
+    drops the packet and says nothing, or one that says so. On a chain the restart also keeps the link usable
+    for the ASICs beyond.
+- **A length over 32** cannot be passed over with any trust, so the receiver treats it as a lost place the first
+  time, and counts it the same way.
 - `INGRESS-INTERFACE.md`'s `format_error` says which test failed.
+- (WORKER8's rule told the two cases apart by the data: if the data's check passed as well, the sender was taken
+  to have made the packet so, at the first time. But noise that damages only the header leaves the data whole,
+  and that rule would have called it the sender's fault. The owner's count needs no such judgment.)
 
 **Finding a packet's start:**
 
@@ -485,7 +492,7 @@ could: the link stopped for ever.
 |---|---|
 | one end powers on, or the FPGA is loaded again, while the other runs | the newcomer says so |
 | a kept packet has gone bad in the sender's memory | **no longer a cause** (owner, 2026-11-17). The checksum is computed afresh each time a packet is sent, so it always matches what goes out, and the fault is not seen ("The chain"). WORKER8's rule had the sender compare with the checksum it held and start the link again |
-| a packet made wrong | the receiver, above |
+| a packet made wrong, twice running | the receiver, above |
 | a false acknowledgement: a damaged header that passed its CRC and released a packet that never arrived | **an acknowledge field never goes backwards and never passes what was sent.** After a false one, every true one is behind it. Two such in a row † and the end starts the link again |
 
 - **Each of these ends as an error the core sees,** never as a link that hangs. On the master tile a peripheral's

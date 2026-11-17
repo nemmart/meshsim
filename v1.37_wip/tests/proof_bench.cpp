@@ -176,10 +176,12 @@ struct ChipProof final : segment::Proof {
         if (R[MR_STATUS] != MR_OK) {                 // where it stopped
             Updater& u = m.updater();
             units::IngressEgress& link = m.ingress();
-            std::printf("%s: stopped with: the Updater busy %d, WORD_COUNT %u, PAGE_COUNT %u, %u segment words and %u free pages queued, %u dones; the link: %llu packets "
-                        "and %llu words arrived, %u words read out, %u and %u words waiting; %u pages queued by the master\n", name, int(u.busy_), u.word_count_,
-                        u.page_count_, u.segment_entries(), u.free_page_entries(), unsigned(done.size()), (unsigned long long)link.link_packets,
-                        (unsigned long long)link.link_words, R[MR_LINK_WORDS], link.link_stream[0].held, link.link_stream[1].held, R[MR_PAGES_QUEUED]);
+            std::printf("%s: stopped with: the Updater busy %d, WORD_COUNT %u, PAGE_COUNT %u, %u words on its input and %u free pages queued, %u dones; the link: "
+                        "%llu packets and %llu words arrived, %u words read out by the DMA, %llu forwarded, %llu discarded, DMA_FORWARD_COUNT 0x%x, %u and %u words "
+                        "waiting; %u pages queued by the master\n", name, int(u.busy_), u.word_count_, u.page_count_, u.input_words(), u.free_page_entries(),
+                        unsigned(done.size()), (unsigned long long)link.link_packets, (unsigned long long)link.link_words, R[MR_LINK_WORDS],
+                        (unsigned long long)link.link_forwarded, (unsigned long long)link.link_discarded, link.forward, link.link_stream[0].held,
+                        link.link_stream[1].held, R[MR_PAGES_QUEUED]);
         }
     }
 
@@ -271,10 +273,12 @@ struct ChipProof final : segment::Proof {
                  R[MR_UPDATER_ERRORS], R[MR_ERROR_LINES], R[MR_ERROR_LINES + 1], R[MR_ERROR_LINES + 2]);
         if (u.errors(0) != 0 || link.link_errors != 0) fail("ERRORS at the end: the Updater's 0x%x, the link's 0x%x", unsigned(u.errors(0)), unsigned(link.link_errors));
         if (u.unwritten_reads != 0) fail("%llu reads of a page nothing wrote", (unsigned long long)u.unwritten_reads);
-        if (u.segment_entries() != 0 || u.free_page_entries() != 0) fail("entries left in the Updater's queues: %u segment words, %u free pages", u.segment_entries(), u.free_page_entries());
-        const uint64_t words = c.file.bytes.size() / 16;
-        if (link.link_cut || link.link_words != words || R[MR_LINK_WORDS] != words)
-            fail("the link: %llu words arrived, %u read out by the master, of %llu%s", (unsigned long long)link.link_words, R[MR_LINK_WORDS], (unsigned long long)words, link.link_cut ? "; the file ends inside a packet" : "");
+        if (u.input_words() != 0 || u.free_page_entries() != 0) fail("left in the Updater: %u words on its input, %u free pages", u.input_words(), u.free_page_entries());
+        const uint64_t words = c.file.bytes.size() / 16, out = R[MR_LINK_WORDS] + link.link_forwarded + link.link_discarded;
+        if (link.link_cut || link.link_words != words || out != words || (link.forward & units::IngressEgress::FWD_COUNT) != 0)
+            fail("the link: %llu words arrived, %u read out by the DMA, %llu forwarded, %llu discarded, of %llu; DMA_FORWARD_COUNT 0x%x at the end%s",
+                 (unsigned long long)link.link_words, R[MR_LINK_WORDS], (unsigned long long)link.link_forwarded, (unsigned long long)link.link_discarded,
+                 (unsigned long long)words, link.forward, link.link_cut ? "; the file ends inside a packet" : "");
 
         // ---- each image as its run ended, against gold's; the frozen ones again at the end
         for (size_t i = 0; i < done.size() && i < run_names.size(); i++) {

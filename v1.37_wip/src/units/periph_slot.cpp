@@ -276,8 +276,31 @@ void SlotCore::consume(int64_t t, unsigned n, uint32_t bits) {
 }
 
 // ---------------------------------------------------------------- the cycle
+// The word port's outputs in t (header, THE WORD PORT): peripheral 1's source and peripheral 2's sink, or the harness's.
+bool SlotCore::port_outputs(int64_t t, wordport::SourceOut& src, wordport::SinkOut& snk) {
+    if (per[1].type == PT_ABSENT) return false;
+    const bool source = visit(1, [&](auto& p) -> bool {
+        if constexpr (requires { p.port_source(); p.port_sent(t); }) { src = p.port_source(); return true; }
+        else return false;
+    });
+    if (!source) return false;
+    if (per[2].type != PT_ABSENT) {
+        const bool sink = visit(2, [&](auto& p) -> bool {
+            if constexpr (requires { p.port_sink(); p.port_take(t, src); }) { snk = p.port_sink(); return true; }
+            else return false;
+        });
+        if (sink) return true;
+    }
+    if (!ext_sink.out) return false;
+    snk = ext_sink.out(ext_sink.ctx, t);
+    return true;
+}
+
 void SlotCore::run_cycle(int64_t t, sim::Word dma_room) {
     n_out = 0;
+    wordport::SourceOut src;
+    wordport::SinkOut snk;
+    const bool move = port_outputs(t, src, snk) && wordport::moves(src, snk);   // the outputs of t, before any step
     for (unsigned n = 1; n <= 3; n++) {
         if (per[n].type == PT_ABSENT) continue;
         dma_run(t, n, dma_room);                               // the DMA takes the head as it was at the start of t
@@ -287,6 +310,19 @@ void SlotCore::run_cycle(int64_t t, sim::Word dma_room) {
             if (e.full_posts != full_seen[n]) { full_seen[n] = e.full_posts; violate(t, F_FULL_POST, n, e.last_full_bit); }
         });
     }
+    if (move) {                                                // the edge that ends t: the word leaves and lands
+        visit(1, [&](auto& p) { if constexpr (requires { p.port_sent(t); }) p.port_sent(t); });
+        bool sank = false;
+        if (per[2].type != PT_ABSENT)
+            sank = visit(2, [&](auto& p) -> bool {
+                if constexpr (requires { p.port_take(t, src); }) { p.port_take(t, src); return true; }
+                else return false;
+            });
+        if (!sank) ext_sink.take(ext_sink.ctx, t, src);
+        port_moves++;
+    }
+    for (unsigned n = 1; n <= 3; n++)
+        if (per[n].type != PT_ABSENT) visit(n, [&](auto& p) { if constexpr (requires { p.settle(t); }) p.settle(t); });
 }
 
 void SlotCore::end_cycle(int64_t t) {
@@ -314,6 +350,9 @@ uint64_t SlotCore::violation_total() {
 bool SlotCore::idle(int64_t t) {
     for (unsigned n = 1; n <= 3; n++)
         if (per[n].type != PT_ABSENT && (dma[n].busy || !visit(n, [&](auto& p) { return p.idle(t); }))) return false;
+    wordport::SourceOut src;
+    wordport::SinkOut snk;
+    if (port_outputs(t, src, snk) && wordport::moves(src, snk)) return false;   // v1.37: a word moves in t
     return true;
 }
 int64_t SlotCore::next_wake_at(int64_t t) {
@@ -375,6 +414,7 @@ void SlotCore::dma_run(int64_t t, unsigned n, sim::Word room) {
     if (d.left == 0) {
         if (d.full) return;
         d.busy = false;                                        // ending: busy && pending == 0 && (!full || packet_ready)
+        visit(n, [&](auto& p) { if constexpr (requires { p.out_end(t, d.q); }) p.out_end(t, d.q); });   // v1.37 (header)
         const bool withheld = visit(n, [&](auto& p) -> bool {
             if constexpr (requires { p.stopped(); }) return p.stopped();
             else return false;

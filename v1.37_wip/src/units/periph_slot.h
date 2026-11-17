@@ -54,6 +54,16 @@
 //     STATUS.dma_busy falls at its end;
 //   - the stores that may stall: the peripheral's static list (may_stall: Win::R_MAYSTALL) for the bus's timing, and
 //     the words that stall now (store_stalls: Win::R_STALL).
+//   - v1.37, optional: out_end(t, q), the cycle a transfer of the DMA from output queue q ends (dma_done's cycle, or the
+//     end it would have, withheld; before the peripheral's step of t): Ingress's "in flight" (WORKER7's C1). And
+//     settle(t), at the end of the slot's cycle t, after every peripheral's step and the word port's move.
+//
+// THE WORD PORT (v1.37; word_port.h; INGRESS-INTERFACE.md, UPDATER-INTERFACE.md): peripheral 1's source to peripheral
+// 2's sink, whatever their types: a peripheral is a source if it has port_source() and port_sent(t), a sink if it has
+// port_sink() and port_take(t, word). In cycle t, before any peripheral steps, the slot takes both outputs of t (each a
+// function of the unit's registers alone); after every step of t, if a word moves (valid and ready), the source's
+// port_sent(t) and the sink's port_take(t, word): both at the edge that ends t. A harness may stand a sink of its own
+// in for peripheral 2 (`ext_sink`). The slot is not idle while a word can move.
 #pragma once
 
 #include <cstdint>
@@ -67,6 +77,7 @@
 #include "units/replayer.h"
 #include "units/rw_engine.h"
 #include "units/tracer.h"
+#include "units/word_port.h"
 
 namespace units {
 
@@ -197,6 +208,14 @@ struct SlotCore {
     // the DMA packets of the last run_cycle (at most one per peripheral), for the unit to put / a test to read
     DmaPacket out[3];
     unsigned n_out = 0;
+    // v1.37: a harness's sink on the word port, when peripheral 2 has none (header, THE WORD PORT): its outputs in t, and
+    // the word that moved in t
+    struct ExtSink {
+        void* ctx = nullptr;
+        wordport::SinkOut (*out)(void* ctx, int64_t t) = nullptr;
+        void (*take)(void* ctx, int64_t t, const wordport::SourceOut& w) = nullptr;
+    } ext_sink;
+    uint64_t port_moves = 0;                               // statistics: words over the word port
 
     SlotCore() = default;
     SlotCore(SlotCore&&) noexcept = default;
@@ -245,6 +264,8 @@ private:
     uint32_t reserved(int64_t t, unsigned n, unsigned w, bool store);
     void dma_start(int64_t t, unsigned n);
     void dma_run(int64_t t, unsigned n, sim::Word room);
+    // the word port's outputs in t: false if the slot has no source and sink wired
+    bool port_outputs(int64_t t, wordport::SourceOut& src, wordport::SinkOut& snk);
 };
 
 // The framework unit (AUDIT-M3 3.1): SlotCore behind the ports above.

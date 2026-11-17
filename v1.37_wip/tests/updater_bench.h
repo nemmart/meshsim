@@ -1,8 +1,9 @@
 // updater_bench.h: the Updater black box on a bench, with no firmware (v1.37): a file store, the Updater, and a small
 // controller in C++ that does what the master tile's program does (../v1.4_wip/planning/UPDATER-INTERFACE.md, "The
-// runs"): it writes block 2, queues free pages on the free page queue's credits, sends a frame's data into the segment
-// queue on the segment queue's credits, and starts each run. It calls the Updater as the slot does (peripheral.h): one
-// accept a cycle at most, a store's effect at the end of its cycle, step(t) for cycle t.
+// runs"): it writes block 2, queues free pages on the free page queue's credits, offers a frame's data on the Updater's
+// word port (word_port.h; the forward count's part, WORKER7), and starts each run. It calls the Updater as the slot
+// does (peripheral.h, periph_slot.h): one accept a cycle at most, a store's effect at the end of its cycle, the port's
+// outputs of t taken before step(t), the word that moved in t given after it.
 //
 // `Proof` plays a whole frame file for segment s of N: the program image; a base table if the file has one; the run's
 // table; the cycle-0 image; the memory segments as three runs. After each run it keeps the file's image in gold's form
@@ -33,7 +34,7 @@ struct Bench {
     Updater u;
     int64_t t = 1;
     uint32_t next_page = 1;                // the page map's stand-in: pages in order from page 1 (page 0 is not given out)
-    unsigned allowance = 0;                // the segment queue's words the credits taken cover
+    uint64_t valid_seed = 0;               // not 0: the port's valid comes and goes at random (a xorshift from this seed)
     unsigned page_allowance = 0;           // the free page queue's entries
     // the stream being sent: a frame's data, 128-bit words
     const frames::File* file = nullptr;

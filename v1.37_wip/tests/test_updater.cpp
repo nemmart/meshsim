@@ -1,5 +1,6 @@
 // test_updater: the Updater black box alone, with no firmware (v1.37; src/units/updater.h), from
-// ../v1.4_wip/planning/UPDATER-INTERFACE.md and HOST-FRAMES.md: its registers and their reset, both queues' credits,
+// ../v1.4_wip/planning/UPDATER-INTERFACE.md and HOST-FRAMES.md: its registers and their reset, the free page queue's
+// credit, the data input (the word port's sink: 4 words, whether a run is on or not, kept across STARTs; WORKER7),
 // the update words raw and LRU-coded and carried on across runs, the root's commands, copy-on-write by the owned bits
 // at every level, the pages taken from the free page queue in order and counted, the Tracer's copy, its errors and its
 // statistics. The expectations are a model written apart from it: a file as a map of words, the pages a write takes
@@ -139,8 +140,8 @@ TEST(updater_reset) {
     for (int w : {38, 47, 54, 64, 127}) CHECK(!b.u.word(b.t, w, v));       // unmapped
     CHECK_EQ(b.u.write_word(b.t, 48, 1), 0);                               // block 3 is read-only
     CHECK_EQ(b.u.write_word(b.t, 38, 1), -1);
-    // both credits are full at the reset: two counts each (depth 2)
-    const uint32_t credits = 1u << Updater::EV_SEGMENT_CREDIT | 1u << Updater::EV_FREE_PAGE_CREDIT;
+    // the free page queue's credit is full at the reset: two counts (depth 2); EVENTS [2] is unused and reads 0
+    const uint32_t credits = 1u << Updater::EV_FREE_PAGE_CREDIT;
     CHECK_EQ(b.u.ev.value(b.t + 1), credits);
     b.u.ev.consume(credits);
     CHECK_EQ(b.u.ev.value(b.t + 1), credits);
@@ -151,40 +152,54 @@ TEST(updater_reset) {
     CHECK_EQ(load(b, Updater::W_RUN_CONFIG), 0x7Fu);
 }
 
-// ================================================================================================ the queues
-TEST(updater_queues_and_credits) {
+// ================================================================================================ the queue and the input
+TEST(updater_free_page_queue_and_credit) {
     Bench b;
     const int size = int(units::lw::SIZE_128);
-    // the segment queue: 512 entries, 8 KB (owner)
-    for (unsigned i = 0; i < 512; i++) b.u.accept(b.t, 64, Updater::PART_SEGMENT << 20 | 0x40, size, i, 0);   // the rest of the address is ignored
-    CHECK_EQ(b.u.segment_entries(), 512u);
-    CHECK_EQ(b.u.errors(b.t), 0);
-    b.u.accept(b.t, 64, Updater::PART_SEGMENT << 20, size, 999, 0);        // the 513th: a push into a full queue, dropped
-    CHECK_EQ(b.u.segment_entries(), 512u);
-    CHECK_EQ(b.u.errors(b.t), int(Updater::ERR_QUEUE_OVERRUN));
-    for (unsigned i = 0; i < 256; i++) b.u.accept(b.t, 64, Updater::PART_FREE_PAGES << 20, size, 32 * (i + 1), 0);
-    b.u.accept(b.t, 64, Updater::PART_FREE_PAGES << 20, size, 32 * 300, 0);
+    for (unsigned i = 0; i < 256; i++) b.u.accept(b.t, 64, Updater::PART_FREE_PAGES << 20 | 0x40, size, 32 * (i + 1), 0);   // the rest of the address is ignored
     CHECK_EQ(b.u.free_page_entries(), 256u);
-    // a run that reads 1,024 raw words out of the 512 entries: a credit after 256 entries, another after 512
-    const uint32_t credits = 1u << Updater::EV_SEGMENT_CREDIT;
-    b.u.ev.consume(credits); b.u.ev.consume(credits);
-    const int32_t root = 32 * 400;
+    CHECK_EQ(b.u.errors(b.t), 0);
+    b.u.accept(b.t, 64, Updater::PART_FREE_PAGES << 20, size, 32 * 300, 0);   // the 257th: a push into a full queue, dropped
+    CHECK_EQ(b.u.free_page_entries(), 256u);
+    CHECK_EQ(b.u.errors(b.t), int(Updater::ERR_QUEUE_OVERRUN));
+}
+
+// The data input (UI, "The data input"; updater.h, THE DATA INPUT): ready while fewer than 4 words are held, idle or
+// busy; a word taken at the end of its cycle; a START empties nothing; the reset does.
+TEST(updater_data_input) {
+    Bench b;
+    units::wordport::SourceOut w;
+    w.valid = true;
+    CHECK(b.u.port_sink().ready);
+    for (unsigned k = 0; k < 4; k++) {                    // idle: it takes 4 and no more
+        CHECK(b.u.port_sink().ready);
+        w.data[0] = k; w.data[1] = ~uint64_t(k);
+        b.u.step(b.t); b.u.port_take(b.t, w); b.t++;
+    }
+    CHECK_EQ(b.u.input_words(), 4u);
+    CHECK(!b.u.port_sink().ready);
+    for (int k = 0; k < 10; k++) { b.u.step(b.t++); CHECK(!b.u.port_sink().ready); }   // nothing decodes while idle
+    // a run of one raw header word with no values: it takes the first word's low half, and the input is not emptied
+    const int32_t root = b.new_page();
     b.u.write_word(b.t, Updater::W_RUN_CONFIG, Bench::config(false, false, false, 1, Updater::ROOT_EMPTY));
-    b.u.write_word(b.t, Updater::W_WORD_COUNT, 1024);
-    b.u.write_word(b.t, Updater::W_PAGE_COUNT, 10);
+    b.u.write_word(b.t, Updater::W_WORD_COUNT, 1);
     b.u.write_word(b.t, Updater::W_IMAGE_ROOT, uint32_t(root));
     b.u.run(b.t);
-    unsigned first_credit_at = 0, second_credit_at = 0;
-    for (unsigned c = 0; c < 20000 && b.u.running(b.t); c++) {
-        b.u.step(b.t++);
-        const unsigned left = b.u.segment_entries();
-        if (!first_credit_at && b.u.ev.count_of(Updater::EV_SEGMENT_CREDIT) == 1) first_credit_at = 512 - left;
-        if (!second_credit_at && b.u.ev.count_of(Updater::EV_SEGMENT_CREDIT) == 2) second_credit_at = 512 - left;
-    }
+    CHECK_EQ(b.u.input_words(), 4u);                      // a START empties nothing
+    for (int k = 0; k < 1000 && b.u.running(b.t); k++) b.u.step(b.t++);   // the root written, then the word
     CHECK(!b.u.running(b.t));
-    CHECK_EQ(first_credit_at, 256u);
-    CHECK_EQ(second_credit_at, 512u);
-    CHECK_EQ(b.u.segment_entries(), 0u);
+    CHECK_EQ(b.u.errors(b.t), 0);
+    CHECK_EQ(b.u.input_words(), 3u);                      // one word into the decoder: its high half left there
+    CHECK(b.u.port_sink().ready);
+    b.u.reset(b.t);
+    CHECK_EQ(b.u.input_words(), 0u);
+    CHECK(b.u.port_sink().ready);
+}
+DEATH_TEST(updater_a_word_with_ready_0_is_a_bug, "ready was 0") {
+    Bench b;
+    units::wordport::SourceOut w;
+    w.valid = true;
+    for (unsigned k = 0; k < 5; k++) b.u.port_take(b.t++, w);
 }
 
 // ================================================================================================ update words
@@ -225,6 +240,7 @@ TEST(updater_continue) {
             const unsigned pages = m.apply(u);
             const frames::File f = frame_of(u, lru);
             Bench b;
+            if (round & 1) b.valid_seed = 0x9E3779B97F4A7C15ull + uint64_t(round);   // the port's valid comes and goes
             const int32_t root = b.new_page();
             b.stream(f, f.frame[0]);
             const uint32_t n = uint32_t(u.size()), c1 = uint32_t(rng.below(n)), c2 = c1 + uint32_t(rng.below(n - c1 + 1));
@@ -417,11 +433,15 @@ DEATH_TEST(updater_store_while_busy_is_ub, "a store to word 33 of block 2 during
 }
 DEATH_TEST(updater_write_of_32_bits_is_ub, "another size than 128 bits") {
     Bench b;
-    b.u.accept(b.t, 64, Updater::PART_SEGMENT << 20, int(units::lw::SIZE_32), 1, 0);
+    b.u.accept(b.t, 64, Updater::PART_FREE_PAGES << 20, int(units::lw::SIZE_32), 1, 0);
 }
 DEATH_TEST(updater_unmapped_part_is_ub, "part 3 of its region") {
     Bench b;
     b.u.accept(b.t, 64, 3u << 20, int(units::lw::SIZE_128), 1, 0);
+}
+DEATH_TEST(updater_the_segment_queues_part_is_ub, "part 1 of its region") {   // the segment queue's, until WORKER7
+    Bench b;
+    b.u.accept(b.t, 64, 1u << 20, int(units::lw::SIZE_128), 1, 0);
 }
 
 // ================================================================================================ the statistics
@@ -471,7 +491,9 @@ TEST(updater_statistics) {
     c.u.run(c.t);
     for (int i = 0; i < 400; i++) c.u.step(c.t++);                         // the root, then nothing to read
     CHECK_EQ(load(c, Updater::W_STAT_STALL_DATA), uint32_t(400 - 1 - 336));
-    c.u.accept(c.t, 64, Updater::PART_SEGMENT << 20, int(units::lw::SIZE_128), uint64_t(0) | uint64_t(1) << 32, 42);
+    units::wordport::SourceOut w;                                           // a word on the data input, taken at the end of the last cycle
+    w.valid = true; w.data[0] = uint64_t(0) | uint64_t(1) << 32; w.data[1] = 42;
+    c.u.port_take(c.t - 1, w);
     for (int i = 0; i < 50; i++) c.u.step(c.t++);                          // the header word, the value, then no page
     CHECK_EQ(load(c, Updater::W_STAT_STALL_PAGES), 49u);
     CHECK(c.u.running(c.t));
@@ -507,6 +529,7 @@ void fixture(const char* name) {
         const auto gold = gold_digests(std::string("tests/updater/") + name + "-s" + std::to_string(s) + ".images.txt");
         CHECK_EQ(gold.size(), size_t(6));
         Bench b;
+        if (s == 20) b.valid_seed = 0xD1B54A32D192ED03ull;    // the port's valid comes and goes at random
         updater_bench::Proof p;
         if (!updater_bench::play(b, file, 64, s, p, err)) { ::test::fail(__FILE__, __LINE__, "%s, s %u: %s", name, s, err.c_str()); return; }
         CHECK(sha(p.program_image) == gold.at("program"));
@@ -518,7 +541,8 @@ void fixture(const char* name) {
         for (const auto& a : b.accounts) CHECK_EQ(a.pages_left, 0u);        // exactly the pages the frames count
         CHECK_EQ(b.u.errors(b.t), 0);
         CHECK_EQ(b.u.unwritten_reads, 0u);
-        CHECK_EQ(b.u.segment_entries() + b.u.free_page_entries(), 0u);
+        CHECK_EQ(b.u.input_words() + b.u.free_page_entries(), 0u);
+        CHECK(!b.stream_left());
     }
 }
 

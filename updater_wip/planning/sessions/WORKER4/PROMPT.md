@@ -36,9 +36,8 @@ THE WORK, in `v1.37_wip/`
    frame, those that go to the Updater and those that go to the firmware's own memory or to the tracer tile. For
    the Updater a wake, a credit of 128 words and a transfer go together.
 3. **The check that a frame's header word is a packet's first word** cannot be made by the firmware once a
-   read-out runs across packets. † Drop it from the firmware and keep it where packets are still seen: the black
-   box may refuse a file in which a frame does not end at a packet's end only if it can know frames, and it does
-   not. So it is dropped; say so in your report, with what a mis-cut file now does.
+   read-out runs across packets, and Ingress knows packets, not frames. † Drop the check. Say in your report what
+   a file whose frame ends in the middle of a packet now does.
 4. **Measure,** on the runs WORKER3 reported: the master's cycles awake a packet and its share of the run, before
    and after; the wakes a frame; the Updater's cycles waiting on data; and what link rate the firmware could now
    keep up with. Then **run the link faster** in the black box (2, 4 and 8 bytes a cycle) to find where the

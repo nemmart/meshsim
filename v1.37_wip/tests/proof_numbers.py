@@ -8,9 +8,11 @@ Updater's work summed over its runs (cycles busy, of them waiting on data, on pa
 pages read and written); the cycles the master's core was awake, and their share of the run. Markdown.
 
 Then, for runs that print them (WORKER4's threshold), a second table: the threshold; the link's packets; the master's
-wakes, in all and to the hand-over; its cycles awake to the hand-over, and a packet; the link rate in bytes a cycle
-that those cycles could keep up with (the link's bytes over them); the cycle of the hand-over, of the link's last byte,
-and the cycles the link waited for room. The rate is "as taken" for --fast-link. With --frames, a third: each run's wakes and Ingress's transfers by frame.
+wakes, in all and to the hand-over; its cycles awake to the hand-over; its cycles awake in the whole run a packet;
+the link rate in bytes a cycle that the firmware could keep up with: the link's bytes over its cycles awake in the
+whole run (which include the boot and the segment's results: conservative; the cycles to the hand-over leave out the
+link's tail when the hand-over comes before the link's end); the cycle of the hand-over, of the link's last byte, and
+the cycles the link waited for room. The rate is "as taken" for --fast-link. With --frames, a third: each run's wakes and Ingress's transfers by frame.
 """
 import re, sys
 
@@ -62,12 +64,12 @@ def main():
               f"{u[0]:,} | {u[1]:,} | {u[2]:,} | {u[3]:,} | {u[4]:,} | {u[5]:,} | {r.get('awake', 0):,} | {100.0 * r.get('awake', 0) / max(1, r['cycles']):.1f}% |")
     t = [r for r in rows if "threshold" in r]
     if t:
-        print("\n| run | N | s | threshold | link, bytes a cycle | packets | wakes | to the hand-over | awake to the hand-over | a packet | keeps up with, bytes a cycle | hand-over at | link's last byte | link waited |")
+        print("\n| run | N | s | threshold | link, bytes a cycle | packets | wakes | to the hand-over | awake to the hand-over | awake a packet | keeps up with, bytes a cycle | hand-over at | link's last byte | link waited |")
         print("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
         for r in t:
             p = max(1, r.get("packets", 0))
             print(f"| {r['name']} | {r['n']} | {r['s']} | {r['threshold']} | {r['rate'] or 'as taken'} | {r.get('packets', 0):,} | {r['wakes']:,} | {r['wakes_handed']:,} | {r['awake_handed']:,} | "
-                  f"{r['awake_handed'] / p:.1f} | {r.get('bytes', 0) / max(1, r['awake_handed']):.2f} | {r.get('handed', 0):,} | {r['link_last']:,} | {r['room']:,} |")
+                  f"{r.get('awake', 0) / p:.1f} | {r.get('bytes', 0) / max(1, r.get('awake', 0)):.2f} | {r.get('handed', 0):,} | {r['link_last']:,} | {r['room']:,} |")
     if frames and t:
         print("\n| run | N | s | wakes/transfers by frame type, in order |")
         print("|---|---|---|---|")

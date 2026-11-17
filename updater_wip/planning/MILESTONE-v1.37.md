@@ -92,17 +92,19 @@ checks it exactly, and a pass shows the whole path: the images built, the segmen
 
 | step | what | who |
 |---|---|---|
-| 1 | **Read Quests 217 to 219,** then merge `updater-w6` and `updater-w7` | the integrator |
-| 2 | **The header change** in gold's packetizer and reader, the vectors and `host_link.h` (the message is written; it had not reached WORKER7) | WORKER7, carried on |
+| 1 | **Merge `updater-w6`.** Done 2026-11-17: Quests 216 to 219 pass | the integrator |
+| 2 | **The header change** in gold's packetizer and reader, the vectors and `host_link.h`. Done on `updater-w7` at `4844852a`: Quests 220 and 221 pass | WORKER7 |
+| 2c | **The header of 20 bytes** (owner, 2026-11-17: every header says where both streams stand) in gold's packetizer and reader, the vectors and v1.37's link header and black box, with whatever else of WORKER8's rules changes the packets. After WORKER8 has confirmed the header in its searches, and when `v1.37_wip/` is free of WORKER9 | not assigned |
 | 2b | **The protocol on its own** (owner, 2026-11-17: "if this has some hidden flaw, and we go out to hardware with it, we'll be absolutely miserable"): a link end as a state machine, chains of up to 16, wires that misbehave, consumers that stall for up to 1 ms, random runs and an exhaustive search of a shrunken model. No chip. Its link end becomes the black box's link part | **WORKER8** (`planning/sessions/WORKER8/PROMPT.md`) |
-| 3 | **Join the controllers:** the Updater's controller on the arbiter and the real cache, fed by Ingress's forwarder; its shim taken out; the proof runs with both controllers on | † WORKER9 |
+| 3 | **Join the controllers. Its first piece is merging `updater-w7`,** which is not a plain merge: WORKER7 took the segment queue out of the black box, and WORKER6's bench and view feed the black box through it (`tests/ctl_bench.h`, `tests/updater_view.h`; conflicts in `proof_bench.cpp` and `proof_run_main.cpp`). So: merge it; take the shim out; feed both Updaters by the word port; give `UpdaterTop` the two sink methods the slot wires. Then the Updater's controller on the arbiter and the real cache, and the proof runs with both controllers on | **WORKER9** (`planning/sessions/WORKER9/PROMPT.md`) |
 | 4 | **The design for steps 5 and 6:** the reply frame in `HOST-FRAMES.md`; a header for the wire between two link ends, as `word_port.h` is for the word port; the two briefs | the design session |
-| 5 | **The chain in the IEU black box, Egress, and the reply:** two link ends; forwarding; the outgoing queue; the master's firmware sending the reply frame; tested as two black boxes wired back to back, with no chips. Built on WORKER8's link end | † WORKER10 |
-| 6 | **The processes:** the shared-memory wire with its 64-cycle sync, `--clients`, `--client` and `--link`; the driver; tested against a stand-in ASIC that only answers | † WORKER11 |
+| 5 | **The chain in the IEU black box, Egress, and the reply:** two link ends; forwarding; the outgoing queue; the master's firmware sending the reply frame; tested as two black boxes wired back to back, with no chips. Built on WORKER8's link end | † WORKER11 |
+| 6a | **The wire between processes:** the shared memory with its 64-cycle sync, `--clients`, `--client` and `--link`, the launcher; tested with stand-in ends against a reference in one process. No chip, no protocol | **WORKER10** (`planning/sessions/WORKER10/PROMPT.md`) |
+| 6b | **The driver:** reads gold's packet file, speaks the link's protocol with WORKER8's host end, sorts the replies by hops and checks them against gold | † with step 5 or after it |
 | 7 | **Put 5 and 6 together:** DRIVER ↔ ASIC0 ↔ ASIC1 on the real chips; the runner's task | the integrator |
 | 8 | **Freeze v1.37:** the design documents brought into its specification; the two golds made one | the integrator, with the owner |
 
-- **Steps 2, 2b and 3 can run side by side,** and so can 5 and 6. Step 5 waits for 2, which is in the same black
+- **Steps 2, 2b, 3 and 6a can run side by side,** and so can 5 and 6b. Step 5 waits for 2, which is in the same black
   box, and for 2b, whose link end it uses.
 - **Why 5 and 6 are two workers:** they meet at one small interface, a byte a cycle each way, and each can be
   tested alone. The chain's logic is then tested without three processes, and the processes without a chip.

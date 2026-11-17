@@ -716,3 +716,89 @@ The owner set the next milestone; the plan is `updater_wip/planning/MILESTONE-v1
   window alone rose to 21% (Quest 215), only because the same work was divided by less time.
 - Quests 213 to 216 pass: WORKER7's forward count on the 37 proof runs, `make check` and the faster links; and
   WORKER6's controller in the chip on the 37 proof runs.
+
+## 23. The link's proposed items ruled on; a simulation of the protocol; the merges (2026-11-17, about 5 a.m.)
+
+- **The owner went through `HOST-LINK.md`'s eight proposed items** and ruled on each; the document has them:
+  numbers for each link and stream; hops 4 bits, 16 the absolute maximum; CRC-32C; a packet with a field that
+  cannot be is thrown away like one that failed a check; the recovery answer repeated until acknowledged; the
+  stop or start status sent at once on a change and again whenever 512 cycles pass since the last packet sent
+  (the owner's rule, in place of a heartbeat with zeros); stop at half a queue; 8 packets kept a stream.
+  - **Still to review:** Ingress/Egress's proposed items, 11 when grouped, starting with the register and bit
+    numbers; then the Updater's.
+- **A robust simulation of the protocol before any hardware** (owner): WORKER8, in `updater_wip/link/`, with no
+  chip. Randomness drives every condition (owner): each wire's noise, each consumer's stalls (up to 1 ms), each
+  sender's traffic, with each run's parameters drawn at random too; rare events counted; an exhaustive search of
+  a shrunken model beside it; every gap in the document reported with a rule proposed. Its link end becomes the
+  black box's link part.
+- **Quests 213 to 221 all pass.** `updater-w6` is merged and WORKER6 closed.
+- **`updater-w7` is checked and not merged.** It takes the segment queue out of the black box, and WORKER6's
+  bench and view feed the black box through that queue, so the two cannot both be on `main` and working without
+  the shim coming out. That is the joining step's first piece (`MILESTONE-v1.37.md`, step 3).
+- **A spec session** was asked about by the owner, to fold the agreed design into v1.37's specification. Its
+  scope and brief are not written yet; the review of proposed items came first.
+
+## 24. The protocol does not hold as written; what WORKER8 found (2026-11-17, about 7 a.m.)
+
+WORKER8 built one link from `HOST-LINK.md` and searched it exhaustively at small sizes: about 49 million states
+(`updater_wip/planning/sessions/WORKER8/QUESTIONS.md` on `updater-w8`; each flaw has a kept case).
+
+| | as written | with the rule proposed |
+|---|---|---|
+| a good packet with the wrong number | the link stops for ever after one lost packet | holds |
+| the last packet of a burst lost | stops for ever | holds, **and no resend timer is needed:** a packet of length 0 carries the sender's next number |
+| both ends lost at once | stops for ever | holds: a lost side answers a "lost" |
+| a lost receiver hunting in the data | takes data for a packet | holds: it waits for 528 zeros first |
+| the stop bit lost | a queue overruns | holds **if the window is no more than half a queue** |
+| one stream's status behind the other's data | the background stands still 102,447 cycles | 544: a status timer for each stream |
+| one end starts again from power-on | stops for ever | a restart handshake, bit 0 of the reserved byte; the link starts again and raises an error |
+| a bit flipped in a kept packet | the same packet sent again for ever | the sender checks what it sends; the link starts again and raises an error |
+| a false acknowledgement (a forged header) | a packet released that never arrived | the link tells, starts again, raises an error |
+| a false packet number (a forged header) | a packet delivered twice and the next lost, silently | **not fixed** |
+
+- **Decided (owner): Ingress's queues are 16 KB a stream.** The window of 8 packets against 8 KB sat exactly at
+  the overrun's limit. v1.37 has 8 KB as one constant (WORKER7); it goes back.
+- **The false packet number, recommended by the design session and put to the owner:** no change to the header.
+  It needs a damaged header to pass its CRC (2⁻³²) and to land on the number the receiver expects (about 2⁻¹⁸
+  more). The 32-bit data checksum was accepted knowingly, and damaged data that passes it is the likelier silent
+  fault. A wider data check is the lever if a stronger link is wanted; a wrong trace fails verification.
+- **Recommended and put to the owner:** an acknowledgement as soon as the line is free (400 one-word foreground
+  packets: 28,463 cycles as written, 15,313 with it).
+- **`HOST-LINK.md` still has the protocol as first written.** WORKER8's rules go in once its random campaign and
+  the chain have confirmed them.
+- WORKER10's plan for the wire between processes is agreed in outline: a process waits only for its neighbours;
+  an anonymous region inherited from the launcher; an explicit `--driver`.
+- Ingress/Egress's register and bit numbers are to be **packed, like the other peripherals'** (owner):
+  `STATUS` [2], [3] for the two queues' flags; `EVENTS` [6], [7], [8] for the three new events; words 64 to 67
+  for the four host words. v1.37 changes over when the old stream words come out. The document's tables are
+  still to be brought to this.
+- The forward count's small rules are accepted (owner): a store replaces and a store of 0 stops; a load gives
+  what remains; `discard` stays as written; a store with a background transfer in flight is undefined.
+- **An Updater error is not recovered from** (owner): a peripheral's error is its tile's error, which kills
+  everything. The host resets the chip; the boot firmware drops what is left in the queues with the discard
+  count, says it is ready, and the proof starts over.
+
+## 25. The header grows to 20 bytes and speaks for both streams (2026-11-17, about 7:30 a.m.)
+
+- **The owner saw the starvation at once** ("if one stream is banging away, the other stream can get stuck") and
+  asked what it costs: on a direction that one stream fills, the other's status as packets of its own would be
+  about 3% on top of the headers' 3%.
+- **The ways weighed:**
+  - one status packet for both streams, using the fields a packet of length 0 does not need: it fits, and does
+    nothing for the busy case;
+  - a longer repeat interval: safe up to about 2,048 cycles with a window of 8 and queues of 16 KB;
+  - both streams' status in every header of 16 bytes: only with the numbers cut to 10 or 11 bits. Enough for a
+    window of 8, since a wire cannot reorder packets (PCI Express uses 12);
+  - the numbers kept at 18 bits by moving the data checksum to the end of the data;
+  - **the owner's: a header of 20 bytes.** "It's header info that gets stripped anyway."
+- **Decided (owner): 20 bytes.** Four 18-bit fields, the foreground's number and acknowledgement and the
+  background's, in the same place in every header; stop and resend for each stream; lost, recovery and restart
+  for the link; hops; the data checksum; the header CRC over the 16 bytes before it. `HOST-LINK.md`, "A packet",
+  with four example headers.
+  - It sets aside the rule that everything rides in 128 bits: the header is not a word. The data still is.
+  - 3.8% of a link, flat, where the worst case was heading for 6%.
+  - One status timer a direction is enough again, as the owner first ruled, and "lost" and recovery need one
+    packet, not one for each stream.
+- **WORKER8 takes the new header as its baseline** before its random campaign and the chain, and searches it.
+- **What is built has the 16-byte header:** gold, the vectors, v1.37 (and `updater-w7` its 18-bit form). The change
+  is step 2c of the milestone, after WORKER8 confirms it.

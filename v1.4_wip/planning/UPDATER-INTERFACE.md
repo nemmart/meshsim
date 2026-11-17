@@ -174,7 +174,7 @@ and does not handle the words (`INGRESS-INTERFACE.md`).
   so tightly coupled"). When the Updater cannot take a word, Ingress's background queue fills, and the link holds
   the host back.
 - **† What the Updater keeps behind the port is its own:** a few words, so that the decoder is not starved, and
-  nothing a program can see. The buffer that matters is Ingress's background queue, 8 KB.
+  nothing a program can see. The buffer that matters is Ingress's background queue, 16 KB.
   - As built: 4 words, in the black box (WORKER7) and in the real controller (WORKER6) alike, with `ready` a
     flip-flop. Two would keep a decoder of one word a cycle fed. Nothing outside depends on the number.
 - **The decoder takes no word before a code needs it** (WORKER6, WORKER7). The forward count may offer the next

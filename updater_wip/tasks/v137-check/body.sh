@@ -13,6 +13,9 @@
 #   check    make check from a clean tree: every test, debug and release, gcc and clang, and the TSan runs.
 #   suites-cache  (WORKER5) as suites, with CACHE_CTL=1: the proof steps on the cache's controller (proof_run --cache)
 #            and the step tracer-block-cache; every other step as suites runs it.
+#   suites-ctl, suites-ctl-varied  (WORKER6) as suites, with MESHSIM_UPDATER_CTL=1 (or 5, the timing varied): every
+#            step with the Updater (master, proof-real, proof-matrix, proof-29) on the Updater's controller behind the
+#            shim, with the test LPDDR and the stand-in cache; every other step as suites runs it.
 #   faster   (WORKER4) 1, 2 and 2b as for suites; then 5: proof_run (clang suite) on every run of the 29 and matrix sets
 #            with the link at 2, 4 and 8 bytes a cycle (--link-rate), and on the matrix with the master's threshold at
 #            32, 64 and 128 (--threshold), in parallel; each run must pass (gold's images, every check of proof_run);
@@ -35,6 +38,7 @@ verdict machine PASS
 [ -n "${DRY:-}" ] && { echo "DRY: stopping after the kit and the machine"; rm -rf "$W"; exit 0; }
 
 CACHE=""; [ "$ITEM" = suites-cache ] && CACHE=1
+CTL=""; [ "$ITEM" = suites-ctl ] && CTL=1; [ "$ITEM" = suites-ctl-varied ] && CTL=5; [ -n "$CTL" ] && ITEM=suites   # WORKER6
 if [ "$ITEM" = suites ] || [ "$ITEM" = suites-cache ] || [ "$ITEM" = faster ]; then
   sec "1. convert_delivery (clang release), which the inputs' build needs"
   t=$(date +%s)
@@ -106,9 +110,9 @@ fi
 
 if [ "$ITEM" = suites ] || [ "$ITEM" = suites-cache ]; then
 
-  sec "3. ./run_tests.sh all --check (JOBS=$N; MESHSIM_INPUTS=$IN; CACHE_CTL=$CACHE)"
+  sec "3. ./run_tests.sh all --check (JOBS=$N; MESHSIM_INPUTS=$IN; CACHE_CTL=$CACHE; MESHSIM_UPDATER_CTL=$CTL)"
   t=$(date +%s)
-  ( cd "$KS" && CACHE_CTL=$CACHE MESHSIM_INPUTS=$IN PACKET_VECTORS=$KIT/updater_wip/pipeline/gold/test/packets STEP_TIMES=1 JOBS=$N ./run_tests.sh all --check ) > "$RES/run_tests.log" 2>&1; R=$?
+  ( cd "$KS" && MESHSIM_UPDATER_CTL=$CTL CACHE_CTL=$CACHE MESHSIM_INPUTS=$IN PACKET_VECTORS=$KIT/updater_wip/pipeline/gold/test/packets STEP_TIMES=1 JOBS=$N ./run_tests.sh all --check ) > "$RES/run_tests.log" 2>&1; R=$?
   took run_tests "$t"
   tail -45 "$RES/run_tests.log"
   cp "$KS/results/.step-times" "$RES/step-times.txt" 2>/dev/null; cp "$KS/results/.differs" "$RES/differs.txt" 2>/dev/null

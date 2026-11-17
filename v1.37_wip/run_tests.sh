@@ -56,6 +56,7 @@ SUITES="$SUITES suite_replayer suite_memsys suite_rvc suite_tracer tracer_block"
 SUITES="$SUITES fwimage"                                                                   # the runs' keys (tools/fwimage)
 SUITES="$SUITES test_file_store test_updater test_ingress_link test_packet_vectors updater_frames packetize"       # v1.37: the file store's pages by address, the Updater black box, Ingress's host link
 SUITES="$SUITES test_master proof_run"                                                     # v1.37: the master tile's program, the whole chip from a packet file
+SUITES="$SUITES test_updater_ctl"                                                         # v1.37: the Updater's controller (WORKER6)
 SUITES="$SUITES test_lpddr_model test_axi_arbiter test_cache"                               # updater_wip, WORKER5: the LPDDR model, the AXI arbiter, the cache's controller
 
 if [ "$BUILD" = 1 ]; then
@@ -216,6 +217,7 @@ else
   skipped updater-fixtures "v1.37: the fixtures made again by gold, against the committed ones" "no javac, or no ../updater_wip/pipeline/gold"
 fi
 check master "v1.37: the master tile's program on the whole chip, from a packet file: gold's frames of the guests in the link's packets, the Updater's images against gold's, the hand-over, the segment traced and replayed; the error path; the checks' teeth (tests/test_master.cpp)" -- $S/test_master
+check updater-ctl "v1.37: the Updater's controller with the test LPDDR and the stand-in cache: gold's fixtures alone and against the black box, random streams, varied timing, the errors (tests/test_updater_ctl.cpp; MESHSIM_UPDATER_CTL puts it in the chip for every step)" -- $S/test_updater_ctl
 
 
 # ---- the long steps ----

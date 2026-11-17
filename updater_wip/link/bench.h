@@ -21,6 +21,7 @@ namespace hl {
 enum class Fate : uint8_t {
     WHOLE, GONE, FIRST0, HEADER, DATA,
     FORGE_ACK, FORGE_STOP, FORGE_LOST, FORGE_RECOVERY, FORGE_RESEND, FORGE_NUMBER,
+    FORGE_NUMBER_BACK,                     // the packet's number one less: a later packet taken for the one before it
     FORGE_ACK_DATA,                        // a forged acknowledge field on a packet whose data is damaged too: must change nothing
     COUNT
 };
@@ -36,6 +37,9 @@ struct Wire {
     uint8_t forged[HEADER_BYTES] = {};
     uint8_t hdr[HEADER_BYTES] = {};        // the passing packet's header as sent (from the tap)
     uint32_t ordinal = 0;                  // the packets started so far: how a script names one
+    // Noise, set from outside for the next byte only, and what it did: not state.
+    uint8_t next_xor = 0, next_or = 0; bool next_zero = false, next_random = false; uint8_t random_byte = 0;
+    bool changed = false;                  // the last byte pushed was changed
 
     explicit Wire(unsigned delay = 1) : ring(delay, 0) {}
     uint8_t out() const { return ring[pos]; }
@@ -63,7 +67,11 @@ private:
 
 struct Config {
     Params p;                              // both ends alike
-    unsigned queue_words = 512;            // each stream's queue at each end; "stop" at half
+    unsigned queue_words = 1024;           // each stream's queue at each end, 16 KB (owner, 2026-11-17); "stop" at half
+    unsigned window0 = 0;                  // end 0's window, if not p's: the host's
+    unsigned wrong = 0;                    // end 0's foreground packet of this place (from 1) is made with hops 15, and end 1
+                                           // is told it would forward: a packet its own sender made wrong (G22)
+    unsigned still = 0;                    // the cycles a sender may wait for an acknowledgement on a link in step; 0: the default
     unsigned delay = 1;                    // the wire's, in cycles, each way
     unsigned words = 32;                   // the words in each packet a source makes
     unsigned packets[2][STREAMS] = {};     // how many packets each source has: [end][stream]
@@ -86,13 +94,17 @@ public:
     bool must_report = false;
     bool excused = false;                  // something happened that may end in the link starting again: a forged header that
                                            // was believed, a memory's flipped bit, a power-on. Without it, starting again is a failure
-    bool stopped[2][STREAMS] = {};         // the stop bit end e last took, each stream: it must not start data there              // an end started the link again: an error must be up at an end that was not powered on
+    bool stopped[2][STREAMS] = {};         // the stop bit end e last took, each stream: it must not start data there
+    uint32_t waited[2][STREAMS] = {};      // the cycles end e has had packets kept on a stream, the link in step, and no acknowledgement
+    uint32_t most_waited = 0;
+    uint32_t still_bound() const { return cfg.still ? cfg.still : 8 * (cfg.p.status_timer + cfg.p.zeros + 2 * (HEADER_BYTES + cfg.p.max_words * WORD_BYTES)); }              // an end started the link again: an error must be up at an end that was not powered on
     bool power[2] = {};                    // an end starts again from power-on in the next cycle
     uint32_t budget[3] = {};               // the search's: packets it may still damage, bytes of noise, forged headers
     uint64_t t = 0;
     std::string bad;                       // the first property that failed, or empty
     bool stop = false;                     // something happened in the last cycle that the search stops at
-    bool started[2] = {};                  // end e started a packet in the last cycle
+    bool started_[2] = {};                 // end e started a packet in the last cycle
+    bool started(unsigned w) const { return started_[w]; }
 
     explicit Link1(const Config& c);
     void step();
@@ -104,6 +116,17 @@ public:
     bool flip(unsigned e, unsigned s);     // a bit of the oldest packet end e keeps on stream s: a memory's fault, not the wire's
     void word(unsigned from, unsigned stream, uint64_t index, uint8_t out[WORD_BYTES]) const;   // what a flow carries at an index
 
+    // The same names as the chain's bench (chain.h), for the search.
+    unsigned n_wires() const { return 2; }
+    Wire& the_wire(unsigned w) { return wire[w]; }
+    unsigned n_sources() const { return 2 * STREAMS; }
+    bool offerable(unsigned i) const { const Source& so = src[i / 2][i % 2]; return so.avail < so.total && so.made == so.avail; }
+    void offer(unsigned i) { offer(i / 2, i % 2); }
+    unsigned n_queues() const { return 2 * STREAMS; }
+    uint32_t qfill(unsigned q) const { return fill[q / 2][q % 2]; }
+    void drain(unsigned q, uint32_t n) { drain(q / 2, q % 2, n); }
+    static constexpr bool flat = false;    // a source and a queue are an end and a stream
+
     bool done() const;                     // everything sent has arrived and been acknowledged, and both ends are in step
     // From here nothing more goes wrong: every source lets everything out, every queue is emptied every cycle, the
     // wire is whole. Returns the cycles it took to be done, or -1 if it is not within the bound (bad then says so).
@@ -114,7 +137,7 @@ public:
         for (auto& e : end) e.io(a);
         for (auto& w : wire) w.io(a);
         for (auto& e : src) for (auto& s : e) { a(s.made); a(s.avail); }
-        a(fill); a(delivered); a(gaps_allowed); a(fresh); a(must_report); a(excused); a(stopped); a(power); a(budget); a(t); a(started);
+        a(fill); a(delivered); a(gaps_allowed); a(fresh); a(must_report); a(excused); a(stopped); a(waited); a(power); a(budget); a(t); a(started_);
     }
     // What the search knows a state by: the hash of everything that can still matter (LinkEnd::canon).
     Hash128 canon() const;
@@ -140,6 +163,9 @@ struct Event {
 struct Run { std::string rules; bool ok = true; std::string text; };   // a rules line, and what is expected of it
 struct Case {
     Config cfg;
+    unsigned chain = 0;                    // not 0: a chain of this many nodes (chain.h), and events name sources, queues and wires by its numbers
+    unsigned cpackets[3] = {};             // the chain's budgets: the host's foreground, its background, each node's replies
+    unsigned fwd = 8;                      // the chain's forwarding buffers, in words
     std::vector<Event> events;
     uint64_t quiet_at = 0, bound = 100000;
     std::vector<Run> runs;
@@ -152,5 +178,6 @@ bool parse_case(const std::string& path, Case& c, std::string& err);
 std::string case_text(const Case& c);
 // Plays a case under a rules line: "" if every property held to the end, or the property that failed.
 std::string play(const Case& c, const std::string& rules, Link1* out = nullptr, FILE* trace = nullptr);
+std::string play_chain(const Case& c, const std::string& rules);     // chain.cpp: a case with "chain N"
 
 }  // namespace hl

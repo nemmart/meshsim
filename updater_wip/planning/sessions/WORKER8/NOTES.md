@@ -1,7 +1,8 @@
 # WORKER8 notes: the plan for the simulation of the host link's protocol
 
-Status, 2026-11-17: **the plan has the owner's go-ahead, as written.** Branch `updater-w8`, from main `641bc694`.
-What is built, and what was built differently from the plan, is at the end of this file as it happens.
+Status, 2026-11-17: **one link and the chain are built on HL's header of 20 bytes, searched, and run at random
+here; the long campaign and the larger searches are queued for the runner.** Branch `updater-w8`. Sections 1 to 15
+are the plan as agreed; **section 16 is what was built on the header of 16 bytes, section 17 what is built now.**
 
 **The go-ahead (owner, 2026-11-17),** with the answers to section 15:
 
@@ -537,3 +538,254 @@ minutes; `make check` in about 2 minutes from a clean tree.
 (step 5). The larger searches (`searches.sh big`: two packets each way with two damaged, and the like) want the
 runner, and less memory a state: its unit allows 16 GB and 45 minutes a task, about 100 million states as the
 search stands.
+
+## 17. The header of 20 bytes, the chain and the first runs (2026-11-17, later)
+
+The owner's go-ahead of that morning: the rules G4, G6, G7, G9, G10, G11, G20 and G21 accepted to carry on with;
+the header of 20 bytes as the baseline; no second check for the false number; an acknowledgement as soon as the
+line is free; queues of 16 KB. `QUESTIONS.md` is written again for all of it. What is built since section 16:
+
+| piece | file |
+|---|---|
+| the header of 20 bytes; every header speaks for both streams; one timer a direction; one packet a recovery round | `header.h`, `link_end.cpp` |
+| G22, a packet its own sender made wrong; when "resend" is asked again (`reask`) | `link_end.cpp` |
+| the chain node: two link ends and the forwarding buffers | `node.h`, `.cpp` |
+| the chain on the bench: the host, nodes, wires, sources, queues, the monitor | `chain.h`, `.cpp` |
+| the random runs | `linkrun.cpp`; `figures.sh`, `plants_run.sh`, `sum_runs.py` |
+| the search on either bench (`--chain N`) | `linksearch.cpp` |
+| the rates of damage passing a CRC unseen | `rates.py` |
+| the kept cases, found again by a script | `make_cases.sh`, `cases/` |
+
+**Properties added,** each watched from outside the link end, in both benches:
+
+- **A sender is acknowledged before long:** with packets kept, all of them sent, on a link in step with whole
+  wires, an acknowledgement moves within a bound (8 status periods and recoveries by default). This is what
+  would have caught the starvation of the header of 16 bytes in a search.
+- **A foreground packet's turn:** with nothing but the line to wait for, it starts within one packet.
+- **A node's own packet never goes before one it is forwarding.**
+- **At the host,** a packet's hops name a node of the chain, and its words are the next of that node's.
+
+**What was built differently from the plan:**
+
+| the plan | as built |
+|---|---|
+| a failing seed cut down event by event | not built. A failing seed fails again from its seed alone; the search gives the shortest case of a flaw. Cutting a random run down is still to do if a seed fails that the search cannot reach |
+| every transition numbered and counted | the events of the table below are counted; the state diagrams with numbered transitions are not drawn |
+| "a header not sealed again" planted in the node | planted in the link end: a node cannot pass a header through, since the outgoing end writes and seals every header |
+| the wire's forms "its tail to zeros" and "bytes before it" | not among the aimed forms; the bursts make both |
+
+### The searches on the new header: every one complete
+
+**One link, the proposed rules** (4,110,540 states; the same list as section 16, and each is about a tenth the size):
+
+| the search | states | |
+|---|---|---|
+| `--packets 2 0 2 0 --damage 1` | 414,807 | holds |
+| `--packets 1 0 1 0 --damage 2` | 85,494 | holds |
+| `--packets 1 0 0 0 --damage 3` | 28,359 | holds |
+| `--packets 2 0 0 0 --damage 2` | 33,440 | holds |
+| `--packets 1 1 0 0 --damage 2` | 66,914 | holds |
+| `--packets 2 2 0 0 --damage 1` | 141,320 | holds |
+| `--packets 1 1 1 0 --damage 1` | 144,825 | holds |
+| `--packets 3 0 0 0 --damage 1 --queue 4` | 34,595 | holds |
+| `--packets 3 0 0 0 --damage 1 --queue 2` | 51,990 | holds |
+| `--packets 2 1 0 0 --damage 1 --queue 4` | 68,344 | holds |
+| `--packets 7 0 0 0 --damage 1` | 342,638 | holds |
+| `--packets 2 0 1 0 --damage 0 --noise 2` | 218,028 | holds |
+| `--packets 2 0 1 0 --damage 1 --noise 1` | 598,558 | holds |
+| `--packets 2 0 1 0 --damage 1 --delay 7` | 144,755 | holds |
+| `--packets 2 0 1 0 --damage 1 --delay 20` | 282,193 | holds |
+| `--packets 2 0 1 0 --damage 1 --tick 8` | 368,642 | holds |
+| `--packets 1 0 1 0 --damage 2 --images --words 2` | 170,678 | holds |
+| `--packets 2 0 2 0 --damage 0 --power 1` | 194,272 | holds |
+| `--packets 1 0 1 0 --damage 1 --power 1` | 122,072 | holds |
+| `--packets 2 0 1 0 --damage 1 --flip 1` | 327,136 | holds |
+| `--packets 2 0 1 0 --damage 1 --wrong 1` | 41,187 | holds |
+| `--packets 5 0 0 0 --damage 1 --queue 4 --window0 4` | 193,516 | holds |
+| `--packets 1 0 1 0 --damage 1 --whole` | 22,343 | holds |
+| `--packets 1 0 1 0 --damage 1` | 14,434 | holds |
+| `--packets 2 0 2 0 --damage 2` | 2,593,263 | holds |
+| `--packets 2 0 1 0 --damage 3` | 1,687,356 | holds |
+| `--packets 2 2 0 0 --damage 2` | 961,887 | holds |
+| `--packets 3 0 3 0 --damage 1` | 4,290,326 | holds |
+
+- **Two packets each way with two damaged is complete** (2,593,263 states): on the header of 16 bytes it was
+  stopped at 30 million.
+
+**The starvation** (13,714,770 states): the other end sends 5 or 8 packets back to back; no sender waits 150 cycles.
+
+| the search | states | |
+|---|---|---|
+| `as_written` `--packets 0 3 5 0 --damage 0 --still 150` | 4,066,995 | holds |
+| `proposed-ack_now` `--packets 0 3 5 0 --damage 0 --still 150` | 5,199,100 | holds |
+| `proposed` `--packets 0 3 5 0 --damage 0 --still 150` | 1,922,830 | holds |
+| `proposed` `--packets 0 2 8 0 --damage 0 --still 150` | 2,525,845 | holds |
+
+**Each rule not shown to be needed, either way, and `reask` at 24 and 400** (1,908,572 states):
+
+| the search | states | |
+|---|---|---|
+| `proposed-lost_uses_ack` `--packets 1 0 1 0 --damage 2` | 85,544 | holds |
+| `proposed-lost_uses_ack` `--packets 1 1 0 0 --damage 2` | 66,986 | holds |
+| `proposed-lost_uses_ack` `--packets 3 0 0 0 --damage 1 --queue 4` | 34,595 | holds |
+| `proposed-long_is_lost` `--packets 1 0 1 0 --damage 2` | 85,494 | holds |
+| `proposed-long_is_lost` `--packets 1 1 0 0 --damage 2` | 66,914 | holds |
+| `proposed-long_is_lost` `--packets 3 0 0 0 --damage 1 --queue 4` | 34,595 | holds |
+| `proposed+stop_lift_back` `--packets 1 0 1 0 --damage 2` | 85,494 | holds |
+| `proposed+stop_lift_back` `--packets 1 1 0 0 --damage 2` | 66,914 | holds |
+| `proposed+stop_lift_back` `--packets 3 0 0 0 --damage 1 --queue 4` | 34,713 | holds |
+| `proposed-ack_now` `--packets 1 0 1 0 --damage 2` | 110,015 | holds |
+| `proposed-ack_now` `--packets 1 1 0 0 --damage 2` | 102,244 | holds |
+| `proposed-ack_now` `--packets 3 0 0 0 --damage 1 --queue 4` | 66,689 | holds |
+| `proposed+ask_every` `--packets 1 0 1 0 --damage 2` | 85,494 | holds |
+| `proposed+ask_every` `--packets 1 1 0 0 --damage 2` | 66,914 | holds |
+| `proposed+ask_every` `--packets 3 0 0 0 --damage 1 --queue 4` | 34,690 | holds |
+| `proposed,resend_timer=96` `--packets 1 0 1 0 --damage 2` | 98,094 | holds |
+| `proposed,resend_timer=96` `--packets 1 1 0 0 --damage 2` | 74,359 | holds |
+| `proposed,resend_timer=96` `--packets 3 0 0 0 --damage 1 --queue 4` | 35,325 | holds |
+| `proposed-zero_number,resend_timer=96` `--packets 1 0 1 0 --damage 2` | 125,160 | holds |
+| `proposed-zero_number,resend_timer=96` `--packets 1 1 0 0 --damage 2` | 97,212 | holds |
+| `proposed-zero_number,resend_timer=96` `--packets 3 0 0 0 --damage 1 --queue 4` | 37,793 | holds |
+| `proposed,reask=24` `--packets 1 0 1 0 --damage 2` | 88,943 | holds |
+| `proposed,reask=24` `--packets 1 1 0 0 --damage 2` | 64,229 | holds |
+| `proposed,reask=24` `--packets 3 0 0 0 --damage 1 --queue 4` | 34,812 | holds |
+| `proposed,reask=400` `--packets 1 0 1 0 --damage 2` | 106,033 | holds |
+| `proposed,reask=400` `--packets 1 1 0 0 --damage 2` | 84,722 | holds |
+| `proposed,reask=400` `--packets 3 0 0 0 --damage 1 --queue 4` | 34,595 | holds |
+
+**G11 without its rule,** the window a quarter of the queue (the default) and half of it (1,174,097 states):
+
+| the search | states | |
+|---|---|---|
+| `proposed-refuse` `--packets 4 0 0 0 --damage 2` | 185,501 | holds |
+| `proposed-refuse` `--packets 4 0 0 0 --damage 2 --queue 4` | 530,874 | holds |
+| `proposed-refuse` `--packets 5 0 0 0 --damage 1 --queue 4` | 189,730 | holds |
+| `proposed-refuse` `--packets 3 1 0 0 --damage 1 --queue 4` | 267,992 | holds |
+
+**One forged header and one damaged packet** (1,638,717 states):
+
+| the search | states | |
+|---|---|---|
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates …,forge-ack` | 71,423 | holds |
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates …,forge-stop` | 60,883 | holds |
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates …,forge-lost` | 61,462 | holds |
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates …,forge-recovery` | 45,871 | holds |
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates …,forge-resend` | 49,802 | holds |
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates …,forge-number` | 83,670 | holds |
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates …,forge-number-back` | 50,724 | holds |
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates …,forge-ack-data` | 39,431 | holds |
+| `--packets 3 0 0 0 --damage 1 --forge 1 --fates …,forge-stop --queue 2` | 231,220 | holds |
+| `--packets 2 0 1 0 --damage 1 --forge 1 --fates …,forge-number` | 463,828 | holds |
+| `--packets 1 0 1 0 --damage 2 --forge 1 --fates …,forge-number` | 460,971 | holds |
+| `--packets 2 0 0 0 --damage 1 --forge 1 --fates …,forge-number-back` | 19,432 | **fails:** 18 states, word 1 delivered where word 0 was next |
+
+**The chain:** the host and 1, 2 or 3 nodes; `--cpackets a b c` is the host's foreground and background packets
+and each node's replies (4,419,487 states):
+
+| the search | states | |
+|---|---|---|
+| `--chain 1 --cpackets 1 1 1 --damage 1` | 150,077 | holds |
+| `--chain 1 --cpackets 2 0 1 --damage 1` | 78,081 | holds |
+| `--chain 1 --cpackets 1 0 1 --damage 2` | 87,330 | holds |
+| `--chain 1 --cpackets 0 2 1 --damage 1 --queue 2` | 367,667 | holds |
+| `--chain 2 --cpackets 1 0 0 --damage 2` | 526,336 | holds |
+| `--chain 2 --cpackets 0 1 0 --damage 2` | 515,314 | holds |
+| `--chain 2 --cpackets 0 0 1 --damage 1` | 235,937 | holds |
+| `--chain 2 --cpackets 1 0 1 --damage 0` | 323,954 | holds |
+| `--chain 2 --cpackets 0 2 0 --damage 0 --queue 2 --fwd 2` | 569,452 | holds |
+| `--chain 2 --cpackets 0 1 0 --damage 1 --queue 2 --fwd 2` | 342,495 | holds |
+| `--chain 2 --cpackets 0 0 2 --damage 0 --fwd 2` | 900,676 | holds |
+| `--chain 3 --cpackets 1 0 0 --damage 1` | 80,251 | holds |
+| `--chain 3 --cpackets 0 0 1 --damage 0` | 241,917 | holds |
+
+- **Larger than this machine:** a chain of two with a packet on each stream and a reply from each node, one
+  damaged (`searches.sh big5`), was killed for memory here. It and three more are queued for the runner.
+
+### The planted bugs: 14, every one caught
+
+| planted | by the search (`plants.sh`) | by the random runs (`plants_run.sh`: seeds that caught it) |
+|---|---|---|
+| `ACK_ONE_OFF` | `--damage 1 --packets 2 0 1 0`: the link started again, and nothing had happened that could excuse it | 20 of 20 |
+| `WINDOW_NOT_KEPT` | `--damage 1 --packets 3 0 0 0 --queue 2`: the link started again, and nothing had happened that could excuse it | 4 of 20 |
+| `WRAP_WRONG` | `--damage 0 --packets 7 0 0 0`: nothing more goes wrong, and it does not finish | 13 of 20 |
+| `TIMER_NOT_RESTARTED` | `--damage 1 --packets 2 0 1 0`: a sender stood still | 0 of 20 |
+| `DUPLICATE_TAKEN` | `--damage 1 --packets 2 0 1 0`: word 0 delivered where word 1 was next | 0 of 20 |
+| `STOP_IGNORED` | `--damage 1 --packets 3 0 0 0 --queue 2`: a data packet started on a stream the other end has stopped | 11 of 20 |
+| `RECOVERY_ONCE` | `--damage 2 --packets 1 0 1 0`: nothing more goes wrong, and it does not finish | 7 of 20 |
+| `ZERO_TAKES_NUMBER` | `--damage 1 --packets 2 0 1 0`: more kept than the window | 20 of 20 |
+| `ACK_FROM_BAD_DATA` | `--damage 1 --forge 1 --fates gone,forge-ack-data --packets 1 0 1 0`: the link started again, and nothing had happened that could excuse it | 0 of 20 |
+| `NO_ZEROS` | `--damage 1 --packets 2 0 1 0`: nothing more goes wrong, and it does not finish | 12 of 20 |
+| `OTHER_STREAM_STALE` | `--damage 0 --packets 0 3 5 0 --still 150`: a sender stood still | 5 of 20 |
+| `HOPS_NOT_COUNTED` | `--damage 0 --chain 2 --cpackets 0 0 2`: at the host, under hops 0, a word that node did not send | 13 of 20 |
+| `NOT_SEALED_AGAIN` | `--damage 0 --chain 2 --cpackets 0 0 2`: nothing more goes wrong, and it does not finish | 13 of 20 |
+| `OWN_BEFORE_FORWARDED` | `--damage 0 --chain 2 --cpackets 0 0 2`: a node sent a packet of its own before one it was forwarding | 10 of 20 |
+
+- **Three are caught by the search only.** `TIMER_NOT_RESTARTED`: with an acknowledgement for every packet the
+  status timer is seldom what a run waits on. `DUPLICATE_TAKEN`: no packet arrives twice in the runs (below).
+  `ACK_FROM_BAD_DATA` needs a forged header.
+
+### The first random runs, here: 300 seeds
+
+`build/linkrun --seeds 1 300 --cycles 300000`: chains of 1, 2, 4 and 16, every process drawn from its seed.
+
+```
+runs 300 (chains of 1, 2, 4, 16: 114, 86, 66, 34); FAILED 0
+cycles 202073653; packets 5080194; words delivered: 25689841 from the host (every node counted), 1323997 to it
+coming to rest after the noise: 373578 cycles on average, 2038152 at most
+bytes sent: 579899700 in packets with data, 53616460 in packets of length 0 in step (9.25% of the data's), 1835560 in recovery and restart rounds
+the most: packets a node kept on a stream 8, the host 18; words in a queue 626; words in a forwarding buffer 677
+the longest: a foreground packet waiting for the line with nothing else to wait for 532 cycles; a sender without an acknowledgement on a link in step 2736
+recoveries (a link's last damaged byte to its next delivery, or to nothing owed): 20269, 736 cycles on average, 24051 at most (seed 47)
+```
+
+**Rare events, counted.** What never happened is marked, and is covered by the search: a packet seen before
+(`plants.sh`, `reask=1`), a packet with no room (`g11-overrun.case`), the three that end in a restart (the `g20`,
+`g21` and `g22` cases), and a field that cannot be (`g22`).
+
+```
+rare events, counted:
+  damage aimed at             data    sent again        status          lost      recovery lost+recovery       restart
+  gone                         442           262          1389           125           176            27            65
+  first0                       445           281          1354           118           179            27            83
+  header                       432           284          1338           123           206            22            68
+  data                         411           257             0             0             0             0             0
+  packets sent: data                                                2275977
+  sent again                                                          31616
+  status (length 0, in step)                                        2680823
+  "lost"                                                              42640
+  "recovery"                                                          23443
+  "lost" and "recovery" together (both ends lost)                      4459
+  restart                                                             21236
+  header CRC failed                                                   22392
+  data checksum failed                                                 6805
+  a field that cannot be                                                  0   <- never happened
+  a header CRC failed during a recovery                               21828
+  a stop bit taken during a recovery                                  36909
+  a packet ahead of the one expected, or a number ahead                7227
+  a packet seen before                                                    0   <- never happened
+  a packet with no room (G11)                                             0   <- never happened
+  a sender went back                                                   9812
+  the number wrapped on a new packet                                  18816
+  the number wrapped on a packet sent again                            1172
+  bursts of noise                                                    117119
+  cycles inside a burst                                            18743601
+  single bits flipped                                                 36598
+  consumer stalls                                                   2811660
+  an acknowledgement behind (G20)                                         0   <- never happened
+  an acknowledgement beyond what was sent (G20)                           0   <- never happened
+  a link started again                                                    0   <- never happened
+  a kept packet found bad (G21)                                           0   <- never happened
+  a packet made wrong (G22)                                               0   <- never happened
+```
+
+- **The window of 8 and the queues:** a node never kept more than 8; **the fullest a queue got is 626 words of
+  1,024, a forwarding buffer 677.** No packet was ever refused.
+- **Recovery:** from a link's last damaged byte to its next delivery (or to nothing owed), 736 cycles on
+  average and 24,051 at most, over 20,269 recoveries.
+- **How long it takes here:** about half a million cycles a second on one core, the chains mixed; 300 seeds in
+  7 minutes.
+
+### Queued for the runner
+
+The campaign proper (thousands of seeds, 2 million cycles each, 16 at once), the runs with noise of hundreds
+of milliseconds, and the larger searches: Quest tasks, numbers in `REPORT.md` when they are back.

@@ -21,17 +21,17 @@ static long perfect(Config cfg, const char* rules, const char* name) {
 }
 
 int main() {
-    for (const char* rules : {"as_written", "proposed", "proposed+ack_now", "proposed,resend_timer=2048"}) {
+    for (const char* rules : {"as_written", "proposed-ack_now", "proposed", "proposed,resend_timer=2048"}) {
         Config real;                                         // the real sizes: full packets both ways on both streams
         real.packets[0][FG] = 40; real.packets[0][BG] = 300; real.packets[1][FG] = 200; real.packets[1][BG] = 0;
         const long a = perfect(real, rules, "the real sizes");
-        Config small; small.p = Params::tiny(); small.queue_words = 4; small.words = 1;
+        Config small; small.p = Params::tiny(); small.queue_words = 8; small.words = 1;
         small.packets[0][FG] = 50; small.packets[0][BG] = 50; small.packets[1][FG] = 50; small.packets[1][BG] = 50;   // 8 wraps of the number
         const long c = perfect(small, rules, "the small sizes");
         Config one = real; one.words = 1;                    // short packets: the window and the acknowledgements' pace
         one.packets[0][FG] = 400; one.packets[0][BG] = 0; one.packets[1][FG] = 0;
         const long d = perfect(one, rules, "one-word packets");
-        printf("%-28s real %ld cycles, small %ld, 400 one-word packets %ld\n", rules, a, c, d);
+        printf("%-28s real sizes %ld cycles, small sizes %ld, 400 one-word packets %ld\n", rules, a, c, d);
     }
     // The wrap at the real width: both ends started just under it.
     {
@@ -41,9 +41,11 @@ int main() {
         CHECK(b.quiet(1000000) > 0);
         CHECK(b.end[0].r.s[BG].tail == 7 && b.end[1].r.s[FG].tail == 7 && b.end[1].r.s[BG].last == 6);
     }
-    // G13: the background's acknowledgements while the other side's foreground replies flow. End 1 sends 200 full
-    // foreground packets; end 0 sends 300 full background packets. The longest that end 0's background stands still.
-    for (const char* rules : {"as_written", "proposed-status_each", "proposed"}) {
+    // The starvation of the header of 16 bytes (QUESTIONS.md, G13): the background's acknowledgements while the other
+    // side's foreground replies flow. End 1 sends 200 full foreground packets; end 0 sends 300 full background
+    // packets. The longest that end 0's background stands still. With every header speaking for both streams it is
+    // a packet or two, under any rules, with one timer.
+    for (const char* rules : {"as_written", "proposed-ack_now", "proposed"}) {
         Config cfg; cfg.packets[0][BG] = 300; cfg.packets[1][FG] = 200;
         std::string err; apply_rules(rules, cfg.p, err);
         Link1 b(cfg);
@@ -58,12 +60,11 @@ int main() {
         }
         printf("%-22s background stood still for at most %llu cycles under the other side's replies; all done at %llu\n", rules,
                (unsigned long long)longest, (unsigned long long)b.t);
-        const bool fixed = std::string(rules) == "proposed";
-        CHECK(b.done() && (fixed ? longest < 2 * 528 + 64 : longest > 50000));    // fails without the rule
+        CHECK(b.done() && b.bad.empty() && longest < 2 * 532 + 64);
     }
     // What one damaged packet costs at the real sizes: 40 full background packets one way, the 20th damaged (and,
     // for "both lost", the status coming back at that moment as well). The cycles from that packet's first byte to
-    // the next word delivered: on a whole wire a packet later, 528.
+    // the next word delivered: on a whole wire a packet later, 532.
     {
         struct { const char* name; Fate f0; bool both; } forms[] = {
             {"a bit of its data", Fate::DATA, false}, {"a bit of its header", Fate::HEADER, false},
@@ -77,13 +78,35 @@ int main() {
                 for (unsigned e = 0; e < 2; e++) for (unsigned s = 0; s < STREAMS; s++) { b.src[e][s].avail = b.src[e][s].total; b.fill[e][s] = 0; }
                 const uint64_t had = b.delivered[1][BG];
                 b.step();
-                if (b.started[0] && b.end[0].tap.kind == Kind::DATA && unpack(b.end[0].tap.hdr).number == 20 && !hit) { b.fate(0, form.f0); hit = b.t; }
-                if (form.both && hit && !other_hit && b.started[1]) { b.fate(1, Fate::HEADER); other_hit = true; }
+                if (b.started(0) && b.end[0].tap.kind == Kind::DATA && unpack(b.end[0].tap.hdr).number[BG] == 20 && !hit) { b.fate(0, form.f0); hit = b.t; }
+                if (form.both && hit && !other_hit && b.started(1)) { b.fate(1, Fate::HEADER); other_hit = true; }
                 if (b.delivered[1][BG] != had) { if (hit && !back && last_delivery > hit) {} last_delivery = b.t; if (hit && !back && b.delivered[1][BG] > 19 * 32) back = b.t; }
             }
             CHECK(b.done() && hit && back);
             printf("the 20th packet, %-44s the next word delivered %5llu cycles after its first byte; all done at %llu\n", form.name,
                    (unsigned long long)(back - hit), (unsigned long long)b.t);
+        }
+    }
+    // The host's window (HL, Open): end 0 has 80 full background packets; nothing comes back from end 1 (every
+    // packet it sends is turned to zeros: the stop bit and the acknowledgements with it) and its queue is not
+    // emptied. With a window of 8 or 16 the host stops by itself with room to spare. With 64 it goes on: the queue of
+    // 1,024 words holds 32 packets, and the 33rd is thrown away (G11) or, without that rule, overruns.
+    for (const char* rules : {"proposed", "proposed-refuse"}) {
+        for (unsigned window : {8u, 16u, 64u}) {
+            Config cfg; cfg.packets[0][BG] = 80; cfg.window0 = window;
+            std::string err; apply_rules(rules, cfg.p, err);
+            Link1 b(cfg);
+            while (b.bad.empty() && b.t < 60000) {
+                b.src[0][BG].avail = b.src[0][BG].total;
+                b.step();
+                if (b.started(1) && b.t > 4000) b.fate(1, Fate::GONE);
+            }
+            const bool overruns = !b.bad.empty();
+            printf("the host's window %2u, %-15s  it kept %2u packets at most; the queue held %4u words at most; %llu packets thrown away for no room%s\n",
+                   window, rules, b.end[0].count.most_kept, b.most_fill[1][BG], (unsigned long long)b.end[1].count.refused, overruns ? "; " : "");
+            if (overruns) printf("    %s\n", b.bad.c_str());
+            CHECK(overruns == (window == 64 && std::string(rules) == "proposed-refuse"));
+            CHECK(overruns || b.end[0].count.most_kept == window);
         }
     }
     printf(failures ? "test_link: %d FAILED\n" : "test_link: ok\n", failures);

@@ -1,10 +1,10 @@
-# QUESTIONS.md F1: a forged packet number on a packet sent again. NOT FIXED: this case fails under the proposed rules
+# QUESTIONS.md F1: a forged packet number: a later packet taken for a lost one before it. A KNOWN LIMIT (owner, 2026-11-17): this case fails under the proposed rules
 # found by linksearch --rules proposed
-sizes number_bits=3 max_words=1 window=2 zeros=40 flush_zeros=32 status_timer=24 queue=4 delay=1 words=1 images=0
-packets 1 0 1 0
-offer 0 1 128
-fate 0 5 data
-offer 1 1 183
-fate 0 11 forge-number
-quiet 312 20000
-run proposed fail word 0 delivered where word 1 was next
+sizes number_bits=3 max_words=1 window=2 zeros=44 flush_zeros=36 status_timer=24 queue=8 reask=96 delay=1 words=1 images=0 window0=0 wrong=0 still=0
+packets 2 0 0 0
+offer 0 1 192
+fate 0 4 gone
+offer 0 1 228
+fate 0 5 forge-number-back
+quiet 236 20000
+run proposed fail word 1 delivered where word 0 was next

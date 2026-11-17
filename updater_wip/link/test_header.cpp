@@ -1,6 +1,5 @@
-// test_header: HL's three example headers and its CRC values, byte for byte; the numbers' arithmetic; and, given
-// the path of gold's VECTORS.txt (updater_wip/pipeline/gold/test/packets/, on updater-w7 until merged), every
-// crc32c line and every single packet in it.
+// test_header: HL's four example headers of 20 bytes and its CRC values, byte for byte; the numbers' arithmetic; and,
+// given the path of gold's VECTORS.txt (updater_wip/pipeline/gold/test/packets/), every crc32c line in it.
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -19,70 +18,35 @@ static std::vector<uint8_t> hex(const std::string& s) {
     return v;
 }
 
-static void example(uint32_t number, uint32_t ack, uint8_t hops, const char* want) {
-    const uint8_t zero[16] = {};
-    Header h; h.stream = 2; h.length = 1; h.number = number; h.ack = ack; h.hops = hops; h.dsum = crc32c(zero, 16);
-    uint8_t b[16]; pack(h, b);
+static void example(const Header& h, const char* want) {
+    uint8_t b[HEADER_BYTES]; pack(h, b);
     const auto w = hex(want);
-    CHECK(w.size() == 16 && memcmp(b, w.data(), 16) == 0);
-    CHECK(crc32c(b, 16) == CRC_GOOD_HEADER);
+    CHECK(w.size() == HEADER_BYTES && memcmp(b, w.data(), HEADER_BYTES) == 0);
+    CHECK(crc32c(b, HEADER_BYTES) == CRC_GOOD_HEADER);
     const Header u = unpack(b);
-    CHECK(u.stream == 2 && u.flags == 0 && u.length == 1 && u.number == number && u.ack == ack && u.hops == hops &&
-          u.reserved == 0 && u.dsum == h.dsum);
+    uint8_t again[HEADER_BYTES]; pack(u, again);
+    CHECK(memcmp(again, b, HEADER_BYTES) == 0);
+    CHECK(u.stream == h.stream && u.flags == h.flags && u.length == h.length && u.hops == h.hops && u.dsum == h.dsum);
+    for (unsigned t = 0; t < STREAMS; t++) CHECK(u.number[t] == h.number[t] && u.ack[t] == h.ack[t] && u.stop[t] == h.stop[t] && u.resend[t] == h.resend[t]);
 }
 
+// Gold's VECTORS.txt: its crc32c lines. Its packets are of the header of 16 bytes, before 2026-11-17, and are not read.
 static int vectors(const char* path) {
     FILE* f = fopen(path, "r");
     if (!f) { printf("cannot open %s\n", path); return 1; }
     char line[4096];
-    int crcs = 0, packets = 0;
-    bool in = false; Header want; std::vector<uint8_t> bytes; std::string expect; uint32_t hcrc = 0;
+    int crcs = 0;
     while (fgets(line, sizeof line, f)) {
         char key[64] = "", a[2048] = "", b[64] = "";
         if (char* hash = strchr(line, '#')) *hash = 0;
-        const int n = sscanf(line, "%63s %2047s %63s", key, a, b);
-        if (n < 1) continue;
-        const std::string k = key;
-        if (k == "crc32c" && n == 3) {
+        if (sscanf(line, "%63s %2047s %63s", key, a, b) == 3 && std::string(key) == "crc32c") {
             const auto v = std::string(a) == "-" ? std::vector<uint8_t>() : hex(a);
             CHECK(crc32c(v.data(), v.size()) == uint32_t(strtoul(b, nullptr, 0))); crcs++;
-        } else if (k == "packet") { in = true; want = Header(); bytes.clear(); expect.clear(); }
-        else if (!in) continue;
-        else if (k == "stream") want.stream = uint8_t(strtoul(a, nullptr, 0));
-        else if (k == "flags") want.flags = uint8_t(strtoul(a, nullptr, 0));
-        else if (k == "length") want.length = uint8_t(strtoul(a, nullptr, 0));
-        else if (k == "number") want.number = uint32_t(strtoul(a, nullptr, 0));
-        else if (k == "acknowledge") want.ack = uint32_t(strtoul(a, nullptr, 0));
-        else if (k == "hops") want.hops = uint8_t(strtoul(a, nullptr, 0));
-        else if (k == "reserved") want.reserved = uint8_t(strtoul(a, nullptr, 0));
-        else if (k == "data-checksum") want.dsum = uint32_t(strtoul(a, nullptr, 0));
-        else if (k == "header-crc") hcrc = uint32_t(strtoul(a, nullptr, 0));
-        else if (k == "bytes") { const auto v = hex(a); bytes.insert(bytes.end(), v.begin(), v.end()); }
-        else if (k == "expect") expect = a;
-        else if (k == "end") {
-            in = false; packets++;
-            if (bytes.size() < 16) { CHECK(bytes.size() >= 16); continue; }
-            const Header u = unpack(bytes.data());
-            // The fields as the bytes hold them. Lengths over 255 and the like do not occur in the file.
-            CHECK(u.stream == want.stream && u.flags == want.flags && u.length == want.length && u.number == want.number &&
-                  u.ack == want.ack && u.hops == want.hops && u.reserved == want.reserved && u.dsum == want.dsum);
-            const bool header_ok = crc32c(bytes.data(), 16) == CRC_GOOD_HEADER;
-            CHECK(header_ok == (crc32c(bytes.data(), 12) == hcrc));
-            CHECK(header_ok == (expect != "header-crc"));
-            if (header_ok) {                                     // the same bytes back from the fields
-                uint8_t again[16]; pack(u, again);
-                CHECK(memcmp(again, bytes.data(), 16) == 0);
-                if (expect == "ok" || expect == "number") {
-                    CHECK(bytes.size() == 16 + 16u * u.length);
-                    CHECK(crc32c(bytes.data() + 16, bytes.size() - 16) == u.dsum);
-                }
-                if (expect == "data-checksum") CHECK(crc32c(bytes.data() + 16, bytes.size() - 16) != u.dsum);
-            }
         }
     }
     fclose(f);
-    printf("vectors: %d crc32c lines, %d packets\n", crcs, packets);
-    CHECK(crcs > 0 && packets > 0);
+    printf("vectors: %d crc32c lines\n", crcs);
+    CHECK(crcs > 0);
     return 0;
 }
 
@@ -92,10 +56,18 @@ int main(int argc, char** argv) {
     CHECK(crc32c(nullptr, 0) == 0);
     const uint8_t zero[16] = {};
     CHECK(crc32c(zero, 16) == 0x42709AEAu);
-    // HL's three example headers.
-    example(1, 0, 0, "0201010000000000EA9A7042A08C06E1");
-    example(1, 0, 1, "0201010000001000EA9A70429EBC0A21");
-    example(0x2ABCD, 0x15555, 3, "0201CDAB56553500EA9A7042C9C42330");
+    // HL's four example headers of 20 bytes.
+    {
+        Header h; h.stream = 2; h.length = 1; h.number[FG] = 1; h.number[BG] = 1; h.dsum = crc32c(zero, 16);
+        example(h, "020101000000100000000000EA9A704245941AE9");
+        h.hops = 1;
+        example(h, "020101000000100000000001EA9A7042E9FB0BD1");
+        Header g; g.stream = 1; g.length = 1; g.number[FG] = 0x2ABCD; g.ack[FG] = 0x15555; g.number[BG] = 0x123; g.ack[BG] = 0x3FFFE;
+        g.hops = 3; g.stop[FG] = true; g.resend[BG] = true; g.dsum = crc32c(zero, 16);
+        example(g, "0101CDAB5655351280FFFF93EA9A704257AE7815");
+        Header z; z.stream = 1; z.number[FG] = 5; z.ack[FG] = 4; z.number[BG] = 9; z.ack[BG] = 8;
+        example(z, "0100050010009000000200000000000000DD0F8F");
+    }
     // The numbers, at the real width and at the shrunken model's.
     for (uint32_t last : {0x3FFFEu, 6u, 14u}) {
         const Numbers n{last};

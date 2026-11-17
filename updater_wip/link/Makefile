@@ -1,14 +1,15 @@
 # updater_wip/link: the host link's protocol on its own (WORKER8). README.md says what each program is.
 #   make            the programs, optimized (build/)
-#   make check      the header's tests, the link's tests, the kept cases, two small searches and the planted bugs,
+#   make check      the header's tests, the link's tests, the kept cases, small searches of a link and of a chain, the
+#                   planted bugs against the search, and forty random runs,
 #                   under gcc with the sanitizers and under clang
 #   make clean
 CXX      ?= g++
 COMMON   := -std=c++20 -fno-exceptions -fno-rtti -Wall -Wextra -Werror -MMD -MP
 OPT      := -O2 -g
 DEBUG    := -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer
-LIB      := link_end.cpp bench.cpp
-PROGS    := test_header test_link linkcase linksearch
+LIB      := link_end.cpp bench.cpp node.cpp chain.cpp
+PROGS    := test_header test_link linkcase linksearch linkrun
 VECTORS  ?=
 
 all: $(PROGS:%=build/%)
@@ -32,6 +33,9 @@ check: $(PROGS:%=build/san/%) $(PROGS:%=build/clang/%) $(PROGS:%=build/%)
 	build/san/linksearch --rules proposed --packets 1 0 1 0 --damage 1 | tail -1
 	build/clang/linksearch --rules proposed --packets 1 0 1 0 --damage 2 | tail -1
 	! build/linksearch --rules as_written --damage 1 > /dev/null
+	build/clang/linksearch --chain 2 --cpackets 0 0 1 --damage 0 | tail -1
+	build/san/linkrun --seeds 1 8 --cycles 60000 | grep '^runs'
+	build/clang/linkrun --seeds 9 40 --cycles 100000 | grep '^runs' 
 	./plants.sh 300000 | tail -1
 	@echo "make check: ok"
 

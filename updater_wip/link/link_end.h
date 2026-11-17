@@ -9,6 +9,9 @@
 // lost (this end has lost its place) and answer (the other end has said so); and two more for the restart
 // handshake proposed in QUESTIONS.md (G4): restart (this end has started again) and restart_answer.
 //
+// THE HEADER is HL's of 20 bytes (2026-11-17): every header carries both streams' numbers, acknowledgements, stop
+// and resend, so one status timer and one packet a recovery round serve both.
+//
 // What HL does not say is in Rules (link_params.h), each rule a switch, each argued in WORKER8/QUESTIONS.md.
 // step() runs its three parts in order (receive, timers, send), each seeing what the one before it wrote: where
 // two write one register in the same cycle, the later wins.
@@ -59,7 +62,7 @@ struct Tap {
 struct Events {
     bool rx_good = false, rx_bad_data = false, rx_bad_fields = false, rx_bad_header = false;
     bool delivered = false, refused = false, ahead = false, behind = false;
-    bool went_back = false, zeros_start = false, mode_change = false, restarted = false;
+    bool went_back = false, zeros_start = false, mode_change = false, restarted = false, declared = false;
     int stop_taken[STREAMS] = {-1, -1};     // the stop bit this end took from a packet this cycle, for each stream; -1 for none
     bool any() const { return rx_good || rx_bad_data || rx_bad_fields || rx_bad_header || zeros_start || mode_change; }
 };
@@ -67,7 +70,8 @@ struct Events {
 struct Counts {
     uint64_t sent[8] = {}, rx_good = 0, rx_bad_data = 0, rx_bad_fields = 0, rx_bad_header = 0;
     uint64_t delivered = 0, refused = 0, ahead = 0, behind = 0, went_back = 0, timer_back = 0;
-    uint64_t ack_behind = 0, ack_beyond = 0, rounds = 0, restarts = 0, kept_bad = 0;
+    uint64_t ack_behind = 0, ack_beyond = 0, rounds = 0, restarts = 0, kept_bad = 0, made_wrong = 0;
+    uint64_t bytes_data = 0, bytes_status = 0, bytes_round = 0;   // sent: packets with data; of length 0 in step; a recovery's or a restart's
     uint32_t most_kept = 0;
 };
 
@@ -78,10 +82,10 @@ public:
         uint32_t last = 0;             // the last number received in order, 0 for none yet: the acknowledge field sent
         bool need = false;             // a packet was thrown away: "resend" is owed until the expected one comes
         bool asked = false;            // "resend" has gone out since
+        uint32_t ask_timer = 0;        // cycles since it went: asked again only after p.reask, if the sender is still ahead
         bool stop_sent = false;        // the stop bit in the last header sent
-        bool due = false;              // a status is due
-        bool ack_owed = false;
-        uint32_t stimer = 0;           // G13: cycles since this stream's last header
+        bool ack_owed = false;         // a packet was taken since the last header
+        uint32_t ack_sent = 0;         // the acknowledge field in the last header sent (a planted bug reads it)
         // sending
         uint32_t acked = 0;            // the last acknowledge value taken: the oldest kept is the number after it
         uint32_t next = 1;             // the number that goes on the wire next
@@ -115,7 +119,8 @@ public:
         bool restart = false;          // G4: this end has started again and waits for the answer
         bool restart_answer = false;   // G4: the other end has started again: this end answers
         bool error = false;            // sticky: the link started again under this end, and what it kept is gone
-        uint8_t round = 0;             // a recovery round: 0 the zeros, 1 and 2 the streams' packets
+        uint8_t round = 0;             // a recovery round: 0 the zeros, 1 its packet
+        bool due = false;              // a status is due
         uint32_t status_timer = 0;     // HL's: cycles since the end of the last packet
         bool timer_dead = false;       // a planted bug's
         bool answered = false;         // a planted bug's
@@ -147,9 +152,9 @@ public:
         a(r.rx_state); a(r.rx_count); a(r.rx_bytes); a(r.rx_crc); a(r.zero_run); a(r.rx_hdr); a(r.rx_valid);
         a(r.rx_stream); a(r.rx_length); a(r.rx_hops); a(r.rx_dsum); a.bytes(r.rx_buf, r.rx_buf.size());
         a(r.tx_state); a(r.tx_count); a(r.tx_bytes); a(r.tx_hdr); a(r.tx_stream); a(r.tx_slot); a(r.tx_data); a(r.tx_byte);
-        a(r.lost); a(r.answer); a(r.restart); a(r.restart_answer); a(r.error); a(r.round); a(r.status_timer); a(r.timer_dead); a(r.answered);
+        a(r.lost); a(r.answer); a(r.restart); a(r.restart_answer); a(r.error); a(r.round); a(r.due); a(r.status_timer); a(r.timer_dead); a(r.answered);
         for (auto& st : r.s) {
-            a(st.last); a(st.need); a(st.asked); a(st.stop_sent); a(st.due); a(st.ack_owed); a(st.stimer);
+            a(st.last); a(st.need); a(st.asked); a(st.ask_timer); a(st.stop_sent); a(st.ack_owed); a(st.ack_sent);
             a(st.acked); a(st.next); a(st.tail); a(st.head); a(st.peer_stop); a(st.rtimer); a(st.behind);
             a.bytes(st.meta, st.meta.size()); a.bytes(st.data, st.data.size());
         }
@@ -168,7 +173,8 @@ private:
     void header_end(const In& in);
     void packet_end(const In& in, bool data_ok);
     void good_packet(const In& in, const Header& h);
-    void bad_fields(const Header& h);
+    void bad_fields(const Header& h, bool data_ok);
+    void next_number(unsigned t, uint32_t number);
     void thrown_away(unsigned s, uint32_t number, bool has_data);
     void lose_place();
     void mode_changed(bool was_running);
@@ -179,7 +185,7 @@ private:
     void timers(const In& in);
     void send(const In& in, Taken& t);
     void choose(const In& in, Taken& t);
-    void start_header(const In& in, unsigned s, uint8_t flags, uint8_t reserved, bool data, Kind kind);
+    void start_header(const In& in, unsigned s, uint8_t flags, bool data, Kind kind);
     void packet_sent();
 };
 

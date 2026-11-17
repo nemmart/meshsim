@@ -1,6 +1,7 @@
 # WORKER9 notes: joining the controllers
 
-**Status (2026-11-17): step 1 built (the merge, the shim out); its runner items queued.** Branch `updater-w9`, from
+**Status (2026-11-17): step 1 done (the merge, the shim out), checked here and on the runner (Quests 222 to 226, all
+pass): ready for the integrator to merge into `main`. Step 2, the joint, waits for that (owner).** Branch `updater-w9`, from
 `main` at `1e062236`. Step 1 is checked on the runner and handed to the integrator before step 2 starts (owner).
 
 **The go-ahead (owner, 2026-11-17, 05:26):** "Go ahead with the plan as written."
@@ -245,7 +246,7 @@ integrator did.
 - **The documents:** `CHANGES-v1.37.md` (the shim's row replaced by the sink's), `RUNNING-v1.37.md`, the task's
   comment.
 
-**Checked here** (gcc release, on the merged tree):
+**Checked here** (gcc release unless said, on the merged tree):
 
 | check | result |
 |---|---|
@@ -255,7 +256,18 @@ integrator did.
 | `test_master` with `MESHSIM_UPDATER_CTL` 1, 3 and 7 | 34 pass each |
 | `proof_run divs.frames`, *s* 20: off, `--updater-ctl`, `--updater-ctl-seed 9`, `--cache` | pass: 230,400, 231,424, 232,960 and 230,400 cycles |
 | `fw/build.sh --check` with the pinned toolchain | 18 images equal to `fw/images/`, 5 to `tests/core-programs/elf/` |
+| `./run_tests.sh quick --check`, gcc and clang, the pinned toolchain on `PATH` | **all passed** with both; no log differs; `fw-build` run and equal; one step skipped (`tracer-block`: the workloads' data is not here). For clang, its sanitizer runtime (`libclang-rt-18-dev`) was installed on this machine first: without it `suite_bus`'s debug build does not link, as WORKER7 found |
 | `fw_teeth.sh`: WORKER7's 20 bugs (`master:` 18, `host.h:` 2), with the pinned toolchain | **20 of 20 caught** (4 of them by the simulator's stop on an undefined case) |
+
+**On the runner,** at `f542bb10` (the tasks made by `updater_wip/tasks/v137-check/make_task.sh`):
+
+| Quest | item | result |
+|---|---|---|
+| 222 | `suites`, every setting off: `./run_tests.sh all --check` | **pass.** Every step's log as before. **The 37 proof runs' cycles are Quest 220's, to the cycle,** and `proof-numbers.md` (the master's wakes and time awake, the frames' figures) is the same file byte for byte. `fw-build` skipped: the runner has no xPack toolchain (it ran here, above) |
+| 223 | `check`: `make check` from a clean tree, debug and release, gcc and clang, TSan | **pass** (1,187 s) |
+| 224 | `suites-ctl`: every step with the Updater on its controller, fed by the forward count, on its test LPDDR and stand-in | **pass:** the 37 proof runs, every image against gold's |
+| 225 | `suites-ctl-varied`: as 224, the test pieces' timing varied | **pass** |
+| 226 | `suites-cache`: the proof steps and the Tracer alone on the cache's controller | **pass:** the 37 runs, `tracer-block-cache`'s six; the cache's figures in `cache-figures.txt` |
 
 ### The toolchain
 

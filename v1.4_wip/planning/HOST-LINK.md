@@ -392,6 +392,15 @@ A receiver expects one number next on a link: the one after the last packet it t
 - **If the packet sent again fails the same way,** the sender made it so, and asking again cannot help. † At the
   second time running, on the same packet number, **the receiver starts the link again** ("Starting a link
   again"), with the error.
+  - **How "the same packet again" is known: one flag** in each receiver. It is set by a packet that carries the
+    number expected, passes both checks and fails a field test. It is cleared only when a packet is taken. If it
+    is already set when the same happens again, that is the second time.
+    - Good packets that arrive behind the wrong one do not clear it: they are ahead of the number expected, so
+      they are thrown away, not taken. With 5 made wrong and 6 and 7 good, the receiver throws away 5, 6 and 7,
+      the sender goes back, and the 5 sent again is the next packet the receiver looks at.
+    - The packet's checksums cannot be used to know it again: its header is written afresh when it is sent
+      again, so the header CRC differs. The number expected already says which packet it is.
+  - **The error is Ingress/Egress's,** `format_error`, and so its tile's (owner).
   - Noise does not do this twice running: each time needs a damaged header to pass a 32-bit CRC.
   - The error is the point, not the restart. A sender that makes a wrong packet is broken, by a bug or by a chain
     wired longer than 16, and nothing saves the data. What is left to choose is a link that hangs, one that

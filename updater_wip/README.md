@@ -36,11 +36,16 @@ end first, with software black boxes, and the real controllers afterwards.
    redesigned; Egress. `v1.4_wip/planning/DESIGN-NOTES-2026-11-16.md`, section 21, has where each stands and the
    order.
 
+**The milestone this is all heading for is `planning/MILESTONE-v1.37.md`** (owner, 2026-11-17): two ASICs on a
+chain behind a driver, each building its images with the real controllers, tracing its segment, and sending a reply
+frame back. It has the picture, the steps and who does each.
+
 ## What is here
 
 | folder | what |
 |---|---|
 | `pipeline/gold/` | gold with the frames (`frames`, `frames-read`, `frames-images`; WORKER1) and the link's packets (`packets`, `packets-read`, the vectors in `test/packets/`; WORKER2): a copy of `v1.36/pipeline/gold/` with their work; its `README.md` says how to run it |
+| `planning/MILESTONE-v1.37.md` | the plan for v1.37: the daisy chain, the driver, the reply frame, the order of the work |
 | `planning/sessions/` | the sessions, numbered from WORKER1 in a series of their own |
 | `../v1.37_wip/` | the simulator and firmware for v1.37: v1.36 copied unchanged (main, 67aaeb86), then WORKER3's work |
 | `tasks/v137-check/` | the same for v1.37, with the proof steps: the host's side made on the runner, then `proof-real`, `proof-matrix` and `proof-29` (WORKER3) |

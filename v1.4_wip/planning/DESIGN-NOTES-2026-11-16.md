@@ -696,3 +696,23 @@ Written at the owner's request, so that a session starting cold can pick this up
 - **WORKER7, for `word_port.h`:** name the four methods the slot wires.
 - Earlier lists still open: WORKER3's and WORKER4's for `HOST-FRAMES.md` (five items); the figure
   `fig_m1_lpddr_path.svg`, which still shows the Updater on the memory tile.
+
+## 22. The v1.37 milestone (2026-11-17, about 4 a.m.)
+
+The owner set the next milestone; the plan is `updater_wip/planning/MILESTONE-v1.37.md`.
+
+- **v1.37:** the cache's and the Updater's state machines simulated in full; AXI a model; Ingress/Egress and the
+  UART a black box; the master tile's real firmware; no RW engine.
+- **A reply:** at the end of its segment the master writes a frame out that shows it ran. † Proposed: the
+  Tracer's end-state record with a few counts, which the driver can check exactly against gold's record *s* + 1.
+- **The daisy chain made to work:** DRIVER ↔ ASIC0 ↔ ASIC1, the ASICs running segments 0 and 1.
+  - Three processes, joined by shared memory, with a sync every 64 cycles (owner). † The wire's delay is the
+    window, so a run is the same to the cycle every time.
+  - `--clients 2 --client 0` or `1` (owner).
+  - The driver reads gold's data, sends the packets, and checks what comes back (owner).
+- † Left out of the black box for now: acknowledgements, sending again, recovery.
+- **The 10% question is closed** (owner): a proof is 50 to 100 ms, 50 to 100 million cycles, and the master is
+  awake 200,000 to 315,000 of them before the hand-over, 0.2 to 0.6%. On a faster link the share of the set-up
+  window alone rose to 21% (Quest 215), only because the same work was divided by less time.
+- Quests 213 to 216 pass: WORKER7's forward count on the 37 proof runs, `make check` and the faster links; and
+  WORKER6's controller in the chip on the 37 proof runs.

@@ -35,17 +35,18 @@ void Updater::reset(int64_t t) {
 // ================================================================================================ the queues
 // A push into a full queue is dropped and sets ERRORS.queue_overrun.
 void Updater::push(int64_t, Queue& q, unsigned, uint64_t lo, uint64_t hi) {
-    if (q.n == QUEUE) { q.dropped++; errors_ |= ERR_QUEUE_OVERRUN; return; }
-    const unsigned at = (q.head + q.n++) % QUEUE;
+    if (q.n == q.size) { q.dropped++; errors_ |= ERR_QUEUE_OVERRUN; return; }
+    const unsigned at = (q.head + q.n++) % q.size;
     q.lo[at] = lo; q.hi[at] = hi;
     q.pushed++;
 }
-// A credit is returned each time 128 entries have left the queue since the last return.
+// A credit is returned each time half the queue's entries (256 for the segment queue, 128 for the free page queue)
+// have left it since the last return.
 void Updater::pop(int64_t t, Queue& q, unsigned credit, uint64_t& lo, uint64_t& hi) {
     lo = q.lo[q.head]; hi = q.hi[q.head];
-    q.head = (q.head + 1) % QUEUE; q.n--;
+    q.head = (q.head + 1) % q.size; q.n--;
     q.popped++;
-    if (++q.left == HALF) { q.left = 0; ev.post(t, credit); }
+    if (++q.left == q.half) { q.left = 0; ev.post(t, credit); }
 }
 
 void Updater::accept(int64_t t, int src, uint32_t offset, int size, uint64_t lo, uint64_t hi) {

@@ -168,9 +168,9 @@ struct ChipProof final : segment::Proof {
             Updater& u = m.updater();
             units::IngressEgress& link = m.ingress();
             std::printf("%s: stopped with: the Updater busy %d, WORD_COUNT %u, PAGE_COUNT %u, %u segment words and %u free pages queued, %u dones; the link: %llu packets "
-                        "and %llu words arrived, %u words read out, %u and %u packets waiting; %u pages queued by the master\n", name, int(u.busy_), u.word_count_,
+                        "and %llu words arrived, %u words read out, %u and %u words waiting; %u pages queued by the master\n", name, int(u.busy_), u.word_count_,
                         u.page_count_, u.segment_entries(), u.free_page_entries(), unsigned(done.size()), (unsigned long long)link.link_packets,
-                        (unsigned long long)link.link_words, R[MR_LINK_WORDS], unsigned(link.link_stream[0].n), unsigned(link.link_stream[1].n), R[MR_PAGES_QUEUED]);
+                        (unsigned long long)link.link_words, R[MR_LINK_WORDS], link.link_stream[0].held, link.link_stream[1].held, R[MR_PAGES_QUEUED]);
         }
     }
 

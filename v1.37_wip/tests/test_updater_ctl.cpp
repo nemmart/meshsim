@@ -666,3 +666,26 @@ TEST(ctl_figures_a_page) {
         CHECK(b.violations().empty());
     }
 }
+// A whole proof's runs on gold's fixtures, the controller behind the shim against the black box, the timing fixed:
+// each run's cycles and where the controller waited. Prints the table; the runs are checked as ctl_gold_against_*.
+TEST(ctl_figures_runs) {
+    for (const char* name : {"kin-big", "divs", "jumps-base"}) {
+        frames::File file;
+        std::string err;
+        if (!file.read(std::string("tests/updater/") + name + ".frames", err)) { ::test::fail(__FILE__, __LINE__, "%s", err.c_str()); return; }
+        std::vector<ctl_bench::Step> steps;
+        if (!ctl_bench::plan(file, 64, 20, steps, err)) { ::test::fail(__FILE__, __LINE__, "%s", err.c_str()); return; }
+        Bench<Updater> a;
+        Bench<UpdaterTop> b;
+        ctl_bench::Images ia, ib;
+        std::printf("  %s, s 20: %-18s %6s %8s %8s %6s %6s  %s\n", name, "run", "words", "cycles", "bb's", "reads", "writes", "the controller waiting: data, pages, memory");
+        for (size_t k = 0; k < steps.size(); k++) {
+            CHECK(ctl_bench::execute(a, file, steps, k, ia));
+            CHECK(ctl_bench::execute(b, file, steps, k, ib));
+            const auto& x = a.accounts.back();
+            const auto& y = b.accounts.back();
+            std::printf("  %*s %-18s %6u %8u %8u %6u %6u  %u, %u, %u\n", int(std::strlen(name) + 6), "", steps[k].name.c_str(), steps[k].run.words, y.cycles,
+                        x.cycles, y.pages_read, y.pages_written, y.stall_data, y.stall_pages, y.stall_memory);
+        }
+    }
+}

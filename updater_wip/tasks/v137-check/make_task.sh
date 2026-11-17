@@ -45,7 +45,7 @@ cat <<HEAD
 # ./run_tests.sh all --check: every v1.36 step against its v1.36 log, and v1.37's own steps, the proof steps with them;
 # the proof runs' figures. check = make check from a clean tree (debug and release, gcc and clang, TSan). faster = the
 # same host's side, then the 2^29 runs and the matrix with the link at 2, 4 and 8 bytes a cycle, and the matrix with the
-# master's threshold at 32, 64 and 128 (WORKER4), with their figures.
+# link as fast as taken (WORKER7; WORKER4's thresholds before), with their figures.
 # From an embedded kit. Writes only results/$NAME/. Scratch in /tmp, removed first and at the end. Safe to re-run.
 set -u
 cd "\$(dirname "\$0")/.."

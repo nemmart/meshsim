@@ -38,7 +38,6 @@ struct Case {
     std::map<std::string, std::string> gold;     // gold's reference for this s: an image's name to its SHA-256 (hex)
     int cycles_per_byte = 1;                     // the link's rate (0: as fast as taken)
     int link_rate = 1;                           // or bytes a cycle: 1, 2, 4, 8 (WORKER4)
-    uint32_t threshold = 0;                      // the master's threshold after a frame's header word (system_config; 0: its 256)
     int updater_lookup = 0;                      // not 0: the Updater's cycles for a look-up, in place of its 6 (a slow memory side)
     // A run that must end early, and how; the proof's checks are then that it did so, and nothing else.
     //   trap  in the master's error path, by an error bit's NMI: with these ERRORS of Ingress and of the Updater;
@@ -64,6 +63,7 @@ struct Numbers {
     uint64_t link_room_cycles = 0;               // the cycles the link waited for room at Ingress
     int64_t link_last_at = 0;                    // the cycle the link's last byte arrived in
     uint64_t master_awake_handed = 0;            // the master's cycles awake to the done of segment s's run (the hand-over)
+    uint64_t link_forwarded = 0, link_discarded = 0;   // the background's words the forward count sent to the Updater, and dropped
 };
 
 // gold's reference file (`gold frames-images FRAMES S`, tests/updater/NAME-sS.images.txt): each line a name and a

@@ -151,6 +151,24 @@ matrix at 2, 4 and 8, beside WORKER4's (Quest 206 and 208):
 4. The harness's figures; `all --check` here; the runner's tasks.
 5. The figures, `RUNNING-v1.37.md`, `CHANGES-v1.37.md`, `REPORT.md` with the lists for II, UI and `word_port.h`.
 
+## 9. As built, where it differs from the plan
+
+- **The link's arrivals are taken at the end of the cycle** (`settle`), after the port's move, not in Ingress's step.
+  With the move at the edge, a word sent in t made room only after the step of t, and the link started a cycle later
+  than after a DMA's take. Now the next packet's bytes start in the cycle after the one that made room, whichever
+  way out made it, as WORKER4 had it for the DMA. Every timing test of `test_ingress_link` is unchanged.
+- **The firmware merges drops in a row into one count** (`skip`, then `drop_now` before the next copy or at the
+  frame's end), which O3 needs: the only place two drops meet is frame 8 with log *s* empty. `divs` at *s* 60 has
+  such a log, but no log after it; `test_master`'s `master_divs_empty_log` gives segments 61 to 63 a row each
+  (values no ASIC at *s* 60 uses), and the planted "drops in a row as two counts" is caught there and nowhere else.
+- **The master stamps its cycles awake at the first frame** (`MR_AWAKE_FIRST_FRAME`, word 123; it counts its own
+  cycles in WFI), so that the figures can set the boot (`map_format`'s 128 KB and the LOADs, about 86,000 cycles)
+  apart from the frames.
+- **`test_master`'s timing variants:** `master_orders_with_the_timing_varied` (every fixture at five timings: the
+  link from 4 cycles a byte to as fast as taken, 8 bytes a cycle, the Updater's look-up 6, 300 or 3,000 cycles)
+  replaces WORKER4's threshold sweeps.
+- **The runner's `faster` item** runs the matrix with the link as fast as taken in place of the thresholds.
+
 ## Choices
 
 | | choice | why; the alternative |

@@ -9,8 +9,8 @@ Commands run from this folder.
 
 | | |
 |---|---|
-| the input | **a packet file:** gold's frame file (`HOST-FRAMES.md`) wrapped in the link's packets (`HOST-LINK.md`), read by Ingress at a byte a cycle (or 2, 4, 8: `--link-rate`) into a buffer of 1,024 words a stream. **N and s:** how many ASICs the proof is cut for, and which segment this one runs. No frame carries them |
-| the master tile | runs `fw/cc/master.c`: reads the frames out of Ingress, keeps the page map, drives the Updater through its runs, and hands the tracer tile segment s. It wakes by **the threshold** (`INGRESS-INTERFACE.md`; WORKER4): 1 word between frames, after a frame's header word the smaller of 256 (a credit of the Updater's segment queue) and the words left in the frame, so that a wake, a credit and a transfer go together |
+| the input | **a packet file:** gold's frame file (`HOST-FRAMES.md`) wrapped in the link's packets (`HOST-LINK.md`), read by Ingress at a byte a cycle (or 2, 4, 8: `--link-rate`) into a queue of 512 words a stream (8 KB, pencilled in). **N and s:** how many ASICs the proof is cut for, and which segment this one runs. No frame carries them |
+| the master tile | runs `fw/cc/master.c`: reads the frames out of Ingress, keeps the page map, drives the Updater through its runs, and hands the tracer tile segment s. **The forward count** (`INGRESS-INTERFACE.md`; WORKER7): it copies a frame's header word by Ingress's DMA, and for a frame of update words starts the Updater's run and writes the frame's length to `DMA_FORWARD_COUNT` once: Ingress sends the words to the Updater's word port itself. Frames 7 and 8 are dropped up to the ASIC's own record or log, which is copied, and the rest dropped |
 | Ingress's host side, the Updater | software black boxes behind their real registers (`INGRESS-INTERFACE.md`, `UPDATER-INTERFACE.md`) |
 | the Updater | builds the memory images in LPDDR: the program image, the jump table, the cycle-0 image, the start image of segment s, the Tracer's copy, the final image |
 | the tracer tile, the compute tiles | v1.36's, unchanged: the Tracer traces segment s on the Tracer's copy, window by window; each window is delivered to its tile and replayed |
@@ -20,7 +20,7 @@ Commands run from this folder.
 
 ```
 build/clang-suite/proof_run FRAMES --asics N --segment S [--windows W] [--rows R] [--gold IMAGES.txt]
-                            [--packets FILE] [--recorded RUN] [--fast-link] [--link-rate B] [--threshold W]
+                            [--packets FILE] [--recorded RUN] [--fast-link] [--link-rate B]
                             [--limit CYCLES] [--quiet]
 ```
 
@@ -34,14 +34,14 @@ build/clang-suite/proof_run FRAMES --asics N --segment S [--windows W] [--rows R
 | `--recorded RUN` | `evm-zone-23` or `cyclone-22`: every row, record and stream of windows 64 S to 64 S + 63 against the recorded files of `MESHSIM_INPUTS`, as `segment-real` |
 | `--fast-link` | the link's bytes as fast as the master takes them, in place of a byte a cycle |
 | `--link-rate B` | the link at B bytes a cycle: 1 (the default, HL's 1 GB a second at 1 GHz), 2, 4, 8 |
-| `--threshold W` | the master's threshold after a frame's header word, 1 to 1,024 words, in place of 256 (a word placed with its image, `system_config`). The images are the same at any |
 
 It prints `run_chip`'s lines (`segment_bench.h`) and the proof's (`proof_bench.h`), then each of the Updater's runs
 (the cycle of its done, its cycles busy, of them waiting on data, on pages and on memory, the pages and half pages it
 read and wrote, `PAGE_COUNT` at its done), the link's packets, the pages the page map marks, and the cycles the
-master's core was awake; then the threshold and the link's rate, the master's wakes and Ingress's transfers in all
-and to the hand-over, its cycles awake to the hand-over, the cycle of the link's last byte and the cycles it waited
-for room in Ingress, and each frame's wakes and transfers. It exits 1 on any failed check.
+master's core was awake; then the link's rate, the master's wakes and Ingress's DMA transfers in all and to the
+hand-over, the count's stores, the words forwarded and dropped, its cycles awake to the hand-over and their share of
+the hand-over's cycle, the cycle of the link's last byte and the cycles it waited for room in Ingress, its cycles
+awake at the first frame (the boot), and each frame's wakes and transfers. It exits 1 on any failed check.
 
 **The checks** (`tests/proof_bench.h` has the list): the master's status and every request answered; `PAGE_COUNT` 0
 at every done; no error bit anywhere; the link read to its end; every image as its run ended against gold's, and
@@ -81,8 +81,9 @@ About 30 million cycles, half a minute.
 committed (`tests/updater/`, with `make_fixtures.sh`, which makes them again where there is a JDK), cut for N 64 into
 segments of 50 rows. It runs them at several s, then the error path (a damaged packet, a packet left out, a page count
 too small: the master's NMI, its results, its exit), a file cut inside a packet, and three runs that must fail; and
-the threshold (WORKER4): `kin-big`'s data image of 1,584 words, every guest at thresholds of 1 to 1,024, frames
-ending inside packets, links slower and faster than a byte a cycle.
+the forward count (WORKER7): `kin-big`'s data image of 1,584 words, three times Ingress's queue; `divs` at s 60, whose
+log is empty after logs that are not; every guest with the timing varied (the link from 4 cycles a byte to as fast
+as taken, the Updater's memory side fast and slow); frames ending inside packets; links of 2, 4 and 8 bytes a cycle.
 
 ```
 build/clang-suite/test_master                      # all of it, 20 seconds

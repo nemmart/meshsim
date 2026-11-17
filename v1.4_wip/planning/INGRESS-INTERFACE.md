@@ -60,6 +60,46 @@ Ingress/Egress is the master tile's peripheral 1 (`v1.36/spec/machine-spec.md` 1
 - † `…_WORDS` holds the packet's length until the packet has been read out in full.
 - The two streams are independent: a packet waiting on one does not hold the other.
 
+## Waking for more than a packet: the threshold
+
+**Decided (owner, 2026-11-16, after v1.37 ran).** v1.37's firmware wakes for every packet, about 330 cycles awake
+against a packet's 528 on the link, so it could keep up with a link about 1.6 times faster and no more. The cure is
+not larger packets (`HOST-LINK.md`, "The size of a packet"): **the master tile tells Ingress how many words to gather
+before it wakes it** (owner).
+
+| where | register | access | meaning |
+|---|---|---|---|
+| word 82 † | `FOREGROUND_THRESHOLD` | R/W | the words that must be waiting on the foreground stream before its service flag is posted; 1 at the reset |
+| word 83 † | `BACKGROUND_THRESHOLD` | R/W | the same for the background |
+
+What it changes above:
+
+- **`…_WORDS` is the words waiting on the stream,** in every packet that has arrived and passed its checks, not the
+  first packet's alone.
+- **A service flag is posted when the words waiting reach the stream's threshold.**
+- **One transfer of the DMA may run across packets,** up to the words waiting.
+- **The rule for a service flag stands as the owner worded it:** after a flag, no further flag until the core has
+  read out the words the register showed. † Then, and whenever the threshold is written, the stream is looked at
+  again.
+
+**The firmware, as the owner put it:**
+
+1. It says: 1 word to start.
+2. It is woken, and reads the frame's header word. Now it knows how many words are coming.
+3. If the frame is a big one, which it almost always is, it says: wake me when 2 KB, 128 words, is available.
+4. At the frame's end it says 1 again.
+
+- **The threshold is never more than the words left in the frame.** The firmware knows them from the header word,
+  so the tail of a frame needs no timer: the threshold is the smaller of 128 and what is left.
+- **128 words is one credit of the Updater's segment queue,** so a wake, a credit and a transfer go together.
+- **† Ingress holds at least 256 words of each stream,** so that a threshold can always be reached. v1.37's black
+  box holds four packets.
+- **The foreground stream keeps its threshold at 1.**
+- **The firmware's cost no longer depends on a packet's size,** so the size can be chosen for the link alone.
+- **Not in v1.37 as merged,** whose Ingress and firmware work a packet at a time.
+- **Open:** with a read-out that runs across packets, the firmware can no longer check that a frame's header word
+  is a packet's first word, as v1.37's does. Either Ingress shows where packets start, or the check is dropped.
+
 ## Reading words out: the DMA
 
 The core tells Ingress to copy the next *n* words of a stream's packet to an address (owner).

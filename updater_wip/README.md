@@ -17,11 +17,12 @@ end first, with software black boxes, and the real controllers afterwards.
    the frames into the memory images. **Done** (WORKER1).
 2. **The packetizer** wraps gold's frame file in the link's packets (`v1.4_wip/planning/HOST-LINK.md`). **Done**
    (WORKER2).
-3. **v1.37:** the simulator is started with the packet file; the master tile's real firmware reads the frames out
+3. **v1.37, done** (WORKER3; `v1.37_wip/RUNNING-v1.37.md` says how to run it): the simulator is started with the packet file; the master tile's real firmware reads the frames out
    of Ingress and drives the Updater; the Tracer traces on the images the Updater built. Ingress and the Updater
    are software black boxes behind their real registers (`INGRESS-INTERFACE.md`, `UPDATER-INTERFACE.md`); the cache
    is v1.36's software model; nothing runs on the memory tile. WORKER3, in `v1.37_wip/`.
-4. **The Updater's real controller, then the cache's,** each replacing its black box. Not planned yet.
+4. **The Updater's real controller, then the cache's,** each replacing its black box. Not planned yet. Ingress and
+   the firmware also want the threshold (`v1.4_wip/planning/INGRESS-INTERFACE.md`), which v1.37 does not have.
 
 ## What is here
 
@@ -30,6 +31,7 @@ end first, with software black boxes, and the real controllers afterwards.
 | `pipeline/gold/` | gold with the frames (`frames`, `frames-read`, `frames-images`; WORKER1) and the link's packets (`packets`, `packets-read`, the vectors in `test/packets/`; WORKER2): a copy of `v1.36/pipeline/gold/` with their work; its `README.md` says how to run it |
 | `planning/sessions/` | the sessions, numbered from WORKER1 in a series of their own |
 | `../v1.37_wip/` | the simulator and firmware for v1.37: v1.36 copied unchanged (main, 67aaeb86), then WORKER3's work |
+| `tasks/v137-check/` | the same for v1.37, with the proof steps: the host's side made on the runner, then `proof-real`, `proof-matrix` and `proof-29` (WORKER3) |
 | `tasks/v136-check/` | the generator of v1.36's own checks as Quest tasks: the suites, with the small inputs built on the runner, and `make check` |
 
 The design documents stay in `v1.4_wip/`: the three design notes, `HOST-FRAMES.md`, `HOST-LINK.md`,
@@ -49,4 +51,4 @@ into `main`.
 |---|---|---|
 | WORKER1 | gold writes the host's frames as `HOST-FRAMES.md` stands after the owner's rulings; the reader with its checks; the reference images on copy-on-write trees, with page counts checked two ways; both workloads at 2²⁹ (Quests 197 and 200). Closed and merged 2026-11-16 | `WORKER1-REPORT.md`, `WORKER1-NOTES.md`, `WORKER1-QUESTIONS.md`, `WORKER1-NEXT.md` (the rulings), `WORKER1-tasks/` |
 | WORKER2 | the packetizer (`packets`), its reader (`packets-read`) and the test vectors (`pipeline/gold/test/packets/`), the two sides sharing no code; every frame file round-trips, every single-bit change of the small files is refused, both workloads at 2²⁹ (Quest 201); the packets add 3.13%. Closed and merged 2026-11-16 | `WORKER2-REPORT.md`, `WORKER2-NOTES.md`, `WORKER2-QUESTIONS.md`, `WORKER2-tasks/` |
-| WORKER3 | v1.37 in `v1.37_wip/`: the Ingress and Updater black boxes, the master tile's firmware with the page map, and the Tracer running on the images the Updater built | running, on branch `updater-w3` (`WORKER3/`) |
+| WORKER3 | v1.37 in `v1.37_wip/`: the Ingress and Updater black boxes behind their real registers, the master tile's firmware (`fw/cc/master.c`) with the page map, and the Tracer running on the images the Updater built from a packet file; 37 proof runs on both workloads, small and at 2²⁹, every image equal to gold's; all of v1.36's checks still pass (Quests 202 to 205). Closed and merged 2026-11-16 | `WORKER3-REPORT.md`, `WORKER3-NOTES.md`, `WORKER3-QUESTIONS.md`; its tasks are `tasks/v137-check/` |

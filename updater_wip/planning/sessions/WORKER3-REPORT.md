@@ -1,5 +1,8 @@
 # WORKER3 report: v1.37, the Tracer on images the Updater built
 
+*Closed and merged into `main` on 2026-11-16. The files this one calls `NOTES.md`, `REPORT.md` and `QUESTIONS.md` are
+`WORKER3-NOTES.md`, `WORKER3-REPORT.md` and `WORKER3-QUESTIONS.md`, beside it; its prompt is in the repository's history.*
+
 Branch `updater-w3`. One section a stage, added as each ends. The plan and the choices are in `NOTES.md`; the
 questions and the owner's answers in `QUESTIONS.md`. Paths without a folder are in `v1.37_wip/`. II is
 `INGRESS-INTERFACE.md`, UI `UPDATER-INTERFACE.md`, HF `HOST-FRAMES.md`, HL `HOST-LINK.md`.

@@ -358,3 +358,50 @@ The owner's plan for the next version, on v1.36 (he called it a moving target, a
 - **A thing to know about v1.36's simulator:** the RW engine's LPDDR and the file store's LPDDR are two separate
   models. The Tracer's images are in the file store, and the memory tile's read and write requests do not reach it.
 - **Open:** where the work lives. Proposed: `v1.37_wip/`, a copy of v1.36, as earlier versions were made.
+
+## 15. v1.37 runs, and what it showed
+
+**v1.37 works end to end** (`updater_wip`, WORKER3, merged into `main` the same day; its report is
+`updater_wip/planning/sessions/WORKER3-REPORT.md`). Given a packet file, *N* and *s*, the chip builds the images,
+traces segment *s* on them and replays it.
+
+- **What passes:** `segment-real`'s three segments from packet files; 24 runs on the small inputs (raw and LRU,
+  with and without a base table, *s* = 0, 1 and a middle one); 10 runs at 2²⁹ on both workloads; and everything
+  v1.36 passed (Quests 204 and 205 on the owner's runner). In every run each image equals gold's, `PAGE_COUNT` is 0
+  at every `done`, and no error bit is set.
+- **The tracer tile's firmware did not change.** The master tile holds its load back and sends its segment's
+  record, advice and roots in front of its program.
+- **The packetizer and the Ingress black box agree,** written apart from the documents (WORKER2 and WORKER3).
+
+What the figures say (the simulator's cycles, with the black boxes' timing, not the RTL's):
+
+| | EVM Zone 2²⁹ | Cyclone 2²⁹ |
+|---|---|---|
+| the packet file | 4.4 MB | 16.9 MB |
+| cycles to build the images, about | 4 M | 17 M |
+| cycles for the whole run | 27 to 31 M | 31 to 42 M |
+| pages of LPDDR a proof takes | about 1,000 | about 4,000 |
+| the Updater's busy cycles spent waiting for data | 57% | 60% |
+| the master tile's core awake | 9 to 10% | 25 to 34% |
+
+- **The link sets the pace of the images;** the Updater hardly ever waits for pages.
+- **Tracing dominates:** about 24 to 26 M cycles for a segment of 2²² rows.
+- **The third run of the memory segments was worth having** (section 11's proposal): the Tracer starts at the second
+  run's `done`, and the third overlaps tracing entirely.
+
+What it left for the design:
+
+| finding | where it stands |
+|---|---|
+| the firmware wakes for every packet, about 330 cycles against the packet's 528 on the link | **Decided (owner): a threshold.** The master tile tells Ingress how many words to gather before waking it: 1 word to start, then 128 once the frame's length is known (`INGRESS-INTERFACE.md`) |
+| the size of a packet | **Decided (owner): small,** 512 bytes or perhaps 256, because every hop of the daisy chain and the FPGA can hold a foreground packet behind a background one. 1,024-byte packets and a second, one-line link for the foreground were considered and not taken (`HOST-LINK.md`) |
+| the last segment has no record *N* to check its end state against | open |
+| a segment's rows are in no frame | open; nothing needs it while a segment is always 2²² rows |
+| the decode table and ROM, the templates and the tiles' firmware are in no frame | still placed by the harness; whether they become frames is open |
+| frame 8's logs start on a 128-bit word only because *N* is a multiple of 4 | to be said in `HOST-FRAMES.md` |
+| what a run does after an error; the unit of a free page queue entry | to be said in `UPDATER-INTERFACE.md` |
+
+The report's full lists, about fifteen points over the four documents, are not yet worked in.
+
+**Next:** the Updater's real controller in place of its black box, then the cache's. v1.37's Ingress and firmware
+also want the threshold.

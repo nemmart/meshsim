@@ -84,6 +84,27 @@ byte sent. The data follows, 16 bytes a word.
   acknowledged are outstanding, and that is a small window.
 - **The first byte on the link is never zero** (owner): it holds the stream, which is never 0.
 
+## The size of a packet
+
+- **Decided (owner, 2026-11-16): packets are small.** At most 512 bytes of data, as above; perhaps 256.
+- **Why:** a background packet delays a foreground packet that arrives behind it. The link is not one hop: there is
+  the daisy chain of ASICs, and the FPGA, and each hop that forwards packets can hold a foreground packet behind
+  one background packet (owner: "it's not just local cost").
+- **What it costs the foreground:** on one hop, up to 0.53 µs a message with 512-byte packets. The owner's figure
+  for a proof is perhaps 800 rounds; "2 ms probably covers it".
+- **A sender may always cut smaller:** the format takes any length up to 32 words. At 256 bytes the wait a hop
+  halves and the headers cost 6% of the link instead of 3%.
+
+Considered and not taken:
+
+| | what it is | why not |
+|---|---|---|
+| 1,024-byte packets | half as many packets for the firmware to wake for | twice the foreground's wait at every hop. The firmware's cost is met by the threshold instead (`INGRESS-INTERFACE.md`) |
+| a second link for the foreground, one LVDS line beside the eight | no waiting behind bulk data at all | a line carries an eighth of the rate, so any message over about 75 bytes is slower than on the shared link at its worst; with no update running the shared link is eight times faster; and it costs pins, a second receiver, and finding byte boundaries on one line |
+
+**Open:** the chain itself: how many ASICs are on it, and whether a hop forwards whole packets or passes bytes
+straight through. That decides the real delay a hop.
+
 ## The two checks
 
 1. **The data is checksummed first,** and the result goes into the header (owner).

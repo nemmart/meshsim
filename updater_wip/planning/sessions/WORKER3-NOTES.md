@@ -1,5 +1,8 @@
 # WORKER3 notes: v1.37, the Tracer on images the Updater built
 
+*Closed and merged into `main` on 2026-11-16. The files this one calls `NOTES.md`, `REPORT.md` and `QUESTIONS.md` are
+`WORKER3-NOTES.md`, `WORKER3-REPORT.md` and `WORKER3-QUESTIONS.md`, beside it; its prompt is in the repository's history.*
+
 Status, 2026-11-16: **all three stages done** (`REPORT.md`): the units, each tested alone; the master tile's
 firmware, on the whole chip with gold's guests; the real workloads from packet files, small and at 2²⁹. Branch `updater-w3`, main merged in at `8385dacd`. The owner's go-ahead and rulings
 are in section 9; what was built differently from this plan is in section 11.

@@ -1,5 +1,8 @@
 # WORKER3 questions
 
+*Closed and merged into `main` on 2026-11-16. The files this one calls `NOTES.md`, `REPORT.md` and `QUESTIONS.md` are
+`WORKER3-NOTES.md`, `WORKER3-REPORT.md` and `WORKER3-QUESTIONS.md`, beside it; its prompt is in the repository's history.*
+
 Each with the evidence and what I take meanwhile. None stops the work.
 
 **All three are answered** (the owner, 2026-11-16): Q1, `HOST-LINK.md` on main now defines the CRC-32C as taken

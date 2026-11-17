@@ -41,8 +41,9 @@ A header word of 128 bits, then 0 to 32 words of data.
 | [3:0] | stream | 1 foreground, 2 background; never 0 |
 | [7:4] | flags | below |
 | [15:8] | length | the data's length in 128-bit words, 0 to 32 |
-| [35:16] | packet number | this packet's number on its stream: the first is 1, they run to 0xFFFFE, then 1 again |
-| [55:36] | acknowledge | the last packet number received in order on this stream; 0 for none yet |
+| [33:16] | packet number | 18 bits (owner, 2026-11-17). This packet's number on its stream: the first is 1, they run to 0x3FFFE, then 1 again |
+| [51:34] | acknowledge | 18 bits. The last packet number received in order on this stream; 0 for none yet |
+| [55:52] | hops | the ASICs that have forwarded this packet along the chain (owner, 2026-11-17; below). Whoever makes a packet sends 0 |
 | [63:56] | reserved | 0 |
 | [95:64] | data checksum | over the data |
 | [127:96] | header CRC | over bits [95:0] of this word |
@@ -62,8 +63,9 @@ byte sent. The data follows, 16 bytes a word.
 | 0 | the stream in its low four bits, the flags in its high four. A background packet with no flags is 0x02 |
 | 1 | the length, 0 to 32 |
 | 2, 3 | packet number bits 0 to 15, low byte first |
-| 4 | low four bits: packet number bits 16 to 19; high four bits: acknowledge bits 0 to 3 |
-| 5, 6 | acknowledge bits 4 to 19, low byte first |
+| 4 | low two bits: packet number bits 16 and 17; high six bits: acknowledge bits 0 to 5 |
+| 5 | acknowledge bits 6 to 13 |
+| 6 | low four bits: acknowledge bits 14 to 17; high four bits: hops |
 | 7 | reserved, 0 |
 | 8 to 11 | the data checksum, low byte first |
 | 12 to 15 | the header CRC, low byte first |
@@ -80,8 +82,9 @@ byte sent. The data follows, 16 bytes a word.
     field and does not advance.
 - **Packet numbers are per stream** †, since the streams are flow-controlled apart.
 - **No packet number is 0 or all ones** (owner), so a header word is never all zeros.
-- **About 20 bits of packet number is enough** (owner), which left more bits for the checks. Only packets not yet
-  acknowledged are outstanding, and that is a small window.
+- **18 bits of packet number is enough** (owner; 20 until 2026-11-17, when four bits went to the hops field).
+  Only packets not yet acknowledged are outstanding, and that is a small window. A stream's numbers come round
+  again after 262,142 packets, about 138 MB.
 - **The first byte on the link is never zero** (owner): it holds the stream, which is never 0.
 
 ## The size of a packet
@@ -102,8 +105,32 @@ Considered and not taken:
 | 1,024-byte packets | half as many packets for the firmware to wake for | twice the foreground's wait at every hop. The firmware's cost is met instead by taking it out of the data's path: Ingress forwards the bulk data to the Updater itself (`INGRESS-INTERFACE.md`) |
 | a second link for the foreground, one LVDS line beside the eight | no waiting behind bulk data at all | a line carries an eighth of the rate, so any message over about 75 bytes is slower than on the shared link at its worst; with no update running the shared link is eight times faster; and it costs pins, a second receiver, and finding byte boundaries on one line |
 
-**Open:** the chain itself: how many ASICs are on it, and whether a hop forwards whole packets or passes bytes
-straight through. That decides the real delay a hop.
+## The chain, and the hops field (owner, 2026-11-17)
+
+The ASICs sit on a daisy chain from the FPGA: **probably no more than 4 on one chain** (owner). A packet from the
+host passes through the ASICs before its own; a packet to the host passes through the ASICs between its sender and
+the host.
+
+- **Whoever makes a packet sends it with hops 0:** the host, or an ASIC.
+- **An ASIC that forwards a packet, in either direction:**
+  1. checks it. A packet that fails is not forwarded †;
+  2. adds one to hops;
+  3. computes the header CRC again, over the header as it now is (owner: "always recompute the header CRC").
+  The data and its checksum pass through unchanged.
+- **Towards the host, hops says which ASIC sent the packet:** its place in the chain. The host reads it off the
+  packet, so no ASIC has to know its own place, and Egress along the chain only checks, counts and forwards.
+- **From the host, every ASIC gets the same data, so the field is ignored** (owner). It is not tested, and no
+  value of it is an error. It happens to be the receiving ASIC's own place in the chain.
+- **Why the field is under the header CRC,** although that means computing the CRC again at each hop: one flipped
+  bit in it would credit a packet to the wrong ASIC. A hop already has the CRC's logic, for the check.
+- † Four bits: a chain of up to 16.
+
+**Open:**
+
+- Whether a hop checks the whole packet before it forwards any of it. If so a hop holds a packet for its length,
+  which is what "The size of a packet" assumes.
+- What sending again means along the chain: whether a packet is acknowledged and sent again between neighbours,
+  or between the host and each ASIC, with the packet numbers and acknowledgements then kept for each ASIC.
 
 ## The two checks
 
@@ -143,14 +170,17 @@ result = crc XOR 0xFFFFFFFF
 - **The data checksum** is the CRC-32C of the packet's data, all 16 × length bytes, in the order they go on the
   link. For a packet of length 0 it is 0x00000000, and it is checked.
 - **The header CRC** is the CRC-32C of header bytes 0 to 11, the data checksum included.
-- **An example:** stream 2, no flags, length 1, number 1, acknowledge 0, the data one zero word. The header's bytes
-  are `02 01 01 00 00 00 00 00 EA 9A 70 42 A0 8C 06 E1`.
+- **An example:** stream 2, no flags, length 1, number 1, acknowledge 0, hops 0, the data one zero word. The
+  header's bytes are `02 01 01 00 00 00 00 00 EA 9A 70 42 A0 8C 06 E1`.
+  - The same packet after one hop, hops 1: `02 01 01 00 00 00 10 00 EA 9A 70 42 9E BC 0A 21`.
+  - With number 0x2ABCD, acknowledge 0x15555 and hops 3: `02 01 CD AB 56 55 35 00 EA 9A 70 42 C9 C4 23 30`.
 - A cross-check for any implementation: the CRC-32C of all 16 header bytes of a good packet is 0x48674BC7.
 
 **The order a receiver tests in:**
 
 1. the header CRC;
-2. the header's fields: the stream is 1 or 2, the length is at most 32, the reserved bits are 0;
+2. the header's fields: the stream is 1 or 2, the length is at most 32, the reserved bits are 0. The hops field
+   is not tested;
 3. the data checksum;
 4. the packet number, which means something only once the rest has passed.
 

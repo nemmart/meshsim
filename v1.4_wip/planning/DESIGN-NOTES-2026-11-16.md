@@ -526,3 +526,21 @@ box, the port, the firmware. `INGRESS-INTERFACE.md` and `UPDATER-INTERFACE.md` a
   Open list.
 - **WORKER6's plan is agreed** (the Updater's controller, to the word port, with the shim), and **WORKER7 is
   started** (the forward count in v1.37).
+
+## 19. The link's header: 18-bit numbers and a hops field (just after midnight, 2026-11-17)
+
+- **Decided (owner): the packet number and the acknowledge field are 18 bits each,** down from 20, and the four
+  bits go to a new field. A stream's numbers come round after 262,142 packets, about 138 MB.
+- **The field counts hops** (owner). Whoever makes a packet sends 0, and every ASIC that forwards it along the
+  daisy chain adds one. Towards the host it then says which ASIC sent the packet, by its place in the chain, and
+  Egress along the chain is "check, count, forward" with no ASIC knowing its own place.
+  - The owner's first form was a source number that each ASIC filled in; the count needs no numbering.
+- **The same rule in both directions** (owner). From the host every ASIC gets the same data, so the field is
+  ignored there.
+- **A hop always computes the header CRC again** (owner), since the field is under it. Left outside the CRC, one
+  flipped bit would credit a packet to the wrong ASIC.
+- **A chain is probably no more than 4 ASICs** (owner).
+- **Opened by this:** whether packets are acknowledged and sent again between neighbours or between the host and
+  each ASIC. `HOST-LINK.md`, "The chain, and the hops field".
+- **What it changes that is built:** gold's packetizer, its reader and the vectors; v1.37's link header and
+  Ingress's black box. The first example header is the same bytes as before. Given to WORKER7.

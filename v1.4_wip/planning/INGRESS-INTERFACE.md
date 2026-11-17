@@ -237,7 +237,8 @@ What the core does with a background frame:
 
 - † zero bytes between packets are idle, and it skips them;
 - † a packet of length 0 takes no number and asks for no service: it is checked and passed over;
-- † the flags and the acknowledge field are ignored, since there is no way back to the host;
+- † the flags and the acknowledge field are ignored, since there is no way back to the host; the hops field is
+  ignored, as it is on every packet from the host (`HOST-LINK.md`), and the packetizer writes 0;
 - † at the end of the file no more packets come, which is not an error.
 
 Gold's packetizer and its vectors are `updater_wip/pipeline/gold/` (`packets`, `packets-read`,

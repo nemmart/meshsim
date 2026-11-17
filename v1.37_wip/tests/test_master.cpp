@@ -12,6 +12,11 @@
 //   jumps-base  jumpmap's jumps guest, on a static base table, each frame in its smaller form: the Tracer's jump map
 //   divs        a loop of divisions and stores: every segment has advice values (frame 8's log s, handed over) and
 //               writes a page, which the Tracer writes in its copy, in place
+//   kin-big     keccak256 with 24 KB of untrusted advice: a data image of 1,584 words, more than Ingress's buffer of
+//               1,024 and three credits of the segment queue (WORKER4)
+// The threshold (WORKER4): the frames' tails (the fixtures hold frames of the header word alone, frames shorter than a
+// packet, frames that are no multiple of 32 or 256), the threshold at 1, 32, 64, 128 and 1,024 with the same images,
+// frames that end inside a packet, and the link at 2, 4 and 8 bytes a cycle.
 // Then the error path (a packet damaged, a packet left out, a page count too small: the master's NMI, its results, its
 // exit), a file that ends inside a packet, and the checks' teeth: runs that must fail.
 #include <unistd.h>
@@ -21,6 +26,7 @@
 #include <string>
 
 #include "harness.h"
+#include "packet_writer.h"
 #include "proof_bench.h"
 #include "units/ingress_egress.h"
 #include "units/updater.h"
@@ -109,11 +115,98 @@ TEST(master_divs_two_windows) {
 TEST(master_kin_lru_fast_link) {
     CHECK_EQ(fixture("kin-lru", 60, [](proof::Case& c, segment::Segment&) { c.cycles_per_byte = 0; }).failures, 0);
 }
-// a fast link and a slow memory side: the Updater waits on its first page of each run while the frame arrives, and
-// only the allowance keeps the frame's words from overrunning the segment queue (the data image is 334 words, the
-// queue 256)
+// a fast link and a slow memory side: the Updater waits on its first page of each run while the frame arrives
 TEST(master_kin_raw_slow_memory) {
     CHECK_EQ(fixture("kin-raw", 20, [](proof::Case& c, segment::Segment&) { c.cycles_per_byte = 0; c.updater_lookup = 3000; }).failures, 0);
+}
+
+// ---- the threshold (INGRESS-INTERFACE.md, "Waking for more than a packet"; WORKER4)
+namespace {
+const char* const kFixtures[] = {"kin-raw", "kin-lru", "jumps-base", "divs", "kin-big"};
+const unsigned kSegment[] = {20, 60, 0, 20, 20};
+}  // namespace
+// a frame of 1,584 words for the Updater: Ingress's buffer fills and the link waits; a wake, a credit and a transfer
+// go together
+TEST(master_kin_big) {
+    const segment::Run r = fixture("kin-big", 20);
+    CHECK_EQ(r.failures, 0);
+    CHECK(r.summary.size() > 122);
+    if (r.summary.size() > 122) CHECK(r.summary[120] > 0);  // MR_THRESHOLD_STORES: the threshold was set
+}
+TEST(master_kin_big_last) { CHECK_EQ(fixture("kin-big", 63).failures, 0); }
+// a fast link and a slow memory side: only the allowance keeps the data image's 1,584 words from overrunning the
+// segment queue of 512
+TEST(master_kin_big_slow_memory) {
+    CHECK_EQ(fixture("kin-big", 20, [](proof::Case& c, segment::Segment&) { c.cycles_per_byte = 0; c.updater_lookup = 3000; }).failures, 0);
+}
+// the tails: the fixtures hold frames of the header word alone, frames shorter than a packet, and frames whose length
+// is a multiple of neither 32 nor 256, and longer than 256; each fixture passes above and at every threshold below
+TEST(master_tail_frames) {
+    unsigned header_alone = 0, short_of_a_packet = 0, odd_short = 0, odd_long = 0;
+    for (const char* name : kFixtures) {
+        frames::File f;
+        std::string err;
+        CHECK(f.read(std::string("tests/updater/") + name + ".frames", err));
+        for (const frames::Frame& fr : f.frame) {
+            if (fr.length == 0) header_alone++;
+            else if (fr.length < 32) short_of_a_packet++;
+            else if (fr.length % 32 && fr.length < 256) odd_short++;
+            else if (fr.length % 32 && fr.length > 256) odd_long++;
+        }
+    }
+    CHECK(header_alone >= 4);                               // kin-lru's frame 5, jumps-base's 6 and 9, divs's 6
+    CHECK(short_of_a_packet >= 10);
+    CHECK(odd_short >= 3);
+    CHECK(odd_long >= 4);                                   // 257, 334, 1,584
+}
+// the threshold after a header word at 1, 32, 64, 128 and 1,024 in place of 256: the same images, every check
+TEST(master_thresholds) {
+    for (size_t k = 0; k < sizeof kSegment / sizeof kSegment[0]; k++)
+        for (uint32_t threshold : {1u, 32u, 64u, 128u, 1024u}) {
+            const segment::Run r = fixture(kFixtures[k], kSegment[k], [threshold](proof::Case& c, segment::Segment& seg) {
+                c.threshold = threshold; seg.name += ", threshold " + std::to_string(threshold);
+            });
+            CHECK_EQ(r.failures, 0);
+        }
+}
+// a frame that ends inside a packet (the frame-ends-at-a-packet check is dropped, II's dagger): the whole file cut into
+// packets regardless of frames, of 32 words and of 13: the next frame's header word is the next word, and the proof is
+// the same
+TEST(master_frames_across_packets) {
+    for (size_t k = 0; k < sizeof kSegment / sizeof kSegment[0]; k++)
+        for (unsigned packed : {32u, 13u}) {
+            const segment::Run r = fixture(kFixtures[k], kSegment[k], [packed](proof::Case& c, segment::Segment& seg) {
+                std::string err;
+                packet_writer::Options o;
+                o.packed = packed;
+                if (!packet_writer::packetize(c.file.bytes, c.packets, err, o)) ::test::fail(__FILE__, __LINE__, "%s", err.c_str());
+                seg.name += ", packets of " + std::to_string(packed) + " across frames";
+            });
+            CHECK_EQ(r.failures, 0);
+        }
+}
+// a link slower than the master (4 cycles a byte): the master is ahead of the link at every frame's start, so each
+// header word waits for its flag at the threshold of 1
+TEST(master_slow_link) {
+    for (size_t k = 0; k < sizeof kSegment / sizeof kSegment[0]; k++)
+        CHECK_EQ(fixture(kFixtures[k], kSegment[k], [](proof::Case& c, segment::Segment& seg) { c.cycles_per_byte = 4; seg.name += ", 4 cycles a byte"; }).failures, 0);
+}
+// the link as fast as the master takes it, at thresholds of 1 and 32: flags posted while the master's transfers run
+TEST(master_fast_link_small_thresholds) {
+    for (size_t k = 0; k < sizeof kSegment / sizeof kSegment[0]; k++)
+        for (uint32_t threshold : {1u, 32u}) {
+            const segment::Run r = fixture(kFixtures[k], kSegment[k], [threshold](proof::Case& c, segment::Segment& seg) {
+                c.cycles_per_byte = 0; c.threshold = threshold; seg.name += ", fast link, threshold " + std::to_string(threshold);
+            });
+            CHECK_EQ(r.failures, 0);
+        }
+}
+// the link at 2, 4 and 8 bytes a cycle
+TEST(master_faster_links) {
+    for (int rate : {2, 4, 8}) {
+        CHECK_EQ(fixture("kin-big", 20, [rate](proof::Case& c, segment::Segment& seg) { c.link_rate = rate; seg.name += ", " + std::to_string(rate) + " bytes a cycle"; }).failures, 0);
+        CHECK_EQ(fixture("divs", 20, [rate](proof::Case& c, segment::Segment& seg) { c.link_rate = rate; seg.name += ", " + std::to_string(rate) + " bytes a cycle"; }).failures, 0);
+    }
 }
 
 // ---- the error path: an error bit is the master's NMI; it writes what there is into its results and exits

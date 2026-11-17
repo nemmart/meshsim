@@ -45,8 +45,8 @@ bool Bench::run(const Run& r) {
         }
         u.step(t);
         u.ev.consume_late(t, ev);
-        if (ev & 1u << Updater::EV_SEGMENT_CREDIT) allowance += Updater::HALF;
-        if (ev & 1u << Updater::EV_FREE_PAGE_CREDIT) page_allowance += Updater::HALF;
+        if (ev & 1u << Updater::EV_SEGMENT_CREDIT) allowance += Updater::SEGMENT_HALF;
+        if (ev & 1u << Updater::EV_FREE_PAGE_CREDIT) page_allowance += Updater::FREE_PAGE_HALF;
         if (ev & 1u << Updater::EV_DONE) done = true;
         if (u.errors(t) & ~Updater::ERR_QUEUE_OVERRUN) break;
     }

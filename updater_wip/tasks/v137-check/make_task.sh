@@ -1,6 +1,6 @@
 #!/bin/bash
 # make_task.sh -- v1.37_wip's checks as a Quest task (WORKER3; v136-check's generator, for v1.37_wip).
-#   updater_wip/tasks/v137-check/make_task.sh NNN-name suites|check > NNN-name.sh     (commit first: the kit is HEAD's)
+#   updater_wip/tasks/v137-check/make_task.sh NNN-name suites|check|faster > NNN-name.sh     (commit first: the kit is HEAD's)
 # Writes a self-contained task with an embedded kit: v1.37_wip/ and updater_wip/pipeline/gold at HEAD (git archive),
 # gold's and jumpmap's classes built here (pipeline/inputs/lib/classes.sh) and the frames' gold's (updater_wip/pipeline/
 # gold: classes-frames), so that the runner needs no javac, and, for suites, the link's test vectors:
@@ -10,8 +10,8 @@
 # Reads no persistent data and writes none; writes only results/NNN-name/. Safe to re-run.
 set -eu
 export LC_ALL=C
-NAME=${1:?usage: make_task.sh NNN-name suites|check}; ITEM=${2:?suites or check}
-case $ITEM in suites|check) ;; *) echo "ITEM is suites or check" >&2; exit 1;; esac
+NAME=${1:?usage: make_task.sh NNN-name suites|check|faster}; ITEM=${2:?suites, check or faster}
+case $ITEM in suites|check|faster) ;; *) echo "ITEM is suites, check or faster" >&2; exit 1;; esac
 TOP=$(git rev-parse --show-toplevel); HERE=$(cd "$(dirname "$0")" && pwd)
 R=$(cd "$TOP" && git rev-parse --short HEAD); BR=$(cd "$TOP" && git rev-parse --abbrev-ref HEAD)
 [ -z "$(cd "$TOP" && git status --porcelain -- v1.37_wip updater_wip/pipeline/gold | grep -v '^??')" ] || { echo "make_task.sh: v1.37_wip/ or gold has uncommitted changes" >&2; exit 1; }
@@ -19,7 +19,7 @@ K=$(mktemp -d); trap 'rm -rf "$K"' EXIT
 mkdir -p "$K/kit"
 (cd "$TOP" && git archive --format=tar HEAD v1.37_wip updater_wip/pipeline/gold) | tar -x -C "$K/kit"
 VEC="HEAD's"
-if [ "$ITEM" = suites ]; then
+if [ "$ITEM" != check ]; then
   bash "$K/kit/v1.37_wip/pipeline/inputs/lib/classes.sh" "$K/kit/v1.37_wip" "$K/kit/classes" >&2
   mkdir -p "$K/kit/classes-frames"
   javac -d "$K/kit/classes-frames" $(find "$K/kit/updater_wip/pipeline/gold/src" -name '*.java') >&2
@@ -42,7 +42,9 @@ cat <<HEAD
 # WORKER3). suites = the small inputs built from the pinned sources; the host's side of the proof steps (gold's frames,
 # packets and reference images: the 24-run matrix, the three recorded segments, both workloads at 2^29); then
 # ./run_tests.sh all --check: every v1.36 step against its v1.36 log, and v1.37's own steps, the proof steps with them;
-# the proof runs' figures. check = make check from a clean tree (debug and release, gcc and clang, TSan).
+# the proof runs' figures. check = make check from a clean tree (debug and release, gcc and clang, TSan). faster = the
+# same host's side, then the 2^29 runs and the matrix with the link at 2, 4 and 8 bytes a cycle, and the matrix with the
+# master's threshold at 32, 64 and 128 (WORKER4), with their figures.
 # From an embedded kit. Writes only results/$NAME/. Scratch in /tmp, removed first and at the end. Safe to re-run.
 set -u
 cd "\$(dirname "\$0")/.."

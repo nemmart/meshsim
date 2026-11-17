@@ -19,7 +19,7 @@ cat <<HEAD
 #   campaign    the random runs: 16 slices at once, each a range of seeds for 30 minutes, 2 million cycles of traffic
 #               and noise a seed, chains of 1, 2, 4 and 16; then the slices added up. Any failing seed is a FAIL.
 #   long-noise  16 runs with bursts of noise up to 300 ms (3e8 cycles), on chains of 1 and 2.
-#   searches    the searches of the shrunken model too large for a session's machine, six at once.
+#   searches    the searches of the shrunken model too large for a session's machine: six, three at a time.
 # From an embedded kit. Writes only results/$NAME/. Scratch in /tmp, removed first and at the end. Safe to re-run.
 set -u
 cd "\$(dirname "\$0")/.."
@@ -56,8 +56,11 @@ long-noise)
     head -4 "$RES/long-noise.txt"
     ;;
 searches)
-    for l in big5 big6 big7 big8 big9 big10; do MAX=15000000 ./searches.sh $l > "$RES/search-$l.txt" 2>&1 & done
-    wait
+    # Three at a time, each under 5 GB of address space: one that outgrows it stops alone, and its line says so.
+    for set in "big5 big6 big7" "big8 big9 big10"; do
+        for l in $set; do ( ulimit -v 5000000; MAX=20000000 ./searches.sh $l > "$RES/search-$l.txt" 2>&1 ) & done
+        wait
+    done
     cat "$RES"/search-*.txt | tee "$RES/searches.txt"
     if grep -q 'FAILS\|NO RESULT' "$RES/searches.txt"; then verdict searches "FAIL (searches.txt)"; else verdict searches "PASS ($(grep -c 'NOT complete' "$RES/searches.txt") not complete)"; fi
     ;;

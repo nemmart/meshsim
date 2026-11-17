@@ -36,8 +36,9 @@ enum : unsigned { MD_H_MAGIC = 0, MD_H_TILES = 1, MD_H_TRACER = 6, MD_H_TR_RECOR
 enum : unsigned { MR_STATUS = 0, MR_DETAIL, MR_FRAMES, MR_RUNS, MR_PAGES_TAKEN, MR_LOADS, MR_RESULTS, MR_OTHERS, MR_ROOT_PROGRAM, MR_ROOT_BASE,
                   MR_ROOT_TABLE, MR_ROOT_CYCLE0, MR_ROOT_START, MR_ROOT_FINAL, MR_ROOT_TRACER, MR_DEPTHS, MR_TILE_ERRORS, MR_INGRESS_ERRORS,
                   MR_UPDATER_ERRORS, MR_ERROR_LINES, MR_MCAUSE = 22, MR_MEPC, MR_BOOT, MR_HANDED, MR_RELEASED, MR_END, MR_PAGES_QUEUED,
-                  MR_LINK_WORDS, MR_PAGE_COUNT = 32, MR_RUN_START = 40, MR_RUN_DONE = 48, MR_FRAME_TYPE = 56, MR_FRAME_START = 72,
-                  MR_WORDS = 88 };
+                  MR_LINK_WORDS, MR_WAKES, MR_LINK_READS, MR_PAGE_COUNT = 32, MR_RUN_START = 40, MR_RUN_DONE = 48, MR_FRAME_TYPE = 56,
+                  MR_FRAME_START = 72, MR_FRAME_WAKES = 88, MR_FRAME_READS = 104, MR_THRESHOLD_STORES = 120, MR_HANDED_WAKES, MR_HANDED_READS,
+                  MR_WORDS };
 constexpr uint32_t MR_OK = 1, MR_TRAP = 2;
 // ---- fw/tracer/tracer_layout.h's header words the master writes
 enum : unsigned { TL_H_EXPECT = 8, TL_H_ADVICE_N = 10, TL_H_HASH_MUL = 12, TL_H_HASH_STEP = 13, TL_H_HASH_LINES = 14 };
@@ -145,10 +146,11 @@ struct ChipProof final : segment::Proof {
         desc[MD_H_TR_RECORD] = p.tr_record; desc[MD_H_TR_EXPECT] = p.tr_expect; desc[MD_H_TR_ADVICE] = p.tr_advice;
         desc[MD_H_TR_ADVICE_ROWS] = p.tr_advice_rows; desc[MD_H_GO_LATENCY] = 1;
         m.place(units::ID_MASTER, rtl_images::elf_symbol(master_elf, "boot_desc"), desc);
-        m.place(units::ID_MASTER, rtl_images::elf_symbol(master_elf, "system_config"), {MS_MAGIC, c.asics, c.segment});
+        m.place(units::ID_MASTER, rtl_images::elf_symbol(master_elf, "system_config"), {MS_MAGIC, c.asics, c.segment, c.threshold});
         results_at = rtl_images::elf_symbol(master_elf, "master_results");
         m.set_link(c.packets);
         m.ingress().link_cycles_per_byte = c.cycles_per_byte;
+        m.ingress().link_bytes_per_cycle = c.link_rate;
         if (c.updater_lookup) m.updater().timing.lookup = c.updater_lookup;
         m.updater().on_done = &on_done;
         m.updater().on_done_ctx = this;
@@ -204,6 +206,7 @@ struct ChipProof final : segment::Proof {
             const auto& core = m.c.unit<units::TileCore>(units::unit_prefix(units::ID_MASTER) + "core").rv;
             numbers->master_awake = core.mcycle - core.cycles_wfi;
             numbers->master_instructions = core.instructions;
+            numbers->link_room_cycles = link.link_room_cycles; numbers->link_last_at = link.link_at;
             for (size_t i = 0; i < done.size(); i++) {
                 RunAccount a;
                 a.name = i < run_names.size() ? run_names[i] : "?";

@@ -1,8 +1,9 @@
 # WORKER8 notes: the plan for the simulation of the host link's protocol
 
-Status, 2026-11-17: **one link and the chain are built on HL's header of 20 bytes, searched, and run at random
-here; the long campaign and the larger searches are queued for the runner.** Branch `updater-w8`. Sections 1 to 15
-are the plan as agreed; **section 16 is what was built on the header of 16 bytes, section 17 what is built now.**
+Status, 2026-11-17, later: **stopped on NEXT.md's order. HL as it now stands (one run of numbers) lets the foreground
+stand still behind a stopped background: `REPORT.md` beside this file.** The code in `updater_wip/link/` is HL's
+header of 16 bytes with one run of numbers; sections 16 and 17 below are results on the headers before it and are
+history. Branch `updater-w8`. Sections 1 to 15 are the plan as agreed.
 
 **The go-ahead (owner, 2026-11-17),** with the answers to section 15:
 

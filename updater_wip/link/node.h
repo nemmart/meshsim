@@ -4,8 +4,8 @@
 // A packet taken on the upper end goes, in the same cycle, to the node itself (its words, for its own queue) and into
 // the forwarding buffer down (the whole packet, hops plus one). A packet taken on the lower end goes into the
 // forwarding buffer up. Each end is offered the forwarding buffer's packet before the node's own (HL: the chain
-// comes before an ASIC's own data). What is forwarded keeps its stream, length, data and data checksum; its numbers,
-// acknowledge fields and flags are the outgoing end's, and that end seals the header (link_end.cpp, start_header).
+// comes before an ASIC's own data). What is forwarded keeps its stream, length and data; its number, acknowledge
+// field, flags and both checks are the outgoing end's, made afresh (link_end.cpp, choose and start_header).
 //
 // QUESTIONS.md: G5, a packet is acknowledged when it is taken here, into the queue and the buffer, not when the next
 // link has acknowledged it. G15, a node is told whether it has a neighbour down the chain (has_down): the last has
@@ -21,7 +21,7 @@ namespace hl {
 
 // A forwarding buffer: whole packets, first in first out, its room counted in words.
 struct PacketFifo {
-    struct Entry { uint8_t length = 0, hops = 0; uint32_t dsum = 0; uint8_t data[MAX_WORDS * WORD_BYTES]; };
+    struct Entry { uint8_t length = 0, hops = 0; uint8_t data[MAX_WORDS * WORD_BYTES]; };
     std::vector<Entry> ring;
     uint32_t head = 0, count = 0, words = 0, cap_words = 0, most = 0;
     Offer offer;
@@ -30,14 +30,14 @@ struct PacketFifo {
     bool empty() const { return count == 0; }
     uint32_t free_words() const { return cap_words - words; }
     bool half() const { return words * 2 >= cap_words; }
-    void push(uint8_t length, uint8_t hops, uint32_t dsum, const uint8_t* data);
+    void push(uint8_t length, uint8_t hops, const uint8_t* data);
     const Offer* front();                  // the oldest packet, as an offer to a sender; null if empty
     void pop();
     template <class A> void io(A& a) {
         a(count); a(words);
         for (uint32_t i = 0; i < count; i++) {
             Entry& e = ring[(head + i) % ring.size()];
-            a(e.length); a(e.hops); a(e.dsum);
+            a(e.length); a(e.hops);
             for (unsigned b = 0; b < unsigned(e.length) * WORD_BYTES; b++) a(e.data[b]);
         }
     }

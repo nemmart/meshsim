@@ -23,6 +23,9 @@ enum class Fate : uint8_t {
     FORGE_ACK, FORGE_STOP, FORGE_LOST, FORGE_RECOVERY, FORGE_RESEND, FORGE_NUMBER,
     FORGE_NUMBER_BACK,                     // the packet's number one less: a later packet taken for the one before it
     FORGE_ACK_DATA,                        // a forged acknowledge field on a packet whose data is damaged too: must change nothing
+    FORGE_STOP_BG,                         // the background's stop bit turned over
+    FORGE_WRONG,                           // a reserved bit set: to its receiver, a packet made wrong
+    FORGE_LONG,                            // a length of 33
     COUNT
 };
 const char* fate_name(Fate f);
@@ -70,7 +73,7 @@ struct Config {
     unsigned queue_words = 1024;           // each stream's queue at each end, 16 KB (owner, 2026-11-17); "stop" at half
     unsigned window0 = 0;                  // end 0's window, if not p's: the host's
     unsigned wrong = 0;                    // end 0's foreground packet of this place (from 1) is made with hops 15, and end 1
-                                           // is told it would forward: a packet its own sender made wrong (G22)
+                                           // is told it would forward: a packet its own sender made wrong (HL, "A packet made wrong")
     unsigned still = 0;                    // the cycles a sender may wait for an acknowledgement on a link in step; 0: the default
     unsigned delay = 1;                    // the wire's, in cycles, each way
     unsigned words = 32;                   // the words in each packet a source makes
@@ -93,9 +96,11 @@ public:
     bool fresh[2][STREAMS] = {};           // end e was powered on: what it had is gone, and its next word may be any of its flow
     bool must_report = false;
     bool excused = false;                  // something happened that may end in the link starting again: a forged header that
-                                           // was believed, a memory's flipped bit, a power-on. Without it, starting again is a failure
+                                           // was believed, a packet made wrong, a power-on. Without it, starting again is a failure
+    bool flipped = false;                  // a bit was flipped in a sender's memory: a wrong word may be delivered, and is counted
+    uint64_t wrong_words = 0;
     bool stopped[2][STREAMS] = {};         // the stop bit end e last took, each stream: it must not start data there
-    uint32_t waited[2][STREAMS] = {};      // the cycles end e has had packets kept on a stream, the link in step, and no acknowledgement
+    uint32_t waited[2] = {};               // the cycles end e has had packets kept, all sent, the link in step, and no acknowledgement
     uint32_t most_waited = 0;
     uint32_t still_bound() const { return cfg.still ? cfg.still : 8 * (cfg.p.status_timer + cfg.p.zeros + 2 * (HEADER_BYTES + cfg.p.max_words * WORD_BYTES)); }              // an end started the link again: an error must be up at an end that was not powered on
     bool power[2] = {};                    // an end starts again from power-on in the next cycle
@@ -113,7 +118,7 @@ public:
     void offer(unsigned e, unsigned s) { if (src[e][s].avail < src[e][s].total) src[e][s].avail++; }
     void drain(unsigned e, unsigned s, uint32_t n) { fill[e][s] -= n == 0 || n > fill[e][s] ? fill[e][s] : n; }
     void fate(unsigned w, Fate f) { wire[w].set_fate(f, end[w].nums); if (Wire::forges(f) && f != Fate::FORGE_ACK_DATA) excused = true; }
-    bool flip(unsigned e, unsigned s);     // a bit of the oldest packet end e keeps on stream s: a memory's fault, not the wire's
+    bool flip(unsigned e);                 // a bit of the oldest packet end e keeps: a memory's fault, not the wire's
     void word(unsigned from, unsigned stream, uint64_t index, uint8_t out[WORD_BYTES]) const;   // what a flow carries at an index
 
     // The same names as the chain's bench (chain.h), for the search.
@@ -127,17 +132,21 @@ public:
     void drain(unsigned q, uint32_t n) { drain(q / 2, q % 2, n); }
     static constexpr bool flat = false;    // a source and a queue are an end and a stream
 
-    bool done() const;                     // everything sent has arrived and been acknowledged, and both ends are in step
+    // Everything sent has arrived and been acknowledged, and both ends are in step. With a stream held: everything
+    // of the other stream.
+    bool done(int hold = -1) const;
     // From here nothing more goes wrong: every source lets everything out, every queue is emptied every cycle, the
     // wire is whole. Returns the cycles it took to be done, or -1 if it is not within the bound (bad then says so).
-    long quiet(uint64_t bound);
+    // With a stream held, that stream's queues are never emptied again, at either end: it stays stopped for good,
+    // and the other stream must still finish (HL: "a stopped stream cannot block the other").
+    long quiet(uint64_t bound, int hold = -1);
     FILE* trace = nullptr;                 // if set, a line for each thing that happens
 
     template <class A> void io(A& a) {
         for (auto& e : end) e.io(a);
         for (auto& w : wire) w.io(a);
         for (auto& e : src) for (auto& s : e) { a(s.made); a(s.avail); }
-        a(fill); a(delivered); a(gaps_allowed); a(fresh); a(must_report); a(excused); a(stopped); a(waited); a(power); a(budget); a(t); a(started_);
+        a(fill); a(delivered); a(gaps_allowed); a(fresh); a(must_report); a(excused); a(flipped); a(stopped); a(waited); a(power); a(budget); a(t); a(started_);
     }
     // What the search knows a state by: the hash of everything that can still matter (LinkEnd::canon).
     Hash128 canon() const;
@@ -168,12 +177,13 @@ struct Case {
     unsigned fwd = 8;                      // the chain's forwarding buffers, in words
     std::vector<Event> events;
     uint64_t quiet_at = 0, bound = 100000;
+    unsigned hold = 0;                     // not 0: from quiet_at on this stream (1 or 2) is never taken again, and the other must finish
     std::vector<Run> runs;
 };
 
-// "as_written" or "proposed", then +name and -name for single rules, and name=value for sizes: one word.
+// "hl", then +name and -name for single rules, and ,name=value for sizes: one word.
 bool apply_rules(const std::string& spec, Params& p, std::string& err);
-std::string rules_text(const Params& p);          // the spec that gives p's rules and timers, from "proposed"
+std::string rules_text(const Params& p);          // the spec that gives p's rules, from "hl"
 bool parse_case(const std::string& path, Case& c, std::string& err);
 std::string case_text(const Case& c);
 // Plays a case under a rules line: "" if every property held to the end, or the property that failed.

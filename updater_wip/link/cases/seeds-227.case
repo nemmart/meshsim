@@ -1,0 +1,19 @@
+# The cause of Quest 227's two failing seeds (200137, 140162): "a sender stood still", the host's window 64.
+# Found by: linksearch --rules hl-reask_any,number_bits=5 --window0 8 --queue 32 --still 230 --packets 0 9 0 0 --damage 2
+#
+# End 0's first background packet is lost. End 1 asks for it once ("resend"), and that packet is lost too. As the
+# code stood, a receiver asked again only when an empty packet's number showed the sender ahead. A sender with new
+# packets to send sends no empty packet: every packet of the rest of its window arrives ahead, is thrown away, and
+# nothing is asked. It stands until the window is full and the line goes idle. With a window of 8 that is 8
+# packets; with the host's 64 it was longer than the property's bound. Not the window alone: the window sets how
+# long, the gap was in asking again.
+#
+# Second run: asking again, after the wait, at any sign that the sender is ahead, a packet with data included.
+sizes number_bits=3 max_words=1 window=2 zeros=40 flush_zeros=32 status_timer=24 queue=32 reask=96 pass=1 restart_words=1 delay=1 words=1 images=0 window0=8 wrong=0 still=230
+packets 0 9 0 0
+offer 0 2 216
+fate 0 5 gone
+fate 1 7 gone
+quiet 326 20000
+run hl-reask_any,number_bits=5 fail a sender stood still
+run hl,number_bits=5 ok

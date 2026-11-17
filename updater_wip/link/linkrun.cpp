@@ -73,7 +73,7 @@ struct Totals {
 
 struct Options {
     uint64_t seed_from = 1, seed_to = 1, cycles = 1000000;
-    int nodes = 0; std::string rules = "proposed"; int host_window = -1, status = 0, plant = 0;
+    int nodes = 0; std::string rules = "hl"; int host_window = -1, status = 0, plant = 0;
     bool quiet_wires = false, saturate = false, forge = false, long_noise = false, verbose = false;
     std::string forge_not;                 // forged fates left out, by name, between commas
     uint64_t seconds = 0;                  // start no new seed after this long; 0: no limit
@@ -100,7 +100,7 @@ std::string run(const Options& o, uint64_t seed, Totals& tot) {
     Chain c(cfg);
     if (real_width && rng.chance(0.7)) {   // both ends of every link start just under the wrap
         const uint32_t n = cfg.p.last_number() - uint32_t(rng.below(40));
-        for (unsigned e = 0; e < c.ends(); e++) for (auto& st : c.end(e).r.s) { st.last = st.acked = n; st.next = st.tail = c.host.nums.succ(n); }
+        for (unsigned e = 0; e < c.ends(); e++) { auto& r = c.end(e).r; r.last = r.acked = n; r.next = r.tail = c.host.nums.succ(n); }
     }
     // The processes' parameters.
     const unsigned pattern = o.quiet_wires ? 0 : unsigned(rng.below(6));   // 0 none; 1 one wire; 2 one link; 3 every wire; 4, 5 some
@@ -194,7 +194,7 @@ std::string run(const Options& o, uint64_t seed, Totals& tot) {
             const unsigned k = unsigned(le.tap.kind);
             const Header h = unpack(le.tap.hdr);
             if (k == unsigned(Kind::DATA) || k == unsigned(Kind::RESENT)) {
-                const uint32_t n = h.number[h.stream - 1];
+                const uint32_t n = h.number;
                 if (n == 1 || n == le.nums.last) { (k == unsigned(Kind::DATA) ? wraps : wraps_again)++; }
             }
             if (noise[w].aimed[k] && rng.chance(noise[w].aimed[k])) {
@@ -222,7 +222,7 @@ std::string run(const Options& o, uint64_t seed, Totals& tot) {
         const Counts& n = c.end(e).count;
         for (unsigned k = 0; k < KINDS; k++) { tot.sent[k] += n.sent[k]; packets += n.sent[k]; }
         tot.bad_header += n.rx_bad_header; tot.bad_data += n.rx_bad_data; tot.bad_fields += n.rx_bad_fields; tot.refused += n.refused;
-        tot.ahead += n.ahead; tot.behind += n.behind; tot.went_back += n.went_back; tot.restarts += n.restarts; tot.kept_bad += n.kept_bad;
+        tot.ahead += n.ahead; tot.behind += n.behind; tot.went_back += n.went_back; tot.restarts += n.restarts; tot.kept_bad += n.not_kept;
         tot.made_wrong += n.made_wrong; tot.ack_behind += n.ack_behind; tot.ack_beyond += n.ack_beyond;
         tot.bytes_data += n.bytes_data; tot.bytes_status += n.bytes_status; tot.bytes_round += n.bytes_round;
         (e == 0 ? tot.most_kept_host : tot.most_kept) = std::max<uint64_t>(e == 0 ? tot.most_kept_host : tot.most_kept, n.most_kept);
@@ -316,7 +316,7 @@ int main(int argc, char** argv) {
         {"a sender went back", t.went_back}, {"the number wrapped on a new packet", t.wraps}, {"the number wrapped on a packet sent again", t.wraps_again},
         {"bursts of noise", t.bursts}, {"cycles inside a burst", t.burst_cycles}, {"single bits flipped", t.flips}, {"consumer stalls", t.stalls},
         {"an acknowledgement behind (G20)", t.ack_behind}, {"an acknowledgement beyond what was sent (G20)", t.ack_beyond},
-        {"a link started again", t.restarts}, {"a kept packet found bad (G21)", t.kept_bad}, {"a packet made wrong (G22)", t.made_wrong}};
+        {"a link started again", t.restarts}, {"asked for a packet no longer kept: error", t.kept_bad}, {"a packet made wrong a second time: error", t.made_wrong}};
     for (const auto& r : rows) printf("  %-58s %14llu%s\n", r.name, (unsigned long long)r.n, r.n ? "" : "   <- never happened");
     return t.failed != 0;
 }

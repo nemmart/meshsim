@@ -1,5 +1,7 @@
-// link_params.h: the link's sizes, the rules taken where HOST-LINK.md ("HL") is silent, and the planted bugs.
-// Every rule is a switch: WORKER8/QUESTIONS.md has, for each, the case that fails with it off (cases/).
+// link_params.h: the link's sizes, its rules as switches, and the planted bugs.
+//
+// The rules are HOST-LINK.md's ("HL") as it stands on 2026-11-17, after the owner's rulings. Each is a switch so
+// that a kept case (cases/) can show what goes wrong without it. Rules() is HL as it stands.
 #pragma once
 
 #include <cstdint>
@@ -8,30 +10,21 @@ namespace hl {
 
 constexpr unsigned MAX_WORDS = 32;     // HL: a packet's data, at most
 
-// The rules of QUESTIONS.md, by its numbers. as_written() is the least that makes HL run: the header of 20 bytes,
-// one status timer a direction, and nothing where HL gives no rule.
 struct Rules {
-    bool resend_ahead = true;      // G6: a good packet ahead of the one expected owes a "resend"
-    bool ask_every = false;        // G6, the other way: asked at every such packet, not once
-    bool zero_number = true;       // G7: a stream's next number, in any header, ahead of the one expected owes a "resend"
-    bool lost_answers = true;      // G9: a lost side answers the other side's "lost"
-    bool flush = true;             // G10: after losing its place a receiver waits for a run of zeros
-    bool refuse = true;            // G11: a good packet with no room is thrown away, not acknowledged
-    bool long_is_lost = true;      // G14: a length over the most, under a good header CRC, is a lost place
-    bool stop_lift_back = false;   // G17: at "stop" lifted the sender goes back to the oldest not acknowledged
-    bool ack_now = true;           // G18 (owner, 2026-11-17): an acknowledgement owed goes out as soon as the line is free
-    bool lost_uses_ack = true;     // G19: a good packet while lost gives its acknowledge fields and stop bits
-    bool restart = true;           // G4: the restart handshake
-    bool tell_behind = true;       // G20: acknowledgements that go backwards, or pass what was sent: the link starts again
-    bool check_kept = true;        // G21: a sender checks a kept packet's data against its checksum as it sends it
-    bool made_wrong = true;        // G22: a packet that passes both checks with a field that cannot be: the link starts again
-
-    static Rules as_written() {
-        Rules r;
-        r.resend_ahead = r.zero_number = r.lost_answers = r.flush = r.refuse = r.long_is_lost = r.ack_now = false;
-        r.lost_uses_ack = r.restart = r.tell_behind = r.check_kept = r.made_wrong = false;
-        return r;
-    }
+    bool resend_ahead = true;      // a good packet ahead of the one expected is thrown away and a resend asked for
+    bool zero_number = true;       // an empty packet's number ahead of the one expected: a resend is asked for
+    bool reask_any = true;         // asking again after the wait: at any sign that the sender is still ahead, a packet
+                                   // with data included (off: only at an empty packet's number; Quest 227's two seeds)
+    bool lost_answers = true;      // a lost end that hears "lost" answers it
+    bool flush = true;             // a lost receiver takes nothing until it has seen the zeros
+    bool refuse = true;            // a good packet with no room is thrown away and not acknowledged
+    bool ack_now = true;           // an acknowledgement goes out as soon as the line is free
+    bool lost_uses_ack = true;     // a good packet while lost: its acknowledge field and stop bits are taken
+    bool restart = true;           // the restart handshake
+    bool wrong_twice = true;       // a packet made wrong: asked for again once; the second time running, the error
+    bool ask_not_kept = true;      // the other end asks for a packet no longer kept: the error, and the link starts again
+    bool stop_holds_again = true;  // HL: "a stream that is stopped simply has no packets sent": a packet to be sent again
+                                   // waits too while its stream is stopped (off: only new packets wait)
 };
 
 // A flaw put in on purpose, one at a time, to show that the checks catch it. Compiled out unless LINK_PLANTS.
@@ -47,32 +40,37 @@ enum class Plant : uint8_t {
     ZERO_TAKES_NUMBER,    // a packet of length 0 advances the sender's number
     ACK_FROM_BAD_DATA,    // the acknowledge field is used from a packet whose data failed its check
     NO_ZEROS,             // a recovery round has no zeros
-    OTHER_STREAM_STALE,   // a packet with data says nothing new of the other stream: its acknowledge field as last sent
     HOPS_NOT_COUNTED,     // a forwarded packet keeps its hops (the node's)
-    NOT_SEALED_AGAIN,     // a forwarded packet's header CRC is the incoming one's (the node's)
+    NOT_SEALED_AGAIN,     // a forwarded packet's header CRC is made before hops is counted
     OWN_BEFORE_FORWARDED, // a node sends its own packet before one it is forwarding (the node's)
+    WRONG_FLAG_CLEARED,   // the "made wrong" flag is cleared by a packet that is thrown away
+    ERROR_ON_RELEASE,     // an error is raised on an acknowledgement behind, with nothing asked for
+    RESTART_ANY_DATA,     // a restart packet is acted on whatever its data
+    CHECKSUM_KEPT,        // a packet sent again goes with the checksum of its first sending
     COUNT
 };
 
 struct Params {
     unsigned number_bits = 18;     // numbers 1 to 2^bits - 2
     unsigned max_words = 32;       // the most words in a packet
-    unsigned window = 8;           // the packets kept a stream; under half the numbers
+    unsigned window = 8;           // the packets kept for a direction, of both streams together
     unsigned zeros = 1024;         // the zeros of a recovery round, in bytes
-    unsigned flush_zeros = 532;    // G10: the zeros in a row a lost receiver waits for: what no packet can hold
+    unsigned flush_zeros = 528;    // the zeros in a row a lost receiver waits for: a full packet's length
     unsigned status_timer = 512;   // cycles of silence before the status is sent again
-    unsigned resend_timer = 0;     // G1: cycles before an unacknowledged packet is sent again unasked; 0 is never
-    unsigned reask = 2048;         // G7: cycles before "resend" is asked again when the sender still shows itself ahead
+    unsigned reask = 2048;         // cycles before a resend is asked for again
+    unsigned pass = 1;             // the bytes a cycle of the sender's pass over a packet's data before it leaves; 0: no pass
+    unsigned restart_words = 32;   // the restart packet's length (the shrunken model's is shorter)
     Rules rules;
     Plant plant = Plant::NONE;
 
     uint32_t last_number() const { return (1u << number_bits) - 2; }
 
-    // The shrunken model's sizes (NOTES.md, section 2), in the real order: the status timer, under the zeros a lost
-    // receiver waits for, under a recovery's zeros (512, 532, 1,024).
+    // The shrunken model's sizes, in the real order: the status timer, under the zeros a lost receiver waits for,
+    // under a recovery's zeros (512, 528, 1,024).
     static Params tiny() {
         Params p;
-        p.number_bits = 3; p.max_words = 1; p.window = 2; p.zeros = 44; p.flush_zeros = 36; p.status_timer = 24; p.reask = 96;
+        p.number_bits = 3; p.max_words = 1; p.window = 2; p.zeros = 40; p.flush_zeros = 32; p.status_timer = 24; p.reask = 96;
+        p.restart_words = 1;
         return p;
     }
 };

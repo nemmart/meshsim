@@ -56,10 +56,16 @@ public:
     std::vector<uint64_t> got_down;        // [2i + s]: the words of the host's stream s delivered at node i
     std::vector<uint64_t> got_up;          // [i]: the words of node i's replies delivered at the host
     std::vector<uint8_t> stopped;          // [2 end + s]
-    std::vector<uint32_t> waited;          // [2 end + s]
+    std::vector<uint32_t> waited;          // [end]
     uint32_t most_waited = 0;
     std::vector<uint32_t> turn;            // [end]: the cycles its next foreground packet has waited for the line, nothing excusing it
     uint32_t most_turn = 0;                // HL: "the longest a foreground packet waits is one background packet"
+    // What one run of numbers costs the foreground (not state): the longest a foreground packet stood ready at an end,
+    // not stopped, the link in step: with the window full; behind packets being sent again; in all.
+    std::vector<uint32_t> fg_ready, fg_full, fg_again;   // [end]: the cycles so far for the packet now waiting
+    uint32_t most_fg_ready = 0, most_fg_full = 0, most_fg_again = 0;
+    uint64_t fg_ready_sum = 0, fg_sent = 0;
+    bool flipped = false; uint64_t wrong_words = 0;
     bool gaps_allowed = false, must_report = false, excused = false;
     uint32_t budget[3] = {};
     uint64_t t = 0;
@@ -69,8 +75,8 @@ public:
 
     explicit Chain(const ChainConfig& c);
     void step();
-    bool done() const;
-    long quiet(uint64_t bound);
+    bool done(int hold = -1) const;
+    long quiet(uint64_t bound, int hold = -1);   // hold: that stream's queues are never emptied again (bench.h)
 
     unsigned ends() const { return 2 * cfg.nodes; }
     LinkEnd& end(unsigned e) { return e == 0 ? host : (e & 1) ? node[(e - 1) / 2].up : node[(e - 2) / 2].down; }
@@ -104,12 +110,14 @@ public:
         for (auto& w : waited) a(w);
         for (auto& w : turn) a(w);
         for (auto& s : started_v) a(s);
-        a(gaps_allowed); a(must_report); a(excused); a(budget); a(t);
+        a(gaps_allowed); a(must_report); a(excused); a(flipped); a(budget); a(t);
     }
     std::vector<uint8_t> save() { std::vector<uint8_t> v; Writer w{v}; io(w); return v; }
     void load(const std::vector<uint8_t>& bytes) { Reader rd{bytes.data()}; io(rd); }
     Hash128 canon() const;
     std::vector<uint8_t> whole();
+    uint32_t turn_bound() const { return 2 * HEADER_BYTES + cfg.p.max_words * WORD_BYTES + (cfg.p.pass ? cfg.p.max_words * WORD_BYTES / cfg.p.pass + HEADER_BYTES : 0) + 2; }
+    bool flip(unsigned e);
     uint32_t still_bound() const { return cfg.still ? cfg.still : 8 * (cfg.p.status_timer + cfg.p.zeros + 2 * (HEADER_BYTES + cfg.p.max_words * WORD_BYTES)); }
 
     // For the random runs: counts that are not state.
@@ -125,7 +133,7 @@ public:
 private:
     void deliver_down(unsigned i);
     void deliver_up();
-    std::vector<uint32_t> acked_was;
+    std::vector<uint32_t> acked_was, last_was;
     std::vector<uint64_t> fg_packets_at;   // [i]: the host's foreground packets delivered at node i
     std::vector<uint64_t> replies_at;      // [i]: node i's reply packets delivered at the host
 };

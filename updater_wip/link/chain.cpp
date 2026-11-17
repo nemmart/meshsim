@@ -17,7 +17,8 @@ Chain::Chain(const ChainConfig& c) : cfg(c), host(with_window(c.p, c.host_window
     for (unsigned i = 0; i < c.nodes; i++) src[2 + i].left = c.packets[2];
     fill.assign(1 + 2 * c.nodes, 0); most_fill = fill;
     got_down.assign(2 * c.nodes, 0); got_up.assign(c.nodes, 0);
-    stopped.assign(2 * ends(), 0); waited.assign(2 * ends(), 0); acked_was.assign(2 * ends(), 0); turn.assign(ends(), 0);
+    stopped.assign(2 * ends(), 0); waited.assign(ends(), 0); acked_was.assign(ends(), 0); last_was.assign(ends(), 0); turn.assign(ends(), 0);
+    fg_ready.assign(ends(), 0); fg_full.assign(ends(), 0); fg_again.assign(ends(), 0);
     started_v.assign(2 * c.nodes, 0);
     fg_packets_at.assign(c.nodes, 0); replies_at.assign(c.nodes, 0); reply_let.resize(c.nodes);
     last_damage.assign(c.nodes, 0); dirty.assign(c.nodes, 0);
@@ -42,7 +43,7 @@ Hash128 Chain::canon() const {
     for (auto s : stopped) w(s);
     for (auto x : waited) w(x);
     for (auto x : turn) w(x);
-    w(gaps_allowed); w(must_report); w(excused); w(budget);
+    w(gaps_allowed); w(must_report); w(excused); w(flipped); w(budget);
     for (auto s : started_v) w(s);
     return hash128(v.data(), v.size());
 }
@@ -70,6 +71,7 @@ void Chain::deliver_down(unsigned i) {
             bool known = false; uint64_t index = 0;
             for (uint64_t k = got > 2048 ? got - 2048 : 0; k < got + 2048 && !known; k++) { word(s, k, want); if (!memcmp(have, want, WORD_BYTES)) { known = true; index = k; } }
             if (known && gaps_allowed && index > got) { got = index + 1; continue; }
+            if (!known && flipped) { wrong_words++; got++; continue; }
             if (bad.empty()) {
                 char m[160];
                 if (!known) snprintf(m, sizeof m, "a word delivered that was not sent (node %u, stream %u)", i, s + 1);
@@ -107,6 +109,7 @@ void Chain::deliver_up() {
             bool known = false; uint64_t index = 0;
             for (uint64_t k = got > 2048 ? got - 2048 : 0; k < got + 2048 && !known; k++) { word(2 * (2 + i), k, want); if (!memcmp(have, want, WORD_BYTES)) { known = true; index = k; } }
             if (known && gaps_allowed && index > got) { got = index + 1; continue; }
+            if (!known && flipped) { wrong_words++; got++; continue; }
             if (bad.empty()) {
                 char m[160];
                 snprintf(m, sizeof m, known ? "at the host, node %u's reply word %llu where word %llu was next: %s" : "at the host, under hops %u, a word that node did not send",
@@ -125,7 +128,7 @@ void Chain::deliver_up() {
 
 // Both ends of a link have nothing kept and nothing to ask for: after damage, the link is back as it was.
 static bool nothing_owed(const LinkEnd& a, const LinkEnd& b) {
-    for (const LinkEnd* e : {&a, &b}) for (unsigned s = 0; s < STREAMS; s++) if (e->kept(s) || e->r.s[s].need) return false;
+    for (const LinkEnd* e : {&a, &b}) if (e->kept() || e->r.need) return false;
     return true;
 }
 
@@ -141,7 +144,7 @@ void Chain::step() {
         if (!src[s].waiting()) continue;
         const uint8_t len = src[s].lens[src[s].made];
         for (unsigned w = 0; w < len; w++) word(s, src[s].made_words + w, data[s] + w * WORD_BYTES);
-        off[s].length = len; off[s].dsum = crc32c(data[s], size_t(len) * WORD_BYTES); off[s].data = data[s];
+        off[s].length = len; off[s].id = src[s].made + 1; off[s].data = data[s];
         hin.offer[s] = &off[s];
     }
     std::vector<NodeIn> nin(n);
@@ -160,11 +163,11 @@ void Chain::step() {
             const uint8_t len = so.lens[so.made];
             own_data[i].resize(size_t(len) * WORD_BYTES);
             for (unsigned w = 0; w < len; w++) word(2 * (2 + i), so.made_words + w, own_data[i].data() + w * WORD_BYTES);
-            own[i].length = len; own[i].dsum = crc32c(own_data[i].data(), own_data[i].size()); own[i].data = own_data[i].data();
+            own[i].length = len; own[i].id = so.made + 1; own[i].data = own_data[i].data();
             nin[i].own_offer = &own[i];
         }
     }
-    for (unsigned e = 0; e < ends(); e++) for (unsigned s = 0; s < STREAMS; s++) acked_was[2 * e + s] = end(e).r.s[s].acked;
+    for (unsigned e = 0; e < ends(); e++) { acked_was[e] = end(e).r.acked; last_was[e] = end(e).r.last; }
     std::vector<std::array<uint32_t, STREAMS>> room(ends());              // what each end could take this cycle, for a failure's message
     room[0] = {hin.rx_free[FG], hin.rx_free[BG]};
     for (unsigned i = 0; i < n; i++) {
@@ -174,12 +177,13 @@ void Chain::step() {
         }
     }
     // Which ends have a foreground packet waiting for the line, with nothing but the line to wait for.
-    std::vector<uint8_t> fg_waits(ends(), 0);
+    std::vector<uint8_t> fg_waits(ends(), 0), fg_has(ends(), 0), fg_why(ends(), 0);
     for (unsigned e = 0; e < ends(); e++) {
         const LinkEnd& le = end(e);
         const bool has = e == 0 ? src[0].waiting() : (e & 1) ? (!node[(e - 1) / 2].fwd_up[FG].empty() || src[2 + (e - 1) / 2].waiting()) : !node[(e - 2) / 2].fwd_down[FG].empty();
-        const LinkEnd::StreamRegs& st = le.r.s[FG];
-        fg_waits[e] = has && le.running() && !st.peer_stop && st.next == st.tail && le.kept(FG) < le.p.window;
+        fg_has[e] = has && le.running() && !le.r.peer_stop[FG];
+        fg_why[e] = le.r.next != le.r.tail ? 2 : le.kept() >= le.p.window ? 1 : 0;      // behind packets sent again; the window full
+        fg_waits[e] = fg_has[e] && fg_why[e] == 0;
     }
     // The clock.
     stop = false;
@@ -217,70 +221,106 @@ void Chain::step() {
             gaps_allowed = must_report = true;
             if (!excused && bad.empty()) bad = "the link started again, and nothing had happened that could excuse it";
         }
+        if (le.kept() > le.p.window && bad.empty()) bad = "more kept than the window";
         for (unsigned s = 0; s < STREAMS; s++) {
-            if (le.kept(s) > le.p.window && bad.empty()) bad = "more kept than the window";
             if (le.ev.restarted) stopped[2 * e + s] = 0;
             if (le.ev.stop_taken[s] >= 0) stopped[2 * e + s] = le.ev.stop_taken[s] != 0;
-            const bool waits = le.kept(s) != 0 && le.r.s[s].next == le.r.s[s].tail && le.running() && other.running() && !le.r.s[s].peer_stop && !dirty_now[link] &&
+        }
+        const unsigned oe = e == upper(link) ? lower(link) : upper(link);
+        if (le.ev.not_kept && !le.nums.ahead(last_was[oe], acked_was[e]) && bad.empty())
+            bad = "an error for a packet no longer kept, and the other end had taken every packet this end had let go";
+        {
+            const bool waits = le.kept() != 0 && le.r.next == le.r.tail && le.running() && other.running() && !dirty_now[link] &&
                                wire[2 * link].fate == Fate::WHOLE && wire[2 * link + 1].fate == Fate::WHOLE;
-            uint32_t& w = waited[2 * e + s];
-            if (!waits || le.r.s[s].acked != acked_was[2 * e + s]) w = 0;
+            uint32_t& w = waited[e];
+            if (!waits || le.r.acked != acked_was[e]) w = 0;
             else if (++w > still_bound() && bad.empty()) {
                 char m[320];
-                snprintf(m, sizeof m, "a sender stood still: no acknowledgement in %u cycles on a link in step (end %u, stream %u): it has acknowledged %u, "
-                         "next %u, new %u; the other end has taken %u, owes resend %d, asked %d (%u cycles ago), room for %u words",
-                         w, e, s + 1, le.r.s[s].acked, le.r.s[s].next, le.r.s[s].tail, other.r.s[s].last, other.r.s[s].need, other.r.s[s].asked,
-                         other.r.s[s].ask_timer, room[e == upper(link) ? lower(link) : upper(link)][s]);
+                snprintf(m, sizeof m, "a sender stood still: no acknowledgement in %u cycles on a link in step (end %u): it has acknowledged %u, "
+                         "next %u, new %u; the other end has taken %u, owes resend %d, asked %d (%u cycles ago), room for %u %u words",
+                         w, e, le.r.acked, le.r.next, le.r.tail, other.r.last, other.r.need, other.r.asked, other.r.ask_timer, room[oe][FG], room[oe][BG]);
                 bad = m;
             }
             most_waited = std::max(most_waited, w);
         }
-        // A foreground packet's turn: behind one packet at most, whatever the background is doing.
-        if (!fg_waits[e] || (le.tap.start && unpack(le.tap.hdr).stream == 1 && unpack(le.tap.hdr).length)) turn[e] = 0;
-        else if (++turn[e] > 2 * HEADER_BYTES + cfg.p.max_words * WORD_BYTES + 2 && bad.empty()) {
+        // A foreground packet's turn: behind one packet at most and its own pass, whatever the background is doing.
+        const bool fg_starts = le.tap.start && le.tap.kind == Kind::DATA && unpack(le.tap.hdr).stream == 1;
+        if (!fg_waits[e] || fg_starts) turn[e] = 0;
+        else if (++turn[e] > turn_bound() && bad.empty()) {
             char m[128]; snprintf(m, sizeof m, "a foreground packet waited %u cycles for the line (end %u)", turn[e], e);
             bad = m;
         }
         most_turn = std::max(most_turn, turn[e]);
-        if (le.tap.start && (le.tap.kind == Kind::DATA || le.tap.kind == Kind::RESENT) && stopped[2 * e + unpack(le.tap.hdr).stream - 1] && bad.empty())
+        // What one run of numbers costs it: the window full of the other stream's, and packets sent again before it.
+        if (fg_starts) { fg_sent++; fg_ready_sum += fg_ready[e]; }
+        if (!fg_has[e] || fg_starts) fg_ready[e] = fg_full[e] = fg_again[e] = 0;
+        else {
+            most_fg_ready = std::max(most_fg_ready, ++fg_ready[e]);
+            if (fg_why[e] == 1) most_fg_full = std::max(most_fg_full, ++fg_full[e]);
+            if (fg_why[e] == 2) most_fg_again = std::max(most_fg_again, ++fg_again[e]);
+        }
+        if (le.tap.start && (le.tap.kind == Kind::DATA || (le.tap.kind == Kind::RESENT && cfg.p.rules.stop_holds_again)) &&
+            stopped[2 * e + unpack(le.tap.hdr).stream - 1] && bad.empty())
             bad = "a data packet started on a stream the other end has stopped";
     }
     t++;
 }
 
-bool Chain::done() const {
+// With a stream held (never taken again at any node), only the other stream must finish: the held stream is the
+// host's background, or its foreground with the nodes' replies still to arrive.
+bool Chain::done(int hold) const {
     bool error = false;
     for (unsigned e = 0; e < ends(); e++) {
         const LinkEnd& le = end(e);
-        if (!le.running() || le.kept(FG) || le.kept(BG)) return false;
+        if (!le.running()) return false;
+        if (hold < 0 && le.kept()) return false;
+        for (uint32_t i = 0; i < le.kept() && i < le.p.window; i++) if (int(le.slot_stream((le.r.head + i) % le.p.window)) != hold) return false;
         error = error || le.r.error;
     }
     if (must_report && !error) return false;
-    for (const auto& s : src) if (s.waiting() || s.left) return false;
-    for (const auto& nd : node) for (unsigned s = 0; s < STREAMS; s++) if (!nd.fwd_down[s].empty() || !nd.fwd_up[s].empty()) return false;
+    for (unsigned i = 0; i < src.size(); i++) {
+        const bool held = hold >= 0 && i == unsigned(hold);          // source 0 the host's foreground, 1 its background
+        if (!held && (src[i].waiting() || src[i].left)) return false;
+    }
+    for (const auto& nd : node) for (unsigned s = 0; s < STREAMS; s++) {
+        if (int(s) == hold) { if (s == FG && !nd.fwd_up[s].empty()) return false; continue; }
+        if (!nd.fwd_down[s].empty() || !nd.fwd_up[s].empty()) return false;
+    }
     if (gaps_allowed) return true;
     for (unsigned i = 0; i < cfg.nodes; i++) {
-        if (got_down[2 * i] != src[0].made_words || got_down[2 * i + 1] != src[1].made_words) return false;
+        if (hold != int(FG) && got_down[2 * i] != src[0].made_words) return false;
+        if (hold != int(BG) && got_down[2 * i + 1] != src[1].made_words) return false;
         if (got_up[i] != src[2 + i].made_words) return false;
     }
     return true;
 }
 
-long Chain::quiet(uint64_t bound) {
+bool Chain::flip(unsigned e) {
+    LinkEnd& le = end(e);
+    if (le.kept() == 0) return false;
+    le.r.data[size_t(le.r.head) * cfg.p.max_words * WORD_BYTES + 3] ^= 0x10;
+    flipped = true;
+    return true;
+}
+
+long Chain::quiet(uint64_t bound, int hold) {
     for (uint64_t k = 0; k < bound; k++) {
         if (!bad.empty()) return -1;
-        if (done()) return long(k);
+        if (done(hold)) return long(k);
         for (unsigned i = 0; i < src.size(); i++) while (src[i].left) offer(i);
-        for (auto& f : fill) f = 0;
+        fill[0] = 0;                                                   // the host takes everything
+        for (unsigned i = 0; i < cfg.nodes; i++) for (unsigned s = 0; s < STREAMS; s++) if (int(s) != hold) fill[1 + 2 * i + s] = 0;
         step();
     }
     if (bad.empty()) {
-        std::string m = "nothing more goes wrong, and it does not finish:";
+        std::string m = hold < 0 ? "nothing more goes wrong, and it does not finish:"
+                                 : hold == int(BG) ? "the background is never taken again at any node, nothing more goes wrong, and the foreground does not finish:"
+                                                   : "the foreground is never taken again at any node, nothing more goes wrong, and the rest does not finish:";
         char b[160];
         for (unsigned e = 0; e < ends(); e++) {
             const LinkEnd& le = end(e);
-            snprintf(b, sizeof b, " end %u %s%s%s%s[kept %u %u]", e, le.r.lost ? "lost " : "", le.r.answer ? "answering " : "", le.r.restart ? "restarting " : "",
-                     le.r.restart_answer ? "restart-answering " : "", le.kept(FG), le.kept(BG));
+            snprintf(b, sizeof b, " end %u %s%s%s%s[kept %u, next %u of %u, stopped %d %d]", e, le.r.lost ? "lost " : "", le.r.answer ? "answering " : "", le.r.restart ? "restarting " : "",
+                     le.r.restart_answer ? "restart-answering " : "", le.kept(), le.r.next, le.r.tail, le.r.peer_stop[FG], le.r.peer_stop[BG]);
             m += b;
         }
         for (unsigned i = 0; i < cfg.nodes; i++) {
@@ -308,6 +348,7 @@ std::string play_chain(const Case& c, const std::string& rules) {
             if (e.what == Event::NOISE) b.wire[e.a].noise();
             else if (e.what == Event::OFFER) b.offer(e.a);
             else if (e.what == Event::DRAIN) b.drain(e.a, e.n);
+            else if (e.what == Event::FLIP) b.flip(e.a);
         }
         b.step();
         for (unsigned w = 0; w < b.n_wires(); w++) {
@@ -315,7 +356,7 @@ std::string play_chain(const Case& c, const std::string& rules) {
             for (const Event& e : c.events) if (e.what == Event::FATE && e.a == w && e.cycle == b.wire[w].ordinal) b.fate(w, Fate(e.n));
         }
     }
-    if (b.bad.empty()) b.quiet(c.bound);
+    if (b.bad.empty()) b.quiet(c.bound, int(c.hold) - 1);
     return b.bad;
 }
 

@@ -9,7 +9,8 @@
 namespace hl {
 
 static const char* const FATE_NAMES[] = {"whole", "gone", "first0", "header", "data", "forge-ack", "forge-stop",
-                                          "forge-lost", "forge-recovery", "forge-resend", "forge-number", "forge-number-back", "forge-ack-data"};
+                                          "forge-lost", "forge-recovery", "forge-resend", "forge-number", "forge-number-back", "forge-ack-data",
+                                          "forge-stop-bg", "forge-wrong", "forge-long"};
 const char* fate_name(Fate f) { return FATE_NAMES[unsigned(f)]; }
 bool fate_from(const std::string& name, Fate& f) {
     for (unsigned i = 0; i < unsigned(Fate::COUNT); i++) if (name == FATE_NAMES[i]) { f = Fate(i); return true; }
@@ -49,13 +50,16 @@ void Wire::set_fate(Fate f, const Numbers& nums) {
     fate = f;
     Header h = unpack(hdr);
     switch (f) {
-    case Fate::FORGE_ACK: case Fate::FORGE_ACK_DATA: h.ack[FG] = nums.succ(h.ack[FG]); break;   // the forged fields are the foreground's
+    case Fate::FORGE_ACK: case Fate::FORGE_ACK_DATA: h.ack = nums.succ(h.ack); break;
     case Fate::FORGE_STOP: h.stop[FG] = !h.stop[FG]; break;
     case Fate::FORGE_LOST: h.flags |= F_LOST; break;
     case Fate::FORGE_RECOVERY: h.flags |= F_RECOVERY; break;
-    case Fate::FORGE_RESEND: h.resend[FG] = true; break;
-    case Fate::FORGE_NUMBER: h.number[FG] = nums.succ(h.number[FG]); break;
-    case Fate::FORGE_NUMBER_BACK: h.number[FG] = h.number[FG] <= 1 ? nums.last : h.number[FG] - 1; break;
+    case Fate::FORGE_RESEND: h.flags |= F_RESEND; break;
+    case Fate::FORGE_NUMBER: h.number = nums.succ(h.number); break;
+    case Fate::FORGE_NUMBER_BACK: h.number = h.number <= 1 ? nums.last : h.number - 1; break;
+    case Fate::FORGE_STOP_BG: h.stop[BG] = !h.stop[BG]; break;
+    case Fate::FORGE_WRONG: h.reserved = 1; break;
+    case Fate::FORGE_LONG: h.length = MAX_WORDS + 1; break;
     default: break;
     }
     pack(h, forged);
@@ -84,20 +88,17 @@ void flow_word(unsigned from, unsigned stream, uint64_t index, uint8_t out[WORD_
 // a receiver makes of it, if it ever takes a packet's data for a packet.
 void Link1::word(unsigned from, unsigned stream, uint64_t index, uint8_t out[WORD_BYTES]) const {
     if (!cfg.images) { flow_word(from, stream, index, out); return; }
-    const uint64_t packet = index / cfg.words;             // a packet's data: the 20 bytes of the image, then zeros
+    const uint64_t packet = index / cfg.words;             // a packet's data: the image in every word
     Header h; h.stream = 1; h.flags = F_RECOVERY;
-    h.number[FG] = uint32_t(packet % 5) + 1; h.ack[FG] = uint32_t(packet % 2) + 1; h.number[BG] = 1;
-    uint8_t image[2 * WORD_BYTES] = {};
-    pack(h, image);
-    memcpy(out, image + (index % cfg.words ? WORD_BYTES : 0), WORD_BYTES);
-    if (index % cfg.words > 1) memset(out, 0, WORD_BYTES);
+    h.number = uint32_t(packet % 5) + 1; h.ack = uint32_t(packet % 2) + 1;
+    pack(h, out);
 }
 
-bool Link1::flip(unsigned e, unsigned s) {
+bool Link1::flip(unsigned e) {
     LinkEnd& le = end[e];
-    if (le.kept(s) == 0) return false;
-    le.r.s[s].data[size_t(le.r.s[s].head) * cfg.p.max_words * WORD_BYTES + 3] ^= 0x10;
-    excused = true;
+    if (le.kept() == 0) return false;
+    le.r.data[size_t(le.r.head) * cfg.p.max_words * WORD_BYTES + 3] ^= 0x10;
+    flipped = true;
     return true;
 }
 
@@ -123,14 +124,13 @@ void Link1::step() {
                 for (unsigned w = 0; w < cfg.words; w++) word(e, s, uint64_t(so.made) * cfg.words + w, data[e][s] + w * WORD_BYTES);
                 off[e][s].length = uint8_t(cfg.words);
                 off[e][s].hops = (e == 0 && s == FG && cfg.wrong && so.made + 1 == cfg.wrong) ? 15 : 0;
-                off[e][s].dsum = crc32c(data[e][s], cfg.words * WORD_BYTES); off[e][s].data = data[e][s];
+                off[e][s].id = so.made + 1; off[e][s].data = data[e][s];
                 in[e].offer[s] = &off[e][s];
             }
         }
     }
     stop = false;
-    uint32_t acked_was[2][STREAMS];
-    for (unsigned e = 0; e < 2; e++) for (unsigned s = 0; s < STREAMS; s++) acked_was[e][s] = end[e].r.s[s].acked;
+    const uint32_t acked_was[2] = {end[0].r.acked, end[1].r.acked}, last_was[2] = {end[0].r.last, end[1].r.last};
     for (unsigned e = 0; e < 2; e++) {
         const Taken took = end[e].step(in[e]);
         for (unsigned s = 0; s < STREAMS; s++) if (took.tx[s]) { src[e][s].made++; if (off[e][s].hops == 15) excused = true; }
@@ -143,9 +143,9 @@ void Link1::step() {
                              : le.r.lost ? (le.r.answer ? "LOST+ANSWER" : "LOST") : le.r.answer ? "ANSWER" : "RUN";
             if (le.tap.start) {
                 const Header h = unpack(le.tap.hdr);
-                fprintf(trace, "%6llu  end %u sends   %s, numbers %u %u, acks %u %u%s%s%s%s%s%s%s\n", (unsigned long long)t, e,
-                        h.length ? (h.stream == 1 ? "foreground data" : "background data") : "length 0", h.number[FG], h.number[BG], h.ack[FG], h.ack[BG],
-                        h.resend[FG] ? " RESEND-fg" : "", h.resend[BG] ? " RESEND-bg" : "", h.stop[FG] ? " STOP-fg" : "", h.stop[BG] ? " STOP-bg" : "",
+                fprintf(trace, "%6llu  end %u sends   %s, number %u, ack %u%s%s%s%s%s%s\n", (unsigned long long)t, e,
+                        h.flags & F_RESTART ? "restart packet" : h.length ? (h.stream == 1 ? "foreground data" : "background data") : "length 0", h.number, h.ack,
+                        h.flags & F_RESEND ? " RESEND" : "", h.stop[FG] ? " STOP-fg" : "", h.stop[BG] ? " STOP-bg" : "",
                         h.flags & F_LOST ? " LOST" : "", h.flags & F_RECOVERY ? " RECOVERY" : "", h.flags & F_RESTART ? " RESTART" : "");
             }
             if (v.zeros_start) fprintf(trace, "%6llu  end %u sends   %u zeros\n", (unsigned long long)t, e, cfg.p.zeros);
@@ -154,11 +154,13 @@ void Link1::step() {
             if (v.rx_bad_fields) fprintf(trace, "%6llu  end %u         a header with a field that cannot be\n", (unsigned long long)t, e);
             if (v.rx_good) {
                 const Header h = unpack(le.r.rx_hdr);
-                fprintf(trace, "%6llu  end %u gets    %s, numbers %u %u, acks %u %u%s%s%s\n", (unsigned long long)t, e,
-                        h.length ? (h.stream == 1 ? "foreground data" : "background data") : "length 0", h.number[FG], h.number[BG], h.ack[FG], h.ack[BG],
+                fprintf(trace, "%6llu  end %u gets    %s, number %u, ack %u%s%s%s\n", (unsigned long long)t, e,
+                        h.flags & F_RESTART ? "restart packet" : h.length ? (h.stream == 1 ? "foreground data" : "background data") : "length 0", h.number, h.ack,
                         v.delivered ? ": taken" : "", v.ahead ? ": ahead of the one expected" : "", v.behind ? ": seen before" : v.refused ? ": no room" : "");
             }
             if (v.went_back) fprintf(trace, "%6llu  end %u         goes back to the oldest not acknowledged\n", (unsigned long long)t, e);
+            if (v.not_kept) fprintf(trace, "%6llu  end %u         it is asked for a packet it no longer keeps\n", (unsigned long long)t, e);
+            if (v.wrong_twice) fprintf(trace, "%6llu  end %u         the packet made wrong has come a second time\n", (unsigned long long)t, e);
             if (v.restarted) fprintf(trace, "%6llu  end %u         the link starts again under it: error\n", (unsigned long long)t, e);
             if (v.mode_change) fprintf(trace, "%6llu  end %u         now %s\n", (unsigned long long)t, e, mode);
             if (in[e].power_on) fprintf(trace, "%6llu  end %u         POWER-ON\n", (unsigned long long)t, e);
@@ -171,18 +173,23 @@ void Link1::step() {
             if (end[e].ev.restarted || in[e].power_on) stopped[e][s] = false;
             if (end[e].ev.stop_taken[s] >= 0) stopped[e][s] = end[e].ev.stop_taken[s] != 0;
         }
+        // The error for a packet no longer kept is raised only when one was lost: this end had let go of a packet
+        // that the other end had not taken.
+        if (end[e].ev.not_kept && !end[e].nums.ahead(last_was[1 - e], acked_was[e]) && bad.empty())
+            bad = "an error for a packet no longer kept, and the other end had taken every packet this end had let go";
         // A sender whose packets are kept, on a link in step, hears an acknowledgement before long.
-        for (unsigned s = 0; s < STREAMS; s++) {
-            const bool waits = end[e].kept(s) != 0 && end[e].r.s[s].next == end[e].r.s[s].tail && end[0].running() && end[1].running() && !end[e].r.s[s].peer_stop &&
+        {
+            const bool waits = end[e].kept() != 0 && end[e].r.next == end[e].r.tail && end[0].running() && end[1].running() &&
                                wire[0].fate == Fate::WHOLE && wire[1].fate == Fate::WHOLE;
-            if (!waits || end[e].r.s[s].acked != acked_was[e][s]) waited[e][s] = 0;
-            else if (++waited[e][s] > still_bound() && bad.empty()) {
-                char m[128]; snprintf(m, sizeof m, "a sender stood still: no acknowledgement in %u cycles on a link in step (end %u, stream %u)", waited[e][s], e, s + 1);
+            if (!waits || end[e].r.acked != acked_was[e]) waited[e] = 0;
+            else if (++waited[e] > still_bound() && bad.empty()) {
+                char m[128]; snprintf(m, sizeof m, "a sender stood still: no acknowledgement in %u cycles on a link in step (end %u)", waited[e], e);
                 bad = m;
             }
-            if (waited[e][s] > most_waited) most_waited = waited[e][s];
+            if (waited[e] > most_waited) most_waited = waited[e];
         }
-        if (end[e].tap.start && (end[e].tap.kind == Kind::DATA || end[e].tap.kind == Kind::RESENT) &&
+        // The stop bit is obeyed. Without the rule that it holds packets sent again too, those are let by.
+        if (end[e].tap.start && (end[e].tap.kind == Kind::DATA || (end[e].tap.kind == Kind::RESENT && cfg.p.rules.stop_holds_again)) &&
             stopped[e][unpack(end[e].tap.hdr).stream - 1] && bad.empty())
             bad = "a data packet started on a stream the other end has stopped";
         if (in[e].power_on) {                  // the chip behind this end starts again: its queues are empty
@@ -190,10 +197,8 @@ void Link1::step() {
             for (unsigned s = 0; s < STREAMS; s++) { fresh[e][s] = true; fill[e][s] = 0; }
         }
         stop = stop || end[e].ev.any() || end[e].tap.start || end[e].tap.end || in[e].power_on;
-        for (unsigned s = 0; s < STREAMS; s++) {
-            if (end[e].kept(s) > end[e].p.window && bad.empty()) bad = "more kept than the window";
-            if (fill[e][s] > most_fill[e][s]) most_fill[e][s] = fill[e][s];
-        }
+        if (end[e].kept() > end[e].p.window && bad.empty()) bad = "more kept than the window";
+        for (unsigned s = 0; s < STREAMS; s++) if (fill[e][s] > most_fill[e][s]) most_fill[e][s] = fill[e][s];
     }
     t++;
 }
@@ -213,6 +218,7 @@ void Link1::deliver(unsigned e) {
                 if (memcmp(got, want, WORD_BYTES) == 0) { known = true; index = i; }
             }
             if (known && gaps_allowed && (index > delivered[e][s] || fresh[e][s])) { delivered[e][s] = index + 1; fresh[e][s] = false; continue; }
+            if (!known && flipped) { wrong_words++; delivered[e][s]++; continue; }      // the flipped bit, delivered unseen (HL)
             if (bad.empty()) {
                 char m[160];
                 if (!known) snprintf(m, sizeof m, "a word delivered that was not sent (end %u, stream %u)", e, s + 1);
@@ -231,36 +237,43 @@ void Link1::deliver(unsigned e) {
     }
 }
 
-bool Link1::done() const {
+bool Link1::done(int hold) const {
     if (must_report && !end[0].r.error && !end[1].r.error) return false;
     for (unsigned e = 0; e < 2; e++) {
         if (!end[e].running()) return false;
+        if (hold < 0 && end[e].kept() != 0) return false;
+        for (uint32_t i = 0; i < end[e].kept() && i < end[e].p.window; i++)
+            if (int(end[e].slot_stream((end[e].r.head + i) % end[e].p.window)) != hold) return false;
         for (unsigned s = 0; s < STREAMS; s++) {
-            if (src[e][s].made != src[e][s].total || end[e].kept(s) != 0) return false;
+            if (int(s) == hold) continue;
+            if (src[e][s].made != src[e][s].total) return false;
             if (!gaps_allowed && delivered[1 - e][s] != uint64_t(src[e][s].total) * cfg.words) return false;
         }
     }
     return true;
 }
 
-long Link1::quiet(uint64_t bound) {
+long Link1::quiet(uint64_t bound, int hold) {
     for (uint64_t n = 0; n < bound; n++) {
         if (!bad.empty()) return -1;
-        if (done()) return long(n);
-        for (unsigned e = 0; e < 2; e++) for (unsigned s = 0; s < STREAMS; s++) { src[e][s].avail = src[e][s].total; fill[e][s] = 0; }
+        if (done(hold)) return long(n);
+        for (unsigned e = 0; e < 2; e++) for (unsigned s = 0; s < STREAMS; s++) { src[e][s].avail = src[e][s].total; if (int(s) != hold) fill[e][s] = 0; }
         step();
     }
     if (bad.empty()) {
-        std::string m = "nothing more goes wrong, and it does not finish:";
+        std::string m = hold < 0 ? "nothing more goes wrong, and it does not finish:"
+                                 : hold == int(BG) ? "the background is never taken again, nothing more goes wrong, and the foreground does not finish:"
+                                                   : "the foreground is never taken again, nothing more goes wrong, and the background does not finish:";
         if (must_report && !end[0].r.error && !end[1].r.error) m += " the link started again and no error is up;";
         char b[200];
         for (unsigned e = 0; e < 2; e++) {
-            snprintf(b, sizeof b, " end %u %s%s%s%s", e, end[e].r.lost ? "lost " : "", end[e].r.answer ? "answering " : "",
-                     end[e].r.restart ? "restarting " : "", end[e].r.restart_answer ? "restart-answering " : "");
+            snprintf(b, sizeof b, " end %u %s%s%s%s[kept %u, next %u of %u, stopped %d %d]", e, end[e].r.lost ? "lost " : "", end[e].r.answer ? "answering " : "",
+                     end[e].r.restart ? "restarting " : "", end[e].r.restart_answer ? "restart-answering " : "", end[e].kept(), end[e].r.next, end[e].r.tail,
+                     end[e].r.peer_stop[FG], end[e].r.peer_stop[BG]);
             m += b;
             for (unsigned s = 0; s < STREAMS; s++) {
-                snprintf(b, sizeof b, "[stream %u: made %u of %u, kept %u, delivered %llu of them]", s + 1, src[e][s].made,
-                         src[e][s].total, end[e].kept(s), (unsigned long long)(delivered[1 - e][s] / cfg.words));
+                snprintf(b, sizeof b, "[stream %u: made %u of %u, delivered %llu of them]", s + 1, src[e][s].made,
+                         src[e][s].total, (unsigned long long)(delivered[1 - e][s] / cfg.words));
                 m += b;
             }
         }
@@ -275,7 +288,7 @@ Hash128 Link1::canon() const {
     for (const auto& e : end) e.canon(w);
     for (const auto& wi : wire) wi.canon(w);
     for (const auto& e : src) for (const auto& s : e) { w(s.made); w(s.avail); }
-    w(fill); w(delivered); w(gaps_allowed); w(fresh); w(must_report); w(excused); w(stopped); w(waited); w(power); w(budget); w(started_);
+    w(fill); w(delivered); w(gaps_allowed); w(fresh); w(must_report); w(excused); w(flipped); w(stopped); w(waited); w(power); w(budget); w(started_);
     return hash128(v.data(), v.size());
 }
 
@@ -295,17 +308,16 @@ void Link1::load(const std::vector<uint8_t>& bytes) { Reader rd{bytes.data()}; i
 namespace {
 struct RuleName { const char* name; bool Rules::*field; };
 const RuleName RULES[] = {
-    {"resend_ahead", &Rules::resend_ahead}, {"ask_every", &Rules::ask_every}, {"zero_number", &Rules::zero_number},
-    {"lost_answers", &Rules::lost_answers}, {"flush", &Rules::flush},
-    {"refuse", &Rules::refuse}, {"made_wrong", &Rules::made_wrong}, {"long_is_lost", &Rules::long_is_lost},
-    {"stop_lift_back", &Rules::stop_lift_back}, {"ack_now", &Rules::ack_now}, {"lost_uses_ack", &Rules::lost_uses_ack},
-    {"restart", &Rules::restart}, {"tell_behind", &Rules::tell_behind}, {"check_kept", &Rules::check_kept},
+    {"resend_ahead", &Rules::resend_ahead}, {"zero_number", &Rules::zero_number}, {"reask_any", &Rules::reask_any},
+    {"lost_answers", &Rules::lost_answers}, {"flush", &Rules::flush}, {"refuse", &Rules::refuse},
+    {"ack_now", &Rules::ack_now}, {"lost_uses_ack", &Rules::lost_uses_ack}, {"restart", &Rules::restart},
+    {"wrong_twice", &Rules::wrong_twice}, {"ask_not_kept", &Rules::ask_not_kept}, {"stop_holds_again", &Rules::stop_holds_again},
 };
 struct SizeName { const char* name; unsigned Params::*field; };
 const SizeName SIZES[] = {
     {"number_bits", &Params::number_bits}, {"max_words", &Params::max_words}, {"window", &Params::window},
     {"zeros", &Params::zeros}, {"flush_zeros", &Params::flush_zeros}, {"status_timer", &Params::status_timer},
-    {"resend_timer", &Params::resend_timer}, {"reask", &Params::reask},
+    {"reask", &Params::reask}, {"pass", &Params::pass}, {"restart_words", &Params::restart_words},
 };
 }  // namespace
 
@@ -313,8 +325,7 @@ bool apply_rules(const std::string& spec, Params& p, std::string& err) {
     size_t i = 0;
     auto word = [&]() { const size_t j = spec.find_first_of("+-,", i); std::string w = spec.substr(i, j == std::string::npos ? j : j - i); i = j; return w; };
     const std::string first = word();
-    if (first == "as_written") p.rules = Rules::as_written();
-    else if (first == "proposed") p.rules = Rules();
+    if (first == "hl") p.rules = Rules();
     else { err = "rules: " + first; return false; }
     while (i != std::string::npos && i < spec.size()) {
         const char sign = spec[i++];
@@ -331,10 +342,9 @@ bool apply_rules(const std::string& spec, Params& p, std::string& err) {
 }
 
 std::string rules_text(const Params& p) {
-    std::string s = "proposed";
+    std::string s = "hl";
     const Rules d;
     for (const auto& rn : RULES) if (p.rules.*rn.field != d.*rn.field) s += std::string(p.rules.*rn.field ? "+" : "-") + rn.name;
-    if (p.resend_timer) s += ",resend_timer=" + std::to_string(p.resend_timer);
     return s;
 }
 
@@ -376,7 +386,8 @@ bool parse_case(const std::string& path, Case& c, std::string& err) {
         else if (k == "offer") { unsigned a, b; in >> a >> b >> ev.cycle; ev.what = Event::OFFER; ev.a = uint8_t(a); ev.b = uint8_t(b - 1); c.events.push_back(ev); }
         else if (k == "drain") { unsigned a, b; in >> a >> b >> ev.cycle >> ev.n; ev.what = Event::DRAIN; ev.a = uint8_t(a); ev.b = uint8_t(b - 1); c.events.push_back(ev); }
         else if (k == "power") { unsigned a; in >> a >> ev.cycle; ev.what = Event::POWER; ev.a = uint8_t(a); c.events.push_back(ev); }
-        else if (k == "flip") { unsigned a, b; in >> a >> b >> ev.cycle; ev.what = Event::FLIP; ev.a = uint8_t(a); ev.b = uint8_t(b - 1); c.events.push_back(ev); }
+        else if (k == "flip") { unsigned a; in >> a >> ev.cycle; ev.what = Event::FLIP; ev.a = uint8_t(a); c.events.push_back(ev); }
+        else if (k == "hold") { in >> c.hold; }
         else if (k == "quiet") { in >> c.quiet_at >> c.bound; }
         else if (k == "run") {
             Run r; std::string verdict;
@@ -397,7 +408,7 @@ std::string case_text(const Case& c) {
     const Params& p = c.cfg.p;
     o << "sizes number_bits=" << p.number_bits << " max_words=" << p.max_words << " window=" << p.window << " zeros=" << p.zeros
       << " flush_zeros=" << p.flush_zeros << " status_timer=" << p.status_timer << " queue=" << c.cfg.queue_words
-      << " reask=" << p.reask << " delay=" << c.cfg.delay << " words=" << c.cfg.words << " images=" << c.cfg.images
+      << " reask=" << p.reask << " pass=" << p.pass << " restart_words=" << p.restart_words << " delay=" << c.cfg.delay << " words=" << c.cfg.words << " images=" << c.cfg.images
       << " window0=" << c.cfg.window0 << " wrong=" << c.cfg.wrong << " still=" << c.cfg.still << "\n";
     if (c.chain) o << "chain " << c.chain << "\ncpackets " << c.cpackets[0] << " " << c.cpackets[1] << " " << c.cpackets[2] << "\nfwd " << c.fwd << "\n";
     else o << "packets " << c.cfg.packets[0][0] << " " << c.cfg.packets[0][1] << " " << c.cfg.packets[1][0] << " " << c.cfg.packets[1][1] << "\n";
@@ -408,9 +419,10 @@ std::string case_text(const Case& c) {
         case Event::OFFER: o << "offer " << unsigned(e.a) << " " << unsigned(e.b) + 1 << " " << e.cycle << "\n"; break;
         case Event::DRAIN: o << "drain " << unsigned(e.a) << " " << unsigned(e.b) + 1 << " " << e.cycle << " " << e.n << "\n"; break;
         case Event::POWER: o << "power " << unsigned(e.a) << " " << e.cycle << "\n"; break;
-        case Event::FLIP: o << "flip " << unsigned(e.a) << " " << unsigned(e.b) + 1 << " " << e.cycle << "\n"; break;
+        case Event::FLIP: o << "flip " << unsigned(e.a) << " " << e.cycle << "\n"; break;
         }
     }
+    if (c.hold) o << "hold " << c.hold << "\n";
     o << "quiet " << c.quiet_at << " " << c.bound << "\n";
     for (const Run& r : c.runs) o << "run " << r.rules << (r.ok ? " ok" : " fail ") << r.text << "\n";
     return o.str();
@@ -430,7 +442,7 @@ std::string play(const Case& c, const std::string& rules, Link1* out, FILE* trac
             else if (e.what == Event::OFFER) b.offer(e.a, e.b);
             else if (e.what == Event::DRAIN) b.drain(e.a, e.b, e.n);
             else if (e.what == Event::POWER) b.power[e.a] = true;
-            else if (e.what == Event::FLIP) b.flip(e.a, e.b);
+            else if (e.what == Event::FLIP) b.flip(e.a);
         }
         b.step();
         for (unsigned w = 0; w < 2; w++) {
@@ -443,7 +455,7 @@ std::string play(const Case& c, const std::string& rules, Link1* out, FILE* trac
         }
     }
     if (trace && b.bad.empty()) fprintf(trace, "%6llu  from here nothing more goes wrong\n", (unsigned long long)b.t);
-    if (b.bad.empty()) { if (trace && c.bound > 600) { Link1 shown = b; shown.quiet(600); } b.trace = nullptr; b.quiet(c.bound); }
+    if (b.bad.empty()) { if (trace && c.bound > 600) { Link1 shown = b; shown.quiet(600, int(c.hold) - 1); } b.trace = nullptr; b.quiet(c.bound, int(c.hold) - 1); }
     if (out) *out = b;
     return b.bad;
 }

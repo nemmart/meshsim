@@ -15,7 +15,9 @@
 // Every state reached is known by a 128-bit hash of what can still matter in it (Link1::canon) and is tried once,
 // breadth first, so the first failure is a shortest one. In every state: the properties that hold at every cycle
 // (the bench's); and, from that state, if nothing more goes wrong, everything arrives and the link comes to rest
-// (Link1::quiet). A failure is written out as a case (cases/), and played back to see that it is the same failure.
+// (Link1::quiet). With --hold S the same again with stream S never taken from its queues: the other stream must
+// still finish (HL: "a stopped stream cannot block the other"); --hold 3 is each stream in turn.
+// A failure is written out as a case (cases/), and played back to see that it is the same failure.
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -52,7 +54,8 @@ struct Seen {                                  // the states seen: open addressi
 struct Node { uint32_t parent; uint32_t first, count; };   // how it was reached: its events, in the pool
 
 struct Options {
-    std::string rules = "proposed";
+    std::string rules = "hl";
+    unsigned hold = 0;
     Config cfg;
     unsigned chain = 0, cpackets[3] = {1, 1, 1}, fwd = 8;
     uint32_t damage = 1, noise = 0, forge = 0, power = 0, flips = 0;
@@ -83,8 +86,9 @@ template <class B> int search(const Options& o, B root, Case blank) {
         Hash128 h = b.canon(); h.a ^= uint64_t(pl) * 0x9E3779B97F4A7C15ull;
         return !seen.add(h);
     };
-    auto write_case = [&](uint32_t node, const std::vector<Event>& last, const B& at, const std::string& bad) {
+    auto write_case = [&](uint32_t node, const std::vector<Event>& last, const B& at, const std::string& bad, unsigned hold) {
         Case c = blank;
+        c.hold = hold;
         std::vector<Event> evs(last.rbegin(), last.rend());
         for (uint32_t n = node; n != 0; n = nodes[n].parent)
             for (uint32_t k = nodes[n].count; k-- > 0;) evs.push_back(pool[nodes[n].first + k]);
@@ -101,7 +105,7 @@ template <class B> int search(const Options& o, B root, Case blank) {
     };
     auto event = [](Event::What what, unsigned i, uint64_t cycle, uint32_t n) {
         Event ev{}; ev.what = what; ev.cycle = cycle; ev.n = n;
-        if (B::flat || what == Event::FATE || what == Event::NOISE || what == Event::POWER) ev.a = uint8_t(i); else { ev.a = uint8_t(i / 2); ev.b = uint8_t(i % 2); }
+        if (B::flat || what == Event::FATE || what == Event::NOISE || what == Event::POWER || what == Event::FLIP) ev.a = uint8_t(i); else { ev.a = uint8_t(i / 2); ev.b = uint8_t(i % 2); }
         return ev;
     };
 
@@ -142,7 +146,7 @@ template <class B> int search(const Options& o, B root, Case blank) {
         for (unsigned w = 0; w < b.n_wires(); w++) if (b.budget[1] && b.the_wire(w).idle() && !b.started(w)) dims.push_back(Dim{3, w, {0, 1}});
         if constexpr (!B::flat) {
             if (extra[parent] & 0xFF) dims.push_back(Dim{4, 1, {0, 1}});
-            if (extra[parent] >> 8) for (unsigned i = 0; i < 2 * STREAMS; i++) if (b.end[i / 2].kept(i % 2)) dims.push_back(Dim{5, i, {0, 1}});
+            if (extra[parent] >> 8) for (unsigned i = 0; i < 2; i++) if (b.end[i].kept()) dims.push_back(Dim{5, i, {0, 1}});
         }
 
         std::vector<size_t> digit(dims.size(), 0);
@@ -170,7 +174,7 @@ template <class B> int search(const Options& o, B root, Case blank) {
                     else if (d.what == 3 && v) { if (b.the_wire(d.i).noise()) { b.budget[1]--; evs.push_back(event(Event::NOISE, d.i, b.t, 0)); } }
                     else if constexpr (!B::flat) {
                         if (d.what == 4 && v) { b.power[d.i] = true; pl--; evs.push_back(event(Event::POWER, d.i, b.t, 0)); }
-                        else if (d.what == 5 && v && (pl >> 8)) { b.flip(d.i / 2, d.i % 2); pl -= 0x100; evs.push_back(event(Event::FLIP, d.i, b.t, 0)); }
+                        else if (d.what == 5 && v && (pl >> 8)) { b.flip(d.i); pl -= 0x100; evs.push_back(event(Event::FLIP, d.i, b.t, 0)); }
                     }
                 }
                 for (uint64_t n = 0; b.bad.empty(); ) {
@@ -179,18 +183,23 @@ template <class B> int search(const Options& o, B root, Case blank) {
                 }
                 tried++;
                 std::string bad = b.bad;
+                unsigned held = 0;
                 const bool fresh = bad.empty() && !known(b, pl);
                 if (fresh && o.quiet_check) {
-                    q.load(b.save()); q.bad.clear();
-                    const uint64_t before = q.t;
-                    const long took = q.quiet(o.bound);
-                    quiet_runs++; quiet_cycles += q.t - before;
-                    if (took < 0) bad = q.bad; else if (uint64_t(took) > longest_quiet) longest_quiet = uint64_t(took);
+                    const std::vector<uint8_t> here = b.save();
+                    for (unsigned h = 0; h <= STREAMS && bad.empty(); h++) {
+                        if (h && !(o.hold >> (h - 1) & 1)) continue;
+                        q.load(here); q.bad.clear();
+                        const uint64_t before = q.t;
+                        const long took = q.quiet(o.bound, int(h) - 1);
+                        quiet_runs++; quiet_cycles += q.t - before;
+                        if (took < 0) { bad = q.bad; held = h; } else if (uint64_t(took) > longest_quiet) longest_quiet = uint64_t(took);
+                    }
                 }
                 if (!bad.empty()) {
                     failed_states++;
                     std::string kind = bad.substr(0, bad.find_first_of(":("));
-                    if (failures[kind]++ == 0 && (o.all || !first_written)) { write_case(parent, evs, b, bad); first_written = true; }
+                    if (failures[kind]++ == 0 && (o.all || !first_written)) { write_case(parent, evs, b, bad, held); first_written = true; }
                     if (!o.all) { frontier.clear(); halt = true; }
                 } else if (fresh) {
                     nodes.push_back(Node{parent, uint32_t(pool.size()), uint32_t(evs.size())});
@@ -254,6 +263,7 @@ int main(int argc, char** argv) {
         else if (a == "--all") o.all = true;
         else if (a == "--whole") o.whole = true;
         else if (a == "--no-quiet") o.quiet_check = false;
+        else if (a == "--hold") o.hold = unsigned(num());
         else { printf("linksearch: unknown option %s\n", a.c_str()); return 2; }
     }
     std::string err;
@@ -261,8 +271,8 @@ int main(int argc, char** argv) {
     Case blank; blank.cfg = o.cfg; blank.cfg.p = Params::tiny();
     blank.cfg.p.max_words = o.cfg.p.max_words; blank.cfg.p.zeros = o.cfg.p.zeros; blank.cfg.p.flush_zeros = o.cfg.p.flush_zeros;
     if (o.chain) {
-        printf("linksearch: a chain of %u; rules %s; packets %u %u, %u from each node; damage %u, noise %u, forge %u; queue %u, forwarding %u, delay %u, tick %u%s\n",
-               o.chain, o.rules.c_str(), o.cpackets[0], o.cpackets[1], o.cpackets[2], o.damage, o.noise, o.forge, o.cfg.queue_words, o.fwd, o.cfg.delay, o.tick,
+        printf("linksearch: a chain of %u; rules %s; packets %u %u, %u from each node; damage %u, noise %u, forge %u; queue %u, forwarding %u, delay %u, tick %u, hold %u%s\n",
+               o.chain, o.rules.c_str(), o.cpackets[0], o.cpackets[1], o.cpackets[2], o.damage, o.noise, o.forge, o.cfg.queue_words, o.fwd, o.cfg.delay, o.tick, o.hold,
                o.whole ? "; states kept whole" : "");
         ChainConfig cc;
         cc.p = o.cfg.p; cc.nodes = o.chain; cc.queue_words = o.cfg.queue_words; cc.fwd_words = o.fwd; cc.words = o.cfg.words; cc.still = o.cfg.still;
@@ -272,9 +282,9 @@ int main(int argc, char** argv) {
         for (unsigned i = 0; i < 3; i++) blank.cpackets[i] = o.cpackets[i];
         return search(o, Chain(cc), blank);
     }
-    printf("linksearch: rules %s; packets %u %u %u %u; damage %u, noise %u, forge %u, power %u, flips %u; queue %u, delay %u, tick %u%s%s\n",
+    printf("linksearch: rules %s; packets %u %u %u %u; damage %u, noise %u, forge %u, power %u, flips %u; queue %u, delay %u, tick %u, hold %u%s%s\n",
            o.rules.c_str(), o.cfg.packets[0][0], o.cfg.packets[0][1], o.cfg.packets[1][0], o.cfg.packets[1][1], o.damage, o.noise,
-           o.forge, o.power, o.flips, o.cfg.queue_words, o.cfg.delay, o.tick, o.cfg.images ? "; words are headers' images" : "",
+           o.forge, o.power, o.flips, o.cfg.queue_words, o.cfg.delay, o.tick, o.hold, o.cfg.images ? "; words are headers' images" : "",
            o.whole ? "; states kept whole" : "");
     return search(o, Link1(o.cfg), blank);
 }

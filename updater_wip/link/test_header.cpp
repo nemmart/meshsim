@@ -1,4 +1,5 @@
-// test_header: HL's four example headers of 20 bytes and its CRC values, byte for byte; the numbers' arithmetic; and,
+// test_header: HL's four example headers and its CRC values, byte for byte; the restart packet's data and its
+// checksum; the numbers' arithmetic; and,
 // given the path of gold's VECTORS.txt (updater_wip/pipeline/gold/test/packets/), every crc32c line in it.
 #include <cstdio>
 #include <cstring>
@@ -27,10 +28,10 @@ static void example(const Header& h, const char* want) {
     uint8_t again[HEADER_BYTES]; pack(u, again);
     CHECK(memcmp(again, b, HEADER_BYTES) == 0);
     CHECK(u.stream == h.stream && u.flags == h.flags && u.length == h.length && u.hops == h.hops && u.dsum == h.dsum);
-    for (unsigned t = 0; t < STREAMS; t++) CHECK(u.number[t] == h.number[t] && u.ack[t] == h.ack[t] && u.stop[t] == h.stop[t] && u.resend[t] == h.resend[t]);
+    CHECK(u.number == h.number && u.ack == h.ack && u.stop[FG] == h.stop[FG] && u.stop[BG] == h.stop[BG] && u.reserved == h.reserved);
 }
 
-// Gold's VECTORS.txt: its crc32c lines. Its packets are of the header of 16 bytes, before 2026-11-17, and are not read.
+// Gold's VECTORS.txt: its crc32c lines. Its packets are of the header before 2026-11-17, and are not read.
 static int vectors(const char* path) {
     FILE* f = fopen(path, "r");
     if (!f) { printf("cannot open %s\n", path); return 1; }
@@ -56,17 +57,27 @@ int main(int argc, char** argv) {
     CHECK(crc32c(nullptr, 0) == 0);
     const uint8_t zero[16] = {};
     CHECK(crc32c(zero, 16) == 0x42709AEAu);
-    // HL's four example headers of 20 bytes.
+    // HL's four example headers.
     {
-        Header h; h.stream = 2; h.length = 1; h.number[FG] = 1; h.number[BG] = 1; h.dsum = crc32c(zero, 16);
-        example(h, "020101000000100000000000EA9A704245941AE9");
+        Header h; h.stream = 2; h.length = 1; h.number = 1; h.dsum = crc32c(zero, 16);
+        example(h, "0201010000000000EA9A7042A08C06E1");
         h.hops = 1;
-        example(h, "020101000000100000000001EA9A7042E9FB0BD1");
-        Header g; g.stream = 1; g.length = 1; g.number[FG] = 0x2ABCD; g.ack[FG] = 0x15555; g.number[BG] = 0x123; g.ack[BG] = 0x3FFFE;
-        g.hops = 3; g.stop[FG] = true; g.resend[BG] = true; g.dsum = crc32c(zero, 16);
-        example(g, "0101CDAB5655351280FFFF93EA9A704257AE7815");
-        Header z; z.stream = 1; z.number[FG] = 5; z.ack[FG] = 4; z.number[BG] = 9; z.ack[BG] = 8;
-        example(z, "0100050010009000000200000000000000DD0F8F");
+        example(h, "0201010000001000EA9A70429EBC0A21");
+        Header g; g.stream = 1; g.flags = F_RESEND; g.length = 1; g.number = 0x2ABCD; g.ack = 0x15555;
+        g.hops = 3; g.stop[BG] = true; g.dsum = crc32c(zero, 16);
+        example(g, "1101CDAB56553502EA9A7042D2BFBA0A");
+        Header z; z.stream = 1; z.number = 5; z.ack = 4; z.stop[FG] = true;
+        example(z, "01000500100000010000000057094D4E");
+    }
+    // HL, "Starting a link again": the restart packet's data, the first 32 primes sixteen times over, and its checksum.
+    {
+        uint8_t data[RESTART_WORDS * WORD_BYTES];
+        for (unsigned i = 0; i < sizeof data; i++) data[i] = restart_byte(i);
+        CHECK(sizeof data == 512 && data[0] == 2 && data[31] == 131 && data[32] == 2 && data[511] == 131);
+        CHECK(crc32c(data, sizeof data) == RESTART_SUM);
+        Header h; h.stream = 1; h.flags = F_RESTART | F_LOST; h.length = 32; h.number = 1; h.dsum = RESTART_SUM;
+        uint8_t b[HEADER_BYTES]; pack(h, b);
+        CHECK(b[0] == 0xA1 && b[1] == 32 && crc32c(b, HEADER_BYTES) == CRC_GOOD_HEADER);
     }
     // The numbers, at the real width and at the shrunken model's.
     for (uint32_t last : {0x3FFFEu, 6u, 14u}) {

@@ -3,15 +3,17 @@
 WORKER8's work (`../planning/sessions/WORKER8/`): the link of `v1.4_wip/planning/HOST-LINK.md` ("HL") built as it is
 written, put on wires that misbehave, and searched. No chip, no mesh, nothing of `v1.37_wip/`.
 
-**Where it stands (2026-11-17, later):** on HL's header of 20 bytes. One link and chains of up to three nodes are
-searched; chains of 1, 2, 4 and 16 are run at random. What was found is `../planning/sessions/WORKER8/QUESTIONS.md`;
-the tables are in `NOTES.md` there, sections 16 and 17. The long campaign and the larger searches are the runner's.
+**Where it stands (2026-11-17, after NEXT.md):** on HL's header of 16 bytes with one run of packet numbers for a
+link. **Stopped: the foreground can stand still behind a stopped background**
+(`../planning/sessions/WORKER8/REPORT.md`, `cases/stopped-blocks.case`). The link end, the benches, the search and
+the random runs are brought up to HL as it stands. Not yet: the cases in `cases/not-yet`, `plants.sh`,
+`searches.sh`, `figures.sh`, `make_cases.sh` and `rates.py`, which are of the header before.
 
 ## What is here
 
 | file | what |
 |---|---|
-| `crc32c.h`, `header.h` | CRC-32C a byte a cycle; the header of 20 bytes packed and unpacked; the packet numbers' arithmetic |
+| `crc32c.h`, `header.h` | CRC-32C a byte a cycle; the header packed and unpacked; the restart packet's data; the packet numbers' arithmetic |
 | `link_params.h` | the sizes; **the rules taken where HL is silent, each a switch** (`Rules`); the planted bugs (`Plant`) |
 | `link_end.h`, `.cpp` | **the link end:** its registers in one struct, one `step()` a cycle, a byte in and a byte out. Kept for the chip's Ingress/Egress model |
 | `node.h`, `.cpp` | **the chain node:** two link ends and the forwarding buffers between them |

@@ -98,6 +98,13 @@ public:
         int64_t (*read)(void* ctx, int64_t t, int32_t root, int depth, int64_t line, MemSystem::Response& r) = nullptr;
         bool (*write_ready)(void* ctx, int64_t t) = nullptr;
         int64_t (*write)(void* ctx, int64_t t, int32_t root, int depth, int64_t line, const uint64_t* data, int& status) = nullptr;
+        // v1.37 (updater_wip, WORKER5): a clocked memory system, the cache's controller (units/cache_system.h), which
+        // cannot tell a response's cycle at the handshake. With these set, read and write only hand it the request
+        // (their return is ignored), each response is polled in every cycle a request is outstanding, and the memory
+        // system's edge is `tick`, called at the end of each step(t). Unset, the port is as above.
+        bool (*read_response)(void* ctx, int64_t t, MemSystem::Response& r) = nullptr;
+        bool (*write_response)(void* ctx, int64_t t, int& status) = nullptr;
+        void (*tick)(void* ctx, int64_t t) = nullptr;
     };
     FillPort* fill_port = nullptr;
 

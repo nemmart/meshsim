@@ -192,7 +192,8 @@ What the core does with a background frame:
 ## Holding the host back
 
 - **Nothing is counted.** The Updater takes words when it can; when it cannot, the background queue fills; a full
-  queue tells the host to stop sending that stream (`HOST-LINK.md`). The foreground stream is not touched.
+  queue tells its neighbour up the chain to stop sending that stream (`HOST-LINK.md`: "stop" is for each link). The
+  foreground stream is not touched.
 - **The firmware has no part in it.**
 
 ## Errors
@@ -248,8 +249,8 @@ Gold's packetizer and its vectors are `updater_wip/pipeline/gold/` (`packets`, `
 
 - The word numbers and bit numbers marked †.
 - **The size of the two queues.** 8 KB each is pencilled in (owner): the size is arbitrary, and 4 KB or 16 KB
-  changes little in the design. What decides it is the room needed for the packets still on their way when a
-  stream says stop (`HOST-LINK.md`).
+  changes little in the design. The room needed when a stream says stop is small, a packet or two, since "stop"
+  is for each link (`HOST-LINK.md`).
 - Whether the forward count wants an event of its own for reaching 0.
 - The sending side, Egress: nothing goes back to the host in v1.37.
 - Whether the foreground stream's messages are frames of the same kind, and what they are.

@@ -540,7 +540,16 @@ box, the port, the firmware. `INGRESS-INTERFACE.md` and `UPDATER-INTERFACE.md` a
 - **A hop always computes the header CRC again** (owner), since the field is under it. Left outside the CRC, one
   flipped bit would credit a packet to the wrong ASIC.
 - **A chain is probably no more than 4 ASICs** (owner).
-- **Opened by this:** whether packets are acknowledged and sent again between neighbours or between the host and
-  each ASIC. `HOST-LINK.md`, "The chain, and the hops field".
+- **Every link of the chain is a link of its own** (owner). Packet numbers, acknowledgements, the flags, sending
+  again, recovery and "stop" mean something only on the link a header is travelling on. A garbled packet is sent
+  again only over the link that garbled it.
+  - A forwarding ASIC takes the whole packet in, checks it, writes the outgoing link's fields, adds one to hops
+    and computes the header CRC again. It keeps what it has sent on each link until its neighbour acknowledges it.
+  - **What the field is for** (owner): the FPGA sorts what arrives by it, and so rebuilds each ASIC's replies to
+    a query sent to all of them.
+  - **"Stop" for each link:** a full background queue stops the neighbour up the chain, and so on upward, so a
+    chain's background stream moves at its slowest ASIC's pace. The room a queue must keep is then one link's
+    packets in flight, not the chain's.
+  - (The design session first read it as numbers kept between the host and each ASIC. The owner corrected it.)
 - **What it changes that is built:** gold's packetizer, its reader and the vectors; v1.37's link header and
   Ingress's black box. The first example header is the same bytes as before. Given to WORKER7.

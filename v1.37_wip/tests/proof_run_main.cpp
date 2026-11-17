@@ -129,9 +129,9 @@ int main(int argc, char** argv) {
                     n.master[25], n.master[26], n.master[27]);
     if (n.master.size() > 122) {   // fw/cc/master_layout.h: MR_WAKES, MR_LINK_READS, MR_FRAME_WAKES, MR_FRAME_READS, MR_THRESHOLD_STORES, MR_HANDED_*
         const std::vector<uint32_t>& R = n.master;
-        std::printf("the threshold: %u; the master's wakes: %u, %u to the hand-over; Ingress read out in %u transfers, %u to the hand-over; %u threshold stores; "
+        std::printf("the threshold: %u; the link at %d bytes a cycle; the master's wakes: %u, %u to the hand-over; Ingress read out in %u transfers, %u to the hand-over; %u threshold stores; "
                     "the master awake %llu cycles to the hand-over; the link: its last byte at %lld, %llu cycles waiting for room\n", c.threshold ? c.threshold : 256,
-                    R[30], R[121], R[31], R[122], R[120], (unsigned long long)n.master_awake_handed, (long long)n.link_last_at, (unsigned long long)n.link_room_cycles);
+                    c.cycles_per_byte == 0 ? 0 : c.link_rate, R[30], R[121], R[31], R[122], R[120], (unsigned long long)n.master_awake_handed, (long long)n.link_last_at, (unsigned long long)n.link_room_cycles);
         std::printf("each frame, its type: wakes/transfers:");
         for (uint32_t k = 0; k < R[2] && k < 16; k++) {
             const bool last = k + 1 == R[2] || k == 15;

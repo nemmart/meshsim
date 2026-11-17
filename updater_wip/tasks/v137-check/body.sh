@@ -84,7 +84,7 @@ if [ "$ITEM" = faster ]; then
   wc -l < "$W/jobs"
   one() {   # SET NAME N WINDOWS S OPTION VALUE GROUP
     local d=$IN/v137/$1
-    "$KS/build/clang-suite/proof_run" "$d/$2.frames" --packets "$d/$2.packets" --asics "$3" --segment "$5" --windows "$4" \
+    cd "$KS" && ./build/clang-suite/proof_run "$d/$2.frames" --packets "$d/$2.packets" --asics "$3" --segment "$5" --windows "$4" \
       --gold "$d/$2-s$5.images.txt" "$6" "$7" --quiet > "$W/runs/$8.$2.s$5.log" 2>&1 || echo "FAIL proof_run $2, s $5, $6 $7: exit $?" >> "$W/runs/$8.$2.s$5.log"
   }
   export -f one; export IN KS W

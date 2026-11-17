@@ -10,7 +10,7 @@ pages read and written); the cycles the master's core was awake, and their share
 Then, for runs that print them (WORKER4's threshold), a second table: the threshold; the link's packets; the master's
 wakes, in all and to the hand-over; its cycles awake to the hand-over, and a packet; the link rate in bytes a cycle
 that those cycles could keep up with (the link's bytes over them); the cycle of the hand-over, of the link's last byte,
-and the cycles the link waited for room. With --frames, a third: each run's wakes and Ingress's transfers by frame.
+and the cycles the link waited for room. The rate is "as taken" for --fast-link. With --frames, a third: each run's wakes and Ingress's transfers by frame.
 """
 import re, sys
 
@@ -35,11 +35,11 @@ def runs(path):
         if m:
             cur["handed"] = int(m[1])
             continue
-        m = re.match(r"the threshold: (\d+); the master's wakes: (\d+), (\d+) to the hand-over; Ingress read out in (\d+) transfers, (\d+) to the hand-over; "
+        m = re.match(r"the threshold: (\d+); the link at (\d+) bytes a cycle; the master's wakes: (\d+), (\d+) to the hand-over; Ingress read out in (\d+) transfers, (\d+) to the hand-over; "
                      r"(\d+) threshold stores; the master awake (\d+) cycles to the hand-over; the link: its last byte at (\d+), (\d+) cycles waiting for room", line)
         if m:
-            cur.update(threshold=int(m[1]), wakes=int(m[2]), wakes_handed=int(m[3]), reads=int(m[4]), reads_handed=int(m[5]), stores=int(m[6]),
-                       awake_handed=int(m[7]), link_last=int(m[8]), room=int(m[9]))
+            cur.update(threshold=int(m[1]), rate=int(m[2]), wakes=int(m[3]), wakes_handed=int(m[4]), reads=int(m[5]), reads_handed=int(m[6]), stores=int(m[7]),
+                       awake_handed=int(m[8]), link_last=int(m[9]), room=int(m[10]))
             continue
         m = re.match(r"each frame, its type: wakes/transfers:(.*) \(the last to the hand-over\)", line)
         if m:
@@ -62,11 +62,11 @@ def main():
               f"{u[0]:,} | {u[1]:,} | {u[2]:,} | {u[3]:,} | {u[4]:,} | {u[5]:,} | {r.get('awake', 0):,} | {100.0 * r.get('awake', 0) / max(1, r['cycles']):.1f}% |")
     t = [r for r in rows if "threshold" in r]
     if t:
-        print("\n| run | N | s | threshold | packets | wakes | to the hand-over | awake to the hand-over | a packet | keeps up with, bytes a cycle | hand-over at | link's last byte | link waited |")
-        print("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+        print("\n| run | N | s | threshold | link, bytes a cycle | packets | wakes | to the hand-over | awake to the hand-over | a packet | keeps up with, bytes a cycle | hand-over at | link's last byte | link waited |")
+        print("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
         for r in t:
             p = max(1, r.get("packets", 0))
-            print(f"| {r['name']} | {r['n']} | {r['s']} | {r['threshold']} | {r.get('packets', 0):,} | {r['wakes']:,} | {r['wakes_handed']:,} | {r['awake_handed']:,} | "
+            print(f"| {r['name']} | {r['n']} | {r['s']} | {r['threshold']} | {r['rate'] or 'as taken'} | {r.get('packets', 0):,} | {r['wakes']:,} | {r['wakes_handed']:,} | {r['awake_handed']:,} | "
                   f"{r['awake_handed'] / p:.1f} | {r.get('bytes', 0) / max(1, r['awake_handed']):.2f} | {r.get('handed', 0):,} | {r['link_last']:,} | {r['room']:,} |")
     if frames and t:
         print("\n| run | N | s | wakes/transfers by frame type, in order |")

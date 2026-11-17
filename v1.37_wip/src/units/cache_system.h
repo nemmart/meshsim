@@ -40,7 +40,10 @@ public:
         port.read_ready = [](void* x, int64_t) { return static_cast<CacheSystem*>(x)->ctl.out().fr_ready; };
         port.write_ready = [](void* x, int64_t) { return static_cast<CacheSystem*>(x)->ctl.out().fw_ready; };
         port.read = [](void* x, int64_t, int32_t root, int depth, int64_t line, tracer::MemSystem::Response&) -> int64_t {
-            cache::FillRead& r = static_cast<CacheSystem*>(x)->in.fr;
+            CacheSystem& c = *static_cast<CacheSystem*>(x);
+            if (c.tracer_)   // the statistics' classes only: the map's file is the one the Tracer's files word names
+                c.ctl.cfg.map_root_for_stats = int32_t(uint32_t(c.tracer_->rec[2 * tracer::Tracer::REC_FILES] >> 33) & 0x7FFFFFFF);
+            cache::FillRead& r = c.in.fr;
             r.valid = true; r.root = root; r.depth = uint8_t(depth); r.line = line;
             return INT64_MAX;
         };
@@ -66,7 +69,7 @@ public:
         port.tick = [](void* x, int64_t t) { static_cast<CacheSystem*>(x)->tick(t); };
     }
 
-    void attach(tracer::Tracer& tr) { tr.fill_port = &port; }
+    void attach(tracer::Tracer& tr) { tr.fill_port = &port; tracer_ = &tr; }
 
     void tick(int64_t t) {
         if (last_t_ != INT64_MIN && t != last_t_ + 1 && !idle())
@@ -93,6 +96,7 @@ public:
 
 private:
     int64_t last_t_ = INT64_MIN;
+    const tracer::Tracer* tracer_ = nullptr;
 };
 
 }  // namespace units

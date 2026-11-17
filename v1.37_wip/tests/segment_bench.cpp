@@ -331,6 +331,7 @@ Run run_chip(const Segment& s, const Rtl* rtl, const Options& o) {
     mach::MachConfig mc = mach::Mach::chip_cfg(-1);
     mc.parts = o.parts; mc.threads = o.parts;
     mc.host_link = o.proof != nullptr;                                 // v1.37
+    mc.cache_ctl = o.proof != nullptr && o.cache_ctl;                  // updater_wip, WORKER5
     mach::Mach m(mc);
     m.place_elf(units::ID_MASTER, cc1_elf);
     m.place_elf(units::ID_MEMORY, memory_elf);

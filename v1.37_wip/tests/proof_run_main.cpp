@@ -1,7 +1,7 @@
 // proof_run: the whole chip from a packet file (v1.37; tests/proof_bench.h), for one frame file, N and s.
 //
 //   proof_run FRAMES --asics N --segment S [--windows W] [--rows R] [--gold IMAGES.txt] [--packets FILE]
-//             [--recorded RUN] [--fast-link] [--limit CYCLES] [--quiet]
+//             [--recorded RUN] [--fast-link] [--limit CYCLES] [--quiet] [--cache]
 //
 // FRAMES is gold's frame file (`gold frames`), cut for N ASICs into segments of W windows of R rows (--windows, 64, and
 // --rows, 65,536: gold's --segment-rows is their product; no frame carries them). The link's bytes are FRAMES in the
@@ -9,7 +9,9 @@
 // tests' writer makes them (the same bytes). --gold is gold's reference for this s (`gold frames-images FRAMES S`,
 // its output): each image's SHA-256. --recorded RUN (evm-zone-23, cyclone-22) adds the recorded windows' checks, every
 // row and delivery, from $MESHSIM_INPUTS: windows 64 S to 64 S + 63, so W must be 64 and R 65,536. --fast-link gives
-// the link's bytes as fast as the master takes them, in place of a byte a cycle.
+// the link's bytes as fast as the master takes them, in place of a byte a cycle. --cache runs the Tracer on the cache's
+// controller, the AXI arbiter and the LPDDR model (MachConfig::cache_ctl; updater_wip, WORKER5) in place of v1.37's
+// memory model, and prints the cache's figures.
 //
 // Prints the run's lines (segment_bench.h's and proof_bench.h's), then its figures: each of the Updater's runs, the
 // link, the page map, the master's core. Exit 1 on any failed check.
@@ -36,7 +38,7 @@ bool read_file(const std::string& path, std::vector<uint8_t>& out) {
 }
 int usage() {
     std::fprintf(stderr, "usage: proof_run FRAMES --asics N --segment S [--windows W] [--rows R] [--gold IMAGES.txt] [--packets FILE] "
-                         "[--recorded RUN] [--fast-link] [--limit CYCLES] [--quiet]\n");
+                         "[--recorded RUN] [--fast-link] [--limit CYCLES] [--quiet] [--cache]\n");
     return 2;
 }
 
@@ -47,6 +49,7 @@ int main(int argc, char** argv) {
     unsigned windows = 64;
     uint32_t rows = 65536;
     uint64_t limit = 0;
+    bool cache = false;
     bool quiet = false;
     proof::Case c;
     c.asics = 128;
@@ -62,6 +65,7 @@ int main(int argc, char** argv) {
         else if (a == "--recorded" && more) recorded = argv[++i];
         else if (a == "--limit" && more) limit = std::strtoull(argv[++i], nullptr, 10);
         else if (a == "--fast-link") c.cycles_per_byte = 0;
+        else if (a == "--cache") cache = true;
         else if (a == "--quiet") quiet = true;
         else if (path.empty() && a[0] != '-') path = a;
         else return usage();
@@ -109,6 +113,7 @@ int main(int argc, char** argv) {
 
     segment::Options o;
     o.quiet = quiet;
+    o.cache_ctl = cache;
     proof::Numbers n;
     const segment::Run run = proof::run(c, seg, o, &n);
 

@@ -294,9 +294,25 @@ counts on none of it.
 | its own requests answered in order: it has one at a time | an order between its replies and another client's |
 | | that a look-up sees, or does not see, another client's update not yet answered. It sees the new entry once the cache has made it (step 4); the one-writer rule makes it moot |
 
-What Part B's cache is expected to give, as a guide and not a promise: a look-up of a depth-2 file whose two index
-lines are in the cache in under 10 cycles; a line from LPDDR about 80 more (`AXI-INTERFACE.md`, section 5); an
-update a walk and one line's write, about 80, more.
+**What the cache as built gives** (WORKER5, Part B; an idle cache, the fixed LPDDR model; a guide and not a
+promise), in cycles from the handshake to the answer:
+
+| | cycles |
+|---|---|
+| a look-up of a depth-2 file, both index lines in the cache | 6 |
+| the same, both missing | 173 |
+| an update whose path is in the cache: the walk, the line's write and its response | 87 |
+| a fill read of a depth-3 file, all four lines in the cache | 10 |
+| the same, all four missing | 351 |
+| a fill write that hits; one that allocates, with no LPDDR read | 9; 17 |
+
+- **A hit costs 2 cycles a level;** v1.36's model charged 6. A line from LPDDR is about 80 (`AXI-INTERFACE.md`,
+  section 5).
+- **A miss whose victim is dirty waits for the victim's write first,** about 80 cycles more (Open 11).
+- **Serving hits while a miss waits earned nothing with the Tracer alone,** whose read and write requests never
+  overlap. **It will matter on the chip** (owner, 2026-11-16): the Updater is often building the next proof's
+  images while the Tracer runs, so their requests do overlap. The proof runs so far do not show it, because they
+  hold one proof.
 
 ## 8. The stand-in: the simplest correct cache
 
@@ -319,7 +335,7 @@ same LPDDR,** differing only in when.
 - **It keeps section 1's handshake exactly:** one request outstanding a client, `ready` a flip-flop, one reply a
   cycle on the shared bus, its `client` field set.
 - **The same stand-in is the cache's reference in Part B:** random traffic against it, every reply and LPDDR's
-  contents at the end equal (`updater_wip/planning/sessions/WORKER5/NOTES.md`).
+  contents at the end equal (`updater_wip/planning/sessions/WORKER5-NOTES.md`).
 
 ## 9. The C++ header
 
@@ -343,11 +359,11 @@ same LPDDR,** differing only in when.
 3. **Who sends a discard.** The file system, when it hands a page out (proposed in the second note, still proposed).
    In v1.37 the master tile's core hands the pages out through the free page queue and has no look-up port; it frees
    no page, so no page is handed out twice and none is needed. For v1.4: a look-up port for the file system's core,
-   or the Updater discarding each page it takes from the free page queue. `WORKER5/QUESTIONS.md`.
+   or the Updater discarding each page it takes from the free page queue. `WORKER5-QUESTIONS.md`.
 4. **An LPDDR error on a fill read** has no status on `fill`: `beyond` and the error flag (taken at the review). A
    third bit of status is a change to the built Tracer: a comment to Tony (`RTL-CHANGE-REQUESTS.md`, E), not a
    request.
-5. **Where the cache's error flag goes** †: the memory side's error line, as a peripheral's errors do. `WORKER5/QUESTIONS.md`.
+5. **Where the cache's error flag goes** †: the memory side's error line, as a peripheral's errors do. `WORKER5-QUESTIONS.md`.
 6. **Depth 0** † answered `beyond`: no file of depth 0 arises (every image is depth 2; gold gives every file an index
    level).
 7. **An update's reply carries the entry as it was before** †; the new one is the alternative. A client may ignore
@@ -359,6 +375,10 @@ same LPDDR,** differing only in when.
 10. **Empty at the reset only** †. v1.36's model was made cold at each segment's start; the cache need not be, since
     every line it holds is current.
 11. **Write-back first, then fetch,** for a dirty victim (owner: no list of pending writes). Keeping each set's next
-    victim clean ahead of time, as v1.36's model does, is an inside matter that changes nothing here; Part B's
-    figures will say whether it is worth it.
+    victim clean ahead of time, as v1.36's model does, is an inside matter that changes nothing here.
+    - **Part B's figures:** a segment that writes much is 3 to 4% slower than on v1.36's model (Cyclone 2²⁹, *s* 0:
+      8,574 write-backs, +3.1%); a segment that mostly hits is up to 2.7% faster.
+    - **WORKER5's recommendation, not built:** when a set's least recently used line is dirty, write it back in
+      place while it stays readable, so that the next miss there finds it clean. It keeps no list, so it fits the
+      ruling. Left for later, or for the RTL.
 12. **The number of look-up ports,** four †, and whether the master tile's core needs one (3).

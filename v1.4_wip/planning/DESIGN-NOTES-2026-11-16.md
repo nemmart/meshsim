@@ -504,3 +504,25 @@ so 8 KB each is pencilled in and the size is to be settled, by the room the chai
 **The work:** WORKER6 builds the Updater's controller to the word port, with today's segment queue as a shim in
 front so that it can be checked on v1.37 as it stands. WORKER7 puts the forward count into v1.37: Ingress's black
 box, the port, the firmware. `INGRESS-INTERFACE.md` and `UPDATER-INTERFACE.md` are rewritten to it.
+
+## 18. The cache's controller is built (late that evening)
+
+- **WORKER5's Part B is merged:** the cache's controller with its cache memory, the AXI arbiter and the LPDDR
+  model, each a state machine with registers and one function a clock, behind a setting that is off by default
+  (`updater_wip/planning/sessions/WORKER5-REPORT.md`). The Tracer runs on it in all 37 proof runs, every image
+  equal to gold's. With the setting off, v1.37 is unchanged to the cycle.
+- **Its figures:** a hit costs 2 cycles a level (v1.36's model charged 6); a depth-2 look-up 6 cycles on hits and
+  173 on misses; an update 87, its write and the response included. Against the model the runs are −2.7% to +4.4%.
+  - Faster where a segment mostly hits. Slower where it writes much, because a dirty victim is written back
+    before the fetch (the owner's ruling: no list of pending writes).
+  - **Recommended by WORKER5, not built:** write a set's dirty least recently used line back early, in place. It
+    keeps no list and changes no interface. Recorded in `CACHE-INTERFACE.md`'s Open list.
+- **Serving hits while a miss waits earned nothing in these runs,** since the Tracer's own requests never overlap.
+  **The owner:** the Updater will often be working on the next proof while the Tracer runs, so in reality they do
+  overlap. The proof runs hold one proof each and cannot show it; a run with two proofs, or the joining step's
+  tests, must.
+- **Found by the arbiter's test:** a client with more pieces at the controller than its limit of 16 can hold a
+  line's address behind them. The Updater's page at a time, 8 pieces, stays under it. In `AXI-INTERFACE.md`'s
+  Open list.
+- **WORKER6's plan is agreed** (the Updater's controller, to the word port, with the shim), and **WORKER7 is
+  started** (the forward count in v1.37).

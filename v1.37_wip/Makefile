@@ -81,6 +81,7 @@ clean:
 	rm -rf build
 
 include src/units/tracer.mk
+include src/units/cache.mk
 include src/units/units.mk
 include src/units/net.mk
 include src/units/mem.mk

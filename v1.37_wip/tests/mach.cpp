@@ -30,6 +30,7 @@
 #include "units/linkword.h"
 #include "units/net.h"
 #include "units/table_store.h"
+#include "units/cache_system.h"
 #include "units/tile_ctl.h"
 #include "units/updater.h"
 
@@ -102,6 +103,7 @@ const Field kFields[] = {
     F_B("checkReadPortOverlap", check_read_port_overlap), F_B("bootLocal", boot_local),   // (bootLocal: v1.36's, not ref's)
     F_B("checkDisjoint", check_disjoint), F_L("shuffleSeed", shuffle_seed), F_U("maxViolationMessages", max_violation_messages),
     F_B("measureS1", measure_s1), F_B("checkErrors", check_errors), F_B("hostLink", host_link),   // (hostLink: v1.37's)
+    F_B("cacheCtl", cache_ctl),                                       // (cacheCtl: updater_wip WORKER5's)
     F_U("cncRxDepth", cnc_rx_depth),
     F_U("replayerLogEntries", replayer_log_entries),   // (not ref's Config: its -Dreplayer.logq; the kit's -q)
 };
@@ -182,6 +184,7 @@ bool MachConfig::set_args(const std::vector<std::string>& args, std::string& err
 // ===================================================================================================== the chip
 struct Chip::Impl {
     std::vector<uint8_t> link_bytes;   // v1.37: the packet file Ingress reads (Mach::set_link)
+    std::unique_ptr<units::CacheSystem> cache_system;   // MachConfig::cache_ctl
     units::Hops hops;
     std::vector<uint32_t> rom, mem;
     units::SramBlocks sram;
@@ -321,7 +324,12 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         units::tracer::Tracer& tr = m.sim->unit<units::PeriphSlot>(units::unit_prefix(units::ID_TRACER) + "slot").s.tracer(1);
         tr.own_memory(std::make_unique<units::tracer::FileStore>());
         m.sim->unit<units::PeriphSlot>(units::unit_prefix(units::ID_MASTER) + "slot").s.updater(2).store = tr.store();
+        if (c.cache_ctl) {   // the cache's controller, the arbiter and the LPDDR model on the one store, on the fill port
+            m.cache_system = std::make_unique<units::CacheSystem>(tr.store());
+            m.cache_system->attach(tr);
+        }
     }
+    if (c.cache_ctl && !c.host_link) FATAL("mach: cache_ctl needs host_link (the cache's LPDDR is the one file store)");
     m.shifted = {m.sim->type_of(units::tile_unit(0, "ctl")), m.sim->type_of(units::tile_unit(0, "core"))};
     if (!c.special_tiles) m.lines = {m.sim->type_of("row0"), m.sim->type_of("cnc")};
     // ref's quiescent leaves the request bus out (Tile.quiescent, Chip.quiescent: no request port, node or queue)
@@ -1411,6 +1419,10 @@ units::Updater& Mach::updater() {
     return c.unit<units::PeriphSlot>(units::unit_prefix(units::ID_MASTER) + "slot").s.updater(2);
 }
 units::tracer::FileStore& Mach::store() { return *updater().store; }
+units::CacheSystem& Mach::cache_system() {
+    if (!c.impl().cache_system) FATAL("mach: no cache system on this machine (MachConfig::cache_ctl)");
+    return *c.impl().cache_system;
+}
 void Mach::set_link(std::vector<uint8_t> bytes) {
     Chip::Impl& m = c.impl();
     m.link_bytes = std::move(bytes);

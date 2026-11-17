@@ -386,3 +386,150 @@ Each step ends with a commit, a push and a clean tree.
 2. **G4:** one end starting from power-on is run as an event, expecting the link not to come back. Is that what
    you want shown, or is a link's reset a design you would rather make first?
 3. **Section 5, item 5:** a bit flipped in a node's buffer is not a wire's fault. In or out?
+
+## 16. What is built: the report after the search on one link (2026-11-17)
+
+Steps 1 to 3 of section 13 are done. `updater_wip/link/README.md` says how to run everything. What the search found
+is `QUESTIONS.md`. Nothing of the chain, the host end, the random campaign or the runner's tasks is built.
+
+**What was built differently from the plan:**
+
+| | the plan | as built |
+|---|---|---|
+| the small sizes | a status timer of 48 | 24: under the 32 zeros a lost receiver waits for, as 512 is under 528. With 48 the small model could find its place on an idle line, which the real sizes cannot |
+| a case's damage | by cycle | by the packet's place on its wire ("the 5th packet end 0 sends"): a case then still means the same after a rule changes the timing before it |
+| G1, the timer | on, at 2,048 | off: G7 does its work, and the searches hold with either |
+| G17 | on | off: not needed |
+| G4, G20, G21 | G4 only, as a case | the restart handshake, and two rules that end in it: acknowledgements that cannot be, and a kept packet that no longer matches its checksum |
+| when "resend" is repeated | with each status | when the sender's status shows it has not gone back: the timer's repeat crossed the packet coming back every time |
+| properties | section 8's | two more, watched from outside the link end: no data started on a stream the other end has stopped; and the link never starts again unless a forged header, a memory's flipped bit or a power-on excuses it |
+| the search's states | a hash of every register | a hash of what can still matter (`LinkEnd::canon`): a header already judged, a slot already released and the like are left out. `--whole` keeps every register instead, to check it |
+
+**The search, as built** (`linksearch.cpp`'s heading has it in full):
+
+- The model stops wherever a packet starts or ends on a wire, a packet is judged, a header fails or a mode changes.
+  At a stop it tries every fate of a packet just started (whole; gone; first byte zero; a header bit; a data bit),
+  each source letting its next packet out or not, each queue with words losing none, one or all, and a byte of
+  noise on an idle wire. Budgets bound the damage; waits and stalls are free.
+- **In every state:** the bench's properties; and a run on from there with nothing more going wrong, which must
+  come to rest with everything delivered and acknowledged and both ends in step.
+- **What it does not cover:** a choice between two stops (`--tick 8` adds stops and found nothing more); wire
+  delays other than those run (1, 7, 20); more packets or more damage than the budgets.
+
+**The protocol as written** (`--rules as_written`) fails the first search, with one packet damaged: `QUESTIONS.md`.
+
+**The proposed rules,** every search complete (every state within its budget tried). `--packets a b c d` is each
+source's packets: end 0's foreground and background, end 1's. 28,261,334 states in all:
+
+| the search | states | |
+|---|---|---|
+| `--packets 2 0 2 0 --damage 1` | 4,587,428 | holds |
+| `--packets 1 0 1 0 --damage 2` | 287,937 | holds |
+| `--packets 1 0 0 0 --damage 3` | 134,110 | holds |
+| `--packets 2 0 0 0 --damage 2` | 268,905 | holds |
+| `--packets 1 1 0 0 --damage 2` | 334,025 | holds |
+| `--packets 2 2 0 0 --damage 1` | 4,730,180 | holds |
+| `--packets 1 1 1 0 --damage 1` | 476,036 | holds |
+| `--packets 3 0 0 0 --damage 1 --queue 2` | 248,921 | holds |
+| `--packets 2 1 0 0 --damage 1 --queue 2` | 1,576,865 | holds |
+| `--packets 7 0 0 0 --damage 1` | 4,006,208 | holds |
+| `--packets 2 0 1 0 --damage 0 --noise 2` | 771,052 | holds |
+| `--packets 2 0 1 0 --damage 1 --noise 1` | 3,105,248 | holds |
+| `--packets 2 0 1 0 --damage 1 --delay 7` | 558,787 | holds |
+| `--packets 2 0 1 0 --damage 1 --delay 20` | 1,319,931 | holds |
+| `--packets 2 0 1 0 --damage 1 --tick 8` | 573,004 | holds |
+| `--packets 1 0 1 0 --damage 2 --images` | 287,629 | holds |
+| `--packets 2 0 2 0 --damage 0 --power 1` | 1,336,881 | holds |
+| `--packets 1 0 1 0 --damage 1 --power 1` | 317,583 | holds |
+| `--packets 2 0 1 0 --damage 1 --flip 1` | 1,608,584 | holds |
+| `--packets 5 0 0 0 --damage 1 --queue 4` | 1,651,092 | holds |
+| `--packets 1 0 1 0 --damage 1 --whole` | 47,478 | holds |
+| `--packets 1 0 1 0 --damage 1` | 33,450 | holds |
+
+- The last two are the same search with the states kept whole and by the hash: the same verdict; 47,478 whole
+  states are 33,450 by what can still matter.
+- The longest any state took to come to rest was 567 cycles of the small sizes.
+
+**Each rule the search has not shown to be needed, taken away or put in** (7,788,289 states):
+
+| the search | states | |
+|---|---|---|
+| `proposed-lost_each_stream` `--packets 1 0 1 0 --damage 2` | 301,642 | holds |
+| `proposed-lost_each_stream` `--packets 1 1 0 0 --damage 2` | 364,562 | holds |
+| `proposed-lost_each_stream` `--packets 3 0 0 0 --damage 1 --queue 2` | 268,528 | holds |
+| `proposed-lost_uses_ack` `--packets 1 0 1 0 --damage 2` | 287,997 | holds |
+| `proposed-lost_uses_ack` `--packets 1 1 0 0 --damage 2` | 334,025 | holds |
+| `proposed-lost_uses_ack` `--packets 3 0 0 0 --damage 1 --queue 2` | 248,921 | holds |
+| `proposed-long_is_lost` `--packets 1 0 1 0 --damage 2` | 287,937 | holds |
+| `proposed-long_is_lost` `--packets 1 1 0 0 --damage 2` | 334,025 | holds |
+| `proposed-long_is_lost` `--packets 3 0 0 0 --damage 1 --queue 2` | 248,921 | holds |
+| `proposed-status_each` `--packets 1 0 1 0 --damage 2` | 191,936 | holds |
+| `proposed-status_each` `--packets 1 1 0 0 --damage 2` | 216,828 | holds |
+| `proposed-status_each` `--packets 3 0 0 0 --damage 1 --queue 2` | 118,916 | holds |
+| `proposed+stop_lift_back` `--packets 1 0 1 0 --damage 2` | 287,937 | holds |
+| `proposed+stop_lift_back` `--packets 1 1 0 0 --damage 2` | 334,025 | holds |
+| `proposed+stop_lift_back` `--packets 3 0 0 0 --damage 1 --queue 2` | 305,767 | holds |
+| `proposed+ack_now` `--packets 1 0 1 0 --damage 2` | 332,293 | holds |
+| `proposed+ack_now` `--packets 1 1 0 0 --damage 2` | 335,217 | holds |
+| `proposed+ack_now` `--packets 3 0 0 0 --damage 1 --queue 2` | 166,058 | holds |
+| `proposed+ask_every` `--packets 1 0 1 0 --damage 2` | 287,937 | holds |
+| `proposed+ask_every` `--packets 1 1 0 0 --damage 2` | 334,025 | holds |
+| `proposed+ask_every` `--packets 3 0 0 0 --damage 1 --queue 2` | 248,906 | holds |
+| `proposed,resend_timer=96` `--packets 1 0 1 0 --damage 2` | 311,920 | holds |
+| `proposed,resend_timer=96` `--packets 1 1 0 0 --damage 2` | 355,253 | holds |
+| `proposed,resend_timer=96` `--packets 3 0 0 0 --damage 1 --queue 2` | 260,900 | holds |
+| `proposed-zero_number,resend_timer=96` `--packets 1 0 1 0 --damage 2` | 354,860 | holds |
+| `proposed-zero_number,resend_timer=96` `--packets 1 1 0 0 --damage 2` | 400,431 | holds |
+| `proposed-zero_number,resend_timer=96` `--packets 3 0 0 0 --damage 1 --queue 2` | 268,522 | holds |
+
+**G11 without its rule, the window half the queue** (9,764,896 states):
+
+| the search | states | |
+|---|---|---|
+| `proposed-refuse` `--packets 4 0 0 0 --damage 2 --queue 4` | 5,084,696 | holds |
+| `proposed-refuse` `--packets 5 0 0 0 --damage 1 --queue 4` | 1,638,697 | holds |
+| `proposed-refuse` `--packets 3 1 0 0 --damage 1 --queue 4` | 3,041,503 | holds |
+
+**One forged header and one damaged packet, field by field** (3,207,515 states; `…` is the four ordinary fates):
+
+| the search | states | |
+|---|---|---|
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates …,forge-ack` | 244,563 | holds |
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates …,forge-stop` | 225,323 | holds |
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates …,forge-lost` | 287,900 | holds |
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates …,forge-recovery` | 133,650 | holds |
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates …,forge-resend` | 161,963 | holds |
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates …,forge-number` | 292,056 | **fails:** 25,136 states, word 0 delivered where word 1 was next |
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates …,forge-ack-data` | 104,117 | holds |
+| `--packets 3 0 0 0 --damage 1 --forge 1 --fates …,forge-stop --queue 2` | 1,757,943 | holds |
+
+**The planted bugs,** each against the search (`plants.sh`): every one caught.
+
+| planted | caught by the search | as |
+|---|---|---|
+| `ACK_ONE_OFF` | `--damage 1 --packets 2 0 1 0` | the link started again, and nothing had happened that could excuse it |
+| `WINDOW_NOT_KEPT` | `--damage 1 --packets 3 0 0 0 --queue 2` | the link started again, and nothing had happened that could excuse it |
+| `WRAP_WRONG` | `--damage 0 --packets 7 0 0 0` | nothing more goes wrong, and it does not finish |
+| `TIMER_NOT_RESTARTED` | `--damage 1 --packets 2 0 1 0` | nothing more goes wrong, and it does not finish |
+| `DUPLICATE_TAKEN` | `--damage 1 --packets 2 0 1 0` | word 0 delivered where word 1 was next |
+| `STOP_IGNORED` | `--damage 1 --packets 3 0 0 0 --queue 2` | a data packet started on a stream the other end has stopped |
+| `RECOVERY_ONCE` | `--damage 2 --packets 1 0 1 0` | nothing more goes wrong, and it does not finish |
+| `ZERO_TAKES_NUMBER` | `--damage 1 --packets 2 0 1 0` | more kept than the window |
+| `ACK_FROM_BAD_DATA` | `--damage 1 --forge 1 --fates gone,forge-ack-data --packets 1 0 1 0` | the link started again, and nothing had happened that could excuse it |
+| `NO_ZEROS` | `--damage 1 --packets 2 0 1 0` | nothing more goes wrong, and it does not finish |
+
+**What the checks caught in my own code** (not the protocol's flaws):
+
+1. The per-stream status timer did not run under the other stream's data: seen in `test_link`'s figure on a whole
+   wire.
+2. The restart handshake hung when the answering end lost its place: the search, one damaged packet.
+3. The handshake made a fresh end start again a second time, with an error: the property "never starts again
+   without an excuse", which I added because two planted bugs were being hidden by the restart.
+4. A budget of one damaged packet let two be damaged in one cycle: the first search's output.
+
+**How long it takes here** (2 cores): about 60,000 states a second; the whole of the tables above in about 15
+minutes; `make check` in about 2 minutes from a clean tree.
+
+**Next,** after the owner's word: the random processes and the campaign on one link (step 4), then the chain
+(step 5). The larger searches (`searches.sh big`: two packets each way with two damaged, and the like) want the
+runner: tens of millions of states each.

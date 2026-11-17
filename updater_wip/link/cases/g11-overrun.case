@@ -1,0 +1,14 @@
+# QUESTIONS.md G11: a window larger than the room behind "stop", and the packet that says "stop" lost
+# found by linksearch --rules as_written+resend_ahead+zero_number+lost_answers,window=4,number_bits=4
+sizes number_bits=3 max_words=1 window=2 zeros=40 flush_zeros=32 status_timer=24 queue=4 delay=1 words=1 images=0
+packets 5 0 0 0
+offer 0 1 0
+offer 0 1 55
+offer 0 1 87
+fate 1 4 gone
+offer 0 1 119
+offer 0 1 151
+quiet 184 20000
+run as_written+resend_ahead+zero_number+lost_answers,window=4,number_bits=4 fail queue overrun
+run as_written+resend_ahead+zero_number+lost_answers+refuse,window=4,number_bits=4 ok
+run proposed,window=4,number_bits=4 ok

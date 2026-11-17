@@ -1,0 +1,10 @@
+# QUESTIONS.md G9: both ends lose their place at once; each waits for the other's "recovery"
+# found by linksearch --rules as_written+resend_ahead+zero_number
+sizes number_bits=3 max_words=1 window=2 zeros=40 flush_zeros=32 status_timer=24 queue=4 delay=1 words=1 images=0
+packets 2 0 2 0
+fate 0 1 first0
+fate 1 1 first0
+quiet 39 20000
+run as_written+resend_ahead+zero_number fail nothing more goes wrong, and it does not finish
+run as_written+resend_ahead+zero_number+lost_answers ok
+run proposed ok

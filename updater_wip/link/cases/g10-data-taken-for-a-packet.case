@@ -1,0 +1,12 @@
+# QUESTIONS.md G10: after a failed header CRC the receiver takes the packet's data for a packet (the data is a header's image)
+# found by linksearch --rules as_written+resend_ahead+zero_number+lost_answers
+sizes number_bits=3 max_words=1 window=2 zeros=40 flush_zeros=32 status_timer=24 queue=4 delay=1 words=1 images=1
+packets 1 0 1 0
+offer 0 1 0
+offer 1 1 0
+fate 0 1 header
+fate 1 1 gone
+quiet 17 20000
+run as_written+resend_ahead+zero_number+lost_answers fail nothing more goes wrong, and it does not finish
+run as_written+resend_ahead+zero_number+lost_answers+flush ok
+run proposed ok

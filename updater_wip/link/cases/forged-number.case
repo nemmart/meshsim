@@ -1,0 +1,10 @@
+# QUESTIONS.md F1: a forged packet number on a packet sent again. NOT FIXED: this case fails under the proposed rules
+# found by linksearch --rules proposed
+sizes number_bits=3 max_words=1 window=2 zeros=40 flush_zeros=32 status_timer=24 queue=4 delay=1 words=1 images=0
+packets 1 0 1 0
+offer 0 1 128
+fate 0 5 data
+offer 1 1 183
+fate 0 11 forge-number
+quiet 312 20000
+run proposed fail word 0 delivered where word 1 was next

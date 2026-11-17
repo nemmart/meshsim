@@ -1,0 +1,10 @@
+# QUESTIONS.md G20: a forged acknowledge field releases a packet that was lost on the wire
+# found by linksearch --rules proposed-tell_behind
+sizes number_bits=3 max_words=1 window=2 zeros=40 flush_zeros=32 status_timer=24 queue=4 delay=1 words=1 images=0
+packets 1 0 1 0
+offer 0 1 128
+fate 0 5 forge-ack
+fate 1 5 first0
+quiet 160 20000
+run proposed-tell_behind fail nothing more goes wrong, and it does not finish
+run proposed ok

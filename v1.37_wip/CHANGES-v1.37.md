@@ -4,9 +4,9 @@
 it is `RUNNING-v1.37.md`; how it was checked, with its figures, is
 `../updater_wip/planning/sessions/WORKER3-REPORT.md`, and for the threshold (WORKER4)
 `../updater_wip/planning/sessions/WORKER4-REPORT.md`, and for the forward count (WORKER7)
-`../updater_wip/planning/sessions/WORKER7/REPORT.md`; the choices made where the documents are silent are in the
+`../updater_wip/planning/sessions/WORKER7-REPORT.md`; the choices made where the documents are silent are in the
 notes beside each (`../updater_wip/planning/sessions/WORKER3-NOTES.md`, `../updater_wip/planning/sessions/WORKER4-NOTES.md`,
-`../updater_wip/planning/sessions/WORKER7/NOTES.md`).
+`../updater_wip/planning/sessions/WORKER7-NOTES.md`).
 
 **The specification is not changed** (`spec/` is v1.36's). What v1.37 adds is specified by the design documents of
 `../v1.4_wip/planning/`: `INGRESS-INTERFACE.md`, `UPDATER-INTERFACE.md`, `HOST-FRAMES.md` and `HOST-LINK.md`; and, for

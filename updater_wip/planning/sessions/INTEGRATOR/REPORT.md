@@ -173,6 +173,20 @@ test's expectation of a reset divisor.
 | **the planted bugs** (`ie_teeth.sh`, 44): the UART's line both ways (bit order, a bit's length, the sample point, the synchroniser, the divider mid-character, the stop bit, the overrun, a low level starting a character, a pop of a character entering in the load's cycle); its control (a store dropped or kept with the UART off or `enable_write` 0, `enable_write` 0 sending, `enable_read` 0 listening, a store of 0 not resetting, `uart_tx` 1 in reset, the enables swapped, the events swapped, a divider of 0 not caught); 17.6.1 (version 0, the queues' words at 80 and 81, `background_ready` at [4]); the queues (a link packet landing all at once, the room of the words landed alone); Egress (the count falling as words leave, a credit each 512, a frame's last word not ending its link packet, a word kept in a full queue, a word with the count at 0 no error, a count stored while not 0 not caught, a frame from two sources not caught); the bus (`UART_RX` not an own word), the slot (a low word's stall not published, the queue's size not given), the core's path (no pop told, a pop a cycle late) | **44 of 44 caught** (one plant fixed to build: its first form left a parameter unused). NOTES' "stop at full" is stage 4's: the stop bit is the link end's |
 | the 37 proof runs; with LPDDR jittered; `make check` | the runner (below) |
 
+### The runner
+
+| Quest | item | result |
+|---|---|---|
+| 250 | `suites` at `f873c715`: `./run_tests.sh all --check`, the 37 proof runs | **PASS**: every step; the 37 proof runs; no golden log differs; `fw-build` skipped (no RISC-V toolchain on the runner) |
+| 251 | `suites-varied`: the same with every chip's LPDDR jittered (`LPDDR_SEED` 7) | **PASS**: the same, no log differs |
+| 252 | `check`: `make check` | queued |
+
+**The proof runs' cycles moved, on purpose: every run is 15,360 to 76,288 cycles shorter than at stage 2** (Quest 248).
+The incoming queues went from 512 words to 17.6.3's 1,024, so the link waits for room less: over the 37 runs its
+waits for room fell from 10,677,833 cycles to 9,207,045, and the link's last byte, and with it the hand-over and the
+end, came earlier by about as much. The Updater's busy and waiting-on-data cycles fall with them; its waits on memory
+move by a few hundred either way. The figures are in `runner/250-proof-numbers.md` and `251-proof-numbers.md`.
+
 ## Stage 4: the link and the chain (28)
 
 ### What was built
@@ -233,4 +247,92 @@ second at stage 3 and 511,000 at stage 4, the link's two ends clocked a byte at 
 
 To be queued once Quests 250 to 252 are in: `suites` (the 37 proof runs, each against gold's packet file through the
 capture), `suites-varied` and `check`.
+
+## Stage 5: chapter 30
+
+### What was built
+
+| | where |
+|---|---|
+| **the tracer tile's result carries its last record** (30.6): when its load names a place in the master tile (its header words 21–23, which the master's load writes; v1.36's harnesses leave them 0 and nothing changes for them), its end streams the record's 68 words from where the last window's output queue 0 landed them into the master's scratchpad, and writes a word of figures, {rows traced, the Tracer's `ERRORS`, its status}, into the master's data memory, both counted on the master's counter 4, before main returns and crt0 sends the result | `fw/tracer/tracer_ctl.c` (step 6), `tracer_layout.h` |
+| **the reply** (30.7, 29.14): built in the master's scratchpad at `ML_REPLY`, the header word (type 16, length 71), *s*, *N*, the rows traced, `PAGE_COUNT`; the 64-bit `mcycle`, the last run's `STAT_CYCLES` and `STAT_STALL_DATA`; the four `ERRORS`; then rows 4–71, the tracer tile's record, which its result put there. 72 to `EGRESS_COUNT`, the 72 rows into Egress's part 1 by one stream of the DMA unit, and `EGRESS_COUNT` awaited at 0; then the exit. Its figures in `master_results` (`MR_REPLY_MCYCLE`, `MR_TRACER_*`, `MR_REPLIED`) | `fw/cc/master.c` (`reply`, `hand_over`), `master_layout.h`, `include/host.h` (`FRAME_REPLY`, `mcycleh`) |
+| **a header frame one row longer than its fields** now stops the master (30.8): `parse_end` also refuses a whole row copied and left unread | `fw/cc/master.c` (`parse_end`) |
+| the images, rebuilt with the pinned xPack 15.2.0-1: `master.elf` `d1bb737f…`, then with `parse_end` (the MANIFEST's), `tracer_ctl.elf` `4009da91…`; every other image byte for byte as before | `fw/images/` |
+| **the bench**: the run goes on past the master's exit until the host's `End` has the reply (`Proof::settled`; the run's cycles stay the exit's); the reply checked word by word | `tests/segment_bench.*`, `tests/proof_bench.*` |
+| the tests | `test_master`: the reply in every proof; `master_stops_on_what_a_frame_says` (30.8's checks, seven frames changed); `test_sort`: the dump's characters leave on the UART line |
+| the planted bugs | `tests/fw_teeth.sh`, ten more |
+
+### Chapter 30, rule by rule
+
+| rule | kept by (`fw/cc/master.c` unless named) | shown by |
+|---|---|---|
+| 30.1: *N* and *s*, the images, the tables, placed before the reset ends | `main` 619: `system_config`, `boot_desc`, checked (`MR_CONFIG`) | every proof of `test_master` |
+| 30.2.1: the UART turned on by one store, if the image prints | `master.c` does not print; `cc1.c` 230 at its dump (and its `CC_UART` command) | `test_sort`: the dump's characters on the line (planted: no store, caught) |
+| 30.2.2: its masks, its tile's and Ingress/Egress's | `main` 619–623 | every proof |
+| 30.2.3: the loads as v1.36's; the tracer tile's held back | `boot` 314 | every proof (130 `LOAD`s, the tracer tile's after the hand-over) |
+| 30.2.4: the segment's first barrier | `boot`, `barrier` 287 | every proof |
+| 30.2.5: the page map, page 0 never handed out | `map_format` 237, `map_take` 247 | the image checks; planted: page 0 not marked, caught |
+| 30.2, the watchdog the firmware's to set | none is set | |
+| 30.3, a wake: the count and `BACKGROUND_WORDS` loaded, acted on only with the count 0 and words waiting | `words_ready` 336 | `master_orders_with_the_timing_varied`; planted: a copy without the count's 0, caught |
+| 30.3, a frame's start: the header word by the DMA, its landing awaited | `frame`, `copy` 347 | every proof; planted: a copy's landing not waited for, caught |
+| 30.3: frames 1, 3, 4 copied in pieces no longer than the frame's words to come | `next32`, `copy` | `master_tail_frames`, `master_frames_across_packets` |
+| 30.3: frames 2, 5, 6, the run started, then the count once | `update_frame` 406 | every proof; planted: a count one long, dropped, caught |
+| 30.3: frame 7: records before *s* dropped, *s* copied, *s* + 1 only when *s* < *N* − 1 | 560–569 | `master_kin_lru_last` (*s* 63); planted: record *s* + 1 kept for *s*, caught |
+| 30.3: frame 8: the *N* counts, log *s* | 572 | every proof; planted: log *s* − 1, caught |
+| 30.3: frame 9, three runs, one count | 587 | every proof; planted: the count one short, caught |
+| 30.3: a type not 1 to 9 a stop, the reply's 16 among them | `default` 610 | `master_stops_on_what_a_frame_says` |
+| 30.3: drops in a row one count | `skip`, `drop_now` 328 | planted: two counts, caught |
+| 30.4: each run set up while idle, a frame for the Updater waiting for the last `done` | `run_start` 386, `run_wait` 397 | planted: a run started without the last `done`, caught |
+| 30.4: the table of runs (roots, `continue`, `tracer_copy`, the counts) | `frame`'s cases | gold's images in every proof; planted: three of the rows wrong, caught |
+| 30.4: every root a new page; the free page queue exactly `PAGE_COUNT` pages under its credit; `PAGE_COUNT` 0 at every `done` | `new_root` 269, `feed_pages` 271 | every proof (`PAGE_COUNT` at every `done`); `master_out_of_pages` |
+| 30.5: word 66, the load of one kind from one unit, in order, *s* + 1 only when there is one | `hand_over` 413 | every proof's hand-over checks; planted: word 66 without the table's root, the advice count one short, caught |
+| 30.6: the segment as v1.36's; **the tracer tile's result carries its last record** | the barriers, the results; `tracer_ctl.c` step 6 | every proof: the reply's record against the tracer tile's; planted: the result without the record, the rows a window short, caught |
+| 30.7.1: the frame built in its own memory, 72 rows, `length` 71 | `reply` 452 | every proof: the reply's header word |
+| 30.7.2: 72 stored in `EGRESS_COUNT`, which is 0 | 466 | planted: `EGRESS_COUNT` 71, caught (`egress_error`, the trap) |
+| 30.7.3: the rows into part 1 of region 0x04, from one sending unit, in order | one stream | planted: the record before the header, caught |
+| 30.7.4: three link packets on the foreground | Egress | every proof: the reply's link packets end after 32, 64 and 72 words, hops 0 |
+| 29.14's words: *s*, *N*, rows, `PAGE_COUNT`; `mcycle`, the statistics; the errors 0; the record | `reply` | every proof: *s* and *N*, the rows against the replayers' rows, `PAGE_COUNT` and the statistics against the Updater's own, `mcycle` against the master's results, the error words 0, the record against the tracer tile's own and, but for the last segment, words 0 and 2–65 against record *s* + 1; planted: *s* and *N* swapped, `STAT_CYCLES` wrong, record *s* + 1 sent in place of the tracer tile's, caught |
+| 30.8: every error stops the chip; the handler reports and parks | `master_trap` 156, `finish` 141 | `master_out_of_pages`, `master_noise_…`, the trap cases |
+| 30.8's table: an unknown type, `compression` above 1, a header frame short or long, frame 3's version, the counts, the order, the lengths, the room | 484, `parse_end` 375, 507, 524, the `MR_D_ORDER` and `MR_D_LENGTH` checks, `finish(MR_ROOM)` | `master_stops_on_what_a_frame_says` (seven of them; the counts' check and the room are `MR_D_COUNTS` and `master_out_of_pages`) |
+| 30.9: what it costs | | the runner's figures (stage 4's and 5's tables) |
+
+### Decisions
+
+- **How the result carries the record** (FOR-THE-SPEC 5): a result is a four-word request, so the record goes first,
+  by the tracer tile's DMA into the master's memory where its load said, and the figures by its core, both counted.
+  The master builds the reply around it, so the record is never copied twice. The rows traced are the windows run
+  times `RUN_CONFIG.rows`, computed at the end, so that v1.36's segment runs execute nothing new in their windows.
+- **The master waits for `EGRESS_COUNT` 0 and parks** (FOR-THE-SPEC 6); the harness runs on until the host's end has
+  the reply, at most 2²⁰ cycles, and the run's cycles stay the exit's.
+- **The reply is checked against the simulator's own values** where gold has none (the rows, `PAGE_COUNT`, `mcycle`,
+  the statistics) and against record *s* + 1 for the state, as 29.14 says the host would.
+
+### Disagreements
+
+**One bug of the firmware's own, against 30.8:** a header frame one row longer than its fields was not a stop.
+`parse_end` refused only rows not yet copied, and a whole row already in the parser's buffer went unseen, so the
+next frame was read from the wrong place (it stopped later on a type of 0x17). Found by the new test; fixed.
+
+### The checks
+
+| check | result |
+|---|---|
+| `test_master` (35): the reply at the host's end in every proof; the seven frame checks | pass |
+| `test_sort` (6), with the dump's characters on the UART line | pass |
+| `./run_tests.sh quick --check` | **all passed**; no log differs (the tracer program's new step runs only when its header asks) |
+| the images: every one but `master.elf` and `tracer_ctl.elf` byte for byte as before | as built |
+| **the planted bugs** (`fw_teeth.sh`): the reply's *s* and *N* swapped; `EGRESS_COUNT` 71; record *s* + 1 for the tracer tile's; the record before the header; `STAT_CYCLES` wrong; the result without the record; the rows a window short; no store to `UART_CONTROL` in an image that prints; a whole unread row not seen; frame 3's version not checked; and WORKER7's and the earlier ones | below |
+| the 37 proof runs, the reply checked; `make check` | the runner (below) |
+
+**Not planted:** the reply sent without waiting for the tracer tile's record, a race these timings never provoke (the
+record lands long before the master has every result), as the handshakes' are.
+
+### The reference cycles
+
+The exit moves by the reply, a few hundred cycles: `test_master`'s proofs end 0 or 512 cycles (one poll) later than at
+stage 4. v1.36's runs do not move.
+
+### The runner
+
+To be queued with stage 4's once Quests 251 and 252 are in.
 

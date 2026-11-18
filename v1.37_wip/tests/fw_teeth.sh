@@ -16,7 +16,8 @@
 # include/host.h), which test_master alone runs: a bug there is run against test_master, the others as before; a bug
 # in the tracer tile's program against both, since its result carries its last record to v1.37's master alone (30.6).
 # Stage 5 (the INTEGRATOR): the reply (30.7) and the tracer tile's result (30.6), checked at the host's end.
-# Usage: tests/fw_teeth.sh [FILTER] (from anywhere): only the bugs whose name contains FILTER; exit 1 if a bug goes
+# Usage: tests/fw_teeth.sh [FILTER] (from anywhere): only the bugs whose name FILTER, an extended regular expression,
+# matches (e.g. '^(cc1|crt0):'); exit 1 if a bug goes
 # uncaught or its sed plants nothing. JOBS sets make's -j (8); TEETH_DIR the scratch directory (default: a new
 # temporary one, removed at the end).
 set -u
@@ -117,7 +118,7 @@ bad=0
 printf '%-74s %s\n' "bug" "failing tests"
 for entry in "${BUGS[@]}"; do
   IFS='~' read -r name file expr <<< "$entry"
-  [ -n "$FILTER" ] && [[ "$name" != *"$FILTER"* ]] && continue
+  [ -n "$FILTER" ] && ! [[ "$name" =~ $FILTER ]] && continue
   fresh
   sed -i "$expr" "$W/fw/$file"
   if cmp -s "$W/fw/$file" "$SIM/fw/$file"; then printf '%-74s %s\n' "$name" "NOT PLANTED (the sed matched nothing)"; bad=1; continue; fi

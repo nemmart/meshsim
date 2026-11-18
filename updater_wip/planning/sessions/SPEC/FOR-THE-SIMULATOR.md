@@ -74,7 +74,6 @@ section, what the specification says, what `main` has. Kept as the specification
 | 30.2 | the UART turned on by a store to `UART_CONTROL`, if the image prints | v1.36's UART runs from the reset; no store |
 | 30.6 | the tracer tile's result carries its last record to the master tile (owner, MS-2) | `tracer_ctl.c` checks the end state itself and sends no record |
 | 30.7, 29.14 | the reply frame, type 16, 72 words, through Egress | none: no Egress, no reply |
-| 30.3 | an unknown frame type is dropped with one discard count | `master.c` 565 stops on it, `bad_frame(type, MR_D_TYPE)`, as a stop of its own (WORKER7) |
 | 30.8 | the firmware's checks of a frame's contents, a stop with no `ERRORS` bit | as specified (`master.c` 440–567), its result in `master_results` for the harness |
 | 30.8 | an error stops the chip; nothing is recovered | as specified; the handler writes `master_results` for the harness |
 

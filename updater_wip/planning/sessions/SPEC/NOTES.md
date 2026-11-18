@@ -387,6 +387,7 @@ More will go here as I check the text against the code.
 | 15 | CI-4: the cache's look-up ports | ruled (06:31): as written in 23.6.2 |
 | — | reviews before any merge | owner (06:31): checklists for WORKER5, WORKER6, WORKER7, WORKER8 in this folder |
 | 16 | the four reviews' answers | ruled (07:19), applied: WORKER5 list 1 (57d5d6d), its stale read a bug in the code, first in FOR-THE-SIMULATOR; WORKER6 list 1, the reach limits UB (8397c00); WORKER7 both lists, the firmware's frame checks a stop of its own in 30.8 (e6db0dc); WORKER8 list 1, the reset as measured in 28.14, the stale `link_error` under item 181, list 2 to FOR-THE-SIMULATOR. Not merged |
+| 17 | an unknown frame type | ruled (07:44): a stop, one of the firmware's content checks (30.8); a known type's frame this ASIC has no use for is discarded (30.3) |
 | to come, one at a time | anything new that changes hardware or working code | |
 
 ## 11. Found in the sources while writing

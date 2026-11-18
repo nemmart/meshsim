@@ -59,10 +59,12 @@ off (17.6.4). Then, by the header's `type`:
 | 7: register states | drops the records before *s* with one discard count; copies record *s*, and record *s* + 1 **only when *s* < *N* − 1** (the last segment has none); drops the rest. Every copy, as for frame 8's, no more than the frame's words still to come |
 | 8: advice logs | copies the *N* counts; drops the logs before *s*; copies log *s*; drops the rest |
 | 9: memory segments | the Updater's three runs (30.4), with one count for the whole frame |
-| any other type | drops it, with one discard count of its `length` |
+| any other type: one the firmware does not know | **a stop** (30.8): a type other than 1 to 9, the reply's 16 among them, since a reply goes only to the host |
 
-**The frame's contents are checked by the firmware** (30.8): a frame that fails one is a stop of the master tile's
-own program.
+**A known type and an unknown one differ** (owner): what this ASIC has no use for in a frame of a known type, such as
+frame 7's and frame 8's records of other segments, is discarded with a discard count; a type the firmware does not
+know is a stop. **The frame's contents are checked by the firmware** (30.8): a frame that fails one is a stop of the
+master tile's own program.
 
 - **The bulk data never passes through the core:** a frame of update words is a few wakes (the flag, the header
   word's landing, the run's `done`, a free page credit past 256 pages), a run's set-up and one store of the count,
@@ -157,6 +159,7 @@ firmware has them:
 
 | Check | The frame |
 | --- | --- |
+| a type the firmware does not know: not 1 to 9 (30.3) | any |
 | `compression` above 1 | any |
 | a header frame that ends before its fields do; a frame whose data does not end where its fields do | any |
 | frame 3's format version not 1 | 3 |
@@ -164,8 +167,6 @@ firmware has them:
 | **order:** a data frame with no header frame before it (frame 2 without frame 1, frame 5 without frame 4, frame 6 without frame 3 and the program image, frame 9 without frame 3, the cycle-0 image and the proof's table); frame 4 naming a base when none is established | 2, 4, 5, 6, 9 |
 | **length:** a data frame's `length` not its header frame's, frame 7's not 68 × *N* | 2, 5, 6, 7, 9 |
 | **room:** the page map used up, or more frames, runs or advice than its memory holds | — |
-
-An unknown frame type is dropped, not stopped on (30.3).
 
 ### 30.9 What it costs
 

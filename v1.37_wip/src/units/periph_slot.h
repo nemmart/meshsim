@@ -195,7 +195,7 @@ struct SlotCore {
     uint64_t full_seen[4] = {};
     unsigned tile = 0;
     bool dma_port = false;                                 // a special tile: the DMA's packets go to its router's DMA input
-    unsigned dma_input = 0;                                //   which one (0 west: the memory and tracer tiles', 16.4)
+    unsigned dma_input = 3;                                //   which one (v1.37: 3 south on every special tile, 16.4; v1.36 had 0 west)
     bool room_is_ready = false;                            // a bench that plays packet_ready itself, with no router: run_cycle's
                                                            //   `dma_room` is that level (not 0: ready), whatever the packet's dst
     // statistics (diagnostic): ref's accepted, reservedAccesses; violations: the slot's own flags (violation_total adds

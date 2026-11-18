@@ -107,14 +107,16 @@ SpecialIO special_cycle(sim::Config& cfg, const ChipSpec& spec, unsigned s) {
     const unsigned k = lw::CC1 + s;
     ControlIO io = spec.control(cfg, k, spec.control_ctx);
     if (io.barrier) FATAL("special_cycle: unit %u's control has the barrier's nets: a special tile's are not wired (7.3)", k);
-    // the peripheral's DMA, on the router's west link input (16.4; the RTL's memory_tile and tracer_tile: DMA_INPUTS 1)
-    auto& r = cfg.add<Router>(tile_unit(k, "router"), k, nc, spec.hops, true, Router::FIFTH_LINK, io.has_dma ? 1u : 0u);
+    // v1.37 (16.1, 16.4; the INTEGRATOR's stage 2): the router with the line between the special tiles, and the
+    // peripherals' DMA on its south input (v1.36's RTL had it on west, DMA_INPUTS 1: asked of the RTL, RCR 3)
+    auto& r = cfg.add<Router>(tile_unit(k, "router"), k, nc, spec.hops, true, Router::FIFTH_LINK, io.has_dma ? 8u : 0u, true);
     wire_unit(cfg, nc, k, io, r);
-    if (io.has_dma) { cfg.link(io.dma, r.in[Router::FROM_LEFT], 1); cfg.connect(r.dma_room, io.dma_room); }
+    if (io.has_dma) { cfg.link(io.dma, r.in[Router::FROM_DOWN], 1); cfg.connect(r.dma_room, io.dma_room); }
     SpecialIO o;
     o.attach_in = r.from_cc; o.attach_out = r.to_cc;
     o.error = io.error; o.slot = io.slot;
     o.req = io.req;                                       // its request unit, both sides
+    o.router = &r;
     return o;
 }
 
@@ -162,6 +164,12 @@ void build_chip(sim::Config& cfg, const ChipSpec& spec) {
         sp[s] = special_cycle(cfg, spec, s);
         cfg.link(io[at].attach_out, sp[s].attach_in, nc.link_latency);
         cfg.link(sp[s].attach_out, io[at].attach_in, nc.link_latency);
+    }
+    // the line (16.1): the master tile's east to the memory tile's west, the memory tile's east to the tracer tile's west,
+    // each way a link like the mesh's, three stages, no flow control
+    for (unsigned s = 0; s < 2; s++) {
+        cfg.link(sp[s].router->out[Router::TO_RIGHT], sp[s + 1].router->in[Router::FROM_LEFT], nc.link_latency);
+        cfg.link(sp[s + 1].router->out[Router::TO_LEFT], sp[s].router->in[Router::FROM_RIGHT], nc.link_latency);
     }
     add_request_tree(cfg, spec, io, sp);
     // the global nets (18), into and out of the master tile's Ingress/Egress through its slot's own ports

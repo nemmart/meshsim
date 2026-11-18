@@ -18,6 +18,7 @@
 #include "units/ingress_egress.h"
 #include "units/periph_slot.h"
 #include "units/regmap.h"
+#include "units/router.h"
 #include "units/tile_ctl.h"
 #include "units/updater.h"
 #include "updater_bench.h"
@@ -280,6 +281,13 @@ struct ChipProof final : segment::Proof {
         if (u.sys->arb.read_bursts[1] + u.sys->arb.write_bursts[1] == 0) fail("no burst of the Updater's on the arbiter's client 1");
         if (u.sys->arb.read_bursts[2] + u.sys->arb.write_bursts[2] != 0) fail("bursts on the arbiter's client 2, the RW engine's, in a proof");
         if (u.sys->lookups + u.sys->updates == 0) fail("no request of the Updater's on the cache's look-up port 1");
+        {   // v1.37 (16.1, 16.2): the master tile's loads into the tracer tile ride the line, through the memory tile's router
+            const units::Router& rm = m.c.unit<units::Router>("cc1.router");
+            const units::Router& rt = m.c.unit<units::Router>("cc3.router");
+            if (rm.line_out == 0 || rt.line_in < rm.line_out) fail("the line: %llu packets from the master tile, %llu at the tracer tile",
+                                                                   (unsigned long long)rm.line_out, (unsigned long long)rt.line_in);
+            if (rm.route_errors || rt.route_errors) fail("the line: route errors at the special tiles' routers");
+        }
         if (u.input_words() != 0 || u.free_page_entries() != 0) fail("left in the Updater: %u words on its input, %u free pages", u.input_words(), u.free_page_entries());
         const uint64_t words = c.file.bytes.size() / 16, out = R[MR_LINK_WORDS] + link.link_forwarded + link.link_discarded;
         if (link.link_cut || link.link_words != words || out != words || (link.forward & units::IngressEgress::FWD_COUNT) != 0)

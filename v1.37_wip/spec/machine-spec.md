@@ -2598,7 +2598,7 @@ being the cache's inside it; and `lpddr`, which leaves the chip for the LPDDR co
 | `BARRIER_ARRIVE` | out, compute tiles; in, the master tile | one line per compute tile to the master tile's Ingress/Egress, a one-cycle pulse, at equal latency `ARRIVE_LATENCY` (7.3, 17.6) |
 | `BARRIER_RELEASE` | out, the master tile; in, compute tiles | one line from the master tile's Ingress/Egress, reaching every compute tile in the same cycle, `RELEASE_LATENCY` after its `RELEASE` store takes effect (7.3, 17.6) |
 | error line | out, every tile; in, the master tile | high while the tile's `ERRORS` is non-zero, with no software involved. Every other tile's reaches the master tile's Ingress/Egress `ERROR_LATENCY` later (`ERROR_LINES`), and the master tile's own its toast pin (17.6) |
-| reset | in, every tile | the chip's reset (*Open:* hard and soft, with the chip) |
+| reset | in, every tile | the chip's one reset (owner), which reaches every peripheral, the host link among them (*Open:* hard and soft, item 124) |
 
 **Pins.** Besides its clock, its reset and its peripherals' ports (3), the chip
 has the master tile's pins:
@@ -2607,9 +2607,16 @@ has the master tile's pins:
 | --- | --- | --- |
 | `toast` | out | the chip has failed: latched until the reset (17.6) |
 | `led` | out | `LED`'s bit 0 (17.6) |
-| `uart_tx`, `uart_rx` | out, in | the UART's line (17.6) |
+| `uart_tx`, `uart_rx` | out, in | the UART's line (17.6.9) |
+| `link_up` | in and out, a byte each way | the host link towards the host: the master tile's upper link end, through the LVDS IO block (3, 28) |
+| `link_down` | in and out, a byte each way | the host link away from the host: its lower link end (28.12) |
+| `chain_next` | in | another ASIC follows this one on the chain: a fact of the board, fixed before the reset ends. With it 0, `link_down` is not used and nothing is forwarded down (28.12) (owner) |
+| the `lpddr` port | out | the memory system's AXI port to the LPDDR controller (3, 23.12) |
 
-**The reset.** Every tile is reset as at power-on, except its memories.
+**The reset.** Every tile is reset as at power-on, except its memories. **There is one reset** (owner): it reaches
+the host link and Ingress/Egress's queues as it reaches everything else (17.6.14), so a chip that is reset restarts
+its links, and its neighbours on the chain raise `link_error` (28.14). What follows an error and a reset is not
+designed in v1.37 *(item 181)*.
 - **The core** starts at the reset PC, in the boot ROM (6.5).
 - **Emptied, with every credit returned:** every queue, pipeline stage and
   delay line in the tile and the request tree.
@@ -2624,7 +2631,8 @@ has the master tile's pins:
 - **Idle:** `counter_n_done` and `all_counters_done` disarmed; the arrival gate
   inactive, so the wake is `(EVENTS & EVENTS_MASK)` ≠ 0 until an `ARRIVE`; all
   `TOKEN_COUNT` tokens free; and every unit and peripheral idle. Each
-  peripheral's own state resets as its section says (17.6–17.9).
+  peripheral's own state resets as its section says (17.6–17.11): the cache
+  empty, the queues empty, the link ends restarting.
 - **Set:** the tile's `EVENTS_MASK` resets to `release` and `all_counters_done`,
   and each peripheral's to 0.
 - **Undefined until written:** `DMA_CONFIG`, `RECEIVE_CONFIG`, `GATHER_CONFIG`,
@@ -2665,11 +2673,22 @@ has the master tile's pins:
 | `REQUEST_QUEUE_DEPTH` | 4 | the request unit's queue | 11.1 |
 | `RECEIVE_QUEUE_DEPTH` | per target, a power of two, at least `TILE_COUNT` × its per-tile limit + 64 | a target's receive queue | 11.3 |
 | `ARRIVE_LATENCY`, `RELEASE_LATENCY`, `ERROR_LATENCY` | the chip's | the global nets | 18 |
-| `STREAM_BYTES` | 1–16; 4 by default | a host-interface beat's TDATA | 17.6 |
-| `STREAM_DEPTH` | 4 | each host-interface FIFO's beats | 17.6 |
-| `UART_FIFO_DEPTH` | 16 | each UART FIFO's bytes | 17.6 |
-| `UART_RESET_DIVISOR` | the chip's: its clock's frequency over 115,200, rounded | `UART_DIVISOR`'s reset value | 17.6 |
-| `LPDDR_ADDRESS_BITS` | 24–36; 32 by default | an LPDDR byte address on `lpddr` | 17.7 |
+| `UART_FIFO_DEPTH` | 16 | each UART FIFO's characters | 17.6.9 |
+| `INGRESS_QUEUE_WORDS` | 1,024 | each of Ingress's incoming queues, in 128-bit words; "stop" at half | 17.6.3 |
+| `EGRESS_QUEUE_WORDS` | 512 | Egress's outgoing queue, in 128-bit words; a credit is half of it | 17.6.8 |
+| `LINK_WINDOW` | 8 | the link packets a link end keeps for sending again, of both streams | 28.11 |
+| `LINK_MAX_WORDS` | 32 | a link packet's most data, in 128-bit words | 28.3 |
+| `FORWARD_BUFFER_WORDS` | 1,024 | each of a chain node's four forwarding buffers | 28.12 |
+| the link's constants | 28.13.4 | the zeros of a round, 1,024; the zeros a lost receiver waits for, 528; the status timer, 512; the wait before asking again, 2,048 | 28 |
+| `UPDATER_INPUT_WORDS` | 4 | the Updater's input queue, behind the word port | 17.10.3 |
+| `FREE_PAGE_ENTRIES` | 256 | the Updater's free page queue; a credit is half of it | 17.10.4 |
+| `LRU_ENTRIES` | 32 | the LRU code's table | 17.10.2, 29.3 |
+| `CACHE_SETS`, `CACHE_WAYS` | 512, 8 | the cache's geometry, of 128-byte lines: 512 KiB | 23.6.1 |
+| `LOOKUP_PORTS` | 4 | the cache's look-up ports; port 1 the Updater's | 23.6.2 |
+| `LPDDR_ADDRESS_BITS` | 24–36; 32 by default | an LPDDR byte address on `lpddr` and every `lpddr_client` port | 23.10 |
+| `LPDDR_CLIENTS`, `ID_BITS` | 4, 2 | the AXI arbiter's client ports, and an ID on `lpddr` | 23.10, 23.12 |
+| `TURN_BEATS` | 32, from 1 to 256 | a piece's most beats | 23.11 |
+| `CLIENT_BURSTS` | 4, from 1 to 16 | a client's bursts outstanding in each direction | 23.10 |
 | `RW_QUEUE_BEATS` | at least 4; 16 by default | the RW engine's output queue 0 | 17.7 |
 | `RW_BUFFER_BYTES` | a power of two from 4 KiB to 16 MiB; 16 KiB by default | the RW engine's write buffer | 17.7 |
 | `REPLAY_QUEUE_ENTRIES` | 256 | each of the replayer's input queues, in 128-bit entries; a credit is half of it | 17.8.8 |
@@ -2726,8 +2745,14 @@ row, and lists what the simulator sets beside it. Three kinds of value appear:
 | eject priority | the loopback FIFO last | the loopback queue (16.3) | unchanged |
 | keep-alive watchdog | off at reset | `WATCHDOG` (17.6) | unchanged; a store of *N* in cycle *t* expires at the end of *t* + 1 + *N* |
 
-**New in chapter 19, with no v1.35 parameter:** `STREAM_BYTES` and `STREAM_DEPTH` (the host interface, 17.6),
-`LPDDR_ADDRESS_BITS`, `RW_QUEUE_BEATS` and `RW_BUFFER_BYTES` (the RW engine, 17.7).
+**New in chapter 19, with no v1.35 parameter:** `LPDDR_ADDRESS_BITS`, `RW_QUEUE_BEATS` and `RW_BUFFER_BYTES` (the
+RW engine, 17.7), in v1.36; in v1.37, the rows from `INGRESS_QUEUE_WORDS` to `CLIENT_BURSTS`. v1.36's
+`STREAM_BYTES` and `STREAM_DEPTH` went with its host interface, and `UART_RESET_DIVISOR` with the UART's divisor
+(17.6.9; item 172).
+
+**v1.37's simulator's own values,** beside the machine's: the LPDDR model's `read_latency` and `write_latency`, 70
+each, `max_reads` and `max_writes`, 16 each, and its jitter mode (23.12); the cache's `hits_under_miss`, on, and its
+stale-line check (23.6.11). Each is the model's, not a promise.
 
 **Removed with their hardware.**
 
@@ -2908,10 +2933,32 @@ Invariants 27 to 34 are new in v1.36: rules the machine states as UB that v1.35 
 32. **Counters stay in range** (12.2): no store brings a counter past 2²⁰ − 1.
 33. **An image keeps the core's conventions** (6.2, 6.5): `mstatus.MIE` stays 0; a handler of its own stays in
     place until the image ends; and a loaded image ends by jumping to the reset PC with every counter at 0.
-34. **Ingress/Egress's and the RW engine's rules** (17.6, 17.7): no `START` on Ingress/Egress and no `WRITE` to
-    the master tile's region 0x04; no `UART_DIVISOR` of 0; no push into the RW engine's full output queue 1; the
-    transfers from its output queue 0 take exactly the beats its reads put there; no `WRITE` packet into a beat
-    of the write buffer a running write reads, and none past the buffer's end.
+34. **Ingress/Egress's and the RW engine's rules** (17.6, 17.7): no `START` on Ingress/Egress; no push into the
+    RW engine's full output queue 1; the transfers from its output queue 0 take exactly the beats its reads put
+    there; no `WRITE` packet into a beat of the write buffer a running write reads, and none past the buffer's end.
+    *(v1.37: Ingress/Egress's rules are invariant 35; its region now takes writes.)*
+
+**New in v1.37.**
+
+35. **Ingress/Egress's rules** (17.6.13): no DMA count beyond the 128-bit words in its queue at `DMA_START`; no DMA
+    transfer from the background queue while `DMA_FORWARD_COUNT.count` is not 0, and no store of the count while
+    one is in flight; no store to `EGRESS_COUNT` while it is not 0; `WRITE`s into its region of 128 bits, to part
+    1 alone, from one source at a time; no non-zero `UART_CONTROL` with a `divider` of 0. **Hardware:**
+    `ERRORS.egress_error`, for a word into a full outgoing queue or with `EGRESS_COUNT` at 0.
+36. **The Updater's rules** (17.10.9): words 32–37 and `START` only while it is idle; `WRITE`s into its region of
+    128 bits, to part 2 alone, from one source at a time; every root and free page a page's address in LPDDR, every
+    free page new; `WORD_COUNT` the frame's count, so that no run ends inside a code. **Hardware:**
+    `ERRORS.queue_overrun`, `beyond`, `out_of_pages`.
+37. **The cache's clients' rules** (23.6.8): a page's data in LPDDR before an entry names it; one writer for a file
+    at a time; an owned index page changed only by `update`; a page used only after its discard's reply; a page
+    the Tracer reads not written directly while it does, and one it has written not read directly. The simulator
+    checks the third and the fifth by its stale-line check (23.6.11).
+38. **The memory system's rules** (17.11): no `START`, and no `WRITE` to the memory tile's region 0x04.
+39. **The AXI ports' rules** (23.10, 23.13): every burst INCR of 16-byte beats, at a multiple of 16, not across
+    4 KiB, its `wlast` on its last beat alone, its W beats back to back. A fault of a unit's design, not a
+    program's: the simulator stops on it.
+40. **The line between the special tiles is paced** (16.3): a program's traffic along it never overflows a router
+    queue. **Hardware:** `ERRORS.router_overflow`, as invariant 1.
 
 ## 21. Timing summary
 
@@ -2940,7 +2987,7 @@ an attach link included, in four cycles: three register stages and one for the r
 | a load from a table | `TABLE_LOAD_LATENCY` = 1; it returns the state at the end of *t* − 1 | contract | 6.4 | the same |
 | a store to a window | takes effect at the end of *t* + 1, and is answered in *t* + 1: a store costs the core one cycle, as a DMEM store | contract | 6.4 | the end of *t* |
 | a store to a table | takes effect at the end of *t*, and is answered in *t* + 1 | contract | 6.4 | the same |
-| a store that stalls | `WRITE_SEND_32`, `_64`, `_128`, `REQUEST_SEND`, and Ingress/Egress's `UART_TX`, `STREAM_SEND` and `STREAM_SEND_LAST`: held until its owner takes it, in a cycle *c*, *t* + 1 at the earliest, at whose end it takes effect; answered in *c* + 1; no other store or load waits | contract | 6.4, 9, 11.1, 17.6 | the same three, without the host interface's |
+| a store that stalls | `WRITE_SEND_32`, `_64`, `_128`, `REQUEST_SEND`, and Ingress/Egress's `UART_TX`: held until its owner takes it, in a cycle *c*, *t* + 1 at the earliest, at whose end it takes effect; answered in *c* + 1; no other store or load waits | contract | 6.4, 9, 11.1, 17.6 | the same three, without the UART's |
 | an access fault in region 0xFF | answered in *t* + 1, a load's or a store's | contract | 6.4, 5.1 | — |
 | a trap or an `MRET` | the handler's first instruction, or the one at `mepc`, retires 4 cycles after the trap is taken or the `MRET` retires `[meas: RTL]` | the RTL's | the core specification's "The core's cycle costs" | not stated |
 | a DMEM load or store | answered the next cycle; an instruction that uses a load's result right after it waits one cycle | contract | the core specification's Core contract | load-use 0 |
@@ -3010,11 +3057,17 @@ an attach link included, in four cycles: three register stages and one for the r
 | `START` → `STATUS.busy` | 1 from the end of *t* + 1 | contract | 17.2, 6.4 | the end of *t* |
 | `DMA_START` → the first packet | `STATUS.dma_busy` from the end of *t* + 1; the first packet is offered to the router's input in *t* + 3 if its entry is in the queue | contract (the store's effect); the RTL's | 17.4 | in the DMA's queue from *t* + 2 |
 | a DMA's pace | one packet a cycle while its queue keeps up and its router input has room (`ROUTER_QUEUE_DEPTH`) | contract | 17.4, 16.4 | a 4-deep credit queue |
-| a UART frame | 10 × `UART_DIVISOR` cycles of the chip's clock: 86,810 at 1 GHz and 115,200 baud | contract | 17.6 | 10 × the divisor × the reference oscillator's cycle; 57,600 baud |
+| a UART character | 10 × `UART_CONTROL.divider` cycles of the chip's clock: 86,810 at 1 GHz and 115,200 baud | contract | 17.6.9 | 10 × the divisor × the reference oscillator's cycle; 57,600 baud |
 | `UART_TX` → the line | a byte pushed into an empty FIFO has its start bit on `uart_tx` from *t* + 3 | the RTL's | 17.6 | no line modelled |
 | `uart_rx` | the falling edge is seen two cycles after the pin's; bit *k* is sampled *k* · *D* + ⌊*D* / 2⌋ cycles after that, *D* the divisor | the RTL's | 17.6 | no receiver |
-| the host interface | a beat sent is in the transmit FIFO at the end of *t* + 1, and `lvds_out_tvalid` rises the next cycle if it was empty; a beat received is readable the cycle after its handshake | the RTL's | 17.6 | not modelled |
-| the RW engine | a `START` issued in *t* raises the job's first burst address on AR or AW from *t* + 3, and a write's first beat on W from *t* + 4; then a beat a cycle while the port takes them. A read ends in the cycle its last beat comes, a write in the cycle its last burst is answered | the RTL's | 17.7 | no model |
+| the forward count | a 128-bit word a cycle from the background queue, while it holds one and the Updater takes it; discarding a word a cycle | contract | 17.6.5 | not modelled |
+| a service flag | posted in the cycle its queue's "asks" rises: a word into an empty queue, the count reaching 0 with words waiting, a DMA transfer ending with words left | contract | 17.6.7 | not modelled |
+| Egress | a link packet offered once 32 words of a frame, or its last, are in the outgoing queue; then the link's (28) | contract | 17.6.8 | not modelled |
+| the host link | a byte a link cycle each way; a full link packet 528 bytes; the pass over its data 32 cycles; the status at most 512 cycles apart; a recovery 669 cycles on average | contract; the figures `[meas: the model]` | 28 | not modelled |
+| the Updater | a value a cycle into the page memory while values come and stay in the page; each page brought in a look-up, each new page a write and its response then an update and its reply | contract, from its code | 17.10.5 | not modelled |
+| the cache | 2 cycles a level on hits; a look-up of a depth-2 file on hits 6 cycles from its handshake; an update 87 with its path in the cache `[model]` | contract, from its code | 23.6.5, 23.6.7 | 6 cycles a hit, 80 a miss (v1.36's model) |
+| the AXI arbiter | a cycle each way: an address taken in *t* at `lpddr` from *t* + 1, a beat or response from `lpddr` at its client a cycle later; a line read about 80 cycles on the simulator's LPDDR | contract, from its code; the model's | 23.11, 23.12 | not modelled |
+| the RW engine | a `START` issued in *t* raises the job's first burst address on AR or AW of its AXI port from *t* + 3, and a write's first beat on W from *t* + 4; then a beat a cycle while the port takes them. A read ends in the cycle its last beat comes, a write in the cycle its last burst is answered | the RTL's | 17.7 | no model |
 | the replayer | 3 cycles a row, 5 for a multiply, plus stalls | contract (the schedules); the RTL's (the stalls) | 17.8.7 (`spec/jolt/replayer.md`) | the same schedules |
 | the Tracer | 4 cycles a row, 6 for a multiply, plus stalls and the memory system's waits | contract (the schedules); the RTL's (the stalls) | 17.9.7 (`spec/jolt/tracer.md`) | the same schedules; no pipeline costs |
 

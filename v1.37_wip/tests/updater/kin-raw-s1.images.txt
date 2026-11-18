@@ -1,0 +1,6 @@
+program    44cbb83e9abf1b375f6394f82f2cb647e16c019dc5cdd31b38c10bdcb3b7163b       1 pages
+cycle0     a0af1303a6cb1d50dd0e68dbf825da3be8d3bec8ca46377db4e72954d8b78b91       3 pages, 2 taken
+start-1    a0af1303a6cb1d50dd0e68dbf825da3be8d3bec8ca46377db4e72954d8b78b91       3 pages, 0 taken
+final      d9dc05aac9f41a3889488b74fd0490bd8358671b8db52ea4e5513204326421ff       4 pages, 1 taken
+table      8761e2bceb86fe6c7188d637a801802723a6f0e442c8badd36cd18098037225d       1 pages, 1 taken
+tracer     a0af1303a6cb1d50dd0e68dbf825da3be8d3bec8ca46377db4e72954d8b78b91  (the start image's copy: equal), 0 taken

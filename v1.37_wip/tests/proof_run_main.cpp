@@ -23,6 +23,13 @@
 // link, the page map, the master's core; the forward count's words, the master's wakes, Ingress's DMA transfers and the
 // count's stores, in all, to the hand-over, and for each frame; the master's share of the link's time to the hand-over
 // (WORKER7). Exit 1 on any failed check.
+//
+// ON A CHAIN OF PROCESSES (v1.37 stage 6, MILESTONE-v1.37.md; started by wire-launch, which adds the wire's arguments,
+// wire_args.h): `--clients N --client k` makes this chip ASIC k of N, its link_up on the wire towards the driver and,
+// for k < N - 1, its link_down towards ASIC k + 1 (tests/wire_ends.h); the driver (tests/driver_main.cpp) sends the
+// frames and checks the replies. --segment defaults to k. --packets is not used: the driver's End makes the link
+// packets. The run goes on past the master's exit until this chip has passed up its reply and those of the ASICs
+// below it, and then a margin; then finish(). The --link-rate is the wire's lane: B bytes a cycle.
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -32,6 +39,9 @@
 #include "proof_bench.h"
 #include "segment_real.h"
 #include "units/host_link.h"
+#include "wire.h"
+#include "wire_args.h"
+#include "wire_ends.h"
 
 namespace {
 
@@ -54,6 +64,10 @@ int usage() {
 }  // namespace
 
 int main(int argc, char** argv) {
+    wire::WireArgs wa;
+    char werr[256];
+    if (!wire::wire_parse_args(&argc, argv, &wa, werr, sizeof werr)) { std::printf("FAIL proof_run: %s\n", werr); return 2; }
+    bool segment_given = false;
     std::string path, gold, packets, recorded;
     unsigned windows = 64;
     uint32_t rows = 65536;
@@ -65,7 +79,7 @@ int main(int argc, char** argv) {
         const std::string a = argv[i];
         const bool more = i + 1 < argc;
         if (a == "--asics" && more) c.asics = unsigned(std::atoi(argv[++i]));
-        else if (a == "--segment" && more) c.segment = unsigned(std::atoi(argv[++i]));
+        else if (a == "--segment" && more) { c.segment = unsigned(std::atoi(argv[++i])); segment_given = true; }
         else if (a == "--windows" && more) windows = unsigned(std::atoi(argv[++i]));
         else if (a == "--rows" && more) rows = uint32_t(std::atol(argv[++i]));
         else if (a == "--gold" && more) gold = argv[++i];
@@ -79,6 +93,17 @@ int main(int argc, char** argv) {
         else return usage();
     }
     if (path.empty() || windows == 0 || windows > 64 || rows == 0 || (c.link_rate != 1 && c.link_rate != 2 && c.link_rate != 4 && c.link_rate != 8)) return usage();
+    // ---- the chain of processes (above)
+    wire::Wire w;
+    WireEnds ends;
+    if (wa.present) {
+        if (wa.driver) { std::printf("FAIL proof_run: a chip is a client, not the driver\n"); return 2; }
+        if (!wire::wire_attach(&w, wa, werr, sizeof werr)) { std::printf("FAIL proof_run: %s\n", werr); return 2; }
+        if (w.lane_bytes() != unsigned(c.link_rate)) { std::printf("FAIL proof_run: the wire's lane is %u bytes, the link's rate %d\n", w.lane_bytes(), c.link_rate); return 2; }
+        ends.up = w.up(); ends.down = w.down(); ends.rate = unsigned(c.link_rate);
+        c.wire = &ends; c.clients = w.clients(); c.client = unsigned(wa.client);
+        if (!segment_given) c.segment = c.client;
+    }
     std::string err;
     if (!c.file.read(path, err)) { std::printf("FAIL proof_run: %s\n", err.c_str()); return 1; }
     if (packets.empty()) c.packets = proof::packets_of(c.file);
@@ -159,6 +184,11 @@ int main(int argc, char** argv) {
             std::printf(" %u: %u/%u", R[56 + k], (last ? R[121] : R[88 + k + 1]) - R[88 + k], (last ? R[122] : R[104 + k + 1]) - R[104 + k]);
         }
         std::printf(" (the last to the hand-over)\n");
+    }
+    if (wa.present) {
+        std::printf("the wire: client %u of %u, %llu cycles exchanged, %llu after the exit; waits %llu (%.3f s)\n", c.client, c.clients,
+                    (unsigned long long)ends.cycles, (unsigned long long)run.after_exit, (unsigned long long)w.stats().waits, double(w.stats().wait_ns) * 1e-9);
+        w.finish();
     }
     std::printf("%s proof_run %s: %d checks failed\n", run.failures ? "FAIL" : "PASS", seg.name.c_str(), run.failures);
     return run.failures ? 1 : 0;

@@ -199,6 +199,7 @@ struct Proof {
     // v1.37 (30.7): after the master's exit, whether what it sent has all arrived (the host's end has the reply); the
     // chip runs on until then, a poll at a time, to a limit. The run's cycles stay the exit's.
     virtual bool settled(mach::Mach&) { return true; }
+    virtual uint64_t settle_limit() const { return uint64_t(1) << 20; }   // the cycles it may take
 };
 struct Options {
     unsigned parts = 1;                         // the chip split over threads (mach.h)

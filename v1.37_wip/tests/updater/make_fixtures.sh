@@ -50,7 +50,7 @@ make_one() {   # NAME PROGRAM INPUT BASE COMPRESSION
   $J frames "$2" "$3" "$OUT/$1.frames" --segment-rows=50 --asics=64 --base="$4" --compression="$5" --verify 2>/dev/null | grep -q VERIFIED \
     || { echo "make_fixtures: gold did not verify $1"; exit 1; }
   rm -f "$OUT/$1.frames.json"
-  for s in 0 20 60 63; do
+  for s in 0 1 20 60 63; do   # 1: the chain of two (v1.37 stage 6)
     $J frames-images "$OUT/$1.frames" $s 2>/dev/null | grep -v '^ok$' > "$OUT/$1-s$s.images.txt"
   done
 }

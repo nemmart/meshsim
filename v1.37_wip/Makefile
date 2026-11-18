@@ -18,7 +18,7 @@ ifeq ($(shell command -v clang++ 2>/dev/null),)
 $(error clang++ not found: D18 needs clang for the release build and make check (apt install clang))
 endif
 
-COMMON  := -std=c++20 -fno-exceptions -fno-rtti -Wall -Wextra -Werror -Isrc -I../updater_wip/link -MMD -MP -pthread
+COMMON  := -std=c++20 -fno-exceptions -fno-rtti -Wall -Wextra -Werror -Isrc -I../updater_wip/link -I../updater_wip/wire -MMD -MP -pthread
 DEBUG   := -O1 -g -DSIM_DEBUG -fsanitize=address,undefined -fno-sanitize=vptr -fno-sanitize-recover=all \
            -fno-omit-frame-pointer
 RELEASE := -O2 -DNDEBUG

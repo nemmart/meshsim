@@ -1,6 +1,7 @@
 // mach.cpp: the machine harness (mach.h). Configuration and between-cycle code only (D6 doesn't apply).
 #include "mach.h"
 #include "host_end.h"
+#include "wire_ends.h"
 
 #include <sys/stat.h>
 
@@ -1456,6 +1457,13 @@ HostEnd& Mach::attach_host(const std::vector<uint8_t>& packet_file, unsigned rat
     ie.reset(0);                                                      // the link's rate taken: the chip as at the reset
     c.touched(units::unit_prefix(units::ID_MASTER) + "slot");
     return *m.host;
+}
+bool Mach::has_host() { return c.impl().host != nullptr; }
+void Mach::attach_wire(WireEnds& ends) {
+    units::IngressEgress& ie = ingress();
+    ends.attach(ie);
+    ie.reset(0);                                                      // the link's rate and chain_next taken: as at the reset
+    c.touched(units::unit_prefix(units::ID_MASTER) + "slot");
 }
 HostEnd& Mach::host() {
     if (!c.impl().host) FATAL("mach: no host attached (Mach::attach_host)");

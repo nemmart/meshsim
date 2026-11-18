@@ -398,7 +398,7 @@ Run run_chip(const Segment& s, const Rtl* rtl, const Options& o) {
         run.finished = m.word(units::ID_MASTER, exit_word) == EXIT_DONE;
     }
     if (o.proof && run.finished)                                        // v1.37: what the master sent, to its arrival
-        while (!o.proof->settled(m) && run.after_exit < (uint64_t(1) << 20)) { m.c.run(POLL_CYCLES); run.after_exit += POLL_CYCLES; }
+        while (!o.proof->settled(m) && run.after_exit < o.proof->settle_limit()) { m.c.run(POLL_CYCLES); run.after_exit += POLL_CYCLES; }
     for (unsigned tile = 0; tile < T; tile++) {
         const size_t sunk = replayer[tile]->rows_sunk();
         run.rows[tile].resize(sunk * ROW_LONGS);

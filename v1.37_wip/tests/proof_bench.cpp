@@ -160,8 +160,11 @@ struct ChipProof final : segment::Proof {
         results_at = rtl_images::elf_symbol(master_elf, "master_results");
         // v1.37 stage 4: the host's end of the link (host_end.h) sends the packet file's link packets, link_rate link
         // cycles a chip cycle, or a link cycle every link_every chip cycles
-        HostEnd& host = m.attach_host(c.packets, unsigned(c.link_rate), unsigned(c.link_every));
-        host.noise = c.noise; host.hook = c.host_hook;
+        if (c.wire) m.attach_wire(*c.wire);                // v1.37 stage 6: the chain of processes
+        else {
+            HostEnd& host = m.attach_host(c.packets, unsigned(c.link_rate), unsigned(c.link_every));
+            host.noise = c.noise; host.hook = c.host_hook;
+        }
         view.attach(m);
         if (c.updater_lookup) view.set_lookup(c.updater_lookup);
         master_rv = &m.c.unit<units::TileCore>(units::unit_prefix(units::ID_MASTER) + "core").rv;
@@ -215,7 +218,17 @@ struct ChipProof final : segment::Proof {
     std::vector<::hostlink::Word> reply;
     std::vector<unsigned> reply_hops;
     std::vector<size_t> reply_ends;                  // the words after which a link packet ended
+    int64_t wire_sent_at = -1;                        // the poll at which the replies above were all first sent
+    uint64_t settle_limit() const override { return c.wire ? ~uint64_t(0) : uint64_t(1) << 20; }
     bool settled(mach::Mach& m) override {
+        if (m.word(units::ID_MASTER, results_at + 4 * MR_STATUS) != MR_OK) return true;
+        if (c.wire) {                                  // this reply and those from below, first sent towards the driver
+            const uint64_t sent = m.ingress().node->counts_above().sent_data, want = 3ull * (c.clients - c.client);
+            const int64_t now = int64_t(c.wire->cycles);
+            if (sent < want) return false;
+            if (wire_sent_at < 0) wire_sent_at = now;
+            return uint64_t(now - wire_sent_at) >= c.wire_margin;
+        }
         units::IngressEgress::LinkAllocs a;
         ::hostlink::Word w;
         unsigned hops = 0;
@@ -273,14 +286,14 @@ struct ChipProof final : segment::Proof {
         const FileStore& store = *u.store();
         if (numbers) {
             numbers->master = R;
-            numbers->link_packets = link.link_packets; numbers->link_words = link.link_words; numbers->link_bytes = m.host().link_cycles;
+            numbers->link_packets = link.link_packets; numbers->link_words = link.link_words; numbers->link_bytes = c.wire ? c.wire->cycles * c.link_rate : m.host().link_cycles;
             const auto& core = m.c.unit<units::TileCore>(units::unit_prefix(units::ID_MASTER) + "core").rv;
             numbers->master_awake = core.mcycle - core.cycles_wfi;
             numbers->master_instructions = core.instructions;
-            numbers->link_room_cycles = m.host().stop_cycles; numbers->link_last_at = link.link_last_at;
+            numbers->link_room_cycles = c.wire ? 0 : m.host().stop_cycles; numbers->link_last_at = link.link_last_at;
             numbers->link_forwarded = link.link_forwarded; numbers->link_discarded = link.link_discarded;
-            numbers->link_first_sendings = m.host().capture.data_packets;
-            numbers->link_sent_again = m.host().capture.again;
+            numbers->link_first_sendings = c.wire ? 0 : m.host().capture.data_packets;
+            numbers->link_sent_again = c.wire ? 0 : m.host().capture.again;
             numbers->master_awake_handed = awake_handed;
             for (size_t i = 0; i < done.size(); i++) {
                 RunAccount a;
@@ -368,11 +381,11 @@ struct ChipProof final : segment::Proof {
         if (link.link_words != words || out != words || (link.forward & units::IngressEgress::FWD_COUNT) != 0)
             fail("the link: %llu words arrived, %u read out by the DMA, %llu forwarded, %llu discarded, of %llu; DMA_FORWARD_COUNT 0x%x at the end%s",
                  (unsigned long long)link.link_words, R[MR_LINK_WORDS], (unsigned long long)link.link_forwarded, (unsigned long long)link.link_discarded,
-                 (unsigned long long)words, link.forward, m.host().file_cut ? "; the file ends inside a packet" : "");
+                 (unsigned long long)words, link.forward, !c.wire && m.host().file_cut ? "; the file ends inside a packet" : "");
 
         // ---- the host End's data link packets as first sent, against the packet file's, byte for byte (host_end.h,
         //      THE CAPTURE; NOTES.md C5): on a clean line, the End sends the file's link packets
-        if (!c.noise && !c.host_hook) {
+        if (!c.noise && !c.host_hook && !c.wire) {
             const HostEnd::Capture& cap = m.host().capture;
             const std::vector<uint8_t> want = HostEnd::data_link_packets(c.packets);
             size_t at = 0;
@@ -383,7 +396,16 @@ struct ChipProof final : segment::Proof {
         }
 
         // ---- the reply at the host's end (30.7, 29.14)
-        check_reply(m, run, u);
+        if (!c.wire) check_reply(m, run, u);            // on the chain the driver checks it
+        else {                                         // the wire is lossless: no link packet may come damaged, either way
+            const ::hostlink::LinkCounts a = link.node->counts_above(), b = link.node->counts_below();
+            const uint64_t damaged = a.bad_header + a.bad_data + a.bad_fields + a.ahead + b.bad_header + b.bad_data + b.bad_fields + b.ahead;
+            std::printf("%s: the chip's link ends: above %llu taken, %llu sent (%llu again), %llu restarts; below %llu taken, %llu sent (%llu again), "
+                        "%llu restarts; %llu damaged or ahead\n", name, (unsigned long long)a.taken, (unsigned long long)a.sent_data, (unsigned long long)a.sent_again,
+                        (unsigned long long)a.restarts, (unsigned long long)b.taken, (unsigned long long)b.sent_data, (unsigned long long)b.sent_again,
+                        (unsigned long long)b.restarts, (unsigned long long)damaged);
+            if (damaged) fail("a damaged link packet, or one ahead, on the wire, which loses nothing: %llu", (unsigned long long)damaged);
+        }
 
         // ---- each image as its run ended, against gold's; the frozen ones again at the end
         for (size_t i = 0; i < done.size() && i < run_names.size(); i++) {

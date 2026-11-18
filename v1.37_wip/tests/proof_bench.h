@@ -30,6 +30,7 @@
 
 #include "frames.h"
 #include "hostlink.h"
+#include "wire_ends.h"
 #include "segment_bench.h"
 
 namespace proof {
@@ -54,6 +55,13 @@ struct Case {
     //   stop  (v1.37, 30.8) a stop of the master's own program on what a frame says: MR_FRAME with this detail (the
     //         frame's type [7:0], the check [15:8]), no ERRORS bit, and no reply. The link's packets are then not the
     //         file's: `packets` was made from a changed copy, and the file's own expectations are not checked.
+    // v1.37 stage 6: the chip on a chain of processes (tests/wire_ends.h), in place of the host's End: `clients` ASICs,
+    // this one `client`. Its run goes on past its exit until its link end has first sent, towards the driver, the
+    // data link packets of its own reply and of every ASIC's below it (three each), and then `wire_margin` cycles
+    // more. The capture and the reply are the driver's to check. Null: the host's End, as before.
+    WireEnds* wire = nullptr;
+    unsigned clients = 1, client = 0;
+    uint64_t wire_margin = 4096;
     struct Expect { bool trap = false, cut = false, stop = false; int ingress_errors = 0, updater_errors = 0; uint32_t detail = 0; } expect;
 };
 

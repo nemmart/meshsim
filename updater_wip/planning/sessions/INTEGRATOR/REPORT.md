@@ -73,6 +73,11 @@ pattern beside the Updater's runs. In the chip it would take the frame loop and 
 
 | Quest | item | result |
 |---|---|---|
-| 245 | `suites` at `fd3ff56d`: `./run_tests.sh all --check`, the 37 proof runs | queued |
-| 246 | `suites-varied`: the same with every chip's LPDDR jittered | queued |
-| 247 | `check`: `make check` | queued |
+| 245 | `suites` at `fd3ff56d`: `./run_tests.sh all --check`, the 37 proof runs | **PASS**: every step; the 37 proof runs (3 real, 24 of the matrix, 10 at 29); no golden log differs. The two `fw-build` steps skipped (the runner has no RISC-V toolchain; the images are this machine's, `fw/build.sh --check`) |
+| 246 | `suites-varied`: the same with every chip's LPDDR jittered (`LPDDR_SEED` 7) | **PASS**: the same, no log differs |
+| 247 | `check`: `make check` | **PASS**: gcc and clang, debug and release, 1,613 s |
+
+The figures of the 37 runs are in `runner/`: `245-proof-numbers.md` and `245-cache-figures.txt`, and 246's. **The
+overlap is real:** cycles with the Updater's look-up and a fill request both outstanding, up to 33,187 in a run
+(`cyclone-29`, *s* 0; 86,603 with LPDDR jittered), and a fill served under a miss up to 1,751 times (2,870); the
+joint's checks 0 in all 74 runs; no burst on client 2 in a proof.

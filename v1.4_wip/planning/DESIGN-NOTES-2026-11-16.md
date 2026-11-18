@@ -1025,8 +1025,7 @@ Rulings as they came; `HOST-LINK.md` has each.
   on every core, a chain of 16 at a window of 16 took over six minutes a case where it takes under a second on
   a free machine: 17 processes that must each run every 16 cycles, each waiting its turn behind a busy loop.
   That is the test's load on that machine, and says nothing against the wire. The owner: these big runs seem
-  pointless. What the runner adds for this piece is 16 real cores, which the long runs and the cost figures
-  cover without the matrix.
+  pointless. No campaign on the runner for the wire (owner).
 - Now in `updater_wip/planning/MILESTONE-v1.37.md`, "The picture".
 
 **The owner on where v1.37 stands:** the protocol's open questions want a thorough look, "but that's only a

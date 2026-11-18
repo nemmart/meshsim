@@ -58,8 +58,10 @@ said. The design itself is in `v1.4_wip/planning/`: `HOST-LINK.md`, `INGRESS-INT
 
 ## The driver (owner)
 
-1. **Reads gold's data and sends the packets** to ASIC0, at the link's rate. Gold's packet file already has the
-   numbers of the driver's link.
+1. **Reads gold's data and sends the packets** to ASIC0, at the link's rate.
+   - † It takes gold's frame file and lets WORKER8's host end make the packets, each frame starting a new
+     packet. Gold's packet file is from before the final protocol (numbers for each stream, no mask) until step
+     2c, and a link end would refuse it.
 2. **Obeys ASIC0's stop bit.** Today the black box makes the file wait when a queue is full; with a driver the
    hold-back travels in packets coming back, as `HOST-LINK.md` has it.
 3. **Collects what comes back:** checks each packet, sorts by hops, and rebuilds each ASIC's reply.
@@ -130,8 +132,10 @@ checks it exactly, and a pass shows the whole path: the images built, the segmen
   ASICs made of WORKER8's `Node` before the chip's side exists.
 - **Why 5 and 6 are two workers:** they meet at one small interface, a byte a cycle each way, and each can be
   tested alone. The chain's logic is then tested without three processes, and the processes without a chip.
-- † The joining was to be the integrator's. A fresh worker is proposed for it: it is a day's coding, and this
-  session is long.
+- **One session takes everything that is left** (owner, 2026-11-18): a new integrator session, working through
+  the rest of 3, then 5, 6b, 7 and 8 itself, merging into `main` as it goes. Its brief is
+  `planning/sessions/INTEGRATOR/PROMPT.md`, which orders the work so that the single chip with both state
+  machines on comes first. The WORKER11 of step 5 is not started.
 
 ## How the milestone is checked
 

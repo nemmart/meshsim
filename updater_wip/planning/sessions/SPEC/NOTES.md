@@ -373,6 +373,7 @@ More will go here as I check the text against the code.
 | — | UI-1 | R: the brief's table has the Updater as the master tile's peripheral 2 |
 | 7 | II-1 the UART's fields in STATUS | ruled (06:02): as proposed, [12:8], [20:16], [24], [25] |
 | 8 | HL-1, HL-3, HL-5 (item 185), S4 (item 188), `chain_next` | ruled (06:02): as written |
-| 9 | II-2 Ingress/Egress's ERRORS bits | asked 06:03 |
-| pending, written as recommended | II-3 (word 42), II-8 to II-15, S8 (version 1) | |
-| next | II-3 (Ingress/Egress's numbers), UI-1, UI-2 and the memory system's type 6 (17.11), UI-3, … | |
+| 9 | II-2 Ingress/Egress's ERRORS bits | ruled (06:06): as proposed |
+| 10 | II-3, II-8 to II-15, S8 | ruled (06:06): as written |
+| 11 | MS-1 the reply frame's fields | asked 06:08 |
+| next | S5, MS-2, UI-4/6/7/9/12/13, CI-2/3/4/6/7/8/10, AI-1/2/3/4/6/7, HF-1 to HF-9, II-17 (Ingress/Egress's numbers), UI-1, UI-2 and the memory system's type 6 (17.11), UI-3, … | |

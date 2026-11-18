@@ -81,3 +81,88 @@ The figures of the 37 runs are in `runner/`: `245-proof-numbers.md` and `245-cac
 overlap is real:** cycles with the Updater's look-up and a fill request both outstanding, up to 33,187 in a run
 (`cyclone-29`, *s* 0; 86,603 with LPDDR jittered), and a fill served under a miss up to 1,751 times (2,870); the
 joint's checks 0 in all 74 runs; no burst on client 2 in a proof.
+
+## Stage 2: the router (16)
+
+### What was built
+
+| | where |
+|---|---|
+| **the line between the special tiles** (16.1): a special tile's router with east and west links, the master tile's east to the memory tile's west and the memory tile's east to the tracer tile's west, each a link of three stages with no flow control (`NetConfig::link_latency`) | `src/units/router.h`, `router.cpp` (`line`, `step_line`); `src/units/chip.cpp`, `chip.h` |
+| **its routes** (16.2): a packet for the tile ejects; one for another special tile, from local or the DMA, takes the line by the ring's rule (east if its `dst` is above the tile's id); one arriving on the line goes on the way it came; every other packet from local or the DMA leaves by the attach port; from the attach port, a packet not for the tile goes nowhere, as before | `router.h` |
+| **its queues and arbiters** (16.3): east from local, west and south; west from local, east and south; the eject from local, west, east, south and the attach port; the attach output from local and south, each output's arbiter in that order. A packet into a full queue on the line is `router_overflow` on its router (invariant 40) | `router.h` (`kFeedersLine`) |
+| **every special tile's peripheral DMA on its router's south input** (16.4); `dma_room` carries the line's queues (bits 8 + 2*d* east, 9 + 2*d* west, and bit 16, the line); the slot's DMA judges its room there (`dma_input` 3) | `router.h` (`dma_ready`), `chip.cpp`, `periph_slot.h` |
+| without the line, the special tile's router stays the RTL's as built: `test_router`'s comparison with the RTL and `test_special_router`'s v1.36 tests | |
+| the tests | `tests/test_special_router.cpp`: every pair of the 67 tiles from local and from each DMA (a compute tile's packet for a special tile never on the line), the broadcasts, the line's overflow counted where its queue is, its arbiter's order, an attach port's arrival for another special tile going nowhere with no route error; `test_memory` (the memory tile's answers to the master all by the line, west); every proof in `test_master` (the master's loads into the tracer tile by the line, none lost) |
+| the planted bugs | `tests/line_teeth.sh` |
+
+### Disagreements
+
+**None.** One planted bug went uncaught at first (L4 below) and turned out to change nothing a packet does, only the
+router's route-error count: there is no queue from the attach port to the line (16.3), so a route there goes nowhere.
+The test now checks the count.
+
+### The checks
+
+| check | result |
+|---|---|
+| `test_special_router` (19), `test_router` | pass |
+| `test_memory`: the memory run's 347 answers by the line (`line_out` at the memory tile equal to its DMA packets, `line_in` at the master tile the same, nothing by the attach port) | pass |
+| `test_master`: every proof's loads into the tracer tile by the line | 34 pass |
+| `./run_tests.sh quick --check` | **all passed**; no log differs |
+| **the reference cycles:** `test_segment`'s v1.36 segments (to C&C 1's exit, polled every 512 cycles) the same as `main`'s; the proof runs' cycles move (the master's loads into the tracer tile take the line, two hops in place of the mesh's) | |
+| **the planted bugs** (`line_teeth.sh`): L1 the ring's rule reversed; L2 a packet on the line sent back the way it came; L3 a special tile's packet for another by the attach port; L4 an attach port's arrival for another special tile put on the line; L5 the slot's DMA judging its room at the west input (v1.36's); L6 the west output's queues in the wrong order; L7 a DMA's packet for another special tile by the attach port | **7 of 7 caught.** L4 only once `test_special_router` checked the route errors (`ec6730a7`) |
+| the 37 proof runs on the line; `make check` | the runner: Quests 248, 249 (below) |
+
+### The runner
+
+| Quest | item | result |
+|---|---|---|
+| 248 | `suites` at `f24979c6`: `./run_tests.sh all --check`, the 37 proof runs | queued |
+| 249 | `check`: `make check` | queued |
+
+## Stage 3: Ingress/Egress at its registers (17.6)
+
+### What was built
+
+| | where |
+|---|---|
+| **17.6.1's words and bits**: `UART_TX` and `UART_RX` at words 30 and 31 in block 1, beside the DMA's; `UART_CONTROL` at 42; `FOREGROUND_WORDS`, `BACKGROUND_WORDS`, `DMA_FORWARD_COUNT`, `EGRESS_COUNT` at 64 to 67; `STATUS` [2] and [3] the queues, [12:8] and [20:16] the UART's FIFOs, [24] and [25] its line errors; `ERRORS` [1] `link_error`, [2] `format_error`, [3] `egress_error`; `EVENTS` [6] and [7] the service flags, [8] `egress_credit`; `PARAMS` version 1. v1.36's LVDS stream gone (words 64 to 72, `stream_last`, `stream_in`, `stream_out`, `STREAM_BYTES`, `STREAM_DEPTH`) | `src/units/ingress_egress.h` |
+| **the bus and the slot**: words 30 and 31 a DMA peripheral's own words (the slot publishes their values and bits in `Win::R_LOW`, `R_LOWBITS`); a peripheral without a DMA still reads 0 in all of block 1 (17.1) | `src/units/register_bus.h`, `periph_slot.*`, `tile_ctl.h` |
+| **the incoming queues** (17.6.3): `INGRESS_QUEUE_WORDS`, 1,024 (`MachConfig::ingress_queue_words`, setting `ingressQueueWords`; a power of two from 64 to 4,096); a link packet's words landing a 128-bit word a cycle from the packet buffer, one link packet after another, the first at the end of the cycle it is taken, each counted in `…_WORDS` as it lands; the room of the words landed and still to land (28.13.6) | `ingress_egress.h` |
+| **Egress** (17.6.8): the outgoing queue of 512 words, filled by 128-bit `WRITE`s to region 0x04 part 1, the rest of the address ignored; `EGRESS_COUNT` counting down as each word lands, its last word marked; a link packet offered at 32 words of a frame or its last word; `egress_credit` counted to 2, 2 at the reset, one back each 256 words gone; `egress_error` for a word into a full queue or with the count at 0. Until stage 4 its link packets go to a harness's callback (none: they stay) | `ingress_egress.h` |
+| **the UART** (17.6.9): off at the reset, `UART_CONTROL` 0, which is its reset (both FIFOs emptied, the line errors 0, the line out idle, stores dropped, the events 0); its divider and the two enables gating the line alone; the line errors in `STATUS` until the UART's reset | `ingress_egress.h` |
+| **the UB the simulator stops on** (17.6.15, invariant 35): a `START`; a DMA count past the queue; a background transfer with the count running, or a count stored during one; `EGRESS_COUNT` stored while not 0; a `WRITE` into the region of other than 128 bits or to a part other than 1; a frame's words from two sources; a non-zero `UART_CONTROL` with a divider of 0 | `ingress_egress.h` |
+| **every chip's master tile is v1.37's**: Ingress/Egress with its DMA and the Updater's controller as peripheral 2 in every chip with the special tiles. `MachConfig::host_link` is gone (its setting `hostLink` refused by name); `MachConfig::proof` (setting `proof`) says only that a proof comes from the host: the Tracer and the Updater on one store | `src/units/tile_ctl.*`, `periph_slot.*`; `tests/mach.*`, `segment_bench.*`, `test_memory_system.cpp` |
+| **the register table and the firmware**: `mesh.h` and `REGISTERS.md` regenerated with 17.6.1 (and the part `IE_EGRESS`); `host.h`'s link names now mesh.h's; the port layer's `Cnc1Regs` at v1.37's offsets; `cc1.c` turns the UART on where it first prints, its dump; `cc1.elf` and `master.elf` rebuilt | `tools/regs/`; `fw/include/`, `fw/port/mesh.h`, `fw/cc/cc1.c`, `master.c` |
+| the tests | `tests/test_ingress_egress.cpp` rewritten (36: the control block and the reset values, the window map with block 1, the barrier's and the watchdog's as before, the UART's line both ways at its new words, its reset and enables, Egress's count, link packets, credit and errors, every UB); `test_ingress_link` and `test_packet_vectors` at the new words and the landing; `test_rtl_stream`'s UART at its words; `test_regs`, `test_mach`, `test_master`, the proof bench |
+| the planted bugs | `tests/ie_teeth.sh`, rewritten for v1.37's unit |
+
+### Decisions
+
+- **`cc1.c` turns the UART on at its dump, not at its boot.** 30.2 asks for "one store of its setting to
+  `UART_CONTROL`" if the image prints. A store at the boot moved v1.36's segment runs (`test_segment`'s
+  `chip_trace_test_full` by 1,024 cycles, `test_sort`'s barrier by 10) though they never print: v1.36's program on a
+  chip whose UART is off at the reset is the same program until it prints, and the reference cycles move only on
+  purpose. `master.c` does not print.
+- **Egress's link packets go nowhere until stage 4** (a harness may take them: `egress_out`), so its credit is tested at
+  the unit, with a harness taking them at once or holding them.
+- **The black box's link errors** are `link_error`, with `format_error` for a field that cannot be: the nearest 17.6.1
+  has until stage 4, where a damaged link packet is no error at all.
+
+### Disagreements
+
+None with the specification. Two of my own bugs found on the way: the bus first gave words 30 and 31 to every
+peripheral, so a DMA-less peripheral's block 1 would have faulted there (17.1 says it reads 0); and the v1.36 UART
+test's expectation of a reset divisor.
+
+### The checks
+
+| check | result |
+|---|---|
+| `test_ingress_egress` (36), `test_ingress_link` (44), `test_packet_vectors` (6), `test_rtl_stream` (1), `test_regs` (12), `test_mach` (11), `test_memory_system`, `test_rtl_tile` | pass |
+| `test_master`: the guests, the error path (the black box's damaged packets now `link_error`), the teeth | pass |
+| `./run_tests.sh quick --check` | **all passed**; no log differs |
+| **the reference cycles:** `test_segment`'s and `test_sort`'s the same as `main`'s; `test_rtl_stream`'s UART run each figure one cycle later than the RTL chip's (its program's setting is `lui` and `addi`, one instruction more: the first start bit 35, the led's changes, the status after 644, the done word after 5,211); the proof runs' move (the queues of 1,024, the landing): the runner's | |
+| **the planted bugs** (`ie_teeth.sh`) | (below) |
+| the 37 proof runs; with LPDDR jittered; `make check` | the runner (below) |

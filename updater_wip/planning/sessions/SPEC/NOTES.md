@@ -345,3 +345,21 @@ More will go here as I check the text against the code.
 | S3 | ruled: the links between the special tiles stay in; their ports, routing and flow control to the owner as questions | 16 |
 | S3-1, S3-2: the line's ports and routing | ruled (owner, 05:36): **east and west, as the mesh:** master east ↔ memory west, memory east ↔ tracer west (east is id + 1). Between special tiles, the ring's rule on the difference of the ids. **A peripheral's DMA enters on the south input (the +8 port) on every special tile;** the RTL has it on west for the memory and tracer tiles: asked of the RTL, and in `FOR-THE-SIMULATOR.md` | 16 |
 | names: 128 bits | ruled (owner, 2026-11-18): "a 128-bit word" in the text, "words" in names; "beat" keeps chapter 1's meaning | section 6 |
+
+## 9. New open items (chapter 26), numbered as they are made
+
+| item | what | where |
+| --- | --- | --- |
+| 178 | a flush of the Tracer's dirty lines, at a trace's end or at shutdown: nothing reads them today | 23.6.3 |
+| 179 | the cache writing a set's dirty least recently used line back early, in place (WORKER5's recommendation) | 23.6.7 |
+| 180 | who discards a page when the file system hands it out again | 23.6.8 |
+| 181 | everything after an error stops the chip: the host's reset, draining the queues, a ready frame (S1, S6, II-18) | 23.7, 30 |
+
+## 10. Class A daggers and new questions, in the order they go to the owner
+
+| order | question | status |
+| --- | --- | --- |
+| 1 | S3-1 the line's ports | ruled (east and west) |
+| 2 | S3-2 routing | ruled with 1 (the ring's rule) |
+| 3 | S3-3 the line's flow control: credits for a 16-packet input queue | asked 05:40 |
+| next | II-1, II-2, II-3 (Ingress/Egress's numbers), UI-1, UI-2 and the memory system's type 6 (17.11), UI-3, … | |

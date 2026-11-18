@@ -1998,6 +1998,31 @@ writes each window's record and streams, which its DMA sends to the compute tile
 the guest's memory over its `fill` port (3). Its specification, 17.9 and 17.9.1 to 17.9.12 with what is kept from
 v1.35 after them, is `spec/jolt/tracer.md`.
 
+### 17.11 The memory system, the memory tile's peripheral 1
+
+The memory system is the memory tile's peripheral 1, type 6, version 0: the cache (23.6), the AXI arbiter (23.11)
+and the chip's `lpddr` port (23.12). **It is a peripheral so that the cache's error reaches the tile's error line,**
+and so the toast pin, as every peripheral's does (owner); nothing in it is started, configured or fed by a
+program. Its hardware is chapter 23's.
+
+- **`PARAMS`:** type 6, version 0, and no constants, [31:16] 0.
+- **No work.** A `START` is UB (1.3), so `STATUS.busy` and `EVENTS.done` stay 0.
+- **No DMA.** Its block 1 reads 0 (17.1), and `EVENTS.dma_done` stays 0.
+- **No writes.** Its region takes none: a `WRITE` to the memory tile's region 0x04 is UB (17.3).
+- **Its own words:** none. Every word of blocks 2–7 is unmapped (5.3).
+- **`STATUS` and `EVENTS`** have the standard bits alone, which read 0.
+- **`ERRORS`**, sticky until the reset:
+
+  | Bit | Error | Kind | Set by |
+  | --- | --- | --- | --- |
+  | 0 | `lpddr_error` | H (P for an address the device does not have) | an LPDDR error response the cache had no client to tell of: a dirty line's write-back, or a line fetched for `fill`'s read (23.6.9) |
+
+**Its ports** (3): `fill`, from the tracer tile's Tracer; the look-up ports, 1 from the master tile's Updater
+(23.6.2); the arbiter's client ports, 1 from the Updater and 2 from the memory tile's RW engine (23.10), client 0
+being the cache's inside it; and `lpddr`, which leaves the chip for the LPDDR controller.
+
+**Reset.** The reset empties the cache (23.6.10) and the arbiter (23.11) and clears `ERRORS`.
+
 ## 18. Nets and reset
 
 | Net | Tiles | Meaning |
@@ -3242,31 +3267,47 @@ the file system is to come back up over LPDDR's contents *(Deferred, item 119)*.
 **No hold is needed.** The reset is the whole chip's, so the error lines' pipeline stages are reset with
 everything else (18), and no error raised before the reset reaches Ingress/Egress after it.
 
-## 23. The memory system and the file system (deferred)
+## 23. The memory system and the file system
 
-*Kept from v1.35's 6.7 and section 7, in v1.36's terms. Chapters 1–19 specify the hardware that is built; this
-chapter says what a tile sees of the memory tile's answers, and what stays deferred with the file system's design
-(item 119).*
+*v1.37. 23.2–23.4, 23.7–23.9 are v1.36's, kept from v1.35's 6.7 and section 7: what a tile sees of the memory tile's
+answers. 23.5, 23.6 and 23.10–23.13 are new: the files as the hardware sees them, the cache, the clients' AXI ports,
+the AXI arbiter and LPDDR, which v1.36 deferred. They are meshsim's design and not yet built in the RTL. The file
+system stays deferred (item 119).*
 
-The **memory tile** (2.1) owns the chip's one path to LPDDR. Three parts of what v1.35 called the memory system
-are now specified, and built in the RTL (Snarky One):
+The **memory side** of the chip is everything between LPDDR and the units that use it:
 
-| Part | Where | v1.35's name |
+| Part | Where | What it is |
 | --- | --- | --- |
-| the RW engine, the memory tile's peripheral 1: one read or one write of LPDDR at a time | 17.7 | the RW engine of the Updater/Binder/RW engine |
-| the memory tile's requests, `READ` and `WRITE`, which its core serves with the RW engine | 11.5 | the read and the tag-window write |
-| the write buffer and its parts, which the memory tile's software allots | 17.7 | the tag windows |
-| the `lpddr` port, an AXI4 master, to the LPDDR controller outside the chip | 3 | "its AXI bus" |
-| the Tracer's side of the fill port, `fill` | 3, 17.9.5 | the fill bus |
+| the memory system, the memory tile's peripheral 1 | 17.11 | the cache, the AXI arbiter and the `lpddr` port, behind a window that carries the cache's error |
+| the cache | 23.6 | 512 KiB of lines of LPDDR, shared by the chip: the Tracer's `fill` and the Updater's look-up port |
+| the AXI arbiter and the clients' ports | 23.10, 23.11 | every client of LPDDR on a port of its own: the cache, the Updater, the RW engine |
+| `lpddr` | 23.12 | the arbiter's port to the LPDDR controller, outside the chip, AXI4 with IDs |
+| the Updater, the master tile's peripheral 2 | 17.10 | builds the files from the host's update words: client 1 of the arbiter and of the cache |
+| the RW engine, the memory tile's peripheral 2 | 17.7 | v1.36's: one read or one write of LPDDR at a time, for the memory tile's requests; client 2 |
+| the memory tile's requests, `READ` and `WRITE` | 11.5, 23.2–23.4 | served by the memory tile's core with the RW engine |
+| the files | 23.5 | trees of pages, read and written by lines |
 
-Everything else is **deferred, as in v1.35**: the file system, the Updater and the Binder, the tag pool, the log
-files and their flush on a failure, and the memory system behind the fill port, its translator and its shared
-cache (23.5–23.7).
+```
+ the Tracer ──── fill ─────────────────────────┐
+ the Updater ─── look-up port 1 ──────────────►│ the cache │── client 0 ──┐
+ (master tile)   AXI, client 1 ─────────────────────────────────────────►│ the AXI  │── lpddr ──► the LPDDR
+ the RW engine ─ AXI, client 2 ─────────────────────────────────────────►│ arbiter  │            controller
+ (memory tile)                                                           └──────────┘
+```
+
+Deferred, as in v1.35: the file system, the Binder, the log files and their flush on a failure (23.5).
 
 ### 23.1 Where it sits
 
-- **The memory tile** is tile id `TILE_COUNT` + 1 (65 at 8 × 8), attached to tile `MESH_SIZE` − 1 (2.1, 16.1).
-  Packets for it go to that tile id; a `WRITE` into the write buffer is addressed to its region 0x04 (17.7).
+- **The memory system is the memory tile's peripheral 1** (17.11): the cache, the arbiter and the `lpddr` port are
+  its hardware, and its window carries the cache's error, so it reaches the toast pin as any peripheral's error
+  does (owner). Nothing in it is started or configured by a program.
+- **Its clients reach it from where they are.** The Tracer's `fill` comes from the tracer tile, beside it (2.1).
+  The Updater is the master tile's peripheral, and its AXI port and its look-up port reach across to the memory
+  side; latency on them does not matter to it (owner). Where each unit sits on the floorplan is the RTL's.
+- **The memory tile** is tile id `TILE_COUNT` + 1 (65 at 8 × 8), attached to tile `MESH_SIZE` − 1 (2.1, 16.1), and
+  on the line between the special tiles (16.1). Packets for it go to that tile id; a `WRITE` into the RW engine's
+  write buffer is addressed to its region 0x05 (17.7).
 - **Its packets' src is the memory tile's id** (16.4), its core's and its RW engine's DMA's alike. v1.35 deferred
   the DMA's src here and decided it elsewhere as the id + 8 (item 118); 16.4 does not take that
   (`spec/CHANGES-v1.35-to-v1.36.md`, the reversals).
@@ -3335,49 +3376,405 @@ v1.35's writes by tags are 11.5's `WRITE` request and 17.7's write buffer:
 - *(Deferred, item 119: how the file system chooses and reuses parts, the pool's size, and the writer's
   acknowledgement beyond the reply.)*
 
-### 23.5 The file system *(Deferred, item 119)*
+### 23.5 Files, and the file system *(the file system deferred, item 119)*
 
-Not specified and not built, as in v1.35. **Every `op` of the memory tile other than `READ` and `WRITE` is its
-firmware's** (11.5): the file system's requests, their layouts and their replies come with its design.
+**What the hardware fixes.** LPDDR holds **files**, which the Updater (17.10) writes, the cache (23.6) walks and the
+Tracer (17.9.5) reads and writes through it.
 
-- **Files.** What v1.3 fixed stands: memory is **files of 4 KiB pages**, each a tree of 1,024-entry index pages
-  whose depth follows its length, read and written by **128-byte lines**, a hole (an entry of 0xFFFF_FFFF)
-  reading as zero (17.9.5).
-- **The Updater and the Binder** (applying updates, binding) are not part of the RW engine (17.7) and are
-  deferred with the file system *(item 60)*.
+| Term | Meaning |
+| --- | --- |
+| page | 4 KiB of LPDDR at a multiple of 4,096 |
+| line | 128 bytes of LPDDR at a multiple of 128. Its **line address** is its byte address over 128 |
+| unit | 128 bytes: a root, an entry's address and a free page are in units, so a page's address is a multiple of 32 |
+| file | a tree of pages: index pages of 1,024 entries above the data pages. Its **depth**, 0 to 3, is fixed when it is made; a file of depth *d* has room for 2^(10·*d*) data pages, and a file of depth 0 is its root alone, which is its data page |
+| root | the address of a file's top page, 31 bits in units. The root is always the file's own |
+| entry | 32 bits in an index page: [30:0] the address of the page it names, in units; [31] **owned**, 1 when that page is the file's own and 0 when it is shared with another file. **0xFFFF_FFFF is no page, a hole,** at every level, and a hole reads as zeros |
+| level | counts from the top: the entry at level 0 is in the root; the entry at level *L* < depth − 1 names the index page of level *L* + 1; the entry at level depth − 1 names the data page |
+| page number | a data page's place in its file, from 0 |
+| the path | page *p*'s entries, one a level: at level *L*, entry *i* = (*p* >> 10·(depth − 1 − *L*)) & 1023 of that level's index page, which is 32-bit word *i* & 31 of the page's line *i* >> 5, at bits [32·*w* + 31 : 32·*w*] of the line, *w* = *i* & 31, little-endian |
+| a file's line | line *l* of a file is line *l* & 31 of its data page *l* >> 5 |
+
+- **Owned all the way down.** Once an entry on a path is not owned, nothing below it is the file's own: a file that
+  shares a page shares everything under it. A file **owns** a page when every entry on its path is owned.
+- **Copy on write.** A file is copied by copying its root with every entry's owned bit cleared. A writer makes a
+  shared page its own, top down, before it changes it: it copies the page to a free page, clears the copy's
+  entries' owned bits if it is an index page, and changes the entry above it to name the copy, owned. A missing
+  page is built the same way from zeros, or from holes for an index page.
+
+**Deferred, as in v1.35** (item 119): directories and names, the page map and who owns it, freeing pages, the
+superblock, recovery, and every request the file system serves. **Every `op` of the memory tile other than `READ`
+and `WRITE` is its firmware's** (11.5). In v1.37 the master tile keeps a page map of its own and frees nothing
+(30).
+
+- **The Binder** (binding) is not designed, with the file system *(item 60)*.
 - **Debug output.** Each tile is to open **log files through the file system** and `printf` into them; when the
   chip fails, the file system flushes their tails to LPDDR (22.28). The protocol is the file system's.
 - **Mounting existing state** after a soft reset, so that the wreckage can be read: deferred, with the soft
   reset itself *(Open, item 124)*.
 
-### 23.6 The memory system behind the fill port *(Open)*
+### 23.6 The cache
 
-The Tracer's misses do not use the request tree. They go over the **fill port** (3, 17.9.5): each request names
-one 128-byte line of a file by **(root, depth, line)**, a read's response carries a status (`ok`, `hole`,
-`not_owned`, `beyond`), and a write-back's response a status too (`ok`, `error`), which v1.35 did not have.
-17.9.5 specifies the Tracer's side.
+The cache is the memory system's (17.11): 512 KiB of lines of LPDDR, shared by the whole chip, in front of LPDDR
+for two kinds of client.
 
-**The memory system's side is not built** (2.1): the translator, which walks a file's tree with no TLB; the
-**512 KiB cache shared by the whole chip**, after translation; and LPDDR behind it. In the RTL (Snarky One) the
-`fill` port stops at the chip's boundary. What 3 requires of whatever serves it: every request answered in
-bounded time, a read of a line seeing a write of it already accepted, and nothing accepted before a reset
-answered after it.
+| Client | Its port | What it asks |
+| --- | --- | --- |
+| the Tracer | `fill` (3, 17.9.5) | lines of its files, read and written, index and data alike |
+| the Updater (17.10) | look-up port 1 (23.6.2) | the entries on a page's path, and changes to one; never a data line |
 
-**The simulator's model of it** (v1.35's, kept as the simulator's stand-in; its figures are the model's, not
-promises):
-- the shared cache as 8 ways × 512 sets, LRU, write-back; a hit in 6 cycles and a miss filled from LPDDR in 80;
-- translation as the walk, each index read a cache access;
-- the next victim in every set kept free or clean, dirty victims leaving early through a 4-line write buffer that
-  drains one line per 80 cycles, a read miss waiting until it is empty;
-- a Tracer write-back that misses allocates without an LPDDR read;
-- cold at each segment's start.
+- **Two ways into a file** (owner). The Tracer goes through the cache for everything. The Updater uses it for the
+  index levels only, and moves data pages directly on its own AXI port (23.10). They never meet on a page: a file
+  is finished by the Updater before the Tracer starts on it, and the only pages the Tracer writes are its own
+  copy's (23.6.8).
+- **It never handles a page fault.** It never allocates a page and never builds one: a hole, or a page that is not
+  the file's own, is reported to the client, which builds the page and sends the update (owner).
+- **It keeps nothing about files:** no lengths, no list of roots. Every request carries its root and depth.
+- **It writes LPDDR** for an update's line, which goes through at once (23.6.6), and for a dirty line it evicts,
+  which only the Tracer's writes make. It reads LPDDR only for a line it lacks.
 
-It models only the Tracer's traffic, so its hit rates are optimistic. v1.35's model had one request outstanding;
-the fill port allows one read and one write outstanding together (3), and a write-back may fail (17.9.5), so
-v1.36's model serves the two channels separately and can return `error`.
-*(For the memory system's design: per segment the model reports early evictions, write-backs and read waits; if
-the waits matter, a 4-entry address compare in the write buffer is the cheap fix.)*
+#### 23.6.1 Its parts and its memories
 
+| Part | What it does |
+| --- | --- |
+| **the cache memory** | the tag memory and the data memory: plain memories, the kind a memory macro gives |
+| **the front end** | takes requests at the six sources (the four look-up ports, `fill`'s read and its write) into a register each, and picks the next for the walker |
+| **the walker** | one request at a time, a level a step: steps down a file's index from its root, reads the line it needs, and answers |
+| **the miss handler** | one line at a time: chooses a victim, writes it back first if it is dirty, fetches the line, and installs it |
+| **the AXI writer** | one line's write at a time on the cache's AXI port, client 0 (23.10): an update's line or a dirty victim |
+| **the update slot** | the one update in flight, from its line's write to its response |
+| **the page sequencer** | the walker's discard: a page's 32 lines, each looked up and invalidated |
+
+| Memory | Size | Ports | What a row holds |
+| --- | --- | --- | --- |
+| tag memory | 512 rows × 216 bits, 13.5 KiB | one read, one write a cycle | a set: for each of 8 ways a valid bit, a dirty bit and a 22-bit tag; the set's replacement order, an age of 3 bits a way |
+| data memory | 4,096 rows × 1,024 bits, 512 KiB | one read, one write a cycle; a write has 8 enables of 128 bits | a line: row set × 8 + way |
+
+- **The geometry.** 8 ways by 512 sets of 128-byte lines, keyed by line address: the set is its bits [8:0], the
+  tag its bits [30:9]. A page's 32 lines fall in 32 sets.
+- **A memory's read** returns the row as it stood at the start of the cycle it was issued, at the memory's output
+  from the next cycle; a write lands at the edge that ends its cycle. A read and a write of the same row in one
+  cycle: the read sees the old row.
+- **The ages** are a permutation of 0 to 7, 0 the most recently used. A way **touched** (a hit, an install, a write)
+  becomes 0, and every way younger than it ages by one: true LRU.
+
+**A line's states**, held in the tag memory and in two registers compared with a set and way:
+
+| State | Where | Meaning |
+| --- | --- | --- |
+| invalid | tag: valid 0 | no line in the way |
+| clean | tag: valid 1, dirty 0 | the line as LPDDR has it |
+| dirty | tag: valid 1, dirty 1 | a data line the Tracer wrote through `fill`: newer than LPDDR |
+| write in flight | the update slot | an update's line being written to LPDDR. It holds the newest contents and is read as any line is; it is not evicted, not discarded and not changed until its write's response |
+| being evicted, being filled | the miss handler | the miss handler's set and way, from the victim's choice to the install. No other request walks that set meanwhile |
+
+**An index line is never dirty:** only the Tracer's data lines are, since an update writes its line through
+(23.6.6). So LPDDR's index pages are always current but for a line whose update has not been answered.
+
+#### 23.6.2 The look-up port
+
+A request port for each client and one **reply bus** shared by all (owner). `LOOKUP_PORTS` = 4: port 1 is the
+Updater's; ports 0, 2 and 3 have no client in v1.37 and their `valid` is held at 0. A client's port number is its
+AXI ID (23.10).
+
+**The request,** client to cache, but `ready`:
+
+| Signal | Bits | Meaning |
+| --- | --- | --- |
+| `valid` | 1 | a request is offered |
+| `ready` | 1, cache to client | the cache takes it |
+| `op` | 2 | 0 look up, 1 update, 2 discard a page; 3 is reserved, and UB |
+| `root` | 31 | the file's root, in units. For a discard, the page's address, a multiple of 32; its bits [4:0] are ignored |
+| `depth` | 2 | the file's depth, 0 to 3 |
+| `page` | 30 | the page number; at depth 3, 30 bits reach every page |
+| `level` | 2 | an update's: the level of the entry to change. Ignored otherwise |
+| `entry` | 32 | an update's: the new entry, in the stored form (23.5). Ignored otherwise |
+
+**The reply,** on the bus, to every client:
+
+| Signal | Bits | Meaning |
+| --- | --- | --- |
+| `valid` | 1 | a reply is on the bus in this cycle |
+| `client` | 2 | whose reply: its port's number |
+| `status` | 3 | 0 `ok`, 1 `hole`, 2 `not_owned`, 3 `beyond`, 4 `lpddr_error`; 5 to 7 reserved. 0 to 3 are `fill`'s numbers for the same cases |
+| `level` | 2 | where the walk stopped, or the level changed (23.6.3) |
+| `entry` | 32 | the entry there |
+
+- **A request moves in a cycle in which `valid` and `ready` are both 1;** the client holds `valid` and the request
+  until then (3).
+- **A client has one request outstanding** (owner). Its port's `ready` is 0 from the cycle after its handshake
+  until the cycle after its reply, and may be 0 at other times, for a bounded time.
+- **Every request has exactly one reply,** in a cycle after its handshake, the next at the earliest.
+- **The bus has no `ready`:** a client takes its reply in the cycle it is on the bus with the client's number. At
+  most one reply a cycle; replies to different clients come in any order.
+- **Every output is a flip-flop:** the cache's `ready`s and the bus, and the client's request.
+
+#### 23.6.3 Look up, update and discard
+
+**Look up.** The walk goes down from the root a level at a time, and **stops at the first entry that is a hole or is
+not the file's own.** It reads index lines only, fetching those it lacks, and changes nothing.
+
+| Case | `status` | `level` | `entry` |
+| --- | --- | --- | --- |
+| **found:** every entry on the path owned | `ok` | depth − 1 | the data page's entry, owned |
+| **a hole** at level *L*, every entry above it owned | `hole` | *L* | 0xFFFF_FFFF |
+| **not the file's own:** the entry at level *L* not owned, every entry above it owned | `not_owned` | *L* | that entry: the shared page's address, owned bit 0 |
+| **beyond:** the page number is 2^(10·depth) or more, or the depth is 0 | `beyond` | 0 | 0 |
+| **an LPDDR error:** a line on the path could not be fetched | `lpddr_error` | that line's level | 0 |
+
+At `not_owned` nothing below level *L* is the file's own (23.5), so the walk stops there. This walk is not
+`fill`'s: the Tracer's goes on through a shared page (23.6.4).
+
+**Update.** The request's `level` *L* and `entry` *E*. The walk goes down to level *L* as a look-up does, checking
+every entry above it; then the entry at level *L* becomes *E*, whatever it was.
+
+| Case | `status` | `level` | `entry` | What is written |
+| --- | --- | --- | --- | --- |
+| **every entry above *L* owned:** the entry changed | `ok` | *L* | the entry as it was before | the line, through to LPDDR, before the reply (23.6.6) |
+| a hole at level *k* < *L* | `hole` | *k* | 0xFFFF_FFFF | nothing |
+| an entry not owned at level *k* < *L* | `not_owned` | *k* | that entry | nothing: a client's mistake cannot change a frozen file |
+| beyond: the page number past the depth's reach, *L* ≥ depth, or depth 0 | `beyond` | 0 | 0 | nothing |
+| an LPDDR error fetching a line on the path, the target's included | `lpddr_error` | that line's level | 0 | nothing |
+| **the line's write answered with an error** | `lpddr_error` | *L* | the entry as it was before | the cache holds *E*; LPDDR's line is undefined |
+
+- The index page holding the entry at level *L* is the file's own whenever every entry above it is, since the root
+  is.
+- An update changes 32 bits of a line, and writes the whole line to LPDDR: 8 beats, whole beats only (23.10).
+
+**Discard a page.** The request's `root` is the page's address; its other fields are ignored. The reply is always
+`ok`, level 0, entry 0.
+
+- **Every line of the page in the cache is invalidated, written or not:** a clean line and a dirty one alike, and
+  nothing is written to LPDDR. A page handed out again is discarded, not flushed: its old contents are dead
+  (owner). The discard makes no LPDDR traffic.
+- **A line with a write in flight** is not discarded until its write's response has come; the discard waits.
+- **The reply comes when none of the page's 32 lines is in the cache.**
+
+There is no flush (owner): updates write through, and nothing reads the Tracer's dirty lines in LPDDR *(item 178)*.
+
+#### 23.6.4 The Tracer's port
+
+`fill` is v1.36's, unchanged (3, 17.9.5); the cache is its other side. Its line is the file's line, line *l* & 31 of
+page *l* >> 5 (23.5), its `data` the line's byte *b* at bits [8*b* + 7 : 8*b*].
+
+**A read** walks (root, depth, line) to the data line, through every index line on the path, and answers with the
+line:
+
+| Case | `status` | `data` |
+| --- | --- | --- |
+| every entry on the path owned | `ok` | the line |
+| a hole on the path | `hole` | zeros |
+| an entry on the path not owned, none a hole: **the walk goes on through a shared page** | `not_owned` | the line |
+| the line is 2^(5 + 10·depth) or more | `beyond` | undefined |
+| **an LPDDR error fetching a line on the path** | `beyond`, and the memory system's `ERRORS.lpddr_error` is set | undefined |
+
+`fill`'s read has no status for an LPDDR error: its four are used. Answered `beyond`, the Tracer sets
+`ERRORS.page_missing` and stops (17.9.5), and the memory system's error says why (17.11). A depth-0 file is its root
+alone: its line *l* < 32 is the root's line *l*.
+
+**A write** walks the same path:
+
+| Case | Response | What is written |
+| --- | --- | --- |
+| every entry on the path owned | `ok` | the line, into the cache whole, **marked dirty, and allocated without an LPDDR read** if it was not there |
+| a hole on the path, an entry not owned, or the line beyond | `error` | nothing |
+| an LPDDR error fetching an index line on the path | `error` | nothing |
+
+- **The Tracer's writes stay dirty in the cache** until their line is evicted, and are then written back on the
+  cache's AXI port (owner). They are never written through.
+- **A write-back answered with an error** loses the line, and sets the memory system's `ERRORS.lpddr_error`: the
+  Tracer had its `ok` long before.
+- **What `fill` requires** (3) the cache keeps: every request answered in bounded time; a read of a line sees a
+  write of it already accepted, since the line is in the cache, dirty, from the write's response on; nothing
+  accepted before a reset answered after it.
+
+#### 23.6.5 The controller: its registers and its states
+
+**Its registers,** as the code that is the specification's authority holds them (`src/units/cache_ctl.h`), at
+`LPDDR_ADDRESS_BITS` 32:
+
+| Register | Bits | What it holds |
+| --- | --- | --- |
+| a look-up port's request register, × 4 | 135 | `valid`; `op` (2), `root` (31), `depth` (2), `page` (30), `level` (2), `entry` (32); three waits: **parked** (an update in the slot), **for the miss handler**, **for the slot**; **the failed line** (31) and its valid bit: a line whose fetch for this request failed |
+| `fill`'s read register | 102 | `valid`; root (31), depth (2), line (35); the wait for the miss handler; the failed line and its bit |
+| `fill`'s write register | 1,127 | as the read's, with the line's 1,024 bits and the wait for the slot |
+| the front end | 7 | the round-robin pointer over the six sources (3); the source a miss was just handled for, and its valid bit |
+| the walker | 1,358 | its state (2); the source (3); the level *k* (2); the discard's line count (6); the page at level *k* (31); the line being looked up (31); the hit way (3); whether every entry so far was owned; the line's dirty bit; a read pending; the line register (1,024); the set's tag row as read (216); a reply waiting for the bus: status (3), level (2), entry (32) |
+| the miss handler | 1,321 | its state (3); the line to install (31) and its set (9) and way (3); the victim's tag (22), valid and dirty bits; whether it allocates without a read; its error bit; `arvalid`; a copy made; the source it serves (3); the beats in (4); the set's tag row (216); the line buffer (1,024) |
+| the AXI writer | 1,070 | busy; the address taken; the beat (4); the line address (31); the line (1,024); a queue of 4 kinds, update or write-back, in the order of their responses, with its head and count |
+| the update slot | 81 | valid; its source (3), set (9), way (3), level (2), line (31), and the entry before (32) |
+| the error | 1 | sticky: an LPDDR error no client was told of (23.6.9) |
+| the outputs | 1,259 | the four `ready`s; the reply bus (40); `fill`'s two `ready`s, its read response (`valid`, `status`, 1,024 bits of `data`) and its write response (`valid`, `status`); the AXI port's AR (`arvalid`, 25 bits of line address), AW (the same) and W (`wvalid`, `wdata`, `wlast`); the error |
+
+**In all about 6,870 flip-flops** (6,866 as counted), five of them line registers of 1,024 bits: the request
+register of `fill`'s write, the walker's line, the miss handler's buffer, the AXI writer's line and `fill`'s read
+response. An implementation may share them where their uses never overlap.
+
+**The front end.** A request taken at a source's port goes into that source's register, so its `ready` is 0 until
+it has been answered (23.6.2). When the walker is idle it picks the next request: **first the source whose miss
+was just installed or failed, then round robin** among the sources, from the one after the last picked, whose
+request is valid and waits for nothing. An update waits while the slot is full. So every request is taken in
+bounded time.
+
+**The walker.** Its states:
+
+| State | What it does in the cycle | Next |
+| --- | --- | --- |
+| idle | picks a request (front end): a discard's first line, or the first index line of a look-up's, an update's or a fill's path, and **reads its tags** (a request found beyond, 23.6.3, is answered at once instead) | compare |
+| compare | **compares** the tag row read with the line's tag. A hit **reads the line** from the data memory, and touches the way | read, or a step below |
+| read | the line is at the data memory's output: **the entry at the request's level** is examined, and the request answered, or **the next level's line's tags read** | compare, idle or reply |
+| reply | the bus was taken this cycle by the update slot: the reply waits a cycle | idle |
+
+A step is two cycles on hits, compare then read: a look-up of a depth-2 file whose two index lines are in the cache
+is answered on the bus 6 cycles after its handshake (one to be picked, two levels of two, one for the bus).
+
+In compare, besides the hit:
+
+- **The miss handler's set.** While the miss handler works on this set, the request **waits for it** and is
+  walked again from the top when the miss handler is idle: a **replay**. A walk changes nothing until its last
+  step, so a replay is always safe.
+- **A tag row read before the miss handler's write to the same set landed** is read again, a cycle later.
+- **A miss** with the miss handler busy waits for it the same way. With it idle, the walker chooses **the victim**:
+  the first invalid way of the set, else the way of the greatest age that is not the update slot's line. It gives
+  the miss handler the line, the set, the way and the source, and the request waits for it. A request whose own
+  fetch failed is answered at its replay, at that line: `lpddr_error` at its level for a look-up or an update,
+  `beyond` with the error set for a fill read, `error` for a fill write.
+- **A hit, for `fill`'s write at its data line:** the line is written whole and marked dirty, the way touched, and
+  the write answered `ok` (unless the line is the slot's, which it waits for).
+- **A discard's line:** a hit is invalidated (unless it is the slot's line, which waits for the response); after
+  the page's 32nd line, the reply.
+
+In read, by the request's operation: a look-up answers at a hole, an entry not owned, or the bottom (23.6.3); an
+update goes on above its level, answering at a hole or an entry not owned, and **at its level** changes the
+entry (23.6.6); a fill read goes on through a shared page, answers `hole` at a hole and answers with the data line
+at the bottom; a fill write answers `error` at a hole or an entry not owned. Going on, the next level's line is the
+entry's page plus the next entry's line: (entry & 0x7FFF_FFFF) + (*i* >> 5), or for the data line + (line & 31).
+
+**Hits under a miss.** While the miss handler works, the walker serves other requests, as long as they hit and touch
+no line of the miss handler's set. A request that misses waits for the miss handler.
+
+**The miss handler,** one line at a time:
+
+| State | What it does | Next |
+| --- | --- | --- |
+| idle | nothing | — |
+| read the victim | a dirty victim: reads its line from the data memory | hand over |
+| hand over | copies the victim into its buffer, and hands it to the AXI writer when the writer is free | wait |
+| wait | waits for the write-back's response. An error loses the line and sets the cache's error | fetch, or install for an allocation |
+| fetch | raises the line's read on AR, 8 beats | fill, at AR's handshake |
+| fill | takes the 8 beats into its buffer, noting any error response | install, or fail with an error |
+| install | writes the line and its tag row in one cycle: valid, dirty for a fill write's allocation and clean otherwise, the way touched; the requests waiting for it wake, the one it served first | idle |
+| fail | invalidates the way; the request it served is answered at its replay (above); the others wake | idle |
+
+A clean victim, or an invalid way, needs no write-back: a fetch starts at once, and a fill write's allocation goes
+straight to install with its own line. **There is no list of pending writes** (owner): a dirty victim is written
+back in its place, and the fetch that wants the place waits for the response.
+
+**The AXI writer** writes one line at a time: AW, then the line's 8 beats a beat a cycle, then it is free for the
+next, with the kinds of the writes outstanding in a queue of 4, whose responses come in that order (one ID, 23.10).
+An update's response goes to the update slot, and a write-back's to the miss handler.
+
+#### 23.6.6 An update, its sequence and what it guarantees
+
+1. **The request is taken** at the client's port; the port is busy.
+2. **The walk to the level:** a look-up in the cache memory for each index line on the path, a line it lacks
+   fetched from LPDDR.
+3. **The target line** is in the cache, at the walker's read state. The update waits while the AXI writer is busy.
+4. **The entry is changed in the cache,** 32 bits of the line, by one write of its 128-bit lane, and **the line is
+   the update slot's:** write in flight. It is never marked dirty.
+5. **The whole line goes to the AXI writer,** and from it to LPDDR: an 8-beat burst.
+6. **The update is parked,** and the walker serves other requests meanwhile.
+7. **The write's response arrives.** The slot empties; the line is clean.
+8. **The reply,** in the cycle after the response, the bus the slot's first: `ok`, or `lpddr_error` if the
+   response was an error, with the entry as it was before. The client's port is free again.
+
+**Nothing before step 7 can produce the reply.**
+
+| Guarantee | |
+| --- | --- |
+| **write through** (owner) | an update's line reaches LPDDR before its reply. **Once a client has the reply, LPDDR holds the new entry:** a read raised after the reply sees it, through the cache or straight from LPDDR on any client's port |
+| why a direct read sees it | because of the wait, not because of any order on the bus: the cache's write and a client's later read are on different ports, which AXI does not order (23.10) |
+| **one update in flight** | in the whole cache. A second waits in its register, unpicked, until the first's reply |
+| other requests go on | look-ups and the Tracer's requests are served while an update waits for its response. One that reads the slot's line sees the new entry, from the cache |
+| the slot's line stays | it is not evicted, not discarded and not changed until its response |
+
+#### 23.6.7 Timing
+
+**A client may assume:** every request answered in bounded time; a reply in a cycle after its handshake, the next at
+the earliest; an update's reply after LPDDR holds the new entry; its own requests answered in order, since it has
+one at a time.
+
+**A client may not assume:** any latency; a `ready` of 1 in any cycle, even with nothing outstanding; that a line
+stays in the cache; an order between its replies and another client's; that a look-up sees, or does not see,
+another client's update not yet answered.
+
+**What the cache gives** `[model]`, idle, on the simulator's LPDDR at its defaults (23.12), in cycles from the
+handshake to the answer:
+
+| Request | Cycles |
+| --- | --- |
+| a look-up of a depth-2 file, both index lines in the cache | 6 |
+| the same, both missing | 173 |
+| an update whose path is in the cache: the walk, the line's write and its response | 87 |
+| a fill read of a depth-3 file, all four lines in the cache | 10 |
+| the same, all four missing | 351 |
+| a fill write that hits; one that allocates, with no LPDDR read | 9; 17 |
+
+- **A hit costs 2 cycles a level;** v1.36's model of the memory system charged 6 (v1.36's 23.6).
+- **A miss whose victim is dirty waits for the victim's write first,** about 80 cycles more. On the proof runs a
+  segment that writes much is 3 % to 4 % slower than on v1.36's model, and one that mostly hits up to 2.7 % faster
+  `[meas: v1.37's simulator]`. Writing a set's dirty least recently used line back early, in place, would recover
+  it and keeps no list *(item 179)*.
+
+#### 23.6.8 What the cache asks of its clients
+
+| Rule | |
+| --- | --- |
+| **the data is in LPDDR before the index names it** | a client writes a page on its own AXI port, waits for that write's response, and only then sends the update that names it. Whoever sees the new entry then finds the page behind it |
+| **one writer for a file at a time** | two clients updating one index page would each read it directly while the other's update was in flight. The file system keeps it from happening; the cache does not check |
+| **an owned index page changes only by `update`** | a client writes an index page whole, on its AXI port, only while the page is new: named by no entry yet, and with no line of it in the cache (never used, or discarded since its last use). A page from the free page queue (17.10) is new; so is a root the Updater makes, which does not come from that queue |
+| **a page is used only after its discard's reply** | so a write-back of an old dirty line cannot land on its new contents. In v1.37 nothing is freed, so no page is handed out twice and nobody discards; who discards with the file system is *item 180* |
+| **a data page the Tracer reads is not written directly while it does** | the Updater moves data pages on its own port, and the Tracer reads them through the cache; they never meet on a page (owner) |
+| **a page the Tracer has written is not read directly** | its newest lines may be in the cache alone, dirty |
+
+Breaking one is UB (1.3): the firmware that hands out the pages and starts the runs is what keeps them. The
+simulator catches the third and the fifth, by comparing every clean line the walker reads with LPDDR (23.6.11). **An update answered `hole` or `beyond`** cannot come to a client that looked up
+first, so a client may treat one as fatal.
+
+#### 23.6.9 Errors
+
+| What | The client's answer | The memory system's `ERRORS.lpddr_error` (17.11) |
+| --- | --- | --- |
+| an index line on a look-up's or an update's path fetched with an error | `lpddr_error` | — |
+| an update's line written with an error | `lpddr_error`; LPDDR's line undefined, the cache's holds the new entry | — |
+| a line on a fill read's path fetched with an error | `beyond` | set |
+| an index line on a fill write's path fetched with an error | `error` | — |
+| a dirty line's write-back answered with an error | — (the line is lost) | set |
+
+The error is sticky until the reset (17.11), and raises the memory tile's error line, so the toast pin (17.6). A
+client's own error, when it is told, is the client's: the Updater's `ERRORS.lpddr_error` (17.10), the Tracer's
+`ERRORS.page_missing` or `write_back_error` (17.9.5). Every one is a hardware fault, H (7.4), but for an address the
+device does not have, which a program error made.
+
+#### 23.6.10 Reset
+
+The reset (18) empties the cache: every tag row invalid, its ages 0 to 7 by way; every request register, the walker,
+the miss handler, the AXI writer, the slot and the error cleared; every `ready` 1 and every response output 0.
+**It is empty at the reset and at no other time:** every line it holds is current, so nothing makes it cold between
+segments. Nothing accepted before a reset is answered after it.
+
+#### 23.6.11 The simulator's checks and parameters
+
+- **The stale-line check:** every clean line the walker reads, but the slot's, is compared with LPDDR, and a
+  difference stops the simulator. It catches a client that broke 23.6.8: a page written directly while it was in the
+  cache, or an index page changed other than by `update`. A line whose update's write failed is left out.
+- **Every dirty line written back** must be one a fill write made.
+- A look-up port's `op` 3, an R beat the miss handler did not ask for, a line of other than 8 beats, a B response
+  with no write outstanding: each stops the simulator.
+- **Settings:** `hits_under_miss`, on (the specification's); off, the front end takes nothing while the miss
+  handler works, a setting for comparison only.
+- **What it counts:** hits and misses by class (the memory file's index and data lines, the map's, the look-up
+  ports'), evictions, write-backs and their errors, fetch errors, allocations, updates, discards and the lines they
+  dropped, replays, the requests served under a miss, and each kind's latency.
 ### 23.7 Errors
 
 - **A request for a reserved target** (3–7) is dropped at the root (11.2), with nothing recorded
@@ -3385,8 +3782,11 @@ the waits matter, a 4-entry address compare in the write buffer is the cheap fix
 - **An `op` the target does not define is UB** (11.5). v1.35 had the memory system drop such a request and raise
   one of its peripheral's errors; the RW engine knows nothing of requests (17.7), so the check, if any, is the
   memory tile's firmware's.
-- **An LPDDR response that is not OKAY** sets the RW engine's `ERRORS.lpddr_error` (17.7), which raises the memory
-  tile's error line and so the toast pin (17.6). A job past LPDDR's end is UB (17.7).
+- **An LPDDR response that is not OKAY** sets the `ERRORS.lpddr_error` of the unit it was for: the RW engine's
+  (17.7), the Updater's (17.10), or the memory system's for the cache's errors that no client is told of (23.6.9).
+  Each raises its tile's error line and so the toast pin (17.6). A job past LPDDR's end is UB (17.7).
+- **Every error stops the chip.** What follows, the host's reset and the next proof, is not designed in v1.37
+  *(item 181)*.
 - **A dropped or unanswered read never lands,** so its tile waits until the master tile's watchdog expires (17.6).
 
 ### 23.8 No per-tile pacing

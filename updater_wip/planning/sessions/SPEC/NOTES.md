@@ -357,6 +357,10 @@ More will go here as I check the text against the code.
 | 186 | a neighbour that goes silent | 28.14 |
 | 187 | the foreground stream's frames but the reply | 28.2 |
 | 188 | the link ends' clock against the chip's (S4; owner: as written) | 28.1 |
+| 189 | a base table by name, or the last established (HF) | 29.8 |
+| 190 | frame 9 past 2^26 words: continuation frames (HF) | 29.13 |
+| 191 | an Updater frame with its own head (HF, DN16 section 10) | 29.1 |
+| 192 | what no frame carries: tables, templates, tiles' images (S7) | 29.1, 30 |
 | 182 | flow control on the line between the special tiles, with the regime that needs it: the file system's | 16.3 |
 | 181 | everything after an error stops the chip: the host's reset, draining the queues, a ready frame (S1, S6, II-18) | 23.7, 30 |
 
@@ -377,3 +381,10 @@ More will go here as I check the text against the code.
 | 10 | II-3, II-8 to II-15, S8 | ruled (06:06): as written |
 | 11 | MS-1 the reply frame's fields | asked 06:08 |
 | next | S5, MS-2, UI-4/6/7/9/12/13, CI-2/3/4/6/7/8/10, AI-1/2/3/4/6/7, HF-1 to HF-9, II-17 (Ingress/Egress's numbers), UI-1, UI-2 and the memory system's type 6 (17.11), UI-3, … | |
+
+## 11. Found in the sources while writing
+
+- **MS's reply frame says "length 72"** for 72 words that include the header word; the header's `length` counts the
+  data alone, so 71 (29.14).
+- **HF's frame 7 and the end state:** record *s* + 1 equals the Tracer's record at the segment's end in words 0 and
+  2–65 only; its advice field is the next segment's count, and word 66 holds the next ASIC's roots (29.11).

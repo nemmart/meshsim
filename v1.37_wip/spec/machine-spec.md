@@ -4874,6 +4874,12 @@ along a chain of ASICs: the link packet and its header, its two checks and the m
 recovery, starting a link again, "stop", the chain, and the link end as hardware. Its specification, 28.1 to 28.17,
 is `spec/host-link.md`.
 
+## 29. The frames
+
+What the host sends on the link for one program and one proof, and the reply the master tile sends at the end of
+its segment: the frame header, the update words and their LRU code, *N* and *s*, frames 1 to 9 and the reply. Its
+specification, 29.1 to 29.16, is `spec/host-frames.md`.
+
 ## Appendix A. The RTL's implementation
 
 Facts of the RTL (Snarky One) that are not contract: what it holds where chapters 1–19 leave a choice to the

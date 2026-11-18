@@ -1,12 +1,13 @@
-// test_ingress_link: Ingress's host side, the black box (v1.37; src/units/host_link.h and ingress_egress.h, THE HOST
-// LINK), from ../v1.4_wip/planning/INGRESS-INTERFACE.md ("II") and HOST-LINK.md ("HL"): the link's checks; the rule for
-// a service flag; the status bits and the word counts; reading a packet out by the DMA, in pieces; both streams; the
-// errors, and that nothing is presented after one; the plain timing.
+// test_ingress_link: Ingress's host side with the black box's link (v1.37; src/units/host_link.h and ingress_egress.h,
+// THE LINK; stage 4 replaces the link with WORKER8's link end), from 17.6.3 to 17.6.7 (since stage 3; written from
+// ../v1.4_wip/planning/INGRESS-INTERFACE.md, "II", and HOST-LINK.md, "HL", before): the link's checks; the rule for a
+// service flag; the status bits and the word counts, a link packet's words landing a word a cycle; reading a packet out
+// by the DMA, in pieces; both queues; the errors, and that nothing is taken after one; the plain timing.
 //
 // THE PACKETS are made by the tests' provisional writer (tests/packet_writer.h: its header says why it is provisional,
 // and what replaces it). THE BENCH is the master tile's slot driven directly (SlotCore, as test_tracer_slot's reference
-// run drives it): Ingress/Egress with the host link as peripheral 1, a load, a store and a consuming load of EVENTS at
-// cycle t as the slot's own calls, then the slot's cycle t. The DMA's packets are kept as they leave it.
+// run drives it): Ingress/Egress as peripheral 1, a load, a store and a consuming load of EVENTS at cycle t as the
+// slot's own calls, then the slot's cycle t. The DMA's packets are kept as they leave it.
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -148,7 +149,7 @@ TEST(link_header_fields) {
 TEST(ingress_link_reset_values) {
     Bench b({});
     b.run(3);
-    CHECK_EQ(b.load(P_PARAMS), 1u);                         // still type 1
+    CHECK_EQ(b.load(P_PARAMS), 1u | 1u << 8);               // type 1, version 1 (17.6.1)
     CHECK_EQ(b.load(P_STATUS), 0u);
     CHECK_EQ(b.load(P_ERRORS), 0u);
     CHECK_EQ(b.load(P_EVENTS_PEEK), EVENT_IDLE);
@@ -158,30 +159,13 @@ TEST(ingress_link_reset_values) {
     uint32_t v;
     CHECK(b.s.peek(b.t, 1, P_DMA_HDR, v));                  // the DMA's words are there
     CHECK(b.s.peek(b.t, 1, W_BACKGROUND_WORDS, v));
-    CHECK(!b.s.peek(b.t, 1, 83, v));                        // 83 is unmapped (it was a threshold), and the rest of block 5
-    CHECK(!b.s.peek(b.t, 1, 84, v));
+    CHECK(!b.s.peek(b.t, 1, 68, v));                        // 68 on is unmapped, the rest of block 4 (17.6.1)
+    CHECK(!b.s.peek(b.t, 1, 80, v));                        // (II's words 80 to 82)
     CHECK(b.s.write(b.t, 1, W_DMA_FORWARD_COUNT, 0));       // R/W
     CHECK(!b.s.write(b.t, 1, W_BACKGROUND_WORDS, 0));       // R
-    // its mask holds ten events
+    // its mask holds nine events (17.6.1: [8] egress_credit)
     b.s.write(b.t, 1, P_EVENTS_MASK, 0xFFFFFFFF); b.tick();
-    CHECK_EQ(b.load(P_EVENTS_MASK), 0x3FFu);
-}
-
-// Without the host link the unit is v1.36's: no DMA, eight events, words 80 to 82 unmapped.
-TEST(ingress_without_the_host_link_is_v136s) {
-    SlotCore s;
-    s.tile = lw::CC1;
-    s.install(1, PT_INGRESS);
-    uint32_t v;
-    CHECK(!s.peek(1, 1, P_DMA_HDR, v));
-    CHECK(!s.peek(1, 1, W_FOREGROUND_WORDS, v));
-    CHECK(!s.peek(1, 1, W_BACKGROUND_WORDS, v));
-    CHECK(!s.peek(1, 1, W_DMA_FORWARD_COUNT, v));
-    CHECK_EQ(s.ingress_egress(1).out_queues(), 0);
-    CHECK(!s.ingress_egress(1).port_source().valid);
-    s.write(1, 1, P_EVENTS_MASK, 0xFFFFFFFF); s.run_cycle(1); s.end_cycle(1);
-    s.peek(2, 1, P_EVENTS_MASK, v);
-    CHECK_EQ(v, 0xFFu);
+    CHECK_EQ(b.load(P_EVENTS_MASK), 0x1FFu);
 }
 
 namespace {
@@ -235,6 +219,8 @@ TEST(ingress_link_service_flag_rule) {
     CHECK_EQ(b.load(W_FOREGROUND_WORDS), 0u);
     CHECK(!flag(b, 0));
     CHECK_EQ(flag_seen(b, 0), int64_t(609));
+    CHECK_EQ(b.load(W_FOREGROUND_WORDS), 1u);               // 17.6.3: its words land a word a cycle, the first at 608's end
+    b.run(31);
     CHECK_EQ(b.load(W_FOREGROUND_WORDS), 32u);
     b.events(); b.tick();
     // a packet that arrives while a transfer is in flight: the flag at the transfer's end, not at the arrival
@@ -245,7 +231,7 @@ TEST(ingress_link_service_flag_rule) {
     c.mask(EVENT_FOREGROUND_SERVICE | EVENT_DMA_DONE);
     CHECK_EQ(flag_seen(c, 0), int64_t(529));
     c.events(); c.tick();
-    c.run(10);                                              // 540: a transfer of 32 words from here takes to about 575
+    c.run(28);                                              // DMA_START at level 0 of 560: judged at 559's end, the 32nd word landed (17.6.4)
     const size_t from = c.out.size();
     c.dma(0, 32, 64, 0x100, 1);                             // the second packet arrives at 560, in flight: no flag then
     CHECK(c.out[from + 31].t > 561);
@@ -326,6 +312,8 @@ TEST(ingress_link_forward_count_before_during_after) {
         CHECK_EQ(b.ported[32].t, int64_t(1057));
         CHECK_EQ(b.ported[39].t, int64_t(1064));
         CHECK(ported(b, 0, 1, 0, 32) && ported(b, 32, 2, 0, 8));
+        CHECK_EQ(b.load(W_BACKGROUND_WORDS), 1u);           // 17.6.3: packet 2 lands a word a cycle from 1056's end
+        b.run(23);
         CHECK_EQ(b.load(W_BACKGROUND_WORDS), 24u);
         CHECK_EQ(b.ie().link_forwarded, 40u);
     }
@@ -373,6 +361,7 @@ TEST(ingress_link_forward_count_across_packets_send_and_discard) {
         const int64_t seen = flag_seen(b, 1, 200000);
         CHECK(seen > 0);
         CHECK_EQ(b.load(W_DMA_FORWARD_COUNT), discard ? DISCARD : 0u);   // [31] as written (C3)
+        b.run(40);                                          // the last link packet's words still landing (17.6.3)
         CHECK_EQ(b.load(W_BACKGROUND_WORDS), 5u);
         CHECK_EQ(b.ie().link_discarded, discard ? total - 5 : 0u);
         CHECK_EQ(b.ie().link_forwarded, discard ? 0u : total - 5);
@@ -402,9 +391,10 @@ TEST(ingress_link_forward_count_stopped_and_replaced) {
     while (b.t < 540) b.tick();                             // 529 to 539: 11 words
     b.store(W_DMA_FORWARD_COUNT, 0);
     CHECK_EQ(b.ported.size(), size_t(11));
-    CHECK(flag(b));                                         // the count at 0, 21 words waiting: it asks
-    CHECK_EQ(b.load(W_BACKGROUND_WORDS), 21u);
+    CHECK(flag(b));                                         // the count at 0, words waiting: it asks
+    CHECK_EQ(b.load(W_BACKGROUND_WORDS), 2u);               // 13 landed by 540's end (from 528's: 17.6.3), 11 gone
     b.run(30);
+    CHECK_EQ(b.load(W_BACKGROUND_WORDS), 21u);
     CHECK_EQ(b.ported.size(), size_t(11));
     b.events(); b.tick();
     const int64_t t0 = b.t;
@@ -443,6 +433,7 @@ TEST(ingress_link_forward_count_ready_at_random) {
         for (uint32_t k = 1; k <= 59; k++) CHECK(ported(b, 32 * (k - 1), k, 0, 32));
         CHECK(ported(b, 32 * 59, 60, 0, 12));
         CHECK_EQ(flag_seen(b, 1, 100000) > 0, true);
+        b.run(40);                                          // the last link packet's words still landing (17.6.3)
         CHECK_EQ(b.load(W_BACKGROUND_WORDS), 20u);
         CHECK_EQ(b.load(P_ERRORS), 0u);
     }
@@ -455,8 +446,8 @@ TEST(ingress_link_forward_count_beside_a_foreground_transfer) {
     add(file, 1, 1, 0xF1, 32);
     add(file, 2, 2, 0xB2, 32);
     add(file, 1, 2, 0xF2, 16);
-    Bench b(file);                                          // as fast as taken: all four are in at once
-    b.run(2);
+    Bench b(file);                                          // as fast as taken: all four are in, a word a cycle (17.6.3)
+    b.run(114);
     CHECK_EQ(b.load(W_FOREGROUND_WORDS), 48u);
     CHECK_EQ(b.load(W_BACKGROUND_WORDS), 64u);
     b.mask(EVENT_FOREGROUND_SERVICE | EVENT_BACKGROUND_SERVICE | EVENT_DMA_DONE);
@@ -480,41 +471,63 @@ TEST(ingress_link_forward_count_beside_a_foreground_transfer) {
     CHECK_EQ(b.load(P_ERRORS), 0u);
 }
 
-// The queue: 512 words. With it full the link waits; the room comes back word by word, by the port and by the discard,
-// and the next packet is taken when its data fits; its bytes start in the cycle after the one that made room.
-TEST(ingress_link_queue_holds_512_words) {
-    CHECK_EQ(IngressEgress::QUEUE_WORDS, 512u);
+// The queue: INGRESS_QUEUE_WORDS, 1,024 words (17.6.3). With it full the link waits; the room comes back word by word, by
+// the port and by the discard, and the next packet is taken when its data fits (the words landed and still landing);
+// its bytes start in the cycle after the one that made room, and its words land a word a cycle from the cycle it is
+// taken (17.6.3: the first at the end of that cycle).
+TEST(ingress_link_queue_holds_1024_words) {
+    const unsigned Q = INGRESS_QUEUE_WORDS_DEFAULT, P = Q / 32;
     std::vector<uint8_t> file;
-    adds(file, 1, 18, 32);
+    adds(file, 1, P + 2, 32);
     for (bool discard : {false, true}) {
         Bench b(file, 1);
+        CHECK_EQ(b.ie().queue_words, Q);
         b.ready = Bench::NEVER;
-        b.run(16 * 528 + 2000);
-        CHECK_EQ(b.ie().link_packets, 16u);
-        CHECK_EQ(b.load(W_BACKGROUND_WORDS), 512u);
+        b.run(P * 528 + 2000);
+        CHECK_EQ(b.ie().link_packets, uint64_t(P));
+        CHECK_EQ(b.load(W_BACKGROUND_WORDS), Q);
         CHECK(b.ie().link_room_cycles > 0 || b.ie().link_has_next);
-        // 31 words of room: the 17th needs 32
+        // 31 words of room: the next needs 32
         if (!discard) b.ready = Bench::ALWAYS;
         b.store(W_DMA_FORWARD_COUNT, (discard ? DISCARD : 0) | 31);
         b.run(1000);
-        CHECK_EQ(b.ie().link_packets, 16u);
-        CHECK_EQ(b.load(W_BACKGROUND_WORDS), 481u);
-        // one more: the room, and 528 cycles later the 17th
+        CHECK_EQ(b.ie().link_packets, uint64_t(P));
+        CHECK_EQ(b.load(W_BACKGROUND_WORDS), Q - 31);
+        // one more: the room, and 528 cycles later the next is taken, its first word landing at the end of that cycle
         const int64_t room = b.t;                           // the word leaves at the end of this cycle
         b.store(W_DMA_FORWARD_COUNT, (discard ? DISCARD : 0) | 1);
-        while (b.t <= room + 528) { CHECK_EQ(b.ie().link_packets, 16u); b.tick(); }
-        CHECK_EQ(b.ie().link_packets, 17u);
-        CHECK_EQ(b.load(W_BACKGROUND_WORDS), 512u);
+        while (b.t <= room + 528) { CHECK_EQ(b.ie().link_packets, uint64_t(P)); b.tick(); }
+        CHECK_EQ(b.ie().link_packets, uint64_t(P + 1));
+        CHECK_EQ(b.load(W_BACKGROUND_WORDS), Q - 31);       // taken at the end of room + 528: its first word lands then
+        b.tick();
+        CHECK_EQ(b.load(W_BACKGROUND_WORDS), Q - 30);
+        b.run(30);
+        CHECK_EQ(b.load(W_BACKGROUND_WORDS), Q);            // a word a cycle
         CHECK_EQ(b.ported.size(), size_t(discard ? 0 : 32));
         CHECK_EQ(b.ie().link_discarded, discard ? 32u : 0u);
         // and the words come out in order across the packets
         b.ready = Bench::ALWAYS;
-        b.store(W_DMA_FORWARD_COUNT, 512);
-        b.run(600);
+        b.store(W_DMA_FORWARD_COUNT, Q);
+        b.run(Q + 100);
         const size_t base = discard ? 0 : 32;
-        for (uint32_t k = 2; k <= 17; k++) CHECK(ported(b, base + 32 * (k - 2), k, 0, 32));
+        for (uint32_t k = 2; k <= P + 1; k++) CHECK(ported(b, base + 32 * (k - 2), k, 0, 32));
         CHECK_EQ(b.load(P_ERRORS), 0u);
     }
+}
+// INGRESS_QUEUE_WORDS is a parameter (19): a power of two from 64 to 4,096; the queue holds that many, no more.
+TEST(ingress_link_queue_words_is_a_parameter) {
+    for (unsigned q : {64u, 512u, 4096u}) {
+        std::vector<uint8_t> file;
+        adds(file, 1, q / 32 + 2, 32);
+        Bench b(file, 0, q);
+        b.ready = Bench::NEVER;
+        b.run((q / 32 + 2) * 64 + 2000);
+        CHECK_EQ(b.ie().link_packets, uint64_t(q / 32));
+        CHECK_EQ(b.load(W_BACKGROUND_WORDS), q);
+    }
+}
+DEATH_TEST(ingress_link_queue_words_not_a_power_of_two_is_refused, "INGRESS_QUEUE_WORDS must be a power of two") {
+    Bench b({}, 0, 1000);
 }
 
 // The two queues are independent: each asks for itself; the count holds the background only.
@@ -525,7 +538,7 @@ TEST(ingress_link_two_streams) {
     add(file, 2, 2, 0xB2, 3);
     add(file, 1, 2, 0xF2, 1);
     Bench b(file);
-    b.run(2);
+    b.run(12);                                              // ten words, landing a word a cycle (17.6.3)
     CHECK_EQ(b.load(P_STATUS), ST_FOREGROUND_READY | ST_BACKGROUND_READY);
     CHECK_EQ(b.load(W_FOREGROUND_WORDS), 3u);
     CHECK_EQ(b.load(W_BACKGROUND_WORDS), 7u);
@@ -748,7 +761,7 @@ TEST(ingress_link_reset) {
     CHECK_EQ(b.load(P_ERRORS), ERR_SEQUENCE);
 }
 
-DEATH_TEST(ingress_link_a_transfer_past_the_words_waiting_is_ub, "a DMA transfer of 3 words from the background stream, which holds 2") {
+DEATH_TEST(ingress_link_a_transfer_past_the_words_waiting_is_ub, "a DMA transfer of 3 words from the background queue, which holds 2") {
     std::vector<uint8_t> file;
     add(file, 2, 1, 0xA, 2);
     Bench b(file);
@@ -769,7 +782,7 @@ DEATH_TEST(ingress_link_a_count_stored_with_a_background_transfer_in_flight_is_u
     std::vector<uint8_t> file;
     add(file, 2, 1, 0xA, 32);
     Bench b(file);
-    b.run(3);
+    b.run(40);                                              // its 32 words landed (17.6.3)
     b.s.write(b.t, 1, P_DMA_HDR, lw::SIZE_128 | lw::M_WRITE << HDR_MODE_LO | 64u << HDR_DST_LO | 32u << DMA_HDR_COUNT_LO | 1u << DMA_HDR_QUEUE_LO); b.tick();
     b.s.write(b.t, 1, P_DMA_START, 1); b.tick();
     b.run(10);
@@ -780,14 +793,14 @@ TEST(ingress_link_a_count_after_dma_done_is_defined) {
     std::vector<uint8_t> file;
     add(file, 2, 1, 0xA, 32);
     Bench b(file);
-    b.run(3);
+    b.run(40);                                              // its 32 words landed (17.6.3)
     b.dma(1, 30, 64, 0x100, 1);                             // to the cycle STATUS.dma_busy falls
     b.store(W_DMA_FORWARD_COUNT, 2);
     b.run(5);
     CHECK(ported(b, 0, 0xA, 30, 2));
     CHECK_EQ(b.load(P_ERRORS), 0u);
 }
-DEATH_TEST(ingress_link_a_transfer_with_no_word_is_ub, "from the foreground stream, which holds 0") {
+DEATH_TEST(ingress_link_a_transfer_with_no_word_is_ub, "from the foreground queue, which holds 0") {
     Bench b({});
     b.run(3);
     b.dma(0, 1, 64, 0x100, 1);
@@ -808,7 +821,7 @@ TEST(ingress_link_a_byte_a_cycle) {
     while (b.t <= 528) { CHECK_EQ(b.load(P_STATUS), 0u); CHECK_EQ(b.load(P_EVENTS_PEEK), EVENT_IDLE); b.tick(); }
     CHECK_EQ(b.t, int64_t(529));
     CHECK_EQ(b.load(P_STATUS), ST_BACKGROUND_READY);
-    CHECK_EQ(b.load(W_BACKGROUND_WORDS), 32u);
+    CHECK_EQ(b.load(W_BACKGROUND_WORDS), 1u);               // 17.6.3: a word a cycle, the first at 528's end
     CHECK_EQ(b.load(P_EVENTS_PEEK), EVENT_IDLE | EVENT_BACKGROUND_SERVICE);
     while (b.t <= 570) { CHECK_EQ(b.ie().link_packets, 1u); b.tick(); }
     CHECK_EQ(b.ie().link_packets, 2u);
@@ -817,6 +830,8 @@ TEST(ingress_link_a_byte_a_cycle) {
     while (b.t <= 634) { CHECK_EQ(b.ie().link_packets, 3u); b.tick(); }
     while (b.t <= 682) { CHECK_EQ(b.ie().link_packets, 4u); b.tick(); }
     CHECK_EQ(b.ie().link_packets, 5u);
+    CHECK_EQ(b.load(W_BACKGROUND_WORDS), 36u);              // its second word lands at 683's end (17.6.3)
+    b.tick();
     CHECK_EQ(b.load(W_BACKGROUND_WORDS), 37u);
     while (b.t <= 714) { CHECK_EQ(b.load(P_ERRORS), 0u); b.tick(); }
     CHECK_EQ(b.load(P_ERRORS), ERR_SEQUENCE);               // at the cycle the bad packet's last byte arrived
@@ -850,6 +865,7 @@ TEST(ingress_link_faster) {
         CHECK_EQ(b.ie().link_packets, 2u);
         while (b.t <= third) { CHECK_EQ(b.ie().link_packets, 2u); b.tick(); }
         CHECK_EQ(b.ie().link_packets, 3u);
+        b.run(32);                                          // the packet buffer hands them over a word a cycle, in turn (28.13.6)
         CHECK_EQ(b.load(W_BACKGROUND_WORDS), 35u);
     }
 }
@@ -860,6 +876,8 @@ TEST(ingress_link_as_fast_as_taken) {
     add(file, 2, 1, 0xA, 32);
     Bench b(file, 0);
     b.tick();
+    CHECK_EQ(b.load(W_BACKGROUND_WORDS), 1u);               // taken in cycle 1, its first word landing then (17.6.3)
+    b.run(31);
     CHECK_EQ(b.load(W_BACKGROUND_WORDS), 32u);
 }
 

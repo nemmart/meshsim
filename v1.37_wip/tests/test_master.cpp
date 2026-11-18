@@ -256,20 +256,21 @@ TEST(master_faster_links) {
 }
 
 // ---- the error path: an error bit is the master's NMI; it writes what there is into its results and exits
-// a bit of a packet's data changed, in frame 2 (the program image going to the Updater): ERRORS.crc_error
+// a bit of a packet's data changed, in frame 2 (the program image going to the Updater): the black box's link
+// failing a check, ERRORS.link_error (17.6.1; until stage 4, ingress_egress.h, THE LINK)
 TEST(master_bad_packet_crc) {
     CHECK_EQ(fixture("kin-raw", 20, [](proof::Case& c, segment::Segment& seg) {
         c.packets[packet_starts(c.packets)[5] + 16 + 37] ^= 0x10;
-        c.expect.trap = true; c.expect.ingress_errors = units::IngressEgress::ERR_CRC;
+        c.expect.trap = true; c.expect.ingress_errors = units::IngressEgress::ERR_LINK;
         seg.name += ", a data bit changed";
     }).failures, 0);
 }
-// a packet of frame 7 left out: ERRORS.sequence_error
+// a packet of frame 7 left out: its number not the next, ERRORS.link_error as above
 TEST(master_bad_packet_sequence) {
     CHECK_EQ(fixture("kin-raw", 20, [](proof::Case& c, segment::Segment& seg) {
         const std::vector<size_t> at = packet_starts(c.packets);
         c.packets.erase(c.packets.begin() + long(at[60]), c.packets.begin() + long(at[61]));
-        c.expect.trap = true; c.expect.ingress_errors = units::IngressEgress::ERR_SEQUENCE;
+        c.expect.trap = true; c.expect.ingress_errors = units::IngressEgress::ERR_LINK;
         seg.name += ", a packet left out";
     }).failures, 0);
 }

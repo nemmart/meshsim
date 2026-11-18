@@ -2,12 +2,15 @@
 # ie_teeth.sh: planted bugs, each of which Ingress/Egress's tests must catch. Not in make check (a rebuild per bug).
 # The tree is copied into a scratch directory (the worktree's build-scratch/, or IE_TEETH_DIR), each bug is planted
 # there by sed, the tests rebuilt (clang release) and run: test_ingress_egress (the unit, from 17.6 and the RTL unit's
-# timing) and test_rtl_stream (the chip: the host interface and the UART through the master's core, at the RTL chip's
-# cycles). A bug is caught when a test fails; the table names the tests that failed.
+# timing), test_ingress_link and test_packet_vectors (its incoming queues on the black box's link) and test_rtl_stream
+# (the UART through the master's core on the chip). A bug is caught when a test fails; the table names the tests that
+# failed.
 #
-# The bugs are slips of the UART's line (bit order, a bit's length, the sample point, the synchroniser, the divisor's
-# idle point, the stop bit, the overrun), of the host interface (TREADY, TLAST, the words below the top, the pops, the
-# handshakes), of the stalls and of the loads that pop, in the model and in the core's path to it.
+# The bugs (v1.37's stage 3, the INTEGRATOR): slips of the UART's line (bit order, a bit's length, the sample point, the
+# synchroniser, the divider's idle point, the stop bit, the overrun), of its control (17.6.9: the reset, the enables,
+# the stores dropped), of 17.6.1's words and bits, of the incoming queues (the landing a word a cycle, the room), of
+# Egress (17.6.8: the count, the credit, the link packets, the errors), of the UB checks, of the stalls and of the loads
+# that pop, in the model and in the core's path to it.
 # Usage: tests/ie_teeth.sh [FILTER] (from anywhere): only the bugs whose name contains FILTER; exit 1 if a bug goes
 # uncaught or its sed plants nothing. JOBS sets make's -j (8).
 set -u
@@ -19,7 +22,7 @@ mkdir -p "$SCRATCH"
 W=$(mktemp -d -p "$SCRATCH" ie-teeth.XXXXXX); trap 'rm -rf "$W"' EXIT
 (cd "$SIM" && tar cf - --exclude=./build --exclude=./results .) | (cd "$W" && tar xf -)
 B=build/clang-release
-TESTS="test_ingress_egress test_rtl_stream"
+TESTS="test_ingress_egress test_ingress_link test_packet_vectors test_rtl_stream"
 TARGETS=""; for t in $TESTS; do TARGETS="$TARGETS $B/$t"; done
 build() { (cd "$W" && make -s CC_NAME=clang MODE=release -j"$JOBS" $TARGETS > "$W/build.log" 2>&1); }
 run() {   # prints the failing tests, "-" if none
@@ -42,42 +45,44 @@ H=src/units/ingress_egress.h
 BUGS=(
   "tx: the most significant bit first~$H~s/tx_bits = uint16_t(0x100 | b);/tx_bits = uint16_t(0x100 | uint8_t((b * 0x0202020202ULL \& 0x010884422010ULL) % 1023));/"
   "tx: a stop bit of 0~$H~s/tx_bits = uint16_t(0x100 | b);/tx_bits = uint16_t(b);/"
-  "tx: no back-to-back frames (an idle cycle between)~$H~s/const bool pop = (!tx_busy || frame_ends) \&\& tx_n > 0;/const bool pop = !tx_busy \&\& tx_n > 0;/"
-  "tx: the start bit a cycle long~$H~s/tx_cycles_left = tx_bit_divisor = uint16_t(divisor);/tx_bit_divisor = uint16_t(divisor); tx_cycles_left = uint16_t(divisor + 1);/"
-  "tx: the live divisor mid-frame~$H~s/tx_cycles_left = tx_bit_divisor; tx_bits >>= 1;/tx_cycles_left = uint16_t(divisor); tx_bits >>= 1;/"
-  "tx: a divisor stored in the pop's cycle taken by its frame~$H~s/case UART_DIVISOR: divisor = v \& 0xFFFF; return 1;/case UART_DIVISOR: divisor = v \& 0xFFFF; if (tx_busy \&\& tx_bits == (0x100 | (tx_bits \& 0xFF)) \&\& tx_cycles_left == tx_bit_divisor) tx_cycles_left = tx_bit_divisor = uint16_t(divisor); return 1;/"
-  "tx: UART_TX stalls with a place free~$H~s/return (w == UART_TX \&\& tx_n >= FIFO) ||/return (w == UART_TX \&\& tx_n >= FIFO - 1) ||/"
-  "tx: a stalled UART_TX store released a cycle late (not in the cycle after the pop)~$H~s/return (w == UART_TX \&\& tx_n >= FIFO) ||/return (w == UART_TX \&\& (tx_n >= FIFO || (tx_n == FIFO - 1 \&\& tx_busy \&\& tx_cycles_left == tx_bit_divisor \&\& tx_bits >= 0x100))) ||/"
-  "tx: UART_STATUS counts the byte on the line~$H~s/case UART_STATUS: v = tx_n | rx_n << 8/case UART_STATUS: v = (tx_n + tx_busy) | rx_n << 8/"
+  "tx: no back-to-back characters (an idle cycle between)~$H~s/const bool pop = (!tx_busy || frame_ends) \&\& tx_n > 0/const bool pop = !tx_busy \&\& tx_n > 0/"
+  "tx: the start bit a cycle long~$H~s/tx_cycles_left = tx_bit_divisor = uint16_t(uart_control \& UC_DIVIDER);/tx_bit_divisor = uint16_t(uart_control \& UC_DIVIDER); tx_cycles_left = uint16_t(tx_bit_divisor + 1);/"
+  "tx: the live divider mid-character~$H~s/tx_cycles_left = tx_bit_divisor; tx_bits >>= 1;/tx_cycles_left = uint16_t(uart_control \& UC_DIVIDER); tx_bits >>= 1;/"
+  "tx: UART_TX stalls with a place free~$H~s/(uart_control \& UC_ENABLE_WRITE) \&\& tx_n >= FIFO; }/(uart_control \& UC_ENABLE_WRITE) \&\& tx_n >= FIFO - 1; }/"
+  "tx: STATUS counts the character on the line~$H~s/s |= tx_n << 8 | rx_n << 16;/s |= (tx_n + tx_busy) << 8 | rx_n << 16;/"
+  "tx: enable_write 0 does not hold the TX FIFO~$H~s/\&\& tx_n > 0 \&\& (uart_control \& UC_ENABLE_WRITE);/\&\& tx_n > 0;/"
+  "tx: a store with enable_write 0 kept~$H~s/if (!uart_on() || !(uart_control \& UC_ENABLE_WRITE)) return 1;/if (!uart_on()) return 1;/"
+  "tx: a store while the UART is in reset kept~$H~s/if (!uart_on() || !(uart_control \& UC_ENABLE_WRITE)) return 1;/if (uart_on() \&\& !(uart_control \& UC_ENABLE_WRITE)) return 1;/"
   "rx: the most significant bit first~$H~s/rx_data = uint8_t((rx_line ? 0x80 : 0) | rx_data >> 1);/rx_data = uint8_t((rx_line ? 1 : 0) | rx_data << 1);/"
-  "rx: the first sample a cycle early~$H~s/rx_cycles_left = divisor + (divisor >> 1);  /rx_cycles_left = divisor + (divisor >> 1) - 1;/"
-  "rx: the first sample a cycle late~$H~s/rx_cycles_left = divisor + (divisor >> 1);  /rx_cycles_left = divisor + (divisor >> 1) + 1;/"
-  "rx: sampling at a bit's start~$H~s/rx_cycles_left = divisor + (divisor >> 1);  /rx_cycles_left = divisor;                 /"
+  "rx: the first sample a cycle early~$H~s/rx_cycles_left = divider + (divider >> 1);/rx_cycles_left = divider + (divider >> 1) - 1;/"
+  "rx: the first sample a cycle late~$H~s/rx_cycles_left = divider + (divider >> 1);/rx_cycles_left = divider + (divider >> 1) + 1;/"
+  "rx: sampling at a bit's start~$H~s/rx_cycles_left = divider + (divider >> 1);/rx_cycles_left = divider;/"
   "rx: one synchronising flip-flop~$H~s/rx_line_last = rx_line; rx_line = rx_meta; rx_meta = pin;/rx_line_last = rx_line; rx_line = pin; rx_meta = pin;/"
-  "rx: the live divisor mid-frame~$H~s/rx_bit++; rx_cycles_left = rx_bit_divisor;/rx_bit++; rx_cycles_left = divisor;/"
-  "rx: the stop bit unchecked~$H~s/if (frame_ends \&\& !rx_line) { framing = true; framing_at = t; }/if (false) { framing = true; framing_at = t; }/"
-  "rx: a full FIFO's frame dropped without rx_overrun~$H~s/{ rx_overrun = true; overrun_at = t; }/{ overrun_at = t; }/"
-  "rx: no overrun (a 17th byte taken)~$H~s/else if (frame_ends \&\& rx_n >= FIFO) {/else if (frame_ends \&\& rx_n >= FIFO \&\& false) {/"
-  "rx: a frame started by a low level~$H~s/const bool frame_starts = !rx_busy \&\& rx_line_last \&\& !rx_line;/const bool frame_starts = !rx_busy \&\& !rx_line;/"
-  "rx: a clear wins over a framing error of its cycle~$H~s/if ((v >> 17 \& 1) \&\& framing_at != t) framing = false;/if (v >> 17 \& 1) framing = false;/"
-  "rx: framing_error cleared by bit 16~$H~s/if ((v >> 17 \& 1) \&\& framing_at != t) framing = false;/if ((v >> 16 \& 1) \&\& framing_at != t) framing = false;/"
-  "rx: UART_RX pops a byte that entered in the load's cycle~$H~s/if ((stepped_at == t ? rx_n_start : rx_n) > 0)/if (rx_n > 0)/"
-  "the reset divisor off by one~$H~s/        divisor = reset_divisor;/        divisor = reset_divisor + 1;/"
-  "the events uart_rx and uart_tx swapped~$H~s/ev.live(EV_UART_RX, rx_n > 0);/ev.live(EV_UART_TX, rx_n > 0);/; s/ev.live(EV_UART_TX, tx_n < FIFO);/ev.live(EV_UART_RX, tx_n < FIFO);/"
-  "stream: lvds_in_tready 1 in the first cycle after the reset~$H~s/o.lvds_in_tready = in_ready_ff \&\& in_n < STREAM_DEPTH;/o.lvds_in_tready = in_n < STREAM_DEPTH;/"
-  "stream: lvds_in_tready with one place too many~$H~s/o.lvds_in_tready = in_ready_ff \&\& in_n < STREAM_DEPTH;/o.lvds_in_tready = in_ready_ff \&\& in_n <= STREAM_DEPTH;/"
-  "stream: TLAST lost on a send~$H~s/b.last = w == STREAM_SEND_LAST;/b.last = false;/"
-  "stream: TLAST lost on a beat in~$H~s/b.last = in.lvds_in_tlast;/b.last = false;/"
-  "stream: STREAM_OUT_W0-W2 not cleared after a send~$H~s/^            out_low\[0\] = out_low\[1\] = out_low\[2\] = 0;\$//"
-  "stream: a low word stored one word off~$H~s/if (unsigned(w - STREAM_OUT_W0) < top_word()) out_low\[w - STREAM_OUT_W0\] = v;/if (unsigned(w - STREAM_OUT_W0) < top_word()) out_low[(w - STREAM_OUT_W0 + 1) % 3] = v;/"
-  "stream: the top word's bits past TDATA sent~$H~s/k == top ? v \& top_mask() : 0;/k == top ? v : 0;/"
-  "stream: a pop on STREAM_IN_W0 instead of STREAM_RECEIVE alone~$H~s/bool load_pops(int w) const { return w == UART_RX || w == STREAM_RECEIVE; }/bool load_pops(int w) const { return w == UART_RX || w == STREAM_RECEIVE || w == STREAM_IN_W0; }/; s/} else if (w == STREAM_RECEIVE) {/} else if (w == STREAM_RECEIVE || w == STREAM_IN_W0) {/"
-  "stream: STREAM_RECEIVE pops a beat that entered in the load's cycle~$H~s/if ((stepped_at == t ? in_n_start : in_n) > 0)/if (in_n > 0)/"
-  "stream: a send stalls with a place free~$H~s/((w == STREAM_SEND || w == STREAM_SEND_LAST) \&\& out_n >= STREAM_DEPTH);/((w == STREAM_SEND || w == STREAM_SEND_LAST) \&\& out_n >= STREAM_DEPTH - 1);/"
-  "stream: the head leaves without TREADY~$H~s/if (o.lvds_out_tvalid \&\& in.lvds_out_tready) {/if (o.lvds_out_tvalid) {/"
-  "stream: stream_last at bit 3~$H~s/in_q\[in_head\].last ? 1u << 2 : 0; }/in_q[in_head].last ? 1u << 3 : 0; }/"
-  "stream: stream_last the newest beat's~$H~s/uint32_t status_bits(int64_t) const { return in_n > 0 \&\& in_q\[in_head\].last/uint32_t status_bits(int64_t) const { return in_n > 0 \&\& in_q[(in_head + in_n - 1) % STREAM_DEPTH].last/"
-  "stream: the events stream_in and stream_out swapped~$H~s/ev.live(EV_STREAM_IN, in_n > 0);/ev.live(EV_STREAM_OUT, in_n > 0);/; s/ev.live(EV_STREAM_OUT, out_n < STREAM_DEPTH);/ev.live(EV_STREAM_IN, out_n < STREAM_DEPTH);/"
+  "rx: the live divider mid-character~$H~s/rx_bit++; rx_cycles_left = rx_bit_divisor;/rx_bit++; rx_cycles_left = divider;/"
+  "rx: the stop bit unchecked~$H~s/if (frame_ends \&\& !rx_line) framing = true;/if (false) framing = true;/"
+  "rx: a full FIFO's character dropped without rx_overrun~$H~s/else if (frame_ends \&\& rx_n >= FIFO) rx_overrun = true;/else if (frame_ends \&\& rx_n >= FIFO) {}/"
+  "rx: no overrun (a 17th character taken)~$H~s/else if (frame_ends \&\& rx_n >= FIFO) rx_overrun = true;/else if (frame_ends \&\& rx_n > FIFO) rx_overrun = true;/"
+  "rx: a character started by a low level~$H~s/const bool frame_starts = !rx_busy \&\& rx_line_last \&\& !rx_line/const bool frame_starts = !rx_busy \&\& !rx_line/"
+  "rx: enable_read 0 does not stop the line in~$H~s/\&\& !rx_line \&\& (uart_control \& UC_ENABLE_READ);/\&\& !rx_line;/"
+  "rx: UART_RX pops a character that entered in the load's cycle~$H~s/(stepped_at == t ? rx_n_start : rx_n) > 0/rx_n > 0/"
+  "uart: the events uart_rx and uart_tx swapped~$H~s/ev.live(EV_UART_RX, uart_on() \&\& rx_n > 0);/ev.live(EV_UART_TX, uart_on() \&\& rx_n > 0);/; s/ev.live(EV_UART_TX, uart_on() \&\& tx_n < FIFO);/ev.live(EV_UART_RX, uart_on() \&\& tx_n < FIFO);/"
+  "uart: uart_tx read 1 in the UART's reset~$H~s/ev.live(EV_UART_TX, uart_on() \&\& tx_n < FIFO);/ev.live(EV_UART_TX, tx_n < FIFO);/"
+  "uart: a store of 0 does not reset it~$H~s/if (v == 0) uart_reset();//"
+  "uart: the enables swapped~$H~s/UC_ENABLE_READ = 1u << 16, UC_ENABLE_WRITE = 1u << 17/UC_ENABLE_READ = 1u << 17, UC_ENABLE_WRITE = 1u << 16/"
+  "uart: a divider of 0 not caught (UB)~$H~s/if (v != 0 \&\& (v \& UC_DIVIDER) == 0)/if (false)/"
+  "words: PARAMS' version 0 (v1.36's)~$H~s/static constexpr int VERSION = 1;/static constexpr int VERSION = 0;/"
+  "words: the queues' words at 80 and 81 (II's)~$H~s/FOREGROUND_WORDS = 64, BACKGROUND_WORDS = 65/FOREGROUND_WORDS = 80, BACKGROUND_WORDS = 81/"
+  "words: background_ready at STATUS [4] (II's)~$H~s/ST_BACKGROUND_READY = 1u << 3/ST_BACKGROUND_READY = 1u << 4/"
+  "queues: a link packet's words all landing in the cycle it is taken~$H~s/if (landing_n == 1) land(t);/if (landing_n == 1) for (unsigned k = 0; k < link_next.length; k++) land(t);/"
+  "queues: the room of the words landed alone~$H~s/return queue_words - queue\[q\].held - queue\[q\].landing;/return queue_words - queue[q].held;/"
+  "egress: EGRESS_COUNT counting down as words leave~$H~s/eg_last\[at\] = --egress_count == 0;/eg_last[at] = egress_count == 1;/; s/egress_words_out += n; egress_packets++;/egress_words_out += n; egress_packets++; egress_count -= n;/"
+  "egress: a credit every 512 words~$H~s/EGRESS_CREDIT_WORDS = 256/EGRESS_CREDIT_WORDS = 512/"
+  "egress: a frame's last word not ending its link packet~$H~s/if (eg_last\[(eg_head + k) % EGRESS_QUEUE_WORDS\]) return k + 1;/if (eg_last[(eg_head + k) % EGRESS_QUEUE_WORDS] \&\& k + 1 == n) return k + 1;/"
+  "egress: a word into a full queue kept~$H~s/if (eg_n == EGRESS_QUEUE_WORDS || egress_count == 0)/if (egress_count == 0)/"
+  "egress: a word with the count at 0 no error~$H~s/if (eg_n == EGRESS_QUEUE_WORDS || egress_count == 0)/if (eg_n == EGRESS_QUEUE_WORDS)/"
+  "egress: a store to EGRESS_COUNT while not 0 not caught (UB)~$H~s/if (egress_count != 0)/if (false)/"
+  "bus: UART_RX not an own word of block 1~src/units/register_bus.h~s/if (w == 30 || w == 31) return {Target::PERIPH_OWN/if (w == 30) return {Target::PERIPH_OWN/"
+  "slot: a low word's stall not published~src/units/periph_slot.cpp~s/if (s.store_stalls(t, n, w)) bits |= 1u << (2 \* Win::K_STALL + i);//"
   "the core tells the slot of no load that pops~src/units/tile_ctl.h~s/if (own_bit(n, Win::R_POPS, w)) c.put(u.periph, CoreOp::load(n, w));//"
   "the slot applies a load's pop a cycle late (before the step it follows)~src/units/periph_slot.cpp~s/s.visit(n, \[\&\](auto\& p) { p.load_effect(t - 1, int(w)); });/s.visit(n, [\&](auto\& p) { p.load_effect(t, int(w)); });/"
 )

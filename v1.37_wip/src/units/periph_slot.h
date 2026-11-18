@@ -129,7 +129,17 @@ struct Win {
                                                            //   the peripheral's may_stall(w) (register_bus.veryl, own_stalling)
     static constexpr unsigned R_POPS = 118;                // [118, 121): words 32-127 whose load pops; static, from the
                                                            //   peripheral's load_pops(w) (17.6: UART_RX, STREAM_RECEIVE)
-    static constexpr unsigned PER = 121;
+    // v1.37 (17.6.1; the INTEGRATOR): a peripheral's own words in block 1, words 30 and 31 (Ingress/Egress's UART_TX and
+    // UART_RX): their values, and their bits as above in one register, two bits a kind (bit 2 kind + w - 30)
+    static constexpr unsigned LOW0 = 30, LOW_N = 2;
+    static constexpr unsigned R_LOW = 121;                 // [121, 123): words 30 and 31 (0 where undefined)
+    static constexpr unsigned R_LOWBITS = 123;             // kinds: 0 defined, 1 stall, 2 writable, 3 may stall, 4 pops
+    enum : unsigned { K_DEFINED = 0, K_STALL = 1, K_WRITABLE = 2, K_MAYSTALL = 3, K_POPS = 4 };
+    static constexpr bool low(unsigned w) { return w >= LOW0 && w < LOW0 + LOW_N; }
+    static constexpr unsigned kind_of(unsigned base) {     // R_DEFINED .. R_POPS to its kind
+        return base == R_DEFINED ? K_DEFINED : base == R_STALL ? K_STALL : base == R_WRITABLE ? K_WRITABLE : base == R_MAYSTALL ? K_MAYSTALL : K_POPS;
+    }
+    static constexpr unsigned PER = 124;
     // the tile's live bits:
     static constexpr unsigned R_LIVE = 3 * PER;            // [2:0] EVENTS [15:13] ((events | done) & mask != 0, per n);
                                                            // [5:3] ERRORS [13:11] (errors != 0, per n)
@@ -145,8 +155,7 @@ struct PeriphSlotConfig {
     uint64_t replayer_row_buffer = 0;    // rows of the replayer's optional record buffer (tests; 0: the hash only)
     unsigned replayer_log_entries = 256; // the replayer's read-log and write-log queues (ref's -Dreplayer.logq)
     RwEngineConfig rw;                   // the RW engine's parameters (19): LPDDR_ADDRESS_BITS, RW_BUFFER_BYTES, RW_QUEUE_BEATS
-    bool host_link = false;              // v1.37: an Ingress/Egress here is built with the host link (ingress_egress.h), which
-                                         //   has a DMA: `controller` is set with it
+    unsigned ingress_queue_words = 1024; // v1.37: an Ingress/Egress here (17.6), INGRESS_QUEUE_WORDS (19)
 };
 
 // A packet a DMA sends (ref's dmaOut entry): the header as LinkWord.hdr builds it.
@@ -316,6 +325,7 @@ struct PeriphSlot {
 private:
     void publish(sim::Ctx& c, int64_t t);
     void full_values(int64_t t, uint32_t* out);
+    void low_values(int64_t t, unsigned n, uint32_t* out);   // v1.37: the own words in block 1 (Win::R_LOW, R_LOWBITS)
 };
 
 template <class Out>

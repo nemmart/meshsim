@@ -442,11 +442,13 @@ struct TileCore {
             return v;
         }
         bool own_bit(unsigned n, unsigned base, unsigned w) const {
+            if (Win::low(w)) return c.read(u.win, Win::reg(n, Win::R_LOWBITS)) >> (2 * Win::kind_of(base) + w - Win::LOW0) & 1;
             const unsigned k = w - Win::OWN0;
             return c.read(u.win, Win::reg(n, base + k / 32)) >> (k % 32) & 1;
         }
         uint32_t periph_own_load(unsigned n, unsigned w) {
             if (own_bit(n, Win::R_POPS, w)) c.put(u.periph, CoreOp::load(n, w));   // a load that pops (17.6), at the end of t
+            if (Win::low(w)) return c.read(u.win, Win::reg(n, Win::R_LOW + (w - Win::LOW0)));
             return c.read(u.win, Win::reg(n, Win::R_OWN + (w - Win::OWN0)));
         }
         // A window store made in t: the slot applies it at the end of t (its `core` port, a Link(1)).
@@ -511,8 +513,7 @@ struct G1Config {
     unsigned read_latency = 3;         // READ_LATENCY (15, 19): the RTL's scratchpad's
     unsigned read_port_depth = 64;     // READ_QUEUE_DEPTH (10)
     bool sram_running_sum = true;      // D31: BigSram keeps its fingerprint sum per store; false in timing runs
-    bool host_link = false;            // v1.37: the master tile's Ingress/Egress has the host link and its DMA, and the
-                                       //   master tile has the Updater as its peripheral 2 (CHANGES-v1.37.md)
+    unsigned ingress_queue_words = 1024;   // v1.37: INGRESS_QUEUE_WORDS (17.6.3, 19): each of Ingress/Egress's incoming queues
 };
 
 // A tile's control part, as the tile builder meets it: chip.h's `ControlIO`, returned by a `ControlBuilder`.

@@ -249,7 +249,9 @@ TEST(vectors_packets_through_the_black_box) {
         if (want != hostlink::Check::OK) { CHECK_EQ(got.packets, 0u); CHECK_EQ(got.asked[0] + got.asked[1], 0u); continue; }
         CHECK_EQ(got.packets, 1u);
         const unsigned q = p.stream - 1;
-        CHECK_EQ(got.asked[q], p.length > 0 ? 1u : 0u);    // a packet of length 0 asks for no service
+        // a packet of length 0 asks for no service; one with words asks at least once: its words land a word a cycle
+        // (17.6.3), and the player reads what has landed at each flag, so a transfer may end with words left (17.6.7)
+        if (p.length > 0) CHECK(got.asked[q] >= 1u); else CHECK_EQ(got.asked[q], 0u);
         CHECK_EQ(got.asked[1 - q], 0u);
         CHECK(got.data[q] == p.data);
     }

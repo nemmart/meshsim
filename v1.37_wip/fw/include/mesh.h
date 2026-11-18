@@ -33,8 +33,8 @@
 #define RECEIVE_QUEUE_DEPTH_MASTER 128   /* the master tile's receive queue (11.3): a tile has at most 1 request outstanding */
 #define RECEIVE_QUEUE_DEPTH_MEMORY 256   /* the memory tile's: at most 3 outstanding */
 #define RECEIVE_QUEUE_DEPTH_TRACER 128   /* the tracer tile's: at most 1 outstanding */
-#define STREAM_BYTES               4   /* a host-interface beat's TDATA, in bytes (17.6) */
-#define STREAM_DEPTH               4   /* each host-interface FIFO's beats */
+#define INGRESS_QUEUE_WORDS        1024   /* each incoming queue, in 128-bit words; stop at half (17.6.3) */
+#define EGRESS_QUEUE_WORDS         512   /* the outgoing queue; a credit is half of it (17.6.8) */
 #define UART_FIFO_DEPTH            16   /* each UART FIFO's bytes */
 #define LPDDR_ADDRESS_BITS         32   /* an LPDDR byte address (17.7) */
 #define RW_QUEUE_BEATS             16   /* the RW engine's output queue 0 */
@@ -151,7 +151,7 @@ typedef struct {
     uint32_t _own[96];           /* 0x080-0x1FC: blocks 2-7, the peripheral's own */
 } PeripheralRegs;
 
-/* Ingress/Egress, peripheral type 1 (17.6): the master tile's peripheral 1; it has no DMA */
+/* Ingress/Egress, peripheral type 1 (17.6): the master tile's peripheral 1 */
 typedef struct {
     MESH_RO PARAMS;              /* 0x000: type [7:0], version [15:8], the peripheral's constants [31:16] */
     MESH_RO STATUS;              /* 0x004: busy [0], dma_busy [1]; above, the peripheral's */
@@ -161,7 +161,12 @@ typedef struct {
     MESH_RW EVENTS_MASK;         /* 0x014: the events that count toward the tile's EVENTS.peripheral_n and that a load consumes */
     MESH_WO START;               /* 0x018: a store starts the peripheral's work; while STATUS.busy is 1, UB */
     uint32_t _unmapped_01C[9];   /* 0x01C-0x03C: unmapped, an access fault (5.3) */
-    uint32_t _no_dma[16];        /* 0x040-0x07C: no DMA: every word of block 1 reads 0, and a store is UB (17.1) */
+    MESH_RW DMA_HDR;             /* 0x040: the header block [7:0], its size the DMA's; dst [14:8]; count [26:15]; queue [28:27] */
+    MESH_RW DMA_DEST_ADDR;       /* 0x044: the DMA's destination address, 16-byte aligned; advances by 16 at each WRITE */
+    MESH_WO DMA_START;           /* 0x048: a store starts the DMA's transfer; during a transfer, UB */
+    uint32_t _unmapped_04C[11];  /* 0x04C-0x074: unmapped, an access fault (5.3) */
+    MESH_WO UART_TX;             /* 0x078: [7:0] a character to send; stalls while the TX FIFO is full; dropped while the UART is in reset or enable_write is 0 */
+    MESH_RO UART_RX;             /* 0x07C: [7:0] the oldest character received, [8] valid; pops it */
     MESH_RO ERROR_LINES_0;       /* 0x080: bit b: the error line of tile b (0-31) */
     MESH_RO ERROR_LINES_1;       /* 0x084: bit b: the error line of tile 32 + b */
     MESH_RO ERROR_LINES_2;       /* 0x088: bit b: the error line of tile 64 + b: [1] the memory tile's, [2] the tracer tile's; [0], the master tile's own, reads 0 */
@@ -172,21 +177,13 @@ typedef struct {
     MESH_WO RELEASE;             /* 0x09C: a store with bit 0 set releases the barrier: clears ARRIVALS, restarts the watchdog */
     MESH_RW WATCHDOG;            /* 0x0A0: a store sets the limit and the count, 0 stops it; a load returns the count */
     MESH_RW LED;                 /* 0x0A4: [0] the led pin */
-    MESH_WO UART_TX;             /* 0x0A8: [7:0] a byte to send; stalls while the TX FIFO is full */
-    MESH_RO UART_RX;             /* 0x0AC: [7:0] the oldest byte received, [8] valid; pops it */
-    MESH_RW UART_DIVISOR;        /* 0x0B0: [15:0] the cycles per bit; 0 is UB */
-    MESH_RW UART_STATUS;         /* 0x0B4: the TX FIFO's bytes [4:0], the RX FIFO's [12:8], rx_overrun [16], framing_error [17]; a store clears each error it writes 1 */
-    uint32_t _unmapped_0B8[18];  /* 0x0B8-0x0FC: unmapped, an access fault (5.3) */
-    MESH_WO STREAM_OUT_W0;       /* 0x100: word 0 of the next beat out; cleared by the push */
-    MESH_WO STREAM_OUT_W1;       /* 0x104: word 1 of the next beat out */
-    MESH_WO STREAM_OUT_W2;       /* 0x108: word 2 of the next beat out */
-    MESH_WO STREAM_SEND;         /* 0x10C: the beat's top word; pushes the beat, TLAST 0; stalls while the transmit FIFO is full */
-    MESH_WO STREAM_SEND_LAST;    /* 0x110: the beat's top word; pushes the beat, TLAST 1 */
-    MESH_RO STREAM_IN_W0;        /* 0x114: word 0 of the oldest beat in */
-    MESH_RO STREAM_IN_W1;        /* 0x118: word 1 of the oldest beat in */
-    MESH_RO STREAM_IN_W2;        /* 0x11C: word 2 of the oldest beat in */
-    MESH_RO STREAM_RECEIVE;      /* 0x120: the oldest beat's top word; pops it */
-    uint32_t _unmapped_124[55];  /* 0x124-0x1FC: unmapped, an access fault (5.3) */
+    MESH_RW UART_CONTROL;        /* 0x0A8: [15:0] divider, the cycles a bit; [16] enable_read; [17] enable_write; 0 holds the UART in reset */
+    uint32_t _unmapped_0AC[21];  /* 0x0AC-0x0FC: unmapped, an access fault (5.3) */
+    MESH_RO FOREGROUND_WORDS;    /* 0x100: [10:0] the 128-bit words in the foreground queue, 0 to 1,024; live */
+    MESH_RO BACKGROUND_WORDS;    /* 0x104: [10:0] the same for the background queue */
+    MESH_RW DMA_FORWARD_COUNT;   /* 0x108: [30:0] count, the words still to move out of the background queue; [31] discard */
+    MESH_RW EGRESS_COUNT;        /* 0x10C: the 128-bit words of the frame being queued for the host still to come */
+    uint32_t _unmapped_110[60];  /* 0x110-0x1FC: unmapped, an access fault (5.3) */
 } IngressEgressRegs;
 
 /* the RW engine, peripheral type 2 (17.7): the memory tile's peripheral 2 */
@@ -289,8 +286,9 @@ _Static_assert(sizeof(PeripheralRegs) == 0x200 &&
                __builtin_offsetof(PeripheralRegs, DMA_HDR) == 0x040 && __builtin_offsetof(PeripheralRegs, DMA_START) == 0x048, "PeripheralRegs");
 _Static_assert(sizeof(IngressEgressRegs) == 0x200 &&
                __builtin_offsetof(IngressEgressRegs, PARAMS) == 0x000 && __builtin_offsetof(IngressEgressRegs, START) == 0x018 &&
-               __builtin_offsetof(IngressEgressRegs, ERROR_LINES_0) == 0x080 && __builtin_offsetof(IngressEgressRegs, UART_STATUS) == 0x0B4 &&
-               __builtin_offsetof(IngressEgressRegs, STREAM_OUT_W0) == 0x100 && __builtin_offsetof(IngressEgressRegs, STREAM_RECEIVE) == 0x120, "IngressEgressRegs");
+               __builtin_offsetof(IngressEgressRegs, DMA_HDR) == 0x040 && __builtin_offsetof(IngressEgressRegs, UART_RX) == 0x07C &&
+               __builtin_offsetof(IngressEgressRegs, ERROR_LINES_0) == 0x080 && __builtin_offsetof(IngressEgressRegs, UART_CONTROL) == 0x0A8 &&
+               __builtin_offsetof(IngressEgressRegs, FOREGROUND_WORDS) == 0x100 && __builtin_offsetof(IngressEgressRegs, EGRESS_COUNT) == 0x10C, "IngressEgressRegs");
 _Static_assert(sizeof(RwEngineRegs) == 0x200 &&
                __builtin_offsetof(RwEngineRegs, PARAMS) == 0x000 && __builtin_offsetof(RwEngineRegs, START) == 0x018 &&
                __builtin_offsetof(RwEngineRegs, DMA_HDR) == 0x040 && __builtin_offsetof(RwEngineRegs, DMA_START) == 0x048 &&
@@ -379,6 +377,8 @@ _Static_assert(sizeof(TableRegs) == 0x1600 && __builtin_offsetof(TableRegs, HIST
 #define P_OFF_DMA_DEST_ADDR        0x044
 #define P_OFF_DMA_START            0x048
 /* Ingress/Egress's words (17.6) */
+#define IE_OFF_UART_TX             0x078
+#define IE_OFF_UART_RX             0x07C
 #define IE_OFF_ERROR_LINES_0       0x080
 #define IE_OFF_ERROR_LINES_1       0x084
 #define IE_OFF_ERROR_LINES_2       0x088
@@ -389,19 +389,11 @@ _Static_assert(sizeof(TableRegs) == 0x1600 && __builtin_offsetof(TableRegs, HIST
 #define IE_OFF_RELEASE             0x09C
 #define IE_OFF_WATCHDOG            0x0A0
 #define IE_OFF_LED                 0x0A4
-#define IE_OFF_UART_TX             0x0A8
-#define IE_OFF_UART_RX             0x0AC
-#define IE_OFF_UART_DIVISOR        0x0B0
-#define IE_OFF_UART_STATUS         0x0B4
-#define IE_OFF_STREAM_OUT_W0       0x100
-#define IE_OFF_STREAM_OUT_W1       0x104
-#define IE_OFF_STREAM_OUT_W2       0x108
-#define IE_OFF_STREAM_SEND         0x10C
-#define IE_OFF_STREAM_SEND_LAST    0x110
-#define IE_OFF_STREAM_IN_W0        0x114
-#define IE_OFF_STREAM_IN_W1        0x118
-#define IE_OFF_STREAM_IN_W2        0x11C
-#define IE_OFF_STREAM_RECEIVE      0x120
+#define IE_OFF_UART_CONTROL        0x0A8
+#define IE_OFF_FOREGROUND_WORDS    0x100
+#define IE_OFF_BACKGROUND_WORDS    0x104
+#define IE_OFF_DMA_FORWARD_COUNT   0x108
+#define IE_OFF_EGRESS_COUNT        0x10C
 /* the RW engine's words (17.7) */
 #define RW_OFF_RW_CONFIG           0x080
 #define RW_OFF_RW_LPDDR_ADDR       0x084
@@ -570,21 +562,36 @@ _Static_assert(sizeof(TableRegs) == 0x1600 && __builtin_offsetof(TableRegs, HIST
 #define PERIPHERAL_TYPE_UPDATER    5   /* the Updater (17.10) */
 #define PERIPHERAL_TYPE_MEMORY_SYSTEM 6   /* the memory system (17.11) */
 
-/* ---- Ingress/Egress (17.6) ---- */
-#define IE_STATUS_STREAM_LAST      (1 << 2)   /* state: the TLAST of the oldest beat in; 0 while there is none */
+/* ---- Ingress/Egress (17.6): its bits, fields, its region ---- */
+#define IE_STATUS_FOREGROUND_READY (1 << 2)   /* live: the foreground queue holds words */
+#define IE_STATUS_BACKGROUND_READY (1 << 3)   /* live: the background queue holds words */
+#define IE_STATUS_RX_OVERRUN       (1 << 24)   /* state: a character arrived with the RX FIFO full and was dropped; until the UART's reset */
+#define IE_STATUS_FRAMING_ERROR    (1 << 25)   /* state: a character's stop bit was 0 and it was dropped; until the UART's reset */
 #define IE_ERROR_TILE_ERROR        (1 << 0)   /* live: any bit of ERROR_LINES is 1 */
+#define IE_ERROR_LINK_ERROR        (1 << 1)   /* H: sticky: a link end of this ASIC has started its link again (28.9) */
+#define IE_ERROR_FORMAT_ERROR      (1 << 2)   /* H: sticky: with link_error, the cause a link packet made wrong twice running (28.7) */
+#define IE_ERROR_EGRESS_ERROR      (1 << 3)   /* P: sticky: a word written into a full outgoing queue, or with EGRESS_COUNT at 0 (17.6.8) */
 #define IE_EVENT_ALL_ARRIVED       (1 << 2)   /* live: (ARRIVALS & ARRIVE_EXPECT) = ARRIVE_EXPECT, and not 0 */
 #define IE_EVENT_WATCHDOG          (1 << 3)   /* counted, 1: the watchdog's expiry */
-#define IE_EVENT_UART_RX           (1 << 4)   /* live: a byte in the UART's RX FIFO */
-#define IE_EVENT_UART_TX           (1 << 5)   /* live: room in the UART's TX FIFO */
-#define IE_EVENT_STREAM_IN         (1 << 6)   /* live: a beat in the host interface's receive FIFO */
-#define IE_EVENT_STREAM_OUT        (1 << 7)   /* live: room in the host interface's transmit FIFO */
-#define UART_RX_BYTE(w)            (((w) >> 0) & 0xFFu)   /* [7:0] the oldest byte received */
-#define UART_RX_VALID              0x00000100   /* [8] 1 with a byte; 0 with the RX FIFO empty */
-#define UART_STATUS_TX_BYTES(w)    (((w) >> 0) & 0x1Fu)   /* [4:0] the TX FIFO's bytes */
-#define UART_STATUS_RX_BYTES(w)    (((w) >> 8) & 0x1Fu)   /* [12:8] the RX FIFO's bytes */
-#define UART_STATUS_RX_OVERRUN     0x00010000   /* [16] a frame ended with the RX FIFO full; a store of 1 clears it */
-#define UART_STATUS_FRAMING_ERROR  0x00020000   /* [17] a frame's stop bit was 0; a store of 1 clears it */
+#define IE_EVENT_UART_RX           (1 << 4)   /* live: a character in the UART's RX FIFO; 0 while the UART is in reset */
+#define IE_EVENT_UART_TX           (1 << 5)   /* live: room in the UART's TX FIFO; 0 while the UART is in reset */
+#define IE_EVENT_FOREGROUND_SERVICE (1 << 6)   /* counted, 1: the foreground queue asks for service (17.6.7) */
+#define IE_EVENT_BACKGROUND_SERVICE (1 << 7)   /* counted, 1: the background queue asks for service (17.6.7) */
+#define IE_EVENT_EGRESS_CREDIT     (1 << 8)   /* counted, 2: the outgoing queue's credit (17.6.8) */
+#define UART_RX_CHAR(w)            (((w) >> 0) & 0xFFu)   /* [7:0] the oldest character received */
+#define UART_RX_VALID              0x00000100   /* [8] 1 with a character; 0 with the RX FIFO empty */
+#define UART_CONTROL_DIVIDER(v)    (((uint32_t)(v) & 0xFFFFu) << 0)   /* [15:0] the cycles of the chip's clock a bit lasts; 0 with a non-zero UART_CONTROL is UB */
+#define UART_CONTROL_DIVIDER_OF(w) (((w) >> 0) & 0xFFFFu)
+#define UART_CONTROL_ENABLE_READ   0x00010000   /* [16] the line in is listened to */
+#define UART_CONTROL_ENABLE_WRITE  0x00020000   /* [17] the TX FIFO's characters are sent */
+#define FOREGROUND_WORDS_WORDS(w)  (((w) >> 0) & 0x7FFu)   /* [10:0] the 128-bit words in the queue */
+#define BACKGROUND_WORDS_WORDS(w)  (((w) >> 0) & 0x7FFu)   /* [10:0] the 128-bit words in the queue */
+#define DMA_FORWARD_COUNT_COUNT(v) (((uint32_t)(v) & 0x7FFFFFFFu) << 0)   /* [30:0] the words still to move */
+#define DMA_FORWARD_COUNT_COUNT_OF(w) (((w) >> 0) & 0x7FFFFFFFu)
+#define DMA_FORWARD_COUNT_DISCARD  0x80000000   /* [31] 0 each goes to the Updater, 1 each is dropped */
+#define IE_STATUS_UART_TX_BYTES(w) (((w) >> 8) & 0x1Fu)   /* [12:8] STATUS: the characters in the UART's TX FIFO, 0 to 16 */
+#define IE_STATUS_UART_RX_BYTES(w) (((w) >> 16) & 0x1Fu)   /* [20:16] STATUS: the characters in its RX FIFO */
+#define IE_EGRESS                  (PERIPHERAL_BASE(1) + 0x100000)   /* part 1: the outgoing queue, 128-bit WRITEs of the frame's words (17.6.8) */
 
 /* ---- the RW engine (17.7): its bits, RW_CONFIG, its region ---- */
 #define RW_ERROR_LPDDR_ERROR       (1 << 0)   /* P or H: a read beat or a write response that is not OKAY */

@@ -93,7 +93,7 @@
 #include "units/regblock.h"
 #include "units/regmap.h"
 
-namespace units { struct IngressEgress; struct Updater; struct UpdaterTop; class CacheSystem; }   // v1.37: the master tile's, with MachConfig::host_link
+namespace units { struct IngressEgress; struct Updater; struct UpdaterTop; class CacheSystem; }   // v1.37: the master tile's
 
 namespace mach {
 
@@ -110,12 +110,15 @@ struct MachConfig {
     bool special_tiles = false;        // THE CHIP (units::build_chip; chip()): the master, memory and tracer tiles as units
                                        //   64-66, the request tree, the nets. false: a test bench's machine, the 64
                                        //   compute tiles with v1.35's model of C&C in the master's place (above)
-    bool host_link = false;            // v1.37 (the chip only; CHANGES-v1.37.md): the master tile's Ingress/Egress has the host
-                                       //   link and its DMA (ingress_egress.h), the Updater is its peripheral 2 (updater.h), and
-                                       //   the Updater and the Tracer's memory system share one file store. false: v1.36's chip
+    bool proof = false;                // v1.37 (the chip only): a proof from the host: the Tracer's fill port on the memory
+                                       //   system, whose store it shares with the Updater, and the master runs master.c. false:
+                                       //   the Tracer on v1.36's memory model, which the harness fills (the segment runs that
+                                       //   compare with the RTL's figures). (MachConfig::host_link until stage 3, when every
+                                       //   chip's master tile became v1.37's Ingress/Egress with the Updater.)
+    unsigned ingress_queue_words = 1024;   // INGRESS_QUEUE_WORDS (17.6.3, 19)
     // v1.37 stage 1 (the INTEGRATOR): every chip's memory tile has the memory system as its peripheral 1 (17.11:
     //   units/memory_system.h, its hardware units/cache_system.h: the cache's controller, the AXI arbiter, the LPDDR
-    //   model on a file store), with the RW engine on the arbiter's client 2. With host_link the store is the one the
+    //   model on a file store), with the RW engine on the arbiter's client 2. With `proof` the store is the one the
     //   Updater's controller (client 1, look-up port 1) and the Tracer's fill port share; without it, a store of the
     //   chip's own for the RW engine. WORKER5's setting cache_ctl is gone: it is the machine.
     uint32_t lpddr_seed = 0;           // the LPDDR model's jitter mode (axi::LpddrTiming): 0 fixed; otherwise its seed. A
@@ -464,7 +467,7 @@ public:
     bool all_in_wfi() const { return c.all_in_wfi(); }
     uint32_t word(unsigned unit, uint32_t byte_addr) const; // TileRef::peek_local
 
-    // ---- v1.37's chip (MachConfig::host_link) ----
+    // ---- v1.37's chip ----
     // The packet file Ingress reads, the link's bytes (kept here), before the first cycle.
     void set_link(std::vector<uint8_t> bytes);
     units::IngressEgress& ingress();                        // the master tile's Ingress/Egress

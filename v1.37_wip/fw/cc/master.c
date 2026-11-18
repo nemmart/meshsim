@@ -1,9 +1,9 @@
 /* master.c: the master tile's program for v1.37 (updater_wip, WORKER3): the proof arrives as the host's frames over
  * the link, and the master builds the memory images from them with the Updater and hands the tracer tile its segment.
  * Written for v1.37 on v1.36's interface (include/mesh.h) and v1.37's additions (include/host.h); cc1.c, v1.36's
- * master program, is untouched and is what every v1.36 test runs. The machine must be built with the host link
- * (MachConfig::host_link): Ingress with its two streams and its DMA (INGRESS-INTERFACE.md), and the Updater as the
- * master tile's peripheral 2 (UPDATER-INTERFACE.md). The frames are HOST-FRAMES.md's.
+ * master program, is what every v1.36 test runs (v1.37 changed only its UART setting, 17.6.9). Every chip's master
+ * tile has Ingress/Egress with its two queues and its DMA (17.6), and the Updater as its peripheral 2 (17.10). The
+ * frames are chapter 29's.
  *
  * What the harness places before the reset ends (boot_local, 6.5), as for cc1.c: this image; in the master's scratchpad
  * the two images it loads and the load's COUNT row, where boot_desc says; boot_desc and system_config (N and s, which

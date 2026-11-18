@@ -38,7 +38,7 @@ struct Rig {
         for (unsigned i = 0; i < 512; i++) page[i] = 0x1000 + i;
         m.store().put_page(f, 0, page.data());
     }
-    static mach::MachConfig cfg() { mach::MachConfig c = mach::Mach::chip_cfg(-1); c.host_link = true; return c; }
+    static mach::MachConfig cfg() { mach::MachConfig c = mach::Mach::chip_cfg(-1); c.proof = true; return c; }
     // One cycle with a fill read of `line` of the file posted in it (once), the harness standing on the fill port.
     void cycle(bool read, int64_t line) {
         const int64_t t = m.c.cycle() + 1;

@@ -28,3 +28,10 @@ section, what the specification says, what `main` has. Kept as the specification
 | 17.10.4, 23.6.8 | v1.37's master tile frees nothing; the cache needs no discard | as specified |
 | 17.10.1 | `EVENTS` packed: `free_page_credit` at [2] | at [3], [2] reading 0 (`updater_top.h`, `updater.h`, the firmware's `host.h`) |
 | 17.10.1, 17.10.11 | a bad root or free page address is UB: the simulator stops on it; `ERRORS.lpddr_error` is not set for it | the controller and the black box set `ERRORS.lpddr_error` and stop the run (WORKER6's C12, WORKER3's C10) |
+
+## The host link (chapter 28)
+
+| section | the specification | `main` (be077a7d) |
+| --- | --- | --- |
+| 28 | the link ends are WORKER8's model (`End`, `Node`), one run of numbers for a link, both stop bits in byte 7, the restart flag, the mask, the restart link packet, recovery, two link ends and four forwarding buffers on an ASIC, `chain_next` | Ingress's black box: 18-bit numbers for each stream, the stop bits as before, no mask, no restart; a bad link packet fatal (`crc_error`, `sequence_error`, `format_error`); no way back to the host; one ASIC. The link end is on `updater-w8`, not merged |
+| 28.14 | a damaged link packet is no error; `link_error` only when a link starts again | the black box's `ERRORS` [1] to [3] for each kind of bad link packet |

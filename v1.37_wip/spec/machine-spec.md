@@ -4668,6 +4668,13 @@ v1.36's simulator reproduced the RTL's column, step for step, under the RTL's ow
 (meshsim's commit 5a87d658; chapter 21); it now runs meshsim's firmware (`tests/test_sort.cpp`). The comparison with v1.25's and v1.35's sort is not re-run: their
 program is not ported to v1.36's hardware (item 164).
 
+## 28. The host link
+
+The link that carries the host's frames to the master tile's Ingress/Egress (17.6), and the chip's replies back,
+along a chain of ASICs: the link packet and its header, its two checks and the mask, numbering, sending again,
+recovery, starting a link again, "stop", the chain, and the link end as hardware. Its specification, 28.1 to 28.17,
+is `spec/host-link.md`.
+
 ## Appendix A. The RTL's implementation
 
 Facts of the RTL (Snarky One) that are not contract: what it holds where chapters 1–19 leave a choice to the

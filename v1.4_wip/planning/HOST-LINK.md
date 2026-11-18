@@ -13,14 +13,17 @@ searched it exhaustively: **as first written the protocol did not hold.** One da
 for ever, in several ways. **The rules that mend it are now in here,** each marked (WORKER8): in "When a packet is
 bad", "Recovery", "Starting a link again", "Holding the host back", "What a sender must keep" and "The chain".
 
-- **What they rest on:** about 36 million states searched, every search complete, on one link and on chains of 1, 2
-  and 3; 14 planted bugs each caught; 300 random runs on chains of up to 16, 202 million cycles, with none failing.
-  Each flaw has a kept case that fails without its rule (`updater_wip/link/` and
-  `updater_wip/planning/sessions/WORKER8/QUESTIONS.md`, on branch `updater-w8` until it is merged).
-- **What is not yet shown:** those runs were on packet numbers for each stream. **One run of numbers for a link**
-  (below) was decided after them. WORKER8's first search of it found it unsound as first written, in four
-  events, and the rule that mends it is in ("What 'stop' holds back"). The full searches and the random campaign
-  on the protocol as it now stands are in hand.
+- **What they rest on** (WORKER8, on the protocol as it stands here, 2026-11-17 evening): 71.8 million states
+  searched, every search complete, on one link and on chains of 1, 2 and 3; 18 planted bugs each caught; a kept
+  case for every rule, which fails without the rule and holds with it; 1,380 random runs on chains of 1, 2, 4
+  and 16, none failing (`updater_wip/link/` and `updater_wip/planning/sessions/WORKER8/REPORT.md` and
+  `QUESTIONS.md`, on branch `updater-w8` until it is merged).
+- **What is still out:** one long search, which did not finish in its first two runs, and the random campaign on
+  the runner. The searches are of small sizes (a window of 2, queues of a few words); the random runs are of the
+  real sizes.
+- **Three times that evening the protocol as it stood here was found unsound** and mended: one run of numbers
+  with "stop" holding back a packet sent again; a resend request lost; a packet hidden in the data. Each is told
+  where its rule is.
 - A dagger (†) marks a number or a choice that is proposed and not ruled on.
 
 ## The link
@@ -44,7 +47,9 @@ bad", "Recovery", "Starting a link again", "Holding the host back", "What a send
 - **Neither may block the other.** The background stream can stall for a long time, while the Updater waits on LPDDR
   or on free pages, and the foreground stream has to keep getting through. So each has its own queue and its own flow
   control in Ingress.
-- **They interleave packet by packet.** The longest a foreground packet waits is one background packet.
+- **They interleave packet by packet.** The longest a foreground packet waits for the line is one background
+  packet: 534 cycles at most in the random runs (WORKER8), with the sending unit of 128 bits a cycle ("The CRC as
+  hardware").
 - **A stream's number is never 0** (owner), so that the first byte of a packet on the link is never zero (below).
 
 ## A packet
@@ -65,7 +70,7 @@ bad", "Recovery", "Starting a link again", "Holding the host back", "What a send
 | [56] | foreground stop | "stop sending me the foreground stream"; 0 is "send" |
 | [57] | background stop | "stop sending me the background stream"; 0 is "send" |
 | [63:58] | reserved | 0 |
-| [95:64] | data checksum | over the data |
+| [95:64] | data checksum | over the data as it is held, before the mask |
 | [127:96] | header CRC | over bits [95:0] |
 
 The same header byte by byte, as it goes on the link. Byte *i* holds bits [8*i* + 7 : 8*i*] and is the (*i* + 1)th
@@ -111,51 +116,32 @@ packet numbers for the streams? The packet number is about the link, not the str
      stopped stream;
   2. at most a window of numbered packets is outstanding, and the queue kept room for a window when it said
      stop. So a good packet always has room, and the receiver never has to refuse one;
-  3. a numbered packet that is damaged is sent again at once, stopped or not, so nothing waits behind it.
+  3. a numbered packet that is damaged is sent again as soon as it is asked for, stopped or not, so nothing
+     waits behind it.
   - The design session's first argument had 1 and 2 and missed 3: a damaged packet of the stopped stream.
-- **What it costs:**
-  - a damaged background packet has the foreground packets behind it sent again too: a few packets, and only
-    when there is damage;
-  - the window is shared: with 8 background packets not yet acknowledged, a foreground packet waits for the next
-    acknowledgement, about a packet's time.
+- **What it costs** (WORKER8's figures, at the real sizes):
+  - **a damaged background packet sets the foreground behind it back,** since both are sent again. A full
+    foreground packet let out near the damage arrived later than it would have by:
+
+    | the background packet's damage | at most | on average |
+    |---|---|---|
+    | a bit of its data | 1,071 cycles | 553 |
+    | a bit of its header | 2,624 | 1,677 |
+    | its first byte zero | 3,152 | 1,709 |
+    | the whole packet gone | 1,598 | 993 |
+
+    With numbers for each stream the first row would be nothing. The other three cost the link a recovery
+    whatever the numbering.
+  - **the window is shared,** but it does not fill: up to a wire delay of 512 cycles each way no more than 3
+    packets are ever kept, and a foreground packet never waits for the window. At a delay of 2,048 it fills, and
+    a foreground packet waited up to 1,404 cycles.
+  - **8 is still the right window:** the data rate in the random runs was 0.4750 bytes a cycle with a window of
+    2, 0.5256 with 4, 0.5342 with 8 and 0.5319 with 16.
 - **What it saves:** the header stays one 128-bit word, 3.0% of a full packet, and the link end is one machine
   where it was two.
-- **Shown so far** (WORKER8): with the rule above, the search that failed holds, 604,477 states (1 foreground
-  and 3 background packets, one damaged). A larger one was cut short at 2 million states with no failure. The
-  full searches are in hand.
-
-**How it came to this,** in a morning:
-
-- With numbers for each stream and a header that spoke for its own stream only, one stream filling a direction
-  starved the other of acknowledgements and its stop bit: WORKER8 measured the background standing still for
-  102,447 cycles on a wire with no damage.
-- Sending the other stream's status as packets of its own would cost a busy direction about 3% on top of the
-  headers' 3%.
-- The owner then made the header 20 bytes, with both streams' numbers, acknowledgements and flags in each. It
-  was written up here, and WORKER8 built it.
-- Then the owner asked why the streams had numbers of their own at all. They need not, and the header is 16 bytes
-  again.
-
-### The rest of the rules
-
-- **Everything rides in 128 bits** (owner): the header is one word, and the data is whole words, so the link is
-  word-aligned throughout.
-- **The length is any number of words up to 32,** 16 to 512 bytes of data (owner). Any frame then cuts exactly into
-  packets.
-- **A frame ends at the end of a packet** (owner): the next frame never starts in the middle of one.
-- **A length of 0 is a header with no data** (owner): a way to say where the link stands with nothing else to send.
-  - **It takes no packet number** (ruled 2026-11-16, on WORKER2's question): if it did, the other side would have to
-    acknowledge it, and an acknowledgement that must itself be acknowledged never settles. Its number field holds
-    the number the next packet with data will carry, so the field is still never 0. Its stream field is 1 or 2,
-    so that the first byte is not zero; it means nothing.
-  - **That number is how a receiver learns that the last packet of a burst was lost,** with no timer (WORKER8):
-    it sees a number ahead of the one it expects.
-- **A packet that is forwarded gets a new number** on the next link (owner).
-- **No packet number is 0 or all ones** (owner), so a header word is never all zeros.
-- **18 bits of packet number is enough** (owner; 20 until 2026-11-17, when four bits went to the hops field).
-  Only packets not yet acknowledged are outstanding, and that is a small window. A link's numbers come round
-  again after 262,142 packets, about 138 MB.
-- **The first byte on the link is never zero** (owner): it holds the stream, which is never 0.
+- **Shown** (WORKER8): that a stopped stream cannot block the other holds on 7 searches, 9.7 million states,
+  each with one stream never taken again and the other required to finish; the rule as first written fails
+  beside them.
 
 ## The size of a packet
 
@@ -195,15 +181,16 @@ so on. Everything in this document but the hops field belongs to one link.
 
 **An ASIC that forwards a packet, in either direction:**
 
-1. **takes the whole packet in and checks it,** as any receiver does. A bad packet is the incoming link's
-   business: it is asked for again there, and is not forwarded;
-2. **writes the header for the outgoing link:** that link's next packet number, its acknowledge
-   field and its flags;
+1. **takes the whole packet in and checks it,** as any receiver does, taking the mask off its data as it
+   arrives. A bad packet is the incoming link's business: it is asked for again there, and is not forwarded;
+2. **writes the header for the outgoing link:** that link's next packet number, its acknowledge field, its
+   flags and its stop bits;
 3. **adds one to hops;**
 4. **computes the data checksum afresh, from the data as it holds it** (owner, 2026-11-17);
-5. **computes the header CRC again** (owner: "always recompute the header CRC").
+5. **computes the header CRC again** (owner: "always recompute the header CRC");
+6. **sends the data under a new mask,** started from the new header's CRC.
 
-The data passes through unchanged.
+The data passes through unchanged, as it is held.
 
 **What is left of a forwarded packet's header** (owner: "the header gets mostly stripped"):
 
@@ -235,8 +222,10 @@ The data passes through unchanged.
   - An ASIC's packets stay in order all the way, because every link delivers in order. Packets of different ASICs
     interleave.
 - **From the host, every ASIC gets the same data.** Each ASIC takes a packet for itself and forwards it on; the
-  last has nobody to forward to. The field is ignored (owner): it is not tested, and no value of it is an error.
-  It happens to be the receiving ASIC's own place in the chain.
+  last has nobody to forward to. The field is ignored by the ASIC that takes the packet (owner): no value of it
+  is an error there. It happens to be the receiving ASIC's own place in the chain.
+  - **An ASIC that must forward a packet does test it, in either direction:** it adds one, and 16 does not fit.
+    Hops 15 on a packet to forward is a packet made wrong.
 - **On an outgoing link an ASIC's own packets and the ones it forwards share the link's one run of packet
   numbers.**
 - **Towards the host, data is on the foreground stream only** (owner). The background stream appears there only
@@ -258,7 +247,8 @@ The data passes through unchanged.
 - **Four bits: a chain of at most 16** (owner: the absolute maximum, which is why the field is that wide; 4 are
   expected). A packet that arrives with hops 15 at an ASIC that would forward it is a bad packet (below).
 - **A hop holds a packet for its length,** since it checks the whole of it first. That is what "The size of a
-  packet" assumes.
+  packet" assumes. The pass over its data before it leaves is 32 cycles more for a full packet, with the
+  sending unit of 128 bits a cycle; at a byte a cycle it would be the packet's length again.
 
 **What the chain needed besides** (WORKER8; searched on chains of 1, 2 and 3, run at random on up to 16):
 
@@ -275,8 +265,9 @@ The data passes through unchanged.
   the window of the end that feeds it must be no more than half of it.
 - **A link's stop bit is up when either is half full:** the node's own queue, or the forwarding buffer behind
   that link.
-- **Measured:** the fullest a forwarding buffer got was 677 words of 1,024. A foreground packet never waited more
-  than one packet's time for the line.
+- **Measured** (WORKER8, 240 random runs): the fullest a forwarding buffer got was 632 words of 1,024; with
+  buffers of 512 words, 349, and no packet was ever refused. The rule asks for twice the window, 512 words; 16 KB
+  is twice that.
 
 ## The two checks
 
@@ -285,6 +276,9 @@ The data passes through unchanged.
 
 - **A packet counts only when both pass.** Together they are a 64-bit check; through 300 ms of noise, some 20 million
   words, a false packet is out of the question.
+  - **That is true of the header's fields too, on any packet with data** (WORKER8): the mask ties the data to
+    the header CRC, so a header that noise has forged takes the wrong mask off and the data checksum fails. A
+    packet of length 0 has the header CRC alone.
 - **The receiver can test the header as soon as it arrives,** before any data, and then knows which data checksum
   to expect.
 - The packet number is checked as well, since the receiver compares it anyway to keep packets in order.
@@ -343,8 +337,8 @@ receiver that has read the header takes the mask off. One that has not sees byte
     link packets, a capture of this link or a file of test vectors, needs only the header to be lost.
   - Every form of the header had this. It is as old as "the first byte that is not zero starts a header".
 - **What the mask gives:** whether the link works no longer depends on what the data holds. To get a packet
-  through in the data, whoever made the data would have to know the header's CRC, which covers the acknowledge
-  field of that moment.
+  through in the data, whoever made the data would have to know the header it will travel under ("The mask's
+  limit", below).
 - **What it costs:** a 32-bit shift register for each direction of a link. No new field, no handshake, nothing
   agreed between the ends beforehand.
 - **What stays as it was:**
@@ -352,9 +346,53 @@ receiver that has read the header takes the mask off. One that has not sees byte
   - the data checksum is over the data as it is held, not as it is sent;
   - a packet's data is at most 512 bytes, so it still cannot hold the 528 zeros a lost receiver waits for;
   - a forwarding ASIC takes the mask off as it checks a packet and puts a new one on with the new header.
-- † **The sequence itself is WORKER8's to define exactly and to test,** with a worked example for this document.
-  Proposed: the CRC-32C register, started at the header CRC, stepped eight times for each data byte with nothing
-  fed in; the byte that masks is its low eight bits after the steps.
+- **The sequence** (WORKER8; the design session's proposal with one bit added):
+
+  ```
+  reg = header CRC  OR  0x00010000       the header CRC: the 32-bit number in header bytes 12 to 15, byte 12 lowest
+  for each data byte d, in order:
+      repeat 8 times:  reg = (reg >> 1) XOR 0x82F63B78   if reg's bit 0 is 1
+                       reg =  reg >> 1                    otherwise
+      the byte on the wire is  d XOR (reg AND 0xFF)
+  ```
+
+  - **The eight shifts are the CRC unit's step for a byte of zero,** so the mask is a CRC-32C register that is fed
+    nothing. The receiver does the same from the header it has just read.
+  - **Why bit 16 is set:** the register has two states that stand still, 0 and 0xFCA42DAF. A header CRC equal to
+    either would send its data in the clear, or as good as. With that bit set no header CRC starts it in
+    either, and from any other state it returns only after 2³¹ − 1 shifts.
+  - **The restart packet's data is masked like any other.**
+- **Worked examples** (they agree with a second implementation, and the design session computed the first two
+  again):
+
+  | | |
+  |---|---|
+  | **1.** the first example header: background, length 1, number 1, acknowledge 0 | `02 01 01 00 00 00 00 00 EA 9A 70 42 A0 8C 06 E1` |
+  | its header CRC, and the register's start | 0xE1068CA0, 0xE1078CA0 |
+  | the data as held | `00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00` |
+  | the data on the wire | `2A 54 C0 74 C0 1C 58 2F A6 5D 27 37 39 C9 47 1F` |
+  | **2.** foreground, length 1, number 7, acknowledge 3 | `01 01 07 00 0C 00 00 00 EB 08 C9 D9 9E 94 2A 36` |
+  | its header CRC, and the register's start | 0x362A949E, 0x362B949E |
+  | the data as held | `00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F` |
+  | the data on the wire | `A4 D0 6E 3C 10 A4 2F 89 F5 74 21 9E DE 43 E4 C0` |
+  | **3.** the same data forwarded: hops 1, acknowledge 4 | `01 01 07 00 10 00 10 00 EB 08 C9 D9 A3 2B 76 11` |
+  | the data on the wire | `79 F1 F2 82 77 D9 B4 AF 91 8F 7C 00 39 96 A1 51` |
+
+  In the first the data is zeros, so the wire shows the sequence itself.
+- **It also closes the false packet number,** for any packet with data: a header forged by noise takes the wrong
+  mask off, and the data checksum fails (`cases/forged-number.case`). What is left of that limit is a forged
+  header on a packet of length 0: a false acknowledgement, false stop bits, a false "resend" or "lost", none of
+  which is silent harm.
+- **The mask's limit, accepted:** data made on purpose for the header it will travel under.
+  - What has to be known is the header's other fields: the stream, the length, the number, the acknowledge
+    field, hops and the stop bits. The CRC follows from them and the data, and since the CRC and the sequence
+    are both linear, the data can be solved for, with no search (WORKER8, `cases/data-made-on-purpose.case`).
+  - On a quiet link those fields can be guessed well; with foreground messages going between, the number and the
+    acknowledge field move in ways the data's author cannot see.
+  - It still needs the line to read as zeros through that packet's header and no further.
+  - It takes someone making the host's own data against the link, and the host is the end that is trusted. A
+    value the author cannot know, in the mask's start, would close it: the value for each life of a link, set
+    aside below. A sequence that is not linear would not: the solving becomes a search of 2³², which is minutes.
 - The ways not taken: a random value for each life of a link, agreed at the restart, which a capture from the
   same life would still pass; and accepting it, with a rule that the host never sends link packets as data.
 
@@ -380,29 +418,44 @@ receiver that has read the header takes the mask off. One that has not sees byte
   length data bytes go through, and the result is compared with the four bytes kept. The constant does not serve
   here, since the checksum is in the header and not after the data.
   - A packet of length 0 has no bytes to put through: the result is 0x00000000, and the header must carry that.
-- **Four units an ASIC** (owner), one for each direction of each of its two links:
+- **Two fast units and two slow ones an ASIC** (owner, 2026-11-17), and four mask registers:
 
-  | unit | what it does |
-  |---|---|
-  | in, from the host's side | checks each packet |
-  | out, down the chain | the data checksum and the header CRC of each of the host's packets it passes down |
-  | in, from down the chain | checks each packet being passed up |
-  | out, towards the host | the data checksum and the header CRC of every packet, its own and forwarded |
+  | unit | how many | what it does |
+  |---|---|---|
+  | fast, 128 bits a cycle | 2, one for each direction it sends in | the pass over a packet's data before it leaves, then its header CRC |
+  | slow, a byte a cycle | 2, one for each direction it receives in | checks each packet as it arrives: the header, then the data |
+  | a mask register | 4, one beside each | a 32-bit register stepped a byte at a time with nothing fed in |
 
-  - The two that receive cannot be one: both links can be receiving at once.
-  - The owner took four: one for each direction of each link.
+  - **The receiving units stay a byte wide:** the bytes arrive one at a time and are checked as they come.
+  - **The two that receive cannot be one,** since both links can be receiving at once. The two that send could
+    share, a full packet's pass being 32 cycles against 528 to send it; the owner took one for each direction.
+  - **The fast unit does the header as well.** The header CRC covers 12 bytes, not a whole word: put 32 zero
+    bits in front of the 96 and start the unit from the fixed value that those zeros bring to all ones. The
+    result is the CRC of the 12 bytes, in one cycle.
 - **Every packet's data is checksummed before it is sent,** not as it goes: the data checksum is in the header,
   which goes first. So a sending unit passes over a packet's data once before the packet leaves, each time it is
-  sent.
-  - At a byte a cycle that pass takes as long as the packet's data: 16 cycles for a one-word message, 512 for a
-    full packet. On a busy link it is done while the packet before is going out; on an idle one it is a wait
-    before the header. A unit of 128 bits a cycle (about 2,490 gates) would do a full packet in 32.
+  sent (the owner's ruling that both checks are made afresh).
+  - **Why the sending unit is fast** (WORKER8's figures). At a byte a cycle the pass takes as long as the data,
+    and it cost:
+
+    | | no pass | a byte a cycle | 128 bits a cycle |
+    |---|---|---|---|
+    | a full foreground packet on an idle link, let out to delivered | 529 cycles | 1,041 | |
+    | the data rate in the random runs, bytes a cycle | 0.5703 | 0.4904, 14% less | 0.5751 |
+    | the same with every source saturated | 0.8584 | 0.7138, 17% less | 0.8580 |
+    | the longest a foreground packet waited for the line | 528 | 1,021 | 534 |
+
+  - At 128 bits a cycle a full packet's pass is 32 cycles and a one-word message's is one. The unit is about
+    2,490 XOR gates before sharing.
+  - † The pass starts on the packet that will go next, and starts over if that changes: from the background to
+    the foreground, or from an ASIC's own packet to one it forwards.
 
 **The order a receiver tests in:**
 
 1. the header CRC;
-2. the header's fields: the stream is 1 or 2, the length is at most 32, the reserved bits are 0. The hops field
-   is not tested;
+2. the header's fields: the stream is 1 or 2, the length is at most 32, the reserved bits are 0, and at an ASIC
+   that must forward the packet, hops is not 15. What a failed field leads to is decided only after step 3: "a
+   packet made wrong" needs the data checksum to have passed;
 3. the data checksum;
 4. the packet number, which means something only once the rest has passed.
 
@@ -413,7 +466,8 @@ A receiver expects one number next on a link: the one after the last packet it t
 | what the receiver sees | what it does |
 |---|---|
 | a good packet with the number it expects, and room in its stream's queue | takes it; its acknowledge field moves on |
-| the header good, the data checksum failing | throws it away and sets **resend**. The link does not stop (owner) |
+| the header good, the data checksum failing, the number the one expected or ahead | throws it away and sets **resend**. The link does not stop (owner) |
+| the header good, the data checksum failing, the number behind | throws it away. Nothing is owed: it has that packet already |
 | a good packet with a number **behind** the one expected | throws it away and acknowledges as usual: it has it already (WORKER8) |
 | a good packet with a number **ahead** of the one expected | throws it away and sets **resend:** one was missed (WORKER8) |
 | a packet of length 0 whose number is ahead of the one expected | sets **resend:** the last packet of a burst was lost. This is why no timer is needed at the sender (WORKER8) |
@@ -426,8 +480,12 @@ A receiver expects one number next on a link: the one after the last packet it t
 - **Without the rows for a wrong number the link stopped for ever after one lost packet:** every packet after
   the lost one was good, out of order, and had no rule (WORKER8).
 - **A receiver that has asked for a resend asks again at any sign that the sender is still ahead** (owner,
-  2026-11-17, on WORKER8's finding), † but no sooner than 2,048 cycles after it last asked: otherwise every
+  2026-11-17, on WORKER8's finding), but no sooner than 2,048 cycles after it last asked: otherwise every
   packet already on its way sets off another going-back.
+  - **The 2,048 cycles hold back only the asking that a packet ahead sets off.** A packet thrown away that
+    carries the number expected (its data damaged, no room, or made wrong) is asked for at once, every time.
+  - **Why 2,048** (WORKER8, 30 random runs each): packets sent to a receiver that already had them were 54 at
+    128 cycles, 18 at 512, and none at 2,048 and above. Longer only lengthens the wait.
   - **The hole this closes:** the request can be lost. As WORKER8 first had it, the receiver asked again only
     when it saw a packet of length 0, and a sender busy with new packets sends none. The sender then stood still
     for the rest of its window. Two random runs of 3,777 failed that way on the runner (Quest 227, seeds 200137
@@ -435,15 +493,16 @@ A receiver expects one number next on a link: the one after the last packet it t
     and was not the cause.
 - **The header of a packet sent again is written afresh,** with the acknowledge field and the flags of now
   (WORKER8).
-- **A sender goes back exactly as far as it must:** in 5 million packets of random runs no receiver was sent a
+- **A sender goes back exactly as far as it must:** in the random runs' 2 million packets no receiver was sent a
   packet it had already taken (WORKER8).
 
 **A packet made wrong** (owner, 2026-11-17):
 
 - **The first time, it is asked for again,** as any bad packet is. It could be noise: a damaged header that
-  happened to pass its CRC. The owner: "a resend in that case is the right option. It just shouldn't fail the
+  happened to pass its CRC. (With the mask that can only be so on a packet of length 0: on one with data, a
+  forged header takes the wrong mask off and the data checksum fails first.) The owner: "a resend in that case is the right option. It just shouldn't fail the
   same way repeatedly."
-- **If the packet sent again fails the same way,** the sender made it so, and asking again cannot help. † At the
+- **If the packet sent again fails the same way,** the sender made it so, and asking again cannot help. At the
   second time running, on the same packet number, **the receiver starts the link again** ("Starting a link
   again"), with the error.
   - **How "the same packet again" is known: one flag** in each receiver. It is set by a packet that carries the
@@ -461,7 +520,12 @@ A receiver expects one number next on a link: the one after the last packet it t
     drops the packet and says nothing, or one that says so. On a chain the restart also keeps the link usable
     for the ASICs beyond.
 - **A length over 32** cannot be passed over with any trust, so the receiver treats it as a lost place the first
-  time, and counts it the same way.
+  time, and counts it the same way: if its number field is the one expected, and not while the receiver is
+  already lost.
+- **A wrong packet whose number is not the one expected** is thrown away as ahead or behind, and not counted.
+- **A packet of length 0 with a field that cannot be** is counted, if its number field is the one expected.
+- **Two is the right count** (WORKER8): one would make every forged header on a packet of length 0 a restart.
+  For full packets the second comes 1,071 cycles after the first; the restart then loses 128 words.
 - `INGRESS-INTERFACE.md`'s `format_error` says which test failed.
 - (WORKER8's rule told the two cases apart by the data: if the data's check passed as well, the sender was taken
   to have made the packet so, at the first time. But noise that damages only the header leaves the data whole,
@@ -478,8 +542,10 @@ A receiver expects one number next on a link: the one after the last packet it t
   byte that noise turns to zero is taken for idle; the receiver then fails a header CRC one byte later, which is
   the "lost my place" case.
 - **After a failed header CRC a receiver takes nothing until it has seen a full packet's length of zeros in a
-  row,** 528 †, which no packet can hold. Without this it read the bad packet's data as headers, and one of them
-  can pass: a packet was then lost for good (WORKER8).
+  row,** 528, which no packet can hold. Without this, and without the mask, it read the bad packet's data as
+  headers, and one of them can pass: a packet was then lost for good (WORKER8).
+  - With the mask the searches hold without this wait. It is kept: it spares a lost receiver a string of failed
+    header CRCs, and it is the only guard against data made on purpose.
 
 ## Recovery
 
@@ -487,7 +553,8 @@ A receiver expects one number next on a link: the one after the last packet it t
 
 1. finishes the packet it is sending;
 2. sends 1,024 bytes of zeros;
-3. sends a packet with **lost** set, its acknowledge field holding the last packet number it received correctly;
+3. sends a packet with **lost** set, its acknowledge field holding the last packet number it received correctly.
+   It is a packet of length 0, with the sender's next number in its number field and resend not set;
 4. **repeats 2 and 3, over and over, until a good recovery packet arrives** (owner).
 
 **The other side** (owner):
@@ -529,6 +596,11 @@ could: the link stopped for ever.
 |---|---|
 | restart with lost | "I have started again" |
 | restart with recovery | "so have I" |
+| restart with lost and recovery | both ends starting at once: "I have started again, and so have you" |
+
+- **The handshake ends** at a restart packet without lost, or at any ordinary packet.
+- **An end that is starting again takes nothing from ordinary packets** until it has its answer.
+- **It is sent in rounds after 1,024 zeros,** as "lost" is.
 
 - **The restart packet is a full packet with a fixed pattern as its data** (owner, 2026-11-17: "a magic 512 byte
   packet"): length 32, the data being **the first 32 primes as bytes, 2 to 131, repeated 16 times.** That is two
@@ -546,8 +618,11 @@ could: the link stopped for ever.
     and a badly damaged header could be read as "I have started again". Noise cannot make this.
   - **"Lost" and its answer stay 16 bytes:** they must get through a noisy line, where a short packet is the one
     that arrives, and a false one only sends the sender back a few packets.
-  - † Its data goes to no queue and it takes no packet number; its number field is 1, the number its sender's
-    first packet will carry.
+  - Its data goes to no queue and it takes no packet number. Its stream field is 1, its number field 1 (the
+    number its sender's first packet will carry) and hops 0. Its acknowledge field and stop bits are written as
+    in any header and not used by the receiver.
+  - Its data is masked on the wire like any other.
+  - A restart packet whose pattern or checksum is wrong is a damaged packet like any other.
 - **An end that hears "I have started again"** drops the packets it was keeping, starts its numbers again from 1,
   answers, and **raises an error:** what was on its way is gone, and the frames above the link cannot be trusted.
 - **A link carries nothing until both ends are up.** Two ends that power on together bring the link up with no
@@ -578,15 +653,13 @@ could: the link stopped for ever.
 - **Each of these ends as an error the core sees,** never as a link that hangs. On the master tile a peripheral's
   error is the tile's, which stops everything (owner): the host resets the chip and the proof starts over.
 
-**A known limit, accepted (owner asked; the design session's recommendation):** a damaged header that passes its
-CRC with a **false packet number.** One less than the true number, after a loss, has a packet taken twice and the
-next lost, silently. Nothing in the header can tell.
+- **"Asks for a packet no longer kept"** is a resend, or a "lost", whose acknowledge field is behind the last
+  packet the sender let go.
+- **What these cost** (WORKER8): both ends from power-on, 4,657 cycles to a link in step. One end powering on
+  under a running link: the other raises its error 1,554 cycles later, and the link is up again after 3,648.
 
-- The header's CRC catches every pattern of up to 7 flipped bits (WORKER8).
-- **Damaged data that passes its 32-bit checksum is at least 600 times as likely,** and about 10¹¹ times at a bit
-  error rate of 10⁻³ (WORKER8). That was accepted when the data checksum was made 32 bits, so a second check on
-  the header would harden the rarer fault.
-- A wider data check is the lever if a stronger link is wanted. A wrong trace fails the proof's verification.
+**The false packet number, which was a known limit, is closed by the mask** for any packet with data ("The data
+is masked on the wire"). The owner had accepted it ("we can live with that") before the mask was thought of.
 
 ## Holding the host back: stop sending and resume sending
 
@@ -611,19 +684,23 @@ next lost, silently. Nothing in the header can tell.
   - There are no zeros in the rule: an idle line is zeros anyway.
   - A status packet that is damaged is a damaged packet like any other (owner): the receiver loses its place,
     says "lost", the link repairs, and the status goes out again.
-  - **512 is kept** (WORKER8's figures, 100 random runs each): the data rate does not depend on the timer, since
-    the status only goes when the line is idle; the longest a sender waited for an acknowledgement does.
+  - **512 is kept** (WORKER8's figures, 60 random runs each): the data rate does not depend on the timer, since
+    the status only goes when the line is idle.
 
-    | the timer | the longest wait |
-    |---|---|
-    | 512 | 2,422 cycles |
-    | 2,048 | 5,240 |
-    | 8,192 | 8,958 |
+    | the timer | bytes of data a cycle | packets of length 0, of the data's bytes | the longest wait for an acknowledgement |
+    |---|---|---|---|
+    | 512 | 0.4904 | 8.79% | 2,548 cycles |
+    | 2,048 | 0.4908 | 6.42% | 2,128 |
+    | 8,192 | 0.4937 | 6.20% | 1,822 |
+
+    The wait no longer grows with the timer: the acknowledgement as soon as the line is free, and the asking
+    again, set it now.
 
 - **An acknowledgement goes out as soon as the line is free** (owner's ruling on WORKER8's question), as a packet
   of length 0, not at the next status. It is what short foreground messages need: 400 one-word packets took
-  29,703 cycles without it and 17,553 with. The data rate does not change, since these packets go only when
-  nothing else is going; they are 16 bytes for a packet taken.
+  31,023 cycles without it and 17,489 with, from power-on. The data rate does not change, since these packets go
+  only when nothing else is going: they were 8.79% of the data's bytes with it and 4.64% without, on lines that
+  were idle.
 - **They are for each link** (owner, 2026-11-17): "stop" goes to the neighbour, not to the host ("The chain").
 - **Ingress's queues are 16 KB on each stream** (owner, 2026-11-17), 32 full packets, behind a buffer that holds
   the one packet being checked.
@@ -634,9 +711,9 @@ next lost, silently. Nothing in the header can tell.
   - **The chip's window is 8 packets, 4 KB:** a quarter of a queue. A window of 8 against a queue of 8 KB sat
     exactly at the limit; the owner: "if we're right on the edge of some bad condition, let's go to 16 KB queues."
   - **The host must keep to it too,** though it has the memory for more: no more than 16 packets outstanding,
-    † 8 as the chip has. WORKER8 measured no loss of data rate at 8, and with 64 the queue filled and a packet
-    was refused. With an acknowledgement for every packet the host seldom has more than two or three outstanding.
-  - The fullest a queue of 1,024 words got in the random runs was 626; no packet was ever refused.
+    8 as the chip has. WORKER8 measured the same data rate at 8, 16 and 64 (0.5342, 0.5343, 0.5343 bytes a
+    cycle), and with 64 the queue filled and a packet was refused. With an acknowledgement for every packet the host seldom has more than two or three outstanding.
+  - The fullest a queue of 1,024 words got in the 240 random runs was 630; no packet was ever refused.
 - The sizes before: 16 KB on 2026-11-16, "to make sure we can stop the remote side", which v1.37 had as first
   merged; then 4 KB with the forward count; then 8 KB as a placeholder, which WORKER7 built.
 - This replaces the per-stream window first proposed here, which did the same job with more machinery.
@@ -652,7 +729,7 @@ next lost, silently. Nothing in the header can tell.
 - **Sending again is go-back-N** (the owner's rule: "send again from the number after my acknowledge field"): the
   sender starts again from the oldest packet not acknowledged.
 - **No timer sends a packet again unasked** (WORKER8): the receiver always learns what it missed, from a number
-  ahead of the one it expects, and asks. The searches hold with a timer, without one, or with only one.
+  ahead of the one it expects, and asks. There is no such timer in the code that passes.
 - **What is kept is the data;** the header and both checks are made anew each time a packet is sent (owner).
 - **An ASIC sends on two links:** towards the host, its own packets and the ones it forwards; away from the host,
   the host's packets it passes down the chain. It keeps a window for each (owner, 2026-11-17).
@@ -687,7 +764,9 @@ The owner's remark: there must be a mountain of literature on building these. Th
 - **The background behind the foreground** (WORKER8). A background packet waits while any foreground packet is
   ready, so a foreground that never pauses holds the background for as long. That is the order as decided, and
   not a flaw of the protocol; it is a thing to know.
-- **The numbers marked †:** 2,048 cycles before asking again; the second wrong packet running before the error;
-  528 zeros before hunting for a header; the host's window of 8; the forwarding buffers' 16 KB.
+- **The long search** that has not finished (two foreground and four background packets, a reply, one damaged):
+  71 million states with no failure when it was cut by time. Running again on the runner.
+- **The sizes of the forwarding buffers,** 16 KB as written: the rule asks for 8 KB, and the random runs do not
+  press even that.
 - **What the error is called and where it is seen:** a link that started again raises an error to the core. Its
   bit in Ingress/Egress's `ERRORS` is not yet named (`INGRESS-INTERFACE.md`).

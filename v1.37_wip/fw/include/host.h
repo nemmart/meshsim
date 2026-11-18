@@ -8,6 +8,8 @@
 #define HOST_H
 
 #include "mesh.h"
+/* mcycle's high half (6.3; mesh.h has the low): the reply carries the 64-bit count (29.14) */
+static inline uint32_t mcycleh(void) { uint32_t c; __asm__ volatile ("csrr %0, mcycleh" : "=r"(c)); return c; }
 
 /* ---- Ingress/Egress (17.6): mesh.h's IngressEgressRegs, generated from the register table since v1.37's stage 3 (its
  * two queues' lengths at words 64 and 65, DMA_FORWARD_COUNT at 66, EGRESS_COUNT at 67, the UART in block 1 and at 42).
@@ -85,6 +87,7 @@ _Static_assert(sizeof(UpdaterRegs) == 0x200 && __builtin_offsetof(UpdaterRegs, R
 #define FRAME_REGISTERS             7
 #define FRAME_ADVICE                8
 #define FRAME_SEGMENTS              9
+#define FRAME_REPLY                 16   /* the master tile's reply to the host (29.14), on the foreground */
 
 /* ---- LPDDR as the master tile sees it in v1.37: pages of 4 KB, a page's address in 128-byte units ---- */
 #define LPDDR_PAGES                 (1u << 20)   /* 4 GB: the page map's reach, one bit a page, 128 KB */

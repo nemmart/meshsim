@@ -24,7 +24,7 @@ public final class PacketReader {
     String out = null, compare = null;
     for (int i = 1; i < args.length; i++) {
       if (args[i].startsWith("--compare=")) compare = args[i].substring(10);
-      else if (args[i].startsWith("--first=")) o.first = Integer.decode(args[i].substring(8));
+      else if (args[i].startsWith("--first=")) o.first = Integer.decode(args[i].substring(8));   // the link's one run (28.4)
       else if (args[i].equals("--no-idle")) o.noIdle = true;
       else if (args[i].equals("--packets-only")) o.frames = false;
       else if (args[i].equals("--list")) o.list = true;
@@ -94,8 +94,8 @@ public final class PacketReader {
     long k = 0;
     for (PacketFile.Packet q : p.list) {
       System.out.printf(Locale.ROOT, "packet %,d at byte %,d: stream %d, number %d, length %d, flags %d, acknowledge %d, hops %d, data"
-          + " checksum 0x%08x, header CRC 0x%08x%s%n", ++k, q.at, q.stream, q.number, q.length, q.flags, q.acknowledge, q.hops, q.dataChecksum,
-          q.headerCrc, q.frame == 0 ? "" : ", frame " + q.frame);
+          + " checksum 0x%08x, header CRC 0x%08x, stop bits %d%s%n", ++k, q.at, q.stream, q.number, q.length, q.flags, q.acknowledge, q.hops,
+          q.dataChecksum, q.headerCrc, q.stops, q.frame == 0 ? "" : ", frame " + q.frame);
     }
   }
 

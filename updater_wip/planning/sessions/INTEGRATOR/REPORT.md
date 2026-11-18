@@ -186,3 +186,279 @@ The incoming queues went from 512 words to 17.6.3's 1,024, so the link waits for
 waits for room fell from 10,677,833 cycles to 9,207,045, and the link's last byte, and with it the hand-over and the
 end, came earlier by about as much. The Updater's busy and waiting-on-data cycles fall with them; its waits on memory
 move by a few hundred either way. The figures are in `runner/250-proof-numbers.md` and `251-proof-numbers.md`.
+
+## Stage 4: the link and the chain (28)
+
+### What was built
+
+| | where |
+|---|---|
+| **the chip's link is WORKER8's link end as it stands** (`../updater_wip/link`, `hostlink::Node`): in Ingress/Egress, the pins `link_up` and `link_down` (a byte each way a link cycle, `link_rate` link cycles a chip cycle, 1, 2, 4 or 8, or one every `link_every`) and `chain_next`; the `Node` clocked in the unit's settle, made new at the reset (which starts the link again, "I have started again"); its words landing into 17.6.3's queues a word a cycle from the packet buffer, the room of the words landed and to land (28.13.6); Egress's link packets pushed into it when its room takes them; `link_error` and `format_error` from its two ends; the chip never calls `clear_error()` (28.13.2). The `Node` allocates: its calls are made with the allocation guard lifted (`LinkAllocs`) | `src/units/ingress_egress.h` (THE LINK, THE PINS); `Makefile`, `src/units/tracer.mk` (the link's objects) |
+| **the host's end** in the harnesses: WORKER8's `End` (`tests/host_end.h`, `Mach::attach_host`), fed the packet file's data link packets, the chip's replies taken out by hops; the line's noise and a hook on the End for the tests | `tests/host_end.h`, `tests/mach.*`, `tests/proof_bench.*`, `tests/ingress_bench.h` |
+| **a chain with no chips**: a host `End` and two or three Ingress/Egress units back to back, a harness on their registers | `tests/test_ingress_chain.cpp` |
+| **chapter 28 in the files** (MILESTONE step 2c): gold's packetizer, reader and vectors, its Python reader, and the tests' writer and reader (`tests/packet_writer.h`, `src/units/host_link.h`): one run of numbers for the link, `fg_stop` and `bg_stop` in byte 7 and reserved [63:58], the data masked (28.6), the restart link packet (28.9). The worked examples of 28.5 (four), 28.6 (three) and 28.9 (its data checksum) are copied into gold's `PacketsTest`, `check_vectors.py`, `test_ingress_link` and `test_packet_vectors`, and each matches byte for byte | `../updater_wip/pipeline/gold/src/gold/Packet*.java`, `test/packets/` (62 single link packets, 6 files, 41 damaged files); `tests/packet_writer.h`, `src/units/host_link.h` |
+| **the capture** (C5): the host `End`'s data link packets as first sent, read off the line; the proof bench fails unless they are the packet file's byte for byte. In the proof runs that is gold's file (`--packets`); in `test_master` the tests' writer's | `tests/host_end.h` (THE CAPTURE), `tests/proof_bench.cpp` |
+| **`proof_run --fast-link` went** (C6): it was the fastest link under another name; `--link-rate 8` is the same timing. `proof::Case::cycles_per_byte` became `link_every` | `tests/proof_run_main.cpp`, `tests/test_master.cpp`, `../updater_wip/tasks/v137-check/body.sh` |
+| the planted bugs | `tests/chain_teeth.sh` |
+
+### Decisions
+
+- **"Agree byte for byte"** (C5) is the strict reading: the `End`'s data link packets as first sent, exactly as on the
+  line, against the file's. I first allowed a header carrying what came back (an `ack`, a stop bit) to be sealed
+  again without it; in every proof none needed it (the chip's replies come after the last data link packet), so the
+  allowance went: a check with an allowance is not the check.
+- **A restart link packet in a file** (gold's and every reader's `restart` check): one with `restart` set that is not
+  28.9's restart link packet is refused, as 28.9's "damaged"; the restart link packet takes no number, its data goes
+  to no queue, and the numbers start again from 1 after it; one inside a frame is refused. For the readers of files
+  only: the chip's are the `Node`'s rules.
+- **`restart` is no longer one of the flags that are never checked:** gold's "every flag" vector and the tests' header
+  tests set the other three.
+- **The tests' files of two streams number both as one run** (28.4), as the reader now requires.
+
+### Disagreements
+
+None with the specification. **One addition to the link end** (a finding, not a change to its state machines):
+`Node::peek(Stream, Word&)`, a look at the oldest word of a queue without taking it, for the DMA's and the forward
+count's view of the landed words (the black box had it). It reads `InQueue`'s front and changes nothing; WORKER8's
+`make check` passes with it.
+
+### The checks
+
+| check | result |
+|---|---|
+| `test_ingress_link` (25), `test_ingress_chain` (5), `test_packet_vectors` (6), `test_ingress_egress` | pass |
+| `test_master` (34): every proof through the link and the host's `End`, the capture byte for byte (174, 160 or 213 data link packets a fixture, none sent again), the noise on the line recovered with no error bit, the host's link started again | pass |
+| **the capture has teeth:** the `End` fed one byte changed in its fifth link packet | caught: "the first difference at byte 1672" |
+| gold's `build.sh`: packets (262,593 checks), the guests' frames 80 of 80 wrapped and read back, the segments byte-identical to v1.36 gold's on 168 runs | all ok |
+| the link's own `make check` (`updater_wip/link`) | ok |
+| `./run_tests.sh quick --check` | **all passed**; no log differs |
+| **the planted bugs** (`chain_teeth.sh`): hops not counted; a header not sealed again; an own link packet before a forwarded one; a stop bit ignored; a reply's link packets out of order; `chain_next` ignored; `clear_error()` called by the chip | **7 of 7 caught** |
+| the 37 proof runs, the capture against gold's files; with LPDDR jittered; `make check` | the runner (below) |
+
+### The reference cycles
+
+**They move once, on purpose: the link's start, its status link packets and its acknowledgements.** `test_master`'s
+proofs against stage 3's, cycle for cycle (the end is polled every 512): at a byte a cycle, 7,168 to 8,704 more
+cycles; at 2, 4 and 8 bytes a cycle, 512 to 4,096 more; at 4 cycles a byte, 30,208 to 33,792 more. The `End` sends
+three restart link packets before its first data in every run. The simulation is slower: a median of 831,000 cycles a
+second at stage 3 and 511,000 at stage 4, the link's two ends clocked a byte at a time.
+
+### The runner
+
+Stages 4 and 5 together, at `d54c8601`:
+
+| Quest | item | result |
+|---|---|---|
+| 253 | `suites`: `./run_tests.sh all --check`, the 37 proof runs, each through the link, the capture against gold's packet file, the reply checked | **PASS**: every step; the 37 proof runs, every one's data link packets as first sent byte for byte gold's packet file (8,277 a run at 2²⁹, none sent again) and its reply right; no golden log differs |
+| 254 | `suites-varied`: the same with LPDDR jittered | **PASS**: the same, no log differs |
+| 255 | `check`: `make check` | **FAIL**, in its ThreadSanitizer build of the chip (`tsan-chip`): no rule for the link's objects in `build/<cc>-tsan/`. Stage 4 put WORKER8's link into every chip test's link line, and the TSan build's rule covers this folder's sources only. Fixed (`src/threads.mk`: rules for the link's and the wire's sources; gcc's `tsan-chip-one` passes here); the check again: Quest 257 |
+| 256, 257 | `suites` and `check` at `c3ad3ad1` | **FAIL**, both at the build: the task's kit lacked `updater_wip/wire` (`wire.h` not found). The kit fixed (`make_task.sh`); again as 260 and 261 at `d974f3a3` |
+| (kits) | before 260 to 263 run: each task's own kit, unpacked alone, carries `updater_wip/wire/` (26 files); from 260's kit, the suite build of `proof_run`, `driver`, `standin_asic`, `wire_launch` and `test_master`, and `chain_run.sh` on it; from 261's, gcc's TSan `test_sort`, built and run | all built; `chain_run`: all ok; TSan: pass |
+| 260 | `suites` at `d974f3a3` (stages 4 to 7's first checks): as 253, with the chain's step | **PASS**: every step, `chain` among them (all ok); the 37 proof runs; no golden log differs |
+| 261 | `check` at `d974f3a3` | **PASS**: gcc and clang, debug and release, both TSan groups (the chip's included), 2,115 s |
+
+**The proof runs' cycles, stages 4 and 5 against stage 3 (Quest 250):** every run 14,336 to 71,168 cycles longer,
+0.06% to 0.26%. The link's last byte comes 13,815 to 95,951 cycles later: its own link packets (the start, the status
+link packets, the acknowledgements) share the line, and its waits for room grew (the stop bit is now the `Node`'s, at
+half a queue: `evm-zone-23` *s* 0's 134,326 cycles to 178,871). The reply adds a few hundred cycles at the end. The
+figures are in `runner/253-proof-numbers.md`.
+
+## Stage 5: chapter 30
+
+### What was built
+
+| | where |
+|---|---|
+| **the tracer tile's result carries its last record** (30.6): when its load names a place in the master tile (its header words 21–23, which the master's load writes; v1.36's harnesses leave them 0 and nothing changes for them), its end streams the record's 68 words from where the last window's output queue 0 landed them into the master's scratchpad, and writes a word of figures, {rows traced, the Tracer's `ERRORS`, its status}, into the master's data memory, both counted on the master's counter 4, before main returns and crt0 sends the result | `fw/tracer/tracer_ctl.c` (step 6), `tracer_layout.h` |
+| **the reply** (30.7, 29.14): built in the master's scratchpad at `ML_REPLY`, the header word (type 16, length 71), *s*, *N*, the rows traced, `PAGE_COUNT`; the 64-bit `mcycle`, the last run's `STAT_CYCLES` and `STAT_STALL_DATA`; the four `ERRORS`; then rows 4–71, the tracer tile's record, which its result put there. 72 to `EGRESS_COUNT`, the 72 rows into Egress's part 1 by one stream of the DMA unit, and `EGRESS_COUNT` awaited at 0; then the exit. Its figures in `master_results` (`MR_REPLY_MCYCLE`, `MR_TRACER_*`, `MR_REPLIED`) | `fw/cc/master.c` (`reply`, `hand_over`), `master_layout.h`, `include/host.h` (`FRAME_REPLY`, `mcycleh`) |
+| **a header frame one row longer than its fields** now stops the master (30.8): `parse_end` also refuses a whole row copied and left unread | `fw/cc/master.c` (`parse_end`) |
+| the images, rebuilt with the pinned xPack 15.2.0-1: `master.elf` `d1bb737f…`, then with `parse_end` (the MANIFEST's), `tracer_ctl.elf` `4009da91…`; every other image byte for byte as before | `fw/images/` |
+| **the bench**: the run goes on past the master's exit until the host's `End` has the reply (`Proof::settled`; the run's cycles stay the exit's); the reply checked word by word | `tests/segment_bench.*`, `tests/proof_bench.*` |
+| the tests | `test_master`: the reply in every proof; `master_stops_on_what_a_frame_says` (30.8's checks, seven frames changed); `test_sort`: the dump's characters leave on the UART line |
+| the planted bugs | `tests/fw_teeth.sh`, ten more |
+
+### Chapter 30, rule by rule
+
+| rule | kept by (`fw/cc/master.c` unless named) | shown by |
+|---|---|---|
+| 30.1: *N* and *s*, the images, the tables, placed before the reset ends | `main` 619: `system_config`, `boot_desc`, checked (`MR_CONFIG`) | every proof of `test_master` |
+| 30.2.1: the UART turned on by one store, if the image prints | `master.c` does not print; `cc1.c` 230 at its dump (and its `CC_UART` command) | `test_sort`: the dump's characters on the line (planted: no store, caught) |
+| 30.2.2: its masks, its tile's and Ingress/Egress's | `main` 619–623 | every proof |
+| 30.2.3: the loads as v1.36's; the tracer tile's held back | `boot` 314 | every proof (130 `LOAD`s, the tracer tile's after the hand-over) |
+| 30.2.4: the segment's first barrier | `boot`, `barrier` 287 | every proof |
+| 30.2.5: the page map, page 0 never handed out | `map_format` 237, `map_take` 247 | the image checks; planted: page 0 not marked, caught |
+| 30.2, the watchdog the firmware's to set | none is set | |
+| 30.3, a wake: the count and `BACKGROUND_WORDS` loaded, acted on only with the count 0 and words waiting | `words_ready` 336 | `master_orders_with_the_timing_varied`; planted: a copy without the count's 0, caught |
+| 30.3, a frame's start: the header word by the DMA, its landing awaited | `frame`, `copy` 347 | every proof; planted: a copy's landing not waited for, caught |
+| 30.3: frames 1, 3, 4 copied in pieces no longer than the frame's words to come | `next32`, `copy` | `master_tail_frames`, `master_frames_across_packets` |
+| 30.3: frames 2, 5, 6, the run started, then the count once | `update_frame` 406 | every proof; planted: a count one long, dropped, caught |
+| 30.3: frame 7: records before *s* dropped, *s* copied, *s* + 1 only when *s* < *N* − 1 | 560–569 | `master_kin_lru_last` (*s* 63); planted: record *s* + 1 kept for *s*, caught |
+| 30.3: frame 8: the *N* counts, log *s* | 572 | every proof; planted: log *s* − 1, caught |
+| 30.3: frame 9, three runs, one count | 587 | every proof; planted: the count one short, caught |
+| 30.3: a type not 1 to 9 a stop, the reply's 16 among them | `default` 610 | `master_stops_on_what_a_frame_says` |
+| 30.3: drops in a row one count | `skip`, `drop_now` 328 | planted: two counts, caught |
+| 30.4: each run set up while idle, a frame for the Updater waiting for the last `done` | `run_start` 386, `run_wait` 397 | planted: a run started without the last `done`, caught |
+| 30.4: the table of runs (roots, `continue`, `tracer_copy`, the counts) | `frame`'s cases | gold's images in every proof; planted: three of the rows wrong, caught |
+| 30.4: every root a new page; the free page queue exactly `PAGE_COUNT` pages under its credit; `PAGE_COUNT` 0 at every `done` | `new_root` 269, `feed_pages` 271 | every proof (`PAGE_COUNT` at every `done`); `master_out_of_pages` |
+| 30.5: word 66, the load of one kind from one unit, in order, *s* + 1 only when there is one | `hand_over` 413 | every proof's hand-over checks; planted: word 66 without the table's root, the advice count one short, caught |
+| 30.6: the segment as v1.36's; **the tracer tile's result carries its last record** | the barriers, the results; `tracer_ctl.c` step 6 | every proof: the reply's record against the tracer tile's; planted: the result without the record, the rows a window short, caught |
+| 30.7.1: the frame built in its own memory, 72 rows, `length` 71 | `reply` 452 | every proof: the reply's header word |
+| 30.7.2: 72 stored in `EGRESS_COUNT`, which is 0 | 466 | planted: `EGRESS_COUNT` 71, caught (`egress_error`, the trap) |
+| 30.7.3: the rows into part 1 of region 0x04, from one sending unit, in order | one stream | planted: the record before the header, caught |
+| 30.7.4: three link packets on the foreground | Egress | every proof: the reply's link packets end after 32, 64 and 72 words, hops 0 |
+| 29.14's words: *s*, *N*, rows, `PAGE_COUNT`; `mcycle`, the statistics; the errors 0; the record | `reply` | every proof: *s* and *N*, the rows against the replayers' rows, `PAGE_COUNT` and the statistics against the Updater's own, `mcycle` against the master's results, the error words 0, the record against the tracer tile's own and, but for the last segment, words 0 and 2–65 against record *s* + 1; planted: *s* and *N* swapped, `STAT_CYCLES` wrong, record *s* + 1 sent in place of the tracer tile's, caught |
+| 30.8: every error stops the chip; the handler reports and parks | `master_trap` 156, `finish` 141 | `master_out_of_pages`, `master_noise_…`, the trap cases |
+| 30.8's table: an unknown type, `compression` above 1, a header frame short or long, frame 3's version, the counts, the order, the lengths, the room | 484, `parse_end` 375, 507, 524, the `MR_D_ORDER` and `MR_D_LENGTH` checks, `finish(MR_ROOM)` | `master_stops_on_what_a_frame_says` (seven of them; the counts' check and the room are `MR_D_COUNTS` and `master_out_of_pages`) |
+| 30.9: what it costs | | the runner's figures (stage 4's and 5's tables) |
+
+### Decisions
+
+- **How the result carries the record** (FOR-THE-SPEC 5): a result is a four-word request, so the record goes first,
+  by the tracer tile's DMA into the master's memory where its load said, and the figures by its core, both counted.
+  The master builds the reply around it, so the record is never copied twice. The rows traced are the windows run
+  times `RUN_CONFIG.rows`, computed at the end, so that v1.36's segment runs execute nothing new in their windows.
+- **The master waits for `EGRESS_COUNT` 0 and parks** (FOR-THE-SPEC 6); the harness runs on until the host's end has
+  the reply, at most 2²⁰ cycles, and the run's cycles stay the exit's.
+- **The reply is checked against the simulator's own values** where gold has none (the rows, `PAGE_COUNT`, `mcycle`,
+  the statistics) and against record *s* + 1 for the state, as 29.14 says the host would.
+
+### Disagreements
+
+**One bug of the firmware's own, against 30.8:** a header frame one row longer than its fields was not a stop.
+`parse_end` refused only rows not yet copied, and a whole row already in the parser's buffer went unseen, so the
+next frame was read from the wrong place (it stopped later on a type of 0x17). Found by the new test; fixed.
+
+### The checks
+
+| check | result |
+|---|---|
+| `test_master` (35): the reply at the host's end in every proof; the seven frame checks | pass |
+| `test_sort` (6), with the dump's characters on the UART line | pass |
+| `./run_tests.sh quick --check` | **all passed**; no log differs (the tracer program's new step runs only when its header asks) |
+| the images: every one but `master.elf` and `tracer_ctl.elf` byte for byte as before | as built |
+| **the planted bugs** (`fw_teeth.sh`): the reply's *s* and *N* swapped; `EGRESS_COUNT` 71; record *s* + 1 for the tracer tile's; the record before the header; `STAT_CYCLES` wrong; the result without the record; the rows a window short; no store to `UART_CONTROL` in an image that prints; a whole unread row not seen; frame 3's version not checked; and WORKER7's and the earlier ones | **the master's, the reply's, `host.h`'s and the tracer program's: 33 of 33 caught** (one plant, `host.h`'s `background_service`, rewritten for stage 3's names first). The UART's: caught by `test_sort`. **The programs stage 5 did not change** (`cc1.c`, the replay controller, crt0, the port layer, the sort, the memory tile's two): **27 of 27 caught** (in three runs, the first two stopped part-way on this machine's two cores, where a bug takes up to 15 minutes; `port`'s `RELEASE` one word low caught by the build). With the UART's, every bug of `fw_teeth.sh` caught |
+| the 37 proof runs, the reply checked; `make check` | the runner (below) |
+
+**Not planted:** the reply sent without waiting for the tracer tile's record, a race these timings never provoke (the
+record lands long before the master has every result), as the handshakes' are.
+
+### The reference cycles
+
+The exit moves by the reply, a few hundred cycles: `test_master`'s proofs end 0 or 512 cycles (one poll) later than at
+stage 4. v1.36's runs do not move.
+
+### The runner
+
+With stage 4's: Quests 253 to 255 (above).
+
+## Stage 6: the driver and the three processes
+
+### What was built
+
+| | where |
+|---|---|
+| **the chip on the wire**: its two link ports on WORKER10's wire (`../updater_wip/wire`, used as it is, built in place with the simulator's flags), `exchange` on the end towards the driver and, with an ASIC below, the one away from it, every chip cycle from cycle 0; `chain_next` 1 when there is one below. `proof_run --clients N --client k` (the launcher's arguments, `wire_args.h`), *s* defaulting to *k* | `tests/wire_ends.h`, `Mach::attach_wire`; `tests/proof_run_main.cpp` |
+| **a chip's end**: its run goes on past the master's exit until its link end has first sent towards the driver its own reply's link packets and those of every ASIC below it, three each, and 4,096 cycles more; then `finish()`. A chip whose proof failed finishes at once | `tests/proof_bench.cpp` (`settled`) |
+| **the driver**: gold's frame file through WORKER8's `End`, each frame a new link packet of at most 32 words, the stop bits the `End`'s; the replies taken by hops (`take_from`); each checked against gold's files in the words they give (`chain_reply.h`: the header word, *s* and *N*, the rows traced, `PAGE_COUNT` 0, the error words 0, the record's state against record *s* + 1); a reply that has not come by `--limit` cycles a failure | `tests/driver_main.cpp`, `tests/chain_reply.h` |
+| **a stand-in ASIC**: the link's `Node` alone, its frames checked byte for byte, its reply made from gold's files (`--silent K`: one that never replies) | `tests/standin_asic_main.cpp` |
+| **the wire loses nothing**: a damaged link packet, or one ahead of its number, at any link end fails the chip or the driver | `tests/proof_bench.cpp`, `tests/driver_main.cpp` |
+| `wire_launch`, `driver`, `standin_asic` in the build; gold's references for segment 1 of the five fixtures | `tests/updater.mk`; `tests/updater/*-s1.images.txt`, `make_fixtures.sh` |
+| the checks | `tests/chain_run.sh` (`run_tests.sh`'s step `chain`); the runner's items `chain-evm-zone`, `chain-cyclone` (2²⁹) |
+| the planted bugs | `tests/chain_proc_teeth.sh` |
+
+### Decisions
+
+- **When a chip finishes** (the plan's open point, settled without changing the wire): the wire does not tell a
+  process that a neighbour has finished, so a chip decides from its own link end. A chip above another must clock
+  its link until the replies from below have passed through it: it counts the link packets with data it has first
+  sent up, which on a wire that loses nothing is all that is needed, and adds a margin.
+- **The driver's output byte is a flip-flop:** the `End`'s byte of a cycle is what it made in the last, as a chip's
+  ports are, so that a cycle's output is final before its input is taken, as the wire requires.
+- **What the driver checks of a reply** is what gold's files give; the chip's own words (`mcycle`, the statistics,
+  the record's words 1, 66 and 67) are the chip's harness's to check, as stage 5 does on a single chip.
+
+### The checks
+
+| check | result |
+|---|---|
+| `chain_run.sh` on the five fixtures (kin-raw, kin-lru, jumps-base, divs, kin-big): the stand-ins | both replies right, in each |
+| a chain of two chips: each chip every check of a proof run (gold's images, its last record against record *s* + 1, the master's results, no damaged link packet), the driver both replies right, sorted by hops | pass, all five |
+| the same run twice | every line of every process the same, the wire's waits and the wall time apart |
+| a chain of one | the chip passes, its reply right |
+| a reply that never comes (stand-in ASIC 1 silent) | the driver fails at its limit, 400,000 cycles, and names ASIC 1 |
+| **the planted bugs across processes** (`chain_proc_teeth.sh`): hops not counted; a forwarded header not sealed again; a stop bit ignored; forwarded link packets out of order; `chain_next` ignored; the replies sorted by hops the wrong way round; a reply that never comes not counted in cycles; a chip cycle without its exchange | **8 of 8 caught**. Stage 4's other two (an own link packet before a forwarded one; `clear_error()` called by the chip) do not show across processes (each reply comes whole and is sorted by hops; nothing is reset mid-run) and stay caught by `test_ingress_chain` |
+| 2²⁹, both workloads, segments 0 and 1, twice | the runner (below) |
+
+The small inputs here are the fixtures (guests); the real workloads are the runner's. A chain of two on a fixture is
+about 240,000 cycles in 1.2 s on this machine's two cores.
+
+### The runner
+
+| Quest | item | result |
+|---|---|---|
+| 258, 259 | `chain-evm-zone`, `chain-cyclone` at `c3ad3ad1` | **FAIL**: the same missing wire; nothing ran |
+| 262 | `chain-evm-zone` at `d974f3a3`: the driver and two chips at 2²⁹ on EVM Zone, segments 0 and 1, N 128; twice | **PASS**, and the second run the same: both chips every check of a proof run against gold's references (*s* 0 in 26,683,904 cycles, *s* 1 in 28,404,224), both replies right (cycles 26,684,767 and 28,405,723 at the driver). ASIC0 ran 1,725,952 cycles past its exit, passing ASIC1's reply up |
+| 263 | `chain-cyclone`: the same on Cyclone | **PASS**, the same twice: *s* 0 in 32,695,808 cycles, *s* 1 in 31,177,728; both replies right |
+| 260 | `suites`: `run_tests.sh`'s step `chain` among the rest | **PASS** (above) |
+
+**Every row of MILESTONE-v1.37.md's "How the milestone is checked" is met:** each ASIC's images equal to gold's
+and its last record to record *s* + 1; the driver's replies, whole and in order, sorted by hops, equal to what gold's
+files give; the same run twice the same to the cycle in all three processes; a chain of one; both controllers in
+every run; the planted bugs in the chain caught; and with the chain apart, `run_tests.sh all --check` and `make
+check` passing (260, 261). On the small inputs here (the fixtures) and at 2²⁹ on the runner, both workloads.
+
+**Stages 4 to 6 merge as one** (into `main`, at the branch's head after `d974f3a3`, the later commits being the
+report, the READMEs and `proof_run`'s usage text): stage 4 broke `make check`'s TSan build of the chip (Quest 255),
+mended only at `c3ad3ad1`, after stage 6 was built, so no earlier point of the branch has a passing `make check`.
+
+## Stage 7: closing (in progress)
+
+### Chapter 20: v1.37's invariants, each a check
+
+Invariants 1 to 33 are v1.36's, checked as v1.36's simulator checks them (with the exceptions chapter 20 and
+`OPEN-v1.36.md` name); 34 lost Ingress/Egress's rules to 35. v1.37's:
+
+| invariant | its check in the simulator | a test that fires it |
+|---|---|---|
+| 35: no DMA count beyond the queue's words | `ingress_egress.h` (`dma_start`): FATAL | `ingress_link_a_transfer_past_the_words_waiting_is_ub`, `…_with_no_word_is_ub` |
+| 35: no background transfer with the count running; no count stored during one | FATAL, both | `ingress_link_a_background_transfer_with_the_count_running_is_ub`, `ingress_link_a_count_stored_with_a_background_transfer_in_flight_is_ub` |
+| 35: no store to `EGRESS_COUNT` while not 0 | FATAL | `ie_egress_count_stored_while_not_0_is_ub` |
+| 35: `WRITE`s of 128 bits, to part 1 alone, from one source at a time | FATAL, each | `ie_egress_a_write_of_64_bits_is_ub`, `…_to_part_0_is_ub`, `…_to_part_2_is_ub`, `ie_egress_a_frames_words_from_two_sources_is_ub` |
+| 35: no non-zero `UART_CONTROL` with a divider of 0 | FATAL | `ie_uart_control_with_a_divider_of_0_is_ub` |
+| 35, hardware: `egress_error` | counted in `ERRORS` | `test_ingress_egress`'s Egress tests; `fw_teeth`'s `EGRESS_COUNT` 71 |
+| 36: words 32–37 and `START` only while idle | `updater_top.h`: FATAL | none fires it |
+| 36: `WRITE`s of 128 bits to part 2 alone | FATAL | `ctl_region_part_1_is_unmapped` (another size: none) |
+| 36: from one source at a time | `updater_top.h` (`accept`): FATAL, one source from a run's first push to its `done` (stage 7, the owner's word) | `ctl_free_pages_from_two_sources_is_ub`; `ctl_the_next_runs_free_pages_from_another_source_are_kept` |
+| 36: every root and free page a page's address in LPDDR | `updater_ctl.h`: FATAL | `ctl_root_off_a_page_is_ub`, `ctl_root_bit_31_is_ub` (a free page: none) |
+| 36: every free page new | `updater_top.h`: FATAL on a page pushed twice, or pushed after a run's `START` named it a root the run makes (in v1.37 nothing is freed); cleared at the reset (stage 7, the owner's word) | `ctl_a_free_page_pushed_twice_is_ub`, `ctl_a_free_page_that_is_a_runs_root_is_ub` |
+| 36: **`WORD_COUNT` the frame's count, so that no run ends inside a code** | **not checked as such** (a wrong count shows as `PAGE_COUNT` not 0 at `done`, or a wrong image) | `fw_teeth`'s counts one short or long |
+| 36: no run past word index 2³² − 1; no page at 2²³ or above | FATAL, both | `ctl_run_past_index_2_32_is_ub` (the page's cannot arise: FOR-THE-SPEC 1) |
+| 36, hardware: `queue_overrun`, `beyond`, `out_of_pages` | counted in `ERRORS` | `master_out_of_pages`; `test_updater_ctl` |
+| 37: the cache's clients' rules | the stale-line check (23.6.11), on in every run (`cache_system.h`); the joint's checks (FOR-THE-SPEC 2) | the joint's, `joined_teeth.sh`; **no test here fires the stale-line check itself** |
+| 38: no `START`, no `WRITE` to the memory tile's region 0x04 | `memory_system.h`: FATAL, both | `memsys_start_is_ub`, `memsys_write_is_ub` |
+| 39: a burst at a multiple of 16, not across 4 KiB, `wlast` on its last beat alone | `axi_arbiter.cpp`, `lpddr_model.cpp`: FATAL | `lpddr_stops_on_a_burst_across_4k`, `lpddr_stops_on_a_misplaced_wlast` (the arbiter's own: none) |
+| 39: W beats back to back | not checked, as chapter 20 says | — |
+| 40: the line paced | `router_overflow` counted where the queue is | `line_overflows_where_its_traffic_is_not_paced` |
+
+**Two of invariant 36's rules had no check** (one source at a time; a free page new): with the owner's word they are
+checks of the Updater's window (`updater_top.h`), beside its controller, which stays as built; every proof of
+`test_master` keeps them. The third, `WORD_COUNT` the frame's, is not checked as such: a wrong count shows as
+`PAGE_COUNT` not 0 at `done` or a wrong image. Five checks no test fires (36's idle rule and other sizes, a free page
+off LPDDR; 37's stale-line check; the arbiter's own burst checks).
+
+### Chapter 21: the timing rows v1.37 adds (21.5), each against the simulator
+
+| row | the specification's figure | measured or held by | result |
+|---|---|---|---|
+| a UART character | 10 × the divider | `ie_uart_tx_every_bit_lasts_the_divider` | as specified |
+| `UART_TX` → the line | the start bit from *t* + 3 into an empty FIFO | `ie_uart_tx_frames_on_the_line_bit_for_bit`; `test_rtl_stream` (the first start bit at 35, the RTL chip's 34 and one instruction more for the setting) | as specified |
+| `uart_rx` | the edge seen 2 cycles late; bit *k* at *k*·*D* + ⌊*D*/2⌋ | `test_ingress_egress`'s receiver tests (`ie_teeth.sh`'s sample point and synchroniser planted, caught) | as specified |
+| the forward count | a word a cycle, or a discard a cycle | `ingress_link_forward_count_*` | as specified |
+| a service flag | set at the end of the cycle "asks" rises, seen by the next cycle's loads | `ingress_link_service_flag_rule`, `…_background` | as specified |
+| Egress | a link packet once 32 words of a frame, or its last, are in | `ie_egress_count_falls_as_words_land_and_frames_end_at_link_packets`; every proof's reply in link packets of 32, 32 and 8 | as specified |
+| the host link | a byte a link cycle; a full link packet 528 bytes | `ingress_link_rates`: three full link packets taken 528 link cycles apart (5,220, 5,748, 6,276) | as specified. The pass over the data (32 cycles), the status at most 512 apart and a recovery's 669 on average are WORKER8's own figures (its `make check` holds its README's), not measured again here |
+| the Updater, the cache, the AXI arbiter | from their code (17.10.5, 23.6.5, 23.6.7, 23.11) | WORKER5's and WORKER6's tests (`test_cache`, `test_axi_arbiter`, `test_updater_ctl`); the joined proofs' figures (`runner/*-cache-figures.txt`) | not measured again here: the units are as built |
+| the line between the special tiles (16.1) | a link of three stages | `line_unicast_between_special_tiles_takes_the_line`: every pair of the 67 tiles, from local and each DMA, ejected 4 cycles a link after it was sent (the three stages and the router's), the master tile to the tracer tile two links | as specified |
+
+No figure of 21.5 is found wrong.
+

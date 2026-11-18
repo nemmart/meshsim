@@ -26,6 +26,7 @@
 #include <cstdio>
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "harness.h"
 #include "packet_writer.h"
@@ -125,11 +126,11 @@ TEST(master_lpddr_jitter_divs_middle) { CHECK_EQ(fixture("divs", 20, nullptr, 5)
 TEST(master_lpddr_jitter_kin_big) { CHECK_EQ(fixture("kin-big", 20, nullptr, 6).failures, 0); }
 // the link as fast as the master takes it: the frames back to back, the Updater and the pump never waiting on the link
 TEST(master_kin_lru_fast_link) {
-    CHECK_EQ(fixture("kin-lru", 60, [](proof::Case& c, segment::Segment&) { c.cycles_per_byte = 0; }).failures, 0);
+    CHECK_EQ(fixture("kin-lru", 60, [](proof::Case& c, segment::Segment&) { c.link_rate = 8; }).failures, 0);
 }
-// a fast link and a slow memory side: the Updater waits on its first page of each run while the frame arrives
+// a fast link (8 bytes a cycle) and a slow memory side: the Updater waits on its first page of each run while the frame arrives
 TEST(master_kin_raw_slow_memory) {
-    CHECK_EQ(fixture("kin-raw", 20, [](proof::Case& c, segment::Segment&) { c.cycles_per_byte = 0; c.updater_lookup = 3000; }).failures, 0);
+    CHECK_EQ(fixture("kin-raw", 20, [](proof::Case& c, segment::Segment&) { c.link_rate = 8; c.updater_lookup = 3000; }).failures, 0);
 }
 
 // ---- the forward count (INGRESS-INTERFACE.md, "The forward count"; WORKER7)
@@ -153,10 +154,10 @@ TEST(master_kin_big) {
     if (data_image != 99) CHECK(frame_wakes(r, data_image) <= 6);   // the flag, the header's landing, the last run's done, a credit
 }
 TEST(master_kin_big_last) { CHECK_EQ(fixture("kin-big", 63).failures, 0); }
-// a fast link and a slow memory side: only the port's flow control keeps the data image's 1,584 words from overrunning
+// a fast link (8 bytes a cycle) and a slow memory side: only the port's flow control keeps the data image's 1,584 words from overrunning
 // the Updater's 4; Ingress's queue fills and the link waits
 TEST(master_kin_big_slow_memory) {
-    CHECK_EQ(fixture("kin-big", 20, [](proof::Case& c, segment::Segment&) { c.cycles_per_byte = 0; c.updater_lookup = 3000; }).failures, 0);
+    CHECK_EQ(fixture("kin-big", 20, [](proof::Case& c, segment::Segment&) { c.link_rate = 8; c.updater_lookup = 3000; }).failures, 0);
 }
 // the tails: the fixtures hold frames of the header word alone, frames shorter than a packet, and frames whose length
 // is no multiple of 32, short and long; each fixture passes at every timing below
@@ -184,13 +185,13 @@ TEST(master_tail_frames) {
 // with a middling memory side; the link slow (4 cycles a byte: the master ahead of the link at every frame, waiting
 // with the count at 0 and the queue empty).
 TEST(master_orders_with_the_timing_varied) {
-    struct Timing { int cycles_per_byte, link_rate, lookup; const char* name; };
-    const Timing timings[] = {{0, 1, 3000, "fast link, slow memory"}, {0, 1, 0, "fast link"}, {1, 8, 300, "8 bytes a cycle, middling memory"},
+    struct Timing { int link_every, link_rate, lookup; const char* name; };
+    const Timing timings[] = {{1, 8, 3000, "8 bytes a cycle, slow memory"}, {1, 8, 0, "8 bytes a cycle"}, {1, 8, 300, "8 bytes a cycle, middling memory"},
                               {4, 1, 0, "4 cycles a byte"}, {4, 1, 3000, "4 cycles a byte, slow memory"}};
     for (size_t k = 0; k < sizeof kSegment / sizeof kSegment[0]; k++)
         for (const Timing& tm : timings) {
             const segment::Run r = fixture(kFixtures[k], kSegment[k], [tm](proof::Case& c, segment::Segment& seg) {
-                c.cycles_per_byte = tm.cycles_per_byte; c.link_rate = tm.link_rate; c.updater_lookup = tm.lookup; seg.name += std::string(", ") + tm.name;
+                c.link_every = tm.link_every; c.link_rate = tm.link_rate; c.updater_lookup = tm.lookup; seg.name += std::string(", ") + tm.name;
                 seg.cycle_limit = 20000000;
             });
             CHECK_EQ(r.failures, 0);
@@ -227,8 +228,8 @@ TEST(master_divs_empty_log) {
     for (int fast : {0, 1})
         CHECK_EQ(fixture("divs", 60, [fast](proof::Case& c, segment::Segment& seg) {
             logs_after(c, 61);
-            if (fast) c.cycles_per_byte = 0;
-            seg.name += fast ? ", logs after s, fast link" : ", logs after s";
+            if (fast) c.link_rate = 8;
+            seg.name += fast ? ", logs after s, 8 bytes a cycle" : ", logs after s";
         }).failures, 0);
 }
 // a frame that ends inside a packet (the frame-ends-at-a-packet check is dropped, II's dagger): the whole file cut into
@@ -256,22 +257,26 @@ TEST(master_faster_links) {
 }
 
 // ---- the error path: an error bit is the master's NMI; it writes what there is into its results and exits
-// a bit of a packet's data changed, in frame 2 (the program image going to the Updater): the black box's link
-// failing a check, ERRORS.link_error (17.6.1; until stage 4, ingress_egress.h, THE LINK)
-TEST(master_bad_packet_crc) {
+// v1.37 stage 4 (28.8, 28.14): noise on the line is no error. A byte the chip receives changed, now and then, in the
+// link's first 200,000 cycles (a bit of one byte in 5,000, so headers, data and the zeros between): the link ends
+// recover, every link packet is sent again until it is taken, and the proof is the same, with no error bit.
+TEST(master_noise_on_the_line_is_recovered) {
     CHECK_EQ(fixture("kin-raw", 20, [](proof::Case& c, segment::Segment& seg) {
-        c.packets[packet_starts(c.packets)[5] + 16 + 37] ^= 0x10;
-        c.expect.trap = true; c.expect.ingress_errors = units::IngressEgress::ERR_LINK;
-        seg.name += ", a data bit changed";
+        c.noise = [](int64_t t, unsigned, uint8_t b) {
+            const uint64_t h = uint64_t(t) * 0x9E3779B97F4A7C15ull;
+            return t < 200000 && (h >> 40) % 5000 == 0 ? uint8_t(b ^ (1u << (h >> 61))) : b;
+        };
+        seg.name += ", noise on the line";
     }).failures, 0);
 }
-// a packet of frame 7 left out: its number not the next, ERRORS.link_error as above
-TEST(master_bad_packet_sequence) {
+// v1.37 stage 4 (28.9, 17.6.12): the host's end starts its link again in the middle of the frames (its power_on, in
+// cycle 60,000): the chip's link end hears "I have started again", its link starts again with link packets it had taken
+// lost to nothing but the host's, and ERRORS.link_error is the master's NMI: the error path.
+TEST(master_host_link_started_again) {
     CHECK_EQ(fixture("kin-raw", 20, [](proof::Case& c, segment::Segment& seg) {
-        const std::vector<size_t> at = packet_starts(c.packets);
-        c.packets.erase(c.packets.begin() + long(at[60]), c.packets.begin() + long(at[61]));
+        c.host_hook = [](::hostlink::End& end, int64_t t) { if (t == 60000) end.power_on(); };
         c.expect.trap = true; c.expect.ingress_errors = units::IngressEgress::ERR_LINK;
-        seg.name += ", a packet left out";
+        seg.name += ", the host's link started again";
     }).failures, 0);
 }
 // frame 1 counts one page too few for the program image: the Updater's ERRORS.out_of_pages
@@ -291,6 +296,51 @@ TEST(master_link_cut) {
         seg.cycle_limit = 400000;
         seg.name += ", cut inside a packet";
     }).failures, 0);
+}
+
+// 30.8: the firmware's checks of what the frames say, each a stop of the master's own program: MR_FRAME, its detail
+// the frame's type and the check (fw/cc/master_layout.h's MR_D_*), no ERRORS bit, no toast pin, no reply. Each run
+// sends a changed copy of kin-raw's frames, cut into link packets of 32 words whatever its frames say (a frame whose
+// length is changed is not whole frames any more), numbered as one run.
+std::vector<uint8_t> raw_packets(const std::vector<uint8_t>& bytes) {
+    std::vector<uint8_t> out;
+    uint32_t number = 1;
+    for (size_t w = 0, all = bytes.size() / 16; w < all; w += 32) {
+        packet_writer::Fields f;
+        f.length = unsigned(all - w < 32 ? all - w : 32);
+        f.number = number++;
+        packet_writer::packet(out, f, &bytes[16 * w]);
+    }
+    return out;
+}
+void put32(std::vector<uint8_t>& b, size_t at, uint32_t v) { for (unsigned k = 0; k < 4; k++) b[at + k] = uint8_t(v >> (8 * k)); }
+uint32_t get32(const std::vector<uint8_t>& b, size_t at) { uint32_t v = 0; for (unsigned k = 0; k < 4; k++) v |= uint32_t(b[at + k]) << (8 * k); return v; }
+const frames::Frame* frame_of(const frames::File& f, uint32_t type) { for (const frames::Frame& fr : f.frame) if (fr.type == type) return &fr; return nullptr; }
+TEST(master_stops_on_what_a_frame_says) {
+    enum { D_TYPE = 1, D_SHORT = 2, D_LONG = 3, D_VERSION = 4, D_LENGTH = 5, D_ORDER = 6 };
+    using Edit = std::function<void(const frames::File&, std::vector<uint8_t>&)>;
+    const struct { const char* what; uint32_t type, check; Edit edit; } cases[] = {
+        {"a type the firmware does not know: the reply's, 16", 16, D_TYPE, [](const frames::File& f, std::vector<uint8_t>& b) { put32(b, frame_of(f, 1)->at + 8, 16); }},
+        {"compression 2", 2, D_TYPE, [](const frames::File& f, std::vector<uint8_t>& b) { put32(b, frame_of(f, 2)->at, 2); }},
+        {"frame 1 ending before its fields", 1, D_SHORT, [](const frames::File& f, std::vector<uint8_t>& b) { put32(b, frame_of(f, 1)->at + 12, 1); }},
+        {"frame 1 longer than its fields", 1, D_LONG, [](const frames::File& f, std::vector<uint8_t>& b) { const size_t at = frame_of(f, 1)->at + 12; put32(b, at, get32(b, at) + 1); }},
+        {"frame 3's format version 2", 3, D_VERSION, [](const frames::File& f, std::vector<uint8_t>& b) { put32(b, frame_of(f, 3)->data(), 2); }},
+        {"frame 2 without frame 1", 2, D_ORDER, [](const frames::File& f, std::vector<uint8_t>& b) {
+             const frames::Frame& one = *frame_of(f, 1);
+             b.erase(b.begin() + long(one.at), b.begin() + long(one.data() + 16 * size_t(one.length)));
+         }},
+        {"frame 7's length not 68 N", 7, D_LENGTH, [](const frames::File& f, std::vector<uint8_t>& b) { const size_t at = frame_of(f, 7)->at + 12; put32(b, at, get32(b, at) - 68); }},
+    };
+    for (const auto& k : cases) {
+        CHECK_EQ(fixture("kin-raw", 20, [&k](proof::Case& c, segment::Segment& seg) {
+            std::vector<uint8_t> b = c.file.bytes;
+            k.edit(c.file, b);
+            c.packets = raw_packets(b);
+            c.expect.stop = true; c.expect.detail = k.type | k.check << 8;
+            seg.cycle_limit = 2000000;
+            seg.name += std::string(", ") + k.what;
+        }).failures, 0);
+    }
 }
 
 // ---- the checks' teeth: each of these runs must fail, and its lines say which checks caught it

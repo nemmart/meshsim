@@ -3,8 +3,9 @@
 > **v1.37 is v1.36 with the first end-to-end path** (`../updater_wip/`, WORKER3). The simulator is started with one
 > file, the packets that come over the link from the host, and with N and s; the master tile's firmware
 > (`fw/cc/master.c`) reads the frames out of Ingress and drives the Updater; the Updater builds the memory images;
-> the Tracer traces its segment on them, and the compute tiles replay it. Ingress's host side and the Updater are
-> software black boxes behind their real registers. **The forward count** (WORKER7, the owner's design; in place of
+> the Tracer traces its segment on them, and the compute tiles replay it. From the INTEGRATOR's stage 4 the link is
+> chapter 28's: the host's link end (WORKER8's `End`) sends the packet file's link packets on `link_up`, a byte each
+> way a link cycle, to the chip's own link end in Ingress/Egress, and a chain of ASICs is linked by `link_down`. **The forward count** (WORKER7, the owner's design; in place of
 > WORKER4's threshold): Ingress moves a frame's bulk data to the Updater itself, over a flow-controlled word port, or
 > drops it; the master writes the frame's length once and wakes a few times a frame, not for its words.
 >
@@ -17,7 +18,7 @@
 > **Everything else in this folder is v1.36's, copied unchanged (main, 67aaeb86), and reads as v1.36:** this page
 > below the line, `BUILDING.md` and `RUNNING.md` but for what they mark v1.37, `OPEN-v1.36.md`, `spec/`,
 > `tools/freeze/README.md`. v1.37's chip is v1.36's but for what `CHANGES-v1.37.md` lists (the
-> memory side, the line between the special tiles, Ingress/Egress at 17.6's registers), and every test, suite and
+> memory side, the line between the special tiles, Ingress/Egress at 17.6's registers, the link and the chain), and every test, suite and
 > figure of v1.36 below still holds here but for these: the RTL's stream run is gone with v1.36's LVDS stream, and the
 > UART run's figures are each one cycle later (its program turns the UART on, one instruction more). The specification is
 > not changed: what v1.37 adds is specified by the design documents of `../v1.4_wip/planning/`.

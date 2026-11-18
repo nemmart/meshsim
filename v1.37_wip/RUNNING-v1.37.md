@@ -9,9 +9,9 @@ Commands run from this folder.
 
 | | |
 |---|---|
-| the input | **a packet file:** gold's frame file (`HOST-FRAMES.md`) wrapped in the link's packets (`HOST-LINK.md`), read by Ingress at a byte a cycle (or 2, 4, 8: `--link-rate`) into a queue of 1,024 words a stream (16 KiB, 17.6.3; `INGRESS_QUEUE_WORDS`, the chip's setting `ingressQueueWords`), a link packet's words landing a word a cycle. **N and s:** how many ASICs the proof is cut for, and which segment this one runs. No frame carries them |
+| the input | **a packet file:** gold's frame file (`HOST-FRAMES.md`) wrapped in chapter 28's link packets (`spec/host-link.md`; gold's `packets`), which the host's link end (WORKER8's `End`, `tests/host_end.h`) sends on `link_up`, a byte each way a link cycle (1, 2, 4 or 8 a chip cycle: `--link-rate`), to the chip's Node in Ingress/Egress, which lands them into a queue of 1,024 words a stream (16 KiB, 17.6.3; `INGRESS_QUEUE_WORDS`, the chip's setting `ingressQueueWords`), a link packet's words landing a word a cycle. **N and s:** how many ASICs the proof is cut for, and which segment this one runs. No frame carries them |
 | the master tile | runs `fw/cc/master.c`: reads the frames out of Ingress, keeps the page map, drives the Updater through its runs, and hands the tracer tile segment s. **The forward count** (`INGRESS-INTERFACE.md`; WORKER7): it copies a frame's header word by Ingress's DMA, and for a frame of update words starts the Updater's run and writes the frame's length to `DMA_FORWARD_COUNT` once: Ingress sends the words to the Updater's word port itself. Frames 7 and 8 are dropped up to the ASIC's own record or log, which is copied, and the rest dropped |
-| Ingress's host side | Ingress/Egress at 17.6's registers; its link, until stage 4, a software black box reading the packet file (`src/units/ingress_egress.h`, THE LINK), and Egress's link packets going nowhere |
+| Ingress's host side | Ingress/Egress at 17.6's registers; its link, from stage 4, WORKER8's Node (`../updater_wip/link`; `src/units/ingress_egress.h`, THE LINK), the host's End at the other end of the line. The End's data link packets as first sent are checked against the packet file, byte for byte |
 | the Updater | its controller, the state machine (spec 17.10), on the memory system's client port 1 and look-up port 1 |
 | the memory tile | its peripheral 1 the memory system (the cache's controller, the AXI arbiter, the LPDDR model: spec 17.11, 23), peripheral 2 the RW engine on the arbiter's client 2; nothing runs on it in a proof |
 | the Updater | builds the memory images in LPDDR: the program image, the jump table, the cycle-0 image, the start image of segment s, the Tracer's copy, the final image |
@@ -22,7 +22,7 @@ Commands run from this folder.
 
 ```
 build/clang-suite/proof_run FRAMES --asics N --segment S [--windows W] [--rows R] [--gold IMAGES.txt]
-                            [--packets FILE] [--recorded RUN] [--fast-link] [--link-rate B]
+                            [--packets FILE] [--recorded RUN] [--link-rate B]
                             [--lpddr-seed S] [--limit CYCLES] [--quiet]
 ```
 
@@ -31,11 +31,10 @@ build/clang-suite/proof_run FRAMES --asics N --segment S [--windows W] [--rows R
 | `FRAMES` | gold's frame file. The expectations are read from it; the chip gets its packets |
 | `--asics N`, `--segment S` | the system's configuration: N is 64, 128 or 256 and must be what gold cut the proof for |
 | `--windows W`, `--rows R` | a segment as the tiles run it: W windows of R rows (default 64 and 65,536). Their product must be gold's `--segment-rows` |
-| `--packets FILE` | gold's packet file of the same frames (`gold packets`). Without it the tests' writer makes the packets: the same bytes |
+| `--packets FILE` | gold's packet file of the same frames (`gold packets`): the link packets the End sends, and what its first sendings must equal byte for byte. Without it the tests' writer makes the packets: the same bytes |
 | `--gold IMAGES.txt` | gold's reference for this s (`gold frames-images FRAMES S`). Without it the images are not checked, and the run fails for that |
 | `--recorded RUN` | `evm-zone-23` or `cyclone-22`: every row, record and stream of windows 64 S to 64 S + 63 against the recorded files of `MESHSIM_INPUTS`, as `segment-real` |
-| `--fast-link` | the link's bytes as fast as the master takes them, in place of a byte a cycle |
-| `--link-rate B` | the link at B bytes a cycle: 1 (the default, HL's 1 GB a second at 1 GHz), 2, 4, 8 |
+| `--link-rate B` | the link clocked B link cycles a chip cycle, a byte each way in each: 1 (the default), 2, 4, 8 (a test setting: the link's clock against the chip's is item 186). `--fast-link` went at stage 4: a real link has no "as fast as taken"; 8 is the fastest |
 | `--lpddr-seed S` | the LPDDR model's jitter mode with seed S (0, the default: its timing fixed) |
 
 It prints `run_chip`'s lines (`segment_bench.h`) and the proof's (`proof_bench.h`), then each of the Updater's runs
@@ -131,6 +130,27 @@ Updater's bursts not on client 1 alone, or none of its requests on look-up port 
 | the units alone | `test_lpddr_model`, `test_axi_arbiter`, `test_cache` (the step `cache`) |
 | the Tracer alone on the cache | `TRACER_CACHE=1 tracer_block --synthetic SEED` (the step `cache-synth`); `tracer_block ... --fill cache` on the real segments (the step `tracer-block-cache`) |
 | bugs planted in the controllers and the joints, each caught | `tests/updater_ctl_teeth.sh` (WORKER6's 14); `tests/joined_teeth.sh` (the joints'; a rebuild a bug) |
+
+## The chain of processes (stage 6)
+
+The driver and each chip are processes of their own, on WORKER10's wire (`../updater_wip/wire/README.md`), started by
+its launcher, which adds the wire's arguments (`--driver`, `--clients N --client k`, the region):
+
+```
+build/clang-release/wire_launch --clients 2 \
+    -- build/clang-release/driver tests/updater/kin-raw.frames --rows-traced 50 --limit 20000000 \
+    -- build/clang-release/proof_run tests/updater/kin-raw.frames --asics 64 --windows 1 --rows 50 \
+       --gold tests/updater/kin-raw-s{k}.images.txt --quiet
+```
+
+| | |
+|---|---|
+| the driver | sends the frame file through its link end and checks every ASIC's reply against gold's files: `--asics A` (the proof's N, 64), `--segments S0,S1,...` (ASIC *k* runs *k* by default), `--rows-traced R` (a segment's windows times its rows), `--limit CYCLES`, after which a reply that has not come is a failure |
+| a chip | `proof_run` as above; `{k}` is the launcher's: the client's number. Every check of a proof run, and the driver checks its reply |
+| a stand-in ASIC | `standin_asic FRAMES [--rows-traced R] [--delay CYCLES] [--silent K]`: the link's Node alone, its reply from gold's files; for the driver and the wire without chips |
+
+`tests/chain_run.sh` runs the chain on the five fixtures (the stand-ins, two chips twice, one chip, a reply that never
+comes); `run_tests.sh`'s step `chain` is it. The runner's task items `chain-evm-zone` and `chain-cyclone` run it at 2²⁹.
 
 ## When a run fails
 

@@ -21,8 +21,10 @@
 // harness that steps the top itself calls the same three in that order (tests/ctl_bench.h).
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 #include "sim.h"
 #include "base/fatal.h"
@@ -75,6 +77,17 @@ struct UpdaterTop : PeripheralBase<UpdaterTop> {
     void* on_done_ctx = nullptr;
     std::shared_ptr<void> keep;                    // what a harness gives it to own (the test pieces behind its ports)
 
+    // ---- invariant 36's rules the controller does not see (17.10.9; v1.37's INTEGRATOR, stage 7, the owner's word):
+    // checks of the window's, beside the controller, not in it, and no hardware. WRITEs into the region from one
+    // source at a time: from a run's first push to its done, one source; a free page new: in v1.37 nothing is freed,
+    // so a page pushed twice, or pushed after a run's START named it a root the run makes, is UB. The pages seen, a
+    // bit each below 2^23 (a page at or above it is the controller's UB), cleared at the reset.
+    static constexpr uint32_t MAX_PAGES = 1u << 23;
+    std::vector<uint64_t> pages_seen = std::vector<uint64_t>(MAX_PAGES / 64);
+    int push_src = -1;                             // the source of the current run's pushes; -1 none yet
+    bool seen(uint32_t page) const { return page < MAX_PAGES && (pages_seen[page >> 6] >> (page & 63) & 1); }
+    void mark(uint32_t page) { if (page < MAX_PAGES) pages_seen[page >> 6] |= uint64_t(1) << (page & 63); }
+
     UpdaterTop() { reset(0); }
 
     // ---- identity
@@ -86,13 +99,28 @@ struct UpdaterTop : PeripheralBase<UpdaterTop> {
         if (size != int(lw::SIZE_128))
             FATAL("the Updater: undefined behavior at %lld: a WRITE of another size than 128 bits into its region (offset 0x%x, from %d)",
                   (long long)t, offset, src);
-        if (part == PART_FREE_PAGES) ctl.push_free_page(uint32_t(lo));
-        else FATAL("the Updater: undefined behavior at %lld: a WRITE to part %u of its region, which maps part 2 alone (offset 0x%x, from %d)",
+        if (part == PART_FREE_PAGES) {
+            if (push_src >= 0 && src != push_src)
+                FATAL("the Updater: undefined behavior at %lld: a WRITE into its region from %d while the run's free pages come from %d "
+                      "(17.10.9, invariant 36: one source at a time)", (long long)t, src, push_src);
+            push_src = src;
+            const uint32_t page = uint32_t(lo) >> 5;   // a page's address is a multiple of 32 units (the controller checks it)
+            if (seen(page))
+                FATAL("the Updater: undefined behavior at %lld: a free page 0x%x pushed before, or a run's root: a free page is new "
+                      "(17.10.9, invariant 36)", (long long)t, uint32_t(lo));
+            mark(page);
+            ctl.push_free_page(uint32_t(lo));
+        } else FATAL("the Updater: undefined behavior at %lld: a WRITE to part %u of its region, which maps part 2 alone (offset 0x%x, from %d)",
                    (long long)t, part, offset, src);
     }
     void run(int64_t t) {
         if (ctl.q.busy) FATAL("the Updater: undefined behavior at %lld: a START during a run (17.2)", (long long)t);
         if (!lpddr || !cache) FATAL("the Updater's controller: no AXI slave or no cache on its ports (a harness attaches them)");
+        const unsigned root = ctl.q.run_config >> Ctl::RC_ROOT_LO & 3;   // the roots this run makes are pages no free page may be
+        if (root == 1 || root == 2) {
+            mark(ctl.q.image_root >> 5);
+            if (ctl.q.run_config & Ctl::RC_TRACER_COPY) mark(ctl.q.tracer_root >> 5);
+        }
         ctl.start();
     }
     int write_word(int64_t t, int w, uint32_t v) {
@@ -132,7 +160,7 @@ struct UpdaterTop : PeripheralBase<UpdaterTop> {
         if (cache) { in_.lk_ready = cache->ready(); in_.reply = cache->reply(); }
         if ((o.axi.arvalid || o.axi.awvalid || o.axi.wvalid) && !lpddr) FATAL("the Updater's controller: a burst with no AXI slave on its port");
         if (o.lk.valid && !cache) FATAL("the Updater's controller: a request with no cache on its look-up port");
-        if (o.done) ev.post(t, EV_DONE);
+        if (o.done) { ev.post(t, EV_DONE); push_src = -1; }   // the next run's pushes may come from another source
         if (o.free_page_credit) ev.post(t, EV_FREE_PAGE_CREDIT);
         if (lpddr) lpddr->edge(t, o.axi);
         if (cache) cache->edge(t, o.lk);
@@ -165,6 +193,8 @@ struct UpdaterTop : PeripheralBase<UpdaterTop> {
         ev.init(EV_BITS, depth, flags);
         ev.clear_all();
         ev.set(t, EV_FREE_PAGE_CREDIT, 2);
+        std::fill(pages_seen.begin(), pages_seen.end(), 0);
+        push_src = -1;
     }
 
     // ---- for a harness

@@ -44,6 +44,7 @@ public final class PacketsTest {
     idle();
     empty();
     streams();
+    restarts();
     cuts();
     vectors();
     System.out.println(failures == 0 ? "packets test: ok (" + checks + " checks)" : "packets test: " + failures + " FAILED");
@@ -195,8 +196,10 @@ public final class PacketsTest {
     p.number = (file[a + 2] & 0xff) | (file[a + 3] & 0xff) << 8 | (file[a + 4] & 3) << 16;          // [33:16]
     p.acknowledge = ((file[a + 4] >> 2) & 63) | (file[a + 5] & 0xff) << 6 | (file[a + 6] & 15) << 14;   // [51:34]
     p.hops = (file[a + 6] >> 4) & 15;                                                               // [55:52]
-    p.reserved = file[a + 7] & 0xff;
-    p.data = Arrays.copyOfRange(file, a + 16, a + 16 + 16 * len);
+    p.stops = file[a + 7] & 3;                                                                      // [57:56]
+    p.reserved = (file[a + 7] & 0xff) >> 2;                                                         // [63:58]
+    int crc = (file[a + 12] & 0xff) | (file[a + 13] & 0xff) << 8 | (file[a + 14] & 0xff) << 16 | (file[a + 15] & 0xff) << 24;
+    p.data = PacketFile.unmask(file, a + 16, 16 * len, crc);                                        // the data as held (28.6)
     return p;
   }
 
@@ -207,9 +210,8 @@ public final class PacketsTest {
     byte[] b = file.clone();
     Packets.Packet p = at(b, starts.get(k - 1));
     c.to(p);
-    byte[] h = p.header();
-    System.arraycopy(h, 0, b, starts.get(k - 1), 16);
-    System.arraycopy(p.data, 0, b, starts.get(k - 1) + 16, p.data.length);
+    byte[] all = p.bytes();                                                    // the header, and the data under its new mask
+    System.arraycopy(all, 0, b, starts.get(k - 1), all.length);
     return b;
   }
 
@@ -251,16 +253,18 @@ public final class PacketsTest {
       refusedAs(sealed(file, s, k, p -> p.stream = 15), o, "stream", k, a, w + "stream 15");
       refusedAs(sealed(file, s, k, p -> p.length = 33), o, "length", k, a, w + "length 33");
       refusedAs(sealed(file, s, k, p -> p.length = 255), o, "length", k, a, w + "length 255");
-      refusedAs(sealed(file, s, k, p -> p.reserved = 1), o, "reserved", k, a, w + "reserved bit 56");
-      refusedAs(sealed(file, s, k, p -> p.reserved = 0x80), o, "reserved", k, a, w + "reserved bit 63");
+      refusedAs(sealed(file, s, k, p -> p.reserved = 1), o, "reserved", k, a, w + "reserved bit 58");
+      refusedAs(sealed(file, s, k, p -> p.reserved = 0x20), o, "reserved", k, a, w + "reserved bit 63");
+      expect(refused(sealed(file, s, k, p -> p.stops = 3), o) == null, w + "the stop bits set: not checked");
       refusedAs(sealed(file, s, k, p -> p.dataChecksum = p.dataChecksumField() ^ 1), o, "data-checksum", k, a, w + "the data checksum");
       refusedAs(sealed(file, s, k, p -> p.number = 0), o, "number", k, a, w + "number 0");
       refusedAs(sealed(file, s, k, p -> p.number = 0x3FFFF), o, "number", k, a, w + "number 0x3FFFF");
       refusedAs(sealed(file, s, k, p -> p.number++), o, "number", k, a, w + "the number one ahead");
       if (k > 1) refusedAs(sealed(file, s, k, p -> p.number--), o, "number", k, a, w + "the last number again");
       refusedAs(sealed(file, s, k, p -> p.number ^= 0x20000), o, "number", k, a, w + "the number's top bit");
-      // what is not checked: the flags, the acknowledge field, the hops field
-      byte[] fl = sealed(file, s, k, p -> { p.flags = 0xF; p.acknowledge = 0x3FFFF; p.hops = 15; });
+      // what is not checked: resend, lost and recovery, the acknowledge field, the hops field; restart is (28.9)
+      refusedAs(sealed(file, s, k, p -> p.flags = Packets.RESTART), o, "restart", k, a, w + "restart set on a data link packet");
+      byte[] fl = sealed(file, s, k, p -> { p.flags = 7; p.acknowledge = 0x3FFFF; p.hops = 15; });
       PacketFile p = good(fl, o, frames, w + "flags, acknowledge and hops set");
       expect(p != null && p.flagged == 1 && p.acknowledged == 1 && p.hopped == 1, w + "flags, acknowledge and hops counted");
       for (int h = 1; h < 16; h++) {
@@ -516,19 +520,50 @@ public final class PacketsTest {
     // the data packet after an empty has the empty's number: a file where the empty took a number is refused
     w = new Packets.Writer();
     w.data(2, f, cuts.get(0)[0], cuts.get(0)[1]).empty(2);
-    w.first(2, 3).data(2, f, cuts.get(1)[0], cuts.get(1)[1]);
+    w.first(3).data(2, f, cuts.get(1)[0], cuts.get(1)[1]);
     refusedAs(w.toArray(), options(1), "number", 3, -1, "a data packet numbered as if the packet of length 0 had taken a number");
     // an empty with a data checksum, and one at the wrap
     Packets.Packet e = new Packets.Packet();
     e.dataChecksum = 1;
     refusedAs(e.bytes(), options(1), "data-checksum", 1, 0, "a packet of length 0 with a data checksum of 1");
-    w = new Packets.Writer().first(2, 0x3FFFE);
+    w = new Packets.Writer().first(0x3FFFE);
     w.empty(2).data(2, f, cuts.get(0)[0], cuts.get(0)[1]).empty(2);
     for (int i = 1; i < cuts.size(); i++) w.data(2, f, cuts.get(i)[0], cuts.get(i)[1]);
     p = good(w.toArray(), options(0x3FFFE), f, "packets of length 0 around the wrap");
     expect(p != null && at(w.toArray(), 16 + 16 * (1 + cuts.get(0)[1])).number == 1, "after 0x3FFFE a packet of"
         + " length 0 holds 1");
     System.out.println("length 0: taken anywhere, taking no number; refused when it holds the last number or the one after the next");
+  }
+
+  static void restarts() {
+    Random rnd = new Random(11);
+    byte[] f = frames(rnd, 40, 3, 70);
+    List<int[]> cuts = Packets.cuts(f, new int[] {32});
+    // a restart first, and one between two frames: the numbers start again from 1 after each
+    Packets.Writer w = new Packets.Writer().first(77).restart(Packets.LOST);
+    int middle = -1;
+    for (int i = 0; i < cuts.size(); i++) {
+      if (cuts.get(i)[2] == 1 && middle < 0 && i >= cuts.size() / 2) { middle = i; w.restart(Packets.RECOVERY); }
+      w.data(2, f, cuts.get(i)[0], cuts.get(i)[1]);
+    }
+    byte[] file = w.toArray();
+    PacketFile p = good(file, options(5), f, "restart link packets before and between frames");
+    expect(p != null && p.restarts == 2 && p.foregroundWords == 0 && p.onStream[1] == 2, "two restart link packets: counted, their words"
+        + " nowhere");
+    // one inside a frame is refused, and the numbers after one go on from 1, not from where they were
+    List<Integer> s = starts(file);
+    int inside = -1;
+    for (int i = 1; i < cuts.size() && inside < 0; i++) if (cuts.get(i)[2] == 0) inside = i;
+    if (inside > 0) {
+      Packets.Writer x = new Packets.Writer();
+      for (int i = 0; i < cuts.size(); i++) {
+        if (i == inside) x.restart(Packets.LOST);
+        x.data(2, f, cuts.get(i)[0], cuts.get(i)[1]);
+      }
+      refusedAs(x.toArray(), options(1), "restart", inside + 1, starts(x.toArray()).get(inside), "a restart link packet inside a frame");
+    }
+    refusedAs(sealed(file, s, 2, q -> q.number = 78), options(1), "number", 2, s.get(1), "after a restart, the old run's next number");
+    System.out.println("restarts: the restart link packet takes no number, starts the numbers again, and may not cut a frame");
   }
 
   static void streams() {
@@ -545,16 +580,15 @@ public final class PacketsTest {
     }
     byte[] file = w.toArray();
     PacketFile p = good(file, options(1), f, "stream 1's packets among stream 2's");
+    // one run of numbers for the link (28.4): stream 1's data 1, 3, 5, ..., stream 2's 2, 4, 6, ..., each empty the next
     expect(p != null && p.onStream[1] == 2 * cuts.size() && p.onStream[2] == cuts.size() && p.foregroundWords == words
-        && p.firstNumber[1] == 1 && p.lastNumber[1] == cuts.size() + 1 && p.lastNumber[2] == cuts.size(), "each stream's own numbers");
-    // --first is stream 2's: stream 1 still starts at 1
-    refusedAs(file, options(2), "number", 2, -1, "stream 2 read as from 2");
-    // stream 1's second data packet numbered 3
+        && p.firstNumber[1] == 1 && p.lastNumber[1] == 2 * cuts.size() + 1 && p.lastNumber[2] == 2 * cuts.size(), "one run of numbers");
+    // --first is the link's: the first link packet, stream 1's, read as from 2
+    refusedAs(file, options(2), "number", 1, -1, "the link read as from 2");
+    // stream 1's second data link packet numbered as if stream 1 had its own run (2 in place of 3)
     List<Integer> s = starts(file);
-    refusedAs(sealed(file, s, 4, q -> q.number = 3), options(1), "number", 4, s.get(3), "stream 1's second packet numbered 3");
-    // stream 2's number on a stream 1 packet and the other way round are just wrong numbers
-    refusedAs(sealed(file, s, 5, q -> q.stream = 1), options(1), "number", 5, s.get(4), "a stream 2 packet marked stream 1");
-    System.out.println("two streams: each numbered by itself; stream 1's data is counted and kept nowhere");
+    refusedAs(sealed(file, s, 4, q -> q.number = 2), options(1), "number", 4, s.get(3), "stream 1's second link packet numbered 2");
+    System.out.println("two streams: one run of numbers for both; stream 1's data is counted and kept nowhere");
   }
 
   static void cuts() {
@@ -582,14 +616,15 @@ public final class PacketsTest {
     for (PacketVectors.Vector v : PacketVectors.vectors()) {
       PacketFile.Options o = new PacketFile.Options();
       o.frames = false;
-      o.first = o.firstForeground = v.next;
+      o.first = v.next;
       byte[] b = v.p.bytes();
       PacketFile.Refused r = refused(b, o);
       String got = r == null ? "ok" : r.check;
       expect(got.equals(v.expect), "vector " + v.name + ": expect " + v.expect + ", the reader says " + (r == null ? "ok" : r.getMessage()));
       if (r == null) {
         // the number expected after it: a data packet with that number is taken next, and no other
-        int after = v.p.data.length == 0 ? v.next : Packets.next(v.next);
+        int after = (v.p.flags & Packets.RESTART) != 0 ? Packets.FIRST_NUMBER     // the numbers start again (28.9)
+            : v.p.data.length == 0 ? v.next : Packets.next(v.next);
         for (int n : new int[] {after, Packets.next(after), v.next == after ? 0 : v.next}) {
           Packets.Packet q = new Packets.Packet();
           q.stream = v.p.stream;
@@ -608,19 +643,31 @@ public final class PacketsTest {
       PacketFile p = good(w.bytes, options(w.options.isEmpty() ? 1 : 0x3FFFA), frames, w.name);
       long[] c = PacketVectors.count(w.bytes);
       expect(p != null && p.packets == c[0] && p.onStream[2] == c[1] && p.onStream[1] == c[2] && p.empty == c[3] && p.idleBytes == c[4]
-          && p.words == c[5] && p.foregroundWords == c[6] && p.frames == PacketVectors.SMALL.length, w.name + ": its counts");
+          && p.words == c[5] && p.foregroundWords == c[6] && p.restarts == c[7] && p.frames == PacketVectors.SMALL.length,
+          w.name + ": its counts");
     }
-    // HOST-LINK.md's three example headers ("The two checks"), copied from the document: the packetizer's bytes
-    String[][] examples = {{"host-link-example", "02 01 01 00 00 00 00 00 EA 9A 70 42 A0 8C 06 E1"},
+    // 28.9's restart link packet: its data checksum, copied from the chapter, and its data's first two words
+    Packets.Packet rp = Packets.restartPacket(Packets.LOST);
+    expect(rp.dataChecksumField() == 0xC8981D21 && rp.data.length == 512 && rp.data[0] == 2 && rp.data[31] == (byte) 0x83
+        && rp.data[32] == 2 && rp.data[511] == (byte) 0x83, "28.9's restart link packet: data checksum 0xC8981D21, the primes 2 to 131");
+    // machine-spec 28.5's four example headers and 28.6's masked data lines, copied from v1.37_wip/spec/host-link.md:
+    // the packetizer's bytes on the line
+    String[][] examples = {
+        {"host-link-example", "02 01 01 00 00 00 00 00 EA 9A 70 42 A0 8C 06 E1 2A 54 C0 74 C0 1C 58 2F A6 5D 27 37 39 C9 47 1F"},
         {"host-link-example-one-hop", "02 01 01 00 00 00 10 00 EA 9A 70 42 9E BC 0A 21"},
-        {"host-link-example-hops-3", "02 01 CD AB 56 55 35 00 EA 9A 70 42 C9 C4 23 30"}};
+        {"host-link-example-hops-3", "11 01 CD AB 56 55 35 02 EA 9A 70 42 D2 BF BA 0A"},
+        {"host-link-example-length-0", "01 00 05 00 10 00 00 01 00 00 00 00 57 09 4D 4E"},
+        {"host-link-mask-example", "01 01 07 00 0C 00 00 00 EB 08 C9 D9 9E 94 2A 36 A4 D0 6E 3C 10 A4 2F 89 F5 74 21 9E DE 43 E4 C0"},
+        {"host-link-mask-example-forwarded",
+            "01 01 07 00 10 00 10 00 EB 08 C9 D9 A3 2B 76 11 79 F1 F2 82 77 D9 B4 AF 91 8F 7C 00 39 96 A1 51"}};
     for (String[] e : examples) {
       PacketVectors.Vector found = null;
       for (PacketVectors.Vector v : PacketVectors.vectors()) if (v.name.equals(e[0])) found = v;
-      byte[] want = new byte[16];
       String[] hex = e[1].split(" ");
-      for (int i = 0; i < 16; i++) want[i] = (byte) Integer.parseInt(hex[i], 16);
-      expect(found != null && Arrays.equals(found.p.header(), want), "HOST-LINK.md's " + e[0] + ": the packetizer's header bytes");
+      byte[] want = new byte[hex.length];
+      for (int i = 0; i < hex.length; i++) want[i] = (byte) Integer.parseInt(hex[i], 16);
+      byte[] got = found == null ? new byte[0] : found.p.bytes();
+      expect(Arrays.equals(Arrays.copyOf(got, want.length), want), "28.5/28.6's " + e[0] + ": the packetizer's bytes on the line");
     }
     List<PacketVectors.Damage> damage = PacketVectors.damage(files);
     for (PacketVectors.Damage d : damage) {

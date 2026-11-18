@@ -4,12 +4,14 @@
 #include "cache_figures.h"
 
 #include <cstdarg>
+#include <cstring>
 #include <cstdio>
 #include <fstream>
 #include <set>
 #include <sstream>
 
 #include "base/fatal.h"
+#include "host_end.h"
 #include "packet_writer.h"
 #include "rtl_images.h"
 #include "sha256.h"
@@ -42,8 +44,9 @@ enum : unsigned { MR_STATUS = 0, MR_DETAIL, MR_FRAMES, MR_RUNS, MR_PAGES_TAKEN, 
                   MR_UPDATER_ERRORS, MR_ERROR_LINES, MR_MCAUSE = 22, MR_MEPC, MR_BOOT, MR_HANDED, MR_RELEASED, MR_END, MR_PAGES_QUEUED,
                   MR_LINK_WORDS, MR_WAKES, MR_LINK_READS, MR_PAGE_COUNT = 32, MR_RUN_START = 40, MR_RUN_DONE = 48, MR_FRAME_TYPE = 56,
                   MR_FRAME_START = 72, MR_FRAME_WAKES = 88, MR_FRAME_READS = 104, MR_COUNT_STORES = 120, MR_HANDED_WAKES, MR_HANDED_READS,
-                  MR_FRAME_AWAKE, MR_WORDS = MR_FRAME_AWAKE + 16 };
-constexpr uint32_t MR_OK = 1, MR_TRAP = 2;
+                  MR_FRAME_AWAKE, MR_REPLY_MCYCLE = MR_FRAME_AWAKE + 16, MR_TRACER_ROWS = MR_REPLY_MCYCLE + 2, MR_TRACER_ERRORS,
+                  MR_TRACER_STATUS, MR_REPLIED, MR_WORDS };
+constexpr uint32_t MR_OK = 1, MR_TRAP = 2, MR_FRAME = 4;
 // ---- fw/tracer/tracer_layout.h's header words the master writes
 enum : unsigned { TL_H_EXPECT = 8, TL_H_ADVICE_N = 10, TL_H_HASH_MUL = 12, TL_H_HASH_STEP = 13, TL_H_HASH_LINES = 14 };
 constexpr unsigned T = segment::T, RECORD_WORDS = segment::RECORD_WORDS;
@@ -155,9 +158,13 @@ struct ChipProof final : segment::Proof {
         m.place(units::ID_MASTER, rtl_images::elf_symbol(master_elf, "boot_desc"), desc);
         m.place(units::ID_MASTER, rtl_images::elf_symbol(master_elf, "system_config"), {MS_MAGIC, c.asics, c.segment, 0});
         results_at = rtl_images::elf_symbol(master_elf, "master_results");
-        m.set_link(c.packets);
-        m.ingress().link_cycles_per_byte = c.cycles_per_byte;
-        m.ingress().link_bytes_per_cycle = c.link_rate;
+        // v1.37 stage 4: the host's end of the link (host_end.h) sends the packet file's link packets, link_rate link
+        // cycles a chip cycle, or a link cycle every link_every chip cycles
+        if (c.wire) m.attach_wire(*c.wire);                // v1.37 stage 6: the chain of processes
+        else {
+            HostEnd& host = m.attach_host(c.packets, unsigned(c.link_rate), unsigned(c.link_every));
+            host.noise = c.noise; host.hook = c.host_hook;
+        }
         view.attach(m);
         if (c.updater_lookup) view.set_lookup(c.updater_lookup);
         master_rv = &m.c.unit<units::TileCore>(units::unit_prefix(units::ID_MASTER) + "core").rv;
@@ -204,7 +211,70 @@ struct ChipProof final : segment::Proof {
         return v;
     }
 
-    bool ends_early() const override { return c.expect.trap || c.expect.cut; }
+    bool ends_early() const override { return c.expect.trap || c.expect.cut || c.expect.stop; }
+
+    // ---- v1.37 (30.7, 29.14): the reply, at the host's end: its foreground words as they come, with their hops, and
+    //      the link packets they came in. The run goes on past the master's exit until all 72 are in.
+    std::vector<::hostlink::Word> reply;
+    std::vector<unsigned> reply_hops;
+    std::vector<size_t> reply_ends;                  // the words after which a link packet ended
+    int64_t wire_sent_at = -1;                        // the poll at which the replies above were all first sent
+    uint64_t settle_limit() const override { return c.wire ? ~uint64_t(0) : uint64_t(1) << 20; }
+    bool settled(mach::Mach& m) override {
+        if (m.word(units::ID_MASTER, results_at + 4 * MR_STATUS) != MR_OK) return true;
+        if (c.wire) {                                  // this reply and those from below, first sent towards the driver
+            const uint64_t sent = m.ingress().node->counts_above().sent_data, want = 3ull * (c.clients - c.client);
+            const int64_t now = int64_t(c.wire->cycles);
+            if (sent < want) return false;
+            if (wire_sent_at < 0) wire_sent_at = now;
+            return uint64_t(now - wire_sent_at) >= c.wire_margin;
+        }
+        units::IngressEgress::LinkAllocs a;
+        ::hostlink::Word w;
+        unsigned hops = 0;
+        bool last = false;
+        while (m.host().end.take(::hostlink::FOREGROUND, w, &hops, &last)) {
+            reply.push_back(w); reply_hops.push_back(hops);
+            if (last) reply_ends.push_back(reply.size());
+        }
+        return reply.size() >= 72 || m.word(units::ID_MASTER, results_at + 4 * MR_STATUS) != MR_OK;
+    }
+    static U128 word_of(const ::hostlink::Word& w) {
+        U128 v;
+        std::memcpy(&v.lo, w.byte, 8); std::memcpy(&v.hi, w.byte + 8, 8);
+        return v;
+    }
+    void check_reply(mach::Mach& m, const segment::Run& run, updater_view::UpdaterView& u) {
+        if (reply.size() != 72) { fail("the reply: %zu words at the host's end, not 72 (%llu cycles run after the exit)", reply.size(), (unsigned long long)run.after_exit); return; }
+        for (unsigned h : reply_hops) if (h != 0) { fail("the reply: a link packet with hops %u from the first ASIC", h); break; }
+        if (reply_ends != std::vector<size_t>{32, 64, 72}) fail("the reply: its link packets end after %zu words; 32, 64 and 72 expected (17.6.8)", reply_ends.empty() ? size_t(0) : reply_ends[0]);
+        auto w32 = [&](unsigned word, unsigned k) { uint32_t v; std::memcpy(&v, reply[word].byte + 4 * k, 4); return v; };
+        if (w32(0, 0) != 0 || w32(0, 1) != 0 || w32(0, 2) != 16 || w32(0, 3) != 71)
+            fail("the reply's header word: 0x%08x 0x%08x type %u length %u; compression 0, type 16, length 71", w32(0, 0), w32(0, 1), w32(0, 2), w32(0, 3));
+        uint64_t rows = 0;
+        for (const auto& r : run.rows) rows += r.size() / segment::ROW_LONGS;
+        if (w32(1, 0) != c.segment || w32(1, 1) != c.asics) fail("the reply's word 1: s %u and N %u; the run's %u and %u", w32(1, 0), w32(1, 1), c.segment, c.asics);
+        if (w32(1, 2) != rows) fail("the reply: %u rows traced; the replayers sank %llu", w32(1, 2), (unsigned long long)rows);
+        if (w32(1, 3) != u.page_count()) fail("the reply: PAGE_COUNT %u, the Updater's %u", w32(1, 3), u.page_count());
+        const uint64_t mcycle = uint64_t(w32(2, 0)) | uint64_t(w32(2, 1)) << 32;
+        if (mcycle != (uint64_t(R[MR_REPLY_MCYCLE]) | uint64_t(R[MR_REPLY_MCYCLE + 1]) << 32) || mcycle == 0 || mcycle > run.cycles + run.after_exit)
+            fail("the reply's mcycle %llu: the master's results say %u", (unsigned long long)mcycle, R[MR_REPLY_MCYCLE]);
+        if (w32(2, 2) != u.stat(0) || w32(2, 3) != u.stat(1)) fail("the reply: STAT_CYCLES %u and STAT_STALL_DATA %u, the Updater's %u and %u", w32(2, 2), w32(2, 3), u.stat(0), u.stat(1));
+        for (unsigned k = 0; k < 4; k++) if (w32(3, k) != 0) { fail("the reply's error word %u is 0x%x: a reply is sent only when the segment has run", k, w32(3, k)); break; }
+        // words 4-71: the Tracer's record at the segment's end, as the tracer tile holds it; and the state, words 0 and
+        // 2-65, record s + 1's, which the host checks (29.14)
+        const bool last = c.segment + 1 == c.asics;
+        for (unsigned w = 0; w < RECORD_WORDS; w++) {
+            const U128 got = word_of(reply[4 + w]), want = row(m, units::ID_TRACER, places.tr_final + 4 * w);
+            if (got != want) { fail("the reply's record, word %u: %016llx%016llx, the tracer tile's %016llx%016llx", w, (unsigned long long)got.hi, (unsigned long long)got.lo, (unsigned long long)want.hi, (unsigned long long)want.lo); break; }
+            if (!last && registers && w != 1 && w < 66) {
+                const U128 r = frame_word(*registers, size_t(RECORD_WORDS) * (c.segment + 1) + w);
+                if (got != r) { fail("the reply's record, word %u: %016llx%016llx, record s + 1's %016llx%016llx", w, (unsigned long long)got.hi, (unsigned long long)got.lo, (unsigned long long)r.hi, (unsigned long long)r.lo); break; }
+            }
+        }
+        if (R[MR_TRACER_ROWS] != w32(1, 2) || R[MR_TRACER_STATUS] != 1 || R[MR_TRACER_ERRORS] != 0 || R[MR_REPLIED] != 1)
+            fail("the master's results of the reply: rows %u, the tracer tile's status %u, the Tracer's ERRORS 0x%x, replied %u", R[MR_TRACER_ROWS], R[MR_TRACER_STATUS], R[MR_TRACER_ERRORS], R[MR_REPLIED]);
+    }
     void check(mach::Mach& m, segment::Run& run) override {
         check_all(m, run);
         run.failures += cachefig::faults(name, m.cache_system());
@@ -216,12 +286,14 @@ struct ChipProof final : segment::Proof {
         const FileStore& store = *u.store();
         if (numbers) {
             numbers->master = R;
-            numbers->link_packets = link.link_packets; numbers->link_words = link.link_words; numbers->link_bytes = link.link_bytes;
+            numbers->link_packets = link.link_packets; numbers->link_words = link.link_words; numbers->link_bytes = c.wire ? c.wire->cycles * c.link_rate : m.host().link_cycles;
             const auto& core = m.c.unit<units::TileCore>(units::unit_prefix(units::ID_MASTER) + "core").rv;
             numbers->master_awake = core.mcycle - core.cycles_wfi;
             numbers->master_instructions = core.instructions;
-            numbers->link_room_cycles = link.link_room_cycles; numbers->link_last_at = link.link_at;
+            numbers->link_room_cycles = c.wire ? 0 : m.host().stop_cycles; numbers->link_last_at = link.link_last_at;
             numbers->link_forwarded = link.link_forwarded; numbers->link_discarded = link.link_discarded;
+            numbers->link_first_sendings = c.wire ? 0 : m.host().capture.data_packets;
+            numbers->link_sent_again = c.wire ? 0 : m.host().capture.again;
             numbers->master_awake_handed = awake_handed;
             for (size_t i = 0; i < done.size(); i++) {
                 RunAccount a;
@@ -232,7 +304,23 @@ struct ChipProof final : segment::Proof {
                 numbers->runs.push_back(a);
             }
         }
+        if (c.expect.stop) {                         // 30.8: a stop of the master's own on what a frame says
+            if (!run.finished) fail("no exit: a frame that fails a check must stop the master");
+            if (R[MR_STATUS] != MR_FRAME || R[MR_DETAIL] != c.expect.detail)
+                fail("the master's status %u, detail 0x%x; a stop on a frame (%u), detail 0x%x expected", R[MR_STATUS], R[MR_DETAIL], MR_FRAME, c.expect.detail);
+            if (R[MR_TILE_ERRORS] || R[MR_INGRESS_ERRORS] || R[MR_UPDATER_ERRORS] || link.errors(0) != 0 || u.errors(0) != 0)
+                fail("an error bit with a stop of the master's own: the tile's 0x%x, Ingress's 0x%x, the Updater's 0x%x", R[MR_TILE_ERRORS], R[MR_INGRESS_ERRORS], R[MR_UPDATER_ERRORS]);
+            if (m.c.toast()) fail("the toast pin with a stop of the master's own");
+            if (!reply.empty()) fail("a reply (%zu words) after a stop", reply.size());
+            return;
+        }
         if (!parsed) { fail("the frame file is not as HOST-FRAMES.md says: %s", parse_error.c_str()); return; }
+        if (c.noise) {                               // the noise must have reached the link (stage 4)
+            const ::hostlink::LinkCounts n = link.node->counts_above();
+            if (n.bad_header + n.bad_data + n.ahead == 0) fail("noise on the line, and the chip's link end saw no damaged link packet");
+            else std::printf("%s: the chip's link end: %llu bad headers, %llu bad data, %llu ahead, %llu restarts\n", name, (unsigned long long)n.bad_header,
+                             (unsigned long long)n.bad_data, (unsigned long long)n.ahead, (unsigned long long)n.restarts);
+        }
 
         // ---- a run that must end early: that it did, as expected, and nothing else
         if (c.expect.trap) {
@@ -247,8 +335,8 @@ struct ChipProof final : segment::Proof {
             return;
         }
         if (c.expect.cut) {
-            if (run.finished) fail("the run ended: with the link quiet inside a packet the master must wait");
-            if (!link.link_cut) fail("the file did not end inside a packet");
+            if (run.finished) fail("the run ended: with the host's link packets ended inside a frame the master must wait");
+            if (!m.host().file_cut) fail("the file did not end inside a packet");
             if (R[MR_STATUS] != 0) fail("the master's status is %u, not 0 (waiting)", R[MR_STATUS]);
             if (link.errors(0) != 0 || u.errors(0) != 0) fail("an error bit: Ingress's 0x%x, the Updater's 0x%x; silence is no error", unsigned(link.errors(0)), unsigned(u.errors(0)));
             return;
@@ -290,10 +378,34 @@ struct ChipProof final : segment::Proof {
         }
         if (u.input_words() != 0 || u.free_page_entries() != 0) fail("left in the Updater: %u words on its input, %u free pages", u.input_words(), u.free_page_entries());
         const uint64_t words = c.file.bytes.size() / 16, out = R[MR_LINK_WORDS] + link.link_forwarded + link.link_discarded;
-        if (link.link_cut || link.link_words != words || out != words || (link.forward & units::IngressEgress::FWD_COUNT) != 0)
+        if (link.link_words != words || out != words || (link.forward & units::IngressEgress::FWD_COUNT) != 0)
             fail("the link: %llu words arrived, %u read out by the DMA, %llu forwarded, %llu discarded, of %llu; DMA_FORWARD_COUNT 0x%x at the end%s",
                  (unsigned long long)link.link_words, R[MR_LINK_WORDS], (unsigned long long)link.link_forwarded, (unsigned long long)link.link_discarded,
-                 (unsigned long long)words, link.forward, link.link_cut ? "; the file ends inside a packet" : "");
+                 (unsigned long long)words, link.forward, !c.wire && m.host().file_cut ? "; the file ends inside a packet" : "");
+
+        // ---- the host End's data link packets as first sent, against the packet file's, byte for byte (host_end.h,
+        //      THE CAPTURE; NOTES.md C5): on a clean line, the End sends the file's link packets
+        if (!c.noise && !c.host_hook && !c.wire) {
+            const HostEnd::Capture& cap = m.host().capture;
+            const std::vector<uint8_t> want = HostEnd::data_link_packets(c.packets);
+            size_t at = 0;
+            while (at < want.size() && at < cap.sent.size() && want[at] == cap.sent[at]) at++;
+            if (cap.restarts_after_data) fail("the host End started its link again after data: %llu restart link packets", (unsigned long long)cap.restarts_after_data);
+            else if (cap.sent != want)
+                fail("the host End's data link packets as first sent: %zu bytes, the packet file's %zu; the first difference at byte %zu", cap.sent.size(), want.size(), at);
+        }
+
+        // ---- the reply at the host's end (30.7, 29.14)
+        if (!c.wire) check_reply(m, run, u);            // on the chain the driver checks it
+        else {                                         // the wire is lossless: no link packet may come damaged, either way
+            const ::hostlink::LinkCounts a = link.node->counts_above(), b = link.node->counts_below();
+            const uint64_t damaged = a.bad_header + a.bad_data + a.bad_fields + a.ahead + b.bad_header + b.bad_data + b.bad_fields + b.ahead;
+            std::printf("%s: the chip's link ends: above %llu taken, %llu sent (%llu again), %llu restarts; below %llu taken, %llu sent (%llu again), "
+                        "%llu restarts; %llu damaged or ahead\n", name, (unsigned long long)a.taken, (unsigned long long)a.sent_data, (unsigned long long)a.sent_again,
+                        (unsigned long long)a.restarts, (unsigned long long)b.taken, (unsigned long long)b.sent_data, (unsigned long long)b.sent_again,
+                        (unsigned long long)b.restarts, (unsigned long long)damaged);
+            if (damaged) fail("a damaged link packet, or one ahead, on the wire, which loses nothing: %llu", (unsigned long long)damaged);
+        }
 
         // ---- each image as its run ended, against gold's; the frozen ones again at the end
         for (size_t i = 0; i < done.size() && i < run_names.size(); i++) {

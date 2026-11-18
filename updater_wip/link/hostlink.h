@@ -137,6 +137,9 @@ public:
     // The host's words, for this ASIC: every ASIC gets them all.
     bool take(Stream stream, Word& word, bool* last = nullptr);
     unsigned waiting(Stream stream) const;
+    // The word take() would give next, left where it is: the head of the queue, as the chip's Ingress reads it before
+    // a word moves (v1.37's INTEGRATOR, stage 4). False if the stream has none.
+    bool peek(Stream stream, Word& word) const;
 
     // This ASIC's own words for the host, on the foreground: one packet of 1 to 32 words. False, and nothing is
     // taken, if there is no room or the count is not 1 to 32.

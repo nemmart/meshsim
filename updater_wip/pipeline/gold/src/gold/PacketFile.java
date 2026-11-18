@@ -6,9 +6,9 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * A packet file read and checked (v1.4_wip/planning/HOST-LINK.md), for the reader. Written from the document and from
- * WORKER2's NOTES.md sections 2 to 4, not from the packetizer: it shares no code with Packets, and its CRC-32C is its
- * own, from the definition.
+ * A packet file read and checked: chapter 28's link packets (v1.37_wip/spec/host-link.md; v1.37's INTEGRATOR, stage
+ * 4), for the reader. Written from the specification and from WORKER2's NOTES.md sections 2 to 4, not from the
+ * packetizer: it shares no code with Packets, and its CRC-32C and its mask are its own, from the definitions.
  *
  * <p>Where a header is expected, zero bytes are idle and skipped; the first byte that is not zero starts a header.
  * Then, in this order, a packet is refused for:
@@ -18,16 +18,21 @@ import java.util.Locale;
  *   header-crc     the CRC-32C of header bytes 0 to 11 is not bytes 12 to 15
  *   stream         the stream is not 1 or 2
  *   length         the length is over 32
- *   reserved       bits [63:56] are not 0
- *   data-checksum  the CRC-32C of the data is not bytes 8 to 11
- *   number         a packet with data: not the next number on its stream (1 first, 1 after 0x3FFFE);
- *                  a packet of length 0: not the number the stream's next packet with data will carry (it takes none)
+ *   reserved       bits [63:58] are not 0 (bits [57:56] are the stop bits, read and not tested)
+ *   data-checksum  the CRC-32C of the data, its mask taken off (28.6), is not bytes 8 to 11
+ *   restart        a link packet with `restart` (28.9) that is not the restart link packet: stream 1, length 32,
+ *                  number 1, hops 0, its data the first 32 primes as bytes sixteen times over; or one inside a
+ *                  frame on stream 2. The restart link packet takes no number, its data goes to no queue, and the
+ *                  link's numbers start again from 1 after it
+ *   number         a link packet with data: not the link's next number, whatever its stream (28.4: one run for the
+ *                  link, 1 first, 1 after 0x3FFFE); one of length 0: not the number the next link packet with data
+ *                  will carry (it takes none)
  *   frame-end      stream 2: a frame ends before the end of the packet its last word is in
  *   first-byte     only with noIdle: a zero byte where a header is expected
  * </pre>
  *
  * The hops field, bits [55:52], is read and not tested: no value of it is an error (HOST-LINK.md, "The chain, and the
- * hops field"). The packet number is bits [33:16], 18 bits, and the acknowledge field bits [51:34] (owner, 2026-11-17).
+ * hops field"). The number is bits [33:16], 18 bits, and the ack field bits [51:34] (28.3).
  *
  * <p>Frames are tracked on stream 2 only: the first data word after a frame's end is a frame's header word, whose
  * [127:96] is the frame's length in words. Stream 1's data is checked and counted, and kept nowhere.
@@ -54,8 +59,8 @@ public final class PacketFile {
 
   /** How to read. */
   public static final class Options {
-    /** The number each stream's first packet must have. */
-    public int first = 1, firstForeground = 1;
+    /** The number the first link packet must have (one run for both streams, 28.4). */
+    public int first = 1;
     /** A zero byte where a header is expected is refused, not skipped. */
     public boolean noIdle;
     /** Track the frames on stream 2 and keep their bytes; false: the packets alone, as Ingress sees them. */
@@ -67,10 +72,10 @@ public final class PacketFile {
   /** One packet's fields as read. */
   public static final class Packet {
     public long at, frame;
-    public int stream, flags, length, number, acknowledge, hops, dataChecksum, headerCrc;
+    public int stream, flags, length, number, acknowledge, hops, stops, dataChecksum, headerCrc;
   }
 
-  public long bytes, packets, idleBytes, empty, flagged, acknowledged, hopped;
+  public long bytes, packets, idleBytes, empty, flagged, acknowledged, hopped, restarts;
   /** Stream 2: the frames, their words, and the packets by size: of 32 words, shorter and a frame's last, shorter
    *  and not (the packetizer writes none of those). */
   public long frames, words, full, shortLast, shortInside;
@@ -91,12 +96,36 @@ public final class PacketFile {
     }
   }
 
+  /** The i-th prime from 2 (i from 0): the restart link packet's byte i (28.9), found here by trial division. */
+  static int prime(int i) {
+    int n = 1;
+    for (int found = -1; found < i; ) {
+      n++;
+      boolean is = true;
+      for (int d = 2; d * d <= n && is; d++) is = n % d != 0;
+      if (is) found++;
+    }
+    return n;
+  }
+
   /** CRC-32C: polynomial 0x1EDC6F41 reflected (0x82F63B78), initial value and final XOR 0xFFFFFFFF, each byte least
    *  significant bit first. CRC-32C("123456789") = 0xE3069283. A byte at a time by a table of the bit-by-bit steps. */
   public static int crc32c(byte[] b, int off, int len) {
     int c = 0xFFFFFFFF;
     for (int i = off; i < off + len; i++) c = TABLE[(c ^ b[i]) & 0xff] ^ (c >>> 8);
     return ~c;
+  }
+
+  /** The data's mask (28.6): a CRC-32C register from header_crc | 0x10000, fed zeros, its low byte after each eight
+   *  steps. Taken off `n` bytes of `b` at `off`, into a new array. */
+  static byte[] unmask(byte[] b, int off, int n, int headerCrc) {
+    byte[] d = new byte[n];
+    int reg = headerCrc | 0x10000;
+    for (int i = 0; i < n; i++) {
+      for (int k = 0; k < 8; k++) reg = (reg & 1) != 0 ? (reg >>> 1) ^ 0x82F63B78 : reg >>> 1;
+      d[i] = (byte) (b[off + i] ^ reg);
+    }
+    return d;
   }
 
   private static int u32(byte[] b, int at) {
@@ -106,7 +135,7 @@ public final class PacketFile {
   public static PacketFile read(byte[] f, Options o) {
     PacketFile p = new PacketFile();
     p.bytes = f.length;
-    int[] expect = {0, o.firstForeground, o.first};
+    int expect = o.first;
     ByteArrayOutputStream out = new ByteArrayOutputStream();
     long left = 0;                                               // words of the current frame still to come
     int pos = 0;
@@ -132,64 +161,78 @@ public final class PacketFile {
       int number = (int) ((low >>> 16) & 0x3FFFF);              // [33:16]
       int acknowledge = (int) ((low >>> 34) & 0x3FFFF);          // [51:34]
       int hops = (int) ((low >>> 52) & 15);                      // [55:52], not tested
-      int reserved = f[pos + 7] & 0xff;
+      int stops = f[pos + 7] & 3, reserved = (f[pos + 7] & 0xff) >> 2;   // [57:56] fg_stop, bg_stop; [63:58]
       if (stream != 1 && stream != 2) throw new Refused("stream", k, pos, "stream " + stream + " (1 or 2)", p);
       if (length > 32) throw new Refused("length", k, pos, "length " + length + " (0 to 32)", p);
-      if (reserved != 0) throw new Refused("reserved", k, pos, String.format("reserved bits [63:56] are 0x%02x, not 0", reserved), p);
+      if (reserved != 0) throw new Refused("reserved", k, pos, String.format("reserved bits [63:58] are 0x%02x, not 0", reserved), p);
       if (f.length - pos - 16 < 16 * length) {
         throw new Refused("truncated", k, pos, "the file ends inside the packet's data, after " + (f.length - pos - 16) + " of its "
             + 16 * length + " bytes", p);
       }
-      int dataChecksum = u32(f, pos + 8), sum = crc32c(f, pos + 16, 16 * length);
+      byte[] data = unmask(f, pos + 16, 16 * length, headerCrc);
+      int dataChecksum = u32(f, pos + 8), sum = crc32c(data, 0, data.length);
       if (dataChecksum != sum) {
         throw new Refused("data-checksum", k, pos, String.format("stored 0x%08x, computed 0x%08x", dataChecksum, sum), p);
       }
-      if (number == 0 || number == 0x3FFFF) {
-        throw new Refused("number", k, pos, String.format("number 0x%05x: a packet number is 1 to 0x3FFFE", number), p);
-      }
-      if (number != expect[stream]) {
-        throw new Refused("number", k, pos, String.format("number %d on stream %d, %d expected%s", number, stream, expect[stream],
-            length == 0 ? " (a packet of length 0 holds the number of the next packet with data)" : ""), p);
-      }
-      p.packets++;
-      p.onStream[stream]++;
-      if (flags != 0) p.flagged++;
-      if (acknowledge != 0) p.acknowledged++;
-      if (hops != 0) p.hopped++;
-      if (p.onStream[stream] == 1) p.firstNumber[stream] = number;
-      p.lastNumber[stream] = number;
-      if (length == 0) {
-        p.empty++;                                               // it takes no number
+      if ((flags & 8) != 0) {                                    // restart (28.9)
+        boolean pattern = stream == 1 && length == 32 && number == 1 && hops == 0;
+        for (int i = 0; pattern && i < data.length; i++) pattern = (data[i] & 0xff) == prime(i % 32);
+        if (!pattern) throw new Refused("restart", k, pos, "restart is set and this is not the restart link packet", p);
+        if (left != 0) throw new Refused("restart", k, pos, String.format(Locale.ROOT, "a restart link packet inside frame %,d", p.frames), p);
+        p.packets++;
+        p.onStream[1]++;
+        p.flagged++;
+        p.restarts++;
+        if (acknowledge != 0) p.acknowledged++;
+        expect = 1;                                              // the numbers start again
       } else {
-        expect[stream] = number == 0x3FFFE ? 1 : number + 1;
-        if (number == 0x3FFFE) p.wraps[stream]++;
-        if (stream == 1) {
-          p.foregroundWords += length;
+        if (number == 0 || number == 0x3FFFF) {
+          throw new Refused("number", k, pos, String.format("number 0x%05x: a packet number is 1 to 0x3FFFE", number), p);
+        }
+        if (number != expect) {
+          throw new Refused("number", k, pos, String.format("number %d on stream %d, %d expected%s", number, stream, expect,
+              length == 0 ? " (a link packet of length 0 holds the number of the next link packet with data)" : ""), p);
+        }
+        p.packets++;
+        p.onStream[stream]++;
+        if (flags != 0) p.flagged++;
+        if (acknowledge != 0) p.acknowledged++;
+        if (hops != 0) p.hopped++;
+        if (p.onStream[stream] == 1) p.firstNumber[stream] = number;
+        p.lastNumber[stream] = number;
+        if (length == 0) {
+          p.empty++;                                               // it takes no number
         } else {
-          p.words += length;
-          if (o.frames) {
-            if (left == 0) {                                     // a frame starts: this word is its header word
-              long total = 1 + (u32(f, pos + 16 + 12) & 0xffffffffL);
-              p.frames++;
-              if (length > total) {
-                throw new Refused("frame-end", k, pos, String.format(Locale.ROOT, "frame %,d is %,d words and ends inside this packet"
-                    + " of %d", p.frames, total, length), p);
+          expect = number == 0x3FFFE ? 1 : number + 1;
+          if (number == 0x3FFFE) p.wraps[stream]++;
+          if (stream == 1) {
+            p.foregroundWords += length;
+          } else {
+            p.words += length;
+            if (o.frames) {
+              if (left == 0) {                                     // a frame starts: this word is its header word
+                long total = 1 + (u32(data, 12) & 0xffffffffL);
+                p.frames++;
+                if (length > total) {
+                  throw new Refused("frame-end", k, pos, String.format(Locale.ROOT, "frame %,d is %,d words and ends inside this packet"
+                      + " of %d", p.frames, total, length), p);
+                }
+                left = total - length;
+              } else {
+                if (length > left) {
+                  throw new Refused("frame-end", k, pos, String.format(Locale.ROOT, "frame %,d has %,d words to come and ends inside this"
+                      + " packet of %d", p.frames, left, length), p);
+                }
+                left -= length;
               }
-              left = total - length;
-            } else {
-              if (length > left) {
-                throw new Refused("frame-end", k, pos, String.format(Locale.ROOT, "frame %,d has %,d words to come and ends inside this"
-                    + " packet of %d", p.frames, left, length), p);
-              }
-              left -= length;
+              out.write(data, 0, 16 * length);
+              if (length == 32) p.full++;
+              else if (left == 0) p.shortLast++;
+              else p.shortInside++;
             }
-            out.write(f, pos + 16, 16 * length);
-            if (length == 32) p.full++;
-            else if (left == 0) p.shortLast++;
-            else p.shortInside++;
           }
         }
-      }
+      }                                                          // the restart link packet's, or an ordinary one's
       if (o.list) {
         Packet q = new Packet();
         q.at = pos;
@@ -199,6 +242,7 @@ public final class PacketFile {
         q.number = number;
         q.acknowledge = acknowledge;
         q.hops = hops;
+        q.stops = stops;
         q.dataChecksum = dataChecksum;
         q.headerCrc = headerCrc;
         q.frame = stream == 2 && length > 0 && o.frames ? p.frames : 0;

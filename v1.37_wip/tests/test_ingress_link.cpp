@@ -1,19 +1,24 @@
-// test_ingress_link: Ingress's host side with the black box's link (v1.37; src/units/host_link.h and ingress_egress.h,
-// THE LINK; stage 4 replaces the link with WORKER8's link end), from 17.6.3 to 17.6.7 (since stage 3; written from
-// ../v1.4_wip/planning/INGRESS-INTERFACE.md, "II", and HOST-LINK.md, "HL", before): the link's checks; the rule for a
-// service flag; the status bits and the word counts, a link packet's words landing a word a cycle; reading a packet out
-// by the DMA, in pieces; both queues; the errors, and that nothing is taken after one; the plain timing.
+// test_ingress_link: Ingress's host side on the real link (v1.37 stage 4, the INTEGRATOR): WORKER8's Node behind
+// Ingress/Egress (ingress_egress.h, THE LINK), the host's End at its far end (tests/host_end.h), from 17.6.3 to 17.6.7
+// and chapter 28: the rule for a service flag; the word counts, a link packet's words landing a word a cycle from the
+// cycle the Node takes it; reading out by the DMA, in pieces; the forward count; both queues; the queue's room and the
+// stop bit holding the host back; the link's rate; noise on the line, recovered; the host's link starting again,
+// link_error; the reset. Before the stage, the black box's link (its checks, its numbers, its errors) was tested here;
+// a damaged link packet is no error now (28.14). The packet file's reader (units/host_link.h), which the tests' writer
+// and gold's packetizer share and which says each link packet's stream and words, is tested here still.
 //
-// THE PACKETS are made by the tests' provisional writer (tests/packet_writer.h: its header says why it is provisional,
-// and what replaces it). THE BENCH is the master tile's slot driven directly (SlotCore, as test_tracer_slot's reference
-// run drives it): Ingress/Egress as peripheral 1, a load, a store and a consuming load of EVENTS at cycle t as the
-// slot's own calls, then the slot's cycle t. The DMA's packets are kept as they leave it.
+// THE PACKETS are made by the tests' writer (tests/packet_writer.h), into a packet file the host's End sends link
+// packet by link packet (HostEnd::from_packet_file). THE BENCH is the master tile's slot driven directly (SlotCore):
+// Ingress/Egress as peripheral 1, a load, a store and a consuming load of EVENTS at cycle t as the slot's own calls,
+// then the slot's cycle t. CYCLES are relative to the one the Node takes a link packet in (Bench::taken_at), since the
+// link's own timing (its start, its status packets, its acknowledgements) is chapter 28's and not this test's.
 #include <cstdint>
 #include <cstring>
 #include <string>
 #include <vector>
 
 #include "harness.h"
+#include "host_end.h"
 #include "ingress_bench.h"
 #include "packet_writer.h"
 #include "units/host_link.h"
@@ -42,12 +47,29 @@ void add(std::vector<uint8_t>& file, unsigned stream, uint32_t number, uint32_t 
     const std::vector<uint8_t> d = data_of(tag, words);
     packet_writer::packet(file, f, d.data());
 }
+// n packets of `words` words on stream 2 from number `first`, tagged first, first + 1, ...
+void adds(std::vector<uint8_t>& file, uint32_t first, unsigned n, unsigned words) { for (uint32_t k = first; k < first + n; k++) add(file, 2, k, k, words); }
+// The cycle whose loads first see queue q's flag, from now: ticks until then (or `limit` cycles).
+int64_t flag_seen(Bench& b, unsigned q = 1, int64_t limit = 400000) {
+    for (int64_t k = 0; k < limit; k++) { if (b.load(P_EVENTS_PEEK) & (EVENT_FOREGROUND_SERVICE << q)) return b.t; b.tick(); }
+    return -1;
+}
+bool flag(Bench& b, unsigned q = 1) { return (b.load(P_EVENTS_PEEK) & (EVENT_FOREGROUND_SERVICE << q)) != 0; }
+// The words the sink took from `from` on are packet `tag`'s words first .. first + n - 1, in order.
+bool ported(const Bench& b, size_t from, uint32_t tag, unsigned first, unsigned n) {
+    if (b.ported.size() < from + n) return false;
+    for (unsigned k = 0; k < n; k++) {
+        const uint64_t lo = uint64_t(tag) << 32 | (first + k);
+        if (b.ported[from + k].lo != lo || b.ported[from + k].hi != ~lo) return false;
+    }
+    return true;
+}
 
 }  // namespace
 
 // ================================================================================================ the link's checks
 TEST(link_crc32c) {
-    using hostlink::crc32c;
+    using units::hostlink::crc32c;
     CHECK_EQ(crc32c(reinterpret_cast<const uint8_t*>("123456789"), 9), 0xE3069283u);
     CHECK_EQ(crc32c(nullptr, 0), 0u);                      // over no data
     uint8_t b[32];
@@ -60,89 +82,99 @@ TEST(link_crc32c) {
     CHECK_EQ(packet_writer::crc32c(b, 32), 0x113FDB5Cu);                 // the writer's, table-driven, agrees
 }
 
-// HL's own figures, as main has them (8385dacd): its table's values, its example packet byte for byte, its cross-check.
+// Chapter 28's own figures (spec/host-link.md 28.5, 28.6): its examples byte for byte, the mask, its cross-check.
 TEST(link_documents_example) {
-    using hostlink::crc32c;
+    using units::hostlink::crc32c;
     uint8_t zeros[16] = {};
     CHECK_EQ(crc32c(zeros, 16), 0x42709AEAu);              // "of 16 zero bytes"
     // "stream 2, no flags, length 1, number 1, acknowledge 0, the data one zero word"
     static const uint8_t example[16] = {0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0xEA, 0x9A, 0x70, 0x42, 0xA0, 0x8C, 0x06, 0xE1};
     CHECK_EQ(crc32c(example, 12), 0xE1068CA0u);            // the header CRC, over bytes 0 to 11
     CHECK_EQ(crc32c(example, 16), 0x48674BC7u);            // "the CRC-32C of all 16 header bytes of a good packet"
+    // on the line the zero word is the mask itself (28.6's example 1: the register from 0xE1078CA0)
+    static const uint8_t line[16] = {0x2A, 0x54, 0xC0, 0x74, 0xC0, 0x1C, 0x58, 0x2F, 0xA6, 0x5D, 0x27, 0x37, 0x39, 0xC9, 0x47, 0x1F};
     std::vector<uint8_t> bytes(example, example + 16);
-    bytes.insert(bytes.end(), 16, 0);
-    hostlink::Reader reader;
+    bytes.insert(bytes.end(), line, line + 16);
+    units::hostlink::Reader reader;
     reader.open(bytes.data(), bytes.size());
-    hostlink::Packet p;
-    hostlink::Check check;
+    units::hostlink::Packet p;
+    units::hostlink::Check check;
     size_t taken = 0;
-    CHECK(reader.next(p, check, taken) == hostlink::Reader::Next::PACKET);
-    CHECK(check == hostlink::Check::OK);
+    CHECK(reader.next(p, check, taken) == units::hostlink::Reader::Next::PACKET);
+    CHECK(check == units::hostlink::Check::OK);
     CHECK_EQ(p.stream, 2u); CHECK_EQ(p.length, 1u); CHECK_EQ(p.number, 1u); CHECK_EQ(p.acknowledge, 0u); CHECK_EQ(p.flags, 0u);
+    CHECK_EQ(p.lo[0], 0u); CHECK_EQ(p.hi[0], 0u);           // the mask taken off
     CHECK_EQ(taken, size_t(32));
-    CHECK(reader.next(p, check, taken) == hostlink::Reader::Next::END);
+    CHECK(reader.next(p, check, taken) == units::hostlink::Reader::Next::END);
     std::vector<uint8_t> written;                          // and the tests' writer makes the same 32 bytes
     packet_writer::Fields f;
     f.length = 1; f.number = 1;
     packet_writer::packet(written, f, zeros);
     CHECK(written == bytes);
-    // the same packet after one hop, and with number 0x2ABCD, acknowledge 0x15555 and hops 3 (owner, 2026-11-17):
-    // the writer's bytes, the reader's fields, and the black box takes them
+    // 28.5's examples 2 to 4 and 28.6's 2 and 3: the writer's bytes, the reader's fields
     static const uint8_t hop1[16] = {0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x10, 0x00, 0xEA, 0x9A, 0x70, 0x42, 0x9E, 0xBC, 0x0A, 0x21};
-    static const uint8_t hop3[16] = {0x02, 0x01, 0xCD, 0xAB, 0x56, 0x55, 0x35, 0x00, 0xEA, 0x9A, 0x70, 0x42, 0xC9, 0xC4, 0x23, 0x30};
-    const struct { const uint8_t* h; uint32_t number, acknowledge; unsigned hops; } more[] = {{hop1, 1, 0, 1}, {hop3, 0x2ABCD, 0x15555, 3}};
+    static const uint8_t hop3[16] = {0x11, 0x01, 0xCD, 0xAB, 0x56, 0x55, 0x35, 0x02, 0xEA, 0x9A, 0x70, 0x42, 0xD2, 0xBF, 0xBA, 0x0A};
+    static const uint8_t len0[16] = {0x01, 0x00, 0x05, 0x00, 0x10, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x57, 0x09, 0x4D, 0x4E};
+    static const uint8_t m2[32] = {0x01, 0x01, 0x07, 0x00, 0x0C, 0x00, 0x00, 0x00, 0xEB, 0x08, 0xC9, 0xD9, 0x9E, 0x94, 0x2A, 0x36,
+                                   0xA4, 0xD0, 0x6E, 0x3C, 0x10, 0xA4, 0x2F, 0x89, 0xF5, 0x74, 0x21, 0x9E, 0xDE, 0x43, 0xE4, 0xC0};
+    static const uint8_t m3[32] = {0x01, 0x01, 0x07, 0x00, 0x10, 0x00, 0x10, 0x00, 0xEB, 0x08, 0xC9, 0xD9, 0xA3, 0x2B, 0x76, 0x11,
+                                   0x79, 0xF1, 0xF2, 0x82, 0x77, 0xD9, 0xB4, 0xAF, 0x91, 0x8F, 0x7C, 0x00, 0x39, 0x96, 0xA1, 0x51};
+    uint8_t up[16];
+    for (int i = 0; i < 16; i++) up[i] = uint8_t(i);
+    const struct { const uint8_t* line; size_t n; unsigned stream, flags, stops, length; uint32_t number, acknowledge; unsigned hops; const uint8_t* data; } more[] = {
+        {hop1, 16, 2, 0, 0, 1, 1, 0, 1, zeros}, {hop3, 16, 1, 1, 2, 1, 0x2ABCD, 0x15555, 3, zeros}, {len0, 16, 1, 0, 1, 0, 5, 4, 0, zeros},
+        {m2, 32, 1, 0, 0, 1, 7, 3, 0, up}, {m3, 32, 1, 0, 0, 1, 7, 4, 1, up}};
     for (const auto& m : more) {
         std::vector<uint8_t> w;
         packet_writer::Fields g;
-        g.length = 1; g.number = m.number; g.acknowledge = m.acknowledge; g.hops = m.hops;
-        packet_writer::packet(w, g, zeros);
-        CHECK(w.size() == 32 && std::equal(m.h, m.h + 16, w.begin()));
-        CHECK_EQ(crc32c(m.h, 16), 0x48674BC7u);
-        hostlink::Reader rd;
+        g.stream = m.stream; g.flags = m.flags; g.stops = m.stops; g.length = m.length; g.number = m.number; g.acknowledge = m.acknowledge; g.hops = m.hops;
+        packet_writer::packet(w, g, m.data);
+        CHECK(w.size() == 16 + 16 * size_t(m.length) && std::equal(m.line, m.line + m.n, w.begin()));
+        CHECK_EQ(crc32c(m.line, 16), 0x48674BC7u);
+        units::hostlink::Reader rd;
         rd.open(w.data(), w.size());
-        rd.expect[1] = m.number;
-        CHECK(rd.next(p, check, taken) == hostlink::Reader::Next::PACKET);
-        CHECK(check == hostlink::Check::OK);
+        rd.expect = m.number;
+        CHECK(rd.next(p, check, taken) == units::hostlink::Reader::Next::PACKET);
+        CHECK(check == units::hostlink::Check::OK);
+        CHECK_EQ(p.stream, m.stream); CHECK_EQ(p.flags, m.flags); CHECK_EQ(p.stops, m.stops);
         CHECK_EQ(p.number, m.number); CHECK_EQ(p.acknowledge, m.acknowledge); CHECK_EQ(p.hops, m.hops);
-        Bench b(w);
-        b.ie().link.expect[1] = m.number;
-        b.run(3);
-        CHECK_EQ(b.load(P_ERRORS), 0u);
-        CHECK_EQ(b.load(W_BACKGROUND_WORDS), 1u);
+        if (m.length) { CHECK_EQ(p.lo[0], 0x0706050403020100ull * (m.data == up)); CHECK_EQ(p.hi[0], 0x0F0E0D0C0B0A0908ull * (m.data == up)); }
     }
 }
 
-// A header word's fields where HL puts them, and the two checks over the bytes HL names.
+// A header word's fields where 28.3 puts them, and the two checks over the bytes it names.
 TEST(link_header_fields) {
     packet_writer::Fields f;
-    f.stream = 2; f.flags = 0x9; f.length = 3; f.number = 0x2BCDE; f.acknowledge = 0x3A5A5; f.hops = 0xC;
+    f.stream = 2; f.flags = 0x5; f.length = 3;   // resend and recovery: restart (0x8) is the restart link packet's
+    f.number = 0x2BCDE; f.acknowledge = 0x3A5A5; f.hops = 0xC; f.stops = 3;
     const std::vector<uint8_t> d = data_of(7, 3);
     std::vector<uint8_t> file;
     packet_writer::packet(file, f, d.data());
     CHECK_EQ(file.size(), size_t(16 + 48));
-    CHECK_EQ(file[0], 0x92u);                               // [3:0] the stream, [7:4] the flags
+    CHECK_EQ(file[0], 0x52u);                               // [3:0] the stream, [7:4] the flags
     CHECK_EQ(file[1], 3u);                                  // [15:8] the length
     CHECK_EQ(uint32_t(file[2]) | uint32_t(file[3]) << 8 | uint32_t(file[4] & 3) << 16, 0x2BCDEu);          // [33:16]
     CHECK_EQ(uint32_t(file[4] >> 2) | uint32_t(file[5]) << 6 | uint32_t(file[6] & 15) << 14, 0x3A5A5u);   // [51:34]
     CHECK_EQ(uint32_t(file[6] >> 4), 0xCu);                                                             // [55:52] hops
-    CHECK_EQ(file[7], 0u);                                  // [63:56] reserved
+    CHECK_EQ(file[7], 3u);                                  // [56] fg_stop, [57] bg_stop; [63:58] reserved
     auto u32 = [&](size_t at) { return uint32_t(file[at]) | uint32_t(file[at + 1]) << 8 | uint32_t(file[at + 2]) << 16 | uint32_t(file[at + 3]) << 24; };
-    CHECK_EQ(u32(8), hostlink::crc32c(file.data() + 16, 48));            // [95:64] over the data
-    CHECK_EQ(u32(12), hostlink::crc32c(file.data(), 12));                // [127:96] over bits [95:0]
-    hostlink::Reader r;
+    CHECK_EQ(u32(8), units::hostlink::crc32c(d.data(), 48));                    // [95:64] over the data as held
+    CHECK(!std::equal(d.begin(), d.end(), file.begin() + 16));                  // which goes masked
+    CHECK_EQ(u32(12), units::hostlink::crc32c(file.data(), 12));                // [127:96] over bits [95:0]
+    units::hostlink::Reader r;
     r.open(file.data(), file.size());
-    r.expect[1] = 0x2BCDE;
-    hostlink::Packet p;
-    hostlink::Check check;
+    r.expect = 0x2BCDE;
+    units::hostlink::Packet p;
+    units::hostlink::Check check;
     size_t taken;
-    CHECK(r.next(p, check, taken) == hostlink::Reader::Next::PACKET);
-    CHECK(check == hostlink::Check::OK);
+    CHECK(r.next(p, check, taken) == units::hostlink::Reader::Next::PACKET);
+    CHECK(check == units::hostlink::Check::OK);
     CHECK_EQ(taken, size_t(64));
-    CHECK_EQ(p.stream, 2u); CHECK_EQ(p.flags, 9u); CHECK_EQ(p.length, 3u); CHECK_EQ(p.number, 0x2BCDEu); CHECK_EQ(p.acknowledge, 0x3A5A5u);
-    CHECK_EQ(p.hops, 0xCu);
+    CHECK_EQ(p.stream, 2u); CHECK_EQ(p.flags, 5u); CHECK_EQ(p.length, 3u); CHECK_EQ(p.number, 0x2BCDEu); CHECK_EQ(p.acknowledge, 0x3A5A5u);
+    CHECK_EQ(p.hops, 0xCu); CHECK_EQ(p.stops, 3u);
     CHECK_EQ(p.lo[2], uint64_t(7) << 32 | 2);
     CHECK_EQ(p.hi[2], ~(uint64_t(7) << 32 | 2));
-    CHECK(r.next(p, check, taken) == hostlink::Reader::Next::END);
+    CHECK(r.next(p, check, taken) == units::hostlink::Reader::Next::END);
 }
 
 // ================================================================================================ the interface
@@ -168,44 +200,50 @@ TEST(ingress_link_reset_values) {
     CHECK_EQ(b.load(P_EVENTS_MASK), 0x1FFu);
 }
 
-namespace {
-// The cycle whose loads first see the stream's flag, from now: ticks until then (or `limit` cycles).
-int64_t flag_seen(Bench& b, unsigned q = 1, int64_t limit = 100000) {
-    for (int64_t k = 0; k < limit; k++) { if (b.load(P_EVENTS_PEEK) & (EVENT_FOREGROUND_SERVICE << q)) return b.t; b.tick(); }
-    return -1;
+// 28.1, 28.9: the link starts by itself from power-on, both ends, and the first data goes once it is in step; while
+// it starts, nothing moves. A link packet of 2 words on the foreground: taken once the link is in step, its words
+// landing from that cycle, seen by the loads of the next.
+TEST(ingress_link_starts_and_takes_the_first_link_packet) {
+    std::vector<uint8_t> file;
+    add(file, 1, 1, 0xA, 2);
+    Bench b(file);
+    const int64_t t = b.until_taken(1);
+    CHECK(t > 0);
+    CHECK(b.ie().node->above().in_step);
+    CHECK(b.host.end.status().in_step);
+    std::printf("test_ingress_link: the first link packet taken in cycle %lld, the link started\n", (long long)t);
+    CHECK_EQ(b.load(W_FOREGROUND_WORDS), 1u);               // the first word landed at the end of t
+    b.tick();
+    CHECK_EQ(b.load(W_FOREGROUND_WORDS), 2u);
+    CHECK_EQ(b.load(P_STATUS), ST_FOREGROUND_READY);
+    CHECK_EQ(b.load(P_ERRORS), 0u);
+    const ::hostlink::LinkCounts n = b.ie().node->counts_above();
+    CHECK_EQ(n.taken, 1u);
+    CHECK_EQ(n.bad_header + n.bad_data + n.bad_fields + n.refused + n.restarts, 0u);
 }
-bool flag(Bench& b, unsigned q = 1) { return (b.load(P_EVENTS_PEEK) & (EVENT_FOREGROUND_SERVICE << q)) != 0; }
-// n packets of `words` words on stream 2 from number `first`, tagged first, first + 1, ...
-void adds(std::vector<uint8_t>& file, uint32_t first, unsigned n, unsigned words) { for (uint32_t k = first; k < first + n; k++) add(file, 2, k, k, words); }
-// The words the sink took from `from` on are packet `tag`'s words first .. first + n - 1, in order.
-bool ported(const Bench& b, size_t from, uint32_t tag, unsigned first, unsigned n) {
-    if (b.ported.size() < from + n) return false;
-    for (unsigned k = 0; k < n; k++) {
-        const uint64_t lo = uint64_t(tag) << 32 | (first + k);
-        if (b.ported[from + k].lo != lo || b.ported[from + k].hi != ~lo) return false;
-    }
-    return true;
-}
-}  // namespace
 
-// II, "The rule for a service flag", line by line, for the foreground (no count) at a byte a cycle: a packet of w words
-// is 16 + 16 w bytes, and one whose last byte arrives in c is seen by the loads of c + 1.
+// 17.6.7, line by line, for the foreground (no count):
 //   1. a word into an empty queue: the flag;
-//   3. not for words that arrive while it already asks (a flag too many, if the rule looked at arrivals);
-//   2. a DMA transfer ending with words left: the flag (a flag too few, if it looked only at arrivals);
-//   and no flag while a transfer is in flight, nor at the end of one that took every word.
+//   3. not for words that arrive while it already asks;
+//   2. a DMA transfer ending with words left: the flag;
+//   and no flag while a transfer is in flight, nor at the end of one that took every word. The host's third link
+// packet held back (HostEnd::gate) until the first two are read out.
 TEST(ingress_link_service_flag_rule) {
     std::vector<uint8_t> file;
-    add(file, 1, 1, 0xA, 2);                                // 48 bytes: cycles 1 to 48
-    add(file, 1, 2, 0xB, 1);                                // 32: to 80
-    add(file, 1, 3, 0xC, 32);                               // 528: to 608
-    Bench b(file, 1);
+    add(file, 1, 1, 0xA, 2);
+    add(file, 1, 2, 0xB, 1);
+    add(file, 1, 3, 0xC, 32);
+    Bench b(file);
+    bool third = false;
+    b.host.gate = [&](size_t i, int64_t) { return i < 2 || third; };
     b.mask(EVENT_FOREGROUND_SERVICE | EVENT_BACKGROUND_SERVICE | EVENT_DMA_DONE);
-    CHECK_EQ(flag_seen(b, 0), int64_t(49));                 // line 1
+    const int64_t t1 = b.until_taken(1);
+    CHECK_EQ(flag_seen(b, 0), t1 + 1);                       // line 1: the first word landed at the end of t1
     CHECK_EQ(b.events() & EVENT_FOREGROUND_SERVICE, EVENT_FOREGROUND_SERVICE);   // cleared by the load
     b.tick();
     CHECK(!flag(b, 0));
-    b.run(40);                                              // the second packet: the queue already asks, so nothing (line 3)
+    b.until_taken(2);
+    b.run(3);                                               // the second packet: the queue already asks, so nothing (line 3)
     CHECK_EQ(b.load(W_FOREGROUND_WORDS), 3u);
     CHECK(!flag(b, 0));
     // a transfer of 2 of the 3: in flight, it does not ask; at its end, with one left, the flag (line 2)
@@ -213,50 +251,36 @@ TEST(ingress_link_service_flag_rule) {
     CHECK(b.sent(0, 0xA, 0, 2, 0x100, 64, 1));
     CHECK(flag(b, 0));
     b.events(); b.tick();
-    // a transfer of the last one, while the third packet arrives: at its end nothing is left, and nothing asks; then the
-    // packet into the empty queue asks (line 1 again)
+    // the last one: at the transfer's end nothing is left, and nothing asks; then the third packet into the empty
+    // queue asks (line 1 again)
     b.dma(0, 1, 64, 0x100, 1);
     CHECK_EQ(b.load(W_FOREGROUND_WORDS), 0u);
     CHECK(!flag(b, 0));
-    CHECK_EQ(flag_seen(b, 0), int64_t(609));
-    CHECK_EQ(b.load(W_FOREGROUND_WORDS), 1u);               // 17.6.3: its words land a word a cycle, the first at 608's end
+    third = true;
+    const int64_t t3 = b.until_taken(3);
+    CHECK_EQ(flag_seen(b, 0), t3 + 1);
+    CHECK_EQ(b.load(W_FOREGROUND_WORDS), 1u);               // 17.6.3: a word a cycle
     b.run(31);
     CHECK_EQ(b.load(W_FOREGROUND_WORDS), 32u);
-    b.events(); b.tick();
-    // a packet that arrives while a transfer is in flight: the flag at the transfer's end, not at the arrival
-    std::vector<uint8_t> two;
-    add(two, 1, 1, 0xA, 32);                                // to 528
-    add(two, 1, 2, 0xB, 1);                                 // to 560
-    Bench c(two, 1);
-    c.mask(EVENT_FOREGROUND_SERVICE | EVENT_DMA_DONE);
-    CHECK_EQ(flag_seen(c, 0), int64_t(529));
-    c.events(); c.tick();
-    c.run(28);                                              // DMA_START at level 0 of 560: judged at 559's end, the 32nd word landed (17.6.4)
-    const size_t from = c.out.size();
-    c.dma(0, 32, 64, 0x100, 1);                             // the second packet arrives at 560, in flight: no flag then
-    CHECK(c.out[from + 31].t > 561);
-    CHECK_EQ(c.load(W_FOREGROUND_WORDS), 1u);
-    CHECK(flag(c, 0));                                      // at the transfer's end, for the word that came during it
     // C6: a transfer of 0 words is a transfer: at its end, with words left, the flag
-    c.events(); c.tick();
-    CHECK(!flag(c, 0));
-    c.dma(0, 0, 64, 0x100, 1);
-    CHECK(flag(c, 0));
-    CHECK_EQ(c.load(W_FOREGROUND_WORDS), 1u);
-    CHECK_EQ(c.load(P_ERRORS), 0u);
+    b.events(); b.tick();
+    CHECK(!flag(b, 0));
+    b.dma(0, 0, 64, 0x100, 1);
+    CHECK(flag(b, 0));
+    CHECK_EQ(b.load(P_ERRORS), 0u);
 }
 
-// The background's line: it asks only with the count at 0. Words arriving while the count runs ask nothing (a flag too
-// many, if the count were not looked at); the count reaching 0 with words there posts the flag (a flag too few, if only
-// arrivals posted).
+// The background's line: it asks only with the count at 0. Words arriving while the count runs ask nothing; the count
+// reaching 0 with words there posts the flag.
 TEST(ingress_link_service_flag_rule_background) {
     std::vector<uint8_t> file;
-    adds(file, 1, 3, 32);                                   // 528 bytes each: to 528, 1056, 1584
-    Bench b(file, 1);
+    adds(file, 1, 3, 32);
+    Bench b(file);
     b.mask(EVENT_BACKGROUND_SERVICE | EVENT_DMA_DONE);
     b.ready = Bench::NEVER;                                 // the Updater takes nothing
     b.store(W_DMA_FORWARD_COUNT, 40);
-    b.run(2000);
+    b.until_taken(3);
+    b.run(40);
     CHECK_EQ(b.load(W_BACKGROUND_WORDS), 96u);
     CHECK(!flag(b));                                        // three packets in, the count not 0: no flag
     CHECK(b.ported.empty());
@@ -275,13 +299,11 @@ TEST(ingress_link_service_flag_rule_background) {
     CHECK(ported(b, 0, 1, 0, 32));
     CHECK(ported(b, 32, 2, 0, 8));
     CHECK_EQ(b.load(W_BACKGROUND_WORDS), 56u);
-    b.run(100);
-    CHECK_EQ(b.ported.size(), size_t(40));                  // nothing more: the count is 0
-    // a store of 0 with words waiting: the flag (it starts to ask); with the flag taken, another store of 0 posts nothing
+    // a store of 0 with words waiting: the flag; with the flag taken, another store of 0 posts nothing
     b.events(); b.tick();
-    b.store(W_DMA_FORWARD_COUNT, 5);                        // a word moves in the store's cycle (the bench applies a store
-    CHECK(!flag(b));                                        //   before the slot's cycle: periph_slot.h's level 0)
-    b.store(W_DMA_FORWARD_COUNT, 0);                        // replaced with 4 left: stopped, 55 waiting
+    b.store(W_DMA_FORWARD_COUNT, 5);
+    CHECK(!flag(b));
+    b.store(W_DMA_FORWARD_COUNT, 0);
     CHECK_EQ(b.ported.size(), size_t(41));
     CHECK_EQ(b.load(W_BACKGROUND_WORDS), 55u);
     CHECK(flag(b));
@@ -291,93 +313,69 @@ TEST(ingress_link_service_flag_rule_background) {
     CHECK_EQ(b.load(P_ERRORS), 0u);
 }
 
-// The count written before the words arrive, while they arrive, and after: a word a cycle once there is one and the
-// sink is ready; the count read as what remains; the flag when it reaches 0 with words left.
-TEST(ingress_link_forward_count_before_during_after) {
+// 17.6.5: the count stored before the words arrive: a word a cycle from the cycle after each lands (17.6.3), the
+// sink ready; the count read as what remains; the flag when it reaches 0 with words left.
+TEST(ingress_link_forward_count_before_the_words) {
     std::vector<uint8_t> file;
-    adds(file, 1, 2, 32);                                   // to 528 and 1056
-    // before: the count in cycle 1; packet 1's words move in 529 to 560, packet 2's first 8 in 1057 to 1064
-    {
-        Bench b(file, 1);
-        b.mask(EVENT_BACKGROUND_SERVICE);
-        b.store(W_DMA_FORWARD_COUNT, 40);
-        while (b.t < 600) b.tick();
-        CHECK_EQ(b.load(W_DMA_FORWARD_COUNT), 8u);          // a load gives what remains
-        CHECK_EQ(b.ported.size(), size_t(32));
-        CHECK_EQ(b.ported[0].t, int64_t(529));
-        CHECK_EQ(b.ported[31].t, int64_t(560));
-        CHECK(!flag(b));                                    // the queue is empty, and the count not 0
-        CHECK_EQ(flag_seen(b), int64_t(1065));
-        CHECK_EQ(b.ported.size(), size_t(40));
-        CHECK_EQ(b.ported[32].t, int64_t(1057));
-        CHECK_EQ(b.ported[39].t, int64_t(1064));
-        CHECK(ported(b, 0, 1, 0, 32) && ported(b, 32, 2, 0, 8));
-        CHECK_EQ(b.load(W_BACKGROUND_WORDS), 1u);           // 17.6.3: packet 2 lands a word a cycle from 1056's end
-        b.run(23);
-        CHECK_EQ(b.load(W_BACKGROUND_WORDS), 24u);
-        CHECK_EQ(b.ie().link_forwarded, 40u);
-    }
-    // during: the count in cycle 700, between the packets
-    {
-        Bench b(file, 1);
-        b.mask(EVENT_BACKGROUND_SERVICE);
-        CHECK_EQ(flag_seen(b), int64_t(529));               // the count is 0: packet 1 asks
-        b.events();
-        while (b.t < 700) b.tick();
-        b.store(W_DMA_FORWARD_COUNT, 40);
-        CHECK_EQ(b.ported.size(), size_t(1));               // the store's cycle: the first word moves
-        CHECK_EQ(b.ported[0].t, int64_t(700));
-        CHECK_EQ(flag_seen(b), int64_t(1065));
-        CHECK_EQ(b.ported[31].t, int64_t(731));
-        CHECK_EQ(b.ported[32].t, int64_t(1057));
-        CHECK(ported(b, 0, 1, 0, 32) && ported(b, 32, 2, 0, 8));
-    }
-    // after: both packets in, the count in cycle 1100: 40 words in 1100 to 1139
-    {
-        Bench b(file, 1);
-        b.mask(EVENT_BACKGROUND_SERVICE);
-        while (b.t < 1100) b.tick();
-        b.events();
-        b.store(W_DMA_FORWARD_COUNT, 40);
-        CHECK_EQ(flag_seen(b), int64_t(1140));
-        CHECK_EQ(b.ported.size(), size_t(40));
-        CHECK_EQ(b.ported[39].t, int64_t(1139));
-        CHECK_EQ(b.load(W_BACKGROUND_WORDS), 24u);
-    }
+    adds(file, 1, 2, 32);
+    Bench b(file);
+    bool second = false;
+    b.host.gate = [&](size_t i, int64_t) { return i < 1 || second; };
+    b.mask(EVENT_BACKGROUND_SERVICE);
+    b.store(W_DMA_FORWARD_COUNT, 40);
+    const int64_t t1 = b.until_taken(1);
+    b.run(40);
+    CHECK_EQ(b.load(W_DMA_FORWARD_COUNT), 8u);              // a load gives what remains
+    CHECK_EQ(b.ported.size(), size_t(32));
+    CHECK_EQ(b.ported[0].t, t1 + 1);                        // landed at the end of t1, moved in the next
+    CHECK_EQ(b.ported[31].t, t1 + 32);
+    CHECK(!flag(b));                                        // the queue is empty, and the count not 0
+    second = true;
+    const int64_t t2 = b.until_taken(2);
+    CHECK_EQ(flag_seen(b), t2 + 9);                         // 8 words moved in t2 + 1 to t2 + 8: the count 0, words left
+    CHECK_EQ(b.ported.size(), size_t(40));
+    CHECK_EQ(b.ported[32].t, t2 + 1);
+    CHECK_EQ(b.ported[39].t, t2 + 8);
+    CHECK(ported(b, 0, 1, 0, 32) && ported(b, 32, 2, 0, 8));
+    b.run(30);
+    CHECK_EQ(b.load(W_BACKGROUND_WORDS), 24u);
+    CHECK_EQ(b.ie().link_forwarded, 40u);
 }
 
-// A count across many packets of every length, sent and discarded; the discard runs at the link's rate whatever the
-// sink does.
+// A count across many packets of every length, sent and discarded; the discard runs whatever the sink does.
 TEST(ingress_link_forward_count_across_packets_send_and_discard) {
     std::vector<uint8_t> file;
-    uint32_t total = 0, number = 1;
-    for (uint32_t k = 1; k <= 40; k++) { add(file, 2, number, k, k % 33); total += k % 33; number += k % 33 != 0; }   // 0 to 32 words: a length-0 packet takes no number
+    uint32_t total = 0, number = 1, packets = 0;
+    for (uint32_t k = 1; k <= 40; k++) {
+        const unsigned n = 1 + (k * 7) % 32;
+        add(file, 2, number++, k, n); total += n; packets++;
+    }
     for (bool discard : {false, true}) {
-        Bench b(file, 1);
+        Bench b(file);
         b.mask(EVENT_BACKGROUND_SERVICE);
         if (discard) b.ready = Bench::NEVER;
         b.store(W_DMA_FORWARD_COUNT, (discard ? DISCARD : 0) | (total - 5));
         CHECK_EQ(b.load(W_DMA_FORWARD_COUNT), (discard ? DISCARD : 0) | (total - 5));
-        const int64_t seen = flag_seen(b, 1, 200000);
+        const int64_t seen = flag_seen(b, 1, 600000);
         CHECK(seen > 0);
         CHECK_EQ(b.load(W_DMA_FORWARD_COUNT), discard ? DISCARD : 0u);   // [31] as written (C3)
-        b.run(40);                                          // the last link packet's words still landing (17.6.3)
+        b.run(40);
         CHECK_EQ(b.load(W_BACKGROUND_WORDS), 5u);
         CHECK_EQ(b.ie().link_discarded, discard ? total - 5 : 0u);
         CHECK_EQ(b.ie().link_forwarded, discard ? 0u : total - 5);
+        CHECK_EQ(b.ie().link_packets, uint64_t(packets));
         if (!discard) {
             size_t at = 0;
             for (uint32_t k = 1; k <= 40; k++) {
-                const unsigned n = k % 33, take = at + n <= total - 5 ? n : unsigned(total - 5 - at);
+                const unsigned n = 1 + (k * 7) % 32, take = at + n <= total - 5 ? n : unsigned(total - 5 - at);
                 CHECK(ported(b, at, k, 0, take));
                 at += take;
             }
         }
-        CHECK(b.ported.size() == (discard ? 0u : size_t(total - 5)));
-        // what is left is the last packet's last 5 words, read out by the DMA
         const size_t from = b.out.size();
         b.dma(1, 5, 64, 0x100, 1);
-        CHECK(b.sent(from, 40, 2, 5, 0x100, 64, 1));
+        const unsigned last = 1 + (40 * 7) % 32;
+        CHECK(b.sent(from, 40, last - 5, 5, 0x100, 64, 1));
     }
 }
 
@@ -385,16 +383,15 @@ TEST(ingress_link_forward_count_across_packets_send_and_discard) {
 TEST(ingress_link_forward_count_stopped_and_replaced) {
     std::vector<uint8_t> file;
     adds(file, 1, 2, 32);
-    Bench b(file, 1);
+    Bench b(file);
     b.mask(EVENT_BACKGROUND_SERVICE);
     b.store(W_DMA_FORWARD_COUNT, 60);
-    while (b.t < 540) b.tick();                             // 529 to 539: 11 words
+    const int64_t t1 = b.until_taken(1);
+    while (b.t < t1 + 12) b.tick();                         // t1 + 1 to t1 + 11: 11 words
     b.store(W_DMA_FORWARD_COUNT, 0);
     CHECK_EQ(b.ported.size(), size_t(11));
     CHECK(flag(b));                                         // the count at 0, words waiting: it asks
-    CHECK_EQ(b.load(W_BACKGROUND_WORDS), 2u);               // 13 landed by 540's end (from 528's: 17.6.3), 11 gone
-    b.run(30);
-    CHECK_EQ(b.load(W_BACKGROUND_WORDS), 21u);
+    b.run(60);
     CHECK_EQ(b.ported.size(), size_t(11));
     b.events(); b.tick();
     const int64_t t0 = b.t;
@@ -405,22 +402,22 @@ TEST(ingress_link_forward_count_stopped_and_replaced) {
     CHECK_EQ(b.ported.size(), size_t(19));
     CHECK(ported(b, 0, 1, 0, 19));
     CHECK_EQ(b.ported[18].t, t0 + 7);
-    CHECK_EQ(b.load(W_BACKGROUND_WORDS), 13u);
     CHECK_EQ(b.load(W_DMA_FORWARD_COUNT), 0u);
     CHECK_EQ(b.load(P_ERRORS), 0u);
 }
 
-// The sink's ready coming and going at random: a word moves exactly in the cycles both are 1, every word once, in order.
+// The sink's ready coming and going at random: a word moves exactly in the cycles both are 1, every word once, in
+// order; the link held back by the stop bit meanwhile (60 packets, more than the queue).
 TEST(ingress_link_forward_count_ready_at_random) {
     std::vector<uint8_t> file;
-    adds(file, 1, 60, 32);                                  // 1,920 words: more than the queue, so the link is held too
-    for (int64_t rate : {0, 1}) {
+    adds(file, 1, 60, 32);
+    for (unsigned rate : {1u, 4u}) {
         Bench b(file, rate);
         b.ready = Bench::RANDOM;
         b.mask(EVENT_BACKGROUND_SERVICE);
         b.store(W_DMA_FORWARD_COUNT, 1900);
         int64_t moves = 0, offered_ready = 0;
-        for (int k = 0; k < 200000 && b.ported.size() < 1900; k++) {
+        for (int k = 0; k < 600000 && b.ported.size() < 1900; k++) {
             const bool valid = b.ie().port_source().valid, ready = (b.random_at(b.t) & 3) != 0;
             const size_t before = b.ported.size();
             b.tick();
@@ -432,22 +429,24 @@ TEST(ingress_link_forward_count_ready_at_random) {
         CHECK_EQ(offered_ready, int64_t(1900));
         for (uint32_t k = 1; k <= 59; k++) CHECK(ported(b, 32 * (k - 1), k, 0, 32));
         CHECK(ported(b, 32 * 59, 60, 0, 12));
-        CHECK_EQ(flag_seen(b, 1, 100000) > 0, true);
-        b.run(40);                                          // the last link packet's words still landing (17.6.3)
+        CHECK(flag_seen(b, 1, 100000) > 0);
+        b.run(40);
         CHECK_EQ(b.load(W_BACKGROUND_WORDS), 20u);
         CHECK_EQ(b.load(P_ERRORS), 0u);
+        CHECK_EQ(b.ie().node->counts_above().refused, 0u);
     }
 }
 
-// Forwarding and a DMA transfer from the foreground queue move words in the same cycles (II), each from its own queue.
+// Forwarding and a DMA transfer from the foreground queue move words in the same cycles, each from its own queue.
 TEST(ingress_link_forward_count_beside_a_foreground_transfer) {
     std::vector<uint8_t> file;
-    add(file, 2, 1, 0xB1, 32);
-    add(file, 1, 1, 0xF1, 32);
-    add(file, 2, 2, 0xB2, 32);
-    add(file, 1, 2, 0xF2, 16);
-    Bench b(file);                                          // as fast as taken: all four are in, a word a cycle (17.6.3)
-    b.run(114);
+    add(file, 2, 1, 0xB1, 32);                               // one run of numbers for the link (28.4)
+    add(file, 1, 2, 0xF1, 32);
+    add(file, 2, 3, 0xB2, 32);
+    add(file, 1, 4, 0xF2, 16);
+    Bench b(file);
+    b.until_taken(4);
+    b.run(40);
     CHECK_EQ(b.load(W_FOREGROUND_WORDS), 48u);
     CHECK_EQ(b.load(W_BACKGROUND_WORDS), 64u);
     b.mask(EVENT_FOREGROUND_SERVICE | EVENT_BACKGROUND_SERVICE | EVENT_DMA_DONE);
@@ -462,318 +461,191 @@ TEST(ingress_link_forward_count_beside_a_foreground_transfer) {
     CHECK(b.sent_part(0, 0xF1, 0, 32, 0x200, 64, 1));
     CHECK(b.sent(32, 0xF2, 0, 16, 0x200 + 16 * 32, 64, 1));
     CHECK(ported(b, 0, 0xB1, 0, 32) && ported(b, 32, 0xB2, 0, 32));
-    // in the same cycles: the DMA took a word in every cycle from the start's next, and so did the port
     int both = 0;
-    for (const Landed& l : b.out) for (const Ported& w : b.ported) both += l.t - 1 == w.t;   // a packet leaves the cycle after its take
-    CHECK(both >= 40);
-    CHECK_EQ(b.load(W_FOREGROUND_WORDS), 0u);
-    CHECK_EQ(b.load(W_BACKGROUND_WORDS), 0u);
+    for (const Ported& p : b.ported) for (const Landed& l : b.out) if (l.t == p.t + 1) both++;
+    CHECK(both > 40);
     CHECK_EQ(b.load(P_ERRORS), 0u);
 }
 
-// The queue: INGRESS_QUEUE_WORDS, 1,024 words (17.6.3). With it full the link waits; the room comes back word by word, by
-// the port and by the discard, and the next packet is taken when its data fits (the words landed and still landing);
-// its bytes start in the cycle after the one that made room, and its words land a word a cycle from the cycle it is
-// taken (17.6.3: the first at the end of that cycle).
-TEST(ingress_link_queue_holds_1024_words) {
-    const unsigned Q = INGRESS_QUEUE_WORDS_DEFAULT, P = Q / 32;
+// 17.6.3, 28.10: the queue is INGRESS_QUEUE_WORDS, 1,024 words; its stop bit goes up at half full, of the words
+// landed and still to land, and holds the host back: link packets with no number yet wait; those already on their way
+// (the window) still come, and fit, since half the queue is kept for them. Nothing draining the queue, 40 link packets
+// of 32 words: the queue fills to past half and no further than half and the window, the stop bit up, the host waiting,
+// the chip's end refusing nothing. Then the queue drained: the stop bit falls and every word comes, in order.
+TEST(ingress_link_queue_stop_at_half_holds_the_host_back) {
+    const unsigned Q = INGRESS_QUEUE_WORDS_DEFAULT;
     std::vector<uint8_t> file;
-    adds(file, 1, P + 2, 32);
-    for (bool discard : {false, true}) {
-        Bench b(file, 1);
-        CHECK_EQ(b.ie().queue_words, Q);
-        b.ready = Bench::NEVER;
-        b.run(P * 528 + 2000);
-        CHECK_EQ(b.ie().link_packets, uint64_t(P));
-        CHECK_EQ(b.load(W_BACKGROUND_WORDS), Q);
-        CHECK(b.ie().link_room_cycles > 0 || b.ie().link_has_next);
-        // 31 words of room: the next needs 32
-        if (!discard) b.ready = Bench::ALWAYS;
-        b.store(W_DMA_FORWARD_COUNT, (discard ? DISCARD : 0) | 31);
-        b.run(1000);
-        CHECK_EQ(b.ie().link_packets, uint64_t(P));
-        CHECK_EQ(b.load(W_BACKGROUND_WORDS), Q - 31);
-        // one more: the room, and 528 cycles later the next is taken, its first word landing at the end of that cycle
-        const int64_t room = b.t;                           // the word leaves at the end of this cycle
-        b.store(W_DMA_FORWARD_COUNT, (discard ? DISCARD : 0) | 1);
-        while (b.t <= room + 528) { CHECK_EQ(b.ie().link_packets, uint64_t(P)); b.tick(); }
-        CHECK_EQ(b.ie().link_packets, uint64_t(P + 1));
-        CHECK_EQ(b.load(W_BACKGROUND_WORDS), Q - 31);       // taken at the end of room + 528: its first word lands then
-        b.tick();
-        CHECK_EQ(b.load(W_BACKGROUND_WORDS), Q - 30);
-        b.run(30);
-        CHECK_EQ(b.load(W_BACKGROUND_WORDS), Q);            // a word a cycle
-        CHECK_EQ(b.ported.size(), size_t(discard ? 0 : 32));
-        CHECK_EQ(b.ie().link_discarded, discard ? 32u : 0u);
-        // and the words come out in order across the packets
-        b.ready = Bench::ALWAYS;
-        b.store(W_DMA_FORWARD_COUNT, Q);
-        b.run(Q + 100);
-        const size_t base = discard ? 0 : 32;
-        for (uint32_t k = 2; k <= P + 1; k++) CHECK(ported(b, base + 32 * (k - 2), k, 0, 32));
-        CHECK_EQ(b.load(P_ERRORS), 0u);
-    }
+    adds(file, 1, 40, 32);
+    Bench b(file);
+    b.ready = Bench::NEVER;
+    b.store(W_DMA_FORWARD_COUNT, 40 * 32);
+    b.run(60000);
+    const unsigned held = b.load(W_BACKGROUND_WORDS);
+    CHECK(held >= Q / 2 && held <= Q / 2 + 8 * 32);
+    CHECK(b.ie().node->above().stop_said[1]);
+    CHECK(!b.ie().node->above().stop_said[0]);              // the foreground's own: a full background never holds it
+    CHECK(b.host.end.status().stop_heard[1]);
+    CHECK(b.host.stop_cycles > 0);
+    CHECK_EQ(b.ie().node->counts_above().refused, 0u);
+    std::printf("test_ingress_link: nothing draining, the queue held at %u words, the stop bit up\n", held);
+    b.ready = Bench::ALWAYS;
+    for (int k = 0; k < 400000 && b.ported.size() < 40 * 32; k++) b.tick();
+    CHECK_EQ(b.ported.size(), size_t(40 * 32));
+    for (uint32_t k = 1; k <= 40; k++) CHECK(ported(b, 32 * (k - 1), k, 0, 32));
+    CHECK(!b.ie().node->above().stop_said[1]);
+    CHECK_EQ(b.ie().node->counts_above().refused, 0u);
+    CHECK_EQ(b.load(P_ERRORS), 0u);
 }
-// INGRESS_QUEUE_WORDS is a parameter (19): a power of two from 64 to 4,096; the queue holds that many, no more.
+// INGRESS_QUEUE_WORDS is a parameter (19): a power of two from 64 to 4,096; the Node's queue the same.
 TEST(ingress_link_queue_words_is_a_parameter) {
-    for (unsigned q : {64u, 512u, 4096u}) {
+    for (unsigned q : {512u, 4096u}) {
         std::vector<uint8_t> file;
-        adds(file, 1, q / 32 + 2, 32);
-        Bench b(file, 0, q);
+        adds(file, 1, q / 32, 32);
+        Bench b(file, 1, q);
         b.ready = Bench::NEVER;
-        b.run((q / 32 + 2) * 64 + 2000);
-        CHECK_EQ(b.ie().link_packets, uint64_t(q / 32));
-        CHECK_EQ(b.load(W_BACKGROUND_WORDS), q);
+        b.run(int64_t(q) * 40 + 20000);
+        CHECK(b.load(W_BACKGROUND_WORDS) >= q / 2);
+        CHECK(b.load(W_BACKGROUND_WORDS) <= q / 2 + 8 * 32);
+        CHECK_EQ(b.ie().node->counts_above().refused, 0u);
     }
 }
 DEATH_TEST(ingress_link_queue_words_not_a_power_of_two_is_refused, "INGRESS_QUEUE_WORDS must be a power of two") {
-    Bench b({}, 0, 1000);
+    Bench b({}, 1, 1000);
 }
 
 // The two queues are independent: each asks for itself; the count holds the background only.
 TEST(ingress_link_two_streams) {
     std::vector<uint8_t> file;
-    add(file, 2, 1, 0xB1, 4);
-    add(file, 1, 1, 0xF1, 2);
-    add(file, 2, 2, 0xB2, 3);
-    add(file, 1, 2, 0xF2, 1);
+    add(file, 2, 1, 0xB1, 4);                                // one run of numbers for the link (28.4)
+    add(file, 1, 2, 0xF1, 2);
+    add(file, 2, 3, 0xB2, 3);
+    add(file, 1, 4, 0xF2, 1);
     Bench b(file);
-    b.run(12);                                              // ten words, landing a word a cycle (17.6.3)
+    b.until_taken(4);
+    b.run(12);
     CHECK_EQ(b.load(P_STATUS), ST_FOREGROUND_READY | ST_BACKGROUND_READY);
     CHECK_EQ(b.load(W_FOREGROUND_WORDS), 3u);
     CHECK_EQ(b.load(W_BACKGROUND_WORDS), 7u);
     CHECK_EQ(b.load(P_EVENTS_PEEK), EVENT_IDLE | EVENT_FOREGROUND_SERVICE | EVENT_BACKGROUND_SERVICE);
     b.mask(EVENT_FOREGROUND_SERVICE | EVENT_BACKGROUND_SERVICE | EVENT_DMA_DONE);
     b.events(); b.tick();
-    // the foreground read out, both its packets in one transfer, with the background's words still waiting
     b.dma(0, 3, 64, 0x200, 2);
     CHECK(b.sent_part(0, 0xF1, 0, 2, 0x200, 64, 2));
     CHECK(b.sent(2, 0xF2, 0, 1, 0x200 + 32, 64, 2));
     CHECK_EQ(b.load(W_FOREGROUND_WORDS), 0u);
     CHECK_EQ(b.load(W_BACKGROUND_WORDS), 7u);
     CHECK_EQ(b.load(P_STATUS), ST_BACKGROUND_READY);
-    CHECK_EQ(b.events() & (EVENT_FOREGROUND_SERVICE | EVENT_BACKGROUND_SERVICE), 0u);   // nothing left on the foreground
+    CHECK_EQ(b.events() & (EVENT_FOREGROUND_SERVICE | EVENT_BACKGROUND_SERVICE), 0u);
     b.tick();
     b.dma(1, 7, 64, 0x400, 2);
     CHECK(b.sent_part(3, 0xB1, 0, 4, 0x400, 64, 2));
     CHECK(b.sent(7, 0xB2, 0, 3, 0x400 + 64, 64, 2));
     CHECK_EQ(b.load(P_STATUS), 0u);
-    // a count running on the background does not hold the foreground's flag
-    std::vector<uint8_t> two;
-    add(two, 2, 1, 0xB1, 32);                               // 528 bytes
-    add(two, 1, 1, 0xF1, 1);                                // to 560
-    Bench c(two, 1);
-    c.ready = Bench::NEVER;
-    c.mask(EVENT_FOREGROUND_SERVICE | EVENT_BACKGROUND_SERVICE | EVENT_DMA_DONE);
-    c.store(W_DMA_FORWARD_COUNT, 100);
-    CHECK_EQ(flag_seen(c, 0), int64_t(561));
-    CHECK(!flag(c, 1));
-    CHECK_EQ(c.load(P_ERRORS), 0u);
-}
-
-// A packet of length 0 is checked and asks for no service. It takes no packet number: its field holds the number the
-// stream's next packet with data will carry (owner, 2026-11-16).
-TEST(ingress_link_length_0) {
-    std::vector<uint8_t> file;
-    add(file, 2, 1, 0xA, 1);
-    add(file, 2, 2, 0, 0);                                  // no data: the next with data is 2
-    add(file, 2, 2, 0, 0);                                  // and again
-    add(file, 2, 2, 0xB, 1);
-    add(file, 1, 1, 0, 0);                                  // the foreground's, with nothing sent yet: 1
-    Bench b(file);
-    b.run(3);
     CHECK_EQ(b.load(P_ERRORS), 0u);
-    CHECK_EQ(b.ie().link_packets, 5u);
-    CHECK_EQ(b.load(P_STATUS), ST_BACKGROUND_READY);        // none of the empty ones waits
-    b.dma(1, 1, 64, 0x100, 1);
-    CHECK_EQ(b.load(W_BACKGROUND_WORDS), 1u);
-    const size_t from = b.out.size();
-    b.dma(1, 1, 64, 0x100, 1);
-    CHECK(b.sent(from, 0xB, 0, 1, 0x100, 64, 1));
-    // an empty packet whose number is not the next data packet's
-    std::vector<uint8_t> bad;
-    add(bad, 2, 1, 0xA, 1);
-    add(bad, 2, 3, 0, 0);
-    Bench c(bad);
-    c.run(3);
-    CHECK_EQ(c.load(P_ERRORS), ERR_SEQUENCE);
 }
 
-// Idle zeros between packets, in counts that are not multiples of 16, and before the first.
-TEST(ingress_link_idle_zeros) {
-    std::vector<uint8_t> file(5, 0);
-    add(file, 2, 1, 0xA, 2);
-    file.insert(file.end(), 21, 0);
-    add(file, 2, 2, 0xB, 1);
-    file.insert(file.end(), 16, 0);
-    add(file, 2, 3, 0xC, 1);
-    file.insert(file.end(), 1024 + 3, 0);                   // and at the end: the link idle
-    Bench b(file);
-    b.run(3);
-    CHECK_EQ(b.load(P_ERRORS), 0u);
-    CHECK_EQ(b.ie().link_packets, 3u);
-    CHECK(!b.ie().link_cut);
-    for (uint32_t k = 0; k < 3; k++) { const size_t from = b.out.size(); b.dma(1, k == 0 ? 2 : 1, 64, 0x100, 1); CHECK(b.sent(from, 0xA + k, 0, k == 0 ? 2 : 1, 0x100, 64, 1)); }
-}
-
-// The packet number, 18 bits (owner, 2026-11-17): 1 first, past 0xFFFF, and after 0x3FFFE, 1 again.
-TEST(ingress_link_number_wraps) {
+// ================================================================================================ the link's own
+// 28.1, the line's rate: at 1, 2, 4 and 8 link cycles a chip cycle, and a link cycle every 4 chip cycles, the link
+// starts and takes the same link packets in the same order; in link cycles it is the same link but for the wire,
+// which is a chip cycle long (host_end.h), so a round trip is a few link cycles more at a higher rate; in chip cycles
+// each rate is faster than the one below it.
+TEST(ingress_link_rates) {
     std::vector<uint8_t> file;
-    add(file, 2, 0xFFFF, 5, 1);
-    add(file, 2, 0x10000, 6, 1);                            // the first number above 16 bits
-    Bench a(file);
-    a.ie().link.expect[1] = 0xFFFF;
-    a.run(3);
-    CHECK_EQ(a.load(P_ERRORS), 0u);
-    CHECK_EQ(a.ie().link_packets, 2u);
-    file.clear();
-    add(file, 2, 0x3FFFD, 1, 1);
-    add(file, 2, 0x3FFFE, 2, 1);
-    add(file, 2, 1, 3, 1);
-    add(file, 2, 2, 4, 1);
-    Bench b(file);
-    b.ie().link.expect[1] = 0x3FFFD;                        // as if 0x3FFFC packets had come
-    b.run(3);
-    CHECK_EQ(b.load(P_ERRORS), 0u);
-    CHECK_EQ(b.ie().link_packets, 4u);
-    std::vector<uint8_t> bad;                               // 0x3FFFF is no packet number
-    add(bad, 2, 0x3FFFE, 1, 1);
-    add(bad, 2, 0x3FFFF, 2, 1);
-    Bench c(bad);
-    c.ie().link.expect[1] = 0x3FFFE;
-    c.run(3);
-    CHECK_EQ(c.load(P_ERRORS), ERR_SEQUENCE);
-    std::vector<uint8_t> zero;                              // nor is 0, and the first is 1
-    add(zero, 2, 0, 1, 1);
-    Bench d(zero);
-    d.run(3);
-    CHECK_EQ(d.load(P_ERRORS), ERR_SEQUENCE);
-}
-
-// ================================================================================================ the errors
-// One thing wrong in the second of three packets: its error bit; the first packet is presented and can be read out;
-// nothing is presented after it, however long the wait; the bit is sticky and raises the tile's ERRORS.peripheral_1.
-namespace {
-enum Damage { FIRST_BYTE, FIRST_BYTE_ZERO, HEADER_CRC, DATA_CHECKSUM, DATA_BYTE, LAST_DATA_BIT, NUMBER_FIELD, LENGTH_FIELD, NUMBER_AHEAD, NUMBER_REPEATED,
-              STREAM_0, STREAM_3, LENGTH_33, RESERVED_BIT };
-void damaged(Damage what, uint32_t want) {
-    std::vector<uint8_t> file;
-    add(file, 2, 1, 0xA, 4);
-    const size_t second = file.size();
-    packet_writer::Fields f;
-    f.stream = 2; f.number = 2; f.length = 6;
-    std::vector<uint8_t> d = data_of(0xB, 6);
-    switch (what) {                                         // a field wrong, with both checks right for it
-        case NUMBER_AHEAD: f.number = 3; break;
-        case NUMBER_REPEATED: f.number = 1; break;
-        case STREAM_0: f.stream = 0; f.flags = 1; break;    // (with a flag: a first byte of 0 would be idle)
-        case STREAM_3: f.stream = 3; break;
-        case LENGTH_33: f.length = 33; d = data_of(0xB, 33); break;
-        case RESERVED_BIT: f.reserved = 0x10; break;
-        default: break;
+    adds(file, 1, 3, 32);
+    std::vector<int64_t> before;
+    std::vector<uint64_t> at1;
+    for (unsigned rate : {1u, 2u, 4u, 8u}) {
+        Bench b(file, rate);
+        b.store(W_DMA_FORWARD_COUNT, 96);
+        b.until_taken(3);
+        b.run(40);
+        CHECK_EQ(b.taken_at.size(), size_t(3));
+        CHECK_EQ(b.ported.size(), size_t(96));
+        for (uint32_t k = 1; k <= 3; k++) CHECK(ported(b, 32 * (k - 1), k, 0, 32));
+        if (rate == 1) at1 = b.taken_link_cycle;
+        for (size_t k = 0; k < 3 && k < at1.size() && k < b.taken_link_cycle.size(); k++) {
+            CHECK(b.taken_link_cycle[k] >= at1[k] && b.taken_link_cycle[k] <= at1[k] + 64);
+            if (!before.empty()) CHECK(b.taken_at[k] < before[k]);
+        }
+        std::printf("test_ingress_link: at %u link cycles a chip cycle, the link packets taken in chip cycles %lld %lld %lld (link cycles %llu %llu %llu)\n",
+                    rate, (long long)b.taken_at[0], (long long)b.taken_at[1], (long long)b.taken_at[2], (unsigned long long)b.taken_link_cycle[0],
+                    (unsigned long long)b.taken_link_cycle[1], (unsigned long long)b.taken_link_cycle[2]);
+        before = b.taken_at;
     }
-    packet_writer::packet(file, f, d.data());
-    switch (what) {                                         // a bit of the packet changed on the link
-        case FIRST_BYTE: file[second] ^= 0x01; break;
-        case FIRST_BYTE_ZERO: file[second] = 0; break;      // read as idle: the link has lost its place
-        case HEADER_CRC: file[second + 13] ^= 0x40; break;
-        case DATA_CHECKSUM: file[second + 9] ^= 0x02; break;
-        case DATA_BYTE: file[second + 16 + 37] ^= 0x80; break;
-        case LAST_DATA_BIT: file[second + 16 + 95] ^= 0x80; break;
-        case NUMBER_FIELD: file[second + 2] ^= 0x04; break;
-        case LENGTH_FIELD: file[second + 1] ^= 0x01; break;
-        default: break;
-    }
-    add(file, 2, 3, 0xC, 2);
-    Bench b(file);
-    b.mask(EVENT_BACKGROUND_SERVICE);
-    b.run(3);
-    CHECK_EQ(b.load(P_ERRORS), want);
-    CHECK_EQ(b.s.live_errors(b.t), 1u);                     // the tile's ERRORS.peripheral_1: the NMI
-    CHECK_EQ(b.load(W_BACKGROUND_WORDS), 4u);               // the first packet is there, and asked
-    CHECK_EQ(b.events() & EVENT_BACKGROUND_SERVICE, EVENT_BACKGROUND_SERVICE);
-    b.dma(1, 4, 64, 0x100, 1);
-    CHECK(b.sent(0, 0xA, 0, 4, 0x100, 64, 1));
-    b.run(2000);
-    CHECK_EQ(b.load(P_STATUS), 0u);                         // and nothing after it
-    CHECK_EQ(b.load(W_BACKGROUND_WORDS), 0u);
-    CHECK_EQ(b.load(P_EVENTS_PEEK) & (EVENT_FOREGROUND_SERVICE | EVENT_BACKGROUND_SERVICE), 0u);
-    CHECK_EQ(b.ie().link_packets, 1u);
-    CHECK_EQ(b.load(P_ERRORS), want);
+    Bench slow(file, 1, INGRESS_QUEUE_WORDS_DEFAULT, 4);
+    slow.until_taken(3, 1600000);
+    CHECK(slow.taken_link_cycle == at1);                    // a link cycle every 4 chip cycles: the wire is a link cycle
+    for (size_t k = 0; k < 3 && k < at1.size() && k < slow.taken_at.size(); k++) CHECK_EQ(uint64_t(slow.taken_at[k]), 4 * at1[k]);
 }
-}  // namespace
 
-TEST(ingress_link_crc_error_the_first_byte) { damaged(FIRST_BYTE, ERR_CRC); }
-TEST(ingress_link_crc_error_the_first_byte_zeroed) { damaged(FIRST_BYTE_ZERO, ERR_CRC); }
-TEST(ingress_link_crc_error_the_header_crc) { damaged(HEADER_CRC, ERR_CRC); }
-TEST(ingress_link_crc_error_the_data_checksum) { damaged(DATA_CHECKSUM, ERR_CRC); }
-TEST(ingress_link_crc_error_a_data_byte) { damaged(DATA_BYTE, ERR_CRC); }
-TEST(ingress_link_crc_error_the_last_data_bit) { damaged(LAST_DATA_BIT, ERR_CRC); }
-TEST(ingress_link_crc_error_a_number_bit_on_the_link) { damaged(NUMBER_FIELD, ERR_CRC); }
-TEST(ingress_link_crc_error_a_length_bit_on_the_link) { damaged(LENGTH_FIELD, ERR_CRC); }
-TEST(ingress_link_sequence_error_a_number_skipped) { damaged(NUMBER_AHEAD, ERR_SEQUENCE); }
-TEST(ingress_link_sequence_error_a_number_repeated) { damaged(NUMBER_REPEATED, ERR_SEQUENCE); }
-TEST(ingress_link_format_error_stream_0) { damaged(STREAM_0, ERR_FORMAT); }
-TEST(ingress_link_format_error_stream_3) { damaged(STREAM_3, ERR_FORMAT); }
-TEST(ingress_link_format_error_length_33) { damaged(LENGTH_33, ERR_FORMAT); }
-TEST(ingress_link_format_error_a_reserved_bit) { damaged(RESERVED_BIT, ERR_FORMAT); }
-
-// The flags and the acknowledge field need the way back: they are not looked at.
-TEST(ingress_link_flags_and_acknowledge_are_not_looked_at) {
+// 28.8, 28.14: noise on the line is no error. A bit of a byte the chip receives changed, one byte in 2,000 for the
+// link's first 100,000 cycles: link packets damaged and thrown away, asked for again and sent again, the link in step
+// again; every word arrives once and in order, and ERRORS stays 0.
+TEST(ingress_link_noise_on_the_line_is_recovered_and_no_error) {
     std::vector<uint8_t> file;
-    packet_writer::Fields f;
-    f.stream = 2; f.number = 1; f.length = 1; f.flags = 0xF; f.acknowledge = 0xFFFFF;
-    const std::vector<uint8_t> d = data_of(9, 1);
-    packet_writer::packet(file, f, d.data());
+    adds(file, 1, 20, 32);
     Bench b(file);
-    b.run(3);
+    b.host.noise = [](int64_t t, unsigned, uint8_t x) {
+        const uint64_t h = uint64_t(t) * 0x9E3779B97F4A7C15ull;
+        return t < 100000 && (h >> 40) % 2000 == 0 ? uint8_t(x ^ (1u << (h >> 61))) : x;
+    };
+    b.store(W_DMA_FORWARD_COUNT, 20 * 32);
+    for (int k = 0; k < 600000 && b.ported.size() < 20 * 32; k++) b.tick();
+    CHECK_EQ(b.ported.size(), size_t(20 * 32));
+    for (uint32_t k = 1; k <= 20; k++) CHECK(ported(b, 32 * (k - 1), k, 0, 32));
+    const ::hostlink::LinkCounts n = b.ie().node->counts_above();
+    CHECK(n.bad_header + n.bad_data >= 3);
     CHECK_EQ(b.load(P_ERRORS), 0u);
-    CHECK_EQ(b.load(W_BACKGROUND_WORDS), 1u);
+    std::printf("test_ingress_link: noise: %llu bad headers, %llu bad data, %llu ahead, %llu behind, %llu sent again by the host\n",
+                (unsigned long long)n.bad_header, (unsigned long long)n.bad_data, (unsigned long long)n.ahead, (unsigned long long)n.behind,
+                (unsigned long long)b.host.end.counts().sent_again);
 }
 
-// A file that ends inside a packet: the packet never arrives; no error.
-TEST(ingress_link_file_cut) {
+// 28.9, 17.6.1: the host's end starting its link again (its power_on) once the link is in step: the chip's link end
+// hears "I have started again", starts its link again too, and ERRORS.link_error is 1, sticky (nothing clears it but
+// the reset, 28.13.2), with format_error 0; the tile's ERRORS.peripheral_1. The reset clears it: the chip's link end
+// starts again itself, the host's hears it.
+TEST(ingress_link_the_host_starting_again_is_link_error_until_the_reset) {
     std::vector<uint8_t> file;
-    add(file, 2, 1, 0xA, 2);
-    add(file, 2, 2, 0xB, 8);
-    for (size_t cut : {size_t(48 + 7), size_t(48 + 16), size_t(48 + 16 + 100)}) {
-        Bench b(std::vector<uint8_t>(file.begin(), file.begin() + long(cut)));
-        b.run(5);
-        CHECK_EQ(b.load(P_ERRORS), 0u);
-        CHECK_EQ(b.ie().link_packets, 1u);
-        CHECK(b.ie().link_cut);
-    }
-}
-
-// The reset empties the streams, clears the errors and rewinds the file.
-TEST(ingress_link_reset) {
-    std::vector<uint8_t> file;
-    add(file, 2, 1, 0xA, 2);
-    add(file, 2, 5, 0xB, 2);                                // out of order
+    adds(file, 1, 4, 8);
     Bench b(file);
-    b.run(3);
-    CHECK_EQ(b.load(P_ERRORS), ERR_SEQUENCE);
+    const int64_t t1 = b.until_taken(1);
+    CHECK_EQ(b.load(P_ERRORS), 0u);
+    b.host.hook = [t1](::hostlink::End& end, int64_t t) { if (t == t1 + 2000) end.power_on(); };
+    b.run(30000);
+    CHECK_EQ(b.load(P_ERRORS), ERR_LINK);
+    CHECK_EQ(b.s.live_errors(b.t), 1u);
+    CHECK(b.ie().node->above().other_end);
+    CHECK(!b.ie().node->above().made_wrong);
+    b.run(30000);
+    CHECK_EQ(b.load(P_ERRORS), ERR_LINK);                   // sticky
+    b.host.hook = nullptr;
+    b.host.end.clear_error();
     b.s.reset(b.t);
     CHECK_EQ(b.load(P_ERRORS), 0u);
     CHECK_EQ(b.load(P_STATUS), 0u);
-    b.run(3);
-    CHECK_EQ(b.load(W_BACKGROUND_WORDS), 2u);               // the file again, from its start
-    CHECK_EQ(b.load(P_ERRORS), ERR_SEQUENCE);
+    CHECK_EQ(b.load(W_BACKGROUND_WORDS), 0u);
+    b.run(30000);
+    CHECK(b.ie().node->above().in_step);
+    CHECK(b.host.end.status().other_end);                   // the chip's reset said "I have started again"
+    CHECK_EQ(b.load(P_ERRORS), 0u);                         // under the chip, no error: it started itself
 }
 
+// ================================================================================================ the UB
 DEATH_TEST(ingress_link_a_transfer_past_the_words_waiting_is_ub, "a DMA transfer of 3 words from the background queue, which holds 2") {
     std::vector<uint8_t> file;
     add(file, 2, 1, 0xA, 2);
     Bench b(file);
+    b.until_taken(1);
     b.run(3);
     b.dma(1, 3, 64, 0x100, 1);
 }
-// II's undefined cases for the forward count.
 DEATH_TEST(ingress_link_a_background_transfer_with_the_count_running_is_ub, "a DMA transfer from the background queue started with DMA_FORWARD_COUNT at 3") {
     std::vector<uint8_t> file;
     add(file, 2, 1, 0xA, 2);
     Bench b(file);
     b.ready = Bench::NEVER;
+    b.until_taken(1);
     b.run(3);
     b.store(W_DMA_FORWARD_COUNT, 3);
     b.dma(1, 1, 64, 0x100, 1);
@@ -782,7 +654,8 @@ DEATH_TEST(ingress_link_a_count_stored_with_a_background_transfer_in_flight_is_u
     std::vector<uint8_t> file;
     add(file, 2, 1, 0xA, 32);
     Bench b(file);
-    b.run(40);                                              // its 32 words landed (17.6.3)
+    b.until_taken(1);
+    b.run(40);
     b.s.write(b.t, 1, P_DMA_HDR, lw::SIZE_128 | lw::M_WRITE << HDR_MODE_LO | 64u << HDR_DST_LO | 32u << DMA_HDR_COUNT_LO | 1u << DMA_HDR_QUEUE_LO); b.tick();
     b.s.write(b.t, 1, P_DMA_START, 1); b.tick();
     b.run(10);
@@ -793,8 +666,9 @@ TEST(ingress_link_a_count_after_dma_done_is_defined) {
     std::vector<uint8_t> file;
     add(file, 2, 1, 0xA, 32);
     Bench b(file);
-    b.run(40);                                              // its 32 words landed (17.6.3)
-    b.dma(1, 30, 64, 0x100, 1);                             // to the cycle STATUS.dma_busy falls
+    b.until_taken(1);
+    b.run(40);
+    b.dma(1, 30, 64, 0x100, 1);
     b.store(W_DMA_FORWARD_COUNT, 2);
     b.run(5);
     CHECK(ported(b, 0, 0xA, 30, 2));
@@ -806,81 +680,7 @@ DEATH_TEST(ingress_link_a_transfer_with_no_word_is_ub, "from the foreground queu
     b.dma(0, 1, 64, 0x100, 1);
 }
 
-// ================================================================================================ the timing
-// A byte a cycle from cycle 1: a packet whose last byte arrives in cycle c is seen by the loads of c + 1; an error at
-// the cycle its packet's last byte would have arrived. (Waiting for room: ingress_link_buffer_holds_1024_words.)
-TEST(ingress_link_a_byte_a_cycle) {
-    std::vector<uint8_t> file;
-    add(file, 2, 1, 0xA, 32);                               // 528 bytes: cycles 1 to 528
-    file.insert(file.end(), 10, 0);                         // idle: 529 to 538
-    add(file, 2, 2, 0xB, 1);                                // 32 bytes: 539 to 570
-    for (uint32_t k = 3; k <= 4; k++) add(file, 2, k, k, 1);   // 571 to 602, to 634
-    add(file, 2, 5, 5, 2);                                  // 48 bytes: to 682
-    add(file, 2, 7, 7, 1);                                  // out of order: to 714
-    Bench b(file, 1);
-    while (b.t <= 528) { CHECK_EQ(b.load(P_STATUS), 0u); CHECK_EQ(b.load(P_EVENTS_PEEK), EVENT_IDLE); b.tick(); }
-    CHECK_EQ(b.t, int64_t(529));
-    CHECK_EQ(b.load(P_STATUS), ST_BACKGROUND_READY);
-    CHECK_EQ(b.load(W_BACKGROUND_WORDS), 1u);               // 17.6.3: a word a cycle, the first at 528's end
-    CHECK_EQ(b.load(P_EVENTS_PEEK), EVENT_IDLE | EVENT_BACKGROUND_SERVICE);
-    while (b.t <= 570) { CHECK_EQ(b.ie().link_packets, 1u); b.tick(); }
-    CHECK_EQ(b.ie().link_packets, 2u);
-    CHECK_EQ(b.load(W_BACKGROUND_WORDS), 33u);
-    while (b.t <= 602) { CHECK_EQ(b.ie().link_packets, 2u); b.tick(); }
-    while (b.t <= 634) { CHECK_EQ(b.ie().link_packets, 3u); b.tick(); }
-    while (b.t <= 682) { CHECK_EQ(b.ie().link_packets, 4u); b.tick(); }
-    CHECK_EQ(b.ie().link_packets, 5u);
-    CHECK_EQ(b.load(W_BACKGROUND_WORDS), 36u);              // its second word lands at 683's end (17.6.3)
-    b.tick();
-    CHECK_EQ(b.load(W_BACKGROUND_WORDS), 37u);
-    while (b.t <= 714) { CHECK_EQ(b.load(P_ERRORS), 0u); b.tick(); }
-    CHECK_EQ(b.load(P_ERRORS), ERR_SEQUENCE);               // at the cycle the bad packet's last byte arrived
-    CHECK_EQ(b.ie().link_room_cycles, 0u);
-    // the words read out in one transfer: DMA_START at cycle p, a word a cycle from p + 1
-    const int64_t p = b.t + 2;
-    b.dma(1, 37, 64, 0x100, 1);
-    CHECK(b.sent_part(0, 0xA, 0, 32, 0x100, 64, 1));
-    CHECK(b.sent_part(32, 0xB, 0, 1, 0x100 + 16 * 32, 64, 1));
-    CHECK(b.sent(35, 5, 0, 2, 0x100 + 16 * 35, 64, 1));
-    CHECK_EQ(b.out[0].t, p + 2);                            // (taken in p + 1, leaving the DMA the cycle after)
-    CHECK_EQ(b.out[36].t, p + 38);
-}
-
-// Faster links (WORKER4's C12): at 2, 4 and 8 bytes a cycle a packet of b bytes takes ceil(b / rate) cycles after the
-// last; idle zeros count as bytes.
-TEST(ingress_link_faster) {
-    std::vector<uint8_t> file;
-    add(file, 2, 1, 0xA, 32);                               // 528 bytes
-    file.insert(file.end(), 3, 0);                          // 3 idle bytes go with the next packet: 35 bytes
-    add(file, 2, 2, 0xB, 1);
-    add(file, 2, 3, 0xC, 2);                                // 48 bytes
-    for (int64_t rate : {1, 2, 4, 8}) {
-        Bench b(file, 1);
-        b.ie().link_bytes_per_cycle = rate;
-        b.mask(EVENT_BACKGROUND_SERVICE);
-        const int64_t first = (528 + rate - 1) / rate, second = first + (35 + rate - 1) / rate, third = second + (48 + rate - 1) / rate;
-        CHECK_EQ(flag_seen(b), first + 1);
-        b.events(); b.tick();
-        while (b.t <= second) { CHECK_EQ(b.ie().link_packets, 1u); b.tick(); }
-        CHECK_EQ(b.ie().link_packets, 2u);
-        while (b.t <= third) { CHECK_EQ(b.ie().link_packets, 2u); b.tick(); }
-        CHECK_EQ(b.ie().link_packets, 3u);
-        b.run(32);                                          // the packet buffer hands them over a word a cycle, in turn (28.13.6)
-        CHECK_EQ(b.load(W_BACKGROUND_WORDS), 35u);
-    }
-}
-
-// As fast as taken (0 cycles a byte): a packet is there as soon as there is room.
-TEST(ingress_link_as_fast_as_taken) {
-    std::vector<uint8_t> file;
-    add(file, 2, 1, 0xA, 32);
-    Bench b(file, 0);
-    b.tick();
-    CHECK_EQ(b.load(W_BACKGROUND_WORDS), 1u);               // taken in cycle 1, its first word landing then (17.6.3)
-    b.run(31);
-    CHECK_EQ(b.load(W_BACKGROUND_WORDS), 32u);
-}
-
+// ================================================================================================ a whole file
 // A whole frame file, packetized, read out packet by packet: the frames come back byte for byte.
 TEST(ingress_link_a_frame_file) {
     std::vector<uint8_t> frames, packets;
@@ -895,13 +695,13 @@ TEST(ingress_link_a_frame_file) {
     b.mask(EVENT_BACKGROUND_SERVICE | EVENT_DMA_DONE);
     std::vector<uint8_t> back;
     size_t taken = 0;
-    for (int guard = 0; guard < 100000; guard++) {
+    for (int guard = 0; guard < 2000000 && back.size() < frames.size(); guard++) {
         b.tick();
         const uint32_t words = b.load(W_BACKGROUND_WORDS);
-        if (words == 0) break;
-        CHECK_EQ(b.events() & EVENT_BACKGROUND_SERVICE, EVENT_BACKGROUND_SERVICE);
-        b.dma(1, words, 64, 0x100, 1);
-        CHECK_EQ(b.out.size(), taken + words);
+        if (words == 0) continue;
+        b.events();
+        b.tick();
+        b.dma(1, b.load(W_BACKGROUND_WORDS), 64, 0x100, 1);
         for (; taken < b.out.size(); taken++) for (uint64_t half : {b.out[taken].lo, b.out[taken].hi}) for (unsigned k = 0; k < 8; k++) back.push_back(uint8_t(half >> (8 * k)));
     }
     CHECK(back == frames);

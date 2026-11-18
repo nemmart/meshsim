@@ -94,6 +94,8 @@
 #include "units/regmap.h"
 
 namespace units { struct IngressEgress; struct Updater; struct UpdaterTop; class CacheSystem; }   // v1.37: the master tile's
+struct HostEnd;                                                                                      // v1.37: tests/host_end.h
+struct WireEnds;                                                                                     // v1.37 stage 6: tests/wire_ends.h
 
 namespace mach {
 
@@ -468,8 +470,15 @@ public:
     uint32_t word(unsigned unit, uint32_t byte_addr) const; // TileRef::peek_local
 
     // ---- v1.37's chip ----
-    // The packet file Ingress reads, the link's bytes (kept here), before the first cycle.
-    void set_link(std::vector<uint8_t> bytes);
+    // The host's end of the link (tests/host_end.h; v1.37 stage 4), kept here, on the master tile's link_up, at `rate`
+    // link cycles a chip cycle, sending the link packets of a packet file of the black box's (its splits and streams),
+    // before the first cycle. FATAL if the file is not a good packet file.
+    HostEnd& attach_host(const std::vector<uint8_t>& packet_file, unsigned rate = 1, unsigned every = 1);
+    HostEnd& host();
+    bool has_host();
+    // Or the wire (tests/wire_ends.h; v1.37 stage 6): the chip's link ports on a chain of processes, before the first
+    // cycle. The ends are the caller's and outlive the run.
+    void attach_wire(WireEnds& ends);
     units::IngressEgress& ingress();                        // the master tile's Ingress/Egress
     units::UpdaterTop& updater();                           // the master tile's peripheral 2, the Updater's controller
     units::tracer::FileStore& store();                      // LPDDR as files: the memory system's

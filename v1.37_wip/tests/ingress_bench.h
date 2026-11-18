@@ -1,5 +1,6 @@
 // ingress_bench.h: the master tile's slot with Ingress/Egress, driven directly (v1.37; tests/test_ingress_link.cpp
-// and tests/test_packet_vectors.cpp): SlotCore with Ingress/Egress (17.6) as peripheral 1, a load, a store
+// and tests/test_packet_vectors.cpp): SlotCore with Ingress/Egress (17.6) as peripheral 1, its link's far end the
+// host's (tests/host_end.h: WORKER8's End, sending a packet file's link packets; since stage 4), a load, a store
 // and a consuming load of EVENTS at cycle t as the slot's own calls, then the slot's cycle t (as test_tracer_slot's
 // reference run drives a slot). The DMA's packets are kept as they leave it. The word port's sink is the bench's own
 // (SlotCore::ext_sink): its ready always 1, always 0, or at random from a seed (a register of its own, a xorshift
@@ -9,6 +10,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "host_end.h"
 #include "units/host_link.h"
 #include "units/ingress_egress.h"
 #include "units/linkword.h"
@@ -39,20 +41,27 @@ struct Ported { int64_t t; uint64_t lo, hi; };                 // a word the sin
 struct Bench {
     SlotCore s;
     std::vector<uint8_t> file;
+    HostEnd host;
+    std::vector<int64_t> taken_at;                            // the chip cycle the Node took each link packet with data
+    std::vector<uint64_t> taken_link_cycle;                   // and the link cycles clocked by then
     std::vector<Landed> out;
     std::vector<Ported> ported;
     int64_t t = 1;
     enum Ready { ALWAYS, NEVER, RANDOM } ready = ALWAYS;
     uint64_t rng = 0x2545F4914F6CDD1Dull;                     // the sink's register, for RANDOM
     int64_t rng_at = 0;                                       // the cycle it was last stepped for
-    explicit Bench(std::vector<uint8_t> bytes, int64_t cycles_per_byte = 0, unsigned queue_words = INGRESS_QUEUE_WORDS_DEFAULT)
+    // `rate` link cycles a chip cycle, or (every > 1) a link cycle every `every` chip cycles.
+    explicit Bench(std::vector<uint8_t> bytes, unsigned rate = 1, unsigned queue_words = INGRESS_QUEUE_WORDS_DEFAULT, unsigned every = 1)
         : file(std::move(bytes)) {
         s.tile = lw::CC1;
         PeriphSlotConfig c;
         c.ingress_queue_words = queue_words;
         s.install(1, PT_INGRESS, c);
-        ie().link_cycles_per_byte = cycles_per_byte;
-        ie().set_link(file.data(), file.size());
+        std::string why;
+        if (!HostEnd::from_packet_file(file.data(), file.size(), host.packets, why)) FATAL("ingress_bench: %s", why.c_str());
+        host.rate = rate; host.every = every;
+        host.attach(ie());
+        ie().reset(0);                                        // the link at its rate, from power-on
         s.ext_sink.ctx = this;
         s.ext_sink.out = [](void* x, int64_t at) {
             Bench& b = *static_cast<Bench*>(x);
@@ -71,13 +80,20 @@ struct Bench {
     }
     IngressEgress& ie() { return s.ingress_egress(1); }
     void tick() {
+        const uint64_t before = ie().link_packets;
         s.run_cycle(t);
         for (unsigned k = 0; k < s.n_out; k++) {
             const uint64_t h = s.out[k].h;
             out.push_back({t, s.out[k].lo, s.out[k].hi, lw::addr(h), lw::dst(h), lw::counter(h), lw::mode(h), lw::size(h)});
         }
         s.end_cycle(t);
+        for (uint64_t k = before; k < ie().link_packets; k++) { taken_at.push_back(t); taken_link_cycle.push_back(ie().link_cycles); }
         t++;
+    }
+    // Run until the Node has taken n link packets with data (or `limit` cycles): the cycle it took the n-th, or -1.
+    int64_t until_taken(size_t n, int64_t limit = 400000) {
+        for (int64_t k = 0; k < limit && taken_at.size() < n; k++) tick();
+        return taken_at.size() >= n ? taken_at[n - 1] : -1;
     }
     void run(int64_t cycles) { for (int64_t k = 0; k < cycles; k++) tick(); }
     uint32_t load(unsigned w) { uint32_t v = 0; s.peek(t, 1, w, v); return v; }

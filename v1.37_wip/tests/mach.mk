@@ -3,7 +3,7 @@
 # the peripheral slot and what it holds).
 MACH_OBJ  := $(B)/tests/mach.o $(B)/tests/checker.o $(B)/tests/suite.o
 MACH_LINK := $(MACH_OBJ) $(NET_LINK) $(B)/src/units/trace_log.o $(B)/src/units/tile_ctl.o $(B)/src/units/periph_slot.o \
-             $(B)/src/units/replayer.o $(TRACER_LINK)
+             $(B)/src/units/replayer.o $(TRACER_LINK) $(WIRE_OBJ)   # (v1.37 stage 6: the wire, for Mach::attach_wire)
 
 $(B)/test_mach $(B)/test_checker: $(MACH_LINK)
 # the sort on the chip, under meshsim's firmware (tests/test_sort.cpp)

@@ -104,9 +104,10 @@ public final class PacketVectors {
         packet(2, 0x10000, r.words(1)), "ok"));
     v.add(new Vector("foreground", "stream 1", 9, packet(1, 9, r.words(1)), "ok"));
     Packets.Packet fl = packet(2, 6, r.words(2));
-    fl.flags = 0xF;
+    fl.flags = Packets.RESEND | Packets.LOST | Packets.RECOVERY;
     fl.acknowledge = 0x2BCDE;
-    v.add(new Vector("flags-and-acknowledge", "every flag set and an acknowledge number: neither is checked", 6, fl, "ok"));
+    v.add(new Vector("flags-and-acknowledge", "resend, lost and recovery set and an acknowledge number: none is checked (restart is:"
+        + " the restart link packet's vectors)", 6, fl, "ok"));
     Packets.Packet hp = packet(2, 6, r.words(1));
     hp.hops = 3;
     v.add(new Vector("hops-3", "hops 3: not tested, no value of it is an error", 6, hp, "ok"));
@@ -115,17 +116,61 @@ public final class PacketVectors {
     hf.acknowledge = 0x3FFFF;
     v.add(new Vector("hops-15", "hops 15 and the acknowledge field all ones, number 0x2ABCD: every bit of bytes 4 to 6 used", 0x2ABCD,
         hf, "ok"));
-    // HOST-LINK.md's three examples, "The two checks"
-    v.add(new Vector("host-link-example", "HOST-LINK.md's example: stream 2, length 1, number 1, the data one zero word. Its header is"
-        + " the same bytes as before the hops field", 1, packet(2, 1, new byte[16]), "ok"));
+    // machine-spec 28.5's four worked examples, and 28.6's two of the mask (v1.37 stage 4: chapter 28)
+    v.add(new Vector("host-link-example", "28.5's example 1: stream 2, length 1, number 1, ack 0, the data one zero word; on the line"
+        + " the data is the mask itself (28.6's example 1)", 1, packet(2, 1, new byte[16]), "ok"));
     Packets.Packet h1 = packet(2, 1, new byte[16]);
     h1.hops = 1;
-    v.add(new Vector("host-link-example-one-hop", "HOST-LINK.md's example after one hop: hops 1", 1, h1, "ok"));
-    Packets.Packet h3 = packet(2, 0x2ABCD, new byte[16]);
+    v.add(new Vector("host-link-example-one-hop", "28.5's example 2: the same after one hop, hops 1", 1, h1, "ok"));
+    Packets.Packet h3 = packet(1, 0x2ABCD, new byte[16]);
     h3.acknowledge = 0x15555;
     h3.hops = 3;
-    v.add(new Vector("host-link-example-hops-3", "HOST-LINK.md's example with number 0x2ABCD, acknowledge 0x15555 and hops 3", 0x2ABCD,
-        h3, "ok"));
+    h3.flags = 1;                                                 // resend
+    h3.stops = 2;                                                 // bg_stop
+    v.add(new Vector("host-link-example-hops-3", "28.5's example 3: foreground, length 1, number 0x2ABCD, ack 0x15555, hops 3, resend"
+        + " and bg_stop set", 0x2ABCD, h3, "ok"));
+    Packets.Packet h4 = packet(1, 5, new byte[0]);
+    h4.acknowledge = 4;
+    h4.stops = 1;                                                 // fg_stop
+    v.add(new Vector("host-link-example-length-0", "28.5's example 4: length 0, stream 1, the next number 5, ack 4, fg_stop set", 5, h4,
+        "ok"));
+    byte[] up16 = new byte[16];
+    for (int i = 0; i < 16; i++) up16[i] = (byte) i;
+    Packets.Packet m2 = packet(1, 7, up16);
+    m2.acknowledge = 3;
+    v.add(new Vector("host-link-mask-example", "28.6's example 2: foreground, length 1, number 7, ack 3, the data 00 to 0F under its mask",
+        7, m2, "ok"));
+    Packets.Packet m3 = packet(1, 7, up16.clone());
+    m3.acknowledge = 4;
+    m3.hops = 1;
+    v.add(new Vector("host-link-mask-example-forwarded", "28.6's example 3: the same data forwarded, hops 1, ack 4: a new header, a new"
+        + " mask", 7, m3, "ok"));
+    Packets.Packet st = packet(2, 6, r.words(1));
+    st.stops = 3;
+    v.add(new Vector("stop-bits", "both stop bits set: not tested, no value of them is an error (28.3: byte 7's bits 0 and 1)", 6, st,
+        "ok"));
+    // the restart link packet (28.9): its data checksum is 0xC8981D21; it takes no number, and the numbers start again
+    v.add(new Vector("restart-link-packet", "28.9's restart link packet, restart and lost: \"I have started again\". Whatever number was"
+        + " expected, the next is 1", 9, Packets.restartPacket(Packets.LOST), "ok"));
+    v.add(new Vector("restart-link-packet-answer", "the restart link packet with restart and recovery: \"so have I\"", 1,
+        Packets.restartPacket(Packets.RECOVERY), "ok"));
+    Packets.Packet ra = Packets.restartPacket(Packets.LOST | Packets.RECOVERY);
+    ra.acknowledge = 0x123;
+    ra.stops = 3;
+    v.add(new Vector("restart-link-packet-both", "restart, lost and recovery, with an ack field and both stop bits: written as in any"
+        + " header, not used by the receiver", 0x2000, ra, "ok"));
+    Packets.Packet rp = Packets.restartPacket(Packets.LOST);
+    rp.data[16 * 31 + 15] ^= 1;
+    v.add(new Vector("restart-wrong-pattern", "the restart link packet with its last data byte changed and its checksum made right:"
+        + " both checks pass, the pattern does not", 1, rp, "restart"));
+    Packets.Packet rn = Packets.restartPacket(Packets.LOST);
+    rn.number = 2;
+    v.add(new Vector("restart-number-2", "the restart link packet numbered 2", 2, rn, "restart"));
+    Packets.Packet rs = Packets.restartPacket(Packets.LOST);
+    rs.stream = 2;
+    v.add(new Vector("restart-on-stream-2", "the restart link packet on stream 2", 1, rs, "restart"));
+    v.add(new Vector("restart-on-a-data-packet", "base with restart set: a link packet with restart that is not the restart link packet",
+        5, sealed(p -> p.flags = Packets.RESTART), "restart"));
     v.add(new Vector("empty", "length 0: its number is the one the next packet with data will carry, and it takes none", 7,
         packet(2, 7, new byte[0]), "ok"));
     v.add(new Vector("empty-first", "length 0 before any data: number 1, and 1 is still to come", 1, packet(2, 1, new byte[0]), "ok"));
@@ -143,7 +188,7 @@ public final class PacketVectors {
         "header-crc"));
     v.add(new Vector("bit-hops", "base with header bit 52 changed (hops becomes 1): the header CRC covers it", 5, damaged(p -> p.hops = 1),
         "header-crc"));
-    v.add(new Vector("bit-reserved", "base with header bit 63 changed (reserved)", 5, damaged(p -> p.reserved = 0x80), "header-crc"));
+    v.add(new Vector("bit-reserved", "base with header bit 63 changed (reserved)", 5, damaged(p -> p.reserved = 0x20), "header-crc"));
     v.add(new Vector("bit-data-checksum", "base with header bit 64 changed (the data checksum's lowest bit): the header CRC covers it", 5,
         damaged(p -> p.dataChecksum ^= 1), "header-crc"));
     v.add(new Vector("bit-header-crc", "base with header bit 127 changed (the header CRC's top bit)", 5,
@@ -163,8 +208,8 @@ public final class PacketVectors {
         "length"));
     v.add(new Vector("length-64", "length 64, with 64 words of data; both checks right", 5, sealed(p -> p.data = new Rng(5).words(64)),
         "length"));
-    v.add(new Vector("reserved-low", "reserved bit [56] set; both checks right", 5, sealed(p -> p.reserved = 0x01), "reserved"));
-    v.add(new Vector("reserved-high", "reserved bit [63] set; both checks right", 5, sealed(p -> p.reserved = 0x80), "reserved"));
+    v.add(new Vector("reserved-low", "reserved bit [58] set; both checks right", 5, sealed(p -> p.reserved = 0x01), "reserved"));
+    v.add(new Vector("reserved-high", "reserved bit [63] set; both checks right", 5, sealed(p -> p.reserved = 0x20), "reserved"));
     v.add(new Vector("data-checksum-wrong", "the data checksum one bit off, the header CRC right for it", 5,
         sealed(p -> p.dataChecksum = p.dataChecksumField() ^ 0x00010000), "data-checksum"));
     v.add(new Vector("number-0", "number 0; both checks right", 5, sealed(p -> p.number = 0), "number"));
@@ -177,7 +222,8 @@ public final class PacketVectors {
       p.number = 0x3FFFF;
       p.hops = 15;
     }), "number"));
-    v.add(new Vector("foreground-wrong-number", "stream 1 with a number that is not its stream's next", 5, sealed(p -> {
+    v.add(new Vector("foreground-wrong-number", "stream 1 with a number that is not the link's next (one run for both streams, 28.4)", 5,
+        sealed(p -> {
       p.stream = 1;
       p.number = 7;
     }), "number"));
@@ -254,7 +300,20 @@ public final class PacketVectors {
     out.add(new Whole("wrap.packets", "small.frames numbered from 0x3FFFA: the numbers pass 0x3FFFE and go on from 1", "first 0x3fffa",
         Packets.packetize(frames, wrap).file));
 
-    // stream 1's packets among stream 2's, each stream with its own numbers
+    // restart link packets: one first, as an end that starts sends it, and one between frames 5 and 6, after which the
+    // numbers start again from 1
+    w = new Packets.Writer().first(0x200);
+    w.restart(Packets.LOST);
+    for (int i = 0; i < cuts.size(); i++) {
+      int[] c = cuts.get(i);
+      if (i == 7) w.restart(Packets.LOST | Packets.RECOVERY).empty(2);   // frame 6 starts at cut 7
+      w.data(2, frames, c[0], c[1]);
+    }
+    out.add(new Whole("restart.packets", "small.frames after a restart link packet (restart and lost), with a second (restart, lost and"
+        + " recovery) and a link packet of length 0 between frames 5 and 6: each restart link packet takes no number, its data goes to"
+        + " no queue, and the numbers start again from 1 after it (28.9)", "", w.toArray()));
+
+    // stream 1's link packets among stream 2's, one run of numbers for both (28.4)
     w = new Packets.Writer();
     Rng r = new Rng(6);
     for (int i = 0; i < cuts.size(); i++) {
@@ -266,8 +325,9 @@ public final class PacketVectors {
       }
       if (i == 6) w.empty(1);
     }
-    out.add(new Whole("two-streams.packets", "small.frames on stream 2 with packets of stream 1 among them (made-up data; one of length"
-        + " 0): each stream has its own numbers from 1. v1.37's file has no stream 1; this is for an Ingress that takes both", "",
+    out.add(new Whole("two-streams.packets", "small.frames on stream 2 with link packets of stream 1 among them (made-up data; one of"
+        + " length 0): one run of numbers from 1 for both streams (28.4). The proof's file has no stream 1; this is for a reader that takes"
+        + " both", "",
         w.toArray()));
     return out;
   }
@@ -334,6 +394,16 @@ public final class PacketVectors {
         + " taken to start there"));
     d.add(new Damage("small-idle.packets", start + 100, 0x10, "header-crc", k + 1, start + 100, "an idle byte made 0x10 (stream 0): the"
         + " header CRC is tested first"));
+    // the restart link packets of restart.packets: a byte of the first one's data, the second one's restart flag
+    byte[] rf = null;
+    for (Whole w : files) if (w.name.equals("restart.packets")) rf = w.bytes;
+    List<Integer> rs = starts(rf);
+    int second = -1;
+    for (int i = 1; i < rs.size() && second < 0; i++) if ((rf[rs.get(i)] & 0x80) != 0) second = i;
+    d.add(new Damage("restart.packets", 16 + 300, 0x04, "data-checksum", 1, 0, "a byte of the first restart link packet's data"));
+    d.add(new Damage("restart.packets", rs.get(second), 0x80, "header-crc", second + 1, rs.get(second), "the second restart link packet's"
+        + " restart flag"));
+    d.add(new Damage("restart.packets", rs.get(1) + 2, 0x01, "header-crc", 2, rs.get(1), "the first data link packet's number"));
     return d;
   }
 
@@ -361,60 +431,71 @@ public final class PacketVectors {
   }
 
   static final String HEAD = """
-      # Test vectors for the link's packets (v1.4_wip/planning/HOST-LINK.md), for an Ingress written from the documents.
-      # Made by gold's packets-vectors command (updater_wip/pipeline/gold, WORKER2); do not edit: the build regenerates
-      # this file and compares. The choices behind it are in updater_wip/planning/sessions/WORKER2-NOTES.md.
+      # Test vectors for chapter 28's link packets (v1.37_wip/spec/host-link.md, 28.3 to 28.6; v1.37's INTEGRATOR, stage 4;
+      # v1.4_wip/planning/HOST-LINK.md's packets before), for a reader written from the specification. Made by gold's
+      # packets-vectors command (updater_wip/pipeline/gold, WORKER2); do not edit: the build regenerates this file and
+      # compares. The choices behind it are in updater_wip/planning/sessions/WORKER2-NOTES.md.
       #
-      # A PACKET is a header word of 128 bits, then 0 to 32 words of data. Every word goes on the link least significant
-      # byte first: byte i of a word holds its bits [8i+7:8i]. The header word:
-      #   byte 0       stream [3:0] (1 foreground, 2 background; never 0), flags [7:4]
+      # A LINK PACKET is a header word of 128 bits, then 0 to 32 words of data. Every word goes on the link least
+      # significant byte first: byte i of a word holds its bits [8i+7:8i]. The header word:
+      #   byte 0       stream [3:0] (1 foreground, 2 background; never 0); flags [7:4]: resend, lost, recovery, restart
       #   byte 1       length [15:8]: the data's 128-bit words, 0 to 32
-      #   bytes 2-4    packet number [33:16], 18 bits, 1 to 0x3FFFE (byte 4's low two bits are its top two)
-      #   bytes 4-6    acknowledge [51:34], 18 bits (byte 4's high six bits are its low six; byte 6's low four its top four)
-      #   byte 6       hops [55:52] in its high four bits: the ASICs that forwarded the packet; its maker writes 0
-      #   byte 7       reserved [63:56], 0
-      #   (owner, 2026-11-17: the number and acknowledge were 20 bits each, [35:16] and [55:36], before the hops field)
-      #   bytes 8-11   data checksum [95:64]: the CRC-32C of the data's bytes, in link order; of no data, 0x00000000
+      #   bytes 2-4    number [33:16], 18 bits, 1 to 0x3FFFE (byte 4's low two bits are its top two): ONE RUN FOR THE
+      #                LINK, both streams (28.4)
+      #   bytes 4-6    ack [51:34], 18 bits (byte 4's high six bits are its low six; byte 6's low four its top four)
+      #   byte 6       hops [55:52] in its high four bits: the ASICs that forwarded the link packet; its maker writes 0
+      #   byte 7       fg_stop [56], bg_stop [57]; reserved [63:58], 0
+      #   bytes 8-11   data checksum [95:64]: the CRC-32C of the data as it is held, before the mask; of no data, 0
       #   bytes 12-15  header CRC [127:96]: the CRC-32C of header bytes 0 to 11, in link order
+      # THE DATA ON THE LINE is masked (28.6): each byte XORed with the low byte of a register started at
+      #   header_crc | 0x10000 and stepped 8 times as the CRC-32C register is with a zero bit (reg = (reg >> 1) XOR
+      #   0x82F63B78 if its bit 0 is 1, else reg >> 1) before each byte. "data" below is as held; "bytes", on the line.
       #
       # CRC-32C (Castagnoli; iSCSI's): polynomial 0x1EDC6F41, reflected; initial value 0xFFFFFFFF; final XOR 0xFFFFFFFF.
       #   crc = 0xFFFFFFFF
       #   for each byte b, in order:  crc = crc XOR b
       #                               8 times:  crc = (crc >> 1) XOR 0x82F63B78 if crc's bit 0 is 1, else crc >> 1
       #   result = crc XOR 0xFFFFFFFF, stored least significant byte first
-      # The CRC-32C of all 16 header bytes of a packet whose header CRC is right is always 0x48674BC7.
+      # The CRC-32C of all 16 header bytes of a link packet whose header CRC is right is always 0x48674BC7.
       #
       # THE CHECKS, in the order gold's reader makes them; "expect" below is "ok" or the first one that fails:
       #   header-crc     the CRC-32C of bytes 0 to 11 is not bytes 12 to 15
       #   stream         the stream is not 1 or 2
       #   length         the length is over 32
-      #   reserved       bits [63:56] are not 0
-      #   data-checksum  the CRC-32C of the data is not bytes 8 to 11
-      #   number         a packet with data: its number is not the next on its stream (1 first; after 0x3FFFE, 1).
-      #                  A packet of length 0: its number is not the one the stream's next packet with data will carry;
-      #                  it takes no number, and the next packet with data carries the same one (owner, 2026-11-16)
-      #   frame-end      whole files only: on stream 2 a frame ends before the end of the packet its last word is in
-      #   truncated      whole files only: the file ends inside a packet or inside a frame
-      # The flags, the acknowledge field and the hops field are not checked: no value of them is an error. Between packets, zero bytes are idle and are skipped, in
-      # any number: the first byte that is not zero starts a header.
+      #   reserved       bits [63:58] are not 0
+      #   data-checksum  the CRC-32C of the data, its mask taken off, is not bytes 8 to 11
+      #   restart        restart is set (flags bit 3, header bit 7) and this is not the restart link packet (28.9):
+      #                  stream 1, length 32, number 1, hops 0, its data the first 32 primes as bytes (02 03 05 07 0B
+      #                  ... 7F 83) sixteen times over, data checksum 0xC8981D21; or whole files only, one inside a
+      #                  frame on stream 2. The restart link packet takes no number and its data goes to no queue; the
+      #                  numbers start again from 1 after it, whatever was expected
+      #   number         a link packet with data: its number is not the link's next (1 first; after 0x3FFFE, 1),
+      #                  whatever its stream. One of length 0: its number is not the one the next link packet with data
+      #                  will carry; it takes no number, and the next link packet with data carries the same one
+      #   frame-end      whole files only: on stream 2 a frame ends before the end of the link packet its last word is in
+      #   truncated      whole files only: the file ends inside a link packet or inside a frame
+      # The flags, the ack field, the hops field and the stop bits are not checked: no value of them is an error. Between
+      # link packets, zero bytes are idle and are skipped, in any number: the first byte that is not zero starts a header.
       #
       # THIS FILE: a line is a key and its value; "#" starts a comment; hex strings are bytes in link order.
       #   crc32c <bytes, or - for none> <the CRC-32C, as a number>
-      #   packet <name> ... end     one packet alone. Frames are not looked at here: Ingress knows only packets.
-      #       next-number        the number the receiver expects next on this packet's stream, before the packet
-      #       stream, flags, length, number, acknowledge, hops, reserved     the header's fields as the bytes hold them
-      #       data               one line for each word of data
-      #       data-checksum      the header's field;   data-crc32c    the CRC-32C of the data (equal in a good packet)
+      #   packet <name> ... end     one link packet alone. Frames are not looked at here.
+      #       next-number        the number the receiver expects next on the link, before the link packet
+      #       stream, flags, length, number, acknowledge, hops, stops, reserved     the header's fields as the bytes hold
+      #                          them (stops: fg_stop + 2 bg_stop; reserved: bits [63:58])
+      #       data               one line for each word of data, as held (before the mask)
+      #       data-checksum      the header's field;   data-crc32c    the CRC-32C of the data (equal in a good one)
       #       header-0-11        header bytes 0 to 11: what the header CRC is over
       #       header-crc         the header's field;   header-crc32c  the CRC-32C of bytes 0 to 11
       #       header-word        the header as one 128-bit number, most significant digit first
-      #       bytes              the whole packet, 16 bytes to a line
+      #       bytes              the whole link packet as it goes on the line (the data masked), 16 bytes to a line
       #       expect             ok, or the check that refuses it
-      #       next-number-after  for ok: the number expected next on the stream after this packet
+      #       next-number-after  for ok: the number expected next on the link after this link packet (1 after a
+      #                          restart link packet)
       #   file <name> ... end       a whole packet file beside this one; its frames are small.frames
       #   damage <file> byte <offset> xor <mask> expect <check> packet <n> at <offset>
-      #                             the file with that one byte changed: the check that must refuse it, at which packet
-      #                             (counted from 1 in the file) and the byte where that packet is taken to start
+      #                             the file with that one byte changed: the check that must refuse it, at which link
+      #                             packet (counted from 1 in the file) and the byte where it is taken to start
       """;
 
   static String text(List<Vector> vectors, byte[] frames, List<Whole> files, List<Damage> damage) {
@@ -441,8 +522,8 @@ public final class PacketVectors {
       if (!v.note.isEmpty()) for (String line : wrapped(v.note)) s.append("  # ").append(line).append('\n');
       s.append(String.format("  next-number        0x%05x%n", v.next));
       s.append(String.format("  stream             %d%n  flags              %d%n  length             %d%n", p.stream, p.flags, p.lengthField()));
-      s.append(String.format("  number             0x%05x%n  acknowledge        0x%05x%n  hops               %d%n  reserved           0x%02x%n",
-          p.number, p.acknowledge, p.hops, p.reserved));
+      s.append(String.format("  number             0x%05x%n  acknowledge        0x%05x%n  hops               %d%n  stops              %d%n"
+          + "  reserved           0x%02x%n", p.number, p.acknowledge, p.hops, p.stops, p.reserved));
       for (int i = 0; i < p.data.length; i += 16) s.append("  data               ").append(hex(p.data, i, 16)).append('\n');
       s.append(String.format("  data-checksum      0x%08x%n  data-crc32c        0x%08x%n", p.dataChecksumField(),
           Packets.crc32c(p.data, 0, p.data.length)));
@@ -454,7 +535,8 @@ public final class PacketVectors {
       for (int i = 0; i < all.length; i += 16) s.append("  bytes              ").append(hex(all, i, 16)).append('\n');
       s.append("  expect             ").append(v.expect).append('\n');
       if (v.expect.equals("ok")) {
-        s.append(String.format("  next-number-after  0x%05x%n", p.data.length == 0 ? v.next : Packets.next(v.next)));
+        s.append(String.format("  next-number-after  0x%05x%n", (p.flags & Packets.RESTART) != 0 ? Packets.FIRST_NUMBER
+            : p.data.length == 0 ? v.next : Packets.next(v.next)));
       }
       s.append("end\n");
     }
@@ -470,8 +552,8 @@ public final class PacketVectors {
       s.append(String.format("  first-number       0x%05x%n", w.options.isEmpty() ? 1 : 0x3FFFA));
       s.append(String.format("  packets            %d%n  packets-stream-2   %d%n  packets-stream-1   %d%n  packets-length-0   %d%n", c[0],
           c[1], c[2], c[3]));
-      s.append(String.format("  idle-bytes         %d%n  words-stream-2     %d%n  words-stream-1     %d%n  frames             %d%n", c[4],
-          c[5], c[6], SMALL.length));
+      s.append(String.format("  idle-bytes         %d%n  words-stream-2     %d%n  words-stream-1     %d%n  restart-packets    %d%n"
+          + "  frames             %d%n", c[4], c[5], c[6], c[7], SMALL.length));
       s.append("  frames-file        small.frames\n  expect             ok\nend\n");
     }
     s.append("\n# ---- whole files, one byte changed ----\n\n");
@@ -485,14 +567,15 @@ public final class PacketVectors {
   /** A good file's counts, by walking it: packets, on stream 2, on stream 1, of length 0, idle bytes, stream 2's
    *  words, stream 1's. */
   static long[] count(byte[] f) {
-    long[] c = new long[7];
+    long[] c = new long[8];
     for (int pos = 0; pos < f.length; ) {
       if (f[pos] == 0) { c[4]++; pos++; continue; }
       int stream = f[pos] & 15, len = f[pos + 1] & 0xff;
       c[0]++;
       c[stream == 2 ? 1 : 2]++;
       if (len == 0) c[3]++;
-      c[stream == 2 ? 5 : 6] += len;
+      if ((f[pos] & 0x80) != 0) c[7]++;                         // a restart link packet: its words go to no queue
+      else c[stream == 2 ? 5 : 6] += len;
       pos += 16 + 16 * len;
     }
     return c;

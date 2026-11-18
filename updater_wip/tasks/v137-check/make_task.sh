@@ -2,7 +2,9 @@
 # make_task.sh -- v1.37_wip's checks as a Quest task (WORKER3; v136-check's generator, for v1.37_wip).
 #   updater_wip/tasks/v137-check/make_task.sh NNN-name suites|suites-varied|check|faster > NNN-name.sh     (commit first: the kit is HEAD's)
 # (suites-varied, the INTEGRATOR's: suites with every chip's LPDDR model jittered; body.sh's header)
-# Writes a self-contained task with an embedded kit: v1.37_wip/ and updater_wip/pipeline/gold at HEAD (git archive),
+# Writes a self-contained task with an embedded kit: v1.37_wip/, updater_wip/pipeline/gold, updater_wip/link (the
+# link's sources, which v1.37_wip builds in place since stage 4) and updater_wip/wire (the wire's, since stage 6) at
+# HEAD (git archive),
 # gold's and jumpmap's classes built here (pipeline/inputs/lib/classes.sh) and the frames' gold's (updater_wip/pipeline/
 # gold: classes-frames), so that the runner needs no javac, and, for suites, the link's test vectors:
 # updater_wip/pipeline/gold/test/packets, HEAD's if it has them, else those of $VECTORS_REV (default origin/updater-w2).
@@ -11,14 +13,14 @@
 # Reads no persistent data and writes none; writes only results/NNN-name/. Safe to re-run.
 set -eu
 export LC_ALL=C
-NAME=${1:?usage: make_task.sh NNN-name suites|suites-varied|check|faster}; ITEM=${2:?suites, suites-varied, check or faster}
-case $ITEM in suites|suites-varied|check|faster) ;; *) echo "ITEM is suites, suites-varied, check or faster" >&2; exit 1;; esac
+NAME=${1:?usage: make_task.sh NNN-name suites|suites-varied|check|faster|chain-evm-zone|chain-cyclone}; ITEM=${2:?suites, suites-varied, check, faster or chain-WORKLOAD}
+case $ITEM in suites|suites-varied|check|faster|chain-evm-zone|chain-cyclone) ;; *) echo "ITEM is suites, suites-varied, check, faster, chain-evm-zone or chain-cyclone" >&2; exit 1;; esac
 TOP=$(git rev-parse --show-toplevel); HERE=$(cd "$(dirname "$0")" && pwd)
 R=$(cd "$TOP" && git rev-parse --short HEAD); BR=$(cd "$TOP" && git rev-parse --abbrev-ref HEAD)
-[ -z "$(cd "$TOP" && git status --porcelain -- v1.37_wip updater_wip/pipeline/gold | grep -v '^??')" ] || { echo "make_task.sh: v1.37_wip/ or gold has uncommitted changes" >&2; exit 1; }
+[ -z "$(cd "$TOP" && git status --porcelain -- v1.37_wip updater_wip/pipeline/gold updater_wip/link updater_wip/wire | grep -v '^??')" ] || { echo "make_task.sh: v1.37_wip/ or gold has uncommitted changes" >&2; exit 1; }
 K=$(mktemp -d); trap 'rm -rf "$K"' EXIT
 mkdir -p "$K/kit"
-(cd "$TOP" && git archive --format=tar HEAD v1.37_wip updater_wip/pipeline/gold) | tar -x -C "$K/kit"
+(cd "$TOP" && git archive --format=tar HEAD v1.37_wip updater_wip/pipeline/gold updater_wip/link updater_wip/wire) | tar -x -C "$K/kit"   # (link: v1.37 stage 4)
 VEC="HEAD's"
 if [ "$ITEM" != check ]; then
   bash "$K/kit/v1.37_wip/pipeline/inputs/lib/classes.sh" "$K/kit/v1.37_wip" "$K/kit/classes" >&2

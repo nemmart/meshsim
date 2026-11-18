@@ -29,6 +29,12 @@
  * than stage_delay after its start (Q17, DECISIONS-v1.3 section 24; no "booted" packets).
  *   5. checks the advice left (the last record's word 1 [124:102]) is 0 and the end state (words 0, 2-65) equals the
  *      expected one (the next segment's frame 2, if given), and returns its status (crt0: the simulator's exit word).
+ *   6. v1.37 (30.6), only when its header names a place in the master tile (word 21; v1.36's harnesses leave it 0):
+ *      its result carries its last record to the master. The 68 words, from where the last window's queue 0 landed
+ *      them in its own big SRAM, go to the master by one stream, and a word of the segment's figures {rows traced,
+ *      the Tracer's ERRORS, the status, 0} by its core, both counted on the master's counter (word 23), before main
+ *      returns and crt0 sends the result. The rows traced are the windows run times RUN_CONFIG.rows: a run traces
+ *      exactly that many (17.9.3), and nothing is added to the windows' loop.
  * Q14: an expansion being fed when a segment's record is loaded is dropped (one segment per run here: nothing is pending).
  *
  * On C&C 3 a stream's d below 64 is relative to tile 2 (4.2: a controller stands for its tile), so the program's own
@@ -304,5 +310,16 @@ int main(void) {
     tr_results[TL_R_ERRORS] = tracer->ERRORS;
     tr_results[TL_R_CONDITIONS] = tile->ERRORS;
     tr_results[TL_R_STATUS] = status;
+    /* 6. v1.37: the last record and the figures to the master tile (30.6) */
+    if (hdr[TL_H_RESULT]) {
+        const uint32_t ctr = hdr[TL_H_RESULT_COUNTER];
+        wait_rd_idle();
+        stream_to(0, hdr[TL_H_OWN_RECORD], hdr[TL_H_RESULT], 68, ctr, DST_CC1);
+        tile->DMA_CONFIG = DMA_CFG_RUN(RUN_STREAMS, 0, 1);
+        start_run();
+        wait_event(EV_RUN_DONE, base_mask);
+        send_to(ROUTER_HDR_W(DST_CC1, MODE_WRITE, ctr), hdr[TL_H_RESULT_INFO]);
+        send128(0, status, tracer->ERRORS, tr_results[TL_R_WINDOWS] * (hdr[TL_H_RUN_CONFIG] & 0xFFFFFFu));
+    }
     return (int)status;
 }

@@ -17,6 +17,14 @@ FLAGS += -pthread
 $(TB)/%.o: %.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(TSAN_FLAGS) -c $< -o $@
+# the sources outside this folder that the chip's tests link (tracer.mk): WORKER8's link (stage 4) and WORKER10's wire
+# (stage 6), each with its own include folder, as in every other build
+$(TB)/link/%.o: $(LINK_DIR)/%.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(TSAN_FLAGS) -I$(LINK_DIR) -c $< -o $@
+$(TB)/wire/%.o: $(WIRE_DIR)/%.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(TSAN_FLAGS) -DWIRE_CHECK -I$(WIRE_DIR) -c $< -o $@
 
 # clang links TSan's own operator new/delete statically, beside the hook (alloc_guard.cpp): the first definition, the
 # hook's, is kept; it allocates through malloc, which TSan intercepts, so TSan still sees every allocation.

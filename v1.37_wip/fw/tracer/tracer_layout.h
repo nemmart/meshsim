@@ -11,6 +11,8 @@
  *   0x010C0    the end state expected (the next segment's frame 2 as words 0-65), or none (header word 8 = 0)
  *   0x02000    the segment's advice: 64-bit values, two per 128-bit entry, low value first
  *   0x58000    the controller-fed template words (128 bits each), as replay_layout.h
+ * v1.37: when header word 21 names a place in the master tile, the program's end sends its last record there and a word
+ * of the segment's figures where word 22 says, both on the master's counter in word 23, before its result (30.6).
  * The header gives every region's address, so the placements are defaults. The tiles' replay regions are replay_layout.h's:
  * header words 16-19 give the record and stream chunks every tile uses.
  */
@@ -40,6 +42,11 @@
 #define TL_H_T_RLOG          18
 #define TL_H_T_WLOG          19
 #define TL_H_FIRST_TILE      20   /* window n goes to tile FIRST_TILE + n: 0 */
+/* v1.37 (30.6): the result carries the last record to the master tile. Written by the master's load; 0 in v1.36's
+ * harnesses, which send nothing more. */
+#define TL_H_RESULT          21   /* where in the master tile the last record's 68 words go (an address there), or 0 */
+#define TL_H_RESULT_INFO     22   /* where the segment's figures go, one 128-bit word: rows traced, the Tracer's ERRORS, the status */
+#define TL_H_RESULT_COUNTER  23   /* the master tile's counter both are counted on: 69 words */
 #define TL_H_WORDS           32
 
 /* results: tr_results[16] in data memory (the harness finds it in the .sym file) */

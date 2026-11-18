@@ -15,7 +15,7 @@ cycles awake then, less those at the first frame, MR_AWAKE_FIRST_FRAME, over the
 Ingress's DMA transfers and the count's stores; the words forwarded and dropped; the cycle of the hand-over, of the
 link's last byte, and the cycles the link waited for room. For WORKER4's threshold (its logs): the threshold, the
 wakes, the cycles awake to the hand-over and a packet, and the link rate the firmware could keep up with. The rate is
-"as taken" for --fast-link. With --frames, a third: each run's wakes and Ingress's transfers by frame.
+"as taken" for an old run's --fast-link (gone at v1.37's stage 4: --link-rate 8 is the fastest). With --frames, a third: each run's wakes and Ingress's transfers by frame.
 """
 import re, sys
 

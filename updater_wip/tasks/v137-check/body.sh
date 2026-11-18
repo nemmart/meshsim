@@ -18,8 +18,13 @@
 #            Updater's controller are the machine, so suites runs them.)
 #   faster   (WORKER4) 1, 2 and 2b as for suites; then 5: proof_run (clang suite) on every run of the 29 and matrix sets
 #            with the link at 2, 4 and 8 bytes a cycle (--link-rate), and on the matrix with the link as fast as taken
-#            (--fast-link; WORKER7, in place of WORKER4's thresholds), in parallel; each run must pass (gold's images,
+#            (--link-rate 8, --fast-link before stage 4; WORKER7, in place of WORKER4's thresholds), in parallel; each run must pass (gold's images,
 #            every check of proof_run); the figures in faster-numbers.md and fast-numbers.md.
+#   chain-evm-zone, chain-cyclone  (the INTEGRATOR, v1.37 stage 6) 1, 2 and 2b as for suites, 2b for the 2^29 set
+#            alone; then 6: the chain of processes (MILESTONE-v1.37.md) on that workload at 2^29: wire_launch with the
+#            driver and two chips, ASIC0 on segment 0 and ASIC1 on segment 1 (N 128, 64 windows of 65,536 rows), each
+#            chip with every check of proof_run against gold's references, the driver with both replies against gold's
+#            files; then the same run again, every line the same but the wall times. Logs chain-*.log.
 # VERDICTS: one line per item. TIMES: each item's wall time. Scratch in /tmp, removed first and at the end.
 FAIL=0; T0=$(date +%s); N=$(nproc)
 sec() { echo; echo "==== $* ($(date -u +%T), +$(( $(date +%s) - T0 )) s)"; }
@@ -38,7 +43,8 @@ verdict machine PASS
 [ -n "${DRY:-}" ] && { echo "DRY: stopping after the kit and the machine"; rm -rf "$W"; exit 0; }
 
 SEED=""; [ "$ITEM" = suites-varied ] && { SEED=${LPDDR_SEED:-7}; ITEM=suites; }   # the INTEGRATOR: the LPDDR model jittered
-if [ "$ITEM" = suites ] || [ "$ITEM" = faster ]; then
+CHAIN=""; case $ITEM in chain-*) CHAIN=${ITEM#chain-};; esac
+if [ "$ITEM" = suites ] || [ "$ITEM" = faster ] || [ -n "$CHAIN" ]; then
   sec "1. convert_delivery (clang release), which the inputs' build needs"
   t=$(date +%s)
   if ( cd "$KS" && make -j"$N" MODE=release CC_NAME=clang build/clang-release/convert_delivery ) > "$RES/build-convert.log" 2>&1
@@ -69,7 +75,7 @@ if [ "$ITEM" = suites ] || [ "$ITEM" = faster ]; then
   t=$(date +%s)
   ( cd "$KS" && make -j"$N" MODE=suite CC_NAME=clang build/clang-suite/packetize ) > "$RES/build-packetize.log" 2>&1 || tail -5 "$RES/build-packetize.log"
   if [ $INOK = 1 ] && OUT=$IN JAP_DIR=$W/i/k/jap GOLD_CLASSES=$KIT/classes-frames PACKETIZE=$KS/build/clang-suite/packetize \
-       bash "$KS/pipeline/frames/build.sh" matrix real 29 > "$RES/frames.log" 2>&1
+       bash "$KS/pipeline/frames/build.sh" $([ -n "$CHAIN" ] && echo 29 || echo matrix real 29) > "$RES/frames.log" 2>&1
   then grep -v JAVA_TOOL "$RES/frames.log" | tail -16; verdict frames PASS
   else tail -8 "$RES/frames.log" 2>/dev/null; verdict frames FAIL; fi
   cat "$IN"/v137/*/SHA256SUMS > "$RES/frames-sha256.txt" 2>/dev/null
@@ -84,7 +90,7 @@ if [ "$ITEM" = faster ]; then
   for set in 29 matrix; do
     while read -r name n windows list; do for s in $list; do
       for rate in 2 4 8; do echo "$set $name $n $windows $s --link-rate $rate faster-$set-$rate" >> "$W/jobs"; done
-      [ $set = matrix ] && echo "$set $name $n $windows $s --fast-link --quiet fast-$set" >> "$W/jobs"
+      [ $set = matrix ] && echo "$set $name $n $windows $s --link-rate 8 --quiet fast-$set" >> "$W/jobs"
     done; done < "$IN/v137/$set/RUNS"
   done
   wc -l < "$W/jobs"
@@ -105,6 +111,26 @@ if [ "$ITEM" = faster ]; then
   ( cd "$KS" && python3 tests/proof_numbers.py "$RES"/fast-matrix.log --frames ) > "$RES/fast-numbers.md" 2>&1
   tail -2 "$RES/faster-numbers.md"; tail -2 "$RES/fast-numbers.md"
   took faster "$t"
+fi
+
+if [ -n "$CHAIN" ]; then
+  sec "6. the chain of processes at 2^29: $CHAIN-29, the driver and two chips (segments 0 and 1)"
+  t=$(date +%s)
+  ( cd "$KS" && make -j"$N" MODE=suite CC_NAME=clang build/clang-suite/proof_run build/clang-suite/driver build/clang-suite/wire_launch ) \
+    > "$RES/build-chain.log" 2>&1 || tail -5 "$RES/build-chain.log"
+  d=$IN/v137/29; f=$CHAIN-29
+  mask() { sed -E 's/after [0-9.]+ s/after - s/; s/waits [0-9]+ \([0-9.]+ s\)/waits -/; s/pid [0-9]+/pid -/; s/run run[0-9]+/run -/; s/[0-9.]+ s of simulation, [0-9]+ cycles a second/-/' "$1" | sort; }
+  for k in a b; do
+    ( cd "$KS" && timeout 5400 ./build/clang-suite/wire_launch --clients 2 --stall 1800 -- ./build/clang-suite/driver "$d/$f.frames" --asics 128 \
+        --rows-traced $((64 * 65536)) --limit 4000000000 -- ./build/clang-suite/proof_run "$d/$f.frames" --asics 128 --windows 64 \
+        --gold "$d/$f-s{k}.images.txt" --quiet ) > "$RES/chain-$k.log" 2>&1; echo "run $k: exit $?" >> "$RES/chain-$k.log"
+    grep -E "^(PASS|FAIL)|driver: ASIC|wire-launch: run|exit" "$RES/chain-$k.log"
+  done
+  if grep -q "^PASS driver: 2 ASICs" "$RES/chain-a.log" && [ "$(grep -c '^PASS proof_run' "$RES/chain-a.log")" = 2 ] && grep -q "run a: exit 0" "$RES/chain-a.log"
+  then verdict chain PASS; else verdict chain FAIL; fi
+  if cmp -s <(mask "$RES/chain-a.log" | grep -v '^run ') <(mask "$RES/chain-b.log" | grep -v '^run '); then verdict chain-again PASS-the-same
+  else diff <(mask "$RES/chain-a.log") <(mask "$RES/chain-b.log") | head -20; verdict chain-again FAIL-differs; fi
+  took chain "$t"
 fi
 
 if [ "$ITEM" = suites ]; then

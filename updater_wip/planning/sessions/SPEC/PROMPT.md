@@ -48,15 +48,26 @@ and none of the rest.
 | `updater_wip/planning/sessions/` | each worker's report and notes: what it built, measured and found |
 | branch `updater-w8`: `updater_wip/link/` and `sessions/WORKER8/` | the link's protocol as a model that passes every search and campaign, `REPORT.md`, and **`HARDWARE.md`**: every register of a link end with its width |
 | branch `updater-w10`: `updater_wip/wire/` | the wire between simulator processes: not hardware, not specified |
-| `v1.37_wip/src/`, `v1.37_wip/fw/` | what is built. Evidence of what works, not the authority |
+| `v1.37_wip/src/units/cache_ctl.*`, `cache_system.h`, `axi_arbiter.*`, `lpddr_model.*`, `lookup_port.h`, `axi_port.h` | **the cache's controller and the arbiter, as built and tested** (WORKER5) |
+| `v1.37_wip/src/units/updater_ctl.h`, `updater_top.h`, `word_port.h` | **the Updater's controller, as built and tested** (WORKER6) |
+| the rest of `v1.37_wip/src/` and `v1.37_wip/fw/` | what else is built: the Ingress/Egress black box, the master tile's firmware |
 
-**Which wins when two disagree:**
+**Which wins when two disagree** (owner, 2026-11-18):
 
 1. **The owner's ruling,** wherever it is recorded, the latest first. `(owner)` marks them.
-2. **For the link's protocol, WORKER8's model** where `HOST-LINK.md` is silent or unclear: it is the only form of
-   the protocol that has been searched. Where the two plainly differ, ask.
-3. **The design document** over the simulator. Where a document says "as built" or "in v1.37", that is the
-   simulator's state on a day, not the design.
+2. **For the two state machines and the link end, the code is the authority on what they do.** The cache's
+   controller, the Updater's controller and WORKER8's link end are worked out and tested; the interface
+   documents describe their boundaries and little of their insides. **Their specification is the specification
+   of that code:** the owner's words, "it's actually the spec portion of those codes." Write down what the
+   machines do, state by state. Do not design them again.
+   - Where the code and an interface document disagree at a boundary, that is a question for the owner.
+   - Where the code does in one step what hardware must spread over cycles, say what hardware does. WORKER8's
+     `HARDWARE.md`, section 7, lists those for the link end.
+3. **For Ingress/Egress, the UART, Egress and the frames, the design documents lead.** The black box in the
+   simulator is knowingly behind them: its register numbers, the old stream words, v1.36's UART, queues of 8 KB,
+   a bad packet being fatal, nothing going back to the host. State the design, and put each difference in
+   `FOR-THE-SIMULATOR.md`. Where a document says "as built" or "in v1.37", that is the simulator's state on a
+   day, not the design.
 4. **For hardware Tony has built** (v1.36's units, the Tracer, the replayer, the tile), **the RTL is the truth,**
    as `spec/GUIDELINES.md` section 1 has it. A change to one of those is a request to him, not a line of
    specification: state it as designed, and mark that it waits on him. Units he has only pencilled in are ours
@@ -66,6 +77,15 @@ and none of the rest.
 
 **Read `v1.37_wip/spec/README.md` and `GUIDELINES.md` first.** They say which document holds what and how the
 text is meant. Keep that structure, those terms and that voice.
+
+**The level of detail** (owner, 2026-11-18): **every new component is specified to the same depth as the
+components already there.** The measure is the specification's own chapters: `dma_unit` (8) for a unit of the
+platform, and the Tracer (`jolt/tracer.md`, 17.9) for a peripheral. The Tracer's has its words and bits, its
+regions, what `START` does, how it executes, its memory side, its timing, its statistics, its errors, what
+software must keep to, its reset, and the simulator's checks and parameters. The cache's controller, the
+arbiter, the Updater, Ingress/Egress and the link each get all of those that apply: the registers and ports
+with every signal and width, the states and what moves between them, the behaviour to the cycle, the errors,
+the reset, the timing, and the invariants the simulator checks. An interface description alone is not enough.
 
 1. **`machine-spec.md`,** brought to v1.37. Where each thing goes is yours to propose in the outline. To start
    from:
@@ -118,6 +138,10 @@ How to get there:
 - **Exactness.** Every register, bit, width, constant and worked example is checked against its source, and
   the examples (the CRC's, the headers, the mask's bytes, the restart packet's checksum) are computed again by
   you, not copied. A figure you cannot confirm is a question.
+- **For the two state machines and the link end, check the text against the code,** not only against the
+  documents: each state, each transition, each register's width, each error. Where you cannot tell from the
+  code what it does in a case, run its tests or write a small one of your own in your session folder; do not
+  guess.
 - **One name for one thing,** through every document. Where the sources use two, pick the specification's and
   put the other in the name table.
 - **The specification is what you edit:** `v1.37_wip/spec/` and your own session folder. Not the simulator, not

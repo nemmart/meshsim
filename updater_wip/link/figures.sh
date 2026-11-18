@@ -19,20 +19,16 @@ a)  # an acknowledgement as soon as the line is free, the status timer, and the 
     one --saturate --quiet-wires --rules hl-ack_now
     one --saturate --quiet-wires --rules hl,pass=0
     ;;
-b)  # the host's window, with the rule that refuses a packet with no room and without it
+b)  # the host's window
     one --host-window 8
     one --host-window 16
     one --host-window 64
-    one --host-window 8 --rules hl-refuse
-    one --host-window 16 --rules hl-refuse
-    one --host-window 64 --rules hl-refuse
     ;;
 c)  # the cycles before a resend is asked for again
     for r in 128 512 2048 8192 32768; do one --host-window 8 --rules hl,reask=$r; done
     ;;
 d)  # the window of every end, and the forwarding buffers
     for w in 2 4 8 16; do one --host-window $w --window $w; done
-    for w in 2 4 8 16; do one --host-window $w --window $w --saturate --quiet-wires; done
     for f in 1024 512 256; do one --host-window 8 --fwd $f; done
     ;;
 e)  # forged headers among the damage (but the false packet number, the known limit), and bits flipped in memory

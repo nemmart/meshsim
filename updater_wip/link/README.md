@@ -3,18 +3,18 @@
 WORKER8's work (`../planning/sessions/WORKER8/`): the link of `v1.4_wip/planning/HOST-LINK.md` ("HL") built as it is
 written, put on wires that misbehave, and searched. No chip, no mesh, nothing of `v1.37_wip/`.
 
-**Where it stands (2026-11-17, evening):** on HL as it now stands: the header of 16 bytes, one run of packet numbers
-for a link, "stop" holding only packets not yet numbered. **Stopped a second time: a header that reads as zeros in
-front of data that holds a packet** (`../planning/sessions/WORKER8/REPORT.md`, `cases/packet-in-data.case`).
-One link is searched, the planted bugs are caught, and a case is kept for every rule. The chain's searches, the
-random campaign and the figures (`figures.sh`, `linkcost`) are not yet run on this code; `rates.py` and
-`sum_runs.py` are still of the header before.
+**Where it stands (2026-11-18):** on HL as it now stands: the header of 16 bytes, one run of packet numbers for a
+link, "stop" holding only packets not yet numbered, and the data masked on the wire. **Everything run so far
+holds:** the searches that fit a session's machine, on one link and on chains of 1, 2 and 3; 18 planted bugs;
+a case for every rule; the random runs made here. The large campaign and the largest searches are the runner's
+(Quest 231 to 236) and have not run yet. `../planning/sessions/WORKER8/REPORT.md` has the results, the figures
+and what is the owner's to weigh; `rates.py` is still of the header before.
 
 ## What is here
 
 | file | what |
 |---|---|
-| `crc32c.h`, `header.h` | CRC-32C a byte a cycle; the header packed and unpacked; the restart packet's data; the packet numbers' arithmetic |
+| `crc32c.h`, `header.h` | CRC-32C a byte a cycle; the header packed and unpacked; the mask on the data; the restart packet's data; the packet numbers' arithmetic |
 | `link_params.h` | the sizes; **HL's rules, each a switch** (`Rules`), so that a kept case can show what each is for; the planted bugs (`Plant`) |
 | `link_end.h`, `.cpp` | **the link end:** its registers in one struct, one `step()` a cycle, a byte in and a byte out. Kept for the chip's Ingress/Egress model |
 | `node.h`, `.cpp` | **the chain node:** two link ends and the forwarding buffers between them |
@@ -54,7 +54,8 @@ size: `hl-flush`, `hl+stop_holds_again`, `hl,window=4,number_bits=4`.
 
 **`linksearch`'s budgets:** `--packets a b c d` (each source's packets: end 0 foreground and background, end 1 the
 same), `--damage`, `--noise`, `--forge`, `--power`, `--flip` (how many of each may happen), `--queue`, `--delay`,
-`--tick`, `--hold`, `--images`, `--images2`, `--images3`, `--wrong`, `--fates`, `--whole`, `--all`, `--out <case file>`. Its heading comment says what each is.
+`--tick`, `--hold`, `--images`, `--images2`, `--images3`, `--images4`, `--wrong`, `--fates`, `--whole`, `--all`,
+`--deep`, `--max-states`, `--seconds`, `--out <case file>`. Its heading comment says what each is.
 
 ## A case file
 

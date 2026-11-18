@@ -81,3 +81,48 @@ The figures of the 37 runs are in `runner/`: `245-proof-numbers.md` and `245-cac
 overlap is real:** cycles with the Updater's look-up and a fill request both outstanding, up to 33,187 in a run
 (`cyclone-29`, *s* 0; 86,603 with LPDDR jittered), and a fill served under a miss up to 1,751 times (2,870); the
 joint's checks 0 in all 74 runs; no burst on client 2 in a proof.
+
+## Stage 2: the router (16)
+
+### What was built
+
+| | where |
+|---|---|
+| **the line between the special tiles** (16.1): a special tile's router with east and west links, the master tile's east to the memory tile's west and the memory tile's east to the tracer tile's west, each a link of three stages with no flow control (`NetConfig::link_latency`) | `src/units/router.h`, `router.cpp` (`line`, `step_line`); `src/units/chip.cpp`, `chip.h` |
+| **its routes** (16.2): a packet for the tile ejects; one for another special tile, from local or the DMA, takes the line by the ring's rule (east if its `dst` is above the tile's id); one arriving on the line goes on the way it came; every other packet from local or the DMA leaves by the attach port; from the attach port, a packet not for the tile goes nowhere, as before | `router.h` |
+| **its queues and arbiters** (16.3): east from local, west and south; west from local, east and south; the eject from local, west, east, south and the attach port; the attach output from local and south, each output's arbiter in that order. A packet into a full queue on the line is `router_overflow` on its router (invariant 40) | `router.h` (`kFeedersLine`) |
+| **every special tile's peripheral DMA on its router's south input** (16.4); `dma_room` carries the line's queues (bits 8 + 2*d* east, 9 + 2*d* west, and bit 16, the line); the slot's DMA judges its room there (`dma_input` 3) | `router.h` (`dma_ready`), `chip.cpp`, `periph_slot.h` |
+| without the line, the special tile's router stays the RTL's as built: `test_router`'s comparison with the RTL and `test_special_router`'s v1.36 tests | |
+| the tests | `tests/test_special_router.cpp`: every pair of the 67 tiles from local and from each DMA (a compute tile's packet for a special tile never on the line), the broadcasts, the line's overflow counted where its queue is, its arbiter's order, an attach port's arrival for another special tile going nowhere with no route error; `test_memory` (the memory tile's answers to the master all by the line, west); every proof in `test_master` (the master's loads into the tracer tile by the line, none lost) |
+| the planted bugs | `tests/line_teeth.sh` |
+
+### Disagreements
+
+**None.** One planted bug went uncaught at first (L4 below) and turned out to change nothing a packet does, only the
+router's route-error count: there is no queue from the attach port to the line (16.3), so a route there goes nowhere.
+The test now checks the count.
+
+### The checks
+
+| check | result |
+|---|---|
+| `test_special_router` (19), `test_router` | pass |
+| `test_memory`: the memory run's 347 answers by the line (`line_out` at the memory tile equal to its DMA packets, `line_in` at the master tile the same, nothing by the attach port) | pass |
+| `test_master`: every proof's loads into the tracer tile by the line | 34 pass |
+| `./run_tests.sh quick --check` | **all passed**; no log differs |
+| **the reference cycles:** `test_segment`'s v1.36 segments (to C&C 1's exit, polled every 512 cycles) the same as `main`'s; the proof runs', against stage 1's (Quest 245): the runner's (below) | |
+| **the planted bugs** (`line_teeth.sh`): L1 the ring's rule reversed; L2 a packet on the line sent back the way it came; L3 a special tile's packet for another by the attach port; L4 an attach port's arrival for another special tile put on the line; L5 the slot's DMA judging its room at the west input (v1.36's); L6 the west output's queues in the wrong order; L7 a DMA's packet for another special tile by the attach port | **7 of 7 caught.** L4 only once `test_special_router` checked the route errors (`ec6730a7`, on the branch with stage 3's first commit; it reaches `main` with stage 3's merge) |
+| the 37 proof runs on the line; `make check` | the runner: Quests 248, 249 (below) |
+
+### The runner
+
+| Quest | item | result |
+|---|---|---|
+| 248 | `suites` at `f24979c6`: `./run_tests.sh all --check`, the 37 proof runs | **PASS**: every step; the 37 proof runs (3 real, 24 of the matrix, 10 at 29); no golden log differs; the two `fw-build` steps skipped (no RISC-V toolchain on the runner) |
+| 249 | `check`: `make check` | **PASS**: gcc and clang, debug and release, 1,623 s |
+
+**The reference cycles did not move.** Every run's cycles are stage 1's (Quest 245) to the cycle: the master's
+answers from the memory tile now come by the line, and the segment's end is polled every 512 cycles. What moved is
+inside: in 14 of the 37 runs the Updater's busy cycles and its waits on memory by up to 45 cycles, its waits on data
+by up to 19; the master's cycles awake in none of them. The figures are in `runner/248-proof-numbers.md` and
+`248-cache-figures.txt`.

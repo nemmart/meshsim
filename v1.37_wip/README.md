@@ -16,8 +16,10 @@
 >
 > **Everything else in this folder is v1.36's, copied unchanged (main, 67aaeb86), and reads as v1.36:** this page
 > below the line, `BUILDING.md` and `RUNNING.md` but for what they mark v1.37, `OPEN-v1.36.md`, `spec/`,
-> `tools/freeze/README.md`. v1.36's machine is what the folder builds unless a machine asks for v1.37's master tile
-> (`MachConfig::host_link`), so every test, suite and figure of v1.36 below still holds here. The specification is
+> `tools/freeze/README.md`. v1.37's chip is v1.36's but for what `CHANGES-v1.37.md` lists (the
+> memory side, the line between the special tiles, Ingress/Egress at 17.6's registers), and every test, suite and
+> figure of v1.36 below still holds here but for these: the RTL's stream run is gone with v1.36's LVDS stream, and the
+> UART run's figures are each one cycle later (its program turns the UART on, one instruction more). The specification is
 > not changed: what v1.37 adds is specified by the design documents of `../v1.4_wip/planning/`.
 
 ---
@@ -117,8 +119,8 @@ the test), still against the RTL chip's cycles:
 
 | | the RTL chip, and the simulator |
 |---|---|
-| the stream run (the master echoing beats on its AXI4-Stream ports): the done word | after 513 cycles; every handshake's cycle on `lvds_in` and `lvds_out` |
-| the UART through the master's core (20 bytes at a divisor of 20) | the first start bit in cycle 34; the done word after 5,210 cycles |
+| the stream run (the master echoing beats on its AXI4-Stream ports): the done word | after 513 cycles; every handshake's cycle on `lvds_in` and `lvds_out` (v1.36; gone in v1.37 with the stream) |
+| the UART through the master's core (20 bytes at a divisor of 20) | the first start bit in cycle 34; the done word after 5,210 cycles (v1.37: 35 and 5,211, its program one instruction longer) |
 
 **The blocks.**
 

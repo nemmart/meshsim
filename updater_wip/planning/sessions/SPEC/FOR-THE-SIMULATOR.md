@@ -26,8 +26,8 @@ section, what the specification says, what `main` has. Kept as the specification
 
 | section | the specification | `main` (be077a7d) |
 | --- | --- | --- |
-| 16.1, 16.2 | the line between the special tiles: master east ↔ memory west, memory east ↔ tracer west, mesh links with no flow control; a packet for another special tile goes along it by the ring's rule on the difference of the ids | none: a special tile has its attach port alone — **Closed** (the INTEGRATOR, stage 2, `v137-build` STAGE2): the line, its routes and its regime in the special tiles' routers (`router.h`, `step_line`; `chip.cpp`); `test_special_router`'s `line_*` |
-| 16.4 | a special tile's peripheral DMA enters its router on the south input | `chip.cpp`: `dma_inputs` bit 0, the west input, for the memory and tracer tiles; the master tile has no DMA — **Closed** (the INTEGRATOR, stage 2, `v137-build` STAGE2): every special tile's DMA on the south input (`chip.cpp`; the slot's `dma_input` 3) |
+| 16.1, 16.2 | the line between the special tiles: master east ↔ memory west, memory east ↔ tracer west, mesh links with no flow control; a packet for another special tile goes along it by the ring's rule on the difference of the ids | none: a special tile has its attach port alone — **Closed** (the INTEGRATOR, stage 2, `v137-build` `de34b514`): the line, its routes and its regime in the special tiles' routers (`router.h`, `step_line`; `chip.cpp`); `test_special_router`'s `line_*` |
+| 16.4 | a special tile's peripheral DMA enters its router on the south input | `chip.cpp`: `dma_inputs` bit 0, the west input, for the memory and tracer tiles; the master tile has no DMA — **Closed** (the INTEGRATOR, stage 2, `v137-build` `de34b514`): every special tile's DMA on the south input (`chip.cpp`; the slot's `dma_input` 3) |
 
 ## The Updater (machine-spec 17.10)
 
@@ -62,7 +62,7 @@ section, what the specification says, what `main` has. Kept as the specification
 | 17.6.9 | the UART redesigned: `UART_TX` 30, `UART_RX` 31, `UART_CONTROL` 42 (0 at the reset, the UART off), the levels and line errors in `STATUS` | v1.36's UART at words 42 to 45, running from the reset at 115,200 baud; every image that prints needs a store to `UART_CONTROL` |
 | 17.6.3 | incoming queues of 16 KiB, 1,024 words, "stop" at half | 8 KiB, `QUEUE_WORDS` 512 |
 | 17.6.8 | Egress: the outgoing queue in region 0x04 part 1, `EGRESS_COUNT`, `egress_credit`, `egress_error` | none: nothing goes back to the host |
-| 17.6.4, 16.4 | Ingress/Egress's DMA on the master tile's south input | on the west input, `FROM_LEFT` (`chip.cpp` 113), as every special tile's DMA (WORKER7) — **Closed** (the INTEGRATOR, stage 2, `v137-build` STAGE2): the master tile's Ingress/Egress DMA on south, as every special tile's |
+| 17.6.4, 16.4 | Ingress/Egress's DMA on the master tile's south input | on the west input, `FROM_LEFT` (`chip.cpp` 113), as every special tile's DMA (WORKER7) — **Closed** (the INTEGRATOR, stage 2, `v137-build` `de34b514`): the master tile's Ingress/Egress DMA on south, as every special tile's |
 | 17.6.14 | the one reset empties the queues and restarts the link | the black box's reset empties both queues, sets the count to 0 and the service levels low, ends "in flight", and rewinds the packet file, read again from its first byte (`link_reset`, `ingress_egress.h` 549); nothing goes to a host (WORKER7) |
 | 17.6.3 | a taken link packet's words land a 128-bit word a cycle, each counted in `…_WORDS` as it lands | all of a link packet's words land at once, at the end of the cycle of its last byte (`ingress_egress.h` 616–621): `…_WORDS` jumps by its length, and "a word into an empty queue" comes with the whole link packet (WORKER7) |
 | 17.6.15, 19 | `INGRESS_QUEUE_WORDS` a parameter | a constant, `IngressEgress::QUEUE_WORDS` (`ingress_egress.h` 149), not in `MachConfig` (WORKER7) |

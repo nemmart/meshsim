@@ -254,7 +254,7 @@ Stages 4 and 5 together, at `d54c8601`:
 | 255 | `check`: `make check` | queued |
 
 **The proof runs' cycles, stages 4 and 5 against stage 3 (Quest 250):** every run 14,336 to 71,168 cycles longer,
-0.06% to 0.26%. The link's last byte comes 20,000 to 51,000 cycles later: its own link packets (the start, the status
+0.06% to 0.26%. The link's last byte comes 13,815 to 95,951 cycles later: its own link packets (the start, the status
 link packets, the acknowledgements) share the line, and its waits for room grew (the stop bit is now the `Node`'s, at
 half a queue: `evm-zone-23` *s* 0's 134,326 cycles to 178,871). The reply adds a few hundred cycles at the end. The
 figures are in `runner/253-proof-numbers.md`.

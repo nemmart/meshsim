@@ -954,3 +954,31 @@ Rulings as they came; `HOST-LINK.md` has each.
 - **`HOST-LINK.md` brought up to the code that passes:** WORKER8's 30 corrections applied, the figures replaced
   by those measured on the protocol as it stands, the forwarding steps given the mask. WORKER8 is asked to read
   it against its code once more.
+
+## 32. The long search is complete (2026-11-18, half past midnight)
+
+- **Quest 231 holds:** 86,515,438 states, every one tried, depth-first, in 47 minutes. From every state, with
+  either stream never taken again, the other finished. Breadth-first had reached 39.9 million with 5.3 million
+  still waiting when its 1,400 seconds ran out; depth-first visits the same states with few waiting, so time
+  and not memory is the limit. No splitting was needed.
+- **WORKER8 has made the fast sending unit its default,** since `HOST-LINK.md` now has it, and every case was
+  found again. It parked its five queued tasks of the slow unit (Quests 232 to 236) and queued six on the new
+  code (237 to 242): the two campaigns, the larger searches, long noise, and the long search once more. The
+  figures the document quotes are being measured again; its list of what is still wrong or silent follows.
+
+## 33. WORKER8 reads the link document against its code; the corrections applied (2026-11-18, about 1 a.m.)
+
+- **6 places wrong, 9 unclear, 12 silent,** and most figures measured with the slow sending unit. All applied to
+  `HOST-LINK.md`, with the figures of the fast unit. The worked examples all agreed.
+- **One sentence of the design session's was wrong:** that the error for a packet no longer kept "is raised only
+  when there is real harm". With two forged headers, a false acknowledgement and then a false "resend" or "lost",
+  it is raised with nothing lost. Far inside what is accepted, and loud.
+- **The longest wait for an acknowledgement does grow with the status timer,** with the fast unit: 2,727, 3,380
+  and 8,356 cycles at 512, 2,048 and 8,192. A reason to keep 512.
+- **A line that reads as zeros for long looks idle:** in the runner's campaign a foreground packet stood ready
+  515,932 cycles so. The wire's side of "a neighbour that goes silent", which stays open by the owner's ruling;
+  the measurement is added to it.
+- **The fast unit's starting value for the header CRC is 0x641F6454.**
+- **The runner's campaign with the slow unit, Quest 232:** 6,071 runs on chains of 1, 2, 4 and 16, 306 million
+  packets, none failed, none refused for want of room.
+- The owner: fix them now, "and figure out what work we can launch to try to get v1.37 finished."

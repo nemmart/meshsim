@@ -361,6 +361,7 @@ More will go here as I check the text against the code.
 | 188 | frame 9 past 2^26 words: continuation frames (HF) | 29.13 |
 | 189 | an Updater frame with its own head (HF, DN16 section 10) | 29.1 |
 | 190 | what no frame carries: tables, templates, tiles' images (S7) | 29.1, 30 |
+| 191 | whether the file system takes over making roots (UI-7) | 17.10.1 |
 | 182 | flow control on the line between the special tiles, with the regime that needs it: the file system's | 16.3 |
 | 181 | everything after an error stops the chip: the host's reset, draining the queues, a ready frame (S1, S6, II-18) | 23.7, 30 |
 
@@ -382,8 +383,9 @@ More will go here as I check the text against the code.
 | 11 | MS-1 the reply frame's fields | ruled (06:14): as recommended (29.14) |
 | 12 | every dagger whose recommendation is a plain accept or "as written": UI-4, UI-6, UI-9, UI-12, UI-13, CI-2, CI-3, CI-6, CI-7, CI-8, CI-10, AI-1, AI-2, AI-3, AI-4, AI-6, AI-7, HF-1 to HF-9, II-17, MS-2, HL-6; and the silences S7, S9, S10, S12, S13, S14 as recommended | ruled (06:14): accepted as a block |
 | 13 | S5: how an ASIC learns *N* and *s* | ruled (06:19): arguments of the master tile's image; item 166 |
-| 14 | UI-7: `RUN_CONFIG.root` and `SOURCE_ROOT` | asked 06:20 |
-| to come, one at a time | CI-4, and anything new that changes hardware or working code | |
+| 14 | UI-7: `RUN_CONFIG.root` and `SOURCE_ROOT` | ruled (06:29): as built, a full part of the Updater; item 191 |
+| 15 | CI-4: the cache's look-up ports | asked 06:30 |
+| to come, one at a time | anything new that changes hardware or working code | |
 
 ## 11. Found in the sources while writing
 

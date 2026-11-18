@@ -81,6 +81,7 @@ void CacheCtl::finish(int64_t t, unsigned s) {
         default: break;
     }
     h = Held{};
+    if (s == S_FWRITE) held_[S_FREAD].behind_write = false;   // the read waited for this write (23.6.4)
 }
 
 void CacheCtl::reply(int64_t t, uint8_t status, uint8_t level, uint32_t entry) {
@@ -412,7 +413,8 @@ void CacheCtl::edge(int64_t t, const Inputs& in) {
             if (!cfg.hits_under_miss && mst_ != M_IDLE) break;
             auto eligible = [&](unsigned s) {
                 const Held& h = held_[s];
-                return h.valid && !h.parked && !h.wait_mh && !h.wait_slot && !(h.op == J_UPDATE && s_valid_);
+                return h.valid && !h.parked && !h.wait_mh && !h.wait_slot && !(h.op == J_UPDATE && s_valid_)
+                       && !h.behind_write;                    // fill's read after a write accepted before it (23.6.4)
             };
             int pick = -1;
             if (prio_ >= 0 && eligible(unsigned(prio_))) pick = prio_;
@@ -452,6 +454,7 @@ void CacheCtl::edge(int64_t t, const Inputs& in) {
         h = Held{};
         h.valid = true; h.op = J_FREAD; h.root = uint32_t(in.fr.root) & lookup::ADDRESS; h.depth = in.fr.depth & 3;
         h.pos = uint64_t(in.fr.line); h.t_accept = t;
+        h.behind_write = held_[S_FWRITE].valid;                     // a write taken in an earlier cycle, not yet answered
     }
     if (in.fw.valid && o.fw_ready) {
         Held& h = held_[S_FWRITE];

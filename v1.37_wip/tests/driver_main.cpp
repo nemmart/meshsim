@@ -1,7 +1,7 @@
 // driver: the host on v1.37's chain of processes (MILESTONE-v1.37.md, "The driver"; the INTEGRATOR's stage 6). The
 // process at the head of the chain, started by wire-launch with --driver:
 //
-//   wire-launch --clients N -- driver FRAMES [--asics A] [--segments S0,S1,...] [--rows-traced R] [--limit CYCLES] \
+//   wire-launch --clients N -- driver FRAMES [--asics A] [--segments S0,S1,...] [--rows-traced R] [--limit CYCLES]
 //               -- proof_run FRAMES ... (or standin_asic FRAMES ...)
 //
 //   1. reads gold's frame file and sends it through WORKER8's End (hostlink.h), each frame starting a new link packet

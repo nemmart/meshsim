@@ -1,7 +1,4 @@
 # updater.mk: the rules (v1.37: the Updater black box's and the host link's tests and tools), included by the Makefile.
-# v1.37 stage 6: WORKER10's wire, built in place (below)
-WIRE_DIR := ../updater_wip/wire
-WIRE_OBJ := $(B)/wire/wire.o $(B)/wire/wire_args.o
 UPDATER_BENCH := $(B)/tests/updater_bench.o $(B)/tests/frames.o $(B)/tests/sha256.o $(B)/src/units/updater.o $(B)/src/units/file_store.o
 $(B)/test_updater: $(UPDATER_BENCH)
 $(B)/test_file_store: $(B)/src/units/file_store.o
@@ -27,12 +24,8 @@ $(B)/test_memory_system: $(PROOF_LINK)
 $(B)/proof_run: $(B)/tests/proof_run_main.o $(PROOF_LINK) $(LIB_OBJ) $(WIRE_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@ $(WRAP)
 all: $(B)/proof_run
-# v1.37 stage 6 (the INTEGRATOR): the chain of processes on WORKER10's wire (../updater_wip/wire, built in place from its
-# sources with the simulator's flags, as the link is): its launcher, the driver, and a stand-in ASIC made of the link's
+# v1.37 stage 6 (the INTEGRATOR): the chain of processes on WORKER10's wire (WIRE_OBJ, tracer.mk): its launcher, the driver, and a stand-in ASIC made of the link's
 # Node alone (tests/driver_main.cpp, tests/standin_asic_main.cpp); proof_run is the chip's process
-$(B)/wire/%.o: $(WIRE_DIR)/%.cpp
-	@mkdir -p $(dir $@)
-	$(CXX) $(FLAGS) -DWIRE_CHECK -I$(WIRE_DIR) -c $< -o $@
 $(B)/wire_launch: $(B)/wire/launch.o $(WIRE_OBJ)
 	$(CXX) $(FLAGS) $^ -o $@
 $(B)/driver: $(B)/tests/driver_main.o $(B)/tests/frames.o $(LINK_OBJ) $(WIRE_OBJ) $(LIB_OBJ)

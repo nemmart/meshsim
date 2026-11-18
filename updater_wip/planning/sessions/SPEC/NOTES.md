@@ -343,4 +343,5 @@ More will go here as I check the text against the code.
 | S6, II-18, error recovery | ruled: not designed in v1.37; one open item for everything after an error stops the chip | 26 |
 | S2, CI-12 | ruled: the memory system is the memory tile's peripheral 1, minimal; the RW engine moves to peripheral 2 (a request to Tony) | 17.7, 23, 2.1 |
 | S3 | ruled: the links between the special tiles stay in; their ports, routing and flow control to the owner as questions | 16 |
+| S3-1, S3-2: the line's ports and routing | ruled (owner, 05:36): **east and west, as the mesh:** master east ↔ memory west, memory east ↔ tracer west (east is id + 1). Between special tiles, the ring's rule on the difference of the ids. **A peripheral's DMA enters on the south input (the +8 port) on every special tile;** the RTL has it on west for the memory and tracer tiles: asked of the RTL, and in `FOR-THE-SIMULATOR.md` | 16 |
 | names: 128 bits | ruled (owner, 2026-11-18): "a 128-bit word" in the text, "words" in names; "beat" keeps chapter 1's meaning | section 6 |

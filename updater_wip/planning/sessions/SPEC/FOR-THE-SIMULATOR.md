@@ -12,3 +12,10 @@ section, what the specification says, what `main` has. Kept as the specification
 | 17.7 | the RW engine is the memory tile's peripheral 2: window 0xFFFF_FC00, region 0x05 | peripheral 1: window 0xFFFF_FA00, region 0x04 (v1.36's) |
 | 17.7, 23.10 | the RW engine is client 2 of the arbiter, on the one LPDDR | its own `lpddr` slave and memory (v1.36's); the adapter `RwEngineOnArbiter` exists and is used only by `tests/test_axi_arbiter.cpp` |
 | 23.10 | the Updater is client 1 of the arbiter and the cache's look-up port 1 | the real controller runs against stand-ins of its own (WORKER9's second piece, the joint, not done) |
+
+## The router (machine-spec 16)
+
+| section | the specification | `main` (be077a7d) |
+| --- | --- | --- |
+| 16.1, 16.2 | the line between the special tiles: master east ↔ memory west, memory east ↔ tracer west, flow-controlled; a packet for another special tile goes along it by the ring's rule on the difference of the ids | none: a special tile has its attach port alone |
+| 16.4 | a special tile's peripheral DMA enters its router on the south input | `chip.cpp`: `dma_inputs` bit 0, the west input, for the memory and tracer tiles; the master tile has no DMA |

@@ -18,7 +18,7 @@
 #            Updater's controller are the machine, so suites runs them.)
 #   faster   (WORKER4) 1, 2 and 2b as for suites; then 5: proof_run (clang suite) on every run of the 29 and matrix sets
 #            with the link at 2, 4 and 8 bytes a cycle (--link-rate), and on the matrix with the link as fast as taken
-#            (--fast-link; WORKER7, in place of WORKER4's thresholds), in parallel; each run must pass (gold's images,
+#            (--link-rate 8, --fast-link before stage 4; WORKER7, in place of WORKER4's thresholds), in parallel; each run must pass (gold's images,
 #            every check of proof_run); the figures in faster-numbers.md and fast-numbers.md.
 # VERDICTS: one line per item. TIMES: each item's wall time. Scratch in /tmp, removed first and at the end.
 FAIL=0; T0=$(date +%s); N=$(nproc)
@@ -84,7 +84,7 @@ if [ "$ITEM" = faster ]; then
   for set in 29 matrix; do
     while read -r name n windows list; do for s in $list; do
       for rate in 2 4 8; do echo "$set $name $n $windows $s --link-rate $rate faster-$set-$rate" >> "$W/jobs"; done
-      [ $set = matrix ] && echo "$set $name $n $windows $s --fast-link --quiet fast-$set" >> "$W/jobs"
+      [ $set = matrix ] && echo "$set $name $n $windows $s --link-rate 8 --quiet fast-$set" >> "$W/jobs"
     done; done < "$IN/v137/$set/RUNS"
   done
   wc -l < "$W/jobs"

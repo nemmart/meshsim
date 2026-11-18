@@ -39,8 +39,8 @@ struct Case {
     std::vector<uint8_t> packets;                // the link's bytes: the frame file in the link's packets
     unsigned asics = 64, segment = 0;            // N and s, the system's configuration
     std::map<std::string, std::string> gold;     // gold's reference for this s: an image's name to its SHA-256 (hex)
-    int cycles_per_byte = 1;                     // the link's rate (0: as fast as taken)
-    int link_rate = 1;                           // or bytes a cycle: 1, 2, 4, 8 (WORKER4)
+    int link_rate = 1;                           // the link: link cycles a chip cycle, a byte each way in each: 1, 2, 4, 8
+    int link_every = 1;                          // or chip cycles a link cycle (a slower link; with link_rate 1)
     int updater_lookup = 0;                      // not 0: a slow memory side, every LPDDR burst this many cycles (updater_view.h)
     uint32_t lpddr_seed = 0;                     // the LPDDR model's jitter (MachConfig::lpddr_seed): 0 fixed, or MESHSIM_LPDDR_SEED
     // v1.37 stage 4: the line's noise, the byte the chip receives in a link cycle (host_end.h: HostEnd::noise); and the
@@ -72,6 +72,8 @@ struct Numbers {
     int64_t link_last_at = 0;                    // the cycle the chip's link end took the last link packet with data
     uint64_t master_awake_handed = 0;            // the master's cycles awake to the done of segment s's run (the hand-over)
     uint64_t link_forwarded = 0, link_discarded = 0;   // the background's words the forward count sent to the Updater, and dropped
+    // the host End's first sendings against the packet file's data link packets (host_end.h, THE CAPTURE; stage 4)
+    uint64_t link_first_sendings = 0, link_sent_again = 0;
 };
 
 // gold's reference file (`gold frames-images FRAMES S`, tests/updater/NAME-sS.images.txt): each line a name and a

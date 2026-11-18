@@ -82,7 +82,7 @@ TEST(link_crc32c) {
     CHECK_EQ(packet_writer::crc32c(b, 32), 0x113FDB5Cu);                 // the writer's, table-driven, agrees
 }
 
-// HL's own figures, as main has them (8385dacd): its table's values, its example packet byte for byte, its cross-check.
+// Chapter 28's own figures (spec/host-link.md 28.5, 28.6): its examples byte for byte, the mask, its cross-check.
 TEST(link_documents_example) {
     using units::hostlink::crc32c;
     uint8_t zeros[16] = {};
@@ -91,8 +91,10 @@ TEST(link_documents_example) {
     static const uint8_t example[16] = {0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0xEA, 0x9A, 0x70, 0x42, 0xA0, 0x8C, 0x06, 0xE1};
     CHECK_EQ(crc32c(example, 12), 0xE1068CA0u);            // the header CRC, over bytes 0 to 11
     CHECK_EQ(crc32c(example, 16), 0x48674BC7u);            // "the CRC-32C of all 16 header bytes of a good packet"
+    // on the line the zero word is the mask itself (28.6's example 1: the register from 0xE1078CA0)
+    static const uint8_t line[16] = {0x2A, 0x54, 0xC0, 0x74, 0xC0, 0x1C, 0x58, 0x2F, 0xA6, 0x5D, 0x27, 0x37, 0x39, 0xC9, 0x47, 0x1F};
     std::vector<uint8_t> bytes(example, example + 16);
-    bytes.insert(bytes.end(), 16, 0);
+    bytes.insert(bytes.end(), line, line + 16);
     units::hostlink::Reader reader;
     reader.open(bytes.data(), bytes.size());
     units::hostlink::Packet p;
@@ -101,6 +103,7 @@ TEST(link_documents_example) {
     CHECK(reader.next(p, check, taken) == units::hostlink::Reader::Next::PACKET);
     CHECK(check == units::hostlink::Check::OK);
     CHECK_EQ(p.stream, 2u); CHECK_EQ(p.length, 1u); CHECK_EQ(p.number, 1u); CHECK_EQ(p.acknowledge, 0u); CHECK_EQ(p.flags, 0u);
+    CHECK_EQ(p.lo[0], 0u); CHECK_EQ(p.hi[0], 0u);           // the mask taken off
     CHECK_EQ(taken, size_t(32));
     CHECK(reader.next(p, check, taken) == units::hostlink::Reader::Next::END);
     std::vector<uint8_t> written;                          // and the tests' writer makes the same 32 bytes
@@ -108,55 +111,67 @@ TEST(link_documents_example) {
     f.length = 1; f.number = 1;
     packet_writer::packet(written, f, zeros);
     CHECK(written == bytes);
-    // the same packet after one hop, and with number 0x2ABCD, acknowledge 0x15555 and hops 3 (owner, 2026-11-17):
-    // the writer's bytes, the reader's fields, and the black box takes them
+    // 28.5's examples 2 to 4 and 28.6's 2 and 3: the writer's bytes, the reader's fields
     static const uint8_t hop1[16] = {0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x10, 0x00, 0xEA, 0x9A, 0x70, 0x42, 0x9E, 0xBC, 0x0A, 0x21};
-    static const uint8_t hop3[16] = {0x02, 0x01, 0xCD, 0xAB, 0x56, 0x55, 0x35, 0x00, 0xEA, 0x9A, 0x70, 0x42, 0xC9, 0xC4, 0x23, 0x30};
-    const struct { const uint8_t* h; uint32_t number, acknowledge; unsigned hops; } more[] = {{hop1, 1, 0, 1}, {hop3, 0x2ABCD, 0x15555, 3}};
+    static const uint8_t hop3[16] = {0x11, 0x01, 0xCD, 0xAB, 0x56, 0x55, 0x35, 0x02, 0xEA, 0x9A, 0x70, 0x42, 0xD2, 0xBF, 0xBA, 0x0A};
+    static const uint8_t len0[16] = {0x01, 0x00, 0x05, 0x00, 0x10, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x57, 0x09, 0x4D, 0x4E};
+    static const uint8_t m2[32] = {0x01, 0x01, 0x07, 0x00, 0x0C, 0x00, 0x00, 0x00, 0xEB, 0x08, 0xC9, 0xD9, 0x9E, 0x94, 0x2A, 0x36,
+                                   0xA4, 0xD0, 0x6E, 0x3C, 0x10, 0xA4, 0x2F, 0x89, 0xF5, 0x74, 0x21, 0x9E, 0xDE, 0x43, 0xE4, 0xC0};
+    static const uint8_t m3[32] = {0x01, 0x01, 0x07, 0x00, 0x10, 0x00, 0x10, 0x00, 0xEB, 0x08, 0xC9, 0xD9, 0xA3, 0x2B, 0x76, 0x11,
+                                   0x79, 0xF1, 0xF2, 0x82, 0x77, 0xD9, 0xB4, 0xAF, 0x91, 0x8F, 0x7C, 0x00, 0x39, 0x96, 0xA1, 0x51};
+    uint8_t up[16];
+    for (int i = 0; i < 16; i++) up[i] = uint8_t(i);
+    const struct { const uint8_t* line; size_t n; unsigned stream, flags, stops, length; uint32_t number, acknowledge; unsigned hops; const uint8_t* data; } more[] = {
+        {hop1, 16, 2, 0, 0, 1, 1, 0, 1, zeros}, {hop3, 16, 1, 1, 2, 1, 0x2ABCD, 0x15555, 3, zeros}, {len0, 16, 1, 0, 1, 0, 5, 4, 0, zeros},
+        {m2, 32, 1, 0, 0, 1, 7, 3, 0, up}, {m3, 32, 1, 0, 0, 1, 7, 4, 1, up}};
     for (const auto& m : more) {
         std::vector<uint8_t> w;
         packet_writer::Fields g;
-        g.length = 1; g.number = m.number; g.acknowledge = m.acknowledge; g.hops = m.hops;
-        packet_writer::packet(w, g, zeros);
-        CHECK(w.size() == 32 && std::equal(m.h, m.h + 16, w.begin()));
-        CHECK_EQ(crc32c(m.h, 16), 0x48674BC7u);
+        g.stream = m.stream; g.flags = m.flags; g.stops = m.stops; g.length = m.length; g.number = m.number; g.acknowledge = m.acknowledge; g.hops = m.hops;
+        packet_writer::packet(w, g, m.data);
+        CHECK(w.size() == 16 + 16 * size_t(m.length) && std::equal(m.line, m.line + m.n, w.begin()));
+        CHECK_EQ(crc32c(m.line, 16), 0x48674BC7u);
         units::hostlink::Reader rd;
         rd.open(w.data(), w.size());
-        rd.expect[1] = m.number;
+        rd.expect = m.number;
         CHECK(rd.next(p, check, taken) == units::hostlink::Reader::Next::PACKET);
         CHECK(check == units::hostlink::Check::OK);
+        CHECK_EQ(p.stream, m.stream); CHECK_EQ(p.flags, m.flags); CHECK_EQ(p.stops, m.stops);
         CHECK_EQ(p.number, m.number); CHECK_EQ(p.acknowledge, m.acknowledge); CHECK_EQ(p.hops, m.hops);
+        if (m.length) { CHECK_EQ(p.lo[0], 0x0706050403020100ull * (m.data == up)); CHECK_EQ(p.hi[0], 0x0F0E0D0C0B0A0908ull * (m.data == up)); }
     }
 }
 
-// A header word's fields where HL puts them, and the two checks over the bytes HL names.
+// A header word's fields where 28.3 puts them, and the two checks over the bytes it names.
 TEST(link_header_fields) {
     packet_writer::Fields f;
-    f.stream = 2; f.flags = 0x9; f.length = 3; f.number = 0x2BCDE; f.acknowledge = 0x3A5A5; f.hops = 0xC;
+    f.stream = 2; f.flags = 0x5; f.length = 3;   // resend and recovery: restart (0x8) is the restart link packet's
+    f.number = 0x2BCDE; f.acknowledge = 0x3A5A5; f.hops = 0xC; f.stops = 3;
     const std::vector<uint8_t> d = data_of(7, 3);
     std::vector<uint8_t> file;
     packet_writer::packet(file, f, d.data());
     CHECK_EQ(file.size(), size_t(16 + 48));
-    CHECK_EQ(file[0], 0x92u);                               // [3:0] the stream, [7:4] the flags
+    CHECK_EQ(file[0], 0x52u);                               // [3:0] the stream, [7:4] the flags
     CHECK_EQ(file[1], 3u);                                  // [15:8] the length
     CHECK_EQ(uint32_t(file[2]) | uint32_t(file[3]) << 8 | uint32_t(file[4] & 3) << 16, 0x2BCDEu);          // [33:16]
     CHECK_EQ(uint32_t(file[4] >> 2) | uint32_t(file[5]) << 6 | uint32_t(file[6] & 15) << 14, 0x3A5A5u);   // [51:34]
     CHECK_EQ(uint32_t(file[6] >> 4), 0xCu);                                                             // [55:52] hops
-    CHECK_EQ(file[7], 0u);                                  // [63:56] reserved
+    CHECK_EQ(file[7], 3u);                                  // [56] fg_stop, [57] bg_stop; [63:58] reserved
     auto u32 = [&](size_t at) { return uint32_t(file[at]) | uint32_t(file[at + 1]) << 8 | uint32_t(file[at + 2]) << 16 | uint32_t(file[at + 3]) << 24; };
-    CHECK_EQ(u32(8), units::hostlink::crc32c(file.data() + 16, 48));            // [95:64] over the data
+    CHECK_EQ(u32(8), units::hostlink::crc32c(d.data(), 48));                    // [95:64] over the data as held
+    CHECK(!std::equal(d.begin(), d.end(), file.begin() + 16));                  // which goes masked
     CHECK_EQ(u32(12), units::hostlink::crc32c(file.data(), 12));                // [127:96] over bits [95:0]
     units::hostlink::Reader r;
     r.open(file.data(), file.size());
-    r.expect[1] = 0x2BCDE;
+    r.expect = 0x2BCDE;
     units::hostlink::Packet p;
     units::hostlink::Check check;
     size_t taken;
     CHECK(r.next(p, check, taken) == units::hostlink::Reader::Next::PACKET);
     CHECK(check == units::hostlink::Check::OK);
     CHECK_EQ(taken, size_t(64));
-    CHECK_EQ(p.stream, 2u); CHECK_EQ(p.flags, 9u); CHECK_EQ(p.length, 3u); CHECK_EQ(p.number, 0x2BCDEu); CHECK_EQ(p.acknowledge, 0x3A5A5u);
-    CHECK_EQ(p.hops, 0xCu);
+    CHECK_EQ(p.stream, 2u); CHECK_EQ(p.flags, 5u); CHECK_EQ(p.length, 3u); CHECK_EQ(p.number, 0x2BCDEu); CHECK_EQ(p.acknowledge, 0x3A5A5u);
+    CHECK_EQ(p.hops, 0xCu); CHECK_EQ(p.stops, 3u);
     CHECK_EQ(p.lo[2], uint64_t(7) << 32 | 2);
     CHECK_EQ(p.hi[2], ~(uint64_t(7) << 32 | 2));
     CHECK(r.next(p, check, taken) == units::hostlink::Reader::Next::END);
@@ -425,10 +440,10 @@ TEST(ingress_link_forward_count_ready_at_random) {
 // Forwarding and a DMA transfer from the foreground queue move words in the same cycles, each from its own queue.
 TEST(ingress_link_forward_count_beside_a_foreground_transfer) {
     std::vector<uint8_t> file;
-    add(file, 2, 1, 0xB1, 32);
-    add(file, 1, 1, 0xF1, 32);
-    add(file, 2, 2, 0xB2, 32);
-    add(file, 1, 2, 0xF2, 16);
+    add(file, 2, 1, 0xB1, 32);                               // one run of numbers for the link (28.4)
+    add(file, 1, 2, 0xF1, 32);
+    add(file, 2, 3, 0xB2, 32);
+    add(file, 1, 4, 0xF2, 16);
     Bench b(file);
     b.until_taken(4);
     b.run(40);
@@ -501,10 +516,10 @@ DEATH_TEST(ingress_link_queue_words_not_a_power_of_two_is_refused, "INGRESS_QUEU
 // The two queues are independent: each asks for itself; the count holds the background only.
 TEST(ingress_link_two_streams) {
     std::vector<uint8_t> file;
-    add(file, 2, 1, 0xB1, 4);
-    add(file, 1, 1, 0xF1, 2);
-    add(file, 2, 2, 0xB2, 3);
-    add(file, 1, 2, 0xF2, 1);
+    add(file, 2, 1, 0xB1, 4);                                // one run of numbers for the link (28.4)
+    add(file, 1, 2, 0xF1, 2);
+    add(file, 2, 3, 0xB2, 3);
+    add(file, 1, 4, 0xF2, 1);
     Bench b(file);
     b.until_taken(4);
     b.run(12);

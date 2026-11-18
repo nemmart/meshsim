@@ -1,11 +1,12 @@
 // test_packet_vectors: the host's packet files against gold's packetizer (v1.37). The reader (src/units/host_link.h)
-// was written from ../v1.4_wip/planning/HOST-LINK.md, not from gold's Java; gold's packetizer, its test vectors and
+// was written from ../v1.4_wip/planning/HOST-LINK.md, not from gold's Java, and brought to chapter 28 (one run of
+// numbers, the stop bits, the mask) in stage 4 beside gold; gold's packetizer, its test vectors and
 // its small packet files are WORKER2's (../updater_wip/pipeline/gold/test/packets/). The two are meant to check each
 // other, and this is where they meet. Since stage 4 (the INTEGRATOR) the chip's link is WORKER8's (chapter 28) and a
 // packet file is what the host's end sends, link packet by link packet (tests/host_end.h): "through the link" below
 // is that, the words read out at the chip. The reader's own checks stay the file's.
 //   crc32c   every value of VECTORS.txt;
-//   packet   every packet of VECTORS.txt, alone, with the number its stream expects: the reader's verdict (gold's
+//   packet   every packet of VECTORS.txt, alone, with the number the link expects: the reader's verdict (gold's
 //            checks header-crc and data-checksum are ERRORS.crc_error; stream, length and reserved, format_error;
 //            number, sequence_error), a good packet's fields and data, and the number expected after it; then a good
 //            one through the link: its words at the chip;
@@ -42,7 +43,7 @@ struct PacketVector {
     uint32_t next_number = 1, next_after = 0;
     unsigned stream = 0, flags = 0, length = 0, reserved = 0;
     uint32_t number = 0, acknowledge = 0;
-    unsigned hops = 0;
+    unsigned hops = 0, stops = 0;
     std::vector<uint8_t> bytes, data;
 };
 struct FileVector {
@@ -124,6 +125,7 @@ const Vectors& vectors() {
             else if (key == "acknowledge") p->acknowledge = number;
             else if (key == "hops") p->hops = number;
             else if (key == "reserved") p->reserved = number;
+            else if (key == "stops") p->stops = number;
             else if (key == "data") { const auto b = hex(a); p->data.insert(p->data.end(), b.begin(), b.end()); }
             else if (key == "bytes") { const auto b = hex(a); p->bytes.insert(p->bytes.end(), b.begin(), b.end()); }
             else if (key == "expect") p->expect = a;
@@ -140,7 +142,7 @@ const Vectors& vectors() {
 // gold's check's name as Ingress's error.
 units::hostlink::Check check_of(const std::string& expect) {
     if (expect == "ok") return units::hostlink::Check::OK;
-    if (expect == "header-crc" || expect == "data-checksum") return units::hostlink::Check::CRC;
+    if (expect == "header-crc" || expect == "data-checksum" || expect == "restart") return units::hostlink::Check::CRC;   // 28.9: damaged
     if (expect == "stream" || expect == "length" || expect == "reserved") return units::hostlink::Check::FORMAT;
     if (expect == "number") return units::hostlink::Check::SEQUENCE;
     FATAL("test_packet_vectors: VECTORS.txt expects '%s', which is no check of a packet", expect.c_str());
@@ -194,7 +196,7 @@ TEST(vectors_packets_by_the_reader) {
     for (const PacketVector& p : v.packets) {
         units::hostlink::Reader r;
         r.open(p.bytes.data(), p.bytes.size());
-        r.expect[0] = r.expect[1] = p.next_number;
+        r.expect = p.next_number;
         units::hostlink::Packet got;
         units::hostlink::Check check;
         size_t taken;
@@ -204,40 +206,55 @@ TEST(vectors_packets_by_the_reader) {
         good++;
         CHECK_EQ(taken, p.bytes.size());
         CHECK_EQ(got.stream, p.stream); CHECK_EQ(got.flags, p.flags); CHECK_EQ(got.length, p.length);
-        CHECK_EQ(got.number, p.number); CHECK_EQ(got.acknowledge, p.acknowledge); CHECK_EQ(got.hops, p.hops);
+        CHECK_EQ(got.number, p.number); CHECK_EQ(got.acknowledge, p.acknowledge); CHECK_EQ(got.hops, p.hops); CHECK_EQ(got.stops, p.stops);
         CHECK_EQ(p.data.size(), size_t(16) * p.length);
         for (unsigned w = 0; w < p.length; w++) { CHECK_EQ(got.lo[w], half(p.data, 16 * w)); CHECK_EQ(got.hi[w], half(p.data, 16 * w + 8)); }
-        CHECK_EQ(r.expect[p.stream - 1], p.next_after);
+        CHECK_EQ(r.expect, p.next_after);
     }
     CHECK(good >= 12);
 }
 
-// HL's three example headers ("The two checks"; owner, 2026-11-17), copied from the document: gold's vectors of them
-// hold exactly those bytes, and the reader takes each (the black box does too: the test below plays every vector).
+// Chapter 28's worked examples, copied from spec/host-link.md: 28.5's four headers, 28.6's data on the line (the first,
+// the mask itself). Gold's vectors of them hold exactly those bytes, the reader takes each, and the tests' writer makes
+// them from the fields (the link plays every vector in the test below).
 TEST(vectors_host_links_examples) {
     const Vectors& v = vectors();
     if (!v.present) return;
-    const struct { const char* name; uint8_t header[16]; uint32_t number, acknowledge; unsigned hops; } ex[] = {
-        {"host-link-example", {0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0xEA, 0x9A, 0x70, 0x42, 0xA0, 0x8C, 0x06, 0xE1}, 1, 0, 0},
-        {"host-link-example-one-hop", {0x02, 0x01, 0x01, 0x00, 0x00, 0x00, 0x10, 0x00, 0xEA, 0x9A, 0x70, 0x42, 0x9E, 0xBC, 0x0A, 0x21}, 1, 0, 1},
-        {"host-link-example-hops-3", {0x02, 0x01, 0xCD, 0xAB, 0x56, 0x55, 0x35, 0x00, 0xEA, 0x9A, 0x70, 0x42, 0xC9, 0xC4, 0x23, 0x30}, 0x2ABCD, 0x15555, 3},
+    const struct {
+        const char* name; const char* line; unsigned stream, flags, stops; uint32_t number, acknowledge; unsigned hops;
+    } ex[] = {
+        {"host-link-example", "02 01 01 00 00 00 00 00 EA 9A 70 42 A0 8C 06 E1 2A 54 C0 74 C0 1C 58 2F A6 5D 27 37 39 C9 47 1F", 2, 0, 0, 1, 0, 0},
+        {"host-link-example-one-hop", "02 01 01 00 00 00 10 00 EA 9A 70 42 9E BC 0A 21", 2, 0, 0, 1, 0, 1},
+        {"host-link-example-hops-3", "11 01 CD AB 56 55 35 02 EA 9A 70 42 D2 BF BA 0A", 1, 1, 2, 0x2ABCD, 0x15555, 3},
+        {"host-link-example-length-0", "01 00 05 00 10 00 00 01 00 00 00 00 57 09 4D 4E", 1, 0, 1, 5, 4, 0},
+        {"host-link-mask-example", "01 01 07 00 0C 00 00 00 EB 08 C9 D9 9E 94 2A 36 A4 D0 6E 3C 10 A4 2F 89 F5 74 21 9E DE 43 E4 C0", 1, 0, 0, 7, 3, 0},
+        {"host-link-mask-example-forwarded", "01 01 07 00 10 00 10 00 EB 08 C9 D9 A3 2B 76 11 79 F1 F2 82 77 D9 B4 AF 91 8F 7C 00 39 96 A1 51", 1, 0, 0, 7, 4, 1},
     };
     for (const auto& e : ex) {
         const PacketVector* found = nullptr;
         for (const PacketVector& p : v.packets) if (p.name == e.name) found = &p;
         CHECK(found != nullptr);
         if (!found) continue;
-        CHECK(found->bytes.size() == 32 && std::equal(e.header, e.header + 16, found->bytes.begin()));
+        std::string compact;
+        for (const char* c = e.line; *c; c++) if (*c != ' ') compact += *c;
+        const std::vector<uint8_t> want = hex(compact);
+        CHECK(found->bytes.size() >= want.size() && std::equal(want.begin(), want.end(), found->bytes.begin()));
         CHECK(found->expect == "ok");
         units::hostlink::Reader r;
         r.open(found->bytes.data(), found->bytes.size());
-        r.expect[1] = e.number;
+        r.expect = e.number;
         units::hostlink::Packet got;
         units::hostlink::Check check;
         size_t taken;
         CHECK(r.next(got, check, taken) == units::hostlink::Reader::Next::PACKET);
         CHECK(check == units::hostlink::Check::OK);
+        CHECK_EQ(got.stream, e.stream); CHECK_EQ(got.flags, e.flags); CHECK_EQ(got.stops, e.stops);
         CHECK_EQ(got.number, e.number); CHECK_EQ(got.acknowledge, e.acknowledge); CHECK_EQ(got.hops, e.hops);
+        packet_writer::Fields f;
+        f.stream = e.stream; f.flags = e.flags; f.stops = e.stops; f.length = found->length; f.number = e.number; f.acknowledge = e.acknowledge; f.hops = e.hops;
+        std::vector<uint8_t> made;
+        packet_writer::packet(made, f, found->data.data());
+        CHECK(made == found->bytes);
     }
 }
 
@@ -250,12 +267,14 @@ TEST(vectors_packets_through_the_link) {
         if (p.next_number != 1) {
             packet_writer::Fields f;
             f.stream = p.stream; f.flags = p.flags; f.length = p.length; f.number = 1; f.acknowledge = p.acknowledge; f.hops = p.hops;
+            f.stops = p.stops;
             bytes.clear();
             packet_writer::packet(bytes, f, p.data.data());
         }
         const Played got = play(bytes);
         CHECK_EQ(got.errors, 0u);
-        if (p.length == 0) { CHECK_EQ(got.packets, 0u); CHECK_EQ(got.asked[0] + got.asked[1], 0u); continue; }
+        // nothing for the End to send for one of length 0, or for the restart link packet: the End makes its own
+        if (p.length == 0 || (p.flags & 8)) { CHECK_EQ(got.packets, 0u); CHECK_EQ(got.asked[0] + got.asked[1], 0u); continue; }
         CHECK_EQ(got.packets, 1u);
         const unsigned q = p.stream - 1;
         // a packet of length 0 asks for no service; one with words asks at least once: its words land a word a cycle
@@ -278,8 +297,8 @@ TEST(vectors_files) {
         // by the reader: the counts
         units::hostlink::Reader r;
         r.open(bytes.data(), bytes.size());
-        r.expect[0] = r.expect[1] = uint32_t(f.count.at("first-number"));
-        uint64_t packets[2] = {}, words[2] = {}, empty = 0, idle = 0;
+        r.expect = uint32_t(f.count.at("first-number"));
+        uint64_t packets[2] = {}, words[2] = {}, empty = 0, idle = 0, restarts = 0;
         std::vector<uint8_t> data[2];
         for (;;) {
             units::hostlink::Packet p;
@@ -290,7 +309,9 @@ TEST(vectors_files) {
             CHECK(next == units::hostlink::Reader::Next::PACKET);
             if (check != units::hostlink::Check::OK) { ::test::fail(__FILE__, __LINE__, "%s: a packet at byte %zu is refused (%d)", f.name.c_str(), r.header_at, int(check)); return; }
             idle += taken - 16 - 16 * size_t(p.length);
-            packets[p.stream - 1]++; words[p.stream - 1] += p.length; empty += p.length == 0;
+            packets[p.stream - 1]++; empty += p.length == 0;
+            if (p.restart) { restarts++; continue; }       // 28.9: its data goes to no queue
+            words[p.stream - 1] += p.length;
             for (unsigned w = 0; w < p.length; w++) for (uint64_t h : {p.lo[w], p.hi[w]}) for (unsigned i = 0; i < 8; i++) data[p.stream - 1].push_back(uint8_t(h >> (8 * i)));
         }
         CHECK_EQ(packets[0] + packets[1], f.count.at("packets"));
@@ -300,13 +321,14 @@ TEST(vectors_files) {
         CHECK_EQ(idle, f.count.at("idle-bytes"));
         CHECK_EQ(words[1], f.count.at("words-stream-2"));
         CHECK_EQ(words[0], f.count.at("words-stream-1"));
+        CHECK_EQ(restarts, f.count.at("restart-packets"));
         CHECK(read_file(v.dir + "/" + f.frames_file, frames));
         CHECK(data[1] == frames);                           // the background stream's data is the frame file
         // through the link: every word read out (the file's own first number is the file's: the End numbers its own)
         if (f.count.at("first-number") != 1) continue;
         const Played got = play(bytes);
         CHECK_EQ(got.errors, 0u);
-        CHECK_EQ(got.packets, f.count.at("packets") - f.count.at("packets-length-0"));
+        CHECK_EQ(got.packets, f.count.at("packets") - f.count.at("packets-length-0") - f.count.at("restart-packets"));
         CHECK(got.data[1] == frames);
         CHECK(got.data[0] == data[0]);
     }

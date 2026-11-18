@@ -43,10 +43,14 @@ def unmask(data, header_crc):
     return bytes(out)
 
 
+RESTART_WORDS = bytes([2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53,
+                       59, 61, 67, 71, 73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131])   # 28.9, copied
+
+
 def read(f, first=1, frames=True):
     """Reads a packet file of chapter 28's link packets. Returns its counts and the frames' bytes; raises Refused."""
     expect = first                                 # one run of numbers for the link, both streams (28.4)
-    c = dict(packets=0, s2=0, s1=0, empty=0, idle=0, words2=0, words1=0, frames=0, after=None)
+    c = dict(packets=0, s2=0, s1=0, empty=0, idle=0, words2=0, words1=0, restarts=0, frames=0, after=None)
     out = bytearray()
     left = 0
     pos = 0
@@ -77,6 +81,16 @@ def read(f, first=1, frames=True):
         data = unmask(data, word >> 96)
         if (word >> 64) & 0xFFFFFFFF != crc32c(data):
             raise Refused("data-checksum", k, pos)
+        if word & 0x80:                            # restart (28.9): the restart link packet, or refused
+            if (stream, length, number, (word >> 52) & 15) != (1, 32, 1, 0) or data != RESTART_WORDS * 16 or left:
+                raise Refused("restart", k, pos)
+            c["packets"] += 1
+            c["s1"] += 1
+            c["restarts"] += 1
+            expect = 1                             # it takes no number; the numbers start again
+            c["after"] = expect
+            pos += 16 + 16 * length
+            continue
         if number != expect:                       # 0 and 0x3FFFF are never expected
             raise Refused("number", k, pos)
         c["packets"] += 1
@@ -170,7 +184,8 @@ def main(directory):
         expect(got == v["expect"], f"{name}: expect {v['expect']}, this reader says {got}")
         if good and got == "ok":
             expect(result[0]["after"] == num("next-number-after"), name + ": next-number-after")
-            expect(num("next-number-after") == (nxt if num("length") == 0 else 1 if nxt == 0x3FFFE else nxt + 1),
+            expect(num("next-number-after") == (1 if num("flags") & 8 else nxt if num("length") == 0 else 1 if nxt == 0x3FFFE
+                                                 else nxt + 1),
                    name + ": a packet with data takes a number, one of length 0 does not")
 
     # machine-spec 28.5's four example headers and 28.6's masked data lines, copied from v1.37_wip/spec/host-link.md
@@ -183,6 +198,9 @@ def main(directory):
                                             "A4 D0 6E 3C 10 A4 2F 89 F5 74 21 9E DE 43 E4 C0"),
                  "host-link-mask-example-forwarded": ("01 01 07 00 10 00 10 00 EB 08 C9 D9 A3 2B 76 11",
                                                       "79 F1 F2 82 77 D9 B4 AF 91 8F 7C 00 39 96 A1 51")}
+    restart = next((b for b in packets if b["name"] == "restart-link-packet"), None)
+    expect(restart is not None and int(restart["data-checksum"], 0) == 0xC8981D21 and crc32c(RESTART_WORDS * 16) == 0xC8981D21,
+           "28.9's restart link packet: its data checksum 0xC8981D21, copied")
     for name, (head, line) in host_link.items():
         v = next((b for b in packets if b["name"] == name), None)
         b = b"".join(v["bytes"]) if v is not None else b""
@@ -204,7 +222,7 @@ def main(directory):
             expect(out == frames, name + ": its frames are small.frames")
             for key, field in (("packets", "packets"), ("packets-stream-2", "s2"), ("packets-stream-1", "s1"),
                                ("packets-length-0", "empty"), ("idle-bytes", "idle"), ("words-stream-2", "words2"),
-                               ("words-stream-1", "words1"), ("frames", "frames")):
+                               ("words-stream-1", "words1"), ("restart-packets", "restarts"), ("frames", "frames")):
                 expect(c[field] == int(v[key]), f"{name}: {key} {v[key]}, this reader counts {c[field]}")
 
     for name, at, mask, check, packet, where in damage:

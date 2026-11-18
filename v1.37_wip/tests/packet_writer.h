@@ -1,5 +1,5 @@
-// packet_writer.h: a frame file wrapped in the link's packets, for the tests (v1.37; ../v1.4_wip/planning/HOST-LINK.md
-// and INGRESS-INTERFACE.md, "In v1.37: a black box and a file").
+// packet_writer.h: a frame file wrapped in the link's packets, for the tests (v1.37; machine-spec chapter 28,
+// spec/host-link.md, from stage 4; ../v1.4_wip/planning/HOST-LINK.md before).
 //
 // The packetizer is gold's (../updater_wip/pipeline/gold: `gold packets`, WORKER2's), and gold's vectors and packet
 // files are what Ingress's black box (src/units/host_link.h, ingress_egress.h) is checked against
@@ -11,8 +11,10 @@
 //
 // A frame file's packets: every packet on the background stream (2); each frame starts a new packet; a frame's packets
 // hold 32 words of data but its last, which holds what remains; packet numbers from 1, and after 0x3FFFE, 1; the
-// acknowledge field, the hops field, the flags and the reserved bits 0. The header (HL, "A packet"; owner, 2026-11-17):
-// number [33:16], acknowledge [51:34], hops [55:52].
+// acknowledge field, the hops field, the flags, the stop bits and the reserved bits 0. The header (28.3): number
+// [33:16], one run for the link (28.4), acknowledge [51:34], hops [55:52], fg_stop [56], bg_stop [57], reserved
+// [63:58]. The data goes masked (28.6): each byte XORed with the low byte of a CRC-32C register started at
+// header_crc | 0x10000 and stepped by a zero byte before it; here by the table, in the reader by eight shifts.
 //
 // Test-side code (the configuration regime): the STL throughout.
 #pragma once
@@ -41,7 +43,7 @@ inline uint32_t crc32c(const uint8_t* bytes, size_t n) {
 }
 
 struct Fields {
-    unsigned stream = 2, flags = 0, length = 0, reserved = 0;
+    unsigned stream = 2, flags = 0, length = 0, stops = 0, reserved = 0;   // stops: fg_stop + 2 bg_stop; reserved: [63:58]
     uint32_t number = 1, acknowledge = 0;
     unsigned hops = 0;
 };
@@ -49,19 +51,34 @@ struct Fields {
 inline void header(uint8_t out[16], const Fields& f, const uint8_t* data, size_t data_bytes) {
     const uint64_t low = uint64_t(f.stream & 15) | uint64_t(f.flags & 15) << 4 | uint64_t(f.length & 0xFF) << 8 |
                          uint64_t(f.number & 0x3FFFF) << 16 | uint64_t(f.acknowledge & 0x3FFFF) << 34 | uint64_t(f.hops & 15) << 52 |
-                         uint64_t(f.reserved & 0xFF) << 56;
+                         uint64_t(f.stops & 3) << 56 | uint64_t(f.reserved & 0x3F) << 58;
     for (unsigned b = 0; b < 8; b++) out[b] = uint8_t(low >> (8 * b));
     const uint32_t check = crc32c(data, data_bytes);
     for (unsigned b = 0; b < 4; b++) out[8 + b] = uint8_t(check >> (8 * b));
     const uint32_t crc = crc32c(out, 12);
     for (unsigned b = 0; b < 4; b++) out[12 + b] = uint8_t(crc >> (8 * b));
 }
-// One packet appended: `words` 128-bit words of data, 16 bytes each.
+// The mask's register stepped by one zero byte (28.6): the CRC-32C table's step for a byte of 0.
+inline uint32_t mask_step(uint32_t reg) {
+    static uint32_t table[256];
+    static bool made = false;
+    if (!made) {
+        for (uint32_t i = 0; i < 256; i++) {
+            uint32_t c = i;
+            for (int k = 0; k < 8; k++) c = (c & 1) ? 0x82F63B78u ^ (c >> 1) : c >> 1;
+            table[i] = c;
+        }
+        made = true;
+    }
+    return table[reg & 0xFF] ^ (reg >> 8);
+}
+// One packet appended: `f.length` 128-bit words of data as held, 16 bytes each, masked as they go.
 inline void packet(std::vector<uint8_t>& out, const Fields& f, const uint8_t* data) {
     uint8_t h[16];
     header(h, f, data, size_t(f.length) * 16);
     out.insert(out.end(), h, h + 16);
-    out.insert(out.end(), data, data + size_t(f.length) * 16);
+    uint32_t reg = (uint32_t(h[12]) | uint32_t(h[13]) << 8 | uint32_t(h[14]) << 16 | uint32_t(h[15]) << 24) | 0x10000u;
+    for (size_t i = 0; i < size_t(f.length) * 16; i++) { reg = mask_step(reg); out.push_back(uint8_t(data[i] ^ reg)); }
 }
 
 struct Options {

@@ -30,7 +30,8 @@ import java.util.zip.CRC32C;
  * The packetizer's file: every link packet on stream 2; each frame starts a new one; a frame's link packets hold 32
  * words but its last, which holds what remains; numbers from 1; ack, hops, flags and the stop bits 0; no idle bytes,
  * and none of the link's own link packets (status, recovery, restart): what a capture of the host's line holds of its
- * data link packets, on a link that takes them all at once.
+ * data link packets, on a link that takes them all at once. The Writer makes the restart link packet too (28.9), for
+ * the vectors: a link carries nothing until both ends are up, so a data link packet never has `restart` set.
  */
 public final class Packets {
   public static final int FOREGROUND = 1, BACKGROUND = 2;
@@ -48,6 +49,26 @@ public final class Packets {
 
   /** The number after this one on a stream: after 0x3FFFE comes 1. */
   public static int next(int number) { return number == LAST_NUMBER ? FIRST_NUMBER : number + 1; }
+
+  /** The flags (28.3), in the header's bits [7:4]: the values of the 4-bit flags field. */
+  public static final int RESEND = 1, LOST = 2, RECOVERY = 4, RESTART = 8;
+
+  /** The restart link packet's two words (28.9): the first 32 primes as bytes, 2 to 131. */
+  static final int[] PRIMES = {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97, 101,
+      103, 107, 109, 113, 127, 131};
+
+  /** The restart link packet (28.9): stream 1, length 32, number 1, hops 0, `restart` and the given `lost` and
+   *  `recovery`; its data the two words of the primes sixteen times over. It takes no number, its data goes to no
+   *  queue, and the numbers start again from 1 after it. */
+  public static Packet restartPacket(int flags) {
+    Packet p = new Packet();
+    p.stream = FOREGROUND;
+    p.flags = RESTART | (flags & (LOST | RECOVERY));
+    p.number = FIRST_NUMBER;
+    p.data = new byte[16 * MAX_WORDS];
+    for (int i = 0; i < p.data.length; i++) p.data[i] = (byte) PRIMES[i % 32];
+    return p;
+  }
 
   /** One packet with every field free, for the tests and the vectors: a wrong field can be given right checks. */
   public static final class Packet {
@@ -157,6 +178,14 @@ public final class Packets {
       p.number = next;
       out.writeBytes(p.bytes());
       packets++;
+      return this;
+    }
+
+    /** A restart link packet (28.9) with `lost` and `recovery` as given: the numbers start again from 1 after it. */
+    public Writer restart(int flags) {
+      out.writeBytes(restartPacket(flags).bytes());
+      packets++;
+      next = FIRST_NUMBER;
       return this;
     }
 

@@ -156,9 +156,9 @@ struct ChipProof final : segment::Proof {
         m.place(units::ID_MASTER, rtl_images::elf_symbol(master_elf, "boot_desc"), desc);
         m.place(units::ID_MASTER, rtl_images::elf_symbol(master_elf, "system_config"), {MS_MAGIC, c.asics, c.segment, 0});
         results_at = rtl_images::elf_symbol(master_elf, "master_results");
-        // v1.37 stage 4: the host's end of the link (host_end.h) sends the packet file's link packets; "as fast as taken"
-        // (cycles_per_byte 0) is the fastest link, 8 link cycles a chip cycle; N cycles a byte, a link cycle every N
-        HostEnd& host = m.attach_host(c.packets, c.cycles_per_byte == 0 ? 8u : unsigned(c.link_rate), c.cycles_per_byte == 0 ? 1u : unsigned(c.cycles_per_byte));
+        // v1.37 stage 4: the host's end of the link (host_end.h) sends the packet file's link packets, link_rate link
+        // cycles a chip cycle, or a link cycle every link_every chip cycles
+        HostEnd& host = m.attach_host(c.packets, unsigned(c.link_rate), unsigned(c.link_every));
         host.noise = c.noise; host.hook = c.host_hook;
         view.attach(m);
         if (c.updater_lookup) view.set_lookup(c.updater_lookup);
@@ -224,6 +224,8 @@ struct ChipProof final : segment::Proof {
             numbers->master_instructions = core.instructions;
             numbers->link_room_cycles = m.host().stop_cycles; numbers->link_last_at = link.link_last_at;
             numbers->link_forwarded = link.link_forwarded; numbers->link_discarded = link.link_discarded;
+            numbers->link_first_sendings = m.host().capture.data_packets;
+            numbers->link_sent_again = m.host().capture.again;
             numbers->master_awake_handed = awake_handed;
             for (size_t i = 0; i < done.size(); i++) {
                 RunAccount a;
@@ -302,6 +304,18 @@ struct ChipProof final : segment::Proof {
             fail("the link: %llu words arrived, %u read out by the DMA, %llu forwarded, %llu discarded, of %llu; DMA_FORWARD_COUNT 0x%x at the end%s",
                  (unsigned long long)link.link_words, R[MR_LINK_WORDS], (unsigned long long)link.link_forwarded, (unsigned long long)link.link_discarded,
                  (unsigned long long)words, link.forward, m.host().file_cut ? "; the file ends inside a packet" : "");
+
+        // ---- the host End's data link packets as first sent, against the packet file's, byte for byte (host_end.h,
+        //      THE CAPTURE; NOTES.md C5): on a clean line, the End sends the file's link packets
+        if (!c.noise && !c.host_hook) {
+            const HostEnd::Capture& cap = m.host().capture;
+            const std::vector<uint8_t> want = HostEnd::data_link_packets(c.packets);
+            size_t at = 0;
+            while (at < want.size() && at < cap.sent.size() && want[at] == cap.sent[at]) at++;
+            if (cap.restarts_after_data) fail("the host End started its link again after data: %llu restart link packets", (unsigned long long)cap.restarts_after_data);
+            else if (cap.sent != want)
+                fail("the host End's data link packets as first sent: %zu bytes, the packet file's %zu; the first difference at byte %zu", cap.sent.size(), want.size(), at);
+        }
 
         // ---- each image as its run ended, against gold's; the frozen ones again at the end
         for (size_t i = 0; i < done.size() && i < run_names.size(); i++) {

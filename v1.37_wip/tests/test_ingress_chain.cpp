@@ -128,7 +128,7 @@ void read_foreground(Chain& c) {
 TEST(chain_every_word_to_every_asic_once_and_in_order) {
     std::vector<uint8_t> file;
     for (uint32_t k = 1; k <= 30; k++) add(file, 2, k, k, 32);   // the background: 960 words
-    for (uint32_t k = 1; k <= 6; k++) add(file, 1, k, 0x100 + k, 5);   // the foreground: 30 words
+    for (uint32_t k = 1; k <= 6; k++) add(file, 1, 30 + k, 0x100 + k, 5);   // the foreground: 30 words; one run (28.4)
     for (unsigned n : {2u, 3u}) {
         Chain c(n, file);
         for (auto& a : c.asics) a->s.write(0, 1, W_DMA_FORWARD_COUNT, 30 * 32);

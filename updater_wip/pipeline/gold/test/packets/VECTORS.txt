@@ -31,6 +31,11 @@
 #   length         the length is over 32
 #   reserved       bits [63:58] are not 0
 #   data-checksum  the CRC-32C of the data, its mask taken off, is not bytes 8 to 11
+#   restart        restart is set (flags bit 3, header bit 7) and this is not the restart link packet (28.9):
+#                  stream 1, length 32, number 1, hops 0, its data the first 32 primes as bytes (02 03 05 07 0B
+#                  ... 7F 83) sixteen times over, data checksum 0xC8981D21; or whole files only, one inside a
+#                  frame on stream 2. The restart link packet takes no number and its data goes to no queue; the
+#                  numbers start again from 1 after it, whatever was expected
 #   number         a link packet with data: its number is not the link's next (1 first; after 0x3FFFE, 1),
 #                  whatever its stream. One of length 0: its number is not the one the next link packet with data
 #                  will carry; it takes no number, and the next link packet with data carries the same one
@@ -52,7 +57,8 @@
 #       header-word        the header as one 128-bit number, most significant digit first
 #       bytes              the whole link packet as it goes on the line (the data masked), 16 bytes to a line
 #       expect             ok, or the check that refuses it
-#       next-number-after  for ok: the number expected next on the link after this link packet
+#       next-number-after  for ok: the number expected next on the link after this link packet (1 after a
+#                          restart link packet)
 #   file <name> ... end       a whole packet file beside this one; its frames are small.frames
 #   damage <file> byte <offset> xor <mask> expect <check> packet <n> at <offset>
 #                             the file with that one byte changed: the check that must refuse it, at which link
@@ -400,10 +406,11 @@ packet foreground
 end
 
 packet flags-and-acknowledge
-  # every flag set and an acknowledge number: neither is checked
+  # resend, lost and recovery set and an acknowledge number: none is checked (restart is: the restart link
+  # packet's vectors)
   next-number        0x00006
   stream             2
-  flags              15
+  flags              7
   length             2
   number             0x00006
   acknowledge        0x2bcde
@@ -414,13 +421,13 @@ packet flags-and-acknowledge
   data               a851a9de2d57c9c73ec8f0747e0b5b63
   data-checksum      0x7e8c035d
   data-crc32c        0x7e8c035d
-  header-0-11        f202060078f30a005d038c7e
-  header-crc         0xa55bc3f4
-  header-crc32c      0xa55bc3f4
-  header-word        0xa55bc3f47e8c035d000af378000602f2
-  bytes              f202060078f30a005d038c7ef4c35ba5
-  bytes              f5f857dfeb2009eaa974a2692138849c
-  bytes              dced6b72eda05b4e616b73724a55410e
+  header-0-11        7202060078f30a005d038c7e
+  header-crc         0x6c15036c
+  header-crc32c      0x6c15036c
+  header-word        0x6c15036c7e8c035d000af37800060272
+  bytes              7202060078f30a005d038c7e6c03156c
+  bytes              edb2f427147764e10ffaf875668efbcc
+  bytes              4607974cf04fcb27bfba63cda7ad09be
   expect             ok
   next-number-after  0x00007
 end
@@ -640,6 +647,549 @@ packet stop-bits
   bytes              fe9dc38f5b1033210fc14526cc2628a0
   expect             ok
   next-number-after  0x00007
+end
+
+packet restart-link-packet
+  # 28.9's restart link packet, restart and lost: "I have started again". Whatever number was expected, the next
+  # is 1
+  next-number        0x00009
+  stream             1
+  flags              10
+  length             32
+  number             0x00001
+  acknowledge        0x00000
+  hops               0
+  stops              0
+  reserved           0x00
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data-checksum      0xc8981d21
+  data-crc32c        0xc8981d21
+  header-0-11        a120010000000000211d98c8
+  header-crc         0xf8316d77
+  header-crc32c      0xf8316d77
+  header-word        0xf8316d77c8981d2100000000000120a1
+  bytes              a120010000000000211d98c8776d31f8
+  bytes              894174be82434ec898d05a40277de80b
+  bytes              c75ef967e53293ad7245baa76aa8de58
+  bytes              1159d00639d0dd80376e1ebd9abb3ae7
+  bytes              bd0133a9240cfd977d22c3d99d421e65
+  bytes              a093d5e5ec65a825cf9bbe406f7c8abf
+  bytes              52bf0732061576459cbd2851831cc749
+  bytes              75f92f5c6c3294c6caf9226556f02365
+  bytes              5240bd2876ad41d6ef5a62502db0fa90
+  bytes              119a5316435409f2cd0b90796aa524bd
+  bytes              fb3dd3d596e4124b2889bda7fafbd1fd
+  bytes              70c830593642d4dc22c99ea752df07ae
+  bytes              ddc8eed3e21c456072d1e2ace1e9a3fe
+  bytes              4c08b243da6989f123bc77c52f2437eb
+  bytes              1d8cd135479f978bf3d0d279040be049
+  bytes              5d5b5c040d5ab751c7b450a046f00828
+  bytes              08cefac2998c4f5740cacd06cbb5d187
+  bytes              8433fc679a667ad0304ae8a2aad97e0a
+  bytes              33dbba0659a7daf012df32eca52846fd
+  bytes              641a7a8894da5b757dad20a124160353
+  bytes              84d5d2e289804fe6d9ad1d00240adaf7
+  bytes              99beddca93b89cd358fa7f204394e946
+  bytes              0ff4b8ef2c80cc6f32ca4243fc038ba4
+  bytes              0caa931af9d75fbbff9e1cd8b3e6b9a6
+  bytes              9ffe1d369a4a534d20bfae6dfaed3a54
+  bytes              e6d6e05945d45f4cce34ec9fe01f6bae
+  bytes              5f0181a5f446882d86758cc1992fa054
+  bytes              f6d135d4c13239d86694d27b700ecd28
+  bytes              3aab4b5785f18015fcee6c4ca11dca30
+  bytes              5299320d05d2278429dc5afd3ead624b
+  bytes              d3f4a57cda64168d69ef4277d62e5992
+  bytes              1af4372f1da3053cb8e7a25e51b3e733
+  bytes              2729d33bf1addd2e3009f02054f43d6e
+  expect             ok
+  next-number-after  0x00001
+end
+
+packet restart-link-packet-answer
+  # the restart link packet with restart and recovery: "so have I"
+  next-number        0x00001
+  stream             1
+  flags              12
+  length             32
+  number             0x00001
+  acknowledge        0x00000
+  hops               0
+  stops              0
+  reserved           0x00
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data-checksum      0xc8981d21
+  data-crc32c        0xc8981d21
+  header-0-11        c120010000000000211d98c8
+  header-crc         0xaec5bd1d
+  header-crc32c      0xaec5bd1d
+  header-word        0xaec5bd1dc8981d2100000000000120c1
+  bytes              c120010000000000211d98c81dbdc5ae
+  bytes              034e313cfe0127b39a0c594969f3b4f7
+  bytes              14e9f84f68427f4792ddb66b236aa8ac
+  bytes              47812a42a054e4cd4c1d03495b902144
+  bytes              86a3126ac0496df3520096e0d6429d53
+  bytes              e9eb0276f2c09541b1e97c1197b90915
+  bytes              0155344bed80771ed473d018fac3774e
+  bytes              25d67703e616ab518d213347a4e03746
+  bytes              64b05c2fce674c132cd8fbebe51b6ffa
+  bytes              283efb0658306eb86bda469849f7d375
+  bytes              d65aeb80dbcad46134300a7a6e4bee44
+  bytes              40925bdb76c073c23720cb08b938c9c4
+  bytes              9ef9f9bcdd7093b0343a1f006aec6b71
+  bytes              8465d182da84d4241a654e35e1526db5
+  bytes              4daa5ac7180e2bc9c90250c611c96538
+  bytes              ef970e6458961b7bf1cd8fa96befbe1f
+  bytes              15a5952e1ca2d5e0c47d6573ad8b7200
+  bytes              8d27dae5c00d1a2e847204a9b920d4b7
+  bytes              6bdbcc12416ede421e2c952dc092a053
+  bytes              09e9d29dea5174daef71f148737baf8e
+  bytes              ed00392ea538bc3d7494232d933980e6
+  bytes              d2995198ec7a16fedf9dd5ea780c75e7
+  bytes              41aa11b3f1e9732d2f0486d71ffe404d
+  bytes              e1582d68c71a03d94662f1962b3a396c
+  bytes              d00083160e437745110a8fd4d4ec7d8f
+  bytes              e8f869eeee972cff446f30206699bf7d
+  bytes              856d6dc227b1a6e908794364544a93a4
+  bytes              723eea501d986840d096626edea89473
+  bytes              371a48b2b1f37b84e028e15b230aac10
+  bytes              0fb4538331ca44dacdb0f8a7b15f6388
+  bytes              e9d1299fd74ce4010556bcc647177aa9
+  bytes              dc9ff65527480e1fdbff16b28b5231c4
+  bytes              5c778983b00237add71e9662c8fdc544
+  expect             ok
+  next-number-after  0x00001
+end
+
+packet restart-link-packet-both
+  # restart, lost and recovery, with an ack field and both stop bits: written as in any header, not used by the
+  # receiver
+  next-number        0x02000
+  stream             1
+  flags              14
+  length             32
+  number             0x00001
+  acknowledge        0x00123
+  hops               0
+  stops              3
+  reserved           0x00
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data-checksum      0xc8981d21
+  data-crc32c        0xc8981d21
+  header-0-11        e12001008c040003211d98c8
+  header-crc         0x266268cd
+  header-crc32c      0x266268cd
+  header-word        0x266268cdc8981d210300048c000120e1
+  bytes              e12001008c040003211d98c8cd686226
+  bytes              7d2330d3707f58424a1dfe92ce973440
+  bytes              27eaebf23561fdb558c032fa455c0398
+  bytes              f25e8111de182db596b146598d7114a0
+  bytes              700290385a51645a9da64341f1e70b2a
+  bytes              7df2546ac9ae584d1c3be681a1648efb
+  bytes              8e4e79e2dd85251773ce19d7acd0f4ef
+  bytes              313578e84c68fbba5f8607aa00b2deb7
+  bytes              1a44437d38290f861fb31312c07cc984
+  bytes              49eb38b3e9a757a464e1a5da6d920435
+  bytes              3fdc74acd963fc48e8a09689eac92cb0
+  bytes              f469267a59d6a88c673de4b1298701e3
+  bytes              4124620929313b349a368189d060e33f
+  bytes              102f356d17874d14a0d4d7d8a89cbaf9
+  bytes              68cc75093b543605a2feac02bf6a943f
+  bytes              fddf01b49c74cacf4a608d4ea20db5f4
+  bytes              2fa4d79d7cf37390b46d42683c946535
+  bytes              ae8a04780af7a632a282fad5dc20d748
+  bytes              9d451a70d73e1ed555efb279e352528c
+  bytes              275b0fafa3b01fb0ef942b6db9fa2e37
+  bytes              65f30cfa7a3316dcf4f71c3f6ab597bb
+  bytes              4f90e4f877592aa2bc8dc1d76695ca84
+  bytes              3f0ccefc837681d349c7c68648340d60
+  bytes              574073280d3cbd7055fc12ef629b809f
+  bytes              e1d9da5bc33952a08bcf571e14da3474
+  bytes              e12f2c1320dae8cc8c37e5626d363081
+  bytes              e6420601f3e126d28844f2f4fbc5ae0b
+  bytes              ec90ff050c9b295d400968918e06d99e
+  bytes              cdee836510e3613323a2d0417a9bc7da
+  bytes              216c91641034c37807ea3b49363c324b
+  bytes              4052b5b9ae9ef4d37f9e33ac549b1e24
+  bytes              c5d8c5b88d14ab453eaddee8d644aee0
+  bytes              4c8ceb6b71a25dcd74594b195340f502
+  expect             ok
+  next-number-after  0x00001
+end
+
+packet restart-wrong-pattern
+  # the restart link packet with its last data byte changed and its checksum made right: both checks pass, the
+  # pattern does not
+  next-number        0x00001
+  stream             1
+  flags              10
+  length             32
+  number             0x00001
+  acknowledge        0x00000
+  hops               0
+  stops              0
+  reserved           0x00
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f82
+  data-checksum      0x3af39e22
+  data-crc32c        0x3af39e22
+  header-0-11        a120010000000000229ef33a
+  header-crc         0xc02002db
+  header-crc32c      0xc02002db
+  header-word        0xc02002db3af39e2200000000000120a1
+  bytes              a120010000000000229ef33adb0220c0
+  bytes              90885081593ad2b416f6ecbacdaa30a0
+  bytes              729828d10d2f4a3c4346ec871bbf47f3
+  bytes              bcecd4278afd4011a719ea2f42022163
+  bytes              48d9c9875612cc72079fa635f745696d
+  bytes              9fd85b7617723e1fa3851f43a7188908
+  bytes              9684f03fb0758e67d0f9a67de4dc24e0
+  bytes              7cf8fe1f55eb6bae1da4155be70be387
+  bytes              3ecd824d8f5e2d70482040000c2b3f98
+  bytes              1f920c4bd09d0c05f9e4e1bdb23e25e7
+  bytes              ebc0875ece9b508fcea54bee39afd448
+  bytes              de489384f05affe6ece5b1b2021c3cf1
+  bytes              444fc57c93f975628e3153021f2cd8e2
+  bytes              2f71e6cb78ed9271189fc0725fd344e7
+  bytes              bffd3bfd7c3a136e4a92b4ef05d4a200
+  bytes              72aaf10aa83dfadf52dd66c6b141b8f3
+  bytes              b323024a2a394d8b0ec3d20bbc2ab4d4
+  bytes              3a0f7165a4232a705af4a771b31ed1e6
+  bytes              5f41465c748c848ef6d528e4435575bb
+  bytes              ffb149955b39faba568231d691b85420
+  bytes              77122cae9207d7bacb074adcb9c66bca
+  bytes              e946b8942646a17851bcbd600b2b189d
+  bytes              be9dbc8c19ce5b513a7ce62a4e30dd12
+  bytes              f03d0c087dfa572b60174a2a84dd3c1b
+  bytes              249cdb68796d85790f1dc1b7c8f4ae20
+  bytes              a2ecb4a3c2e4abcb10233e9d6de88b80
+  bytes              972cd4705142705cb27c1438c18e43fb
+  bytes              d44174ed4b621b77d603c58e6af02b70
+  bytes              047117dd7d86591c2189515a43ae5f87
+  bytes              dfdc9d3e7e723184aa0d0c027bfb5a2f
+  bytes              4f7a2ff52c23643b082d45f3f05c720a
+  bytes              42e8c2aac429be0b84de5b318f04c598
+  bytes              e4e7e6e9d5802440b3eae38b0c08dbfa
+  expect             restart
+end
+
+packet restart-number-2
+  # the restart link packet numbered 2
+  next-number        0x00002
+  stream             1
+  flags              10
+  length             32
+  number             0x00002
+  acknowledge        0x00000
+  hops               0
+  stops              0
+  reserved           0x00
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data-checksum      0xc8981d21
+  data-crc32c        0xc8981d21
+  header-0-11        a120020000000000211d98c8
+  header-crc         0xa0279769
+  header-crc32c      0xa0279769
+  header-word        0xa0279769c8981d2100000000000220a1
+  bytes              a120020000000000211d98c8699727a0
+  bytes              3b11db7481b0afb540176d9c6f1e4f1a
+  bytes              27f3677c726fe2de1781adc7e8243f19
+  bytes              53180334dddc2aaabd6151460f42930a
+  bytes              61ec16431a0a2404996fc05746f8387d
+  bytes              d4dbe48a7451b5092b5e08941689b170
+  bytes              c601b56e3f4dcd7893db7e82d8253f0d
+  bytes              785fb58fb26263e96123260f9146a3c5
+  bytes              6c013df74e4be08bf295548b220140c9
+  bytes              74529145328cedffa8cadc38b5bd4530
+  bytes              4ab72f200b9fb5bfaf8b97390148b330
+  bytes              ab6e11f0f15126f7c15427cb39502c2f
+  bytes              9ed0844dbc15362125c7a95763668b4f
+  bytes              d66e387dc198e1fb5ca35d384d8394d9
+  bytes              1cdb036dd7671f783435a098ef740190
+  bytes              e00fde5038e1c4f540e69858ca8b347a
+  bytes              74f1976d08910a432ff997559267c35b
+  bytes              89994f718aa5d307d3083bf7c785b69e
+  bytes              fd1b9cb61b4156e5a45d4803bef174eb
+  bytes              3272c41fcddb250d16ead3ed9d6aaf15
+  bytes              bb8e7a6dfa249c8fd627d512887651d6
+  bytes              e031c37d25757d72e706a54535791ca6
+  bytes              21669f70ea689797f51707705cf9b41e
+  bytes              a606e1ea69e3f348ef92da8521f15962
+  bytes              0bb3ed246b1bf97eb7f320a114bbf6bb
+  bytes              fa44a5d52a9fb6364551e359dcf86e3b
+  bytes              c7f7d434f9eb16ac62051d5b75839b2e
+  bytes              8726af192530ad769324062ced8ffd24
+  bytes              13e5f6adad77471a671dbef3e82b6126
+  bytes              b0808dc1b1833058ca2bcb1c0c24d443
+  bytes              1c026f1ce4db632809a97ba1bc448268
+  bytes              33f1b8f03c73bf77640e713a2256da83
+  bytes              4800f43cc05490a9ecf5b936a62153bd
+  expect             restart
+end
+
+packet restart-on-stream-2
+  # the restart link packet on stream 2
+  next-number        0x00001
+  stream             2
+  flags              10
+  length             32
+  number             0x00001
+  acknowledge        0x00000
+  hops               0
+  stops              0
+  reserved           0x00
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data               020305070b0d1113171d1f25292b2f35
+  data               3b3d4347494f53596165676b6d717f83
+  data-checksum      0xc8981d21
+  data-crc32c        0xc8981d21
+  header-0-11        a220010000000000211d98c8
+  header-crc         0xaba31127
+  header-crc32c      0xaba31127
+  header-word        0xaba31127c8981d2100000000000120a2
+  bytes              a220010000000000211d98c82711a3ab
+  bytes              268b774d633e960faf0c1223806c08a6
+  bytes              59456e3a9441f6696525382b8be99c19
+  bytes              c26b340acefa578f78958b443356e60a
+  bytes              98eb0daffd9f19da7eac1863bb5a6a2d
+  bytes              91fc4dd1f1494ce0794fc7b554b31e01
+  bytes              e0e33e6abd287923ca6e73687b58caef
+  bytes              ef2af10c9b1d3f1cce93e5d3d6501d24
+  bytes              d29f85ced7f05c19d9816de197e99f58
+  bytes              d3c922cea7596c33814a4f610b289537
+  bytes              07c84eae311095490217461498360a5b
+  bytes              5161f74ac46937419ba5f528795e44b6
+  bytes              b756b0da915d1276392a6023c9583998
+  bytes              c636a9b2b263f6ee094115628c1636bc
+  bytes              cfd441cdcf6c506e81313906e5d25d1d
+  bytes              df0f69bf7efe30030f4cdcdb7aa27417
+  bytes              65616bdfdc9820641a9994d4d969dc2d
+  bytes              3725eca433b19992e31f85fe624db0ca
+  bytes              156bf8e0d5b26c7268302935973e1095
+  bytes              da8d2389eaa230328ee199dd88503c08
+  bytes              2c5aa1465ae9406c11bfb17caf2ba378
+  bytes              87096b077219232f829f09cdb674c7d4
+  bytes              286b7e0777780bb277f9e2b9c3b92108
+  bytes              7e5a032e55244fb739c38ecf53222deb
+  bytes              6fecec673079c401ae73403b360226c6
+  bytes              a35a8f12acaed429c1f2d078e58af358
+  bytes              0a908c086ac76c5d17ef606da255d1a3
+  bytes              6c1cd1d6559ccc68b2c34ffa4002e466
+  bytes              875163d142fe1be62e51257a0a0b2829
+  bytes              ed55865c120ec473b83d687488a5adbd
+  bytes              19949bc3afc176cb5039281d0dd47097
+  bytes              952b16ffa7e8d9d56b83d1bb6c03881a
+  bytes              002ee2c2bc2a01d2791f02f53a277e6c
+  expect             restart
+end
+
+packet restart-on-a-data-packet
+  # base with restart set: a link packet with restart that is not the restart link packet
+  next-number        0x00005
+  stream             2
+  flags              8
+  length             3
+  number             0x00005
+  acknowledge        0x00000
+  hops               0
+  stops              0
+  reserved           0x00
+  data               ed8f01dbe4140b1d89a9817b8a6f46b3
+  data               01dd50d0a6e8eb9ccfc9ab66fb64a712
+  data               9699b7caad8d6837074f1f093777dfa2
+  data-checksum      0x1522ef22
+  data-crc32c        0x1522ef22
+  header-0-11        820305000000000022ef2215
+  header-crc         0x200cdc82
+  header-crc32c      0x200cdc82
+  header-word        0x200cdc821522ef220000000000050382
+  bytes              820305000000000022ef221582dc0c20
+  bytes              beeea467b3b802bb91060ead0ce068ef
+  bytes              722874be07802989a51d299e49b4da7a
+  bytes              a39c2730e8f74a70a0e7d7fb2fb46cdf
+  expect             restart
 end
 
 packet empty
@@ -1797,6 +2347,7 @@ file small.packets
   idle-bytes         0
   words-stream-2     265
   words-stream-1     0
+  restart-packets    0
   frames             9
   frames-file        small.frames
   expect             ok
@@ -1816,6 +2367,7 @@ file small-idle.packets
   idle-bytes         2283
   words-stream-2     265
   words-stream-1     0
+  restart-packets    0
   frames             9
   frames-file        small.frames
   expect             ok
@@ -1834,6 +2386,7 @@ file small-split.packets
   idle-bytes         0
   words-stream-2     265
   words-stream-1     0
+  restart-packets    0
   frames             9
   frames-file        small.frames
   expect             ok
@@ -1851,6 +2404,27 @@ file wrap.packets
   idle-bytes         0
   words-stream-2     265
   words-stream-1     0
+  restart-packets    0
+  frames             9
+  frames-file        small.frames
+  expect             ok
+end
+
+file restart.packets
+  # small.frames after a restart link packet (restart and lost), with a second (restart, lost and recovery) and a
+  # link packet of length 0 between frames 5 and 6: each restart link packet takes no number, its data goes to no
+  # queue, and the numbers start again from 1 after it (28.9)
+  bytes              5536
+  sha256             6fcb0845da08646a7c4776892332bb9c85c931063ee6279e570b9bc86434b08b
+  first-number       0x00001
+  packets            17
+  packets-stream-2   15
+  packets-stream-1   2
+  packets-length-0   1
+  idle-bytes         0
+  words-stream-2     265
+  words-stream-1     0
+  restart-packets    2
   frames             9
   frames-file        small.frames
   expect             ok
@@ -1869,6 +2443,7 @@ file two-streams.packets
   idle-bytes         0
   words-stream-2     265
   words-stream-1     78
+  restart-packets    0
   frames             9
   frames-file        small.frames
   expect             ok
@@ -1914,3 +2489,6 @@ damage small.packets byte 4463 xor 0x80 expect data-checksum packet 14 at 4432  
 damage small.packets byte 4432 xor 0x02 expect header-crc packet 14 at 4433    # the first byte made zero: it is skipped as idle, and a header is taken to start at the next byte
 damage small-idle.packets byte 1992 xor 0x02 expect header-crc packet 9 at 1992    # an idle byte made 0x02: a header is taken to start there
 damage small-idle.packets byte 1992 xor 0x10 expect header-crc packet 9 at 1992    # an idle byte made 0x10 (stream 0): the header CRC is tested first
+damage restart.packets byte 316 xor 0x04 expect data-checksum packet 1 at 0    # a byte of the first restart link packet's data
+damage restart.packets byte 2272 xor 0x80 expect header-crc packet 9 at 2272    # the second restart link packet's restart flag
+damage restart.packets byte 530 xor 0x01 expect header-crc packet 2 at 528    # the first data link packet's number

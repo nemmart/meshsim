@@ -191,12 +191,13 @@ that is not zero starts a header:
 | `length` | the length is over 32 |
 | `reserved` | byte 7's bits [7:2] are not 0 |
 | `data-checksum` | the CRC-32C of the data, its mask taken off, is not bytes 8 to 11 |
+| `restart` | `restart` is set and this is not the restart link packet (28.9: stream 1, length 32, number 1, hops 0, its data the first 32 primes as bytes sixteen times over, data checksum 0xC8981D21), or one inside a frame. The restart link packet takes no number, its data goes to no queue, and the numbers start again from 1 after it |
 | `number` | a packet with data: its number is not the link's next, whatever its stream: one run for both (1 first, 1 after 0x3FFFE). A packet of length 0: its number is not the one the next packet with data will carry; it takes no number |
 | `frame-end` | on stream 2, a frame ends before the end of the packet its last word is in |
 | `first-byte` | with `--no-idle` only: a zero byte where a header is expected |
 
-Frames are tracked on stream 2 only. Stream 1's packets are checked and counted, and their data kept nowhere. The
-flags, the acknowledge field, the hops field and the stop bits are not checked, only counted: no value of them is an
+Frames are tracked on stream 2 only. Stream 1's packets are checked and counted, and their data kept nowhere. `resend`,
+`lost` and `recovery`, the acknowledge field, the hops field and the stop bits are not checked, only counted: no value of them is an
 error.
 
 The header changed on 2026-11-17 (owner; HOST-LINK.md, "The chain, and the hops field"): the packet number and the
@@ -212,12 +213,13 @@ examples, and PacketsTest and check_vectors.py hold those bytes copied from the 
 
 | file | what |
 |---|---|
-| `VECTORS.txt` | the definitions; CRC-32C values; 55 single packets (chapter 28's worked examples among them), good and bad, each with every field, both checks stored and computed, its bytes and what a reader must say; the files below with their counts and SHA-256; 38 lines each changing one byte of a file and naming the check that must refuse it. Its heading describes its format |
+| `VECTORS.txt` | the definitions; CRC-32C values; 62 single packets (chapter 28's worked examples and its restart link packet among them), good and bad, each with every field, both checks stored and computed, its bytes and what a reader must say; the files below with their counts and SHA-256; 41 lines each changing one byte of a file and naming the check that must refuse it. Its heading describes its format |
 | `small.frames` | nine made-up frames of 1, 2, 3, 31, 32, 33, 34, 64 and 65 words: every way a frame meets a packet's end. Not a proof |
 | `small.packets` | `small.frames` as the packetizer writes it: 14 packets |
 | `small-idle.packets` | the same with zero bytes before, between and after the packets (runs of 1 to 1,025) and three packets of length 0 |
 | `small-split.packets` | the same frames cut into packets of other legal lengths |
 | `wrap.packets` | the same numbered from 0x3FFFA, passing 0x3FFFE to 1 (`--first=0x3FFFA`) |
+| `restart.packets` | the same after a restart link packet, with a second between frames 5 and 6: the numbers start again from 1 after each |
 | `two-streams.packets` | the same with stream 1's packets among stream 2's, one run of numbers for both; the proof's file has none |
 
 The writing side (`Packets`, with `java.util.zip.CRC32C`) and the reading side (`PacketFile`, with its own CRC-32C;

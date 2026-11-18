@@ -125,11 +125,11 @@ TEST(master_lpddr_jitter_divs_middle) { CHECK_EQ(fixture("divs", 20, nullptr, 5)
 TEST(master_lpddr_jitter_kin_big) { CHECK_EQ(fixture("kin-big", 20, nullptr, 6).failures, 0); }
 // the link as fast as the master takes it: the frames back to back, the Updater and the pump never waiting on the link
 TEST(master_kin_lru_fast_link) {
-    CHECK_EQ(fixture("kin-lru", 60, [](proof::Case& c, segment::Segment&) { c.cycles_per_byte = 0; }).failures, 0);
+    CHECK_EQ(fixture("kin-lru", 60, [](proof::Case& c, segment::Segment&) { c.link_rate = 8; }).failures, 0);
 }
-// a fast link and a slow memory side: the Updater waits on its first page of each run while the frame arrives
+// a fast link (8 bytes a cycle) and a slow memory side: the Updater waits on its first page of each run while the frame arrives
 TEST(master_kin_raw_slow_memory) {
-    CHECK_EQ(fixture("kin-raw", 20, [](proof::Case& c, segment::Segment&) { c.cycles_per_byte = 0; c.updater_lookup = 3000; }).failures, 0);
+    CHECK_EQ(fixture("kin-raw", 20, [](proof::Case& c, segment::Segment&) { c.link_rate = 8; c.updater_lookup = 3000; }).failures, 0);
 }
 
 // ---- the forward count (INGRESS-INTERFACE.md, "The forward count"; WORKER7)
@@ -153,10 +153,10 @@ TEST(master_kin_big) {
     if (data_image != 99) CHECK(frame_wakes(r, data_image) <= 6);   // the flag, the header's landing, the last run's done, a credit
 }
 TEST(master_kin_big_last) { CHECK_EQ(fixture("kin-big", 63).failures, 0); }
-// a fast link and a slow memory side: only the port's flow control keeps the data image's 1,584 words from overrunning
+// a fast link (8 bytes a cycle) and a slow memory side: only the port's flow control keeps the data image's 1,584 words from overrunning
 // the Updater's 4; Ingress's queue fills and the link waits
 TEST(master_kin_big_slow_memory) {
-    CHECK_EQ(fixture("kin-big", 20, [](proof::Case& c, segment::Segment&) { c.cycles_per_byte = 0; c.updater_lookup = 3000; }).failures, 0);
+    CHECK_EQ(fixture("kin-big", 20, [](proof::Case& c, segment::Segment&) { c.link_rate = 8; c.updater_lookup = 3000; }).failures, 0);
 }
 // the tails: the fixtures hold frames of the header word alone, frames shorter than a packet, and frames whose length
 // is no multiple of 32, short and long; each fixture passes at every timing below
@@ -184,13 +184,13 @@ TEST(master_tail_frames) {
 // with a middling memory side; the link slow (4 cycles a byte: the master ahead of the link at every frame, waiting
 // with the count at 0 and the queue empty).
 TEST(master_orders_with_the_timing_varied) {
-    struct Timing { int cycles_per_byte, link_rate, lookup; const char* name; };
-    const Timing timings[] = {{0, 1, 3000, "fast link, slow memory"}, {0, 1, 0, "fast link"}, {1, 8, 300, "8 bytes a cycle, middling memory"},
+    struct Timing { int link_every, link_rate, lookup; const char* name; };
+    const Timing timings[] = {{1, 8, 3000, "8 bytes a cycle, slow memory"}, {1, 8, 0, "8 bytes a cycle"}, {1, 8, 300, "8 bytes a cycle, middling memory"},
                               {4, 1, 0, "4 cycles a byte"}, {4, 1, 3000, "4 cycles a byte, slow memory"}};
     for (size_t k = 0; k < sizeof kSegment / sizeof kSegment[0]; k++)
         for (const Timing& tm : timings) {
             const segment::Run r = fixture(kFixtures[k], kSegment[k], [tm](proof::Case& c, segment::Segment& seg) {
-                c.cycles_per_byte = tm.cycles_per_byte; c.link_rate = tm.link_rate; c.updater_lookup = tm.lookup; seg.name += std::string(", ") + tm.name;
+                c.link_every = tm.link_every; c.link_rate = tm.link_rate; c.updater_lookup = tm.lookup; seg.name += std::string(", ") + tm.name;
                 seg.cycle_limit = 20000000;
             });
             CHECK_EQ(r.failures, 0);
@@ -227,8 +227,8 @@ TEST(master_divs_empty_log) {
     for (int fast : {0, 1})
         CHECK_EQ(fixture("divs", 60, [fast](proof::Case& c, segment::Segment& seg) {
             logs_after(c, 61);
-            if (fast) c.cycles_per_byte = 0;
-            seg.name += fast ? ", logs after s, fast link" : ", logs after s";
+            if (fast) c.link_rate = 8;
+            seg.name += fast ? ", logs after s, 8 bytes a cycle" : ", logs after s";
         }).failures, 0);
 }
 // a frame that ends inside a packet (the frame-ends-at-a-packet check is dropped, II's dagger): the whole file cut into

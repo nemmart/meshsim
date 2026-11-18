@@ -1,11 +1,10 @@
 // proof_run: the whole chip from a packet file (v1.37; tests/proof_bench.h), for one frame file, N and s.
 //
 //   proof_run FRAMES --asics N --segment S [--windows W] [--rows R] [--gold IMAGES.txt] [--packets FILE]
-//             [--recorded RUN] [--link-rate B] [--limit CYCLES] [--quiet] [--cache]
-//             [--updater-ctl] [--updater-ctl-seed SEED]
-// --updater-ctl: the Updater's controller in the black box's place, fed by Ingress's forward count on its word port,
-// with the test LPDDR and the stand-in cache (WORKER6; tests/updater_view.h); --updater-ctl-seed SEED, the same with
-// their timing varied.
+//             [--recorded RUN] [--link-rate B] [--lpddr-seed SEED] [--limit CYCLES] [--quiet]
+// The machine is v1.37's: the Updater's controller and the cache's, the AXI arbiter and the LPDDR model, always (the
+// INTEGRATOR's stage 1: WORKER5's --cache and WORKER6's --updater-ctl went with their settings). --lpddr-seed SEED
+// puts the LPDDR model in its jitter mode.
 //
 // FRAMES is gold's frame file (`gold frames`), cut for N ASICs into segments of W windows of R rows (--windows, 64, and
 // --rows, 65,536: gold's --segment-rows is their product; no frame carries them). The link's bytes are FRAMES in the
@@ -16,8 +15,6 @@
 // row and delivery, from $MESHSIM_INPUTS: windows 64 S to 64 S + 63, so W must be 64 and R 65,536. --link-rate B
 // clocks the link B link cycles a chip cycle, a byte each way in each: 1 (the default), 2, 4, 8. (v1.37 stage 4: the
 // link has no "as fast as taken"; --fast-link went, --link-rate 8 is the fastest; NOTES.md's C6.)
-// --cache runs the Tracer on the cache's controller, the AXI arbiter and the LPDDR model (MachConfig::cache_ctl;
-// updater_wip, WORKER5) in place of v1.37's memory model, and prints the cache's figures.
 //
 // Prints the run's lines (segment_bench.h's and proof_bench.h's), then its figures: each of the Updater's runs, the
 // link, the page map, the master's core; the forward count's words, the master's wakes, Ingress's DMA transfers and the
@@ -56,8 +53,7 @@ bool read_file(const std::string& path, std::vector<uint8_t>& out) {
 }
 int usage() {
     std::fprintf(stderr, "usage: proof_run FRAMES --asics N --segment S [--windows W] [--rows R] [--gold IMAGES.txt] [--packets FILE] "
-                         "[--recorded RUN] [--link-rate B] [--limit CYCLES] [--quiet] [--cache] "
-                         "[--updater-ctl] [--updater-ctl-seed SEED]\n");
+                         "[--recorded RUN] [--link-rate B] [--lpddr-seed SEED] [--limit CYCLES] [--quiet]\n");
     return 2;
 }
 

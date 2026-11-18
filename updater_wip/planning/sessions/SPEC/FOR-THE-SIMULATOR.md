@@ -19,3 +19,10 @@ section, what the specification says, what `main` has. Kept as the specification
 | --- | --- | --- |
 | 16.1, 16.2 | the line between the special tiles: master east ↔ memory west, memory east ↔ tracer west, mesh links with no flow control; a packet for another special tile goes along it by the ring's rule on the difference of the ids | none: a special tile has its attach port alone |
 | 16.4 | a special tile's peripheral DMA enters its router on the south input | `chip.cpp`: `dma_inputs` bit 0, the west input, for the memory and tracer tiles; the master tile has no DMA |
+
+## The Updater (machine-spec 17.10)
+
+| section | the specification | `main` (be077a7d) |
+| --- | --- | --- |
+| 17.10 | the Updater is its controller (`updater_ctl.h`), on the arbiter's client port 1 and the cache's look-up port 1 | the black box (`updater.h`) by default; the controller behind `MachConfig::updater_ctl`, against test pieces (`tests/ctl_bench.h`), not the arbiter and the cache: WORKER9's joint |
+| 17.10.4, 23.6.8 | v1.37's master tile frees nothing; the cache needs no discard | as specified |

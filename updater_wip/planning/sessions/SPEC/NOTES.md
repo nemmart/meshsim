@@ -363,4 +363,6 @@ More will go here as I check the text against the code.
 | 1 | S3-1 the line's ports | ruled (east and west) |
 | 2 | S3-2 routing | ruled with 1 (the ring's rule) |
 | 3 | S3-3 the line's flow control | ruled (05:42): none in v1.37; the mesh's regime; item 182. RCR 1's wording corrected on `main` (DN16 section 36) |
-| next | II-1, II-2, II-3 (Ingress/Egress's numbers), UI-1, UI-2 and the memory system's type 6 (17.11), UI-3, … | |
+| 4 | UI-2: the types, 5 the Updater and 6 the memory system | asked 05:50 |
+| — | UI-1 | R: the brief's table has the Updater as the master tile's peripheral 2 |
+| next | S11 (17.10.8 states the code's check for now), II-1, II-2, II-3 (Ingress/Egress's numbers), UI-1, UI-2 and the memory system's type 6 (17.11), UI-3, … | |

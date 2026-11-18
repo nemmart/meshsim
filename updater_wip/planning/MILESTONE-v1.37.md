@@ -132,10 +132,13 @@ checks it exactly, and a pass shows the whole path: the images built, the segmen
   ASICs made of WORKER8's `Node` before the chip's side exists.
 - **Why 5 and 6 are two workers:** they meet at one small interface, a byte a cycle each way, and each can be
   tested alone. The chain's logic is then tested without three processes, and the processes without a chip.
-- **One session takes everything that is left** (owner, 2026-11-18): a new integrator session, working through
-  the rest of 3, then 5, 6b, 7 and 8 itself, merging into `main` as it goes. Its brief is
-  `planning/sessions/INTEGRATOR/PROMPT.md`, which orders the work so that the single chip with both state
-  machines on comes first. The WORKER11 of step 5 is not started.
+- **The specification comes first** (owner, 2026-11-18): "we should follow the tried and true. We build a spec
+  for the full system." Then the simulator is brought to it, then the firmware, then the tests. The
+  specification session's brief is `planning/sessions/SPEC/PROMPT.md`. It writes v1.37's `spec/` from the
+  design documents, has every † ruled on or made an open item, and lists where the simulator differs.
+- **Then one session takes everything that is left of the building:** the rest of 3, then 5, 6b, 7 and 8. A
+  brief for it was written before the ruling above (`planning/sessions/INTEGRATOR/PROMPT.md`) and is on hold:
+  it is to be rewritten against the specification. The WORKER11 of step 5 is not started.
 
 ## How the milestone is checked
 

@@ -1054,3 +1054,20 @@ into the files):
 - v1.37's code is behind the documents where "In v1.37" says so: the queues at 8 KB, the numbers from before the
   packing, the header from before the one run of numbers and the mask.
 - The reply frame's fields, and the foreground stream's frames altogether.
+
+## 35. The specification first (2026-11-18, about 4:30 a.m.)
+
+- **The two state machines each work alone, and have not met.** The cache's controller runs the Tracer through
+  the proof runs. The Updater's controller matches the black box byte for byte, on a stand-in cache and a test
+  LPDDR of its own. Joining them is still to do.
+- **The specification has not been written.** v1.37's `spec/` is v1.36's, unchanged. The design is in these
+  planning documents, and the workers built from them: the order of every earlier version turned round.
+- **The owner:** "we should follow the tried and true. We build a spec for the full system." The simulator is
+  then brought to the specification, then the firmware, then the tests.
+- **What follows from it:**
+  - a specification session, `updater_wip/planning/sessions/SPEC/PROMPT.md`: the design as designed, every †
+    ruled on or made an open item, and a list of where the simulator and firmware differ;
+  - the brief for an integrator session, written an hour before, is on hold. It had the simulator leading, and
+    left the old stream words, the UART and the register numbers as built;
+  - the building that comes after takes in what that brief left out.
+

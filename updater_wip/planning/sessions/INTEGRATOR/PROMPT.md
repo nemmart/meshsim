@@ -1,5 +1,11 @@
 # The v1.37 integrator (updater_wip): from where it stands to a frozen v1.37
 
+**ON HOLD (owner, 2026-11-18). Do not start from this brief.** The owner ruled, after it was written, that
+v1.37 follows the tried order: the specification for the full system first (`sessions/SPEC/PROMPT.md`), then
+the simulator brought to it, then the firmware, then the tests. This brief has the simulator leading and leaves
+parts of the design unbuilt (the old stream words, the UART, the register numbers). It is to be rewritten
+against the specification and its `FOR-THE-SIMULATOR.md` when they exist.
+
 **The project.** meshsim is the simulator and specification for a parallel compute mesh, part of an ASIC for
 proving the Jolt zkVM. A proof is cut into segments; each ASIC proves one. Before it can, the host sends it the
 data that builds its memory images, over a link of packets. In `v1.37_wip/` the whole chip runs from the host's

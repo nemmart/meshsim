@@ -1,0 +1,158 @@
+// hostlink.h: the host link, for whoever builds on it. This is the one header to include; README.md, "Using the link
+// end", has two examples that build and run, what a user must promise, and what it may rely on.
+//
+// The protocol is v1.4_wip/planning/HOST-LINK.md. Two things are here:
+//
+//   End    one end of one link, with its queues: the host's side of the first link, or either side of a link on its
+//          own.
+//   Node   an ASIC on the chain: the link towards the host, the link away from it, and the forwarding between them.
+//
+// A CYCLE is one byte on the link. Each object has one function, clock(), called once a cycle: the bytes that arrive
+// go in, the bytes that leave come out. The bytes are all there is between two objects, so they may sit in one
+// program, in two processes, or on two machines. An idle line is 0x00.
+//
+// DATA is words of 128 bits on two streams, the foreground and the background. Words are pushed in as packets of 1
+// to 32 words and taken out a word at a time, in the order they were pushed, each once. A packet's last word is
+// marked, so a packet pushed is a packet taken.
+//
+// This header will keep its shape. What is behind it (link_end.h, node.h) is the model of the hardware and may
+// change with the protocol.
+#pragma once
+
+#include <cstdint>
+#include <memory>
+
+namespace hostlink {
+
+constexpr unsigned WORD_BYTES = 16;        // a word is 128 bits
+constexpr unsigned MAX_WORDS = 32;         // a packet's data, at most
+constexpr unsigned MAX_CHAIN = 16;         // the ASICs on a chain, at most: hops is four bits
+
+enum Stream : unsigned { FOREGROUND = 0, BACKGROUND = 1 };
+
+struct Word { uint8_t byte[WORD_BYTES]; };
+
+// The sizes, as HOST-LINK.md has them. Change one only to model something else.
+struct Sizes {
+    unsigned window = 8;                   // packets kept until they are acknowledged, for each direction of a link.
+                                           // The chip's is 8. A host's may be 16 at most: half a queue of 1,024 words
+    unsigned queue_words = 1024;           // a stream's queue of words received: 16 KB. "Stop" is said at half full
+    unsigned send_words = 1024;            // a stream's queue of words waiting to be sent (the document gives no size)
+    unsigned forward_words = 1024;         // a node's forwarding buffer, for each stream and direction: 16 KB
+};
+
+// What one end of a link shows its owner.
+struct LinkStatus {
+    bool in_step = false;                  // false while the link recovers or starts: no data moves on it meanwhile
+    bool error = false;                    // the link started again under this end, and packets it had sent and not
+                                           // yet had acknowledged are gone. Stays up until clear_error()
+    // Why: each stays up with `error`, and more than one can be up if the link started again more than once.
+    bool made_wrong = false;               // this end was sent a packet made wrong twice running, and started the
+                                           // link again: the fault is the other end's. The chip's format_error
+    bool not_kept = false;                 // this end was asked for a packet it no longer keeps, and started the
+                                           // link again: an acknowledgement it had believed was false
+    bool other_end = false;                // the other end said "I have started again": it was reset or powered
+                                           // on, or it found one of the two causes above
+    bool stop_said[2] = {};                // this end's stop bit for each stream, as last sent: its queue is half full
+    bool stop_heard[2] = {};               // the other end's: this end sends no new packet of that stream
+};
+
+// What one end of a link has counted since power_on(). Nothing here is an error but `refused`, which says a size is
+// wrong: with the window no more than half the queue it feeds, no packet ever finds its queue without room.
+struct LinkCounts {
+    // received
+    uint64_t good = 0;                     // packets with both checks passing and every field possible
+    uint64_t taken = 0;                    // of those, packets with data taken in order: their words went to a queue
+    uint64_t bad_header = 0;               // a header CRC failed, or a length was over 32: this end lost its place
+    uint64_t bad_data = 0;                 // a data checksum failed: the packet was thrown away
+    uint64_t bad_fields = 0;               // both checks passed and a field could not be (or a length over 32)
+    uint64_t refused = 0;                  // a good packet in order for which its queue had no room: A SIZE IS WRONG
+    uint64_t ahead = 0;                    // a packet, or a number, ahead of the one expected: one was missed
+    uint64_t behind = 0;                   // a packet seen before
+    // sent
+    uint64_t sent_data = 0;                // packets with data, the first time
+    uint64_t sent_again = 0;               // packets with data, sent again
+    uint64_t sent_status = 0;              // packets of length 0, the link in step
+    uint64_t went_back = 0;                // times this end went back to send again, at a "resend" or a "lost"
+    // the link
+    uint64_t rounds = 0;                   // rounds of zeros and one packet: a recovery's or a restart's
+    uint64_t restarts = 0;                 // times the link started again under this end
+    uint64_t wrong_once = 0;               // a packet made wrong, the first time: asked for again
+    uint64_t wrong_twice = 0;              // the second time running: the link started again (`made_wrong`)
+    uint64_t asked_not_kept = 0;           // asked for a packet no longer kept: the link started again (`not_kept`)
+    uint64_t ack_behind = 0, ack_beyond = 0;   // an acknowledge field behind the last taken, or beyond what was sent
+};
+
+// One end of one link.
+class End {
+public:
+    explicit End(const Sizes& sizes = Sizes());
+    ~End();
+    End(End&&) noexcept;
+    End& operator=(End&&) noexcept;
+
+    // One cycle: the byte that arrived, and the byte to send.
+    uint8_t clock(uint8_t byte_in);
+
+    // Sending. One packet of 1 to 32 words; they are copied. False, and nothing is taken, if the stream's queue
+    // has no room for them or the count is not 1 to 32.
+    bool push(Stream stream, const Word* words, unsigned count);
+    unsigned room(Stream stream) const;    // the words push() would still take
+
+    // Receiving, a word at a time, in order. False if the stream has none. `hops` is how many ASICs the word's
+    // packet passed through: at the host, which ASIC sent it (0 is the nearest). `last` is true on a packet's
+    // last word.
+    bool take(Stream stream, Word& word, unsigned* hops = nullptr, bool* last = nullptr);
+    unsigned waiting(Stream stream) const; // the words take() can still give
+
+    // The host's sorting by hops: the next foreground word of the ASIC that many hops away, in that ASIC's order.
+    bool take_from(unsigned hops, Word& word, bool* last = nullptr);
+    unsigned waiting_from(unsigned hops) const;
+
+    LinkStatus status() const;
+    LinkCounts counts() const;
+    void clear_error();                    // the error and its causes. The chip has none: there only the reset clears
+    void power_on();                       // as constructed: every register, the counts, and the queues empty
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> d;
+};
+
+// An ASIC on the chain.
+class Node {
+public:
+    // `neighbour_below` is the pin: true if another ASIC follows this one on the chain. It is a fact about the
+    // board and does not change. The last ASIC has none, and its lower link does not exist.
+    explicit Node(bool neighbour_below, const Sizes& sizes = Sizes());
+    ~Node();
+    Node(Node&&) noexcept;
+    Node& operator=(Node&&) noexcept;
+
+    // One cycle. In: the byte from the link towards the host, and the byte from the link away from it (not looked
+    // at with no neighbour below). Out: the byte for each.
+    struct Bytes { uint8_t up = 0, down = 0; };
+    Bytes clock(uint8_t from_above, uint8_t from_below);
+
+    // The host's words, for this ASIC: every ASIC gets them all.
+    bool take(Stream stream, Word& word, bool* last = nullptr);
+    unsigned waiting(Stream stream) const;
+
+    // This ASIC's own words for the host, on the foreground: one packet of 1 to 32 words. False, and nothing is
+    // taken, if there is no room or the count is not 1 to 32.
+    bool push(const Word* words, unsigned count);
+    unsigned room() const;
+
+    LinkStatus above() const;              // the link towards the host
+    LinkStatus below() const;              // the link away from it; all false with no neighbour below
+    LinkCounts counts_above() const;
+    LinkCounts counts_below() const;       // all zero with no neighbour below
+    void clear_error();                    // both links'. The chip has none: there only the reset clears
+    void power_on();                       // the chip's reset: both link ends, the forwarding buffers, the queues
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> d;
+};
+
+}  // namespace hostlink

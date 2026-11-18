@@ -714,6 +714,31 @@ DEATH_TEST(ctl_region_part_1_is_unmapped, "a WRITE to part 1 of its region, whic
     Bench<UpdaterTop> b;
     b.u.accept(b.t - 3, 64, 1u << 20, int(units::lw::SIZE_128), 1, 0);
 }
+// invariant 36's rules the window checks (17.10.9; stage 7): one source at a time, a free page new
+DEATH_TEST(ctl_free_pages_from_two_sources_is_ub, "a WRITE into its region from 65 while the run's free pages come from 64") {
+    Bench<UpdaterTop> b;
+    b.u.accept(b.t, 64, 2u << 20, int(units::lw::SIZE_128), 32 * 5, 0);
+    b.u.accept(b.t + 1, 65, 2u << 20, int(units::lw::SIZE_128), 32 * 6, 0);
+}
+DEATH_TEST(ctl_a_free_page_pushed_twice_is_ub, "a free page 0xa0 pushed before, or a run's root") {
+    Bench<UpdaterTop> b;
+    b.u.accept(b.t, 64, 2u << 20, int(units::lw::SIZE_128), 32 * 5, 0);
+    b.u.accept(b.t + 1, 64, 2u << 20, int(units::lw::SIZE_128), 32 * 5, 0);
+}
+DEATH_TEST(ctl_a_free_page_that_is_a_runs_root_is_ub, "a free page 0xe0 pushed before, or a run's root") {
+    Bench<UpdaterTop> b;
+    b.u.write_word(b.t, UpdaterTop::Ctl::W_RUN_CONFIG, 1u << UpdaterTop::Ctl::RC_ROOT_LO | 1u << UpdaterTop::Ctl::RC_DEPTH_LO);   // root 1: made by the run
+    b.u.write_word(b.t, UpdaterTop::Ctl::W_IMAGE_ROOT, 32 * 7);
+    b.u.run(b.t);
+    b.u.accept(b.t + 1, 64, 2u << 20, int(units::lw::SIZE_128), 32 * 7, 0);
+}
+TEST(ctl_the_next_runs_free_pages_from_another_source_are_kept) {   // one source at a time: a run's, until its done
+    Bench<UpdaterTop> b;
+    b.u.accept(b.t, 64, 2u << 20, int(units::lw::SIZE_128), 32 * 5, 0);
+    b.u.reset(b.t);                                       // (the reset ends what came before, as a done does)
+    b.u.accept(b.t + 1, 65, 2u << 20, int(units::lw::SIZE_128), 32 * 5, 0);
+    CHECK_EQ(b.u.free_page_entries(), 1u);
+}
 
 // Frames back to back in one stream, as Ingress's forward count may offer the next frame while the decoder still holds
 // the last one's tail (the next count written when the frame's header arrives): each frame a new file (root 1,

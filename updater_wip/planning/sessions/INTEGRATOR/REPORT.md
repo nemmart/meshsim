@@ -415,9 +415,9 @@ Invariants 1 to 33 are v1.36's, checked as v1.36's simulator checks them (with t
 | 35, hardware: `egress_error` | counted in `ERRORS` | `test_ingress_egress`'s Egress tests; `fw_teeth`'s `EGRESS_COUNT` 71 |
 | 36: words 32–37 and `START` only while idle | `updater_top.h`: FATAL | none fires it |
 | 36: `WRITE`s of 128 bits to part 2 alone | FATAL | `ctl_region_part_1_is_unmapped` (another size: none) |
-| 36: **from one source at a time** | **not checked** | — |
+| 36: from one source at a time | `updater_top.h` (`accept`): FATAL, one source from a run's first push to its `done` (stage 7, the owner's word) | `ctl_free_pages_from_two_sources_is_ub`; `ctl_the_next_runs_free_pages_from_another_source_are_kept` |
 | 36: every root and free page a page's address in LPDDR | `updater_ctl.h`: FATAL | `ctl_root_off_a_page_is_ub`, `ctl_root_bit_31_is_ub` (a free page: none) |
-| 36: **every free page new** | **not checked** | — |
+| 36: every free page new | `updater_top.h`: FATAL on a page pushed twice, or pushed after a run's `START` named it a root the run makes (in v1.37 nothing is freed); cleared at the reset (stage 7, the owner's word) | `ctl_a_free_page_pushed_twice_is_ub`, `ctl_a_free_page_that_is_a_runs_root_is_ub` |
 | 36: **`WORD_COUNT` the frame's count, so that no run ends inside a code** | **not checked as such** (a wrong count shows as `PAGE_COUNT` not 0 at `done`, or a wrong image) | `fw_teeth`'s counts one short or long |
 | 36: no run past word index 2³² − 1; no page at 2²³ or above | FATAL, both | `ctl_run_past_index_2_32_is_ub` (the page's cannot arise: FOR-THE-SPEC 1) |
 | 36, hardware: `queue_overrun`, `beyond`, `out_of_pages` | counted in `ERRORS` | `master_out_of_pages`; `test_updater_ctl` |
@@ -427,8 +427,9 @@ Invariants 1 to 33 are v1.36's, checked as v1.36's simulator checks them (with t
 | 39: W beats back to back | not checked, as chapter 20 says | — |
 | 40: the line paced | `router_overflow` counted where the queue is | `line_overflows_where_its_traffic_is_not_paced` |
 
-**Three of invariant 36's rules have no check** (one source at a time; a free page new; `WORD_COUNT` the frame's),
-and five checks no test fires (36's idle rule and other sizes, a free page off LPDDR; 37's stale-line check; the
-arbiter's own burst checks). The Updater's checks would be added in its window (`updater_top.h`), beside its
-controller, not in it; that is the owner's to allow, since the controller is v1.37's as built.
+**Two of invariant 36's rules had no check** (one source at a time; a free page new): with the owner's word they are
+checks of the Updater's window (`updater_top.h`), beside its controller, which stays as built; every proof of
+`test_master` keeps them. The third, `WORD_COUNT` the frame's, is not checked as such: a wrong count shows as
+`PAGE_COUNT` not 0 at `done` or a wrong image. Five checks no test fires (36's idle rule and other sizes, a free page
+off LPDDR; 37's stale-line check; the arbiter's own burst checks).
 

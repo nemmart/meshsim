@@ -153,11 +153,11 @@ simulator, the firmware and the RTL follow.
 | II-5 | a store replaces the count; 0 stops it | R | ruled, DN16 section 24 | — |
 | II-6 | a load gives what remains; 0 is exact | R | ruled, DN16 section 24 | — |
 | II-7 | as built: a cycle works from the registers at its start; `discard` stays when the count reaches 0, and a load reads both fields; a store takes effect as any window store | R / mine | `discard` staying is ruled (DN16 section 24); the rest is 6.4's store timing, which the text states | — |
-| II-8 | the service rule: a queue asks while it holds beats and no DMA transfer from it is in flight (and for the background, the count is 0); the flag is posted when the level rises; a transfer of 0 beats counts | A | accept, as built and as one level (WORKER7). DN16 section 34 says the review "reached the service flags": if the owner ruled them then, this is R | firmware's wake loop |
+| II-8 | the service rule: a queue asks while it holds 128-bit words and no DMA transfer from it is in flight (and for the background, the count is 0); the flag is posted when the level rises; a transfer of 0 words counts | A | accept, as built and as one level (WORKER7). DN16 section 34 says the review "reached the service flags": if the owner ruled them then, this is R | firmware's wake loop |
 | II-9 | `DMA_HDR.queue`: 0 the foreground queue, 1 the background | A | accept | the header, firmware |
-| II-10 | a DMA count beyond the beats in the queue is UB | A | accept: simulation catches it, so UB (GUIDELINES 2) | small |
-| II-11 | the outgoing queue: 8 KiB, 512 beats; its region 0x04 on the master tile, part 1 by offset [22:20] | A | accept both | the queue's SRAM; the firmware's address |
-| II-12 | `EGRESS_COUNT` counts down as beats land, the last one marked; a store while it is not 0 is UB; a load gives what remains | A | accept: the core can queue the next frame without waiting for the link | Egress's logic, firmware |
+| II-10 | a DMA count beyond the words in the queue is UB | A | accept: simulation catches it, so UB (GUIDELINES 2) | small |
+| II-11 | the outgoing queue: 8 KiB, 512 128-bit words; its region 0x04 on the master tile, part 1 by offset [22:20] | A | accept both | the queue's SRAM; the firmware's address |
+| II-12 | `EGRESS_COUNT` counts down as words land, the last one marked; a store while it is not 0 is UB; a load gives what remains | A | accept: the core can queue the next frame without waiting for the link | Egress's logic, firmware |
 | II-13 | with enable write 0 a store to `UART_TX` is dropped, so it cannot stall for ever | A | accept | the RTL's UART (in the request) |
 | II-14 | a non-zero `UART_CONTROL` with a divider of 0 is UB; a new divider takes effect at each direction's next idle point | A | accept: v1.36's rule kept | small |
 | II-15 | while the UART is in reset, `uart_rx` and `uart_tx` read 0, a store to `UART_TX` is dropped, `UART_RX` reads 0 | A | accept | the RTL's UART |
@@ -170,7 +170,7 @@ simulator, the firmware and the RTL follow.
 
 | # | dagger | kind | recommendation | cost |
 |---|---|---|---|---|
-| HL-1 | a forwarding buffer for each stream and direction, 16 KiB | A | accept: the owner has said the size is not a concern; 512 beats is exactly the rule's limit | 34 KiB of SRAM if halved later |
+| HL-1 | a forwarding buffer for each stream and direction, 16 KiB | A | accept: the owner has said the size is not a concern; 512 128-bit words is exactly the rule's limit | 34 KiB of SRAM if halved later |
 | HL-2 | the header is held until the pass over the data is done; the restart packet has no pass; a packet of length 0 may go during a pass | B | as the code | — |
 | HL-3 | the header's CRC while a pass is running: the pass waits a cycle, or the CRC has its own logic | A, for Tony | **state the requirement, not the choice:** the header CRC is on the wire by the header's byte 12, and no rule depends on the cycle. Then it is the RTL's to choose and needs no ruling | none |
 | HL-4 | the pass starts on the packet that goes next, and starts over when that changes | B | as the code | — |
@@ -190,7 +190,7 @@ simulator, the firmware and the RTL follow.
 | UI-7 | `RUN_CONFIG.root` [6:5] and `SOURCE_ROOT` at word 37: the Updater makes a root, while there is no file system | A | **specify it in v1.37 as is,** with an open item: whether the file system takes it over in v1.4 | a field and a word |
 | UI-8 | the statistics, block 3, words 48–53, and their definitions | B | as the code (WORKER6's definitions) | — |
 | UI-9 | memory segments as three runs | A | accept: the Tracer starts at the second run's `done`, and the third overlaps the trace entirely (WORKER3) | firmware only |
-| UI-10 | what the Updater keeps behind the word port | B | as the code: 4 beats, `ready` a flip-flop, invisible to a program | — |
+| UI-10 | what the Updater keeps behind the word port | B | as the code: four 128-bit words, `ready` a flip-flop, invisible to a program | — |
 | UI-11 | `ready` does not depend on `busy` | B | as the code | — |
 | UI-12 | a free page queue entry: the page's address in 128-byte units, in [31:0] | A | accept; an open item for "one page or four" | the queue's width |
 | UI-13 | the region's parts other than 2 unmapped | A | accept | — |
@@ -241,13 +241,13 @@ simulator, the firmware and the RTL follow.
 | HF-6 | a segment's rows in no frame: 2²² by definition | A | accept: a constant of the frames chapter | a frame field |
 | HF-7 | gold builds the final table; the chip inserts nothing | A | accept | — |
 | HF-8 | added entries must fit the base's probe, else a full table is sent | A | accept, as the host's rule | — |
-| HF-9 | frame 8's counts padded to a whole beat when *N* is not a multiple of 4 | A | accept | — |
+| HF-9 | frame 8's counts padded to a whole 128-bit word when *N* is not a multiple of 4 | A | accept | — |
 
 ### MS and DN16, the milestone and the notes
 
 | # | dagger | kind | recommendation | cost |
 |---|---|---|---|---|
-| MS-1 | **the reply frame:** the Tracer's end-state record with a few counts; a new type on the foreground, 16; 72 beats; its words 1 to 3 | A | accept the content; the type number and the words' layout to be fixed in chapter 29, put to the owner field by field | the driver, the firmware |
+| MS-1 | **the reply frame:** the Tracer's end-state record with a few counts; a new type on the foreground, 16; 72 128-bit words; its words 1 to 3 | A | accept the content; the type number and the words' layout to be fixed in chapter 29, put to the owner field by field | the driver, the firmware |
 | MS-2 | the tracer tile sends its last record to the master tile with its result; the master does not reach into the tracer tile | A | accept: it keeps the tracer tile's program the only one that knows its layout | firmware |
 | MS-3 | the stream words out and the UART redone inside v1.37 or after | R | ruled by the brief: 17.6 has the old words gone and the UART redesigned | — |
 | MS-4 | *s* is not the client number; the driver; its language; the wire's delay as the sync window | — | test equipment, not specification (the brief) | — |
@@ -284,7 +284,8 @@ name table.
 | thing | the sources | the specification | why |
 |---|---|---|---|
 | 32 bits | "a word" in the spec | **a word** | the specification's |
-| 128 bits on the link and in Ingress/Egress's queues | "a word" (II, HL, HF) | **a beat** (17.7's: 16 bytes) | "word" is 32 bits in the specification. **This renames `FOREGROUND_WORDS` and `BACKGROUND_WORDS` to `…_BEATS`;** the forward count, `EGRESS_COUNT` and a link packet's length count beats. I will put this one to the owner, since the firmware sees it |
+| 128 bits on the link and in Ingress/Egress's queues | "a word" (II, HL, HF) | **a 128-bit word** in the text; **"words" in register and field names** (`FOREGROUND_WORDS`, `BACKGROUND_WORDS`, a link packet's `length`) | the Tracer's and the replayer's usage (owner, 2026-11-18). "Word" alone stays 32 bits |
+| a beat | | **chapter 1's meaning:** one item a handshake moves on a link of the request tree or an AXI port (the host-interface port leaves 1.1's row) | owner, 2026-11-18: not 128 bits in general |
 | 64 bits of an update | "an update word", "a 64-bit word" | **an update word** | a defined term |
 | the link's packet | "a packet" (HL) | **a link packet** | "a packet" is the NoC's |
 | a frame from the host | "a frame" | **a frame** | |
@@ -311,7 +312,7 @@ The specification supersedes them; I do not edit them.
 5. **HF's "goes to" column** names C&C 2 and C&C 3, and cites v1.35's 4.21.2 for the record.
 6. **GUIDELINES 3,** "every chip-level function lives in a peripheral", is broken by a cache and an arbiter in no
    peripheral (S2).
-7. **"Word" means 128 bits** in II, HL and HF, and 32 bits in the specification (section 6).
+7. **"Word" means 128 bits** in II, HL and HF, and 32 bits in the specification: the text says "a 128-bit word", as the Tracer's does (section 6).
 8. **MS's table says the memory tile has "no RW engine"** in v1.37; the brief keeps v1.36's. The milestone means
    the simulation runs nothing there; the hardware keeps it.
 9. **The figure `fig_m1_lpddr_path.svg`** still has the Updater by the RW engine (known; not mine to redo).
@@ -322,4 +323,4 @@ More will go here as I check the text against the code.
 
 | dagger or silence | how it ended | where |
 |---|---|---|
-| | | |
+| names: 128 bits | ruled (owner, 2026-11-18): "a 128-bit word" in the text, "words" in names; "beat" keeps chapter 1's meaning | section 6 |

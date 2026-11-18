@@ -45,7 +45,7 @@
 //
 // THE STALE-LINE CHECK (a simulator's check, not hardware; WORKER5's NOTES section 7): with `check_store` set, every
 // clean line the walker reads, but the update slot's, is compared with LPDDR (the file store): a difference stops the
-// simulator. Every dirty line written back must be one a fill write made.
+// simulator.
 #pragma once
 
 #include <cstdint>
@@ -134,6 +134,7 @@ private:
     enum Op : uint8_t { J_LOOK_UP = 0, J_UPDATE = 1, J_DISCARD = 2, J_FREAD = 3, J_FWRITE = 4 };
     struct Held {
         bool valid = false, parked = false, wait_mh = false, wait_slot = false;
+        bool behind_write = false;             // fill's read: taken while fill's write register held a write (23.6.4)
         uint8_t op = 0, depth = 0, level = 0;
         uint32_t root = 0, entry = 0;
         uint64_t pos = 0;                      // a look-up port's page number; the fill port's line

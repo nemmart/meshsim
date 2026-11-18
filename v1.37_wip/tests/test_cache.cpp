@@ -2,9 +2,9 @@
 // the arbiter and the LPDDR model (src/units/cache_system.h), with test drivers on its look-up ports and its fill
 // port: every operation and every case of a reply, on a miss and on a hit; a miss, an eviction, a write-back; a
 // discard of a page with clean, dirty and in-flight lines; an update beside a fill of the same line; the update's
-// reply after its write's response; LPDDR errors of every kind; the handshake's rules; and random traffic from several
-// clients and the fill port against the stand-in with no cache (tests/cache_ref.h): every reply equal throughout and
-// LPDDR equal at the end. Each in both steps (hits_under_miss off and on) where it matters.
+// reply after its write's response; fill's read after a write accepted before it; LPDDR errors of every kind; the
+// handshake's rules; and random traffic from several clients and the fill port against the stand-in with no cache
+// (tests/cache_ref.h): every reply equal throughout and LPDDR equal at the end. Each in both steps (hits_under_miss off and on) where it matters.
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -332,6 +332,102 @@ TEST(cache_fill_port) {
         CHECK_EQ(b.sys.ctl.allocations, 2u);              // DA0's line 6 and DA1's line 1: neither read from LPDDR
         CHECK(b.sys.ctl.holds_dirty(w.DA1 + 1));
         CHECK(!b.sys.ctl.out().error);
+    }
+}
+
+// ================================================================ fill's read after its write (23.6.4)
+// fill's read and write on their own channels, each offered until its handshake, as the Tracer may; and look-ups,
+// each offered until its handshake, to keep the walker busy and move its round robin.
+namespace {
+struct Overlap {
+    CacheSystem sys;
+    int64_t t = 0;
+    lookup::Request req[lookup::CLIENTS];
+    bool req_on[lookup::CLIENTS] = {};
+    FillOp *fr = nullptr, *fw = nullptr;          // offered
+    FillOp *frw = nullptr, *fww = nullptr;        // taken, not yet answered
+    Overlap(FileStore* fs, const CacheSystemConfig& c) : sys(fs, c) {}
+    void offer(unsigned p, const lookup::Request& r) { req[p] = r; req[p].valid = true; req_on[p] = true; }
+    void cycle() {
+        for (unsigned p = 0; p < lookup::CLIENTS; p++) { sys.in.req[p] = req_on[p] ? req[p] : lookup::Request{}; sys.in.req[p].valid = req_on[p]; }
+        sys.in.fr.valid = fr != nullptr;
+        if (fr) { sys.in.fr.root = fr->root; sys.in.fr.depth = fr->depth; sys.in.fr.line = fr->line; }
+        sys.in.fw.valid = fw != nullptr;
+        if (fw) { sys.in.fw.root = fw->root; sys.in.fw.depth = fw->depth; sys.in.fw.line = fw->line; std::memcpy(sys.in.fw.data, fw->data, 128); }
+        const cache::Outputs o = sys.ctl.out();
+        sys.tick(t);
+        for (unsigned p = 0; p < lookup::CLIENTS; p++) if (req_on[p] && o.ready[p]) req_on[p] = false;
+        if (o.frr_valid) {
+            if (!frw) test::fail(__FILE__, __LINE__, "a fill read's response with none outstanding, at %lld", (long long)t);
+            else { frw->status = o.frr_status; std::memcpy(frw->got, o.frr_data, 128); frw->answered = t; frw = nullptr; }
+        }
+        if (o.fwr_valid) {
+            if (!fww) test::fail(__FILE__, __LINE__, "a fill write's response with none outstanding, at %lld", (long long)t);
+            else { fww->status = o.fwr_status; fww->answered = t; fww = nullptr; }
+        }
+        if (fr && o.fr_ready) { fr->taken = t; frw = fr; fr = nullptr; }
+        if (fw && o.fw_ready) { fw->taken = t; fww = fw; fw = nullptr; }
+        t++;
+    }
+    template <class P> void until(P done, int64_t limit = 100000) {
+        const int64_t end = t + limit;
+        while (!done() && t < end) cycle();
+        CHECK(done());
+    }
+    void run(int64_t limit = 100000) { until([&] { return !fr && !fw && !frw && !fww && sys.idle(); }, limit); }
+};
+// what the rule asks: the read taken after the write's handshake and before its response, and answered with its data
+void check_read_after_write(const FillOp& w, const FillOp& r) {
+    CHECK(w.taken < r.taken && r.taken < w.answered);            // the case: both in the cache's registers together
+    CHECK_EQ(w.status, cache::FILL_WRITE_OK);
+    CHECK_EQ(r.status, lookup::OK);
+    CHECK(std::memcmp(r.got, w.data, 128) == 0);
+    CHECK(r.answered > w.answered);
+}
+}  // namespace
+
+// The walker busy with a look-up while the write is taken and the read the cycle after: both wait, and the round robin
+// (from port 1's look-up) would come to the read first.
+TEST(cache_fill_read_after_write) {
+    for (bool two : {false, true}) {
+        Directed w;
+        Overlap b(&w.fs, step(two));
+        FillOp in = fread(w.RB, 1, 0), wr = fwrite(w.RB, 1, 0, 2), rd = fread(w.RB, 1, 0);
+        b.fr = &in;                                               // DB's line 0 in the cache, clean
+        b.run();
+        CHECK_EQ(in.status, lookup::OK);
+        b.offer(1, look(w.RB, 1, 0));                             // a hit: the walker busy for some cycles
+        b.cycle();
+        b.fw = &wr;
+        b.until([&] { return wr.taken >= 0; });
+        b.fr = &rd;
+        b.run();
+        check_read_after_write(wr, rd);
+    }
+}
+
+// The write and the read wait while the miss handler works on their set; another look-up, picked by the round robin
+// meanwhile, leaves its pointer below the read's; at the miss handler's end the read would be served first.
+TEST(cache_fill_read_after_a_waiting_write) {
+    for (bool two : {false, true}) {
+        World w;
+        w.stride = 512;                                           // every page in the same sets
+        const int32_t P = w.page(false), R1 = w.page(true), R2 = w.page(true);
+        Overlap b(&w.fs, step(two));
+        FillOp in = fread(P, 0, 0), wr = fwrite(P, 0, 0, 2), rd = fread(P, 0, 0);
+        b.fr = &in;                                               // P's line 0 in the cache, clean
+        b.run();
+        CHECK_EQ(in.status, lookup::OK);
+        b.offer(1, look(uint32_t(R1), 1, 0));                     // R1's line 0 misses: the miss handler, on P's set
+        for (int k = 0; k < 6; k++) b.cycle();
+        b.fw = &wr;
+        b.until([&] { return wr.taken >= 0; });
+        b.fr = &rd;
+        b.until([&] { return rd.taken >= 0; });
+        for (int k = 0; k < 6; k++) b.cycle();
+        b.offer(2, look(uint32_t(R2), 1, 0));                     // picked by the round robin while the miss handler works
+        b.run();
+        check_read_after_write(wr, rd);
     }
 }
 

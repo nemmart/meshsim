@@ -17,5 +17,5 @@ section, what the specification says, what `main` has. Kept as the specification
 
 | section | the specification | `main` (be077a7d) |
 | --- | --- | --- |
-| 16.1, 16.2 | the line between the special tiles: master east ↔ memory west, memory east ↔ tracer west, flow-controlled; a packet for another special tile goes along it by the ring's rule on the difference of the ids | none: a special tile has its attach port alone |
+| 16.1, 16.2 | the line between the special tiles: master east ↔ memory west, memory east ↔ tracer west, mesh links with no flow control; a packet for another special tile goes along it by the ring's rule on the difference of the ids | none: a special tile has its attach port alone |
 | 16.4 | a special tile's peripheral DMA enters its router on the south input | `chip.cpp`: `dma_inputs` bit 0, the west input, for the memory and tracer tiles; the master tile has no DMA |

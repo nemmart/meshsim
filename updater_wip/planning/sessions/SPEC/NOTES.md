@@ -353,6 +353,7 @@ More will go here as I check the text against the code.
 | 178 | a flush of the Tracer's dirty lines, at a trace's end or at shutdown: nothing reads them today | 23.6.3 |
 | 179 | the cache writing a set's dirty least recently used line back early, in place (WORKER5's recommendation) | 23.6.7 |
 | 180 | who discards a page when the file system hands it out again | 23.6.8 |
+| 182 | flow control on the line between the special tiles, with the regime that needs it: the file system's | 16.3 |
 | 181 | everything after an error stops the chip: the host's reset, draining the queues, a ready frame (S1, S6, II-18) | 23.7, 30 |
 
 ## 10. Class A daggers and new questions, in the order they go to the owner
@@ -361,5 +362,5 @@ More will go here as I check the text against the code.
 | --- | --- | --- |
 | 1 | S3-1 the line's ports | ruled (east and west) |
 | 2 | S3-2 routing | ruled with 1 (the ring's rule) |
-| 3 | S3-3 the line's flow control: credits for a 16-packet input queue | asked 05:40 |
+| 3 | S3-3 the line's flow control | ruled (05:42): none in v1.37; the mesh's regime; item 182. RCR 1's wording corrected on `main` (DN16 section 36) |
 | next | II-1, II-2, II-3 (Ingress/Egress's numbers), UI-1, UI-2 and the memory system's type 6 (17.11), UI-3, … | |

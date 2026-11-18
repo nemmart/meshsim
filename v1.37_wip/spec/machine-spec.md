@@ -263,8 +263,9 @@ line out and the resets in, and its peripherals' own ports and pins (3, 18).
 **Router.** Every tile has the router, special tiles included.
 - On a compute tile, its four link ports join the tile's neighbours in the mesh.
   An attach tile also has an attach port for each special tile attached to it.
-- On a special tile, its attach port is its only path to the mesh. Its unused
-  link inputs carry its peripherals' DMAs (16.4).
+- On a special tile, its attach port is its only path to the mesh. Its east and
+  west ports are **the line** between the special tiles (16.1), and its south
+  input carries its peripherals' DMAs (16.4).
 
 **Scratchpad.** Every tile has the same scratchpad size, `SCRATCHPAD_BYTES`
 (4 MiB by default), the special tiles included.
@@ -1500,6 +1501,8 @@ Every tile has the same router (2.2).
 | south, north | from tile id ± `MESH_SIZE` (mod `TILE_COUNT`) | to tile id ± `MESH_SIZE` |
 | local | the tile's injection point (14.3) | eject, to the traffic director (12.3) |
 | attach, one per special tile attached | from that special tile | to that special tile |
+| east, west, on a special tile | from the special tile id ± 1, on the line | to the special tile id ± 1 |
+| south, on a special tile | its peripherals' DMAs (16.4) | none |
 
 - **The ring.** East and west form one ring through every tile in id order: the
   east neighbour of a row's last tile is the next row's first. South and north
@@ -1514,6 +1517,16 @@ Every tile has the same router (2.2).
   attach tile it is (2.1). At 8 × 8 that is one each on tiles 0, 7 and 15; at 1 ×
   1, three on tile 0. A special tile's router has one attach port, joined to its
   attach tile's.
+- **The line** joins the three special tiles, `TILE_COUNT` to `TILE_COUNT` + 2
+  (64, 65 and 66 at 8 × 8), as the ring joins the compute tiles: east is the tile
+  id + 1 and west the id − 1. **The master tile's east is joined to the memory
+  tile's west, and the memory tile's east to the tracer tile's west** (owner). The
+  master tile's west and the tracer tile's east are not connected, and no route
+  uses them. Each of the line's links is a `link` (3), as the mesh's are: three
+  register stages, one packet a cycle each way, **no flow control,** no
+  acknowledgement and no loss. *Asked of the RTL* (RCR 1).
+- **The south input** of a special tile's router is its peripherals' DMAs' (16.4);
+  its north port and its south output are not connected.
 
 ### 16.2 Routes
 
@@ -1541,10 +1554,18 @@ its source tile:
 
 **Special tiles.**
 - **In the mesh,** a special tile is routed as its attach tile, as a source and as
-  a destination. A packet for it leaves its attach tile by that attach port.
-- **Inside a special tile's router:** a packet for the special tile ejects, and
-  every other packet, from its local input or a DMA, leaves by its attach port.
-  Its broadcast spreads from its attach tile as that tile's own.
+  a destination. A packet for it leaves its attach tile by that attach port. A
+  compute tile's packet for a special tile never takes the line.
+- **Inside a special tile's router:**
+  - a packet for the special tile ejects;
+  - **a packet for another special tile takes the line,** by the ring's rule on the
+    difference of the ids: east if dst > the tile's id, west if it is less, one
+    hop a special tile, so the master tile's packet for the tracer tile passes
+    through the memory tile's router (owner);
+  - every other packet, from its local input or a DMA, leaves by its attach port.
+    Its broadcast spreads from its attach tile as that tile's own.
+- **A packet arriving on the line** is always for a special tile: it ejects there,
+  or goes on along the line the way it came.
 - **A packet for a reserved tile id** is dropped where it enters the NoC, with
   no error.
 
@@ -1571,13 +1592,21 @@ broadcast between the same pair may take different paths.
 - **Overflow.** A packet pushed into a full queue (7.4) sets
   `ERRORS.router_overflow`. A correct program never overflows one: the NoC has no
   flow control, so many-to-one traffic is the program's to pace.
+- **The line is the mesh's regime** (owner): no flow control, the program paces
+  what it sends along it, and a full queue is `router_overflow`, on the router it
+  is in. In v1.37 the master tile's loads into the tracer tile ride it, from one
+  sending unit at a time. Flow control on the line belongs with the regime that
+  needs it, the file system's traffic, and is designed with it *(item 182)*.
 - **An attach output** takes one packet a cycle, with no back-pressure.
 
 ### 16.4 A special tile's peripheral DMAs
 
-Each sending peripheral's DMA enters the special tile's router on one of its
-unused link inputs, as a port of its own, and its packets have the special
-tile as src.
+Each sending peripheral's DMA enters the special tile's router on its **south
+input**, the +8 port, as a port of its own (owner; *asked of the RTL*, RCR 3:
+v1.36's RTL has it on the west input of the memory and tracer tiles), and its
+packets have the special tile as src. A special tile has one sending peripheral
+in v1.37: Ingress/Egress on the master tile (17.6), the RW engine on the memory
+tile (17.7) and the Tracer on the tracer tile (17.9).
 - **Local flow control.** A DMA sends a packet only while the queue that packet
   enters has room: the `ready` of its `packet` interface (3). This is the only
   flow control in the router.
@@ -1674,7 +1703,7 @@ peripheral's **write port**, a `noc_write` interface (3).
 ### 17.4 The DMA
 
 A peripheral may have a **DMA**, its output engine. Only a special tile's
-peripherals can, since only a special tile's router has free link inputs (16.4).
+peripherals can, since only a special tile's router has a free input for it, its south (16.4).
 
 - **The path.** The peripheral → its output queues (up to 4), of 128-bit
   entries → its DMA → its own router input, over a `packet` interface (3).
@@ -1975,7 +2004,7 @@ bytes.
   program error for an address the device does not have, and a hardware fault
   otherwise (7.4).
 
-**Its DMA** enters the memory tile's router on a link input of its own (16.4),
+**Its DMA** enters the memory tile's router on its south input (16.4),
 so its packets have the memory tile as src.
 
 **Reset.** The reset ends any job, empties both output queues and the

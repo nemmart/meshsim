@@ -93,7 +93,7 @@
 #include "units/regblock.h"
 #include "units/regmap.h"
 
-namespace units { struct IngressEgress; struct Updater; class CacheSystem; }   // v1.37: the master tile's, with MachConfig::host_link
+namespace units { struct IngressEgress; struct Updater; struct UpdaterTop; class CacheSystem; }   // v1.37: the master tile's, with MachConfig::host_link
 
 namespace mach {
 
@@ -113,9 +113,13 @@ struct MachConfig {
     bool host_link = false;            // v1.37 (the chip only; CHANGES-v1.37.md): the master tile's Ingress/Egress has the host
                                        //   link and its DMA (ingress_egress.h), the Updater is its peripheral 2 (updater.h), and
                                        //   the Updater and the Tracer's memory system share one file store. false: v1.36's chip
-    bool cache_ctl = false;            // updater_wip, WORKER5 (with host_link): the Tracer's fill port on the cache's real
-                                       //   controller, the AXI arbiter and the LPDDR model on the one store (units/cache_system.h),
-                                       //   in place of v1.37's memory model (mem_system.h). false: v1.37's model
+    // v1.37 stage 1 (the INTEGRATOR): every chip's memory tile has the memory system as its peripheral 1 (17.11:
+    //   units/memory_system.h, its hardware units/cache_system.h: the cache's controller, the AXI arbiter, the LPDDR
+    //   model on a file store), with the RW engine on the arbiter's client 2. With host_link the store is the one the
+    //   Updater's controller (client 1, look-up port 1) and the Tracer's fill port share; without it, a store of the
+    //   chip's own for the RW engine. WORKER5's setting cache_ctl is gone: it is the machine.
+    uint32_t lpddr_seed = 0;           // the LPDDR model's jitter mode (axi::LpddrTiming): 0 fixed; otherwise its seed. A
+                                       //   test setting; the environment's MESHSIM_LPDDR_SEED when 0
     // ---- the network (16) ----
     unsigned link_latency = 3, queue_depth = 16, intra_tile_latency = 1;
     bool skew = true;                  // v1.35's start skew: +0 or +1 a tile on the release's link
@@ -464,9 +468,9 @@ public:
     // The packet file Ingress reads, the link's bytes (kept here), before the first cycle.
     void set_link(std::vector<uint8_t> bytes);
     units::IngressEgress& ingress();                        // the master tile's Ingress/Egress
-    units::Updater& updater();                              // the master tile's peripheral 2
-    units::tracer::FileStore& store();                      // LPDDR as files: the Updater's and the Tracer's memory system's
-    units::CacheSystem& cache_system();                     // MachConfig::cache_ctl: the cache, the arbiter, the LPDDR model
+    units::UpdaterTop& updater();                           // the master tile's peripheral 2, the Updater's controller
+    units::tracer::FileStore& store();                      // LPDDR as files: the memory system's
+    units::CacheSystem& cache_system();                     // the memory tile's memory system: the cache, the arbiter, the LPDDR model
 };
 
 // ===================================================================== a machine fed from the harness (Net)

@@ -32,7 +32,9 @@
 #include "units/table_store.h"
 #include "units/cache_system.h"
 #include "units/tile_ctl.h"
+#include "units/memory_system.h"
 #include "units/updater.h"
+#include "units/updater_top.h"
 
 namespace mach {
 
@@ -103,7 +105,7 @@ const Field kFields[] = {
     F_B("checkReadPortOverlap", check_read_port_overlap), F_B("bootLocal", boot_local),   // (bootLocal: v1.36's, not ref's)
     F_B("checkDisjoint", check_disjoint), F_L("shuffleSeed", shuffle_seed), F_U("maxViolationMessages", max_violation_messages),
     F_B("measureS1", measure_s1), F_B("checkErrors", check_errors), F_B("hostLink", host_link),   // (hostLink: v1.37's)
-    F_B("cacheCtl", cache_ctl),                                       // (cacheCtl: updater_wip WORKER5's)
+    F_U("lpddrSeed", lpddr_seed),                                     // (lpddrSeed: v1.37, the LPDDR model's jitter)
     F_U("cncRxDepth", cnc_rx_depth),
     F_U("replayerLogEntries", replayer_log_entries),   // (not ref's Config: its -Dreplayer.logq; the kit's -q)
 };
@@ -184,7 +186,8 @@ bool MachConfig::set_args(const std::vector<std::string>& args, std::string& err
 // ===================================================================================================== the chip
 struct Chip::Impl {
     std::vector<uint8_t> link_bytes;   // v1.37: the packet file Ingress reads (Mach::set_link)
-    std::unique_ptr<units::CacheSystem> cache_system;   // MachConfig::cache_ctl
+    std::unique_ptr<units::tracer::FileStore> lpddr_store;   // a chip without the host link: LPDDR for the RW engine
+    std::unique_ptr<units::CacheSystem> cache_system;   // the memory tile's memory system (17.11)
     units::Hops hops;
     std::vector<uint32_t> rom, mem;
     units::SramBlocks sram;
@@ -320,16 +323,33 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         m.sim->unit<units::TableStore>(units::tile_unit(k, "ts")).host_poke = true;
         m.sim->unit<units::HistStore>(units::tile_unit(k, "hist")).host_poke = true;
     }
-    if (c.host_link) {   // v1.37: one file store, the Tracer's memory system on it (cold at a state write), the Updater's too
-        units::tracer::Tracer& tr = m.sim->unit<units::PeriphSlot>(units::unit_prefix(units::ID_TRACER) + "slot").s.tracer(1);
-        tr.own_memory(std::make_unique<units::tracer::FileStore>());
-        m.sim->unit<units::PeriphSlot>(units::unit_prefix(units::ID_MASTER) + "slot").s.updater(2).store = tr.store();
-        if (c.cache_ctl) {   // the cache's controller, the arbiter and the LPDDR model on the one store, on the fill port
-            m.cache_system = std::make_unique<units::CacheSystem>(tr.store());
-            m.cache_system->attach(tr);
+    if (c.special_tiles) {   // v1.37: the memory tile's memory system (17.11), its clients' ports wired (23.10)
+        units::CacheSystemConfig cs;
+        uint32_t seed = c.lpddr_seed;
+        if (!seed) if (const char* e = std::getenv("MESHSIM_LPDDR_SEED")) seed = uint32_t(std::strtoul(e, nullptr, 10));
+        if (seed) { cs.lpddr.jitter = true; cs.lpddr.seed = seed; }
+        units::tracer::FileStore* store = nullptr;
+        units::tracer::Tracer* tr = nullptr;
+        if (c.host_link) {   // one file store: the Updater's, through the memory system, and the Tracer's
+            tr = &m.sim->unit<units::PeriphSlot>(units::unit_prefix(units::ID_TRACER) + "slot").s.tracer(1);
+            tr->own_memory(std::make_unique<units::tracer::FileStore>());
+            store = tr->store();
+        } else {
+            m.lpddr_store = std::make_unique<units::tracer::FileStore>();
+            store = m.lpddr_store.get();
+        }
+        m.cache_system = std::make_unique<units::CacheSystem>(store, cs);
+        units::PeriphSlot& mem = m.sim->unit<units::PeriphSlot>(units::unit_prefix(units::ID_MEMORY) + "slot");
+        mem.s.memory_system(1).attach(m.cache_system.get());
+        mem.s.rw_engine(2).attach(&m.cache_system->rw);
+        if (tr) {
+            m.cache_system->attach(*tr);
+            units::UpdaterTop& u = m.sim->unit<units::PeriphSlot>(units::unit_prefix(units::ID_MASTER) + "slot").s.updater_ctl(2);
+            u.lpddr = &m.cache_system->updater_axi;
+            u.cache = &m.cache_system->updater_lookup;
+            u.store = store;
         }
     }
-    if (c.cache_ctl && !c.host_link) FATAL("mach: cache_ctl needs host_link (the cache's LPDDR is the one file store)");
     m.shifted = {m.sim->type_of(units::tile_unit(0, "ctl")), m.sim->type_of(units::tile_unit(0, "core"))};
     if (!c.special_tiles) m.lines = {m.sim->type_of("row0"), m.sim->type_of("cnc")};
     // ref's quiescent leaves the request bus out (Tile.quiescent, Chip.quiescent: no request port, node or queue)
@@ -1414,13 +1434,13 @@ units::IngressEgress& Mach::ingress() {
     if (!c.cfg().host_link) FATAL("mach: no host link on this machine (MachConfig::host_link)");
     return c.unit<units::PeriphSlot>(units::unit_prefix(units::ID_MASTER) + "slot").s.ingress_egress(1);
 }
-units::Updater& Mach::updater() {
+units::UpdaterTop& Mach::updater() {
     if (!c.cfg().host_link) FATAL("mach: no Updater on this machine (MachConfig::host_link)");
-    return c.unit<units::PeriphSlot>(units::unit_prefix(units::ID_MASTER) + "slot").s.updater(2);
+    return c.unit<units::PeriphSlot>(units::unit_prefix(units::ID_MASTER) + "slot").s.updater_ctl(2);
 }
-units::tracer::FileStore& Mach::store() { return *updater().store; }
+units::tracer::FileStore& Mach::store() { return *cache_system().store(); }
 units::CacheSystem& Mach::cache_system() {
-    if (!c.impl().cache_system) FATAL("mach: no cache system on this machine (MachConfig::cache_ctl)");
+    if (!c.impl().cache_system) FATAL("mach: no memory system on this machine (MachConfig::special_tiles)");
     return *c.impl().cache_system;
 }
 void Mach::set_link(std::vector<uint8_t> bytes) {

@@ -1,6 +1,13 @@
 // test_memory: the memory tile in the chip, under meshsim's firmware: the RTL's chip test of the memory tile (Snarky
 // One's rtl/chip/test/src/chip_memory_test.rs, with its bench.rs) on the simulator.
 //
+// v1.37 (stage 1, the INTEGRATOR): the RW engine is the memory tile's peripheral 2 (17.7), its window 0xFFFF_FC00 and its
+// region 0x05, and its port is the AXI arbiter's client 2 on the memory system's one LPDDR (17.11, 23.10), the LPDDR model
+// on the chip's file store: the RTL test's AXI4 slave is no longer on it. The test seeds the store with that slave's
+// words (axi4::chip_lpddr_word) where the first READ reads, and watches the engine's port with a tap between the engine
+// and the arbiter (Tap, below): its bursts, its beats and its handshakes, which the checks below read as they read the
+// slave's. The runs are the model's timing fixed and jittered; the RTL's random slave's cycles are v1.36's.
+//
 // The chip is tests/mach.h's (MachConfig::chip()). The master tile's firmware for the memory run
 // (fw/cc/cc_mem.c, fw/images/cc/cc_mem.elf) and the memory tile's (fw/cc/memory.c, fw/images/cc/memory.elf) are placed in their IMEM
 // and DMEM before the first cycle (their boot straps, machine-spec 6.5), and the test plays the LPDDR controller on the
@@ -60,13 +67,13 @@
 #include "harness.h"
 #include "mach.h"
 #include "rtl_images.h"
+#include "units/cache_system.h"
 #include "units/periph_slot.h"
 #include "units/regmap.h"
 #include "units/rw_engine.h"
 
 namespace {
 
-using axi4::ChipLpddr;
 using axi4::u128;
 
 const std::string kDir = rtl_images::fw_images();
@@ -88,20 +95,17 @@ enum : unsigned {
     SUMMARY_WORDS = SUMMARY_ANSWERS + 4 * CREDIT_REQUESTS,
 };
 constexpr uint32_t DONE = 0x444F4E45, KIND_MEMORY = 1;
-constexpr uint32_t WRITE_BUFFER = 0x04000000;           // the memory tile's region 0x04, its write buffer (17.7)
-constexpr unsigned LPDDR_ADDRESS_BITS = 32;             // 19
+constexpr uint32_t WRITE_BUFFER = 0x05000000;           // the memory tile's region 0x05, its write buffer (17.7; v1.37)
 constexpr uint64_t CYCLE_LIMIT = 80000;
-constexpr uint32_t SLAVE_SEED = 0x24681357;             // the RTL test's
-constexpr int64_t RTL_RESET_CYCLES = 3;                 // bench.rs: the RTL's slave draws in them too
-constexpr int64_t CYCLE_OFFSET = 1;                     // the simulator's cycle t is the RTL test's cycle `now` = t - 1 (header)
 
 // A 16-byte beat's four 32-bit words, word 0 first.
 std::vector<uint32_t> beat_words(u128 beat) { return {uint32_t(beat), uint32_t(beat >> 32), uint32_t(beat >> 64), uint32_t(beat >> 96)}; }
 
 // The bursts' beats, in order, each burst checked: INCR, 16-byte beats, no 4 KiB boundary crossed.
-bool burst_beats(const std::vector<ChipLpddr::Burst>& bursts, std::vector<uint64_t>& beats) {
+template <class Burst>
+bool burst_beats(const std::vector<Burst>& bursts, std::vector<uint64_t>& beats) {
     bool ok = true;
-    for (const ChipLpddr::Burst& b : bursts) {
+    for (const Burst& b : bursts) {
         if (b.size != axi4::SIZE_16_BYTES || b.kind != axi4::BURST_INCR) ok = false;
         const uint64_t first = b.beat, last = b.beat + b.beats - 1;
         if (first >> 8 != last >> 8) ok = false;                // a 4 KiB boundary is every 256 beats
@@ -113,20 +117,70 @@ bool burst_beats(const std::vector<ChipLpddr::Burst>& bursts, std::vector<uint64
 // 1-7 in [34:32], and the bits above 0 (11.4).
 bool write_reply_ok(const uint32_t* w) { return (w[0] & 0xFF000000) == WRITE_BUFFER && w[1] >= 1 && w[1] <= 7 && w[2] == 0 && w[3] == 0; }
 
-// One run: `fixed` < 0 the RTL test's random slave, else every ready 1 and each latency `fixed`.
-void run_memory(const char* tag, int fixed) {
+
+// The RW engine's port, watched: the engine's outputs and the arbiter's answers pass through unchanged (the memory
+// system's RwJoint behind it); recorded as tests/axi4_slave.h's ChipLpddr records them.
+struct Tap final : units::LpddrSlave {
+    units::LpddrSlave* next = nullptr;
+    struct Burst { uint64_t beat; uint32_t beats; unsigned size, kind; };
+    struct Written { uint64_t index; u128 data; unsigned strobes; bool last; };
+    struct Event { int64_t t; };
+    std::vector<std::pair<bool, Burst>> bursts;     // first: a write
+    std::vector<Written> beats;
+    std::vector<Event> events;
+    uint64_t calls = 0, w_beat = 0, w_burst = 0;                // the write burst being written: its next beat's index
+    bool ar_held = false, aw_held = false, w_held = false, monitors_ok = true;
+    units::LpddrOut last_out;
+    unsigned outstanding = 0;
+    std::vector<std::pair<uint64_t, uint32_t>> aw_queue;   // AW taken, W to come
+    units::LpddrIn cycle(int64_t t, const units::LpddrOut& o) override {
+        // a valid held without its ready must be held, unchanged, the next cycle (AXI's handshake)
+        if (ar_held && !(o.arvalid && o.addr == last_out.addr && o.len == last_out.len)) monitors_ok = false;
+        if (aw_held && !(o.awvalid && o.addr == last_out.addr && o.len == last_out.len)) monitors_ok = false;
+        if (w_held && !(o.wvalid && o.wdata_lo == last_out.wdata_lo && o.wdata_hi == last_out.wdata_hi)) monitors_ok = false;
+        calls++;
+        const units::LpddrIn in = next->cycle(t, o);
+        ar_held = o.arvalid && !in.arready; aw_held = o.awvalid && !in.awready; w_held = o.wvalid && !in.wready;
+        if (o.arvalid && in.arready) { bursts.push_back({false, {o.addr / 16, o.len + 1, units::LpddrOut::SIZE, units::LpddrOut::BURST}}); events.push_back({t}); outstanding++; }
+        if (o.awvalid && in.awready) { bursts.push_back({true, {o.addr / 16, o.len + 1, units::LpddrOut::SIZE, units::LpddrOut::BURST}}); events.push_back({t}); aw_queue.push_back({o.addr / 16, o.len + 1}); outstanding++; }
+        if (o.wvalid && in.wready) {
+            if (aw_queue.empty()) monitors_ok = false;
+            else {
+                const uint64_t index = aw_queue.front().first + w_beat;
+                beats.push_back({index, u128(o.wdata_lo) | u128(o.wdata_hi) << 64, units::LpddrOut::WSTRB, o.wlast});
+                if (++w_beat == aw_queue.front().second) { aw_queue.erase(aw_queue.begin()); w_beat = 0; }
+            }
+            events.push_back({t});
+        }
+        if (in.rvalid && in.rlast && outstanding) outstanding--;
+        if (in.bvalid && outstanding) outstanding--;
+        last_out = o;
+        return in;
+    }
+    bool idle() const { return outstanding == 0 && aw_queue.empty(); }
+};
+
+// One run: `seed` 0 the LPDDR model's timing fixed, else jittered with that seed.
+void run_memory(const char* tag, uint32_t seed) {
     const std::string master_elf = kDir + "cc/cc_mem.elf", memory_elf = kDir + "cc/memory.elf";
     CHECK_EQ(rtl_images::entry(master_elf), uint32_t(units::IMEM_BASE));
     CHECK_EQ(rtl_images::entry(memory_elf), uint32_t(units::IMEM_BASE));
     const uint32_t summary_address = rtl_images::elf_symbol(master_elf, "mem_summary");
-    mach::Mach m(mach::Mach::chip_cfg(-1));
+    mach::MachConfig mc = mach::Mach::chip_cfg(-1);
+    mc.lpddr_seed = seed;
+    mach::Mach m(mc);
     m.place_elf(units::ID_MASTER, master_elf);
     m.place_elf(units::ID_MEMORY, memory_elf);
-    // the LPDDR controller on the chip's lpddr port; its time starts with the RTL test's reset, three cycles before the
-    // RTL test's cycle 0
-    ChipLpddr lpddr(SLAVE_SEED, LPDDR_ADDRESS_BITS, CYCLE_OFFSET - RTL_RESET_CYCLES);
-    if (fixed >= 0) { lpddr.fixed = true; lpddr.fixed_latency = uint32_t(fixed); }
-    units::RwEngine& engine = m.c.unit<units::PeriphSlot>("cc2.slot").s.rw_engine(1);
+    // LPDDR as the RTL test's slave holds it where the first READ reads: a beat's words a function of its index
+    for (uint64_t beat = READ_LPDDR; beat < READ_LPDDR + READ_BEATS; beat++) {
+        uint64_t* page = m.store().page_at(int32_t(beat * 16 / 4096 * 32));
+        const u128 w = axi4::chip_lpddr_word(beat);
+        page[(beat * 16 % 4096) / 8] = uint64_t(w);
+        page[(beat * 16 % 4096) / 8 + 1] = uint64_t(w >> 64);
+    }
+    units::RwEngine& engine = m.c.unit<units::PeriphSlot>("cc2.slot").s.rw_engine(2);
+    Tap lpddr;
+    lpddr.next = &m.cache_system().rw;
     engine.attach(&lpddr);
 
     // ---- the run, until the master's done word: read after every cycle, for its cycle ----
@@ -161,7 +215,7 @@ void run_memory(const char* tag, int fixed) {
     for (unsigned request = 0; request < CREDIT_REQUESTS; request++) CHECK(write_reply_ok(&summary[SUMMARY_ANSWERS + 4 * request]));
 
     // ---- the lpddr port: the reads, the write, the reads after it ----
-    std::vector<ChipLpddr::Burst> reads, writes;
+    std::vector<Tap::Burst> reads, writes;
     for (const auto& b : lpddr.bursts) (b.first ? writes : reads).push_back(b.second);
     std::vector<uint64_t> read_beats, write_beats, expected, written;
     CHECK(burst_beats(reads, read_beats));
@@ -178,43 +232,34 @@ void run_memory(const char* tag, int fixed) {
     }
     CHECK(first_read_back < lpddr.bursts.size() && first_read_back > last_write);
     std::vector<bool> ends;
-    for (const ChipLpddr::Burst& b : writes) for (uint32_t beat = 1; beat <= b.beats; beat++) ends.push_back(beat == b.beats);
+    for (const Tap::Burst& b : writes) for (uint32_t beat = 1; beat <= b.beats; beat++) ends.push_back(beat == b.beats);
     CHECK_EQ(lpddr.beats.size(), size_t(WRITE_BEATS));                  // the written beats
     for (unsigned beat = 0; beat < WRITE_BEATS; beat++) {
-        const ChipLpddr::Written& x = lpddr.beats[beat];
+        const Tap::Written& x = lpddr.beats[beat];
         CHECK_EQ(x.index, WRITE_LPDDR + beat);
         const std::vector<uint32_t> words = beat_words(x.data);
         for (unsigned w = 0; w < 4; w++) CHECK_EQ(words[w], written_word(beat, w));
         CHECK_EQ(x.strobes, 0xFFFFu);                                   // every byte enabled
         CHECK_EQ(x.last, bool(ends[beat]));                             // WLAST on each burst's last beat
     }
-    CHECK(lpddr.ar_monitor.ok());
-    CHECK(lpddr.aw_monitor.ok());
-    CHECK(lpddr.w_monitor.ok());
+    CHECK(lpddr.monitors_ok);
     CHECK(lpddr.idle());
+    CHECK_EQ(m.cache_system().lpddr.unwritten_reads, uint64_t(0));       // the first READ read only what the store was given
+    CHECK_EQ(m.cache_system().arb.read_bursts[units::axi::RW_ENGINE] + m.cache_system().arb.write_bursts[units::axi::RW_ENGINE],
+             uint64_t(reads.size() + writes.size()));                    // every burst on the arbiter's client 2 (23.10)
     CHECK(!m.c.toast());                                                // the toast pin: no tile's error line rose
     CHECK_EQ(m.c.unit<units::PeriphSlot>("cc2.slot").s.violation_total(), uint64_t(0));
 
     // ---- the cycles, printed ----
     std::printf("test_memory: %s: the first burst at cycle %lld, the last handshake at %lld, %zu handshakes; the done word after %llu cycles\n",
-                tag, lpddr.events.empty() ? -1LL : (long long)(lpddr.events.front().t - CYCLE_OFFSET),
-                lpddr.events.empty() ? -1LL : (long long)(lpddr.events.back().t - CYCLE_OFFSET), lpddr.events.size(), (unsigned long long)now);
+                tag, lpddr.events.empty() ? -1LL : (long long)lpddr.events.front().t,
+                lpddr.events.empty() ? -1LL : (long long)lpddr.events.back().t, lpddr.events.size(), (unsigned long long)now);
 }
 
 }  // namespace
 
-// The RTL's test as it is: its slave's readies and latencies at random, from its seed.
-TEST(chip_memory_random_slave) { run_memory("the RTL test's slave", -1); }
-// Its slave made deterministic: every ready 1, each latency 0 (a burst answered the cycle after its handshake).
-TEST(chip_memory_prompt_slave) { run_memory("every ready 1, latency 0", 0); }
-// And each latency 3.
-TEST(chip_memory_slave_of_latency_3) { run_memory("every ready 1, latency 3", 3); }
-
-// The lpddr port is the chip's boundary: with no controller on it the sort's runs go by (the memory tile's firmware
-// starts no job there), and a job stops the simulator, named.
-DEATH_TEST(chip_memory_without_a_controller_stops_the_simulator, "a job raises a burst at [0-9]+ with no LPDDR controller on the lpddr port") {
-    mach::Mach m(mach::Mach::chip_cfg(-1));
-    m.place_elf(units::ID_MASTER, kDir + "cc/cc_mem.elf");
-    m.place_elf(units::ID_MEMORY, kDir + "cc/memory.elf");
-    m.c.run(20000);
-}
+// The memory run on the memory system's LPDDR model, its timing fixed (v1.37: the RW engine on the arbiter's client 2)
+TEST(chip_memory_on_the_arbiter) { run_memory("the LPDDR model, fixed", 0); }
+// And with the model's timing jittered: each burst's latency at random, a ready 0 one cycle in four.
+TEST(chip_memory_on_the_arbiter_jittered) { run_memory("the LPDDR model, jittered (seed 1)", 1); }
+TEST(chip_memory_on_the_arbiter_jittered_2) { run_memory("the LPDDR model, jittered (seed 2)", 2); }

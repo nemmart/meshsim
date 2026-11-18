@@ -93,7 +93,7 @@ _Static_assert(sizeof(UpdaterRegs) == 0x200 && __builtin_offsetof(UpdaterRegs, R
 #define UPD_ROOT_EXISTS             0   /* the file exists */
 #define UPD_ROOT_EMPTY              1   /* first write an empty root at IMAGE_ROOT */
 #define UPD_ROOT_COPY               2   /* first copy SOURCE_ROOT's root, its owned bits cleared, to IMAGE_ROOT (and TRACER_ROOT) */
-#define UPD_EVENT_FREE_PAGE_CREDIT  (1 << 3)   /* counted, 2: the free page queue's credit */
+#define UPD_EVENT_FREE_PAGE_CREDIT  (1 << 2)   /* counted, 2: the free page queue's credit */
 #define UPD_ERROR_QUEUE_OVERRUN     (1 << 0)   /* a push into a full free page queue; the push is dropped */
 #define UPD_ERROR_BEYOND            (1 << 1)   /* an address past what the file's depth can reach */
 #define UPD_ERROR_LPDDR_ERROR       (1 << 2)   /* a response from LPDDR that is not OKAY */

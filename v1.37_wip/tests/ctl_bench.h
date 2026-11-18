@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <array>
+#include <functional>
 #include <cstdint>
 #include <cstdio>
 #include <memory>
@@ -26,6 +27,7 @@
 
 #include "frames.h"
 #include "standin_cache.h"
+#include "units/cache_system.h"
 #include "test_lpddr.h"
 #include "units/file_store.h"
 #include "units/net.h"
@@ -49,6 +51,10 @@ struct Options {
     uint64_t cache_seed = 0;                       // the stand-in at random (0: 80 a line, 80 the write)
     uint64_t valid_seed = 0;                       // the port's valid at random, three cycles in four (0: always)
     bool rules = true;                             // the write rule checked (NOTES section 8)
+    // v1.37 stage 1 (the INTEGRATOR): the joined bench, the controller on the memory system (units/cache_system.h: the
+    // real cache, arbiter and LPDDR model, `lpddr` its timing) through its client port 1 and look-up port 1, in place
+    // of the test pieces; the joint's checks in place of theirs
+    bool joined = false;
 };
 
 struct Run {
@@ -76,12 +82,21 @@ struct Bench {
     // the controller's other side
     std::unique_ptr<test_pieces::TestLpddr> lpddr;
     std::unique_ptr<test_pieces::StandInCache> cache;
+    std::unique_ptr<units::CacheSystem> sys;       // the joined bench's memory system
+    std::function<void(int64_t)> other_client;     // the joined bench: a second client, called at the start of each cycle
     // the write rule's state: pages queued and named by no entry; roots being made; owned data pages of the image
     std::set<uint32_t> fresh, roots, owned_data;
     uint32_t cur_image = 0;
     unsigned cur_depth = 0;
 
     explicit Bench(const Options& o = {}) : opt(o), valid_rnd(o.valid_seed) {
+        if constexpr (CTL) if (o.joined) {
+            units::CacheSystemConfig c;
+            c.lpddr = o.lpddr;
+            sys = std::make_unique<units::CacheSystem>(&store, c);
+            u.lpddr = &sys->updater_axi; u.cache = &sys->updater_lookup; u.store = &store;
+            return;
+        }
         if constexpr (CTL) {
             lpddr = std::make_unique<test_pieces::TestLpddr>(store, o.lpddr);
             cache = std::make_unique<test_pieces::StandInCache>(store, o.cache_seed);
@@ -120,6 +135,7 @@ struct Bench {
         if (valid_rnd) { valid_rnd ^= valid_rnd << 13; valid_rnd ^= valid_rnd >> 7; valid_rnd ^= valid_rnd << 17; src.valid = src.valid && (valid_rnd & 3) != 0; }
         if (src.valid) { src.data[0] = words[sent][0]; src.data[1] = words[sent][1]; offered_cycles++; }
         const bool move = units::wordport::moves(src, u.port_sink());
+        if (other_client) other_client(t);
         u.step(t);
         if (move) { u.port_take(t, src); sent++; }
         if constexpr (requires { u.settle(t); }) u.settle(t);
@@ -204,6 +220,15 @@ struct Bench {
     }
     // The controller's own checks: no read of an unwritten page, no early update, no refused write.
     std::string violations() const {
+        if constexpr (CTL) if (sys) {
+            sys->finish();
+            std::string v;
+            for (unsigned k = 0; k < units::CacheSystem::J_CHECKS; k++)
+                if (sys->joint[k]) v += std::string(" the joint's check, ") + std::to_string(sys->joint[k]) + " times: " + units::CacheSystem::joint_name(k) + ";";
+            if (sys->lpddr.unwritten_reads) v += " LPDDR beats read unwritten: " + std::to_string(sys->lpddr.unwritten_reads) + ";";
+            if (sys->ctl.out().error) v += " the cache's error flag;";
+            return v;
+        }
         if constexpr (CTL) {
             std::string v;
             if (lpddr->unwritten) v += " reads of unwritten pages: " + std::to_string(lpddr->unwritten) + ";";

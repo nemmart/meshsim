@@ -335,6 +335,8 @@ bad packet (17.1). Blocks 0 and 1 are the same on every peripheral; blocks 2-7 a
 | 2 | `PERIPHERAL_TYPE_RW_ENGINE` | the RW engine (17.7) |
 | 3 | `PERIPHERAL_TYPE_TRACER` | the Tracer (17.9) |
 | 4 | `PERIPHERAL_TYPE_REPLAYER` | the replayer (17.8) |
+| 5 | `PERIPHERAL_TYPE_UPDATER` | the Updater (17.10) |
+| 6 | `PERIPHERAL_TYPE_MEMORY_SYSTEM` | the memory system (17.11) |
 
 - **Start** (17.2). `START` starts the peripheral's work; `STATUS.busy` is 1 until the work ends, which posts
   `EVENTS.done`. A `START` while busy is undefined behaviour.
@@ -417,7 +419,7 @@ the words below the oldest beat's top, and `STREAM_RECEIVE` its top word, which 
 
 ### 5.2 The RW engine
 
-Peripheral 1 of the memory tile, type 2, version 0 (17.7); it has a DMA. In C: `rw_engine->NAME` (`RwEngineRegs`).
+Peripheral 2 of the memory tile, type 2, version 0 (17.7); it has a DMA. In C: `rw_engine->NAME` (`RwEngineRegs`).
 
 | offset | block, word | register | access | reset | function | section | `mesh.h` offset |
 |---|---|---|---|---|---|---|---|

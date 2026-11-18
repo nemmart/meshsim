@@ -178,7 +178,7 @@ inline std::string mesh_h() {
          " * without a DMA), and blocks 2-7, the peripheral's own */\n";
     window_struct(b, "PeripheralRegs", nullptr, 0, true, true, true);
     for (const Peripheral& p : PERIPHERALS) {
-        b += fmt("\n/* %s, peripheral type %d (%s): %s's peripheral 1%s */\n", p.name, p.type, p.section, p.tile, p.dma ? "" : "; it has no DMA");
+        b += fmt("\n/* %s, peripheral type %d (%s): %s's peripheral %d%s */\n", p.name, p.type, p.section, p.tile, peripheral_slot(p.prefix), p.dma ? "" : "; it has no DMA");
         window_struct(b, p.c_struct, p.regs, p.n_regs, true, p.dma);
     }
     b += "\n/* the tables, 0xFFFFE000 (5.2): entry i of a table is the word at + 4 i; a table stores only its fields' bits */\n";
@@ -202,7 +202,7 @@ inline std::string mesh_h() {
     b += fmt("#define tile           ((volatile TileRegs *)0x%08Xu)\n", TILE_WINDOW_BASE);
     b += fmt("#define peripheral(n)  ((volatile PeripheralRegs *)(0x%08Xu + 0x%Xu * (n)))   /* n = 1-3 */\n", TILE_WINDOW_BASE, WINDOW_BYTES);
     for (const Peripheral& p : PERIPHERALS)
-        b += fmt("#define %-14s ((volatile %s *)0x%08Xu)   /* peripheral 1 on %s */\n", p.c_pointer, p.c_struct, peripheral_window_base(1),
+        b += fmt("#define %-14s ((volatile %s *)0x%08Xu)   /* peripheral %d on %s */\n", p.c_pointer, p.c_struct, peripheral_window_base(peripheral_slot(p.prefix)), peripheral_slot(p.prefix),
                  same(p.tile, "every compute tile") ? "a compute tile" : p.tile);
     b += fmt("#define tables         ((volatile TableRegs *)0x%08Xu)\n", WINDOWS_BASE);
     b += "#endif /* __ASSEMBLER__ */\n";
@@ -270,7 +270,7 @@ inline std::string mesh_h() {
     values(b, "PTYPE");
     auto parts = [&](const char* prefix) {
         for (const RegionPart& r : REGION_PARTS)
-            if (same(r.prefix, prefix)) def(b, r.macro, fmt("(PERIPHERAL_BASE(1) + 0x%06X)", r.offset), r.doc);
+            if (same(r.prefix, prefix)) def(b, r.macro, fmt("(PERIPHERAL_BASE(%d) + 0x%06X)", peripheral_slot(r.prefix), r.offset), r.doc);
     };
     b += "\n/* ---- Ingress/Egress (17.6) ---- */\n";
     bits(b, "IE_STATUS");
@@ -618,7 +618,7 @@ bad packet (17.1). Blocks 0 and 1 are the same on every peripheral; blocks 2-7 a
         std::string title = p.name;
         if (title.compare(0, 4, "the ") == 0) title = "The " + title.substr(4);
         b += fmt("\n### 5.%d %s\n\n", sub++, title.c_str());
-        b += fmt("Peripheral 1 of %s, type %d, version 0 (%s); %s. In C: `%s->NAME` (`%s`).\n\n", p.tile, p.type, p.section,
+        b += fmt("Peripheral %d of %s, type %d, version 0 (%s); %s. In C: `%s->NAME` (`%s`).\n\n", peripheral_slot(p.prefix), p.tile, p.type, p.section,
                  p.dma ? "it has a DMA" : "it has no DMA: its block 1 reads 0", p.c_pointer, p.c_struct);
         rd::regs(b, p.regs, p.n_regs, (std::string(p.prefix) + "_").c_str());
         b += "\nEvery other word of blocks 2-7 is unmapped.\n";

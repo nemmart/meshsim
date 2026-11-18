@@ -1,7 +1,14 @@
 # INTEGRATOR notes: v1.37 built to its specification
 
-**Status (2026-11-18): the plan, for the owner's go-ahead. No code yet.** Branch `v137-build`, from `main` at
-`973dfbb8`. The brief is `PROMPT.md` beside this file.
+**Status (2026-11-18): the plan, with the owner's go-ahead (10:07): "Go ahead. Yes to the toolchain download,
+checked against WORKER9's hash and kept outside the repository. Choices C1 to C7 are accepted."** Added to the brief
+the same morning: the state machines that are built (the cache's controller and the arbiter, the Updater's
+controller, the link end) are v1.37's modules as they stand, and are not written again from the specification.
+Branch `v137-build`, from `main` at `973dfbb8`. The brief is `PROMPT.md` beside this file.
+
+**The toolchain:** xPack `riscv-none-elf-gcc` 15.2.0-1, linux-x64, from the release `v15.2.0-1` on GitHub; SHA-256
+`aaaa8060c914851a3e5ee1ba82cc3d6f80972f90638a05c6e823a37557a33758`, equal to the release's `.sha` and to WORKER9's;
+unpacked in `~/toolchains/`. `fw/build.sh --check`: 18 images equal to `fw/images/`, 5 to `tests/core-programs/elf/`.
 
 Read for it: everything `PROMPT.md` lists under "Read first", and of the specification `README.md`, `OVERVIEW.md`,
 `GUIDELINES.md`, `CHANGES-v1.36-to-v1.37.md`, 16, 17.6, 17.7, 17.11, 18, 20 (35–40), 21.5, 28.1–28.2, 28.12,

@@ -48,7 +48,8 @@ std::string sha(const std::vector<uint8_t>& bytes) { return test::sha256_hex(byt
 
 // ================================================================================================ gold
 // A frame file's plan for s, executed on the controller alone (no black box): every image against gold's.
-void gold_alone(const char* name, const Options& o) {
+using Setup = std::function<void(Bench<UpdaterTop>&)>;
+void gold_alone(const char* name, const Options& o, const Setup& setup = nullptr, const Setup& after = nullptr) {
     frames::File file;
     std::string err;
     if (!file.read(std::string("tests/updater/") + name + ".frames", err)) { ::test::fail(__FILE__, __LINE__, "%s", err.c_str()); return; }
@@ -58,6 +59,7 @@ void gold_alone(const char* name, const Options& o) {
         std::vector<ctl_bench::Step> steps;
         if (!ctl_bench::plan(file, 64, s, steps, err)) { ::test::fail(__FILE__, __LINE__, "%s: %s", name, err.c_str()); return; }
         Bench<UpdaterTop> b(o);
+        if (setup) setup(b);
         ctl_bench::Images im;
         for (size_t k = 0; k < steps.size(); k++)
             if (!ctl_bench::execute(b, file, steps, k, im)) {
@@ -79,6 +81,7 @@ void gold_alone(const char* name, const Options& o) {
         const std::string v = b.violations();
         if (!v.empty()) ::test::fail(__FILE__, __LINE__, "%s, s %u:%s", name, s, v.c_str());
         CHECK_EQ(b.u.free_page_entries(), 0u);
+        if (after) after(b);
     }
 }
 // The test pieces' timing and the port's valid: fixed, or with a seed all three varied.
@@ -89,7 +92,7 @@ Options timing(uint64_t seed = 0) {
 }
 
 // The same plan on the black box and on the controller, each on its word port, compared after every run.
-void gold_against(const char* name, uint64_t seed) {
+void gold_against(const char* name, uint64_t seed, bool joined = false) {
     frames::File file;
     std::string err;
     if (!file.read(std::string("tests/updater/") + name + ".frames", err)) { ::test::fail(__FILE__, __LINE__, "%s", err.c_str()); return; }
@@ -98,6 +101,7 @@ void gold_against(const char* name, uint64_t seed) {
         if (!ctl_bench::plan(file, 64, s, steps, err)) { ::test::fail(__FILE__, __LINE__, "%s: %s", name, err.c_str()); return; }
         Options o;
         if (seed) { o.lpddr.jitter = true; o.lpddr.seed = uint32_t(seed); o.cache_seed = seed * 3 + 1; o.valid_seed = seed * 13 + 5; }
+        o.joined = joined;
         Bench<Updater> a;
         Bench<UpdaterTop> b(o);
         ctl_bench::Images ia, ib;
@@ -285,10 +289,11 @@ std::string check_images(Bench<U>& b, const Scenario& x) {
 
 // The scenario on the black box and on the controller, each on its word port, compared after every run; both against the
 // model at the end.
-void random_against(uint64_t seed, uint64_t timing_seed) {
+void random_against(uint64_t seed, uint64_t timing_seed, bool joined = false) {
     const Scenario x = make_scenario(seed);
     Options o;
     if (timing_seed) { o.lpddr.jitter = true; o.lpddr.seed = uint32_t(timing_seed); o.cache_seed = timing_seed * 5 + 3; o.valid_seed = timing_seed * 11 + 7; }
+    o.joined = joined;
     Bench<Updater> a;
     Bench<UpdaterTop> b(o);
     const auto runs = runs_of(x);
@@ -347,6 +352,120 @@ TEST(ctl_random_against_black_box) { for (uint64_t seed = 1; seed <= 60; seed++)
 TEST(ctl_random_against_black_box_varied) { for (uint64_t seed = 61; seed <= 90; seed++) random_against(seed, seed); }
 TEST(ctl_random_alone) { for (uint64_t seed = 1; seed <= 60; seed++) random_alone(seed, 0); }
 TEST(ctl_random_alone_varied) { for (uint64_t seed = 1; seed <= 60; seed++) random_alone(seed, seed + 1000); }
+// ---- v1.37 stage 1 (the INTEGRATOR): THE JOINED BENCH. The same runs with the controller on the memory system: the real
+// cache, arbiter and LPDDR model behind its client port 1 and look-up port 1 (units/cache_system.h; WORKER9's piece 2), the
+// joint's checks on, the timing fixed and jittered. Against gold's images and against the black box, the stores byte for
+// byte (with no Tracer the cache holds no dirty line, so LPDDR is the whole truth).
+Options joined(uint64_t seed = 0) {
+    Options o;
+    o.joined = true;
+    if (seed) { o.lpddr.jitter = true; o.lpddr.seed = uint32_t(seed); o.valid_seed = seed * 13 + 5; }
+    return o;
+}
+TEST(joined_gold_alone) { for (const char* n : {"kin-raw", "kin-lru", "jumps-base", "divs", "kin-big"}) gold_alone(n, joined()); }
+TEST(joined_gold_alone_jittered) {
+    for (uint64_t seed : {1, 2, 3}) for (const char* n : {"kin-raw", "kin-lru", "jumps-base", "divs", "kin-big"}) gold_alone(n, joined(seed));
+}
+TEST(joined_gold_against_black_box) { for (const char* n : {"kin-raw", "kin-lru", "jumps-base", "divs", "kin-big"}) gold_against(n, 0, true); }
+TEST(joined_gold_against_black_box_jittered) { for (const char* n : {"kin-lru", "divs", "kin-big"}) for (uint64_t seed : {4, 5}) gold_against(n, seed, true); }
+TEST(joined_random_against_black_box) { for (uint64_t seed = 1; seed <= 60; seed++) random_against(seed, 0, true); }
+TEST(joined_random_against_black_box_jittered) { for (uint64_t seed = 61; seed <= 90; seed++) random_against(seed, seed, true); }
+
+// A SECOND CLIENT AT ONCE (WORKER9's section 4): while the Updater builds a fixture's images, a client on the fill port,
+// as the Tracer is, reads a frozen file of its own and writes and reads back a scratch file of its own, every reply
+// against what it must be. Both files are depth 1, far from the Updater's pages. The Updater's images against gold's,
+// the joint's checks, and the overlap counted.
+struct FillClient {
+    static constexpr int32_t BASE = 100000 * 32;   // the files' pages: far above the bench's
+    units::CacheSystem* sys = nullptr;
+    FileStore* store = nullptr;
+    int32_t frozen = 0, scratch = 0;               // the two roots
+    uint64_t rnd = 0x9E3779B97F4A7C15ull, reads = 0, writes = 0, checked = 0, bad = 0;
+    bool out = false, out_write = false;
+    int32_t out_root = 0;
+    int64_t out_line = 0;
+    std::map<int64_t, std::array<uint64_t, 16>> written;   // the scratch file's lines as last written
+    uint64_t next() { rnd ^= rnd << 13; rnd ^= rnd >> 7; rnd ^= rnd << 17; return rnd; }
+    void make(int32_t root, int32_t first_data, unsigned pages, bool owned, uint64_t tag) {
+        uint64_t* idx = store->page_at(root);
+        for (int i = 0; i < 1024; i++) FileStore::set_entry(idx, i, units::lookup::NO_PAGE);
+        for (unsigned p = 0; p < pages; p++) {
+            const int32_t a = first_data + int32_t(32 * p);
+            uint64_t* d = store->page_at(a);
+            for (unsigned w = 0; w < 512; w++) d[w] = tag ^ (uint64_t(p) << 32) ^ w;
+            FileStore::set_entry(idx, int(p), uint32_t(a) | (owned ? units::lookup::OWNED : 0));
+        }
+    }
+    void attach(Bench<UpdaterTop>& b) {
+        sys = b.sys.get(); store = &b.store; written.clear(); out = false;
+        frozen = BASE; scratch = BASE + 32;
+        make(frozen, BASE + 64, 8, false, 0xF0F0000000000000ull);
+        make(scratch, BASE + 64 + 32 * 8, 4, true, 0x5C5C000000000000ull);
+        b.other_client = [this](int64_t t) { cycle(t); };
+    }
+    std::array<uint64_t, 16> expect(int32_t root, int64_t line) const {
+        if (root == scratch) { auto it = written.find(line); if (it != written.end()) return it->second; }
+        const uint64_t* idx = store->raw_page(root);
+        const uint32_t e = FileStore::entry_of(idx, int(line >> 5));
+        const uint64_t* d = store->raw_page(int32_t(e & units::lookup::ADDRESS));
+        std::array<uint64_t, 16> x;
+        for (unsigned w = 0; w < 16; w++) x[w] = d[(line & 31) * 16 + w];
+        return x;
+    }
+    void cycle(int64_t t) {
+        sys->begin(t);
+        const units::cache::Outputs& o = sys->ctl.out();
+        if (out && !out_write && o.frr_valid) {
+            const std::array<uint64_t, 16> x = expect(out_root, out_line);
+            const unsigned want = out_root == frozen ? 2u : 0u;   // 2: the page is not the file's own (17.9.5)
+            if (o.frr_status != want || std::memcmp(o.frr_data, x.data(), 128) != 0) {
+                bad++;
+                if (bad <= 5) std::printf("wrong at %lld: root %s line %lld status %u, got %llx want %llx (written %d)\n", (long long)t, out_root == frozen ? "frozen" : "scratch",
+                                          (long long)out_line, unsigned(o.frr_status), (unsigned long long)o.frr_data[0], (unsigned long long)x[0], int(written.count(out_line)));
+            }
+            checked++; out = false;
+        } else if (out && out_write && o.fwr_valid) {
+            if (o.fwr_status != 0) bad++;
+            out = false;
+        }
+        if (out || (next() & 3) != 0) return;      // a request one cycle in four, when none is outstanding
+        const unsigned k = unsigned(next() % 3);
+        if (k == 2 && o.fw_ready) {                // a write of a scratch line
+            const int64_t line = int64_t(next() % (4 * 32));
+            std::array<uint64_t, 16> d;
+            for (auto& w : d) w = next();
+            units::cache::FillWrite& fw = sys->in.fw;
+            fw.valid = true; fw.root = scratch; fw.depth = 1; fw.line = line;
+            std::memcpy(fw.data, d.data(), 128);
+            written[line] = d;
+            out = true; out_write = true; out_root = scratch; out_line = line; writes++;
+        } else if (k < 2 && o.fr_ready) {          // a read of a frozen line, or of a scratch line
+            const int32_t root = k == 0 ? frozen : scratch;
+            const int64_t line = int64_t(next() % ((k == 0 ? 8 : 4) * 32));
+            units::cache::FillRead& fr = sys->in.fr;
+            fr.valid = true; fr.root = root; fr.depth = 1; fr.line = line;
+            out = true; out_write = false; out_root = root; out_line = line; reads++;
+        }
+    }
+};
+TEST(joined_second_client_at_once) {
+    for (uint64_t seed : {0, 7, 8}) {
+        FillClient f;
+        uint64_t requests = 0, both = 0, under = 0, replays = 0;
+        gold_alone("kin-big", joined(seed), [&](Bench<UpdaterTop>& b) { f.attach(b); }, [&](Bench<UpdaterTop>& b) {
+            requests += b.sys->lookups + b.sys->updates; both += b.sys->both_outstanding_cycles;
+            under += b.sys->ctl.served_under_miss; replays += b.sys->ctl.replays;
+        });
+        std::printf("the second client, timing %llu: %llu reads (%llu checked), %llu writes, %llu wrong; the Updater's look-ups and updates %llu; "
+                    "served under a miss %llu, replays %llu\n", (unsigned long long)seed, (unsigned long long)f.reads, (unsigned long long)f.checked,
+                    (unsigned long long)f.writes, (unsigned long long)f.bad, (unsigned long long)requests, (unsigned long long)under, (unsigned long long)replays);
+        CHECK(under + replays > 0);                // the two clients' requests met in the cache
+        CHECK_EQ(f.bad, 0u);
+        CHECK(f.checked > 100);
+        CHECK(f.writes > 50);
+    }
+}
+
 // The random scenarios reach what they are for: a look-up stopping at a hole and at a shared page at every level, a
 // half read that a run of values ending inside the run would have covered (the owner's note at the go-ahead), and pages
 // written in runs with the Tracer's copy. Prints the counts.
@@ -534,14 +653,24 @@ TEST(ctl_error_beyond_pages_root) {
         a.run(r);
         stopped_like(&a, b, b.run(r), units::updctl::Ctl::ERR_OUT_OF_PAGES, "out of pages");
     }
-    {
-        Bench<Updater> a;
-        Bench<UpdaterTop> b;
-        a.stream(encode(PATCH, false)); b.stream(encode(PATCH, false));
-        const Run r{ctl_bench::config(false, false, false, 1, 1), uint32_t(PATCH.size()), 20, int32_t(E0 + 5), 0, 0};
-        a.run(r);
-        stopped_like(&a, b, b.run(r), units::updctl::Ctl::ERR_LPDDR, "a root off a page");
-    }
+}
+// A root off a page is UB (17.10.1, the owner's S11): the simulator stops, and ERRORS.lpddr_error is not set for it.
+DEATH_TEST(ctl_root_off_a_page_is_ub, "a run's root that is no page of LPDDR") {
+    Bench<UpdaterTop> b;
+    b.stream(encode(PATCH, false));
+    b.run(Run{ctl_bench::config(false, false, false, 1, 1), uint32_t(PATCH.size()), 20, int32_t(E0 + 5), 0, 0});
+}
+DEATH_TEST(ctl_root_bit_31_is_ub, "with bit 31 set") {
+    Bench<UpdaterTop> b;
+    b.stream(encode(PATCH, false));
+    b.run(Run{ctl_bench::config(false, false, false, 1, 0), uint32_t(PATCH.size()), 20, int32_t(0x80000000u | uint32_t(E0)), 0, 0});
+}
+DEATH_TEST(ctl_run_past_index_2_32_is_ub, "a run of values past word index 2") {
+    Bench<UpdaterTop> b;
+    CHECK(build(b));
+    const std::vector<uint64_t> u = {uint64_t(0xFFFFFFF0u) | uint64_t(32) << 32, 1};
+    b.stream(encode(u, false));
+    b.run(Run{ctl_bench::config(false, false, false, 3, 0), uint32_t(u.size()), 20, int32_t(E0), 0, 0});
 }
 // A push into a full free page queue: the bit set, the push dropped, nothing stopped. (The segment queue's overrun
 // went with the queue: the word port cannot overrun, its `ready` holds the source.)
@@ -576,7 +705,7 @@ TEST(ctl_port_holds_four_words) {
     CHECK_EQ(b.sent, 4u);
     CHECK(!a.u.port_sink().ready);
     CHECK(!b.u.port_sink().ready);
-    CHECK_EQ(b.u.ev.value(b.t) & 1u << UpdaterTop::EV_UNUSED, 0u);
+    CHECK(b.u.ev.value(b.t) & 1u << UpdaterTop::EV_FREE_PAGE_CREDIT);   // EVENTS [2]: free_page_credit, 2 at the reset (17.10.1)
     b.u.reset(b.t);
     CHECK_EQ(b.u.input_words(), 0u);                      // only the reset empties them
     CHECK(b.u.port_sink().ready);

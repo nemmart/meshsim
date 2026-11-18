@@ -37,7 +37,7 @@ namespace {
 
 using Change = std::function<void(proof::Case&, segment::Segment&)>;
 
-segment::Run fixture(const char* name, unsigned s, const Change& change = nullptr, bool cache = false) {
+segment::Run fixture(const char* name, unsigned s, const Change& change = nullptr, uint32_t lpddr_seed = 0) {
     proof::Case c;
     std::string err;
     const std::string base = std::string("tests/updater/") + name;
@@ -52,7 +52,7 @@ segment::Run fixture(const char* name, unsigned s, const Change& change = nullpt
     if (change) change(c, seg);
     segment::Options o;
     o.quiet = true;
-    o.cache_ctl = cache;
+    o.lpddr_seed = lpddr_seed;
     return proof::run(c, seg, o);
 }
 
@@ -114,16 +114,15 @@ TEST(master_divs_middle) { CHECK_EQ(fixture("divs", 20).failures, 0); }
 TEST(master_divs_two_windows) {
     CHECK_EQ(fixture("divs", 20, [](proof::Case&, segment::Segment& seg) { seg.windows = 2; seg.rows = 25; }).failures, 0);
 }
-// updater_wip, WORKER5: the same guests with the Tracer on the cache's controller, the AXI arbiter and the LPDDR model
-// (MachConfig::cache_ctl): every check as above, and the cache's error flag clear and no read of unwritten LPDDR
-TEST(master_cache_kin_raw_first) { CHECK_EQ(fixture("kin-raw", 0, nullptr, true).failures, 0); }
-TEST(master_cache_kin_raw_writes) { CHECK_EQ(fixture("kin-raw", 60, nullptr, true).failures, 0); }
-TEST(master_cache_kin_lru_last) { CHECK_EQ(fixture("kin-lru", 63, nullptr, true).failures, 0); }
-TEST(master_cache_jumps_base_first) { CHECK_EQ(fixture("jumps-base", 0, nullptr, true).failures, 0); }
-TEST(master_cache_divs_middle) { CHECK_EQ(fixture("divs", 20, nullptr, true).failures, 0); }
-TEST(master_cache_divs_two_windows) {
-    CHECK_EQ(fixture("divs", 20, [](proof::Case&, segment::Segment& seg) { seg.windows = 2; seg.rows = 25; }, true).failures, 0);
-}
+// The same guests with the LPDDR model's timing varied (its jitter mode, MachConfig::lpddr_seed): the memory system's
+// every unit under the Updater and the Tracer, every check as above (v1.37 stage 1: the cache and the Updater's
+// controller are the machine; WORKER5's runs on the cache's controller were these with the timing fixed)
+TEST(master_lpddr_jitter_kin_raw_first) { CHECK_EQ(fixture("kin-raw", 0, nullptr, 1).failures, 0); }
+TEST(master_lpddr_jitter_kin_raw_writes) { CHECK_EQ(fixture("kin-raw", 60, nullptr, 2).failures, 0); }
+TEST(master_lpddr_jitter_kin_lru_last) { CHECK_EQ(fixture("kin-lru", 63, nullptr, 3).failures, 0); }
+TEST(master_lpddr_jitter_jumps_base_first) { CHECK_EQ(fixture("jumps-base", 0, nullptr, 4).failures, 0); }
+TEST(master_lpddr_jitter_divs_middle) { CHECK_EQ(fixture("divs", 20, nullptr, 5).failures, 0); }
+TEST(master_lpddr_jitter_kin_big) { CHECK_EQ(fixture("kin-big", 20, nullptr, 6).failures, 0); }
 // the link as fast as the master takes it: the frames back to back, the Updater and the pump never waiting on the link
 TEST(master_kin_lru_fast_link) {
     CHECK_EQ(fixture("kin-lru", 60, [](proof::Case& c, segment::Segment&) { c.cycles_per_byte = 0; }).failures, 0);

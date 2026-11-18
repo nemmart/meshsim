@@ -38,6 +38,7 @@ namespace tracer { class FileStore; }
 namespace updctl {
 // What is on the far side of each port, as the top steps it: its outputs of a cycle, and its edge. Given by a harness.
 struct AxiDev {
+    virtual void begin(int64_t) {}                 // the cycle's start, before out(): a far side stepped elsewhere (cache_system.h)
     virtual axi::SlaveOut out() const = 0;
     virtual void edge(int64_t t, const axi::MasterOut& m) = 0;
     virtual bool quiet() const = 0;                // nothing in flight: an edge would change nothing
@@ -46,6 +47,7 @@ protected:
     ~AxiDev() = default;
 };
 struct LookupDev {
+    virtual void begin(int64_t) {}                 // as AxiDev's
     virtual bool ready() const = 0;                // port 1's ready
     virtual lookup::Reply reply() const = 0;       // the shared reply bus
     virtual void edge(int64_t t, const lookup::Request& port1) = 0;
@@ -58,7 +60,7 @@ protected:
 
 struct UpdaterTop : PeripheralBase<UpdaterTop> {
     using Ctl = updctl::Ctl;
-    enum : unsigned { EV_DONE = 0, EV_DMA_DONE = 1, EV_UNUSED = 2, EV_FREE_PAGE_CREDIT = 3, EV_BITS = 4 };   // [2]: as the black box's
+    enum : unsigned { EV_DONE = 0, EV_DMA_DONE = 1, EV_FREE_PAGE_CREDIT = 2, EV_BITS = 3 };   // [2]: free_page_credit (17.10.1), as the black box's
     enum : unsigned { PART_FREE_PAGES = 2 };
     static constexpr int TYPE = 5;
     static constexpr int DIGEST_N = 3;
@@ -124,6 +126,8 @@ struct UpdaterTop : PeripheralBase<UpdaterTop> {
         if (edge_due_) FATAL("the Updater's controller: step(%lld) with the edge of %lld not taken (settle)", (long long)t, (long long)edge_t_);
         const Ctl::Outputs o = ctl.out();
         in_ = Ctl::Inputs{};
+        if (lpddr) lpddr->begin(t);
+        if (cache) cache->begin(t);
         if (lpddr) in_.axi = lpddr->out();
         if (cache) { in_.lk_ready = cache->ready(); in_.reply = cache->reply(); }
         if ((o.axi.arvalid || o.axi.awvalid || o.axi.wvalid) && !lpddr) FATAL("the Updater's controller: a burst with no AXI slave on its port");
@@ -156,8 +160,8 @@ struct UpdaterTop : PeripheralBase<UpdaterTop> {
     void reset(int64_t t) {
         ctl.reset();
         edge_due_ = false; in_ = Ctl::Inputs{};
-        static const uint8_t depth[EV_BITS] = {1, 1, 0, 2};               // [2] unused: reads 0 (as the black box's)
-        static const bool flags[EV_BITS] = {false, false, false, true};  // a credit returned past its depth is a fault
+        static const uint8_t depth[EV_BITS] = {1, 1, 2};                  // [2] free_page_credit (17.10.1)
+        static const bool flags[EV_BITS] = {false, false, true};         // a credit returned past its depth is a fault
         ev.init(EV_BITS, depth, flags);
         ev.clear_all();
         ev.set(t, EV_FREE_PAGE_CREDIT, 2);

@@ -157,8 +157,6 @@ struct ChipProof final : segment::Proof {
         m.set_link(c.packets);
         m.ingress().link_cycles_per_byte = c.cycles_per_byte;
         m.ingress().link_bytes_per_cycle = c.link_rate;
-        const int64_t ctl = c.updater_ctl ? int64_t(c.updater_ctl_seed) : updater_view::env_setting();   // WORKER6: the controller
-        if (ctl >= 0) updater_view::install_ctl(m, uint64_t(ctl));
         view.attach(m);
         if (c.updater_lookup) view.set_lookup(c.updater_lookup);
         master_rv = &m.c.unit<units::TileCore>(units::unit_prefix(units::ID_MASTER) + "core").rv;
@@ -176,7 +174,8 @@ struct ChipProof final : segment::Proof {
                     "ERRORS: the tile's 0x%x, Ingress's 0x%x, the Updater's 0x%x\n", name, R[MR_STATUS], R[MR_DETAIL], R[MR_FRAMES], R[MR_RUNS],
                     R[MR_PAGES_TAKEN], R[MR_LOADS], R[MR_RESULTS], R[MR_OTHERS], R[MR_BOOT], R[MR_TILE_ERRORS], R[MR_INGRESS_ERRORS],
                     R[MR_UPDATER_ERRORS]);
-        if (m.c.cfg().cache_ctl) cachefig::print(name, m.cache_system());   // updater_wip, WORKER5
+        m.cache_system().finish();
+        cachefig::print(name, m.cache_system());   // updater_wip, WORKER5; the joint's figures and checks (the INTEGRATOR)
         if (R[MR_STATUS] != MR_OK) {                 // where it stopped
             updater_view::UpdaterView& u = view;
             units::IngressEgress& link = m.ingress();
@@ -207,7 +206,7 @@ struct ChipProof final : segment::Proof {
     bool ends_early() const override { return c.expect.trap || c.expect.cut; }
     void check(mach::Mach& m, segment::Run& run) override {
         check_all(m, run);
-        if (m.c.cfg().cache_ctl) run.failures += cachefig::faults(name, m.cache_system());
+        run.failures += cachefig::faults(name, m.cache_system());
         run.failures += failures;
     }
     void check_all(mach::Mach& m, const segment::Run& run) {
@@ -277,7 +276,10 @@ struct ChipProof final : segment::Proof {
             fail("an error bit: the tile's 0x%x, Ingress's 0x%x, the Updater's 0x%x, the error lines 0x%x 0x%x 0x%x", R[MR_TILE_ERRORS], R[MR_INGRESS_ERRORS],
                  R[MR_UPDATER_ERRORS], R[MR_ERROR_LINES], R[MR_ERROR_LINES + 1], R[MR_ERROR_LINES + 2]);
         if (u.errors(0) != 0 || link.link_errors != 0) fail("ERRORS at the end: the Updater's 0x%x, the link's 0x%x", unsigned(u.errors(0)), unsigned(link.link_errors));
-        if (u.unwritten_reads() != 0) fail("%llu reads of a page nothing wrote%s", (unsigned long long)u.unwritten_reads(), u.ctl() ? ", or checks of the test pieces" : "");
+        // the joint's checks (cache_system.h) are cachefig::faults'; the Updater's bursts on its port, client 1, alone
+        if (u.sys->arb.read_bursts[1] + u.sys->arb.write_bursts[1] == 0) fail("no burst of the Updater's on the arbiter's client 1");
+        if (u.sys->arb.read_bursts[2] + u.sys->arb.write_bursts[2] != 0) fail("bursts on the arbiter's client 2, the RW engine's, in a proof");
+        if (u.sys->lookups + u.sys->updates == 0) fail("no request of the Updater's on the cache's look-up port 1");
         if (u.input_words() != 0 || u.free_page_entries() != 0) fail("left in the Updater: %u words on its input, %u free pages", u.input_words(), u.free_page_entries());
         const uint64_t words = c.file.bytes.size() / 16, out = R[MR_LINK_WORDS] + link.link_forwarded + link.link_discarded;
         if (link.link_cut || link.link_words != words || out != words || (link.forward & units::IngressEgress::FWD_COUNT) != 0)
@@ -392,6 +394,7 @@ segment::Run run(const Case& c, const segment::Segment& seg, const segment::Opti
     ChipProof p(c, seg.name.c_str(), numbers);
     segment::Options with = o;
     with.proof = &p;
+    if (c.lpddr_seed) with.lpddr_seed = c.lpddr_seed;
     return segment::run_chip(seg, nullptr, with);
 }
 

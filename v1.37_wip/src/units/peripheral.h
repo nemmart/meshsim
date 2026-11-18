@@ -89,6 +89,7 @@ enum PeriphType : uint8_t {
     PT_TRACER = 3,    // the Tracer, the tracer tile's (17.9; v1.35's behind 17.1's control block)
     PT_REPLAYER = 4,  // the replayer, every mesh tile's peripheral 1 (Replayer)
     PT_UPDATER = 5,   // v1.37: the Updater, the master tile's peripheral 2 with the host link (updater.h)
+    PT_MEMSYS = 6,    // v1.37: the memory system, the memory tile's peripheral 1 (17.11; memory_system.h)
     PT_TEST = 15,     // the suites' test peripheral (TestPeripheral)
     PT_UPDATER_CTL = 16,   // v1.37: the Updater with its real controller (updater_top.h; PARAMS type 5): a dispatch tag only
 };

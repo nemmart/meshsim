@@ -205,6 +205,9 @@ constexpr Peripheral PERIPHERALS[] = {
      sizeof(REPLAYER) / sizeof(Reg)},
 };
 constexpr int N_PERIPHERALS = sizeof(PERIPHERALS) / sizeof(PERIPHERALS[0]);
+// which peripheral of its tile each is (17.1, 2.1): the RW engine the memory tile's peripheral 2 in v1.37 (17.7), the
+// memory system its peripheral 1 (17.11); the others peripheral 1. By its bit macros' prefix.
+inline int peripheral_slot(const char* prefix) { return prefix[0] == 'R' && prefix[1] == 'W' && !prefix[2] ? 2 : 1; }
 
 // the register at window word i of a list, or nullptr: an undefined word, an access fault both ways (5.3)
 inline const Reg* reg_at(const Reg* list, int n, int i) {
@@ -458,6 +461,8 @@ constexpr Value VALUES[] = {
     {"PTYPE", "PERIPHERAL_TYPE_RW_ENGINE", 2, "the RW engine (17.7)"},
     {"PTYPE", "PERIPHERAL_TYPE_TRACER", 3, "the Tracer (17.9)"},
     {"PTYPE", "PERIPHERAL_TYPE_REPLAYER", 4, "the replayer (17.8)"},
+    {"PTYPE", "PERIPHERAL_TYPE_UPDATER", 5, "the Updater (17.10)"},
+    {"PTYPE", "PERIPHERAL_TYPE_MEMORY_SYSTEM", 6, "the memory system (17.11)"},
     // the parameters software needs (19), at their defaults
     {"PARAM", "MESH_SIZE", 8, "the mesh's side"},
     {"PARAM", "TILE_COUNT", 64, "the compute tiles: MESH_SIZE squared"},

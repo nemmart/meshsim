@@ -1,6 +1,6 @@
 /* memory.c: the memory tile's program (v1.36; v1.35 had no memory tile: its C&C 2, cc23.c, popped its requests and
  * served none). Written for v1.36, in v1.36's names (include/mesh.h). It serves the memory tile's requests (11.5), READ and WRITE, with the RW
- * engine, its peripheral 1 (17.7), one request at a time, in the order they arrive.
+ * engine, its peripheral 2 (17.7; v1.37: the memory system is its peripheral 1, 17.11), one request at a time, in the order they arrive.
  *
  * It is placed in the memory tile's IMEM and DMEM before the reset ends, and the boot ROM starts it at _start
  * (crt0.S; 6.5, PARAMS.boot_local 1). mtvec stays at the boot ROM's handler, so a trap sends the master tile reports
@@ -12,7 +12,7 @@
  *           data counter (17.7), a packet a beat; both started together, the DMA draining the queue as the job fills
  *           it. Then, with a reply counter, the reply: a 128-bit WRITE of 0 to the reply address, from output queue 1
  *           (11.4, 11.5).
- *   WRITE   a part of the write buffer, its region 0x04, for the request's beats: the whole buffer from its offset
+ *   WRITE   a part of the write buffer, its region 0x05, for the request's beats: the whole buffer from its offset
  *           0, since one request is served at a time. COUNTER_1 armed with the beats, then the 128-bit reply: the
  *           part's address in [31:0], the counter, 1, in [34:32], and the bits above 0 (11.5). Once COUNTER_1 has
  *           drained, the requester's beats have landed in the part (12.3), and a write job copies them to LPDDR; the
@@ -21,7 +21,7 @@
  *   others  undefined (11.5): popped and ignored.
  *
  * Every wait sleeps in WFI on its event (7.2, 17.2): the tile's request_pending and counter_1_done, and the RW
- * engine's done and dma_done through the tile's peripheral_1, each re-checked after every wake. The program has no
+ * engine's done and dma_done through the tile's peripheral_2, each re-checked after every wake. The program has no
  * data. */
 #include "mesh.h"
 
@@ -42,11 +42,11 @@ static uint32_t sleep_until(uint32_t events) {
 }
 
 /* Sleeps until the RW engine has posted every event of `events` (its EVENTS_MASK holds both of its standard ones, so
- * the tile's peripheral_1 wakes the core), consuming each as its load of EVENTS returns it (17.2). */
+ * the tile's peripheral_2 wakes the core), consuming each as its load of EVENTS returns it (17.2). */
 static void wait_rw(uint32_t events) {
     uint32_t seen = 0;
     while ((seen & events) != events) {
-        sleep_until(EVENT_PERIPHERAL(1));
+        sleep_until(EVENT_PERIPHERAL(2));
         seen |= rw_engine->EVENTS;
     }
 }

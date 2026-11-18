@@ -8,6 +8,7 @@
 #include "check.h"
 #include "units/ingress_egress.h"
 #include "units/linkword.h"
+#include "units/memory_system.h"
 #include "units/replayer.h"
 #include "units/router.h"
 #include "units/rw_engine.h"
@@ -29,6 +30,7 @@ decltype(auto) SlotCore::visit(unsigned n, F&& f) {
         case PT_RW: return f(*static_cast<RwEngine*>(per[n].p));
         case PT_UPDATER: return f(*static_cast<Updater*>(per[n].p));
         case PT_UPDATER_CTL: return f(*static_cast<UpdaterTop*>(per[n].p));
+        case PT_MEMSYS: return f(*static_cast<MemorySystem*>(per[n].p));
         default: FATAL("slot %u: peripheral %u of type %u has no dispatch case", tile, n, unsigned(per[n].type));
     }
 }
@@ -47,6 +49,7 @@ SlotCore::Ref::~Ref() {
         case PT_RW: delete static_cast<RwEngine*>(p); break;
         case PT_UPDATER: delete static_cast<Updater*>(p); break;
         case PT_UPDATER_CTL: delete static_cast<UpdaterTop*>(p); break;
+        case PT_MEMSYS: delete static_cast<MemorySystem*>(p); break;
         default: break;
     }
 }
@@ -109,6 +112,10 @@ void SlotCore::install(unsigned n, PeriphType type, const PeriphSlotConfig& c) {
         case PT_RW: per[n].p = new RwEngine(tile, c.rw); break;
         // v1.37: the Updater black box; its file store comes from the harness after the build (updater(n).store)
         case PT_UPDATER: per[n].p = new Updater(); break;
+        // v1.37: the Updater's controller (updater_top.h), its ports to the memory system from the harness after the build
+        case PT_UPDATER_CTL: per[n].p = new UpdaterTop(); break;
+        // v1.37: the memory system (memory_system.h), its hardware from the harness after the build (attach)
+        case PT_MEMSYS: per[n].p = new MemorySystem(); break;
         default: FATAL("slot %u: peripheral type %u can't be created here yet", tile, unsigned(type));
     }
 }
@@ -129,6 +136,14 @@ TestPeripheral& SlotCore::test_peripheral(unsigned n) {
 IngressEgress& SlotCore::ingress_egress(unsigned n) {
     if (per[n].type != PT_INGRESS) FATAL("slot %u: peripheral %u is not Ingress/Egress", tile, n);
     return *static_cast<IngressEgress*>(per[n].p);
+}
+MemorySystem& SlotCore::memory_system(unsigned n) {
+    if (per[n].type != PT_MEMSYS) FATAL("slot %u: peripheral %u is not the memory system", tile, n);
+    return *static_cast<MemorySystem*>(per[n].p);
+}
+UpdaterTop& SlotCore::updater_ctl(unsigned n) {
+    if (per[n].type != PT_UPDATER_CTL) FATAL("slot %u: peripheral %u is not the Updater's controller", tile, n);
+    return *static_cast<UpdaterTop*>(per[n].p);
 }
 RwEngine& SlotCore::rw_engine(unsigned n) {
     if (per[n].type != PT_RW) FATAL("slot %u: peripheral %u is not the RW engine", tile, n);

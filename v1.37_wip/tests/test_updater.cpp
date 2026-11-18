@@ -140,8 +140,9 @@ TEST(updater_reset) {
     for (int w : {38, 47, 54, 64, 127}) CHECK(!b.u.word(b.t, w, v));       // unmapped
     CHECK_EQ(b.u.write_word(b.t, 48, 1), 0);                               // block 3 is read-only
     CHECK_EQ(b.u.write_word(b.t, 38, 1), -1);
-    // the free page queue's credit is full at the reset: two counts (depth 2); EVENTS [2] is unused and reads 0
+    // the free page queue's credit is full at the reset: two counts (depth 2), at EVENTS [2] (17.10.1)
     const uint32_t credits = 1u << Updater::EV_FREE_PAGE_CREDIT;
+    CHECK_EQ(credits, 4u);
     CHECK_EQ(b.u.ev.value(b.t + 1), credits);
     b.u.ev.consume(credits);
     CHECK_EQ(b.u.ev.value(b.t + 1), credits);
@@ -391,27 +392,24 @@ TEST(updater_beyond) {
     CHECK(b2.run({Bench::config(false, false, false, 1, Updater::ROOT_EMPTY), uint32_t(u2.size()), 1, root2, 0, 0}));
     CHECK_EQ(b2.u.errors(b2.t), 0);
 }
-TEST(updater_lpddr_error) {
-    {   // a root off a page boundary
-        Bench b;
-        CHECK(!b.run({Bench::config(false, false, false, 1, Updater::ROOT_EMPTY), 0, 0, 33, 0, 0}));
-        CHECK_EQ(b.u.errors(b.t), int(Updater::ERR_LPDDR));
-    }
-    {   // a root past LPDDR's end
-        Bench b;
-        CHECK(!b.run({Bench::config(false, false, false, 1, Updater::ROOT_EMPTY), 0, 0, int32_t(b.u.lpddr_units), 0, 0}));
-        CHECK_EQ(b.u.errors(b.t), int(Updater::ERR_LPDDR));
-    }
-    {   // a free page that is no page
-        const std::vector<uint64_t> u = {uint64_t(0) | uint64_t(1) << 32, 1};
-        const frames::File f = frame_of(u, false);
-        Bench b;
-        const int32_t root = b.new_page();
-        b.next_page = 0x7FFFFF;                                            // the bench's next page: past LPDDR
-        b.stream(f, f.frame[0]);
-        CHECK(!b.run({Bench::config(false, false, false, 1, Updater::ROOT_EMPTY), uint32_t(u.size()), 1, root, 0, 0}));
-        CHECK_EQ(b.u.errors(b.t), int(Updater::ERR_LPDDR));
-    }
+// v1.37 (17.10.1, the owner's S11): a root or a free page that is no page of LPDDR is UB, the simulator's stop, as on
+// the controller; ERRORS.lpddr_error is not set for it.
+DEATH_TEST(updater_root_off_a_page_is_ub, "a run's root that is no page of LPDDR") {
+    Bench b;
+    b.run({Bench::config(false, false, false, 1, Updater::ROOT_EMPTY), 0, 0, 33, 0, 0});
+}
+DEATH_TEST(updater_root_past_lpddr_is_ub, "a run's root that is no page of LPDDR") {
+    Bench b;
+    b.run({Bench::config(false, false, false, 1, Updater::ROOT_EMPTY), 0, 0, int32_t(b.u.lpddr_units), 0, 0});
+}
+DEATH_TEST(updater_free_page_off_lpddr_is_ub, "a free page 0x") {
+    const std::vector<uint64_t> u = {uint64_t(0) | uint64_t(1) << 32, 1};
+    const frames::File f = frame_of(u, false);
+    Bench b;
+    const int32_t root = b.new_page();
+    b.next_page = 0x7FFFFF;                                            // the bench's next page: past LPDDR
+    b.stream(f, f.frame[0]);
+    b.run({Bench::config(false, false, false, 1, Updater::ROOT_EMPTY), uint32_t(u.size()), 1, root, 0, 0});
 }
 
 DEATH_TEST(updater_start_while_busy_is_ub, "a START during a run") {

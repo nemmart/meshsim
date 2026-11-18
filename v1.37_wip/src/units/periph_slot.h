@@ -87,6 +87,8 @@ namespace tracer { class Tracer; }
 struct IngressEgress;
 struct RwEngine;
 struct Updater;
+struct UpdaterTop;
+struct MemorySystem;
 
 // The core's word on S2/S3 (one per cycle): a store to window word w of peripheral n, or a consuming EVENTS load.
 struct CoreOp {
@@ -258,6 +260,8 @@ struct SlotCore {
     IngressEgress& ingress_egress(unsigned n);
     RwEngine& rw_engine(unsigned n);
     Updater& updater(unsigned n);
+    UpdaterTop& updater_ctl(unsigned n);       // v1.37: the Updater's controller (PT_UPDATER_CTL)
+    MemorySystem& memory_system(unsigned n);   // v1.37: the memory tile's peripheral 1 (PT_MEMSYS)
 
 private:
     void violate(int64_t t, uint16_t code, uint32_t a = 0, uint32_t b = 0);

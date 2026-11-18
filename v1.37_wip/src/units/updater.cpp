@@ -11,8 +11,8 @@ int digit(int64_t pg, int level, int depth) { return int(uint64_t(pg) >> (10 * (
 }  // namespace
 
 Updater::Updater() {
-    static const uint8_t depth[EV_BITS] = {1, 1, 0, 2};               // [2] unused: reads 0
-    static const bool flags[EV_BITS] = {false, false, false, true};  // a credit returned past its depth is a fault
+    static const uint8_t depth[EV_BITS] = {1, 1, 2};                  // [2] free_page_credit (17.10.1)
+    static const bool flags[EV_BITS] = {false, false, true};         // a credit returned past its depth is a fault
     ev.init(EV_BITS, depth, flags);
     reset(0);
 }
@@ -111,9 +111,8 @@ void Updater::run(int64_t t) {
     }
     held_ = false; wait_ = 0;
     if (!lpddr_page(image_root_) || (tracer_copy_ && !lpddr_page(tracer_root_)) || (root_mode_ == ROOT_COPY && !lpddr_page(source_root_)) ||
-        root_mode_ == 3) {
-        stop(ERR_LPDDR);                                   // a root that is no page of LPDDR (or a reserved `root`)
-        return;
+        root_mode_ == 3) {                                 // UB (17.10.1; S11), as the controller has it: the simulator's stop
+        FATAL("the Updater: undefined behavior: a run's root that is no page of LPDDR, or RUN_CONFIG.root 3 (17.10.1)");
     }
     image_ = int32_t(image_root_); tracer_ = int32_t(tracer_root_);
     root_pending_ = root_mode_ != ROOT_EXISTS;
@@ -191,7 +190,8 @@ bool Updater::take_page(int64_t t, int32_t& a) {
     uint64_t lo, hi;
     pop(t, free_pages_, EV_FREE_PAGE_CREDIT, lo, hi);
     page_count_--; pages_taken++;
-    if (!lpddr_page(uint32_t(lo))) { stop(ERR_LPDDR); return false; }
+    if (!lpddr_page(uint32_t(lo)))                        // UB (17.10.1; S11), as the controller has it
+        FATAL("the Updater: undefined behavior at %lld: a free page 0x%x that is no page of LPDDR (17.10.1)", (long long)t, uint32_t(lo));
     a = int32_t(uint32_t(lo));
     return true;
 }

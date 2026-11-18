@@ -57,7 +57,6 @@ int main(int argc, char** argv) {
     unsigned windows = 64;
     uint32_t rows = 65536;
     uint64_t limit = 0;
-    bool cache = false;
     bool quiet = false;
     proof::Case c;
     c.asics = 128;
@@ -74,9 +73,7 @@ int main(int argc, char** argv) {
         else if (a == "--limit" && more) limit = std::strtoull(argv[++i], nullptr, 10);
         else if (a == "--fast-link") c.cycles_per_byte = 0;
         else if (a == "--link-rate" && more) c.link_rate = std::atoi(argv[++i]);
-        else if (a == "--updater-ctl") c.updater_ctl = true;                                       // WORKER6: the controller
-        else if (a == "--updater-ctl-seed" && more) { c.updater_ctl = true; c.updater_ctl_seed = std::strtoull(argv[++i], nullptr, 10); }
-        else if (a == "--cache") cache = true;
+        else if (a == "--lpddr-seed" && more) c.lpddr_seed = uint32_t(std::strtoul(argv[++i], nullptr, 10));   // the LPDDR model's jitter
         else if (a == "--quiet") quiet = true;
         else if (path.empty() && a[0] != '-') path = a;
         else return usage();
@@ -124,7 +121,6 @@ int main(int argc, char** argv) {
 
     segment::Options o;
     o.quiet = quiet;
-    o.cache_ctl = cache;
     proof::Numbers n;
     const segment::Run run = proof::run(c, seg, o, &n);
 

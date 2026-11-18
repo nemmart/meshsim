@@ -65,6 +65,23 @@ constexpr uint8_t PRIMES[32] = {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 
                                 59, 61, 67, 71, 73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131};
 constexpr uint8_t restart_byte(unsigned i) { return PRIMES[i % 32]; }
 
+// The mask (HL, "The data is masked on the wire"). Each byte of a packet's data goes on the wire XORed with a byte
+// of a sequence that starts from that packet's own header CRC:
+//   the register starts at the header CRC (the 32-bit number in header bytes 12 to 15, byte 12 the lowest) with bit
+//   16 set; for each data byte, in order, it takes the CRC-32C unit's step for a byte of zero (eight shifts with
+//   nothing fed in), and its low eight bits after the step mask that byte.
+// The bit that is set keeps the register out of its two states that stand still: 0, whose mask is zeros, and
+// 0xFCA42DAF, whose mask is the byte 0xAF over and over. From every other state it returns only after 2^31 - 1 shifts.
+constexpr uint32_t MASK_SET = 0x00010000u, MASK_STILL = 0xFCA42DAFu;
+constexpr uint32_t mask_start(uint32_t header_crc) { return header_crc | MASK_SET; }
+constexpr uint32_t mask_step(uint32_t reg) { return crc_step(reg, 0); }
+inline uint32_t header_crc(const uint8_t b[HEADER_BYTES]) { return uint32_t(b[12]) | uint32_t(b[13]) << 8 | uint32_t(b[14]) << 16 | uint32_t(b[15]) << 24; }
+// A packet's data as it is held, to or from the bytes on the wire: the same operation both ways.
+inline void mask_data(const uint8_t header[HEADER_BYTES], uint8_t* data, unsigned n) {
+    uint32_t reg = mask_start(header_crc(header));
+    for (unsigned i = 0; i < n; i++) { reg = mask_step(reg); data[i] ^= uint8_t(reg); }
+}
+
 // Packet numbers run 1 to last, then 1 again (HL: none is 0 or all ones). An acknowledge field of 0 is "none yet".
 struct Numbers {
     uint32_t last = 0x3FFFE;

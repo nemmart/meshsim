@@ -10,7 +10,7 @@ one() {
     secs=$(echo "$out" | sed -n 's/.*; \([0-9.]*\) s$/\1/p')
     rest=$(echo "$out" | sed -n 's/.*the longest \([0-9]*\) cycles.*/\1/p')
     if ! echo "$out" | grep -q '^RESULT'; then verdict="NO RESULT: the search was stopped or killed (memory?)";
-    elif echo "$out" | grep -q 'NOT complete'; then verdict="NOT complete";
+    elif echo "$out" | grep -q 'NOT complete'; then verdict="NOT complete: $(echo "$out" | sed -n 's/^stopped at \(.*\): NOT complete, \(.*\)/\1, \2/p')";
     elif echo "$out" | grep -q '^RESULT: every'; then verdict="holds";
     else verdict="FAILS: $(echo "$out" | sed -n '/^RESULT: FAILED/,$p' | tail -n +2 | sed 's/^ *//' | tr '\n' ';')"; fi
     printf '%-96s %10s states  %6s s  rest<=%-4s %s\n' "$*" "$states" "$secs" "$rest" "$verdict"
@@ -35,7 +35,7 @@ main)    # one link: the list of the headers before, for the state counts side b
     one --packets 2 0 1 0 --damage 1 --delay 7
     one --packets 2 0 1 0 --damage 1 --delay 20
     one --packets 2 0 1 0 --damage 1 --tick 8
-    one --packets 1 0 1 0 --damage 2 --images --fates $F
+    one --packets 1 0 1 0 --damage 2 --images
     one --packets 2 0 2 0 --damage 0 --power 1
     one --packets 1 0 1 0 --damage 1 --power 1
     one --packets 2 0 1 0 --damage 1 --flip 1
@@ -94,18 +94,24 @@ forged)  # one header forged to pass its CRC, with one packet damaged: field by 
     one --packets 1 0 1 0 --damage 2 --forge 1 --fates $F,forge-number --all
     one --packets 2 0 0 0 --damage 1 --forge 1 --fates $F,forge-number-back --all
     ;;
-nested)  # data that holds headers, or whole packets. Lines 2 to 4: the zeros a lost receiver waits for, against data
-         # that is a word of zeros and then a header's image, without the fate head0: one more than the zeros a packet
-         # can hold is enough, and no fewer. Then with head0, a header that reads as zeros in front of such data: no
-         # check fails, and the header in the data is believed. With a header's image and a second packet damaged the
-         # link starts again; with a whole packet in the data its word is delivered and nothing is said (REPORT.md)
-    one --rules hl,max_words=2,flush_zeros=48,zeros=64 --packets 1 0 1 0 --damage 1 --words 2
-    one --rules hl,max_words=2,flush_zeros=48,zeros=64 --packets 1 0 1 0 --damage 2 --images2 --words 2 --fates $F
-    one --rules hl,max_words=2,flush_zeros=17,zeros=64 --packets 1 0 1 0 --damage 2 --images2 --words 2 --fates $F
-    one --rules hl,max_words=2,flush_zeros=16,zeros=64 --packets 1 0 1 0 --damage 2 --images2 --words 2 --fates $F
+nested)  # data that holds headers, or whole packets, and a header that reads as zeros in front of it (fate head0, among
+         # the damage of every search). Without the mask the packet in the data is taken for the true one (line 2); with
+         # it the receiver fails a header CRC and the link repairs. Lines 5 to 8: the zeros a lost receiver waits for,
+         # against data that is a word of zeros and then a header's image: without the mask one more than the zeros a
+         # packet can hold is enough and no fewer; with the mask the search finds no need for them at all. The last
+         # line is the mask's known limit, data made for the very header it travels under, and must fail
+    N=hl,max_words=2,flush_zeros=48,zeros=64
+    one --rules $N --packets 1 0 1 0 --damage 1 --words 2
+    one --rules hl-mask,max_words=2,flush_zeros=48,zeros=64 --packets 1 0 0 0 --damage 1 --images3 --words 2 --all
+    one --rules $N --packets 1 0 0 0 --damage 1 --images3 --words 2 --all
+    one --rules $N --packets 2 0 1 0 --damage 1 --images3 --words 2 --all
+    one --rules hl-mask,max_words=2,flush_zeros=17,zeros=64 --packets 1 0 1 0 --damage 2 --images2 --words 2 --fates $F
+    one --rules hl-mask,max_words=2,flush_zeros=16,zeros=64 --packets 1 0 1 0 --damage 2 --images2 --words 2 --fates $F
+    one --rules hl,max_words=2,flush_zeros=16,zeros=64 --packets 1 0 1 0 --damage 2 --images2 --words 2
+    one --rules hl-flush,max_words=2,zeros=64 --packets 1 0 1 0 --damage 2 --images2 --words 2
     one --packets 1 0 1 0 --damage 2 --images --all
-    one --rules hl,max_words=2,flush_zeros=48,zeros=64 --packets 1 0 0 0 --damage 1 --images3 --words 2 --all
-    one --rules hl,max_words=2,flush_zeros=48,zeros=64 --packets 2 0 1 0 --damage 1 --images --words 2 --all
+    one --rules $N --packets 2 0 1 0 --damage 1 --images --words 2 --all
+    one --rules $N --packets 1 0 0 0 --damage 1 --images4 --words 2 --all
     ;;
 chain)   # the chain: the host and one, two or three nodes; packets from the host on each stream, and from each node
     one --chain 1 --cpackets 1 1 1 --damage 1

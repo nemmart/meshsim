@@ -88,9 +88,58 @@ void flow_word(unsigned from, unsigned stream, uint64_t index, uint8_t out[WORD_
 
 // The image of a header that would pass every check: of length 0, with "recovery" and an acknowledge field. What
 // a receiver makes of it, if it ever takes a packet's data for a packet.
+bool made_on_purpose(Header outer, uint32_t inner_number, uint64_t salt, uint8_t* data) {
+    const unsigned n = outer.length * WORD_BYTES;
+    uint8_t wire[MAX_WORDS * WORD_BYTES];                  // what the line is to carry: a header, then its data
+    for (unsigned w = 1; w < outer.length; w++) flow_word(7, outer.stream - 1u, salt * 64 + w, wire + w * WORD_BYTES);
+    Header inner; inner.stream = outer.stream; inner.length = uint8_t(outer.length - 1); inner.number = inner_number;
+    inner.dsum = crc32c(wire + WORD_BYTES, n - WORD_BYTES);
+    pack(inner, wire);
+    mask_data(wire, wire + WORD_BYTES, n - WORD_BYTES);    // as a packet goes on the wire: its data under its own header's mask
+    // For a starting value s of the mask's register: the data that the mask from s turns into `wire`, the header that
+    // data gets, and that header's CRC. g(s) is that CRC XOR s: affine in s. The mask starts at the CRC with bit 16
+    // set, so s is right if its bit 16 is set and g(s) is 0 or bit 16 alone.
+    auto g = [&](uint32_t s, uint8_t* d) {
+        uint32_t reg = s;
+        for (unsigned i = 0; i < n; i++) { reg = mask_step(reg); d[i] = wire[i] ^ uint8_t(reg); }
+        Header h = outer; h.dsum = crc32c(d, n);
+        uint8_t hb[HEADER_BYTES]; pack(h, hb);
+        return header_crc(hb) ^ s;
+    };
+    uint8_t d[MAX_WORDS * WORD_BYTES];
+    const uint32_t g0 = g(0, d);
+    uint32_t col[32];
+    for (unsigned i = 0; i < 32; i++) col[i] = g(1u << i, d) ^ g0;         // the linear part, column by column
+    for (uint32_t target : {0u, MASK_SET}) {
+        // Solve (sum of col[i] over the bits of s) = g0 ^ target by elimination over the 32 bits.
+        uint32_t rows[32], pick[32]; unsigned rank = 0;                      // rows: reduced columns; pick: which s bits made each
+        uint32_t want = g0 ^ target, s = 0;
+        for (unsigned i = 0; i < 32; i++) {
+            uint32_t v = col[i], p = 1u << i;
+            for (unsigned k = 0; k < rank; k++) if (v & (rows[k] & (0u - rows[k]))) { v ^= rows[k]; p ^= pick[k]; }
+            if (v) { rows[rank] = v; pick[rank] = p; rank++; }
+        }
+        for (unsigned k = 0; k < rank; k++) if (want & (rows[k] & (0u - rows[k]))) { want ^= rows[k]; s ^= pick[k]; }
+        if (want || !(s & MASK_SET)) continue;
+        if (g(s, d) != target) continue;
+        memcpy(data, d, n);
+        return true;
+    }
+    return false;
+}
+
 void Link1::word(unsigned from, unsigned stream, uint64_t index, uint8_t out[WORD_BYTES]) const {
     if (!cfg.images) { flow_word(from, stream, index, out); return; }
     if (cfg.images == 2 && index % cfg.words == 0) { memset(out, 0, WORD_BYTES); return; }
+    if (cfg.images == 4) {                                 // made for the header it will travel under: this stream's packets
+        Header outer; outer.stream = uint8_t(stream + 1); outer.length = uint8_t(cfg.words);   // alone on the link, nothing coming back
+        outer.number = uint32_t(index / cfg.words) % end[0].nums.last + 1;
+        uint8_t d[MAX_WORDS * WORD_BYTES];
+        uint64_t salt = index / cfg.words * 16;
+        while (!made_on_purpose(outer, outer.number, salt, d)) salt++;
+        memcpy(out, d + (index % cfg.words) * WORD_BYTES, WORD_BYTES);
+        return;
+    }
     if (cfg.images == 3) {                                 // a packet inside a packet: its header, then its data
         if (index % cfg.words) { flow_word(from, stream, index, out); return; }
         uint8_t inner[MAX_WORDS * WORD_BYTES];
@@ -344,6 +393,7 @@ const RuleName RULES[] = {
     {"lost_answers", &Rules::lost_answers}, {"flush", &Rules::flush}, {"refuse", &Rules::refuse},
     {"ack_now", &Rules::ack_now}, {"lost_uses_ack", &Rules::lost_uses_ack}, {"restart", &Rules::restart},
     {"wrong_twice", &Rules::wrong_twice}, {"ask_not_kept", &Rules::ask_not_kept}, {"stop_holds_again", &Rules::stop_holds_again},
+    {"mask", &Rules::mask},
 };
 struct SizeName { const char* name; unsigned Params::*field; };
 const SizeName SIZES[] = {

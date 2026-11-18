@@ -69,6 +69,31 @@ int main(int argc, char** argv) {
         Header z; z.stream = 1; z.number = 5; z.ack = 4; z.stop[FG] = true;
         example(z, "01000500100000010000000057094D4E");
     }
+    // HL, "The data is masked on the wire": worked examples, byte for byte (the expected bytes are from a second
+    // implementation, in Python), the mask taken off again, and the register's two states that stand still.
+    {
+        auto masked = [&](const Header& h, const uint8_t* data, unsigned n, const char* want) {
+            uint8_t hb[HEADER_BYTES], d[64]; pack(h, hb); memcpy(d, data, n);
+            mask_data(hb, d, n);
+            char got[200]; for (unsigned i = 0; i < n; i++) snprintf(got + 2 * i, 3, "%02X", d[i]);
+            if (strcmp(got, want) != 0) { printf("FAIL mask: got %s, want %s\n", got, want); failures++; }
+            mask_data(hb, d, n);
+            CHECK(memcmp(d, data, n) == 0);
+        };
+        Header h; h.stream = 2; h.length = 1; h.number = 1; h.dsum = crc32c(zero, 16);          // HL's first example header
+        masked(h, zero, 16, "2A54C074C01C582FA65D273739C9471F");
+        uint8_t count[32]; for (unsigned i = 0; i < 16; i++) { count[i] = uint8_t(i); count[16 + i] = 0xFF; }
+        Header g; g.stream = 1; g.length = 1; g.number = 7; g.ack = 3; g.dsum = crc32c(count, 16);
+        uint8_t gb[HEADER_BYTES]; pack(g, gb);
+        CHECK(header_crc(gb) == 0x362A949Eu && mask_start(header_crc(gb)) == 0x362B949Eu && mask_step(0x362B949Eu) == 0x3EE668A4u);
+        masked(g, count, 16, "A4D06E3C10A42F89F574219EDE43E4C0");
+        g.ack = 4; g.hops = 1;                                 // the same data forwarded, under another header: another mask
+        masked(g, count, 16, "79F1F28277D9B4AF918F7C003996A151");
+        Header w; w.stream = 2; w.length = 2; w.number = 0x2ABCD; w.ack = 0x15555; w.stop[BG] = true; w.dsum = crc32c(count, 32);
+        masked(w, count, 32, "1796CC00CFBA59A933533F30B5C2282DEBF00BACE428925E1502273A5009CE6B");
+        CHECK(mask_step(0) == 0 && mask_step(MASK_STILL) == MASK_STILL && uint8_t(MASK_STILL) == 0xAF);
+        CHECK(mask_start(0) != 0 && mask_start(MASK_STILL) != MASK_STILL && mask_start(MASK_STILL ^ MASK_SET) != MASK_STILL);
+    }
     // HL, "Starting a link again": the restart packet's data, the first 32 primes sixteen times over, and its checksum.
     {
         uint8_t data[RESTART_WORDS * WORD_BYTES];

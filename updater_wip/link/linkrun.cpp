@@ -306,7 +306,7 @@ int main(int argc, char** argv) {
            (unsigned long long)t.most_kept_host, (unsigned long long)t.most_fill, (unsigned long long)t.most_fwd);
     printf("the longest: a foreground packet waiting for the line with nothing else to wait for %llu cycles; a sender without an acknowledgement on a link in step %llu\n",
            (unsigned long long)t.most_turn, (unsigned long long)t.most_waited);
-    printf("a foreground packet ready at an end, not stopped, the link in step, until it starts: %llu cycles at most, %.1f on average over %llu packets; "
+    printf("a foreground packet ready at an end, not stopped, the link in step, until it starts: %llu cycles at most, %.0f on average over %llu packets; "
            "of that, with the window full %llu at most, behind packets being sent again %llu at most\n", (unsigned long long)t.fg_ready,
            t.fg_sent ? double(t.fg_ready_sum) / double(t.fg_sent) : 0, (unsigned long long)t.fg_sent, (unsigned long long)t.fg_full, (unsigned long long)t.fg_again);
     printf("cycles a line stood idle while a packet's data was passed over: %llu\n", (unsigned long long)t.pass_wait);

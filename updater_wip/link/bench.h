@@ -84,7 +84,9 @@ struct Config {
     unsigned packets[2][STREAMS] = {};     // how many packets each source has: [end][stream]
     unsigned images = 0;                   // 1: every word a source makes is the image of a good header; 2: a packet's first
                                            // word is zeros and the rest are images: the longest run of zeros before one; 3: a
-                                           // packet's first word is the image of the header of a packet that holds the rest
+                                           // packet's first word is the image of the header of a packet that holds the rest;
+                                           // 4: data made on purpose by one who knows the header it will travel under: with
+                                           // the mask on it, the bytes on the wire are a packet (made_on_purpose)
 };
 
 struct Source { uint32_t total = 0, made = 0, avail = 0; };   // its packets; those taken by the end; those let out so far
@@ -170,6 +172,12 @@ private:
 
 // The word a flow carries at an index: never zero, and different at every index and flow.
 void flow_word(unsigned from, unsigned stream, uint64_t index, uint8_t out[WORD_BYTES]);
+// Data that defeats the mask, for one who knows every field of the header a packet will go out under but its data
+// checksum: `outer` holds those fields (its length is the data's words). The data returned is such that, masked from
+// that header's CRC, the bytes on the wire are a whole packet: a header for stream `outer.stream` with the number
+// `inner_number`, and words - 1 words that pass its checksum. The CRC and the mask's sequence are both linear, so the
+// data is solved for, not searched. Returns false if this try has no solution (another `salt` gives another try).
+bool made_on_purpose(Header outer, uint32_t inner_number, uint64_t salt, uint8_t* data);
 
 // ---- a kept case: a config, a list of events, and what must come of it under one or more sets of rules ----
 

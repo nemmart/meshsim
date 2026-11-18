@@ -4,7 +4,7 @@ sums and the largest of each figure, and each rare event's count.      usage: su
 import re, sys
 runs = failed = cycles = packets = 0
 chains = [0, 0, 0, 0]
-events, biggest, fails = {}, {}, []
+events, biggest, sums, fails = {}, {}, {}, []
 for path in sys.argv[1:]:
     for line in open(path, errors="replace"):
         if "FAILED:" in line: fails.append(line.strip()[:400]); continue
@@ -15,7 +15,13 @@ for path in sys.argv[1:]:
             continue
         m = re.match(r"cycles (\d+); packets (\d+)", line)
         if m: cycles += int(m[1]); packets += int(m[2]); continue
-        if line.startswith(("the most", "the longest", "recoveries", "coming to rest")):
+        if line.startswith(("bits flipped", "cycles a line")):
+            key = re.sub(r"\d+", "#", line.strip())
+            nums = [int(x) for x in re.findall(r"\d+", line)]
+            old = sums.get(key)
+            sums[key] = nums if old is None else [a + b for a, b in zip(old, nums)]
+            continue
+        if line.startswith(("the most", "the longest", "recoveries", "coming to rest", "a foreground packet ready")):
             key = re.sub(r"\d+", "#", line.strip())
             nums = [int(x) for x in re.findall(r"\d+", line)]
             old = biggest.get(key)
@@ -32,6 +38,8 @@ for f in fails: print("  " + f)
 print("\nthe largest over the slices (a slice's average where the line says average):")
 for key, nums in biggest.items():
     it = iter(nums); print("  " + re.sub("#", lambda _: str(next(it)), key))
+for key, nums in sums.items():
+    it = iter(nums); print("  summed: " + re.sub("#", lambda _: str(next(it)), key))
 print("\nrare events, summed:")
 for name, nums in events.items():
     print(f"  {name:58s} " + " ".join(f"{n:13d}" for n in nums) + ("   <- never happened" if not any(nums) else ""))

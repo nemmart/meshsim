@@ -30,24 +30,24 @@ void LinkEnd::canon(Writer& a) const {
     auto some = [&](const uint8_t* b, size_t n) { a.out.insert(a.out.end(), b, b + n); };
     a(r.rx_state); a(r.zero_run);
     if (r.rx_state == RxState::HEADER) { a(r.rx_count); some(r.rx_hdr, r.rx_count); }
-    if (r.rx_state == RxState::DATA) { a(r.rx_count); some(r.rx_hdr, HEADER_BYTES); some(r.rx_buf.data(), r.rx_count); }
-    if (r.rx_state == RxState::SKIP) { a(r.rx_count); a(r.rx_crc); some(r.rx_hdr, HEADER_BYTES); }
+    if (r.rx_state == RxState::DATA) { a(r.rx_count); a(r.rx_mask); some(r.rx_hdr, HEADER_BYTES); some(r.rx_buf.data(), r.rx_count); }
+    if (r.rx_state == RxState::SKIP) { a(r.rx_count); a(r.rx_crc); a(r.rx_mask); some(r.rx_hdr, HEADER_BYTES); }
     a(r.last); a(r.need); a(r.asked); a(r.wrong); a(r.ack_owed); a(r.stop_sent);
     if (r.asked) a(r.ask_timer);
     a(r.tx_state);
     if (r.tx_state == TxState::HEADER) {
-        a(r.tx_count); some(r.tx_hdr + r.tx_count, HEADER_BYTES - r.tx_count); a(r.tx_data); a(r.tx_pattern);
+        a(r.tx_count); some(r.tx_hdr + r.tx_count, HEADER_BYTES - r.tx_count); a(r.tx_data); a(r.tx_pattern); if (r.tx_data) a(r.tx_mask);
         if (r.tx_data && !r.tx_pattern) { a(r.tx_bytes); some(&r.data[size_t(r.tx_slot) * slot_bytes()], r.tx_bytes); }
     }
     if (r.tx_state == TxState::DATA) {
-        const uint32_t left = r.tx_bytes - r.tx_count; a(left); a(r.tx_pattern);
+        const uint32_t left = r.tx_bytes - r.tx_count; a(left); a(r.tx_pattern); a(r.tx_mask);
         if (!r.tx_pattern) some(&r.data[size_t(r.tx_slot) * slot_bytes() + r.tx_count], left);
     }
     if (r.tx_state == TxState::ZEROS) { const uint32_t left = r.tx_bytes - r.tx_count; a(left); }
     a(r.acked); a(r.next); a(r.tail); a(r.peer_stop); a(r.prep_key); a(r.prep_left);
     for (uint32_t i = 0; i < kept() && i < p.window; i++) {
         const size_t slot = (r.head + i) % p.window;
-        some(&r.meta[slot * META], HL_PLANT(p, CHECKSUM_KEPT) ? META : 3);
+        some(&r.meta[slot * META], HL_PLANT(p, CHECKSUM_KEPT) || HL_PLANT(p, MASK_KEPT) ? META : 3);
         some(&r.data[slot * slot_bytes()], size_t(r.meta[slot * META + 1]) * WORD_BYTES);
     }
     a(r.lost); a(r.answer); a(r.restart); a(r.restart_answer); a(r.error); a(r.timer_dead); a(r.answered);
@@ -70,8 +70,9 @@ Taken LinkEnd::step(const In& in) {
 // ---- the receiver ----
 
 void LinkEnd::receive(const In& in) {
-    const uint8_t b = in.rx_byte;
-    r.zero_run = b ? 0 : std::min(r.zero_run + 1, p.flush_zeros);
+    uint8_t b = in.rx_byte;
+    r.zero_run = b ? 0 : std::min(r.zero_run + 1, p.flush_zeros);     // the zeros are the wire's, before the mask comes off
+    if ((r.rx_state == RxState::DATA || r.rx_state == RxState::SKIP) && p.rules.mask) { r.rx_mask = mask_step(r.rx_mask); b ^= uint8_t(r.rx_mask); }
     switch (r.rx_state) {
     case RxState::FLUSH:                   // out of step until zeros that no packet can hold have gone by
         if (r.zero_run >= p.flush_zeros) r.rx_state = RxState::HUNT;
@@ -122,6 +123,7 @@ void LinkEnd::header_end(const In& in) {
     const bool cannot_be = (h.stream != 1 && h.stream != 2) || h.reserved != 0 || (is_restart && !p.rules.restart) ||
                            (in.rx_forwards && h.hops == 15 && h.length > 0 && !is_restart);
     r.rx_bytes = WORD_BYTES * h.length; r.rx_count = 0; r.rx_crc = CRC_START;   // the unit set back: all ones, not zero
+    r.rx_mask = mask_start(header_crc(r.rx_hdr));
     if (h.length == 0) {
         r.rx_state = RxState::HUNT;        // of no data the checksum is 0, and it is checked
         if (cannot_be) bad_fields(h, h.dsum == 0); else packet_end(in, h.dsum == 0);
@@ -366,6 +368,7 @@ void LinkEnd::send(const In& in, Taken& t) {
         break;
     case TxState::DATA:
         r.tx_byte = r.tx_pattern ? restart_byte(r.tx_count) : r.data[size_t(r.tx_slot) * slot_bytes() + r.tx_count];
+        if (p.rules.mask) { r.tx_mask = mask_step(r.tx_mask); r.tx_byte ^= uint8_t(r.tx_mask); }
         if (++r.tx_count == r.tx_bytes) packet_sent();
         break;
     case TxState::ZEROS:
@@ -449,6 +452,12 @@ void LinkEnd::start_header(const In& in, unsigned stream, uint8_t flags, uint8_t
         uint8_t b[HEADER_BYTES]; pack(was, b); memcpy(r.tx_hdr + 12, b + 12, 4);
     }
     r.tx_state = TxState::HEADER; r.tx_count = 0; r.tx_data = length > 0; r.tx_pattern = kind == Kind::RESTART;
+    r.tx_mask = mask_start(header_crc(r.tx_hdr));          // the mask starts from the header as it goes out
+    if (length && !r.tx_pattern) {                         // (a planted bug: from the header of the packet's first sending)
+        uint8_t* m = &r.meta[size_t(slot_of(r.next)) * META];
+        if (kind == Kind::DATA) memcpy(m + 7, r.tx_hdr + 12, 4);
+        else if (HL_PLANT(p, MASK_KEPT)) { uint8_t first[HEADER_BYTES] = {}; memcpy(first + 12, m + 7, 4); r.tx_mask = mask_start(header_crc(first)); }
+    }
     r.tx_bytes = WORD_BYTES * length;
     tap.start = true; tap.kind = kind; tap.bytes = HEADER_BYTES + r.tx_bytes; memcpy(tap.hdr, r.tx_hdr, HEADER_BYTES);
     count.sent[unsigned(kind)]++;

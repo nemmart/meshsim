@@ -11,6 +11,9 @@
 // its last byte (rx_valid). THE SENDER keeps the data of what it has sent until it is acknowledged, sends again
 // from the oldest not acknowledged, sends the status, and obeys the other side's stop bits. It makes both checks
 // afresh for every packet that goes out, and passes over a packet's data to do so before the header leaves.
+// THE DATA IS MASKED ON THE WIRE (header.h): the sender puts the mask on as the data leaves, from the header it has
+// just sent; the receiver takes it off as the data arrives, from the header it has just read. What is held, and what
+// the data checksum is over, is the data without the mask.
 // THE LINK'S MODE is four bits: lost (this end has lost its place), answer (the other end has said so), and the
 // same two for starting the link again: restart and restart_answer.
 //
@@ -85,6 +88,7 @@ public:
         // the receiver
         RxState rx_state = RxState::HUNT;
         uint32_t rx_count = 0, rx_bytes = 0, rx_crc = 0, zero_run = 0;
+        uint32_t rx_mask = 0;          // the mask's register, for the data arriving
         uint8_t rx_hdr[HEADER_BYTES] = {};
         bool rx_valid = false;         // the packet in rx_buf is handed over this cycle
         uint8_t rx_stream = 0, rx_length = 0, rx_hops = 0;   // of the packet handed over
@@ -103,13 +107,14 @@ public:
         uint8_t tx_slot = 0;
         bool tx_data = false;          // the packet being sent has data
         bool tx_pattern = false;       // and the data is the restart packet's
+        uint32_t tx_mask = 0;          // the mask's register, for the data going out
         uint8_t tx_byte = 0;           // the wire
         uint32_t acked = 0;            // the last acknowledge value taken: the oldest kept is the number after it
         uint32_t next = 1;             // the number that goes on the wire next
         uint32_t tail = 1;             // the number the next new packet takes
         uint32_t head = 0;             // the slot of the oldest kept
         bool peer_stop[STREAMS] = {};  // the other side's stop bits
-        std::vector<uint8_t> meta;     // a slot's stream, length and hops (and, for a planted bug, its first checksum)
+        std::vector<uint8_t> meta;     // a slot's stream, length and hops (and, for planted bugs, more: META)
         std::vector<uint8_t> data;     // a slot's words
         uint64_t prep_key = 0;         // the packet whose data the sending unit is passing over, or has; 0 for none
         uint32_t prep_left = 0;        // the cycles of that pass still to go
@@ -153,10 +158,10 @@ public:
     uint32_t restart_sum() const;          // the data checksum of this model's restart packet
 
     template <class A> void io(A& a) {
-        a(r.rx_state); a(r.rx_count); a(r.rx_bytes); a(r.rx_crc); a(r.zero_run); a(r.rx_hdr); a(r.rx_valid);
+        a(r.rx_state); a(r.rx_count); a(r.rx_bytes); a(r.rx_crc); a(r.rx_mask); a(r.zero_run); a(r.rx_hdr); a(r.rx_valid);
         a(r.rx_stream); a(r.rx_length); a(r.rx_hops); a.bytes(r.rx_buf, r.rx_buf.size());
         a(r.last); a(r.need); a(r.asked); a(r.ask_timer); a(r.wrong); a(r.ack_owed); a(r.stop_sent);
-        a(r.tx_state); a(r.tx_count); a(r.tx_bytes); a(r.tx_hdr); a(r.tx_slot); a(r.tx_data); a(r.tx_pattern); a(r.tx_byte);
+        a(r.tx_state); a(r.tx_count); a(r.tx_bytes); a(r.tx_hdr); a(r.tx_slot); a(r.tx_data); a(r.tx_pattern); a(r.tx_mask); a(r.tx_byte);
         a(r.acked); a(r.next); a(r.tail); a(r.head); a(r.peer_stop); a.bytes(r.meta, r.meta.size()); a.bytes(r.data, r.data.size());
         a(r.prep_key); a(r.prep_left);
         a(r.lost); a(r.answer); a(r.restart); a(r.restart_answer); a(r.error); a(r.round); a(r.due); a(r.status_timer);
@@ -168,7 +173,7 @@ public:
     void canon(Writer& a) const;
 
 private:
-    static constexpr unsigned META = 7;
+    static constexpr unsigned META = 11;   // stream, length, hops; for two planted bugs, its first checksum and header CRC
     unsigned slot_bytes() const { return p.max_words * WORD_BYTES; }
     struct Pick { int kind = 0; unsigned stream = 0; uint8_t length = 0; uint64_t key = 0; };   // 0 none, 1 again, 2 new
 

@@ -61,6 +61,8 @@ struct Options {
     uint32_t damage = 1, noise = 0, forge = 0, power = 0, flips = 0;
     unsigned tick = 0;                         // also stop every so many cycles; 0 is never
     uint64_t bound = 20000, max_states = 0, seconds = 0;   // max_states, seconds: stop there, and say NOT complete
+    bool deep = false;                     // the state found last is tried first: the same states, and few of them waiting at
+                                           // a time, so that a search fits in memory. A failure found is then not the shortest
     std::string out;
     bool all = false, whole = false, quiet_check = true;
     unsigned drains = 3;                       // 2: nothing or all; 3: also one word
@@ -109,6 +111,11 @@ template <class B> int search(const Options& o, B root, Case blank) {
         return ev;
     };
 
+    if (o.deep && o.max_states) {              // room for all of them at once: no table is copied to grow in the middle
+        size_t slots = 1 << 16; while (slots < 2 * o.max_states + 2) slots *= 2;
+        seen.slots.assign(slots, Hash128{0, 0});
+        nodes.reserve(o.max_states + 64); extra.reserve(o.max_states + 64); pool.reserve(o.max_states + o.max_states / 2);
+    }
     nodes.push_back(Node{0, 0, 0});
     extra.push_back(o.power | o.flips << 8);
     known(root, extra[0]);
@@ -117,9 +124,9 @@ template <class B> int search(const Options& o, B root, Case blank) {
     const uint64_t cap = 16ull * (o.cfg.p.zeros + o.cfg.p.status_timer + 64);
 
     while (!frontier.empty()) {
-        const uint32_t parent = frontier.front().first;
-        const std::vector<uint8_t> state = std::move(frontier.front().second);
-        frontier.pop_front();
+        const uint32_t parent = o.deep ? frontier.back().first : frontier.front().first;
+        const std::vector<uint8_t> state = std::move(o.deep ? frontier.back().second : frontier.front().second);
+        if (o.deep) frontier.pop_back(); else frontier.pop_front();
         b.load(state);
         // The choices at this stop, as digits of a mixed-radix number.
         struct Dim { uint8_t what; unsigned i; std::vector<uint32_t> values; };
@@ -215,9 +222,11 @@ template <class B> int search(const Options& o, B root, Case blank) {
             }
             more = false;
             for (size_t i = 0; i < dims.size(); i++) { if (++digit[i] < dims[i].values.size()) { more = true; break; } digit[i] = 0; }
-            if (o.max_states && nodes.size() >= o.max_states) { frontier.clear(); more = false; cut_short = true; printf("stopped at --max-states: NOT complete\n"); }
-            else if (o.seconds && (tried & 1023) == 0 && std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() >= double(o.seconds)) {
-                frontier.clear(); more = false; cut_short = true; printf("stopped at --seconds: NOT complete\n");
+            const bool full = o.max_states && nodes.size() >= o.max_states;
+            if (full || (o.seconds && (tried & 1023) == 0 && std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count() >= double(o.seconds))) {
+                // The states found and not yet tried: those waiting, and the one in hand if its choices are not all made.
+                printf("stopped at %s: NOT complete, %zu states still waiting\n", full ? "--max-states" : "--seconds", frontier.size() + (more ? 1 : 0));
+                frontier.clear(); more = false; cut_short = true;
             }
         }
     }
@@ -253,6 +262,7 @@ int main(int argc, char** argv) {
         else if (a == "--images") o.cfg.images = 1;
         else if (a == "--images2") o.cfg.images = 2;
         else if (a == "--images3") o.cfg.images = 3;
+        else if (a == "--images4") o.cfg.images = 4;
         else if (a == "--words") o.cfg.words = unsigned(num());
         else if (a == "--window0") o.cfg.window0 = unsigned(num());
         else if (a == "--wrong") o.cfg.wrong = unsigned(num());
@@ -263,6 +273,7 @@ int main(int argc, char** argv) {
         else if (a == "--bound") o.bound = num();
         else if (a == "--max-states") o.max_states = num();
         else if (a == "--seconds") o.seconds = num();
+        else if (a == "--deep") o.deep = true;
         else if (a == "--drains") o.drains = unsigned(num());
         else if (a == "--out") o.out = argv[++i];
         else if (a == "--fates") o.fates = std::string(",") + argv[++i] + ",";

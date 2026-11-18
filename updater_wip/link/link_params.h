@@ -23,6 +23,7 @@ struct Rules {
     bool restart = true;           // the restart handshake
     bool wrong_twice = true;       // a packet made wrong: asked for again once; the second time running, the error
     bool ask_not_kept = true;      // the other end asks for a packet no longer kept: the error, and the link starts again
+    bool mask = true;              // the data is masked on the wire (off: data that holds a packet can be taken for one)
     bool stop_holds_again = false; // HL as first written: "a stream that is stopped simply has no packets sent", a packet
                                    // to be sent again too. Unsound (cases/stopped-blocks.case). HL now: "stop" holds only
                                    // packets not yet numbered; one that has a number is sent again whatever the stop bit
@@ -48,6 +49,7 @@ enum class Plant : uint8_t {
     ERROR_ON_RELEASE,     // an error is raised on an acknowledgement behind, with nothing asked for
     RESTART_ANY_DATA,     // a restart packet is acted on whatever its data
     CHECKSUM_KEPT,        // a packet sent again goes with the checksum of its first sending
+    MASK_KEPT,            // a packet sent again is masked from the header CRC of its first sending
     COUNT
 };
 

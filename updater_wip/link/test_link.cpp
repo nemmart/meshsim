@@ -2,6 +2,7 @@
 // arrives, in order, once, and the link comes to rest. Then the wrap of the numbers, the other direction's
 // acknowledgements under a flood, and the host's window against the queue.
 #include <cstdio>
+#include <cstring>
 #include <string>
 
 #include "bench.h"
@@ -41,6 +42,35 @@ int main() {
         for (auto& e : b.end) { e.r.restart = false; e.r.last = e.r.acked = 0x3FFF0; e.r.next = e.r.tail = 0x3FFF1; }
         CHECK(b.quiet(1000000) > 0);
         CHECK(b.end[0].r.tail == 7 && b.end[1].r.tail == 7 && b.end[1].r.last == 6 && b.end[0].r.last == 6);
+    }
+    // The data is masked on the wire: every byte end 0 puts on the line for a packet with data is the byte it holds
+    // XORed with the sequence from that packet's header (header.h, mask_data), and without the rule it is the byte held.
+    for (const char* rules : {"hl", "hl-mask"}) {
+        Config cfg; cfg.packets[0][FG] = 6; cfg.packets[0][BG] = 6; cfg.packets[1][FG] = 6; cfg.words = 3;
+        std::string err; apply_rules(rules, cfg.p, err);
+        Link1 b(cfg);
+        uint8_t hdr[HEADER_BYTES] = {}, wire[HEADER_BYTES + 3 * WORD_BYTES]; unsigned at = 0, bytes = 0, checked = 0, same = 0; uint64_t made[STREAMS] = {};
+        while (!b.done() && b.bad.empty() && b.t < 200000) {
+            for (unsigned e = 0; e < 2; e++) for (unsigned s = 0; s < STREAMS; s++) { b.src[e][s].avail = b.src[e][s].total; b.fill[e][s] = 0; }
+            b.step();
+            if (b.started(0)) { at = 0; bytes = b.end[0].tap.kind == Kind::DATA ? b.end[0].tap.bytes : 0; memcpy(hdr, b.end[0].tap.hdr, HEADER_BYTES); }
+            if (at < bytes) {
+                wire[at++] = b.end[0].r.tx_byte;
+                if (at == bytes) {
+                    const unsigned s = unpack(hdr).stream - 1u;
+                    uint8_t held[3 * WORD_BYTES];
+                    for (unsigned w = 0; w < 3; w++) b.word(0, s, made[s] * 3 + w, held + w * WORD_BYTES);
+                    made[s]++;
+                    CHECK(memcmp(wire, hdr, HEADER_BYTES) == 0);
+                    same += memcmp(wire + HEADER_BYTES, held, sizeof held) == 0;
+                    if (cfg.p.rules.mask) mask_data(hdr, held, sizeof held);
+                    CHECK(memcmp(wire + HEADER_BYTES, held, sizeof held) == 0);
+                    checked++;
+                }
+            }
+        }
+        printf("%-22s %u packets with data checked on the wire byte for byte; %u went as they are held\n", rules, checked, same);
+        CHECK(b.done() && b.bad.empty() && checked == 12 && same == (cfg.p.rules.mask ? 0u : 12u));
     }
     // The starvation of the first header (numbers for each stream): the background one way while the other side's
     // foreground replies flow. End 1 sends 200 full foreground packets; end 0 sends 300 full background packets.

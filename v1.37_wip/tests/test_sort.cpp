@@ -47,6 +47,7 @@
 
 #include "harness.h"
 #include "mach.h"
+#include "units/ingress_egress.h"
 #include "rtl_images.h"
 #include "sort_input.h"
 #include "units/big_sram.h"
@@ -287,6 +288,8 @@ void run_sort(Format format, bool full, unsigned parts = 1, std::vector<uint64_t
     CHECK_EQ(mb(MBOX_LOADS), 2 * T + 1);                                // the boot's 64 + the tracer tile's, then one a tile's end
     CHECK_EQ(mb(MBOX_RESULTS), T);                                      // every tile's result request answered
     CHECK_EQ(mb(MBOX_OTHERS), 0u);
+    // the dump went out on the UART line (v1.37, 30.2: the UART is off at the reset, and an image that prints turns it on)
+    if (m.ingress().serial_n == 0) ::test::fail(__FILE__, __LINE__, "%s: the dump sent no character on the UART line", tag);
 
     // ---- every tile's final records, read from its scratchpad ----
     uint64_t word_bad = 0;

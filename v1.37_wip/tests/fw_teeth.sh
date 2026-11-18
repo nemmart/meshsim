@@ -5,14 +5,17 @@
 # PATH or named by RISCV_PREFIX) and the chip's tests (clang release, built here first) run on them (FW_IMAGES):
 # test_sort sort_16_kv32, test_memory and test_segment's generated segments. A bug is caught when a test fails or
 # stops; the table names the tests that failed. Not planted: a handshake sent early or not waited for (ARMED,
-# STREAMS_ARMED), whose race these runs' timings never provoke, so that no test can catch it. (WORKER4's unplanted bug in
+# STREAMS_ARMED), whose race these runs' timings never provoke, so that no test can catch it; likewise the reply sent
+# without waiting for the tracer tile's record (30.6), which lands long before the master has every result. (WORKER4's unplanted bug in
 # cc/master.c, the count of words loaded with a transfer in flight, went with the thresholds: WORKER7.) A bug that
 # breaks one of the forward count's undefined cases is caught by the simulator's stop, "died".
 #
 # The bugs are slips in each program v1.36 carries over from v1.35 (cc/cc1.c, replay/replay_ctl.c, tracer/tracer_ctl.c,
 # crt0.S, the sort's port and schedule), in the port layer (port/mesh.h), and in the two programs new in v1.36
 # (cc/memory.c, cc/cc_mem.c). v1.37: and in the master tile's program for the host's frames (cc/master.c, with
-# include/host.h), which test_master alone runs: a bug there is run against test_master, the others as before.
+# include/host.h), which test_master alone runs: a bug there is run against test_master, the others as before; a bug
+# in the tracer tile's program against both, since its result carries its last record to v1.37's master alone (30.6).
+# Stage 5 (the INTEGRATOR): the reply (30.7) and the tracer tile's result (30.6), checked at the host's end.
 # Usage: tests/fw_teeth.sh [FILTER] (from anywhere): only the bugs whose name contains FILTER; exit 1 if a bug goes
 # uncaught or its sed plants nothing. JOBS sets make's -j (8); TEETH_DIR the scratch directory (default: a new
 # temporary one, removed at the end).
@@ -31,7 +34,7 @@ build() {   # the images of fw/ as $W/fw holds it, into $W/out
 run() {   # run [FILE]: prints the failing tests, "-" if none; a bug in v1.37's master program is test_master's alone
   local f="" t rc
   local tests=("test_sort sort_16_kv32" "test_memory" "test_segment segment_")
-  case ${1:-} in cc/master.c|include/host.h) tests=("test_master master_") ;; '') tests+=("test_master master_") ;; esac
+  case ${1:-} in cc/master.c|include/host.h) tests=("test_master master_") ;; ''|tracer/tracer_ctl.c) tests+=("test_master master_") ;; esac
   for t in "${tests[@]}"; do
     (cd "$SIM" && FW_IMAGES="$W/out" timeout 300 ./$B/$t > "$W/run.out" 2>&1) 2> /dev/null
     rc=$?
@@ -97,6 +100,14 @@ BUGS=(
   "master: a copy started without the count's 0~cc/master.c~s/        if ((host_link->DMA_FORWARD_COUNT \& HL_FORWARD_COUNT) == 0) {/        if (1) {/"
   "master: a copy's landing not waited for~cc/master.c~/^        wait_counter(CTR_LINK);$/d"
   "master: a run started without the last one's done~cc/master.c~/^    if (run_out) run_wait();$/d"
+  "reply: s and N swapped~cc/master.c~s/write128(updater->PAGE_COUNT, tracer_info\[0\], N, S);/write128(updater->PAGE_COUNT, tracer_info[0], S, N);/"
+  "reply: EGRESS_COUNT 71~cc/master.c~s/    host_link->EGRESS_COUNT = ML_REPLY_ROWS;/    host_link->EGRESS_COUNT = ML_REPLY_ROWS - 1;/"
+  "reply: record s + 1 from the master's memory for the tracer tile's~cc/master.c~s/    stream(0, ML_REPLY, IE_EGRESS, ML_REPLY_ROWS, SIZE_128, 0, MODE_WRITE, TILE_MASTER);/    stream(0, ML_REPLY, IE_EGRESS, 4, SIZE_128, 0, MODE_WRITE, TILE_MASTER); stream(1, ML_EXPECT, IE_EGRESS, RECORD_WORDS, SIZE_128, 0, MODE_WRITE, TILE_MASTER);/; s/^    transfer(1);$/    transfer(2);/"
+  "reply: the record before the reply's header and figures~cc/master.c~s/    stream(0, ML_REPLY, IE_EGRESS, ML_REPLY_ROWS, SIZE_128, 0, MODE_WRITE, TILE_MASTER);/    stream(0, ML_REPLY + 16, IE_EGRESS, RECORD_WORDS, SIZE_128, 0, MODE_WRITE, TILE_MASTER); stream(1, ML_REPLY, IE_EGRESS, 4, SIZE_128, 0, MODE_WRITE, TILE_MASTER);/; s/^    transfer(1);$/    transfer(2);/"
+  "reply: the last run's STAT_STALL_DATA for STAT_CYCLES~cc/master.c~s/write128(updater->STAT_STALL_DATA, updater->STAT_CYCLES, hi, lo);/write128(updater->STAT_STALL_DATA, updater->STAT_STALL_DATA, hi, lo);/"
+  "tracer_ctl: the result without the record~tracer/tracer_ctl.c~s/hdr\[TL_H_RESULT\], 68, ctr, DST_CC1);/hdr[TL_H_RESULT], 0, ctr, DST_CC1);/"
+  "tracer_ctl: the rows traced a window short~tracer/tracer_ctl.c~s/send128(0, status, tracer->ERRORS, tr_results\[TL_R_WINDOWS\] \*/send128(0, status, tracer->ERRORS, (tr_results[TL_R_WINDOWS] - 1) */"
+  "cc1: no store to UART_CONTROL, and it prints~cc/cc1.c~s/if (cc1->UART_CONTROL == 0) cc1->UART_CONTROL = uart_setting(CC1_UART_DIVIDER);/;/; s/case CC_UART: cc1->UART_CONTROL = uart_setting(arg); break;/case CC_UART: break;/"
   "host.h: DMA_FORWARD_COUNT's discard at bit 30~include/host.h~s/#define HL_FORWARD_DISCARD          0x80000000u/#define HL_FORWARD_DISCARD          0x40000000u/"
   "host.h: background_service at the foreground's bit~include/host.h~s/#define HL_EVENT_BACKGROUND_SERVICE (1 << 9)/#define HL_EVENT_BACKGROUND_SERVICE (1 << 8)/"
 )

@@ -164,6 +164,7 @@ private:
 struct Run {
     bool finished = false;
     uint64_t cycles = 0;                        // from the reset, to the poll that saw the done word
+    uint64_t after_exit = 0;                    // v1.37: the cycles run after it, until the proof was settled
     std::vector<uint32_t> summary, report;   // C&C 1's mailbox, the tracer tile's tr_results
     std::vector<std::vector<uint64_t>> rows;    // each tile's rows as they left its row port, ROW_LONGS a row
     std::vector<std::vector<int64_t>> row_cycles;   // and the cycle each left in, the RTL test's cycles
@@ -195,6 +196,9 @@ struct Proof {
     // A run that must end early (a damaged packet file): run_chip's own checks, of a segment traced and replayed, are
     // left out, and the proof's are the run's.
     virtual bool ends_early() const = 0;
+    // v1.37 (30.7): after the master's exit, whether what it sent has all arrived (the host's end has the reply); the
+    // chip runs on until then, a poll at a time, to a limit. The run's cycles stay the exit's.
+    virtual bool settled(mach::Mach&) { return true; }
 };
 struct Options {
     unsigned parts = 1;                         // the chip split over threads (mach.h)

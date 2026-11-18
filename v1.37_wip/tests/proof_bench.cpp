@@ -4,6 +4,7 @@
 #include "cache_figures.h"
 
 #include <cstdarg>
+#include <cstring>
 #include <cstdio>
 #include <fstream>
 #include <set>
@@ -43,7 +44,8 @@ enum : unsigned { MR_STATUS = 0, MR_DETAIL, MR_FRAMES, MR_RUNS, MR_PAGES_TAKEN, 
                   MR_UPDATER_ERRORS, MR_ERROR_LINES, MR_MCAUSE = 22, MR_MEPC, MR_BOOT, MR_HANDED, MR_RELEASED, MR_END, MR_PAGES_QUEUED,
                   MR_LINK_WORDS, MR_WAKES, MR_LINK_READS, MR_PAGE_COUNT = 32, MR_RUN_START = 40, MR_RUN_DONE = 48, MR_FRAME_TYPE = 56,
                   MR_FRAME_START = 72, MR_FRAME_WAKES = 88, MR_FRAME_READS = 104, MR_COUNT_STORES = 120, MR_HANDED_WAKES, MR_HANDED_READS,
-                  MR_FRAME_AWAKE, MR_WORDS = MR_FRAME_AWAKE + 16 };
+                  MR_FRAME_AWAKE, MR_REPLY_MCYCLE = MR_FRAME_AWAKE + 16, MR_TRACER_ROWS = MR_REPLY_MCYCLE + 2, MR_TRACER_ERRORS,
+                  MR_TRACER_STATUS, MR_REPLIED, MR_WORDS };
 constexpr uint32_t MR_OK = 1, MR_TRAP = 2;
 // ---- fw/tracer/tracer_layout.h's header words the master writes
 enum : unsigned { TL_H_EXPECT = 8, TL_H_ADVICE_N = 10, TL_H_HASH_MUL = 12, TL_H_HASH_STEP = 13, TL_H_HASH_LINES = 14 };
@@ -207,6 +209,59 @@ struct ChipProof final : segment::Proof {
     }
 
     bool ends_early() const override { return c.expect.trap || c.expect.cut; }
+
+    // ---- v1.37 (30.7, 29.14): the reply, at the host's end: its foreground words as they come, with their hops, and
+    //      the link packets they came in. The run goes on past the master's exit until all 72 are in.
+    std::vector<::hostlink::Word> reply;
+    std::vector<unsigned> reply_hops;
+    std::vector<size_t> reply_ends;                  // the words after which a link packet ended
+    bool settled(mach::Mach& m) override {
+        units::IngressEgress::LinkAllocs a;
+        ::hostlink::Word w;
+        unsigned hops = 0;
+        bool last = false;
+        while (m.host().end.take(::hostlink::FOREGROUND, w, &hops, &last)) {
+            reply.push_back(w); reply_hops.push_back(hops);
+            if (last) reply_ends.push_back(reply.size());
+        }
+        return reply.size() >= 72 || m.word(units::ID_MASTER, results_at + 4 * MR_STATUS) != MR_OK;
+    }
+    static U128 word_of(const ::hostlink::Word& w) {
+        U128 v;
+        std::memcpy(&v.lo, w.byte, 8); std::memcpy(&v.hi, w.byte + 8, 8);
+        return v;
+    }
+    void check_reply(mach::Mach& m, const segment::Run& run, updater_view::UpdaterView& u) {
+        if (reply.size() != 72) { fail("the reply: %zu words at the host's end, not 72 (%llu cycles run after the exit)", reply.size(), (unsigned long long)run.after_exit); return; }
+        for (unsigned h : reply_hops) if (h != 0) { fail("the reply: a link packet with hops %u from the first ASIC", h); break; }
+        if (reply_ends != std::vector<size_t>{32, 64, 72}) fail("the reply: its link packets end after %zu words; 32, 64 and 72 expected (17.6.8)", reply_ends.empty() ? size_t(0) : reply_ends[0]);
+        auto w32 = [&](unsigned word, unsigned k) { uint32_t v; std::memcpy(&v, reply[word].byte + 4 * k, 4); return v; };
+        if (w32(0, 0) != 0 || w32(0, 1) != 0 || w32(0, 2) != 16 || w32(0, 3) != 71)
+            fail("the reply's header word: 0x%08x 0x%08x type %u length %u; compression 0, type 16, length 71", w32(0, 0), w32(0, 1), w32(0, 2), w32(0, 3));
+        uint64_t rows = 0;
+        for (const auto& r : run.rows) rows += r.size() / segment::ROW_LONGS;
+        if (w32(1, 0) != c.segment || w32(1, 1) != c.asics) fail("the reply's word 1: s %u and N %u; the run's %u and %u", w32(1, 0), w32(1, 1), c.segment, c.asics);
+        if (w32(1, 2) != rows) fail("the reply: %u rows traced; the replayers sank %llu", w32(1, 2), (unsigned long long)rows);
+        if (w32(1, 3) != u.page_count()) fail("the reply: PAGE_COUNT %u, the Updater's %u", w32(1, 3), u.page_count());
+        const uint64_t mcycle = uint64_t(w32(2, 0)) | uint64_t(w32(2, 1)) << 32;
+        if (mcycle != (uint64_t(R[MR_REPLY_MCYCLE]) | uint64_t(R[MR_REPLY_MCYCLE + 1]) << 32) || mcycle == 0 || mcycle > run.cycles + run.after_exit)
+            fail("the reply's mcycle %llu: the master's results say %u", (unsigned long long)mcycle, R[MR_REPLY_MCYCLE]);
+        if (w32(2, 2) != u.stat(0) || w32(2, 3) != u.stat(1)) fail("the reply: STAT_CYCLES %u and STAT_STALL_DATA %u, the Updater's %u and %u", w32(2, 2), w32(2, 3), u.stat(0), u.stat(1));
+        for (unsigned k = 0; k < 4; k++) if (w32(3, k) != 0) { fail("the reply's error word %u is 0x%x: a reply is sent only when the segment has run", k, w32(3, k)); break; }
+        // words 4-71: the Tracer's record at the segment's end, as the tracer tile holds it; and the state, words 0 and
+        // 2-65, record s + 1's, which the host checks (29.14)
+        const bool last = c.segment + 1 == c.asics;
+        for (unsigned w = 0; w < RECORD_WORDS; w++) {
+            const U128 got = word_of(reply[4 + w]), want = row(m, units::ID_TRACER, places.tr_final + 4 * w);
+            if (got != want) { fail("the reply's record, word %u: %016llx%016llx, the tracer tile's %016llx%016llx", w, (unsigned long long)got.hi, (unsigned long long)got.lo, (unsigned long long)want.hi, (unsigned long long)want.lo); break; }
+            if (!last && registers && w != 1 && w < 66) {
+                const U128 r = frame_word(*registers, size_t(RECORD_WORDS) * (c.segment + 1) + w);
+                if (got != r) { fail("the reply's record, word %u: %016llx%016llx, record s + 1's %016llx%016llx", w, (unsigned long long)got.hi, (unsigned long long)got.lo, (unsigned long long)r.hi, (unsigned long long)r.lo); break; }
+            }
+        }
+        if (R[MR_TRACER_ROWS] != w32(1, 2) || R[MR_TRACER_STATUS] != 1 || R[MR_TRACER_ERRORS] != 0 || R[MR_REPLIED] != 1)
+            fail("the master's results of the reply: rows %u, the tracer tile's status %u, the Tracer's ERRORS 0x%x, replied %u", R[MR_TRACER_ROWS], R[MR_TRACER_STATUS], R[MR_TRACER_ERRORS], R[MR_REPLIED]);
+    }
     void check(mach::Mach& m, segment::Run& run) override {
         check_all(m, run);
         run.failures += cachefig::faults(name, m.cache_system());
@@ -316,6 +371,9 @@ struct ChipProof final : segment::Proof {
             else if (cap.sent != want)
                 fail("the host End's data link packets as first sent: %zu bytes, the packet file's %zu; the first difference at byte %zu", cap.sent.size(), want.size(), at);
         }
+
+        // ---- the reply at the host's end (30.7, 29.14)
+        check_reply(m, run, u);
 
         // ---- each image as its run ended, against gold's; the frozen ones again at the end
         for (size_t i = 0; i < done.size() && i < run_names.size(); i++) {

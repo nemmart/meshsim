@@ -33,8 +33,10 @@ section, what the specification says, what `main` has. Kept as the specification
 | --- | --- | --- |
 | 17.10 | the Updater is its controller (`updater_ctl.h`), on the arbiter's client port 1 and the cache's look-up port 1 | the black box (`updater.h`) by default; the controller behind `MachConfig::updater_ctl`, against test pieces (`tests/ctl_bench.h`), not the arbiter and the cache: WORKER9's joint |
 | 17.10.4, 23.6.8 | v1.37's master tile frees nothing; the cache needs no discard | as specified |
-| 17.10.1 | `EVENTS` packed: `free_page_credit` at [2] | at [3], [2] reading 0 (`updater_top.h`, `updater.h`, the firmware's `host.h`) |
-| 17.10.1, 17.10.11 | a bad root or free page address is UB: the simulator stops on it; `ERRORS.lpddr_error` is not set for it | the controller and the black box set `ERRORS.lpddr_error` and stop the run (WORKER6's C12, WORKER3's C10) |
+| 17.10.1 | `EVENTS` packed: `free_page_credit` at [2] | at [3], [2] reading 0, in every place, which move together or the comparison with the black box breaks (WORKER6): `updater_top.h` 61 and 163; the black box, `updater.h`; the firmware's `host.h` 61 and `master.c`'s `UPD_EVENT_FREE_PAGE_CREDIT`; the benches, through `Updater::EV_FREE_PAGE_CREDIT` |
+| 17.10.1, 17.10.11 | a bad root or free page address is UB: the simulator stops on it; `ERRORS.lpddr_error` is not set for it | the controller and the black box set `ERRORS.lpddr_error` and stop the run (WORKER6's C12, WORKER3's C10): `updater_ctl.h` 408 and 576 to stop the simulator instead |
+| 17.10.2, 17.10.11 | a run of values past word index 2³² − 1, and a page at 2²³ or above, are UB: the simulator stops | the index wraps to 0 silently (`updater_ctl.h` 656), and at depth 3 there is no `beyond` check (447, `depth < 3`) (WORKER6) |
+| 17.10.1 | the three roots held as 32 bits, bit 31 set UB | as specified; the check of bit 31 is not made |
 
 ## The host link (chapter 28)
 

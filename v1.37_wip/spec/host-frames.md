@@ -98,6 +98,9 @@ Frames 2, 5, 6 and 9 carry **update words:** one sequence of 64-bit words, made 
 
 - **A file's length is fixed when it is made, and sets its depth** (23.5). No update adds a level; an update past its
   depth's reach is an error (17.10.1, `beyond`).
+- **What the Updater reaches:** an update word's start is a 32-bit word index, so a run of values ends at index
+  2³² − 1 at the latest, and a page below 2²³, 32 GiB of file: a depth-3 file's 2³⁰ pages are beyond it past that.
+  A frame that passes either is UB (17.10.2).
 - **A copy has its source's length** (owner). The program image's length is in frame 1; the cycle-0, start and final
   images and the Tracer's copy all inherit it. **A jump table's length follows from *k*:** 2*ᵏ* lines, in pages.
 - **Whoever makes the files makes every root,** by creating the file or copying its source, before the Updater runs

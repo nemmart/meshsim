@@ -2301,9 +2301,9 @@ Its words, at offsets from its window's base, 0xFFFF_FC00:
 | 32 | 0x080 | `RUN_CONFIG` | R/W | [0] `lru`: the run's words are LRU-coded; [1] `continue`: the run carries on in the frame of the last; [2] `tracer_copy`: before a page of the image is changed, it is copied as it stands into the Tracer's copy; [4:3] `depth`, the files' depth, 0 to 3; [6:5] `root`: 0 the file exists, 1 first make an empty root at `IMAGE_ROOT`, 2 first copy the root at `SOURCE_ROOT` (17.10.5) |
 | 33 | 0x084 | `WORD_COUNT` | R/W | [31:0] the update words this run applies, header words and values alike. The run counts it down, and ends when it is 0 and its last page is written |
 | 34 | 0x088 | `PAGE_COUNT` | R/W | [31:0] the pages that will be queued for this run. Each page taken from the free page queue counts it down; after `done`, the pages not used |
-| 35 | 0x08C | `IMAGE_ROOT` | R/W | [30:0] the root of the file the run updates, in units |
-| 36 | 0x090 | `TRACER_ROOT` | R/W | [30:0] with `tracer_copy`, the root of the Tracer's copy |
-| 37 | 0x094 | `SOURCE_ROOT` | R/W | [30:0] with `root` 2, the root of the file whose root is copied |
+| 35 | 0x08C | `IMAGE_ROOT` | R/W | [31:0] the root of the file the run updates, in units, held as stored; bit 31 set is UB |
+| 36 | 0x090 | `TRACER_ROOT` | R/W | [31:0] with `tracer_copy`, the root of the Tracer's copy; as `IMAGE_ROOT` |
+| 37 | 0x094 | `SOURCE_ROOT` | R/W | [31:0] with `root` 2, the root of the file whose root is copied; as `IMAGE_ROOT` |
 | 48–53 | 0x0C0–0x0D4 | `STAT_CYCLES`, `STAT_STALL_DATA`, `STAT_STALL_PAGES`, `STAT_STALL_MEMORY`, `STAT_PAGES_READ`, `STAT_PAGES_WRITTEN` | R | [31:0] each, the statistics counters, below |
 
 Every other word of blocks 2–7 is unmapped (5.3).
@@ -2343,10 +2343,10 @@ only by the reset:
 
 | Counter | Counts |
 | --- | --- |
-| `STAT_CYCLES` | cycles of a run, from its first to the cycle `done` is set |
-| `STAT_STALL_DATA` | cycles the run waits for an update word: the decoder has none, and `WORD_COUNT` is not 0 |
+| `STAT_CYCLES` | cycles of a run, from the cycle after `START`'s effect to the run's last cycle; the cycle `done` is posted is not counted |
+| `STAT_STALL_DATA` | cycles the run, in its next state, waits for an update word: the decoder has none, and `WORD_COUNT` is not 0 |
 | `STAT_STALL_PAGES` | cycles waiting on an empty free page queue |
-| `STAT_STALL_MEMORY` | cycles waiting on a burst's last beat or response, or on a reply of the cache |
+| `STAT_STALL_MEMORY` | cycles a state waits on its burst or reply: look-up, load, flush write, flush update, new write and new update while its burst or request is out; root read, root write, half read and flush read while a burst is in flight. Not counted in any wait counter: the cycle a state issues a burst or a request, the 128 cycles of a fill, the level and take steps that issue nothing |
 | `STAT_PAGES_READ` | read bursts: pages and half pages. A page or half that is a hole is written without a read and counts none |
 | `STAT_PAGES_WRITTEN` | write bursts, pages and half pages; with `root` 2 the root's copy counts a read and one or two writes |
 
@@ -2373,8 +2373,8 @@ The decoder turns the word port's 128-bit words into **update words**, 64 bits e
 - **Header words and values.** With no run of values open, an update word is a **header word:** [31:0] the start,
   a 64-bit word's index in the file, and [63:32] the count of values that follow. Each value goes to the next
   64-bit word of the file. Every update word, header or value, counts `WORD_COUNT` down by one.
-- **A value's type.** With *n* = min(the values left in its run of values, `WORD_COUNT`), what this run will still
-  deliver of it:
+- **A value's type.** With *n* = min(the values left in its run of values, `WORD_COUNT`), both counted before this
+  value counts them down, so *n* counts the value itself: what this run will still deliver of it:
 
   | The value's place | *n* | Type |
   | --- | --- | --- |
@@ -2383,8 +2383,13 @@ The decoder turns the word port's 128-bit words into **update words**, 64 bits e
   | anywhere else, or fewer | | words |
 
   The type says the page or half will be written whole by this run, and so need not be read first (17.10.5).
+- **Only while a run is in progress and not stopped.** Idle, the input queue fills (17.10.3) and nothing is decoded.
 - **One value ahead.** The decoder decodes into an output register, one value ahead of the run, and decodes the
-  next in the cycle the run takes it.
+  next in the cycle the run takes it. **A header word waits for the output register too,** so with values coming
+  steadily each header word costs the run one cycle with no value (`STAT_STALL_DATA` + 1).
+- **The limit of a run of values** (owner): a header word whose start plus its count passes 2³², a word index past
+  2³² − 1, is UB. So the Updater names a page below 2²³ only, at depth 3 too, where the file's depth would reach
+  2³⁰: a value whose page is 2²³ or more is beyond what the Updater can reach, and UB (29.4).
 - **`continue`** 1 keeps the table, the bits in the buffer and the open run of values from the last run: the run
   carries on in the same frame. `continue` 0 clears all three at `START`: a new frame. A frame's padding, always
   under 128 bits (29.2), is so cleared, and never a whole word left on the input.
@@ -2449,7 +2454,9 @@ the code that is the specification's authority (`src/units/updater_ctl.h`):
 - **Beyond:** with `depth` below 3, a page number (the value's index over 512) of 2^(10·`depth`) or more sets
   `ERRORS.beyond` and stops the run.
 - **Another page:** a page is held and the value is in another: the held page is flushed first.
-- **No page held:** the value's page is brought in. At depth 0 the root is the data page, owned, held at once.
+- **No page held:** the value's page is brought in. At depth 0 the root is the data page, owned, held at once,
+  with no look-up; `tracer_copy` then makes no page of the Tracer's copy, but with `root` 2 its root is still
+  written.
   Otherwise its look-up goes to the cache.
 - **The half not yet had:** if the value's type covers it, it is marked had with no read; if the held page is a
   hole, it is filled with zeros; otherwise it is read from the page's source, a half-page burst.
@@ -2457,16 +2464,20 @@ the code that is the specification's authority (`src/units/updater_ctl.h`):
   taken: a value a cycle while they come and stay in the page.
 
 With no value: while `WORD_COUNT` is not 0 the run waits for the data; at 0, the held page, if any, is flushed, and
-then the run is **done:** `EVENTS.done` is posted, and `STATUS.busy` reads 0 from the next cycle.
+then the run is **done:** the run's last cycle sets the `done` pulse; the next cycle posts `EVENTS.done`, and
+`STATUS.busy` reads 0 from the cycle `done` can be seen, two cycles after the run's last.
 
 **A page brought in.** The look-up (23.6.3) of the image, and with `tracer_copy` of the Tracer's copy, say for each
 file where its path stops being its own: `ok`, the file owns the page; `hole` or `not_owned` at level *L*, the file
 must make every level from *L* down its own.
-- **If the image owns the page,** it is held as the image's own: written in place.
+- **If the image owns the page** and, with `tracer_copy`, the Tracer's copy does too, it is held as the image's own:
+  written in place. If the image owns it and the copy does not, the copy's levels are made first, then the image's
+  own page is held.
 - **Otherwise the pages the fault needs are counted first,** depth − *L* for each file that must, and if they are
   more than `PAGE_COUNT`, `ERRORS.out_of_pages` is set and the run stops, having taken none.
 - **Then level by level from the top,** at each level the Tracer's copy first and then the image, each file that
-  must make that level its own:
+  must make that level its own. The walk takes a cycle for each (level, file) pair from level 0, those that do
+  nothing included: up to 2·`depth` cycles.
   1. **its source** at that level, the page its entry named, or none below a hole, is read whole into the page
      memory, an index page with every entry but a hole having its owned bit cleared as it streams in, and the entry the path takes at
      the next level caught on the way. When the two files share the source at a level, it is read once;
@@ -2476,24 +2487,28 @@ must make every level from *L* down its own.
   4. **the entry above it is changed** by an update naming the new page, owned, and its reply awaited. **The data is
      always in LPDDR before an entry names it** (23.6.8).
   
-  The image's data page is the exception: its page is taken, but it is held and written only when the run is done
-  with it. The Tracer's copy's data page is written from the source as it stands, **before the image's is
+  The image's data page is the exception: its page is taken, **but not read,** and it is held and written only when
+  the run is done with it. Its halves are read when first touched and not covered, or at its flush; but when the
+  Tracer's copy has just loaded the same source at that level, the page is held with both halves had. The Tracer's copy's data page is written from the source as it stands, **before the image's is
   changed**, so the copy gets the original page (owner).
 
 **A page flushed.** A page the image owns is written in place by its dirty halves: the whole page if both are
 dirty, a half-page burst if one, nothing if neither. A new page is written whole: its halves not had are read from
 its source first, or are zeros if it is a hole; then, after the write's response, the update that names it.
 
-**What it does not do:** it never reads a page that a run will write whole, never writes a page it has not changed,
-and changes a page's entry only after the page is in LPDDR. It never sends a discard (23.6.8).
+**What it reads and writes:** it reads a half only if the value that first touches it, with the rest of its run of
+values, does not fill it in this run (so a half filled by two runs of values is read, then written whole); it
+writes only new pages, whole, and an owned data page's dirty halves; and it changes a page's entry only after the
+page is in LPDDR. It never sends a discard (23.6.8).
 
 **The runs software makes** (30): the program image, a jump table, the data image, and the memory segments as three
 runs, before segment *s*, segment *s* with `tracer_copy`, and after it with `continue`.
 
 #### 17.10.6 Its memory side
 
-- **Bursts** (23.10): a half page, 2 KiB at a multiple of 2,048, or a page, 4 KiB; never a line. One read burst and
-  one write burst at most in flight; it waits for a write's response before the update that names its page.
+- **Bursts** (23.10): a half page, 2 KiB at a multiple of 2,048, or a page, 4 KiB; never a line. **One burst at most
+  in flight, read or write:** every state waits for its burst before it issues the next, and for a write's response
+  before the update that names its page.
 - **The look-up port** (23.6.2): one request at a time, a look-up for each page brought in, and an update for each
   new page. A reply of `hole` or `beyond` to an update, or `beyond` to a look-up, cannot come to a correct Updater:
   it looks up first and checks `beyond` itself.
@@ -2507,25 +2522,26 @@ As the code holds them, at the signals' widths:
 
 | Register | Bits | What it holds |
 | --- | --- | --- |
-| words 32–37 | 164 | `RUN_CONFIG` (7), `WORD_COUNT`, `PAGE_COUNT` (32 each), the three roots (31 each) |
+| words 32–37 | 167 | `RUN_CONFIG` (7), `WORD_COUNT`, `PAGE_COUNT` and the three roots (32 each) |
 | the statistics counters | 192 | six of 32 bits |
 | the control block's | 8 | `busy`, `ERRORS` (5), the `done` and credit pulses |
 | the input queue | 518 | 4 words, its head (2), its count (3), `ready` |
 | the decoder | 2,413 | the bit buffer (194) and its count (8); the LRU table (32 × 64); the open run of values: its next index and its values left (32 each); the output register: valid, index (32), value (64), type (2) |
 | the free page queue's pointers | 24 | head (8), count (9), entries gone since the last credit (7) |
-| the state machine | 353 | the state (5), the level (2) and the file (1); for each file the look-up's status (3), level (2) and entry (32), whether it must take pages, and its source at this level (32); the page memory's contents (its source, level, valid) and the next level's entry caught (32); the new page (31); the fill row (8); the held page: valid, owned, a hole, its page number (30), where it is written (31), where its halves come from (31), each half had and dirty |
+| the state machine | 346 | the state (5), the level (2) and the file (1); for each file the look-up's status (3), level (2) and entry (32), whether it must take pages, and its source at this level (32); the page memory's contents (its source, level, valid) and the next level's entry caught (32); the new page (31); the fill row (8); the held page: valid, owned, a hole, its page number (23), where it is written (31), where its halves come from (31), each half had and dirty |
 | the AXI port | 266 | AR (`valid`, address 32, `len` 8) and the read in progress (active, clearing owned bits, an error, its row, the entry to catch); AW, the write in progress (active, an error, each half's source, rows left and next) and W (`valid`, the beat 128, `wlast`) |
-| the look-up port | 138 | the request (100), a reply awaited, the last reply (37) |
+| the look-up port | 131 | the request (`valid`, `op`, `root`, `depth`, a 23-bit `page`, `level`, `entry`: 93), a reply awaited, the last reply (37) |
 | the page memory's read register | 128 | |
 
-**In all 4,204 flip-flops,** 2,048 of them the LRU table, besides the page memory's 4 KiB and the free page queue's
+**In all 4,193 flip-flops,** 2,048 of them the LRU table, at `LPDDR_ADDRESS_BITS` 32 (the AR and AW addresses), besides the page memory's 4 KiB and the free page queue's
 1 KiB.
 
 #### 17.10.8 Errors
 
 **An error stops the run** (17.10.1's table): `ERRORS` takes its bit, the run goes to its stopped state with
 `STATUS.busy` at 1 and no `done`, takes in what is still in flight from LPDDR and the cache, and sends nothing more.
-The decoder stops with it. **It is not recovered from** (owner): a peripheral's error is its tile's, which stops the
+The decoder stops with it; the input queue still takes words until it holds 4, since `ready` does not depend on the
+run (17.10.3). **It is not recovered from** (owner): a peripheral's error is its tile's, which stops the
 chip (7.4, 22.28); what follows is not designed in v1.37 *(item 181)*.
 
 - **`out_of_pages` takes no page:** a fault's pages are counted before any is taken.
@@ -2560,8 +2576,10 @@ answered after it (23.10, 23.6.2).
 
 **UB the simulator stops on:** a store to words 32–37 during a run; a `START` during a run; a `WRITE` into its region
 of other than 128 bits or to a part other than 2; a root, as the run starts, or a free page, as it is taken, that
-is not a page's address in LPDDR, and a `RUN_CONFIG.root` of 3; and a reply of the cache that cannot come to a correct Updater
-(17.10.6), which says the controller or the cache is wrong.
+is not a page's address in LPDDR, and a `RUN_CONFIG.root` of 3; a run of values past word index 2³² − 1 (17.10.2);
+and, as faults of the controller or the cache: a reply of the cache that cannot come to a correct Updater
+(17.10.6), two accesses to the page memory's port in a cycle, an R beat with no read in progress, a B response with
+no write in progress, a reply with no request outstanding, and a refill past the shifter's reach.
 
 **What it counts,** beside the six counters: look-ups and updates, read and write bursts, beats in and out, words
 taken on the port and values applied.
@@ -2949,7 +2967,8 @@ Invariants 27 to 34 are new in v1.36: rules the machine states as UB that v1.35 
     `ERRORS.egress_error`, for a word into a full outgoing queue or with `EGRESS_COUNT` at 0.
 36. **The Updater's rules** (17.10.9): words 32–37 and `START` only while it is idle; `WRITE`s into its region of
     128 bits, to part 2 alone, from one source at a time; every root and free page a page's address in LPDDR, every
-    free page new; `WORD_COUNT` the frame's count, so that no run ends inside a code. **Hardware:**
+    free page new; `WORD_COUNT` the frame's count, so that no run ends inside a code; no run of values past word
+    index 2³² − 1, and no page at 2²³ or above. **Hardware:**
     `ERRORS.queue_overrun`, `beyond`, `out_of_pages`.
 37. **The cache's clients' rules** (23.6.8): a page's data in LPDDR before an entry names it; one writer for a file
     at a time; an owned index page changed only by `update`; a page used only after its discard's reply; a page
@@ -3067,7 +3086,7 @@ an attach link included, in four cycles: three register stages and one for the r
 | a service flag | posted in the cycle its queue's "asks" rises: a word into an empty queue, the count reaching 0 with words waiting, a DMA transfer ending with words left | contract | 17.6.7 | not modelled |
 | Egress | a link packet offered once 32 words of a frame, or its last, are in the outgoing queue; then the link's (28) | contract | 17.6.8 | not modelled |
 | the host link | a byte a link cycle each way; a full link packet 528 bytes; the pass over its data 32 cycles; the status at most 512 cycles apart; a recovery 669 cycles on average | contract; the figures `[meas: the model]` | 28 | not modelled |
-| the Updater | a value a cycle into the page memory while values come and stay in the page; each page brought in a look-up, each new page a write and its response then an update and its reply | contract, from its code | 17.10.5 | not modelled |
+| the Updater | a value a cycle into the page memory while values come and stay in the page, and a cycle for each header word; each page brought in a look-up, each new page a write and its response then an update and its reply | contract, from its code | 17.10.5 | not modelled |
 | the cache | 2 cycles a level on hits; a look-up of a depth-2 file on hits 6 cycles from its handshake; an update 87 with its path in the cache `[model]` | contract, from its code | 23.6.5, 23.6.7 | 6 cycles a hit, 80 a miss (v1.36's model) |
 | the AXI arbiter | a cycle each way: an address taken in *t* at `lpddr` from *t* + 1, a beat or response from `lpddr` at its client a cycle later; a line read about 80 cycles on the simulator's LPDDR | contract, from its code; the model's | 23.11, 23.12 | not modelled |
 | the RW engine | a `START` issued in *t* raises the job's first burst address on AR or AW of its AXI port from *t* + 3, and a write's first beat on W from *t* + 4; then a beat a cycle while the port takes them. A read ends in the cycle its last beat comes, a write in the cycle its last burst is answered | the RTL's | 17.7 | no model |
@@ -4740,7 +4759,7 @@ not used here.
 | **total per compute tile** | | **≈ 0.52–0.61 mm² in v1.35,** with the replayer and an attach port, about 35–40 % of the per-tile logic budget. v1.36's changes all reduce it but the core's two extensions and the read and gather queues' entries. Still inside 1.5 mm² |
 | the special tiles (2.1) | tile instances with the compute tile's scratchpad, `SCRATCHPAD_BYTES`, each a tile's logic plus its peripheral and, with a sending peripheral, its DMA | not estimated here. v1.35 gave them 2 MiB of big SRAM each |
 | the master tile's Ingress/Egress (17.6): the host link, two link ends and four forwarding buffers (28.13.7); the incoming queues; the outgoing queue; the UART | 1,424 flip-flops for the link; 77,312 bytes of SRAM for the link, 32 KiB for the incoming queues, 8 KiB for the outgoing `[derived]` | not estimated in mm². The link's CRC units: two of 128 bits a cycle, about 2,490 XOR gates each before sharing, and two of a byte, about 270 each `[derived]` |
-| the master tile's Updater (17.10) | 4,204 flip-flops, 2,048 of them the LRU table; 4 KiB of page memory and 1 KiB of free page queue `[derived]` | not estimated in mm² |
+| the master tile's Updater (17.10) | 4,193 flip-flops, 2,048 of them the LRU table; 4 KiB of page memory and 1 KiB of free page queue `[derived]` | not estimated in mm² |
 | the memory tile's memory system (17.11, 23): the cache's controller, its memory and the AXI arbiter | the cache's memory 512 KiB of data and 13.5 KiB of tags, each two-ported; about 6,880 flip-flops in the controller, five 1,024-bit line registers among them, which an implementation may share; 1,539 in the arbiter `[derived]` | not estimated in mm². The memory system sits with the LPDDR controller and the tracer tile, whose latency matters (RCR D) |
 | once per die: the request tree's nodes (11.3), `MESH_SIZE` row nodes and the root, a 16-byte buffer per input, their arbiters and the root's credit counters; the three receive queues, 128, 256 and 128 × 128 bits at 8 × 8, each in its receiving tile's request unit; the tree's wiring (18 wires a link: 16 data, valid, ready) and a credit wire from each receiving tile | ≈ 74 Kbit | ≈ 0.03 mm² plus wiring |
 

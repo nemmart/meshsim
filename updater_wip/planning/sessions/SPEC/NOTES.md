@@ -6,7 +6,20 @@ found wrong or contradictory in the planning documents. Branch `v137-spec`. Abbr
 AI `AXI-INTERFACE.md`, RCR `RTL-CHANGE-REQUESTS.md`, DN14/15/16 the design notes, MS `MILESTONE-v1.37.md`, HW
 WORKER8's `HARDWARE.md` (branch `updater-w8`).*
 
-**Status: outline proposed, waiting for the owner's go-ahead.** Nothing in `v1.37_wip/spec/` is changed yet.
+**Status (2026-11-18, 05:26): the outline has the owner's go-ahead; class B is accepted as a block; S1, S2 and S3
+are ruled** (section 8). Writing in section 3's order; the remaining class A daggers and silences go to the owner one
+at a time.
+
+**The owner's rulings of 05:26, in short:**
+- **S1:** one reset net, as v1.36; it reaches the link and the host-side state too, so II-16 falls away. Error
+  recovery is not designed in v1.37: the text states what raises each error and that it stops the chip; everything
+  after (what the host does, draining the queues, a ready frame, S6, II-18) is one open item.
+- **S2:** the memory system (the cache, the AXI arbiter and the `lpddr` port) is the memory tile's peripheral 1, at
+  its minimum: it exists to put the cache's error on the tile's error line. The RW engine moves to peripheral 2: its
+  new window and region are a request to Tony and an entry in `FOR-THE-SIMULATOR.md`. The hardware keeps v1.36's RW
+  engine; nothing in v1.37's proof runs uses it.
+- **S3:** the links between the special tiles stay in, specified from RCR 1; what RCR 1 leaves unsaid (the ports,
+  the routing rule, the flow control) comes to the owner as questions.
 
 ## 1. The documents and where each thing goes
 
@@ -323,4 +336,9 @@ More will go here as I check the text against the code.
 
 | dagger or silence | how it ended | where |
 |---|---|---|
+| class B (HL-2, HL-4, UI-5, UI-8, UI-10, UI-11, CI-1, CI-5, CI-9, CI-11, CI-13, AI-5, AI-8, AI-9, AI-10, AI-11) | ruled as a block (owner, 2026-11-18): stated as the code has them; tunable values are named parameters | each section |
+| S1, II-16 | ruled: one reset net, reaching the link and the host-side state; II-16 falls away | 18, 17.6 |
+| S6, II-18, error recovery | ruled: not designed in v1.37; one open item for everything after an error stops the chip | 26 |
+| S2, CI-12 | ruled: the memory system is the memory tile's peripheral 1, minimal; the RW engine moves to peripheral 2 (a request to Tony) | 17.7, 23, 2.1 |
+| S3 | ruled: the links between the special tiles stay in; their ports, routing and flow control to the owner as questions | 16 |
 | names: 128 bits | ruled (owner, 2026-11-18): "a 128-bit word" in the text, "words" in names; "beat" keeps chapter 1's meaning | section 6 |

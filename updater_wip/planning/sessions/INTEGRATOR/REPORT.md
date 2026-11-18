@@ -447,7 +447,7 @@ off LPDDR; 37's stale-line check; the arbiter's own burst checks).
 | Egress | a link packet once 32 words of a frame, or its last, are in | `ie_egress_count_falls_as_words_land_and_frames_end_at_link_packets`; every proof's reply in link packets of 32, 32 and 8 | as specified |
 | the host link | a byte a link cycle; a full link packet 528 bytes | `ingress_link_rates`: three full link packets taken 528 link cycles apart (5,220, 5,748, 6,276) | as specified. The pass over the data (32 cycles), the status at most 512 apart and a recovery's 669 on average are WORKER8's own figures (its `make check` holds its README's), not measured again here |
 | the Updater, the cache, the AXI arbiter | from their code (17.10.5, 23.6.5, 23.6.7, 23.11) | WORKER5's and WORKER6's tests (`test_cache`, `test_axi_arbiter`, `test_updater_ctl`); the joined proofs' figures (`runner/*-cache-figures.txt`) | not measured again here: the units are as built |
-| the line between the special tiles (16.1) | a link of three stages | `test_special_router`'s `line_*` | as specified |
+| the line between the special tiles (16.1) | a link of three stages | `line_unicast_between_special_tiles_takes_the_line`: every pair of the 67 tiles, from local and each DMA, ejected 4 cycles a link after it was sent (the three stages and the router's), the master tile to the tracer tile two links | as specified |
 
 No figure of 21.5 is found wrong.
 

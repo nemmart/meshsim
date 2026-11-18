@@ -1071,3 +1071,44 @@ into the files):
     left the old stream words, the UART and the register numbers as built;
   - the building that comes after takes in what that brief left out.
 
+## 36. Rulings for the specification (2026-11-18, about 5 to 6 a.m.)
+
+The specification session (`updater_wip/planning/sessions/SPEC/`, branch `v137-spec`) put its outline, about 70
+daggers and 14 silences to the owner. These are the owner's rulings on the larger ones. The specification is
+where they are stated; this is how they were reached.
+
+- **Whose word wins** (owner): for the cache's controller, the Updater's controller and the link end, the code
+  is the authority and the specification mirrors it ("it's actually the spec portion of those codes"). For
+  Ingress/Egress, the UART, Egress and the frames, the design documents lead. **Every new component is specified
+  to the depth of the ones already there.** What is inside those three machines is accepted as the code has it,
+  as a block.
+- **One reset.** The session proposed a second net, so that a reset after an error would leave the host link
+  alone. The owner: "Error recovery in general is a nightmare. If we try to figure out the error recovery
+  strategy for the chip in the session we're going to get it wrong. It's a whole can of worms because there is
+  state all over the place." **No second net.** The reset is v1.36's, as at power-on, and reaches the link and
+  the host's queues too. The specification states what raises each error and that it stops the chip; what the
+  host does after that, draining queues and a "ready" message are one open item, not a design.
+  - This undoes "cleared at power-on only" in `INGRESS-INTERFACE.md`, "Reset", and the lines on recovery in its
+    "Errors".
+- **Where the cache lives.** The memory system (the cache, the arbiter, the `lpddr` port) is **the memory tile's
+  peripheral 1,** and as little of a peripheral as will do: it is there so that the cache's error goes out on
+  the tile's error line, with no new net. **The RW engine becomes peripheral 2.** The hardware keeps v1.36's RW
+  engine; nothing in v1.37's proof runs uses it.
+- **The links between the special tiles stay** (owner: "We should put the links in"), though the Updater's move
+  to the master tile took their first reason away.
+  - **Which ports.** The session proposed east and north. The owner: "that's a terrible scheme. Think of the
+    numbers. 64 = c&c1, 65 = c&c2, 66 = c&c3. We have a +/- 1 relationship." **East and west, as in the mesh:**
+    east is tile id + 1 and west is id − 1. Master east to memory west; memory east to tracer west; the route is
+    the ring's rule on the difference of the ids.
+  - **A peripheral's DMA enters on south, the +8 port** (owner: "the peripherals connect via the +8 router"),
+    as v1.35's DMA had the tile's id + 8 for its source. The RTL has it on west today.
+  - **No flow control.** The session proposed credits, from the request's own words, "always flow-controlled".
+    The owner: "I've had this conversation so many times. There are regimes on the mesh. Some need flow
+    control, some don't. Right now, we don't actually have a file system. So as far as I know, flow control is
+    not necessary, and it hasn't been spec'd." **The line's links are the mesh's, with none.** Flow control
+    belongs with the regime that needs it and is designed with the file system. The request's wording was the
+    design session's mistake and is corrected (`RTL-CHANGE-REQUESTS.md`, 1, and the paragraph under the table).
+- **128 bits is "a 128-bit word",** not a beat: the Tracer's and the replayer's chapters say so, and their
+  counters are named `…_words`. `FOREGROUND_WORDS` and `BACKGROUND_WORDS` keep their names. "Beat" keeps the
+  specification's meaning, one item a handshake moves.
+

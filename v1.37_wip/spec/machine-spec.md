@@ -2585,7 +2585,7 @@ program. Its hardware is chapter 23's.
 
   | Bit | Error | Kind | Set by |
   | --- | --- | --- | --- |
-  | 0 | `lpddr_error` | H (P for an address the device does not have) | an LPDDR error response the cache had no client to tell of: a dirty line's write-back, or a line fetched for `fill`'s read (23.6.9) |
+  | 0 | `lpddr_error` | H (P for an address the device does not have) | an LPDDR error response the cache had no client to tell of: a dirty line's write-back, as its response comes, or a line fetched for `fill`'s read, as that read is answered at its replay (23.6.5, 23.6.9) |
 
 **Its ports** (3): `fill`, from the tracer tile's Tracer; the look-up ports, 1 from the master tile's Updater
 (23.6.2); the arbiter's client ports, 1 from the Updater and 2 from the memory tile's RW engine (23.10), client 0
@@ -2953,12 +2953,13 @@ Invariants 27 to 34 are new in v1.36: rules the machine states as UB that v1.35 
     `ERRORS.queue_overrun`, `beyond`, `out_of_pages`.
 37. **The cache's clients' rules** (23.6.8): a page's data in LPDDR before an entry names it; one writer for a file
     at a time; an owned index page changed only by `update`; a page used only after its discard's reply; a page
-    the Tracer reads not written directly while it does, and one it has written not read directly. The simulator
-    checks the third and the fifth by its stale-line check (23.6.11).
+    the Tracer reads not written directly while it does, and one it has written not read directly. The stale-line
+    check (23.6.11) catches a breach of the first, third, fourth or fifth when it leaves a stale clean line that is
+    read again.
 38. **The memory system's rules** (17.11): no `START`, and no `WRITE` to the memory tile's region 0x04.
-39. **The AXI ports' rules** (23.10, 23.13): every burst INCR of 16-byte beats, at a multiple of 16, not across
-    4 KiB, its `wlast` on its last beat alone, its W beats back to back. A fault of a unit's design, not a
-    program's: the simulator stops on it.
+39. **The AXI ports' rules** (23.10, 23.13): every burst at a multiple of 16, not across 4 KiB, its `wlast` on its
+    last beat alone, its W beats back to back. A fault of a unit's design, not a program's: the simulator stops on
+    the first three; the last it does not check.
 40. **The line between the special tiles is paced** (16.3): a program's traffic along it never overflows a router
     queue. **Hardware:** `ERRORS.router_overflow`, as invariant 1.
 
@@ -4213,9 +4214,12 @@ alone: its line *l* < 32 is the root's line *l*.
   cache's AXI port (owner). They are never written through.
 - **A write-back answered with an error** loses the line, and sets the memory system's `ERRORS.lpddr_error`: the
   Tracer had its `ok` long before.
-- **What `fill` requires** (3) the cache keeps: every request answered in bounded time; a read of a line sees a
-  write of it already accepted, since the line is in the cache, dirty, from the write's response on; nothing
-  accepted before a reset answered after it.
+- **What `fill` requires** (3) the cache keeps: every request answered in bounded time; nothing accepted before a
+  reset answered after it; and **a read of a line sees every write of it accepted before** (owner). The line is in
+  the cache, dirty, from the write's response on, so the rule is the front end's before that: **`fill`'s read is
+  not picked while `fill`'s write register holds a write accepted before it,** including while that write waits
+  for the miss handler or the slot. A read accepted after a write's handshake and before its response is served
+  after the write.
 
 #### 23.6.5 The controller: its registers and its states
 
@@ -4232,16 +4236,18 @@ alone: its line *l* < 32 is the root's line *l*.
 | the miss handler | 1,321 | its state (3); the line to install (31) and its set (9) and way (3); the victim's tag (22), valid and dirty bits; whether it allocates without a read; its error bit; `arvalid`; a copy made; the source it serves (3); the beats in (4); the set's tag row (216); the line buffer (1,024) |
 | the AXI writer | 1,070 | busy; the address taken; the beat (4); the line address (31); the line (1,024); a queue of 4 kinds, update or write-back, in the order of their responses, with its head and count |
 | the update slot | 81 | valid; its source (3), set (9), way (3), level (2), line (31), and the entry before (32) |
+| the tag-write guard | 10 | the set the miss handler last wrote (9), and whether that write was in or after the cycle of the walker's tag read: a row read before it landed is read again |
 | the error | 1 | sticky: an LPDDR error no client was told of (23.6.9) |
 | the outputs | 1,259 | the four `ready`s; the reply bus (40); `fill`'s two `ready`s, its read response (`valid`, `status`, 1,024 bits of `data`) and its write response (`valid`, `status`); the AXI port's AR (`arvalid`, 25 bits of line address), AW (the same) and W (`wvalid`, `wdata`, `wlast`); the error |
 
-**In all about 6,870 flip-flops** (6,866 as counted), five of them line registers of 1,024 bits: the request
+**In all about 6,880 flip-flops** (6,876 as counted), five of them line registers of 1,024 bits: the request
 register of `fill`'s write, the walker's line, the miss handler's buffer, the AXI writer's line and `fill`'s read
 response. An implementation may share them where their uses never overlap.
 
 **The front end.** A request taken at a source's port goes into that source's register, so its `ready` is 0 until
 it has been answered (23.6.2). When the walker is idle it picks the next request: **first the source whose miss
-was just installed or failed, then round robin** among the sources, from the one after the last picked, whose
+was just installed or failed, then round robin** among the sources, from the one after the last picked by round
+robin (a pick for the miss handler's source does not move the pointer), whose
 request is valid and waits for nothing. An update waits while the slot is full. So every request is taken in
 bounded time.
 
@@ -4266,8 +4272,9 @@ In compare, besides the hit:
 - **A miss** with the miss handler busy waits for it the same way. With it idle, the walker chooses **the victim**:
   the first invalid way of the set, else the way of the greatest age that is not the update slot's line. It gives
   the miss handler the line, the set, the way and the source, and the request waits for it. A request whose own
-  fetch failed is answered at its replay, at that line: `lpddr_error` at its level for a look-up or an update,
-  `beyond` with the error set for a fill read, `error` for a fill write.
+  fetch failed is answered at its replay, if the line is still missing then: `lpddr_error` at its level for a
+  look-up or an update, `beyond` with the error set for a fill read, `error` for a fill write. If another request
+  has fetched the line meanwhile (a request the walker held under the miss), it is served from it, with no error.
 - **A hit, for `fill`'s write at its data line:** the line is written whole and marked dirty, the way touched, and
   the write answered `ok` (unless the line is the slot's, which it waits for).
 - **A discard's line:** a hit is invalidated (unless it is the slot's line, which waits for the response); after
@@ -4295,11 +4302,18 @@ no line of the miss handler's set. A request that misses waits for the miss hand
 | install | writes the line and its tag row in one cycle: valid, dirty for a fill write's allocation and clean otherwise, the way touched; the requests waiting for it wake, the one it served first | idle |
 | fail | invalidates the way; the request it served is answered at its replay (above); the others wake | idle |
 
+**The memories' ports: the miss handler goes first.** It uses the data memory's read port to read a victim, both
+memories' write ports to install, and the tag memory's write port to fail. In such a cycle the walker waits: in
+compare on a hit (its data read and tag write), in compare for a fill write's hit or a discard's invalidation (its
+tag write), and in read at an update's write. So no port is asked for twice in a cycle; the simulator stops if one
+is (23.6.11).
+
 A clean victim, or an invalid way, needs no write-back: a fetch starts at once, and a fill write's allocation goes
 straight to install with its own line. **There is no list of pending writes** (owner): a dirty victim is written
 back in its place, and the fetch that wants the place waits for the response.
 
-**The AXI writer** writes one line at a time: AW, then the line's 8 beats a beat a cycle, then it is free for the
+**The AXI writer** writes one line at a time: its address on AW and its first beat on W from the same cycle, AXI
+allowing a beat before its address is taken, then a beat a cycle as `wready` comes, then it is free for the
 next, with the kinds of the writes outstanding in a queue of 4, whose responses come in that order (one ID, 23.10).
 An update's response goes to the update slot, and a write-back's to the miss handler.
 
@@ -4367,7 +4381,9 @@ handshake to the answer:
 | **a page the Tracer has written is not read directly** | its newest lines may be in the cache alone, dirty |
 
 Breaking one is UB (1.3): the firmware that hands out the pages and starts the runs is what keeps them. The
-simulator catches the third and the fifth, by comparing every clean line the walker reads with LPDDR (23.6.11). **An update answered `hole` or `beyond`** cannot come to a client that looked up
+stale-line check (23.6.11) catches, at the next read of a line still cached and clean, a page changed in LPDDR
+under the cache: so a breach of the first, third, fourth or fifth rule when it leaves such a line; not the second
+or the sixth, and not an old dirty line written back over a page's new contents. **An update answered `hole` or `beyond`** cannot come to a client that looked up
 first, so a client may treat one as fatal.
 
 #### 23.6.9 Errors
@@ -4395,11 +4411,13 @@ segments. Nothing accepted before a reset is answered after it.
 #### 23.6.11 The simulator's checks and parameters
 
 - **The stale-line check:** every clean line the walker reads, but the slot's, is compared with LPDDR, and a
-  difference stops the simulator. It catches a client that broke 23.6.8: a page written directly while it was in the
-  cache, or an index page changed other than by `update`. A line whose update's write failed is left out.
-- **Every dirty line written back** must be one a fill write made.
+  difference stops the simulator. It catches, at that read, a page changed in LPDDR under the cache (23.6.8); a
+  stale line evicted, or never read again, goes unseen, and dirty lines are not compared. A line whose update's
+  write failed is left out.
+- **By construction,** every dirty line written back is one a fill write made: only `fill`'s write sets a dirty bit.
 - A look-up port's `op` 3, an R beat the miss handler did not ask for, a line of other than 8 beats, a B response
-  with no write outstanding: each stops the simulator.
+  with no write outstanding, a write-back's response out of turn, two reads or two writes of one memory in a cycle,
+  and cycles skipped while the cache works: each stops the simulator.
 - **Settings:** `hits_under_miss`, on (the specification's); off, the front end takes nothing while the miss
   handler works, a setting for comparison only.
 - **What it counts:** hits and misses by class (the memory file's index and data lines, the map's, the look-up
@@ -4587,8 +4605,9 @@ arbiter. At the edge that ends cycle *t*, in this order:
    1 when its piece is in turn and the W queue holds at most one beat.
 
 - **A burst taken in *t*** has its first piece's address on `lpddr` in *t* + 1 at the earliest, since steps 2 and 3
-  are one edge. A burst of at most `TURN_BEATS` beats leaves its slot at once, so its client's `arready` or
-  `awready` is 1 again in *t* + 1 if its list has room.
+  are one edge. A burst of at most `TURN_BEATS` beats leaves its slot at once when it gets that edge's turn (the
+  output free, no other client's slot ahead of it in the round robin, and on AW no write piece in turn), so its
+  client's `arready` or `awready` is 1 again in *t* + 1 if its list has room.
 - **A long burst's pieces** take one turn each. A client moving a page alone has its eight turns in a row; with
   another client waiting, the two alternate, so a line waits behind at most one piece of each other client.
 - **The arbiter is fair and never deadlocks:** each turn goes round, a slot is served within `LPDDR_CLIENTS` turns
@@ -4666,10 +4685,11 @@ designer and not a promise.
 ### 23.13 The memory system's checks and parameters
 
 **What the simulator checks** on the arbiter's and the model's ports (each a fault of a unit's design, on which it
-stops, not a program's UB):
+stops, not a program's UB). It does not check that a client sends a write's beats back to back (23.10): a client
+that pauses holds up every client's writes, and one that never sends them stops them all.
 
-- a burst whose address is not a multiple of 16, that crosses 4 KiB, or whose size or type is not 16 bytes and
-  INCR;
+- a burst whose address is not a multiple of 16, or that crosses 4 KiB (its size and type are constants of the
+  port, which nothing can carry another value of);
 - a W beat whose `wlast` is not on its burst's last beat, and one with no write address waiting for it;
 - a beat or a response for an ID with nothing outstanding, and an ID that is no client's;
 - a request withdrawn, or changed, while it waited for its `ready`, on any channel of `lpddr`.
@@ -4721,7 +4741,7 @@ not used here.
 | the special tiles (2.1) | tile instances with the compute tile's scratchpad, `SCRATCHPAD_BYTES`, each a tile's logic plus its peripheral and, with a sending peripheral, its DMA | not estimated here. v1.35 gave them 2 MiB of big SRAM each |
 | the master tile's Ingress/Egress (17.6): the host link, two link ends and four forwarding buffers (28.13.7); the incoming queues; the outgoing queue; the UART | 1,424 flip-flops for the link; 77,312 bytes of SRAM for the link, 32 KiB for the incoming queues, 8 KiB for the outgoing `[derived]` | not estimated in mm². The link's CRC units: two of 128 bits a cycle, about 2,490 XOR gates each before sharing, and two of a byte, about 270 each `[derived]` |
 | the master tile's Updater (17.10) | 4,204 flip-flops, 2,048 of them the LRU table; 4 KiB of page memory and 1 KiB of free page queue `[derived]` | not estimated in mm² |
-| the memory tile's memory system (17.11, 23): the cache's controller, its memory and the AXI arbiter | the cache's memory 512 KiB of data and 13.5 KiB of tags, each two-ported; about 6,870 flip-flops in the controller, five 1,024-bit line registers among them, which an implementation may share; 1,539 in the arbiter `[derived]` | not estimated in mm². The memory system sits with the LPDDR controller and the tracer tile, whose latency matters (RCR D) |
+| the memory tile's memory system (17.11, 23): the cache's controller, its memory and the AXI arbiter | the cache's memory 512 KiB of data and 13.5 KiB of tags, each two-ported; about 6,880 flip-flops in the controller, five 1,024-bit line registers among them, which an implementation may share; 1,539 in the arbiter `[derived]` | not estimated in mm². The memory system sits with the LPDDR controller and the tracer tile, whose latency matters (RCR D) |
 | once per die: the request tree's nodes (11.3), `MESH_SIZE` row nodes and the root, a 16-byte buffer per input, their arbiters and the root's credit counters; the three receive queues, 128, 256 and 128 × 128 bits at 8 × 8, each in its receiving tile's request unit; the tree's wiring (18 wires a link: 16 data, valid, ready) and a credit wire from each receiving tile | ≈ 74 Kbit | ≈ 0.03 mm² plus wiring |
 
 Rule of thumb: tables go in SRAM (cheap); comparators, multiplexers and per-entry flop state are what spend the

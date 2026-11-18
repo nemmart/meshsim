@@ -4,14 +4,21 @@
 section, what the specification says, what `main` has. Kept as the specification is written (branch `v137-spec`);
 "`main`" is the commit the row was checked against.*
 
+## First: a bug in the cache (WORKER5's review, 2026-11-18; owner: the specification stands)
+
+| section | the specification | `main` (e7243dd) |
+| --- | --- | --- |
+| 3 (`fill`), 17.9.5, 23.6.4 | **a fill read of a line sees every fill write of it accepted before** (owner): `fill`'s read is not picked while `fill`'s write register holds a write accepted before it, including while that write waits for the miss handler or the slot | **not kept.** The front end's round robin (`cache_ctl.cpp:421`) takes source 4, `fill`'s read, before source 5, its write, when both wait and the pointer is below 4; and a fill write abandoned to wait for the miss handler (`wait_mh`) lets its read hit the old line. **Reproduction** (WORKER5): a look-up keeps the walker busy; a write of line 0 with data 0x2222 is taken, and a read of line 0 the next cycle; the read is answered 0x1111, the old data. No proof run has failed on it: the Tracer's write-backs seldom meet a read of the same line in the window. **The fix** (WORKER5): serve the write register before the read register whenever it is valid; or compare lines, and hold a read whose line equals a waiting write's. Keep the reproduction as a test |
+
 ## The memory system (machine-spec 17.11, 23)
 
 | section | the specification | `main` (be077a7d) |
 | --- | --- | --- |
-| 17.11, 23.1, 2.1 | the memory system (the cache, the AXI arbiter, the `lpddr` port) is the memory tile's peripheral 1, with a window whose `ERRORS` carries the cache's error | the cache, the arbiter and the LPDDR model are `CacheSystem` (`src/units/cache_system.h`), attached to the Tracer's fill port behind the setting `cache_ctl`, off by default; no window, and the cache's error flag reaches nothing |
+| 17.11, 23.1, 2.1 | the memory system (the cache, the AXI arbiter, the `lpddr` port) is the memory tile's peripheral 1, with a window whose `ERRORS` carries the cache's error | the cache, the arbiter and the LPDDR model are `CacheSystem` (`src/units/cache_system.h`), attached to the Tracer's fill port behind the setting `cache_ctl`, off by default; no window, `PARAMS` or `ERRORS`; the cache's error flag, `CacheCtl::out().error`, reaches no tile's error line, and only the proof harness reads it at a run's end (`tests/proof_bench.cpp:210`) (WORKER5) |
+| 23.6.10, 23.11, 17.11 | the chip's reset empties the cache and the arbiter | `CacheCtl::reset`, `AxiArbiter::reset` and `LpddrModel::reset` do what the specification says, but `CacheSystem` has no reset and the chip's reset calls none: each is cold once, when the machine is built (WORKER5) |
 | 17.7 | the RW engine is the memory tile's peripheral 2: window 0xFFFF_FC00, region 0x05 | peripheral 1: window 0xFFFF_FA00, region 0x04 (v1.36's) |
 | 17.7, 23.10 | the RW engine is client 2 of the arbiter, on the one LPDDR | its own `lpddr` slave and memory (v1.36's); the adapter `RwEngineOnArbiter` exists and is used only by `tests/test_axi_arbiter.cpp` |
-| 23.10 | the Updater is client 1 of the arbiter and the cache's look-up port 1 | the real controller runs against stand-ins of its own (WORKER9's second piece, the joint, not done) |
+| 23.10, 17.11 | the clients' ports wired: the Updater client 1 and look-up port 1, the RW engine client 2 | not wired: the Updater is the black box by default, with no AXI port and no look-up port, writing the store directly; its controller runs against stand-ins (the joint, not done); with `cache_ctl` on the arbiter's only client is the cache (`cache_system.h`, `tick`); the RW engine stays on its own slave, its adapter tested on the arbiter alone (WORKER5) |
 
 ## The router (machine-spec 16)
 

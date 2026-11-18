@@ -172,3 +172,65 @@ test's expectation of a reset divisor.
 | **the reference cycles:** `test_segment`'s and `test_sort`'s the same as `main`'s; `test_rtl_stream`'s UART run each figure one cycle later than the RTL chip's (its program's setting is `lui` and `addi`, one instruction more: the first start bit 35, the led's changes, the status after 644, the done word after 5,211); the proof runs' move (the queues of 1,024, the landing): the runner's | |
 | **the planted bugs** (`ie_teeth.sh`, 44): the UART's line both ways (bit order, a bit's length, the sample point, the synchroniser, the divider mid-character, the stop bit, the overrun, a low level starting a character, a pop of a character entering in the load's cycle); its control (a store dropped or kept with the UART off or `enable_write` 0, `enable_write` 0 sending, `enable_read` 0 listening, a store of 0 not resetting, `uart_tx` 1 in reset, the enables swapped, the events swapped, a divider of 0 not caught); 17.6.1 (version 0, the queues' words at 80 and 81, `background_ready` at [4]); the queues (a link packet landing all at once, the room of the words landed alone); Egress (the count falling as words leave, a credit each 512, a frame's last word not ending its link packet, a word kept in a full queue, a word with the count at 0 no error, a count stored while not 0 not caught, a frame from two sources not caught); the bus (`UART_RX` not an own word), the slot (a low word's stall not published, the queue's size not given), the core's path (no pop told, a pop a cycle late) | **44 of 44 caught** (one plant fixed to build: its first form left a parameter unused). NOTES' "stop at full" is stage 4's: the stop bit is the link end's |
 | the 37 proof runs; with LPDDR jittered; `make check` | the runner (below) |
+
+## Stage 4: the link and the chain (28)
+
+### What was built
+
+| | where |
+|---|---|
+| **the chip's link is WORKER8's link end as it stands** (`../updater_wip/link`, `hostlink::Node`): in Ingress/Egress, the pins `link_up` and `link_down` (a byte each way a link cycle, `link_rate` link cycles a chip cycle, 1, 2, 4 or 8, or one every `link_every`) and `chain_next`; the `Node` clocked in the unit's settle, made new at the reset (which starts the link again, "I have started again"); its words landing into 17.6.3's queues a word a cycle from the packet buffer, the room of the words landed and to land (28.13.6); Egress's link packets pushed into it when its room takes them; `link_error` and `format_error` from its two ends; the chip never calls `clear_error()` (28.13.2). The `Node` allocates: its calls are made with the allocation guard lifted (`LinkAllocs`) | `src/units/ingress_egress.h` (THE LINK, THE PINS); `Makefile`, `src/units/tracer.mk` (the link's objects) |
+| **the host's end** in the harnesses: WORKER8's `End` (`tests/host_end.h`, `Mach::attach_host`), fed the packet file's data link packets, the chip's replies taken out by hops; the line's noise and a hook on the End for the tests | `tests/host_end.h`, `tests/mach.*`, `tests/proof_bench.*`, `tests/ingress_bench.h` |
+| **a chain with no chips**: a host `End` and two or three Ingress/Egress units back to back, a harness on their registers | `tests/test_ingress_chain.cpp` |
+| **chapter 28 in the files** (MILESTONE step 2c): gold's packetizer, reader and vectors, its Python reader, and the tests' writer and reader (`tests/packet_writer.h`, `src/units/host_link.h`): one run of numbers for the link, `fg_stop` and `bg_stop` in byte 7 and reserved [63:58], the data masked (28.6), the restart link packet (28.9). The worked examples of 28.5 (four), 28.6 (three) and 28.9 (its data checksum) are copied into gold's `PacketsTest`, `check_vectors.py`, `test_ingress_link` and `test_packet_vectors`, and each matches byte for byte | `../updater_wip/pipeline/gold/src/gold/Packet*.java`, `test/packets/` (62 single link packets, 6 files, 41 damaged files); `tests/packet_writer.h`, `src/units/host_link.h` |
+| **the capture** (C5): the host `End`'s data link packets as first sent, read off the line; the proof bench fails unless they are the packet file's byte for byte. In the proof runs that is gold's file (`--packets`); in `test_master` the tests' writer's | `tests/host_end.h` (THE CAPTURE), `tests/proof_bench.cpp` |
+| **`proof_run --fast-link` went** (C6): it was the fastest link under another name; `--link-rate 8` is the same timing. `proof::Case::cycles_per_byte` became `link_every` | `tests/proof_run_main.cpp`, `tests/test_master.cpp`, `../updater_wip/tasks/v137-check/body.sh` |
+| the planted bugs | `tests/chain_teeth.sh` |
+
+### Decisions
+
+- **"Agree byte for byte"** (C5) is the strict reading: the `End`'s data link packets as first sent, exactly as on the
+  line, against the file's. I first allowed a header carrying what came back (an `ack`, a stop bit) to be sealed
+  again without it; in every proof none needed it (the chip's replies come after the last data link packet), so the
+  allowance went: a check with an allowance is not the check.
+- **A restart link packet in a file** (gold's and every reader's `restart` check): one with `restart` set that is not
+  28.9's restart link packet is refused, as 28.9's "damaged"; the restart link packet takes no number, its data goes
+  to no queue, and the numbers start again from 1 after it; one inside a frame is refused. For the readers of files
+  only: the chip's are the `Node`'s rules.
+- **`restart` is no longer one of the flags that are never checked:** gold's "every flag" vector and the tests' header
+  tests set the other three.
+- **The tests' files of two streams number both as one run** (28.4), as the reader now requires.
+
+### Disagreements
+
+None with the specification. **One addition to the link end** (a finding, not a change to its state machines):
+`Node::peek(Stream, Word&)`, a look at the oldest word of a queue without taking it, for the DMA's and the forward
+count's view of the landed words (the black box had it). It reads `InQueue`'s front and changes nothing; WORKER8's
+`make check` passes with it.
+
+### The checks
+
+| check | result |
+|---|---|
+| `test_ingress_link` (25), `test_ingress_chain` (5), `test_packet_vectors` (6), `test_ingress_egress` | pass |
+| `test_master` (34): every proof through the link and the host's `End`, the capture byte for byte (174, 160 or 213 data link packets a fixture, none sent again), the noise on the line recovered with no error bit, the host's link started again | pass |
+| **the capture has teeth:** the `End` fed one byte changed in its fifth link packet | caught: "the first difference at byte 1672" |
+| gold's `build.sh`: packets (262,593 checks), the guests' frames 80 of 80 wrapped and read back, the segments byte-identical to v1.36 gold's on 168 runs | all ok |
+| the link's own `make check` (`updater_wip/link`) | ok |
+| `./run_tests.sh quick --check` | **all passed**; no log differs |
+| **the planted bugs** (`chain_teeth.sh`): hops not counted; a header not sealed again; an own link packet before a forwarded one; a stop bit ignored; a reply's link packets out of order; `chain_next` ignored; `clear_error()` called by the chip | **7 of 7 caught** |
+| the 37 proof runs, the capture against gold's files; with LPDDR jittered; `make check` | the runner (below) |
+
+### The reference cycles
+
+**They move once, on purpose: the link's start, its status link packets and its acknowledgements.** `test_master`'s
+proofs against stage 3's, cycle for cycle (the end is polled every 512): at a byte a cycle, 7,168 to 8,704 more
+cycles; at 2, 4 and 8 bytes a cycle, 512 to 4,096 more; at 4 cycles a byte, 30,208 to 33,792 more. The `End` sends
+three restart link packets before its first data in every run. The simulation is slower: a median of 831,000 cycles a
+second at stage 3 and 511,000 at stage 4, the link's two ends clocked a byte at a time.
+
+### The runner
+
+To be queued once Quests 250 to 252 are in: `suites` (the 37 proof runs, each against gold's packet file through the
+capture), `suites-varied` and `check`.
+

@@ -398,3 +398,37 @@ about 240,000 cycles in 1.2 s on this machine's two cores.
 | 259 | `chain-cyclone`: the same on Cyclone | queued |
 | 256 | `suites`: `run_tests.sh`'s step `chain` among the rest | queued |
 
+## Stage 7: closing (in progress)
+
+### Chapter 20: v1.37's invariants, each a check
+
+Invariants 1 to 33 are v1.36's, checked as v1.36's simulator checks them (with the exceptions chapter 20 and
+`OPEN-v1.36.md` name); 34 lost Ingress/Egress's rules to 35. v1.37's:
+
+| invariant | its check in the simulator | a test that fires it |
+|---|---|---|
+| 35: no DMA count beyond the queue's words | `ingress_egress.h` (`dma_start`): FATAL | `ingress_link_a_transfer_past_the_words_waiting_is_ub`, `…_with_no_word_is_ub` |
+| 35: no background transfer with the count running; no count stored during one | FATAL, both | `ingress_link_a_background_transfer_with_the_count_running_is_ub`, `ingress_link_a_count_stored_with_a_background_transfer_in_flight_is_ub` |
+| 35: no store to `EGRESS_COUNT` while not 0 | FATAL | `ie_egress_count_stored_while_not_0_is_ub` |
+| 35: `WRITE`s of 128 bits, to part 1 alone, from one source at a time | FATAL, each | `ie_egress_a_write_of_64_bits_is_ub`, `…_to_part_0_is_ub`, `…_to_part_2_is_ub`, `ie_egress_a_frames_words_from_two_sources_is_ub` |
+| 35: no non-zero `UART_CONTROL` with a divider of 0 | FATAL | `ie_uart_control_with_a_divider_of_0_is_ub` |
+| 35, hardware: `egress_error` | counted in `ERRORS` | `test_ingress_egress`'s Egress tests; `fw_teeth`'s `EGRESS_COUNT` 71 |
+| 36: words 32–37 and `START` only while idle | `updater_top.h`: FATAL | none fires it |
+| 36: `WRITE`s of 128 bits to part 2 alone | FATAL | `ctl_region_part_1_is_unmapped` (another size: none) |
+| 36: **from one source at a time** | **not checked** | — |
+| 36: every root and free page a page's address in LPDDR | `updater_ctl.h`: FATAL | `ctl_root_off_a_page_is_ub`, `ctl_root_bit_31_is_ub` (a free page: none) |
+| 36: **every free page new** | **not checked** | — |
+| 36: **`WORD_COUNT` the frame's count, so that no run ends inside a code** | **not checked as such** (a wrong count shows as `PAGE_COUNT` not 0 at `done`, or a wrong image) | `fw_teeth`'s counts one short or long |
+| 36: no run past word index 2³² − 1; no page at 2²³ or above | FATAL, both | `ctl_run_past_index_2_32_is_ub` (the page's cannot arise: FOR-THE-SPEC 1) |
+| 36, hardware: `queue_overrun`, `beyond`, `out_of_pages` | counted in `ERRORS` | `master_out_of_pages`; `test_updater_ctl` |
+| 37: the cache's clients' rules | the stale-line check (23.6.11), on in every run (`cache_system.h`); the joint's checks (FOR-THE-SPEC 2) | the joint's, `joined_teeth.sh`; **no test here fires the stale-line check itself** |
+| 38: no `START`, no `WRITE` to the memory tile's region 0x04 | `memory_system.h`: FATAL, both | `memsys_start_is_ub`, `memsys_write_is_ub` |
+| 39: a burst at a multiple of 16, not across 4 KiB, `wlast` on its last beat alone | `axi_arbiter.cpp`, `lpddr_model.cpp`: FATAL | `lpddr_stops_on_a_burst_across_4k`, `lpddr_stops_on_a_misplaced_wlast` (the arbiter's own: none) |
+| 39: W beats back to back | not checked, as chapter 20 says | — |
+| 40: the line paced | `router_overflow` counted where the queue is | `line_overflows_where_its_traffic_is_not_paced` |
+
+**Three of invariant 36's rules have no check** (one source at a time; a free page new; `WORD_COUNT` the frame's),
+and five checks no test fires (36's idle rule and other sizes, a free page off LPDDR; 37's stale-line check; the
+arbiter's own burst checks). The Updater's checks would be added in its window (`updater_top.h`), beside its
+controller, not in it; that is the owner's to allow, since the controller is v1.37's as built.
+

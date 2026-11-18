@@ -1,5 +1,5 @@
 // cache_figures.h: the cache's figures as lines of text (updater_wip, WORKER5), for the harnesses that run the Tracer on
-// the cache's controller (MachConfig::cache_ctl; tests/proof_bench.cpp, tests/tracer_block.h): hits and misses by kind
+// the cache's controller (the chip's memory system, tests/proof_bench.cpp; the Tracer alone, tests/tracer_block.h): hits and misses by kind
 // of line, evictions and write-backs, the walks' lengths, the cycles a fill and an update take, the AXI port's traffic,
 // and the faults a run must not have (the cache's error flag; a read of LPDDR nothing wrote).
 #pragma once
@@ -38,6 +38,17 @@ inline void print(const char* name, const units::CacheSystem& s) {
                 name, (unsigned long long)s.lpddr.read_bursts, (unsigned long long)s.lpddr.write_bursts, (unsigned long long)s.lpddr.beats_read,
                 (unsigned long long)s.lpddr.beats_written, (unsigned long long)s.lpddr.error_bursts, (unsigned long long)s.lpddr.unwritten_reads,
                 int(c.out().error));
+    const units::AxiArbiter& a = s.arb;
+    std::printf("%s: the clients: the Updater's look-ups %llu, updates %llu; cycles with its look-up and a fill request both outstanding %llu; "
+                "the arbiter's bursts read/written by client 0 (the cache) %llu/%llu, 1 (the Updater) %llu/%llu, 2 (the RW engine) %llu/%llu, 3 %llu/%llu; "
+                "pieces waiting for their turn, cycles: reads %llu/%llu/%llu/%llu, writes %llu/%llu/%llu/%llu; the joint's checks %llu\n",
+                name, (unsigned long long)s.lookups, (unsigned long long)s.updates, (unsigned long long)s.both_outstanding_cycles,
+                (unsigned long long)a.read_bursts[0], (unsigned long long)a.write_bursts[0], (unsigned long long)a.read_bursts[1],
+                (unsigned long long)a.write_bursts[1], (unsigned long long)a.read_bursts[2], (unsigned long long)a.write_bursts[2],
+                (unsigned long long)a.read_bursts[3], (unsigned long long)a.write_bursts[3], (unsigned long long)a.read_waits[0],
+                (unsigned long long)a.read_waits[1], (unsigned long long)a.read_waits[2], (unsigned long long)a.read_waits[3],
+                (unsigned long long)a.write_waits[0], (unsigned long long)a.write_waits[1], (unsigned long long)a.write_waits[2],
+                (unsigned long long)a.write_waits[3], (unsigned long long)s.joint_violations());
 }
 
 // The faults a run must not have: each counted as a failed check.
@@ -46,6 +57,10 @@ inline int faults(const char* name, const units::CacheSystem& s) {
     if (s.ctl.out().error) { std::printf("%s: FAILED: the cache's error flag is set\n", name); n++; }
     if (s.lpddr.unwritten_reads) { std::printf("%s: FAILED: %llu beats read from LPDDR that nothing wrote\n", name, (unsigned long long)s.lpddr.unwritten_reads); n++; }
     if (s.lpddr.error_bursts) { std::printf("%s: FAILED: %llu LPDDR error responses\n", name, (unsigned long long)s.lpddr.error_bursts); n++; }
+    for (unsigned k = 0; k < units::CacheSystem::J_CHECKS; k++)
+        if (s.joint[k]) { std::printf("%s: FAILED: the joint's check: %llu times %s\n", name, (unsigned long long)s.joint[k], units::CacheSystem::joint_name(k)); n++; }
+    // the clients' ports as 17.11 has them: the Updater on client 1, the RW engine on 2, nothing on 3
+    if (s.arb.read_bursts[3] || s.arb.write_bursts[3]) { std::printf("%s: FAILED: bursts on the arbiter's client 3, which has no client\n", name); n++; }
     return n;
 }
 

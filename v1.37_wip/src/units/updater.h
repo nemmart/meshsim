@@ -34,7 +34,7 @@
 // at most 66 bits a cycle, under a word, so 2 would keep it fed with ready registered; 4 is WORKER6's controller's
 // input FIFO, so the two hold the same backlog). `ready` in cycle t: fewer than 4 held at the start of t, whether a run
 // is on or not; a word that moves in t is held from the end of t, after this unit's step of t. Only the reset empties
-// it; a START does not. There are no credits and no event: EVENTS [2], which was segment_credit, reads 0.
+// it; a START does not. There are no credits and no event for it: EVENTS [2], which was segment_credit, is free_page_credit (17.10.1).
 //
 // ERRORS (UI). queue_overrun: a push into a full free page queue, dropped. beyond: a word past what the depth reaches.
 // out_of_pages: a page needed with PAGE_COUNT at 0. lpddr_error: here, a root or a free page that is not a page's
@@ -80,7 +80,7 @@ struct Updater : PeripheralBase<Updater> {
     // RUN_CONFIG's fields
     enum : uint32_t { RC_LRU = 1u << 0, RC_CONTINUE = 1u << 1, RC_TRACER_COPY = 1u << 2, RC_DEPTH_LO = 3, RC_ROOT_LO = 5, RC_BITS = 0x7F };
     enum : unsigned { ROOT_EXISTS = 0, ROOT_EMPTY = 1, ROOT_COPY = 2 };
-    enum : unsigned { EV_DONE = 0, EV_DMA_DONE = 1, EV_UNUSED = 2, EV_FREE_PAGE_CREDIT = 3, EV_BITS = 4 };   // [2]: segment_credit until WORKER7
+    enum : unsigned { EV_DONE = 0, EV_DMA_DONE = 1, EV_FREE_PAGE_CREDIT = 2, EV_BITS = 3 };   // v1.37: packed to [2] (17.10.1; segment_credit's until WORKER7)
     enum : int { ERR_QUEUE_OVERRUN = 1 << 0, ERR_BEYOND = 1 << 1, ERR_LPDDR = 1 << 2, ERR_OUT_OF_PAGES = 1 << 3, ERR_NOT_OWNED = 1 << 4 };
     // the region's parts (offset bits [22:20]): part 2 alone (part 1 was the segment queue's, until WORKER7)
     enum : unsigned { PART_FREE_PAGES = 2 };

@@ -35,7 +35,8 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     // (harness-only): the test peripheral on one tile
     const bool test_k = int(k) == g.cfg.test_periph_tile;
     const bool link_k = g.cfg.host_link && k == lw::CC1;   // v1.37's master tile: Ingress/Egress with the host link, and the Updater
-    const uint32_t periph_present = test_k ? 1u : link_k ? 3u : g.cfg.periph_present;
+    // v1.37: the memory tile has two peripherals, the memory system (17.11) and the RW engine (17.7)
+    const uint32_t periph_present = test_k ? 1u : (link_k || k == lw::CC2) ? 3u : g.cfg.periph_present;
     const bool periph_slot = test_k || g.cfg.periph_slot;
     const bool receiver = k >= 64;                         // a special tile's request unit has a receive side (11.3)
 
@@ -57,7 +58,7 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     bs.peripherals = block.straps.peripherals;
     // the memory and tracer tiles' peripherals have DMAs (17.4, 17.7, 17.9); Ingress/Egress has none (17.6), nor a
     // compute tile's (the RTL's PERIPHERAL_DMAS: master_tile, memory_tile, tracer_tile)
-    bs.peripheral_dmas = k > lw::CC1 ? block.straps.peripherals : link_k ? 1 : 0;   // v1.37: the host link's DMA
+    bs.peripheral_dmas = k == lw::CC2 ? 2u : k > lw::CC1 ? block.straps.peripherals : link_k ? 1 : 0;   // a mask: v1.37, the memory tile's RW engine (peripheral 2), the host link's DMA
     DirectorConfig dc;
     dc.tile = k; dc.periph_present = periph_present; dc.mem_chunks = g.cfg.mem_chunks;
     dc.g4 = true;
@@ -134,15 +135,16 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     // the DMA. The chip wires Ingress/Egress's own ports and the DMA through `io.slot` and `io.dma`.
     PeriphSlot* slot = nullptr;
     if (periph_slot) {
-        if ((periph_present & 7) != (link_k ? 3u : 1u)) FATAL("add_g1: tile %u: the slot's tile has peripheral 1 only (PARAMS.peripherals = %u)", k, periph_present);
+        if ((periph_present & 7) != ((link_k || k == lw::CC2) ? 3u : 1u)) FATAL("add_g1: tile %u: the slot's tile has peripheral 1 only (PARAMS.peripherals = %u)", k, periph_present);
         PeriphSlotConfig pc;
         pc.tile = k;
         pc.replayer_log_entries = g.cfg.replayer_log_entries;
         if (k < 64) pc.type[1] = test_k ? PT_TEST : g.cfg.periph1;   // the replayer by default (or the test's)
         else {
             pc.controller = k != lw::CC1 || link_k;
-            pc.type[1] = k == lw::CC1 ? PT_INGRESS : k == lw::CC2 ? PT_RW : PT_TRACER;
-            if (link_k) { pc.host_link = true; pc.type[2] = PT_UPDATER; }
+            pc.type[1] = k == lw::CC1 ? PT_INGRESS : k == lw::CC2 ? PT_MEMSYS : PT_TRACER;
+            if (k == lw::CC2) pc.type[2] = PT_RW;                // v1.37: the RW engine the memory tile's peripheral 2 (17.7)
+            if (link_k) { pc.host_link = true; pc.type[2] = PT_UPDATER_CTL; }   // v1.37: the Updater, its controller (17.10)
         }
         auto& sl = cfg.add<PeriphSlot>(t + "slot", pc);
         cfg.link(d.periph, sl.region, 3);

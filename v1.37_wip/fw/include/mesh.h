@@ -189,7 +189,7 @@ typedef struct {
     uint32_t _unmapped_124[55];  /* 0x124-0x1FC: unmapped, an access fault (5.3) */
 } IngressEgressRegs;
 
-/* the RW engine, peripheral type 2 (17.7): the memory tile's peripheral 1 */
+/* the RW engine, peripheral type 2 (17.7): the memory tile's peripheral 2 */
 typedef struct {
     MESH_RO PARAMS;              /* 0x000: type [7:0], version [15:8], the peripheral's constants [31:16] */
     MESH_RO STATUS;              /* 0x004: busy [0], dma_busy [1]; above, the peripheral's */
@@ -309,7 +309,7 @@ _Static_assert(sizeof(TableRegs) == 0x1600 && __builtin_offsetof(TableRegs, HIST
 #define tile           ((volatile TileRegs *)0xFFFFF800u)
 #define peripheral(n)  ((volatile PeripheralRegs *)(0xFFFFF800u + 0x200u * (n)))   /* n = 1-3 */
 #define ingress_egress ((volatile IngressEgressRegs *)0xFFFFFA00u)   /* peripheral 1 on the master tile */
-#define rw_engine      ((volatile RwEngineRegs *)0xFFFFFA00u)   /* peripheral 1 on the memory tile */
+#define rw_engine      ((volatile RwEngineRegs *)0xFFFFFC00u)   /* peripheral 2 on the memory tile */
 #define tracer         ((volatile TracerRegs *)0xFFFFFA00u)   /* peripheral 1 on the tracer tile */
 #define replayer       ((volatile ReplayerRegs *)0xFFFFFA00u)   /* peripheral 1 on a compute tile */
 #define tables         ((volatile TableRegs *)0xFFFFE000u)
@@ -567,6 +567,8 @@ _Static_assert(sizeof(TableRegs) == 0x1600 && __builtin_offsetof(TableRegs, HIST
 #define PERIPHERAL_TYPE_RW_ENGINE  2   /* the RW engine (17.7) */
 #define PERIPHERAL_TYPE_TRACER     3   /* the Tracer (17.9) */
 #define PERIPHERAL_TYPE_REPLAYER   4   /* the replayer (17.8) */
+#define PERIPHERAL_TYPE_UPDATER    5   /* the Updater (17.10) */
+#define PERIPHERAL_TYPE_MEMORY_SYSTEM 6   /* the memory system (17.11) */
 
 /* ---- Ingress/Egress (17.6) ---- */
 #define IE_STATUS_STREAM_LAST      (1 << 2)   /* state: the TLAST of the oldest beat in; 0 while there is none */
@@ -592,7 +594,7 @@ _Static_assert(sizeof(TableRegs) == 0x1600 && __builtin_offsetof(TableRegs, HIST
 #define RW_CONFIG_BEATS_OF(w)      (((w) >> 1) & 0x3FFu)
 #define RW_KIND_READ               0   /* RW_CONFIG.kind: a read, from LPDDR into output queue 0 */
 #define RW_KIND_WRITE              1   /* RW_CONFIG.kind: a write, from the write buffer to LPDDR */
-#define RW_BUFFER                  (PERIPHERAL_BASE(1) + 0x000000)   /* the write buffer, RW_BUFFER_BYTES in rows of 16 bytes; WRITEs of 32, 64 and 128 bits */
+#define RW_BUFFER                  (PERIPHERAL_BASE(2) + 0x000000)   /* the write buffer, RW_BUFFER_BYTES in rows of 16 bytes; WRITEs of 32, 64 and 128 bits */
 
 /* ---- the replayer (17.8.1, 17.8.9) and the Tracer (17.9.1, 17.9.2): RUN_CONFIG and EXPANSION_TEMPLATE, their bits,
  * their regions (128-bit WRITEs, 16-byte aligned) ---- */

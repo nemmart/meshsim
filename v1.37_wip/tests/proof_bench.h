@@ -38,9 +38,8 @@ struct Case {
     std::map<std::string, std::string> gold;     // gold's reference for this s: an image's name to its SHA-256 (hex)
     int cycles_per_byte = 1;                     // the link's rate (0: as fast as taken)
     int link_rate = 1;                           // or bytes a cycle: 1, 2, 4, 8 (WORKER4)
-    int updater_lookup = 0;                      // not 0: the Updater's cycles for a look-up, in place of its 6 (a slow memory side)
-    bool updater_ctl = false;                    // the Updater's controller in the black box's place (WORKER6; updater_view.h), and its
-    uint64_t updater_ctl_seed = 0;               //   timing's seed (0 fixed); off: MESHSIM_UPDATER_CTL decides
+    int updater_lookup = 0;                      // not 0: a slow memory side, every LPDDR burst this many cycles (updater_view.h)
+    uint32_t lpddr_seed = 0;                     // the LPDDR model's jitter (MachConfig::lpddr_seed): 0 fixed, or MESHSIM_LPDDR_SEED
     // A run that must end early, and how; the proof's checks are then that it did so, and nothing else.
     //   trap  in the master's error path, by an error bit's NMI: with these ERRORS of Ingress and of the Updater;
     //   cut   with the link gone quiet inside a packet (the file ends there): no error bit, the master waiting, the

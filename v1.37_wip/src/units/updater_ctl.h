@@ -405,8 +405,14 @@ struct Ctl {
 
             case CHECK: {
                 const unsigned root = q.run_config >> RC_ROOT_LO & 3;
+                // UB, the simulator's stop (17.10.1, 17.10.11; owner's ruling S11): a root that is no page of LPDDR,
+                // bit 31 set, or a reserved `root`. ERRORS.lpddr_error is not set for it.
                 if (!page_addr_ok(q.image_root) || (tracer_copy && !page_addr_ok(q.tracer_root)) ||
-                    (root == ROOT_COPY && !page_addr_ok(q.source_root)) || root == 3) { stop(ERR_LPDDR); break; }
+                    (root == ROOT_COPY && !page_addr_ok(q.source_root)) || root == 3 ||
+                    ((q.image_root | (tracer_copy ? q.tracer_root : 0) | (root == ROOT_COPY ? q.source_root : 0)) >> 31))
+                    FATAL("the Updater: undefined behavior at %lld: a run's root that is no page of LPDDR, with bit 31 set, or RUN_CONFIG.root 3 "
+                          "(IMAGE_ROOT 0x%x, TRACER_ROOT 0x%x, SOURCE_ROOT 0x%x, root %u; 17.10.1)",
+                          (long long)t, q.image_root, q.tracer_root, q.source_root, root);
                 if (root == ROOT_EXISTS) { d.state = NEXT; break; }
                 if (root == ROOT_EMPTY) {                      // every entry "no page"; at depth 0 the root is the data page: zeros
                     const uint8_t c = depth > 0 ? W_ONES : W_ZERO;
@@ -445,6 +451,8 @@ struct Ctl {
                     break;
                 }
                 if (depth < 3 && page_of_out >= (1u << (10 * depth))) { stop(ERR_BEYOND); break; }   // NOTES C6
+                if (page_of_out >= (1u << 23))                                  // UB (17.10.2, 17.10.11): past the Updater's reach
+                    FATAL("the Updater: undefined behavior at %lld: a page at 2^23 or above (%u; 17.10.2)", (long long)t, page_of_out);
                 if (q.held && q.held_page != page_of_out) { d.state = FLUSH; break; }
                 if (!q.held) {                                                  // bring the page in
                     d.held_page = page_of_out;
@@ -573,7 +581,8 @@ struct Ctl {
                 d.fp_left = uint8_t(q.fp_left + 1);
                 if (d.fp_left == FREE_HALF) { d.fp_left = 0; d.credit_pulse = true; }
                 d.page_count = q.page_count - 1;
-                if (!page_addr_ok(p)) { stop(ERR_LPDDR); break; }
+                if (!page_addr_ok(p))                                           // UB (17.10.1, S11): the simulator's stop
+                    FATAL("the Updater: undefined behavior at %lld: a free page 0x%x that is no page of LPDDR (17.10.1)", (long long)t, p);
                 const uint8_t k = q.level, s = q.side;
                 const bool data = k == depth - 1;
                 const uint32_t from = q.src[s];
@@ -648,6 +657,9 @@ struct Ctl {
                 nb -= need;
                 d.word_count = q.word_count - 1;
                 if (q.run_left == 0) {                                          // a header word: a run of values opens
+                    if (uint64_t(uint32_t(v)) + (v >> 32) > (uint64_t(1) << 32))   // UB (17.10.2, 17.10.11): the index would wrap
+                        FATAL("the Updater: undefined behavior at %lld: a run of values past word index 2^32 - 1 (from %u, %u values; 17.10.2)",
+                              (long long)t, uint32_t(v), uint32_t(v >> 32));
                     d.run_addr = uint32_t(v); d.run_left = uint32_t(v >> 32);
                 } else {                                                        // a value, with its type
                     const uint32_t n = q.run_left < q.word_count ? q.run_left : q.word_count;   // this run's values from here

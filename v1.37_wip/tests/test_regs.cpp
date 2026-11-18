@@ -182,6 +182,7 @@ const SpecValue SPEC_VALUES[] = {
     {"OP_REPORT", 1}, {"OP_LOAD", 3}, {"OP_READ", 1}, {"OP_WRITE", 2}, {"REPORT_ERRORS", 24}, {"REPORT_MTVAL", 25}, {"LOAD_COUNTER", 7},
     {"PERIPHERAL_TYPE_NONE", 0}, {"PERIPHERAL_TYPE_INGRESS_EGRESS", 1}, {"PERIPHERAL_TYPE_RW_ENGINE", 2},
     {"PERIPHERAL_TYPE_TRACER", 3}, {"PERIPHERAL_TYPE_REPLAYER", 4},
+    {"PERIPHERAL_TYPE_UPDATER", 5}, {"PERIPHERAL_TYPE_MEMORY_SYSTEM", 6},   // v1.37: 17.10, 17.11
     {"MESH_SIZE", 8}, {"TILE_COUNT", 64}, {"TILE_ID_BITS", 7}, {"IMEM_BYTES", 32768}, {"DMEM_BYTES", 32768},
     {"BOOT_ROM_BYTES", 256}, {"SCRATCHPAD_BYTES", 4u << 20}, {"WORD_ADDRESS_BITS", 21}, {"WINDOW_LOAD_LATENCY", 2},
     {"TABLE_LOAD_LATENCY", 1}, {"COUNTER_BITS", 20}, {"HIST_BITS", 17}, {"TOKEN_COUNT", 64}, {"GATHER_QUEUE_DEPTH", 64},
@@ -195,9 +196,9 @@ const SpecValue SPEC_VALUES[] = {
     {"HIST_BASE", 0xFFFFE000}, {"PTR_BASE", 0xFFFFE400}, {"STREAM_SRC_ADDR_BASE", 0xFFFFE800},
     {"STREAM_DEST_ADDR_BASE", 0xFFFFEC00}, {"STREAM_HDR_BASE", 0xFFFFF000}, {"GROUP_BASE", 0xFFFFF400},
 };
-struct SpecPart { const char* macro; uint32_t offset; };   // 17.7, 17.8.9, 17.9.2: offsets in the peripheral's region
+struct SpecPart { const char* macro; uint32_t offset; unsigned n = 1; };   // 17.7, 17.8.9, 17.9.2: offsets in peripheral n's region
 const SpecPart SPEC_PARTS[] = {
-    {"RW_BUFFER", 0x000000},
+    {"RW_BUFFER", 0x000000, 2},                                             // v1.37: the memory tile's peripheral 2's region, 0x05 (17.7)
     {"RP_STATE", 0x000000}, {"RP_STREAMS", 0x000010}, {"RP_IMAGE", 0x000020}, {"RP_RECORD_END", 0x000420},
     {"RP_DECODE_TABLE", 0x001000}, {"RP_ROM", 0x002000}, {"RP_QUEUE_CODE", 0x100000}, {"RP_QUEUE_READ_LOG", 0x200000},
     {"RP_QUEUE_WRITE_LOG", 0x300000}, {"RP_QUEUE_EXPANSION", 0x400000},
@@ -642,7 +643,9 @@ TEST(mesh_h_holds_the_specifications_offsets_bits_fields_and_values) {
         CHECK(it != m.end());
         unsigned off = 0;
         char tail[8];
-        CHECK(sscanf(it->second.c_str(), "(PERIPHERAL_BASE(1) + 0x%x)%1s", &off, tail) == 1);
+        unsigned n = 0;
+        CHECK(sscanf(it->second.c_str(), "(PERIPHERAL_BASE(%u) + 0x%x)%1s", &n, &off, tail) == 2);
+        CHECK_EQ(n, p.n);
         CHECK_EQ(off, p.offset);
     }
     CHECK(m.count("PERIPHERAL_BASE(n)") && m.at("PERIPHERAL_BASE(n)") == "((0x03 + (n)) << 24)");                       // 5.1

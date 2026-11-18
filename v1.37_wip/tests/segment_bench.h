@@ -202,7 +202,7 @@ struct Options {
     const char* fw = nullptr;                   // the images' folder: rtl_images::fw_images()'s by default
     const char* tables = "data/tables/replayer/";
     Proof* proof = nullptr;                     // v1.37: the segment from the host's frames
-    bool cache_ctl = false;                     // with a proof: the Tracer on the cache's controller (MachConfig::cache_ctl)
+    uint32_t lpddr_seed = 0;                    // v1.37: the LPDDR model's jitter (MachConfig::lpddr_seed)
 };
 // The segment on the chip, with run_chip's checks; `rtl`, the RTL chip's figures, is not compared (the header).
 Run run_chip(const Segment& s, const Rtl* rtl, const Options& o = Options());

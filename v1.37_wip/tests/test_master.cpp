@@ -26,6 +26,7 @@
 #include <cstdio>
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "harness.h"
 #include "packet_writer.h"
@@ -295,6 +296,51 @@ TEST(master_link_cut) {
         seg.cycle_limit = 400000;
         seg.name += ", cut inside a packet";
     }).failures, 0);
+}
+
+// 30.8: the firmware's checks of what the frames say, each a stop of the master's own program: MR_FRAME, its detail
+// the frame's type and the check (fw/cc/master_layout.h's MR_D_*), no ERRORS bit, no toast pin, no reply. Each run
+// sends a changed copy of kin-raw's frames, cut into link packets of 32 words whatever its frames say (a frame whose
+// length is changed is not whole frames any more), numbered as one run.
+std::vector<uint8_t> raw_packets(const std::vector<uint8_t>& bytes) {
+    std::vector<uint8_t> out;
+    uint32_t number = 1;
+    for (size_t w = 0, all = bytes.size() / 16; w < all; w += 32) {
+        packet_writer::Fields f;
+        f.length = unsigned(all - w < 32 ? all - w : 32);
+        f.number = number++;
+        packet_writer::packet(out, f, &bytes[16 * w]);
+    }
+    return out;
+}
+void put32(std::vector<uint8_t>& b, size_t at, uint32_t v) { for (unsigned k = 0; k < 4; k++) b[at + k] = uint8_t(v >> (8 * k)); }
+uint32_t get32(const std::vector<uint8_t>& b, size_t at) { uint32_t v = 0; for (unsigned k = 0; k < 4; k++) v |= uint32_t(b[at + k]) << (8 * k); return v; }
+const frames::Frame* frame_of(const frames::File& f, uint32_t type) { for (const frames::Frame& fr : f.frame) if (fr.type == type) return &fr; return nullptr; }
+TEST(master_stops_on_what_a_frame_says) {
+    enum { D_TYPE = 1, D_SHORT = 2, D_LONG = 3, D_VERSION = 4, D_LENGTH = 5, D_ORDER = 6 };
+    using Edit = std::function<void(const frames::File&, std::vector<uint8_t>&)>;
+    const struct { const char* what; uint32_t type, check; Edit edit; } cases[] = {
+        {"a type the firmware does not know: the reply's, 16", 16, D_TYPE, [](const frames::File& f, std::vector<uint8_t>& b) { put32(b, frame_of(f, 1)->at + 8, 16); }},
+        {"compression 2", 2, D_TYPE, [](const frames::File& f, std::vector<uint8_t>& b) { put32(b, frame_of(f, 2)->at, 2); }},
+        {"frame 1 ending before its fields", 1, D_SHORT, [](const frames::File& f, std::vector<uint8_t>& b) { put32(b, frame_of(f, 1)->at + 12, 1); }},
+        {"frame 1 longer than its fields", 1, D_LONG, [](const frames::File& f, std::vector<uint8_t>& b) { const size_t at = frame_of(f, 1)->at + 12; put32(b, at, get32(b, at) + 1); }},
+        {"frame 3's format version 2", 3, D_VERSION, [](const frames::File& f, std::vector<uint8_t>& b) { put32(b, frame_of(f, 3)->data(), 2); }},
+        {"frame 2 without frame 1", 2, D_ORDER, [](const frames::File& f, std::vector<uint8_t>& b) {
+             const frames::Frame& one = *frame_of(f, 1);
+             b.erase(b.begin() + long(one.at), b.begin() + long(one.data() + 16 * size_t(one.length)));
+         }},
+        {"frame 7's length not 68 N", 7, D_LENGTH, [](const frames::File& f, std::vector<uint8_t>& b) { const size_t at = frame_of(f, 7)->at + 12; put32(b, at, get32(b, at) - 68); }},
+    };
+    for (const auto& k : cases) {
+        CHECK_EQ(fixture("kin-raw", 20, [&k](proof::Case& c, segment::Segment& seg) {
+            std::vector<uint8_t> b = c.file.bytes;
+            k.edit(c.file, b);
+            c.packets = raw_packets(b);
+            c.expect.stop = true; c.expect.detail = k.type | k.check << 8;
+            seg.cycle_limit = 2000000;
+            seg.name += std::string(", ") + k.what;
+        }).failures, 0);
+    }
 }
 
 // ---- the checks' teeth: each of these runs must fail, and its lines say which checks caught it

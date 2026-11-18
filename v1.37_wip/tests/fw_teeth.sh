@@ -100,6 +100,8 @@ BUGS=(
   "master: a copy started without the count's 0~cc/master.c~s/        if ((host_link->DMA_FORWARD_COUNT \& HL_FORWARD_COUNT) == 0) {/        if (1) {/"
   "master: a copy's landing not waited for~cc/master.c~/^        wait_counter(CTR_LINK);$/d"
   "master: a run started without the last one's done~cc/master.c~/^    if (run_out) run_wait();$/d"
+  "master: a header frame's whole row left unread not seen~cc/master.c~s/if (parse_left || parse_words - parse_at >= 4) bad_frame/if (parse_left) bad_frame/"
+  "master: frame 3's version not checked~cc/master.c~s/if (next32() != 1) bad_frame(type, MR_D_VERSION);/(void)next32();/"
   "reply: s and N swapped~cc/master.c~s/write128(updater->PAGE_COUNT, tracer_info\[0\], N, S);/write128(updater->PAGE_COUNT, tracer_info[0], S, N);/"
   "reply: EGRESS_COUNT 71~cc/master.c~s/    host_link->EGRESS_COUNT = ML_REPLY_ROWS;/    host_link->EGRESS_COUNT = ML_REPLY_ROWS - 1;/"
   "reply: record s + 1 from the master's memory for the tracer tile's~cc/master.c~s/    stream(0, ML_REPLY, IE_EGRESS, ML_REPLY_ROWS, SIZE_128, 0, MODE_WRITE, TILE_MASTER);/    stream(0, ML_REPLY, IE_EGRESS, 4, SIZE_128, 0, MODE_WRITE, TILE_MASTER); stream(1, ML_EXPECT, IE_EGRESS, RECORD_WORDS, SIZE_128, 0, MODE_WRITE, TILE_MASTER);/; s/^    transfer(1);$/    transfer(2);/"

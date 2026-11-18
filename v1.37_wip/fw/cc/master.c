@@ -370,7 +370,9 @@ static uint32_t skip_string(void) {
     for (uint32_t words = (bytes + 3) >> 2; words; words--) (void)next32();
     return bytes;
 }
-static void parse_end(void) { if (parse_left) bad_frame(parse_type, MR_D_LONG); }
+/* The fields' end: no row of the section left to copy, and of the rows copied no whole row unread (the last row's
+ * zero padding is under 128 bits, 29.2). A row of the section already in the buffer counts too (30.8). */
+static void parse_end(void) { if (parse_left || parse_words - parse_at >= 4) bad_frame(parse_type, MR_D_LONG); }
 /* A file's depth from its length in pages: the smallest d >= 1 with 1024^d >= pages (gold gives every file an index level). */
 static uint32_t depth_of(uint32_t pages) { return pages <= 1024 ? 1 : pages <= (1u << 20) ? 2 : 3; }
 

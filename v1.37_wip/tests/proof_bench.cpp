@@ -46,7 +46,7 @@ enum : unsigned { MR_STATUS = 0, MR_DETAIL, MR_FRAMES, MR_RUNS, MR_PAGES_TAKEN, 
                   MR_FRAME_START = 72, MR_FRAME_WAKES = 88, MR_FRAME_READS = 104, MR_COUNT_STORES = 120, MR_HANDED_WAKES, MR_HANDED_READS,
                   MR_FRAME_AWAKE, MR_REPLY_MCYCLE = MR_FRAME_AWAKE + 16, MR_TRACER_ROWS = MR_REPLY_MCYCLE + 2, MR_TRACER_ERRORS,
                   MR_TRACER_STATUS, MR_REPLIED, MR_WORDS };
-constexpr uint32_t MR_OK = 1, MR_TRAP = 2;
+constexpr uint32_t MR_OK = 1, MR_TRAP = 2, MR_FRAME = 4;
 // ---- fw/tracer/tracer_layout.h's header words the master writes
 enum : unsigned { TL_H_EXPECT = 8, TL_H_ADVICE_N = 10, TL_H_HASH_MUL = 12, TL_H_HASH_STEP = 13, TL_H_HASH_LINES = 14 };
 constexpr unsigned T = segment::T, RECORD_WORDS = segment::RECORD_WORDS;
@@ -208,7 +208,7 @@ struct ChipProof final : segment::Proof {
         return v;
     }
 
-    bool ends_early() const override { return c.expect.trap || c.expect.cut; }
+    bool ends_early() const override { return c.expect.trap || c.expect.cut || c.expect.stop; }
 
     // ---- v1.37 (30.7, 29.14): the reply, at the host's end: its foreground words as they come, with their hops, and
     //      the link packets they came in. The run goes on past the master's exit until all 72 are in.
@@ -290,6 +290,16 @@ struct ChipProof final : segment::Proof {
                 a.pages_read = done[i].stat[4]; a.pages_written = done[i].stat[5];
                 numbers->runs.push_back(a);
             }
+        }
+        if (c.expect.stop) {                         // 30.8: a stop of the master's own on what a frame says
+            if (!run.finished) fail("no exit: a frame that fails a check must stop the master");
+            if (R[MR_STATUS] != MR_FRAME || R[MR_DETAIL] != c.expect.detail)
+                fail("the master's status %u, detail 0x%x; a stop on a frame (%u), detail 0x%x expected", R[MR_STATUS], R[MR_DETAIL], MR_FRAME, c.expect.detail);
+            if (R[MR_TILE_ERRORS] || R[MR_INGRESS_ERRORS] || R[MR_UPDATER_ERRORS] || link.errors(0) != 0 || u.errors(0) != 0)
+                fail("an error bit with a stop of the master's own: the tile's 0x%x, Ingress's 0x%x, the Updater's 0x%x", R[MR_TILE_ERRORS], R[MR_INGRESS_ERRORS], R[MR_UPDATER_ERRORS]);
+            if (m.c.toast()) fail("the toast pin with a stop of the master's own");
+            if (!reply.empty()) fail("a reply (%zu words) after a stop", reply.size());
+            return;
         }
         if (!parsed) { fail("the frame file is not as HOST-FRAMES.md says: %s", parse_error.c_str()); return; }
         if (c.noise) {                               // the noise must have reached the link (stage 4)

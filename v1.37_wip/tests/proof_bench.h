@@ -51,7 +51,10 @@ struct Case {
     //   trap  in the master's error path, by an error bit's NMI: with these ERRORS of Ingress and of the Updater;
     //   cut   with the link gone quiet inside a packet (the file ends there): no error bit, the master waiting, the
     //         run ended by its cycle limit.
-    struct Expect { bool trap = false, cut = false; int ingress_errors = 0, updater_errors = 0; } expect;
+    //   stop  (v1.37, 30.8) a stop of the master's own program on what a frame says: MR_FRAME with this detail (the
+    //         frame's type [7:0], the check [15:8]), no ERRORS bit, and no reply. The link's packets are then not the
+    //         file's: `packets` was made from a changed copy, and the file's own expectations are not checked.
+    struct Expect { bool trap = false, cut = false, stop = false; int ingress_errors = 0, updater_errors = 0; uint32_t detail = 0; } expect;
 };
 
 // One of the Updater's runs, as its done was posted.

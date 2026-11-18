@@ -1,11 +1,13 @@
-# The Tracer: machine specification, v1.36
+# The Tracer: machine specification, v1.37
 
 *Section 17.9 of the machine specification (`spec/machine-spec.md`), which keeps a stub there. Section numbers are
 the machine specification's. 17.9 and 17.9.1–17.9.12 are the hardware, as the RTL (Snarky One) builds it: its
 specification's text, under its numbers, corrected in the three places where the RTL's sources differ from it
 (`spec/CHANGES-v1.35-to-v1.36.md`, section 9.1). 17.9.13–17.9.18 are what v1.35's 4.21 has beyond that, kept in v1.36's
 terms: the overview, the simulator's model of the memory system, the core's loop, the reasons, the timing and cost,
-and the simulator's checks. v1.35's own text is `spec/history/tracer-v1.35.md`.*
+and the simulator's checks. v1.35's own text is `spec/history/tracer-v1.35.md`. **v1.37** changes no hardware of
+the Tracer's: the other side of its `fill` port is now the cache (23.6), so 17.9.14 is a stub, and the master tile
+delivers its segment in its load (17.9.10, 17.9.15; 30.5).*
 
 ### 17.9 The Tracer, the tracer tile's peripheral
 
@@ -591,6 +593,12 @@ v1.35's 4.21.10, and relies on these rules:
   barrier.
 - **The replay** starts at the barrier after every window has landed.
 
+**In v1.37** the master tile answers the tracer tile's `LOAD` only once the
+Updater has built the segment's files, and the load carries the segment: its
+record, the end state it is checked against, its advice and the map's
+constants (30.5). The tracer tile's result carries its last record to the master
+tile (30.6).
+
 **The handshakes** are requests to the tracer tile (target 2, 11.5), so no
 timing is assumed, as the load waits for its `LOAD` (6.5):
 - **`ARMED`.** A compute tile, woken by the release, arms its counters for its
@@ -684,40 +692,17 @@ tracer tile's memory and go to LPDDR as files, for a later replay, which removes
 17.9.10. Signed counters (item 125) would have removed the wait between a release and a tile's arming; the requests
 of 17.9.10 remove it.
 
-#### 17.9.14 The memory system: the simulator's model
+#### 17.9.14 The memory system behind the fill port
 
-*Kept from v1.35's 4.21.5 and v1.35's 4.21.9, corrected for the fill port's four channels (3) and the write's status
-(17.9.5). (Not stated by the RTL's specification; kept from v1.35.)*
+**Specified in v1.37:** the memory system, the memory tile's peripheral 1 (17.11), whose cache serves `fill`
+(23.6.4) and walks the files (23.5). 17.9.5 and `fill` (3) stay the whole contract between it and the Tracer; the
+cache keeps it, and its timing is 23.6.7's: 2 cycles a level on hits, a line from LPDDR about 80.
 
-**The memory system is not built.** *(Deferred: items 60 and 119; 23.6.)* It is to sit on the memory tile, behind the
-`fill` port (2.1, 3): the files' translator and a shared cache in front of LPDDR. 17.9.5 and the `fill` interface
-(3) are the whole contract between it and the Tracer; its internals and its latencies are its own. In the RTL
-(Snarky One) the port stops at the chip's boundary (23.6), and a model stands in for the memory system in its tests.
-The simulator has its own model, below, which is a model and no specification: the memory system's design replaces
-it.
-
-**The simulator's model** [built: v1.35]:
-- **A shared cache** of 512 KiB in 128-byte lines, 8 ways × 512 sets, LRU, write-back, addressed after translation
-  by LPDDR address, holding index lines and data lines alike. It is cold at each segment's start.
-- **No TLB.** A fill walks its file's tree: one index line for each level, then the data line, so a fill of a
-  depth-*d* file is *d* + 1 accesses. Each access takes `ms_line_hit` = 6 cycles when it hits the shared cache and
-  `ms_line_miss` = 80 when it is filled from LPDDR.
-- **A write** makes the same walk. Its data line, written whole, hits in place or is allocated with no LPDDR read.
-- **Victims.** The next victim of every set is kept free or clean: a dirty LRU line goes at once into a write
-  buffer of 4 lines, which drains one line every 80 cycles. So a fill never waits for a write-back, and a read
-  that misses waits until the write buffer is empty.
-- **Statuses.** A read's status is 17.9.5's, from the walk: `ok` only when every entry on the path from the root is
-  owned, since a shared index page's entries keep the owned bits they had in the file they were copied from;
-  `beyond` by the depth's capacity alone, since a request carries only (root, depth, line) and the memory system
-  keeps no length for a file. A write's status is `ok`: the model writes every line it is asked to.
-- **The channels.** The model takes a read and a write that are outstanding together (3), and answers a read of a
-  line after a write of it already accepted. *(Open: item 174. v1.35's model had one request
-  outstanding at a time; how the model times a read and a write that overlap is to be decided with the
-  simulator's change.)*
-
-**What the latencies stand for.** `ms_line_miss` is an idle LPDDR miss, about 50 ns at the DRAM plus the
-LPDDR controller [estimate]. The real latencies are not known until the memory system is designed, so every cycle figure
-of a run that depends on them is the model's (17.9.7).
+**v1.36's simulator's model,** v1.35's (a shared cache of 8 ways × 512 sets, LRU, write-back, cold at each segment's
+start; a fill of a depth-*d* file *d* + 1 accesses of `ms_line_hit` = 6 cycles a hit and `ms_line_miss` = 80 a
+miss; the next victim kept clean through a 4-line write buffer), stays in v1.37's simulator as a setting, for
+comparison: it is no specification. On the proof runs the cache is −2.7 % to +4.4 % against it `[meas: v1.37's
+simulator]` (23.6.7).
 
 #### 17.9.15 The tracer tile's loop and the segment's sequence (software)
 
@@ -783,7 +768,8 @@ its scratchpad as its replay region (17.8.22), every packet counted:
 
 **The sequence.** Three releases (7.3), and no timing assumed between a release and a tile's arming:
 1. **The load.** After the reset every compute tile and the tracer tile ask for their images (`LOAD`, 6.5). The
-   compute tiles arrive, nothing armed; the tracer tile takes no part in the barrier and starts its image.
+   compute tiles arrive, nothing armed; the tracer tile takes no part in the barrier and starts its image. In
+   v1.37 the tracer tile's load waits for its segment's files, and carries the segment (30.5).
 2. **The first release.** Each compute tile, woken, arms its start counter for 66 and its totals counter for 2,
    then sends `ARMED`.
 3. **The deliveries**, window by window, as the loop runs. Tile *n*'s totals land before any of its streams; the
@@ -893,7 +879,7 @@ exactness is the requirement is the owner's to confirm.)*
 | the drain | one FIFO entry a cycle a scan; one packet a cycle (17.9.7) | the same |
 | `done` | at most 2 cycles after the DMA's last pop | the cycle after |
 | a write into the region | within `PERIPHERAL_LATENCY`; the RTL's lands at 2 | `rp_latency` 2 |
-| a fill | the memory system's: *Open* (3) | the model's, 17.9.14: 6 a hit, 80 a miss, depth + 1 accesses |
+| a fill | the cache's (23.6.7): 2 cycles a level on hits, a line from LPDDR about 80 | the model's, 17.9.14: 6 a hit, 80 a miss, depth + 1 accesses |
 
 **The real workloads,** the Tracer alone under an ideal controller, 128 windows of EVM Zone and 64 of Cyclone
 (8,388,608 and 4,194,304 rows; 2,555,539 and 1,488,485 of them padding rows after the program's end):
@@ -962,7 +948,7 @@ The simulator's own:
 | `tr_row_cycles` 4, `tr_mul_cycles` 6 | the contract's schedules (17.9.7); no longer parameters |
 | `tr_probe_compare` 2 | the contract's (17.9.7) |
 | `tr_probe_lines` 3 | `MAP_PROBE_LINES` (19) |
-| `ms_line_hit` 6, `ms_line_miss` 80 | kept: the simulator's model of the memory system (17.9.14) |
+| `ms_line_hit` 6, `ms_line_miss` 80 | kept: v1.36's model of the memory system, a setting of v1.37's simulator for comparison (17.9.14); the cache's figures are 23.6.7's |
 | `rp_latency` 2 | `PERIPHERAL_LATENCY` (19) |
 | `stage_delay` 64 | removed (17.9.15) |
 
@@ -972,10 +958,10 @@ The simulator's own:
 |---|---|---|---|
 | 144 | The Tracer's `EVENTS` and `ERRORS` positions: v1.35 kept the replayer's positions, with gaps (accepted, owner, 2026-11-05); v1.36 packs both from bit 0, as the RTL does (item 161, in chapter 26) | 17.9.1 | closed, and reversed in v1.36 (161); for the owner to rule on |
 | 147 | To measure: the caches' sizes, by gold replaying both workloads | 17.9.5 | decided, part open |
-| 148 | The fill port's statuses, to revisit with the memory system's design. v1.36 adds the write's status and `write_back_error` | 17.9.5, 17.9.9 | decided, part deferred |
+| 148 | The fill port's statuses. v1.36 adds the write's status and `write_back_error`; v1.37's cache answers an LPDDR error on a read `beyond`, with its own error set, since the read's four statuses are used (23.6.4; RCR comment E) | 17.9.5, 17.9.9 | decided |
 | 153 | The Tracer's timing. The RTL's values are in 17.9.7 and 17.9.17, and v1.36's simulator reproduces the RTL's Tracer cycle for cycle (item 175); what stays open is the memory system's latencies | 17.9.7, 17.9.17 | part closed by the RTL; part open |
 | 157 | The statistics counters' attribution: the RTL's, 17.9.8, which the simulator follows | 17.9.8 | closed by the RTL |
-| 174 | The simulator's model of the memory system with a read and a write outstanding together, and its write status. Decided for the simulator only: its model serves one access at a time, a request taken while another is served starting when that one ends (`OPEN-v1.36.md`); the design's answer comes with the memory system (items 60, 119) | 17.9.14 | open |
+| 174 | The memory system with a read and a write outstanding together, and its write status. Closed in v1.37 by the cache: its fill read and fill write have a register each, and a write is answered `ok` or `error` by the walk (23.6.4, 23.6.5) | 17.9.14, 23.6 | closed (v1.37) |
 | 175 | Whether the simulator reproduces the RTL's Tracer cycle for cycle, or its rows, counts and stall classes with the table's costs as constants. v1.36's simulator does the first: its rows, counters and cycles equal the RTL's at the block level and on the chip (`OPEN-v1.36.md`) | 17.9.17 | built cycle for cycle; for the owner to confirm |
 | 176 | The `op` codes of `ARMED` and `STREAMS_ARMED`: the tracer tile's firmware's (17.9.10); the RTL's firmware uses 1 and 2 | 17.9.10, 11.5 | open |
 | 177 | The cycle of the rows' end's effects: 17.9.1 and 17.9.6 give the length words, the stream word and `state_ready` "when the rows end"; the RTL writes the stream word 2 cycles after and raises the others the cycle after that | 17.9.6, 17.9.17 | open |

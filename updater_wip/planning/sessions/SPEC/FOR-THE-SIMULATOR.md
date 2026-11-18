@@ -1,0 +1,14 @@
+# For the simulator: where `main` differs from v1.37's specification
+
+*The worklist for the session that brings v1.37's simulator and firmware to `v1.37_wip/spec/`. Each row: the
+section, what the specification says, what `main` has. Kept as the specification is written (branch `v137-spec`);
+"`main`" is the commit the row was checked against.*
+
+## The memory system (machine-spec 17.11, 23)
+
+| section | the specification | `main` (be077a7d) |
+| --- | --- | --- |
+| 17.11, 23.1, 2.1 | the memory system (the cache, the AXI arbiter, the `lpddr` port) is the memory tile's peripheral 1, with a window whose `ERRORS` carries the cache's error | the cache, the arbiter and the LPDDR model are `CacheSystem` (`src/units/cache_system.h`), attached to the Tracer's fill port behind the setting `cache_ctl`, off by default; no window, and the cache's error flag reaches nothing |
+| 17.7 | the RW engine is the memory tile's peripheral 2: window 0xFFFF_FC00, region 0x05 | peripheral 1: window 0xFFFF_FA00, region 0x04 (v1.36's) |
+| 17.7, 23.10 | the RW engine is client 2 of the arbiter, on the one LPDDR | its own `lpddr` slave and memory (v1.36's); the adapter `RwEngineOnArbiter` exists and is used only by `tests/test_axi_arbiter.cpp` |
+| 23.10 | the Updater is client 1 of the arbiter and the cache's look-up port 1 | the real controller runs against stand-ins of its own (WORKER9's second piece, the joint, not done) |

@@ -3410,6 +3410,256 @@ program's to pace (16.3).
 - deliveries into DMEM inside DMEM, clear of its reserved first 16 bytes (6.3) and of what the image keeps
   (invariant 11).
 
+### 23.10 The path to LPDDR: a client's port
+
+Every unit that reads or writes LPDDR is a **client** of the AXI arbiter (23.11), on a port of its own, an
+`lpddr_client` interface (3). The arbiter is the only thing on the chip's port to the LPDDR controller, `lpddr`
+(23.12).
+
+| Client, and its ID on `lpddr` | Unit | What it moves |
+| --- | --- | --- |
+| 0 | the cache's controller (23.6) | lines: a fetch, a dirty line's write-back, an update's write-through |
+| 1 | the Updater (17.10) | pages and half pages, read and written |
+| 2 | the RW engine (17.7) | its jobs' bursts |
+| 3 | none | its port's inputs are held at 0 |
+
+- **A client has one number everywhere:** its ID on `lpddr` and, for a client of the cache, its look-up port's
+  number (23.6.2).
+- **The clients' ports are one design,** the arbiter's, whichever unit is on them. The RW engine's `lpddr` port of
+  v1.36 is an `lpddr_client` port unchanged: its one address and length register drives both AR and AW (17.7).
+
+**The signals,** AXI4's (ARM IHI 0022) by its names; the client is the master and the arbiter the slave:
+
+| Channel | Signal | Bits | From | Meaning |
+| --- | --- | --- | --- | --- |
+| AR | `arvalid`, `arready` | 1, 1 | client, arbiter | |
+| | `araddr` | `LPDDR_ADDRESS_BITS` | client | the burst's first byte, a multiple of 16 |
+| | `arlen` | 8 | client | the burst's beats less one, 0 to 255 |
+| | `arsize` | 3 | constant 4 | 16 bytes a beat |
+| | `arburst` | 2 | constant 1 | INCR |
+| R | `rvalid` | 1 | arbiter | |
+| | `rready` | 1 | constant 1 | the client takes every beat in the cycle it comes |
+| | `rdata` | 128 | arbiter | the beat at byte address *a*: LPDDR's bytes *a* to *a* + 15, byte *b* at bits [8*b* + 7 : 8*b*] |
+| | `rresp` | 2 | arbiter | 0 `OKAY`, 1 `EXOKAY`, 2 `SLVERR`, 3 `DECERR` |
+| | `rlast` | 1 | arbiter | the burst's last beat |
+| AW | `awvalid`, `awready`, `awaddr`, `awlen`, `awsize`, `awburst` | as AR's | | a write burst's address |
+| W | `wvalid`, `wready` | 1, 1 | client, arbiter | |
+| | `wdata` | 128 | client | as `rdata` |
+| | `wstrb` | 16 | constant all ones | every byte of every beat written |
+| | `wlast` | 1 | client | the burst's last beat |
+| B | `bvalid` | 1 | arbiter | |
+| | `bready` | 1 | constant 1 | the client takes every response in the cycle it comes |
+| | `bresp` | 2 | arbiter | as `rresp` |
+
+- **AXI4's other signals are not on the port** and take their defaults: no ID signals, and no lock, cache,
+  protection, QoS, region or user signals. So no access is exclusive, and an `EXOKAY` is an error response.
+- **Every output is a flip-flop or a constant,** the client's and the arbiter's. A `valid`/`ready` pair moves one
+  item in a cycle in which both are 1 (3).
+
+**A burst** is one AXI transaction: an address, then its beats, and for a write its response.
+
+| Rule | |
+| --- | --- |
+| type | INCR, 16-byte beats |
+| length | 1 to 256 beats |
+| address | a byte address, a multiple of 16, below 2^`LPDDR_ADDRESS_BITS` |
+| boundary | **no burst crosses a 4 KiB boundary** |
+| a write's beats | exactly `awlen` + 1, `wlast` on the last and on no other |
+| a write's pace | once a client's write address has been taken, it offers that burst's beats one a cycle, `wvalid` 1 from the first to the last, waiting for nothing but `wready`. It may offer them before the address is taken |
+| outstanding | at most `CLIENT_BURSTS` bursts in each direction; the arbiter holds `arready` or `awready` at 0 beyond, so a client needs no count of its own |
+
+A burst that breaks one of the first five rules is a fault of the client's design; the simulator stops on it
+(23.13). A client that pauses inside a write burst holds up every client's writes (23.11).
+
+**The sizes in use,** each aligned to its own size, so none crosses 4 KiB:
+
+| Burst | Bytes | Beats | Aligned to | Used by |
+| --- | --- | --- | --- | --- |
+| a line | 128 | 8 | 128 | the cache: a fetch, a write-back, an update's write-through |
+| a half page | 2,048 | 128 | 2,048 | the Updater |
+| a page | 4,096 | 256 | 4,096 | the Updater |
+| any other | 16 *n* | *n* ≤ 256 | 16 | the RW engine's jobs (17.7) |
+
+**What a client may count on, and what it may not:**
+
+| A client may count on | A client may not count on |
+| --- | --- |
+| every burst answered in bounded time: each beat of a read, and a write's response | any latency |
+| its reads answered in the order it raised them, and its writes likewise | any order between a read and a write, its own included, even of the same bytes |
+| a write's response once LPDDR holds the write: a read raised after the response sees it, on any client's port | any order against another client's bursts |
+| a read's beats in address order, `rlast` on the burst's last alone | a burst's beats back to back: other clients' beats come between |
+| its `arready` and `awready` rising again in bounded time | a `ready` in any given cycle |
+
+- **A client that reads what it, or another client, wrote** raises the read only after the write's response. The
+  cache's update holds its reply until its write's response for this reason (23.6.6).
+- **An error response** is an `rresp` or `bresp` other than `OKAY`. A read beat with one carries undefined data,
+  and its burst still runs to its `rlast`; a write answered with one leaves LPDDR's bytes under the burst
+  undefined. What a client does about it is its own: 17.7, 17.10 and 23.6.9 say.
+
+### 23.11 The AXI arbiter
+
+The AXI arbiter chooses whose request goes to the LPDDR controller next, and steers each beat and response back. It
+holds no data but a write's beats in passing, and has no registers in any window: it sits in the memory system,
+the memory tile's peripheral 1 (17.11), with the cache.
+
+**Pieces.** A burst of at most `TURN_BEATS` beats goes to the controller as it is, one **piece**. A longer one is cut:
+a burst of *n* beats at byte address *a* is ⌈*n* / `TURN_BEATS`⌉ pieces, piece *k* at *a* + 16·`TURN_BEATS`·*k*
+of min(`TURN_BEATS`, *n* − `TURN_BEATS`·*k*) beats. At the default, 32, a line is one piece, a half page 4 and a
+page 8. Every piece carries its client's number as its ID, and none crosses 4 KiB, since its burst does not.
+
+**What a client sees of the cutting:** nothing but time.
+- **A read:** its burst's beats in address order, each with the `rresp` the controller gave it; `rlast` on the
+  burst's last beat alone, the pieces' other `rlast`s dropped.
+- **A write:** it sends *n* beats with `wlast` on the *n*th; the arbiter sends them on as the pieces' beats, with
+  `wlast` on each piece's last. The client gets one response, when every piece's has come: `OKAY` if every piece's
+  was, else the first piece's, in the order the responses came, that was not.
+
+**Its registers,** counted at the default parameters, `LPDDR_ADDRESS_BITS` 32 among them, and at the signals'
+widths:
+
+| Register | Each | Bits | What it holds |
+| --- | --- | --- | --- |
+| AR slot | client | 1 + 28 + 9 | the burst being cut: valid; its next piece's beat address (the byte address's bits [31:4]); the beats left to cut, 1 to 256 |
+| AW slot | client | 1 + 28 + 9 | the same for a write |
+| read list | client | `CLIENT_BURSTS` × 4, + 2 + 3 | the outstanding read bursts, oldest first, each with the pieces whose last beat has still to come (0 to 8); its head and count |
+| write list | client | `CLIENT_BURSTS` × (4 + 2), + 2 + 3 | the outstanding write bursts, each with the pieces whose response has still to come and the response so far |
+| the client's outputs | client | 138 | `arready`, `awready`, `wready`, `rvalid`, `rdata`, `rresp`, `rlast`, `bvalid`, `bresp` |
+| the round-robin pointers | 2 | 2 each | the last client served, on AR and on AW; client 3 at the reset |
+| the write piece in turn | 1 | 1 + 2 + 6 + 1 | valid; its client; the beats still to take from the client, 1 to 32; whether it is its burst's last piece |
+| the W queue | 1 | 2 × 129, + 1 + 2 | two beats, each with its `wlast`, on their way to the controller; its head and count |
+| the outputs to `lpddr` | 1 | 39 + 39 + 130 | AR's and AW's `valid`, address (28 bits), `len` and ID; W's `valid`, `wdata`, `wlast` |
+
+**In all: 1,539 flip-flops** at four clients, `CLIENT_BURSTS` 4 and `TURN_BEATS` 32 (264 a client, 483 shared).
+
+**A cycle.** Every output is a register, so an address, a beat and a response each take one cycle through the
+arbiter. At the edge that ends cycle *t*, in this order:
+
+1. **The controller's side of *t*.** A W beat the controller took leaves the W queue. An R beat goes to the client
+   its `rid` names, in *t* + 1; at its piece's `rlast` that burst's count of pieces falls by one, and when it
+   reaches 0 the beat is the burst's last, given `rlast`, and the burst leaves the read list. A B response counts
+   down its burst's pieces the same way and keeps the first response that was not `OKAY`; at the last, the
+   client's `bvalid` and `bresp` are set for *t* + 1. A beat or a response whose ID has nothing outstanding is a
+   fault of the controller's; the simulator stops on it.
+2. **The clients' side of *t*.** A burst taken on AR (`arvalid` and `arready` both 1) fills the client's AR slot
+   and joins its read list; one taken on AW fills the AW slot and joins the write list. A W beat taken (only the
+   client of the write piece in turn has `wready`) goes into the W queue, and the piece's beats still to take fall
+   by one; at 0 the piece is no longer in turn.
+3. **The AR turn.** Unless the AR output still holds an address the controller has not taken, the turn goes to the
+   first client after the AR pointer whose AR slot holds a burst. Its next piece goes on the AR output for *t* + 1,
+   the slot's address and count move on, the slot empties when nothing is left to cut, and the pointer moves to
+   that client. **At most one piece a cycle,** whatever its length.
+4. **The AW turn.** Unless the AW output still holds an address not taken, **or a write piece is still in turn,**
+   the turn goes the same way on AW, and that piece becomes the write piece in turn. So the arbiter passes **one
+   write piece at a time:** its address, then all its beats from its client, and only then the next turn. W beats
+   reach the controller in the order of their addresses, as AXI4 requires.
+5. **The outputs of *t* + 1.** The W queue's oldest beat is offered on W. A client's `arready` is 1 when its AR
+   slot is empty and its read list holds fewer than `CLIENT_BURSTS` bursts, and `awready` likewise. Its `wready` is
+   1 when its piece is in turn and the W queue holds at most one beat.
+
+- **A burst taken in *t*** has its first piece's address on `lpddr` in *t* + 1 at the earliest, since steps 2 and 3
+  are one edge. A burst of at most `TURN_BEATS` beats leaves its slot at once, so its client's `arready` or
+  `awready` is 1 again in *t* + 1 if its list has room.
+- **A long burst's pieces** take one turn each. A client moving a page alone has its eight turns in a row; with
+  another client waiting, the two alternate, so a line waits behind at most one piece of each other client.
+- **The arbiter is fair and never deadlocks:** each turn goes round, a slot is served within `LPDDR_CLIENTS` turns
+  of its direction, and the only waits are on the controller's `ready`s and, on AW, on the client in turn sending
+  its beats.
+
+**Errors.** The arbiter raises none and checks nothing in hardware: a client's error responses are passed through,
+and the client acts on them.
+
+**Reset.** The reset (18) empties the slots, the lists, the W queue and every output; `arready` and `awready` are 1
+on every client's port, and nothing is offered on `lpddr`; the pointers name client 3, so client 0 is served
+first. The clients, the arbiter and the controller's port are reset together: nothing accepted before a reset is
+answered after it (23.12).
+
+### 23.12 The LPDDR controller's port, and the simulator's LPDDR
+
+**`lpddr`,** the chip's port to the LPDDR controller and its PHY, outside the chip (3): the arbiter is its master,
+and it is a client's port (23.10) with IDs added (*Asked of the RTL: v1.36's `lpddr` has one ID, RCR comment A*):
+
+| Channel | Added signal | Bits | Meaning |
+| --- | --- | --- | --- |
+| AR | `arid` | `ID_BITS` | the client's number |
+| R | `rid` | `ID_BITS` | whose beat: the arbiter steers it by this |
+| AW | `awid` | `ID_BITS` | the client's number |
+| B | `bid` | `ID_BITS` | whose response |
+
+- There is no `wid`: AXI4 has none, and the W beats follow the order of the write addresses.
+- `rready` and `bready` are 1: the arbiter takes every beat and response, and its client takes it in turn.
+- A piece is at most `TURN_BEATS` beats, so `arlen` and `awlen` are at most `TURN_BEATS` − 1 here.
+- **One address space:** the controller drives both of the package's LPDDR4X channels as one memory, of
+  2^`LPDDR_ADDRESS_BITS` bytes at most.
+
+**The controller's rules,** what the arbiter and through it every client rely on:
+
+- it answers every burst in bounded time;
+- it answers the reads of one ID in the order it took them, and the writes of one ID likewise;
+- between IDs it may answer in any order, and may interleave the read beats of different IDs beat by beat;
+- it sends no write response before both the write's address and its last beat have been taken, and none before
+  LPDDR holds the write: a read taken after the response sees it;
+- it answers nothing accepted before a reset after it.
+
+The controller's own policy and figures come with the controller chosen; nothing in a client depends on them.
+
+**The simulator's LPDDR.** LPDDR and its controller are not the chip's: `lpddr` is the simulator's boundary, and a
+model stands behind it. Its values are the model's, not promises (19.1).
+
+- **One memory.** The model's memory is the file store's pages, so the images the Updater writes, the lines the
+  cache reads and the Tracer's files are one memory. A read of bytes nothing has written returns zeros and is
+  counted as a fault of the run: a test fails on it.
+- **Reads.** A read burst's first beat comes `read_latency` cycles after its address's handshake at the earliest,
+  then a beat a cycle, back to back. When a burst ends, the next is the oldest of one ID, the IDs taken round robin
+  among those whose oldest read is due.
+- **Writes.** W beats are taken a beat a cycle in the order of the write addresses, once that write's address has
+  been taken. A write's response is due `write_latency` cycles after the later of its address's handshake and its
+  last beat's; responses go one a cycle, the earliest due first, in order within an ID.
+- **Limits.** At most `max_reads` read bursts and `max_writes` write bursts taken and not answered; beyond,
+  `arready` or `awready` is 0.
+- **When the memory changes.** A write's beats reach the memory at the edge before the cycle its response is sent,
+  and a read beat takes its data at the edge before the cycle it is sent, a write first in the same cycle. A read
+  and a write of the same bytes that overlap may see either; only the wait for the response orders them.
+- **Two modes.** *Fixed*, the default: every `ready` 1 but at a limit, every latency as above. *Jitter*, with a
+  seed: each burst's latency drawn from `jitter_lo` to `jitter_hi`, each `ready` 0 one cycle in four, and R's
+  choice among the IDs that are due at random; every rule above is kept. It catches a client that counts on a
+  latency or on an order between a read and a write.
+- **Faults.** A test sets up to 8 byte ranges, each with a direction (reads, writes or both), a response (`SLVERR`
+  or `DECERR`) and a number of bursts (0: every one). Every burst that touches one answers that response until the
+  number is used: each beat of a read, its data 0xDEADBEEF repeated; a write on its response, writing nothing. A
+  burst past 2^`LPDDR_ADDRESS_BITS` is answered `DECERR` the same way.
+
+**What a line costs,** at the model's defaults with nothing else running: a client's line read taken in cycle *t*
+has its first beat at the client in *t* + 72 and its last in *t* + 79; a line write taken in *t*, its beats
+offered at once, has its response at the client in *t* + 80. These are the model's, a guide for a client's
+designer and not a promise.
+
+### 23.13 The memory system's checks and parameters
+
+**What the simulator checks** on the arbiter's and the model's ports (each a fault of a unit's design, on which it
+stops, not a program's UB):
+
+- a burst whose address is not a multiple of 16, that crosses 4 KiB, or whose size or type is not 16 bytes and
+  INCR;
+- a W beat whose `wlast` is not on its burst's last beat, and one with no write address waiting for it;
+- a beat or a response for an ID with nothing outstanding, and an ID that is no client's;
+- a request withdrawn, or changed, while it waited for its `ready`, on any channel of `lpddr`.
+
+**The parameters,** the machine's in 19 and the model's in 19.1:
+
+| Parameter | Value | Meaning |
+| --- | --- | --- |
+| `LPDDR_CLIENTS` | 4 | the arbiter's client ports (23.10) |
+| `ID_BITS` | 2 | an ID on `lpddr`: log₂ `LPDDR_CLIENTS` |
+| `TURN_BEATS` | 32, from 1 to 256 | a piece's most beats (23.11) |
+| `CLIENT_BURSTS` | 4, from 1 to 16 | a client's bursts outstanding in each direction (23.10) |
+| `read_latency`, `write_latency` | 70 each (the model's) | 23.12 |
+| `max_reads`, `max_writes` | 16 each, from 1 to 64 (the model's) | 23.12 |
+| `jitter`, `jitter_lo`, `jitter_hi`, `seed` | off, 20, 200, 1 (the model's) | 23.12 |
+
+**What it counts,** per client, for the reports: the bursts and pieces taken in each direction, and the cycles a
+slot held a piece that did not get its turn; per model, the bursts and beats each way, the bursts answered with an
+error, the reads of unwritten bytes, and the cycles with a beat on R and on W.
+
 ## 24. Logic budget (per tile, 12 nm estimates)
 
 The SRAM is about 75 % of the die; the remaining 25 % is about 1.5 mm² per tile for everything else. Every module

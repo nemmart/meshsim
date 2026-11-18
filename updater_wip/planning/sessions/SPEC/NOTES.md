@@ -32,6 +32,7 @@ kept: a section removed or moved leaves a one-line stub, and item and invariant 
 | `machine-spec.md` | the platform, as now; its preamble says which parts are the RTL's, which are meshsim's design not yet built, and which wait on Tony | edited in place (section 2 below) |
 | `machine-spec.md` 17.6 | **Ingress/Egress, rewritten:** the control lines, the incoming queues, the DMA, the forward count, the word port, the service flags, Egress, the UART, its reset, its errors. The link inside it is chapter 28 | replaced; v1.36's text is in the frozen `v1.36/` |
 | `machine-spec.md` 17.10 (new) | **the Updater,** the master tile's peripheral 2, type 5. Platform, not Jolt: it applies update words to files and knows nothing of Jolt | new |
+| `machine-spec.md` 17.11 (new); 17.7 | **the memory system, the memory tile's peripheral 1** (S2): the minimum, a window whose `ERRORS` carries the cache's error; the hardware is chapter 23. **17.7, the RW engine, becomes peripheral 2:** window 0xFFFF_FC00, region 0x05, *asked of the RTL* | new; 17.7 edited |
 | `machine-spec.md` 23 | **the memory system, now specified:** the cache's controller and memory, the AXI arbiter, the LPDDR controller's port and the simulator's model of LPDDR; what is kept of the memory tile's requests; the file system still deferred | see the table below |
 | `host-link.md` (new), chapter 28 | **the host link:** the link packet and its header, the two checks, the mask, the CRC units, a bad packet, recovery, starting a link again, "stop", what a sender keeps, the chain, **and the link end as hardware** to HW's depth: every register with its width, the receiver's and the sender's states and the link's mode, the forwarding buffers, the chain node, what hardware spreads over cycles. `machine-spec.md` keeps a stub | new |
 | `host-frames.md` (new), chapter 29 | **the frames:** the frame header, update words and their LRU coding, *N* and *s*, frames 1 to 9, and the reply frame. Stub in `machine-spec.md` | new |
@@ -68,6 +69,7 @@ cache replaces in place; the arbiter and LPDDR are added after 23.9.
 | 23.10 (new) | a client's AXI port: every signal and width, a burst's rules, the sizes in use, IDs, what a client may count on | new |
 | 23.11 (new) | the AXI arbiter: pieces, turns, its registers and what it keeps per client, timing, reset, its checks | new |
 | 23.12 (new) | the LPDDR controller's port (AXI4 with IDs), its rules; the simulator's model of LPDDR, its timing, modes and faults, as the simulator's parameters (19.1), not contract | new |
+| 23.13 (new) | the memory system's checks and parameters: the arbiter's and the model's (the cache's own are 23.6.11) | new |
 
 ### The depth each new component gets
 

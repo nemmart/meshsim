@@ -110,7 +110,7 @@ The test now checks the count.
 | `test_memory`: the memory run's 347 answers by the line (`line_out` at the memory tile equal to its DMA packets, `line_in` at the master tile the same, nothing by the attach port) | pass |
 | `test_master`: every proof's loads into the tracer tile by the line | 34 pass |
 | `./run_tests.sh quick --check` | **all passed**; no log differs |
-| **the reference cycles:** `test_segment`'s v1.36 segments (to C&C 1's exit, polled every 512 cycles) the same as `main`'s; the proof runs' cycles move (the master's loads into the tracer tile take the line, two hops in place of the mesh's) | |
+| **the reference cycles:** `test_segment`'s v1.36 segments (to C&C 1's exit, polled every 512 cycles) the same as `main`'s; the proof runs', against stage 1's (Quest 245): the runner's (below) | |
 | **the planted bugs** (`line_teeth.sh`): L1 the ring's rule reversed; L2 a packet on the line sent back the way it came; L3 a special tile's packet for another by the attach port; L4 an attach port's arrival for another special tile put on the line; L5 the slot's DMA judging its room at the west input (v1.36's); L6 the west output's queues in the wrong order; L7 a DMA's packet for another special tile by the attach port | **7 of 7 caught.** L4 only once `test_special_router` checked the route errors (`ec6730a7`) |
 | the 37 proof runs on the line; `make check` | the runner: Quests 248, 249 (below) |
 

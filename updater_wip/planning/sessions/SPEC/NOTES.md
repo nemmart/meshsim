@@ -384,7 +384,8 @@ More will go here as I check the text against the code.
 | 12 | every dagger whose recommendation is a plain accept or "as written": UI-4, UI-6, UI-9, UI-12, UI-13, CI-2, CI-3, CI-6, CI-7, CI-8, CI-10, AI-1, AI-2, AI-3, AI-4, AI-6, AI-7, HF-1 to HF-9, II-17, MS-2, HL-6; and the silences S7, S9, S10, S12, S13, S14 as recommended | ruled (06:14): accepted as a block |
 | 13 | S5: how an ASIC learns *N* and *s* | ruled (06:19): arguments of the master tile's image; item 166 |
 | 14 | UI-7: `RUN_CONFIG.root` and `SOURCE_ROOT` | ruled (06:29): as built, a full part of the Updater; item 191 |
-| 15 | CI-4: the cache's look-up ports | asked 06:30 |
+| 15 | CI-4: the cache's look-up ports | ruled (06:31): as written in 23.6.2 |
+| — | reviews before any merge | owner (06:31): checklists for WORKER5, WORKER6, WORKER7, WORKER8 in this folder |
 | to come, one at a time | anything new that changes hardware or working code | |
 
 ## 11. Found in the sources while writing

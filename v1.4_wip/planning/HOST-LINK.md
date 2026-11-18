@@ -1,14 +1,14 @@
 # The link from the host: streams, packets and recovery
 
 Notes from the discussion with the owner on 2026-11-16, as a first draft. This is the layer under the frames
-(`HOST-FRAMES.md`): it is what lets a frame assume it was delivered correctly and in order. Ingress and Egress are
-still to be designed; this is what was said about the link they sit on. A dagger (†) marks what is proposed and not
-ruled on; (owner) marks what the owner said.
+(`HOST-FRAMES.md`): it is what lets a frame assume it was delivered correctly and in order. Ingress and Egress, as
+the master tile's core sees them, are `INGRESS-INTERFACE.md`; this is the link they sit on. A dagger (†) marks what
+is proposed and not ruled on; (owner) marks what the owner said.
 
 **A packet here is the link's:** a header and its data. It is not a packet of the mesh. How the master tile
 takes packets out of Ingress is `INGRESS-INTERFACE.md`.
 
-**Where this document stands (2026-11-17).** WORKER8 built the link from the first form of this document and
+**Where this document stands (2026-11-18).** WORKER8 built the link from the first form of this document and
 searched it exhaustively: **as first written the protocol did not hold.** One damaged packet could stop a link
 for ever, in several ways. **The rules that mend it are now in here,** each marked (WORKER8): in "When a packet is
 bad", "Recovery", "Starting a link again", "Holding the host back", "What a sender must keep" and "The chain".
@@ -16,15 +16,24 @@ bad", "Recovery", "Starting a link again", "Holding the host back", "What a send
 - **What they rest on** (WORKER8, on the protocol as it stands here, with the fast sending unit): 36.9 million
   states searched on its machine and 86.5 million on the runner, every search complete, on one link and on
   chains of 1, 2 and 3; 18 planted bugs each caught; a kept case for every rule, which fails without the rule
-  and holds with it; 1,140 random runs on chains of 1, 2, 4 and 16, none failing; and, with the slow unit, a
-  campaign of 6,071 runs and 306 million packets on the runner, none failing and no packet refused for want of
-  room (`updater_wip/link/` and `updater_wip/planning/sessions/WORKER8/REPORT.md` and
-  `QUESTIONS.md`, on branch `updater-w8` until it is merged).
+  and holds with it; 1,140 random runs on chains of 1, 2, 4 and 16, none failing; and two campaigns on the
+  runner, none failing and no packet refused for want of room: 6,071 runs and 306 million packets with the slow
+  unit (Quest 232), and **7,519 runs, 18 billion cycles and 385 million packets with the fast unit** (Quest 237)
+  (`updater_wip/link/` and `updater_wip/planning/sessions/WORKER8/REPORT.md` and `QUESTIONS.md`, on branch
+  `updater-w8` until it is merged).
 - **The long search is complete and holds** (Quest 231, 2026-11-18): 86,515,438 states, every one tried, in 47
   minutes depth-first. From every state, with either stream never taken again, the other finished.
-- **What is still out:** the random campaign on the runner, and every figure measured again with the fast
-  sending unit, which the figures here were taken before. The searches are of small sizes (a window of 2, queues
-  of a few words); the random runs are of the real sizes.
+- **The runner's long search ran before the fast unit went in.** The fast unit changes when a sender's packets
+  leave and none of the rules; the campaign of Quest 237 is the first long run on the runner of the protocol
+  exactly as it stands here.
+- **What is still out,** with the fast unit: the campaign with forged headers and with bits flipped in senders'
+  memory, the larger searches, the long bursts of noise, and the long search again (Quests 238 to 242). The
+  searches are of small sizes (a window of 2, queues of a few words); the random runs are of the real sizes.
+- **The figures here are the fast unit's,** but where one says otherwise.
+- **The link end is built to be used** (WORKER8, 2026-11-18): one header, `updater_wip/link/hostlink.h`, with an
+  `End` (one end of a link, with its queues) and a `Node` (an ASIC on a chain, the pin its argument), each
+  clocked once a cycle with the bytes that arrived going in and the bytes to send coming out. What it costs as
+  hardware is "The link as hardware", below, from `sessions/WORKER8/HARDWARE.md`.
 - **Three times that evening the protocol as it stood here was found unsound** and mended: one run of numbers
   with "stop" holding back a packet sent again; a resend request lost; a packet hidden in the data. Each is told
   where its rule is.
@@ -274,9 +283,9 @@ The data passes through unchanged, as it is held.
   the window of the end that feeds it must be no more than half of it.
 - **A link's stop bit is up when either is half full:** the node's own queue, or the forwarding buffer behind
   that link.
-- **Measured** (WORKER8): the fullest a forwarding buffer got was 621 words of 1,024 in 60 random runs; with
-  buffers of 512 words, 361 in 30 runs, and no packet was ever refused. The rule asks for twice the window, 512 words; 16 KB
-  is twice that.
+- **Measured** (WORKER8): the fullest a forwarding buffer got was 621 words of 1,024 in 60 random runs, and 759
+  in the runner's campaign (Quest 237, the host's window at 64 in some runs); with buffers of 512 words, 361 in
+  30 runs, and no packet was ever refused. The rule asks for twice the window, 512 words; 16 KB is twice that.
 
 ## The two checks
 
@@ -447,6 +456,11 @@ receiver that has read the header takes the mask off. One that has not sees byte
     cycle.
   - † The header is held until the pass over the data is done; the restart packet needs no pass, its checksum
     being a constant; a packet of length 0 may go while a packet with data is still being passed over.
+  - † **The header's CRC while a pass is running** (WORKER8, for the RTL to settle): such a packet of length 0
+    needs the fast unit for one cycle, in the middle of the pass. Either the pass waits a cycle, or the header's
+    CRC has logic of its own and the unit's register is left alone. The CRC is not needed on the wire until 12
+    cycles after the header starts, and no rule depends on the cycle: the searches hold with the pass at 128
+    bits a cycle, at a byte a cycle and with none.
 - **Every packet's data is checksummed before it is sent,** not as it goes: the data checksum is in the header,
   which goes first. So a sending unit passes over a packet's data once before the packet leaves, each time it is
   sent (the owner's ruling that both checks are made afresh).
@@ -533,7 +547,8 @@ A receiver expects one number next on a link: the one after the last packet it t
       the sender goes back, and the 5 sent again is the next packet the receiver looks at.
     - The packet's checksums cannot be used to know it again: its header is written afresh when it is sent
       again, so the header CRC differs. The number expected already says which packet it is.
-  - **The error is Ingress/Egress's,** `format_error`, and so its tile's (owner).
+  - **The error is Ingress/Egress's,** `link_error` with `format_error` beside it to say why
+    (`INGRESS-INTERFACE.md`, "Errors"), and so its tile's (owner).
   - Noise does not do this twice running: each time needs a damaged header to pass a 32-bit CRC.
   - The error is the point, not the restart. A sender that makes a wrong packet is broken, by a bug or by a chain
     wired longer than 16, and nothing saves the data. What is left to choose is a link that hangs, one that
@@ -548,7 +563,7 @@ A receiver expects one number next on a link: the one after the last packet it t
   For full packets the second comes 1,056 cycles after the first; the restart then loses 128 words.
 - A packet of length 0 that is counted is also asked for again, like one with data, though there is nothing to
   send again.
-- `INGRESS-INTERFACE.md`'s `format_error` says which test failed.
+- `INGRESS-INTERFACE.md`'s `format_error` says that this was why the link started again.
 - (WORKER8's rule told the two cases apart by the data: if the data's check passed as well, the sender was taken
   to have made the packet so, at the first time. But noise that damages only the header leaves the data whole,
   and that rule would have called it the sender's fault. The owner's count needs no such judgment.)
@@ -608,6 +623,11 @@ Why the zeros work:
 - **The first byte that is not zero starts a header,** since a header's first byte is never zero.
 
 Nothing in the exchange is relied on to arrive, because the noise can cover it: that is why both sides repeat.
+
+**How long it takes** (WORKER8, the runner's campaign with the fast unit, Quest 237): over 257,035 recoveries,
+from a link's last damaged byte to its next delivery, 669 cycles on average and 5,187 at most. That is every
+kind of damage together. It is the figure that matters about noise (owner, 2026-11-18): not how long a line was
+down, but how soon the link carries on once bytes get through again.
 
 ## Starting a link again (WORKER8; accepted to carry on with)
 
@@ -744,7 +764,10 @@ is masked on the wire"). The owner had accepted it ("we can live with that") bef
     8 as the chip has. WORKER8 measured the same data rate at 8, 16 and 64 (0.6389, 0.6392, 0.6392 bytes a
     cycle), and with 64 the queue filled and a packet was refused. With an acknowledgement for every packet the host seldom has more than two or three outstanding.
   - The fullest a queue of 1,024 words got in the random runs was 629; no packet was ever refused, there or in
-    the runner's 6,071.
+    either of the runner's campaigns.
+  - **In the runner's campaign with the fast unit the fullest was 953** (Quest 237). That campaign draws the
+    host's window at 64 in one run of five, which the line above rules out, so that is the likely place; which
+    run it was is being traced (WORKER8). If it was a run with the window at 8, it is a finding.
 - The sizes before: 16 KB on 2026-11-16, "to make sure we can stop the remote side", which v1.37 had as first
   merged; then 4 KB with the forward count; then 8 KB as a placeholder, which WORKER7 built.
 - This replaces the per-stream window first proposed here, which did the same job with more machinery.
@@ -766,6 +789,46 @@ is masked on the wire"). The owner had accepted it ("we can live with that") bef
 - **An ASIC sends on two links:** towards the host, its own packets and the ones it forwards; away from the host,
   the host's packets it passes down the chain. It keeps a window for each (owner, 2026-11-17).
 
+## The link as hardware (WORKER8, 2026-11-18)
+
+Counted from the model, register by register, in `updater_wip/planning/sessions/WORKER8/HARDWARE.md`: every
+register with its flip-flops, every memory with its size and the reason, the units and when each runs, and what
+the model does in one cycle that hardware must spread over several. Its tables are printed by a program
+(`build/linkhw`) and checked against the document; the widths were checked against the model in a run of
+3,000,000 cycles with noise. It counts state only: no registers added for timing, no synchronizers.
+
+**One link end:** 630 flip-flops and 4,608 bytes of memory (the packet buffer, 512 bytes, and the 8 packets kept
+for sending again, 4,096).
+
+**One ASIC in the middle of a chain:**
+
+| | how many | flip-flops | memory, bytes |
+|---|---|---|---|
+| a link end's registers | 2 | 1,260 | |
+| a forwarding buffer's pointers and count | 4 | 164 | |
+| the packet buffer of a receiver | 2 | | 1,024 |
+| the kept packets of a sender | 2 | | 8,192 |
+| a forwarding buffer's words, 16 KB each | 4 | | 65,536 |
+| a forwarding buffer's marks | 4 | | 2,560 |
+| **the link, in all** | | **1,424** | **77,312** |
+| the chip's own queues behind it, 16 KB a stream (`INGRESS-INTERFACE.md`) | 2 | | 32,768 |
+| **with those** | | | **110,080** |
+
+- **85% of the link's memory is the four forwarding buffers.** The last ASIC on a chain uses its upper end only,
+  and no forwarding buffer.
+- **The size is not a concern** (owner, 2026-11-18): 100 KB is not an issue beside the Tracer's 768 KB.
+- **What could be smaller,** if it ever is one:
+
+  | | bytes saved | what it takes |
+  |---|---|---|
+  | the four forwarding buffers at 512 words, not 1,024 | 34,048 | nothing, but it is exactly at the rule's limit, as 8 KB is for a queue. In 30 random runs at that size the fullest got was 361 words and no packet was refused |
+  | no forwarding buffer for the background towards the host | 17,024 | a new rule: a background packet with data that comes from below is a packet made wrong (Open) |
+  | a window of 4 packets, not 8 | half the kept packets, and half the forwarding buffers' least size | data rate: 0.6252 bytes a cycle against 0.6389 |
+
+- **What hardware must spread over cycles,** none of which changes what goes on the wire, only when, by 32
+  cycles at most: handing a checked packet to the queue and the forwarding buffer a word a cycle; copying a new
+  packet into its kept slot during the pass; comparing a restart packet's data with its table as it arrives.
+
 ## What this is, in other designs
 
 The owner's remark: there must be a mountain of literature on building these. There is. The closest:
@@ -786,20 +849,30 @@ The owner's remark: there must be a mountain of literature on building these. Th
 ## Open
 
 - **What the foreground stream carries,** and how large its messages are.
-- **The random campaign on the runner with the fast sending unit,** and the larger searches on it (Quests 237 to
-  242, WORKER8).
+- **The rest of the runner's runs with the fast sending unit** (Quests 238 to 242, WORKER8): the campaign with
+  forged headers and flipped bits in memory, the larger searches, long noise, the long search again. The first
+  campaign passed (Quest 237).
+- **† A background packet with data that comes from below** (WORKER8). Towards the host the background carries no
+  data, but nothing here says what an ASIC does with such a packet if one arrives. The model forwards it, through
+  a 16 KB forwarding buffer that nothing else ever uses. Were it a packet made wrong, that buffer could go.
+- **† The header's CRC while a pass is running** ("The CRC as hardware"): the pass waits a cycle, or the
+  header's CRC has its own logic. For the RTL.
 - **A neighbour that goes silent** (WORKER8). Nothing here notices a link whose other end has stopped: the sender
   waits for ever, which is right if the neighbour is slow and wrong if it is dead. A count of status periods with
   nothing heard would tell. **Not designed for now** (owner, 2026-11-17): it stays an open question. Any such
   count would have to outlast the longest noise, hundreds of milliseconds, so it is a matter of seconds.
   - **The same from the wire's side** (WORKER8): a line that reads as zeros for long looks idle. The end that
-    hears nothing stays in step and waits, its window full. In the runner's campaign a foreground packet stood
-    ready 515,932 cycles that way; the link carried on when the wire did. A live end sends a header at least
-    every 512 cycles, so an end that has heard none for some multiple of that could tell its owner.
+    hears nothing stays in step and waits, its window full. In the runner's campaigns a foreground packet stood
+    ready 515,932 cycles that way with the slow unit and 384,187 with the fast (a chain of 16, one line read as
+    zeros in bursts of up to 446,377 cycles); the link carried on when the wire did. The zeros are the test's
+    own damage, and the wait is as long as the burst: nothing was lost or delivered wrong. A live end sends a
+    header at least every 512 cycles, so an end that has heard none for some multiple of that could tell its
+    owner.
 - **The background behind the foreground** (WORKER8). A background packet waits while any foreground packet is
   ready, so a foreground that never pauses holds the background for as long. That is the order as decided, and
   not a flaw of the protocol; it is a thing to know.
 - **The sizes of the forwarding buffers,** 16 KB as written: the rule asks for 8 KB, and the random runs do not
   press even that.
-- **What the error is called and where it is seen:** a link that started again raises an error to the core. Its
-  bit in Ingress/Egress's `ERRORS` is not yet named (`INGRESS-INTERFACE.md`).
+- **What the error is called and where it is seen:** a link that started again raises an error to the core:
+  † `ERRORS.link_error` in Ingress/Egress, one bit for both of an ASIC's links (`INGRESS-INTERFACE.md`,
+  "Errors"). Whether the core should be told which link, and why, is open there.

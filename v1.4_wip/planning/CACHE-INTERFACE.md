@@ -203,10 +203,13 @@ the write is complete, and left the working out to the session that wrote it; th
 |---|---|
 | **the data is in LPDDR before the index points to it** | a client writes a page on its own AXI port, waits for that write's response, and only then sends the update that names it (third note, section 4; second note, section 4: the Updater idles until the write's confirmation). So whoever sees the new entry, in the cache or in LPDDR, finds the page behind it |
 | **one writer for a file at a time** | two clients updating one index page would each read it directly while the other's update was in flight. The file system keeps it from happening; **the cache does not check** (third note, section 4) |
-| **an owned index page changes only by `update`** † | a client writes an index page whole, on its AXI port, only while the page is new: taken from the free page queue, discarded since its last use, and named by no entry yet. Otherwise the cache could hold a line of it that LPDDR no longer has |
-| **a page is used only after its discard's reply** † | the file system discards a page when it hands it out (second note, section 3, proposed; third note, section 2), and hands it out after the reply. So a write-back of an old dirty line cannot land on the page's new contents |
+| **an owned index page changes only by `update`** † | a client writes an index page whole, on its AXI port, only while the page is new: named by no entry yet, and with no line of it in the cache (never used, or discarded since its last use). Otherwise the cache could hold a line of it that LPDDR no longer has. A page from the free page queue is new in this sense; so is a root that v1.37's Updater makes (`root` 1 or 2), which does not come from that queue (WORKER6; accepted by the owner as the wording) |
+| **a page is used only after its discard's reply** † | the file system discards a page when it hands it out (second note, section 3, proposed; third note, section 2), and hands it out after the reply. So a write-back of an old dirty line cannot land on the page's new contents. **In v1.37 nobody discards** (WORKER6; accepted by the owner): nothing is freed, so no page is handed out twice. Who discards in v1.4 is Open 3 |
 | **a data page the Tracer reads is not written directly while it does** | the Updater and the RW engine move data pages on their own AXI ports, and the Tracer reads them through the cache. They never meet on a page (owner, second note, section 3): a file is finished by the Updater before the Tracer starts on it, and the only pages the Tracer dirties are its own copy's |
 | **a page the Tracer has written is not read directly** | its newest lines may be only in the cache, dirty. Nothing reads them today (third note, section 2, open: a flush at the end of a trace) |
+
+- **An update answered `hole` or `beyond` cannot come to a client that looked up first,** so a client may treat
+  one as fatal (WORKER6). v1.37's Updater controller stops the simulator on one.
 
 ## 4. What the cache never does
 

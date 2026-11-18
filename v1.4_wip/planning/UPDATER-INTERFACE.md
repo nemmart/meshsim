@@ -3,8 +3,9 @@
 Draft for review, in v1.36's register layout and names (`v1.36/spec/machine-spec.md` 5.2, 5.3, 17.1). Revised on
 2026-11-16 after the walk through the registers with the owner; it replaces that morning's draft. Revised again
 that evening: the data comes from Ingress by a flow-controlled word port, and the segment queue and its credits are
-gone. A dagger (†) marks a choice that is proposed and not yet ruled on. Where a line says (owner), the owner ruled
-it.
+gone. On 2026-11-18 what the two workers who built it found was added (WORKER6, the real controller; WORKER7, the
+forward count), each marked. A dagger (†) marks a choice that is proposed and not yet ruled on. Where a line says
+(owner), the owner ruled it.
 
 **The Updater is the master tile's peripheral** (owner, 2026-11-16), beside Ingress/Egress. It was the memory tile's.
 Why, and what follows, is `DESIGN-NOTES-2026-11-16.md` section 10.
@@ -62,6 +63,16 @@ The same words as on every peripheral. The Updater adds bits [2] and up.
 | [3] | `out_of_pages` | a page was needed with `PAGE_COUNT` at 0 (owner) |
 | [4] | `not_owned` † | the cache refused an update: an index page on the path is not the file's own |
 
+- **An error stops the run** (as built, WORKER3 and WORKER6): `busy` stays 1 and no `done` is posted. The
+  Updater takes in what is still in flight from LPDDR and sends nothing more.
+- **It is not recovered from** (owner, 2026-11-17): a peripheral's error is its tile's, which stops everything.
+  The host resets the chip and the proof starts over (`INGRESS-INTERFACE.md`, "Errors").
+- **`beyond` is the Updater's own check,** made from the depth before it writes the page it holds (WORKER6). The
+  cache never sees such a request.
+- **`out_of_pages` takes no page:** the pages a fault needs are counted from the look-ups before any is taken
+  from the free page queue (WORKER6).
+- **`lpddr_error` is also set, before any burst,** by a root or a free page that is not a page's address in
+  LPDDR (as built; whether the hardware checks is Open).
 - **There is no "left over" error** (owner). The replayer sets `ERRORS.leftover` when a pass ends with input still in
   a stream; the Updater must not, because its stream carries on from one run to the next.
 - The Updater's bits are packed upward from the first free one, as the RTL packs the Tracer's (item 161, which the
@@ -126,11 +137,17 @@ system takes it over, is decided when the file system is built.
 | word | offset | register | access | meaning |
 |---|---|---|---|---|
 | 48 | 0x0C0 | `STAT_CYCLES` | R | cycles with `STATUS.busy` at 1 |
-| 49 | 0x0C4 | `STAT_STALL_DATA` | R | cycles waiting for a word on the data input |
+| 49 | 0x0C4 | `STAT_STALL_DATA` | R | cycles waiting for a word on the data input: the input empty when the decoder needs a word |
 | 50 | 0x0C8 | `STAT_STALL_PAGES` | R | cycles waiting on an empty free page queue |
-| 51 | 0x0CC | `STAT_STALL_MEMORY` | R | cycles waiting on the cache or on LPDDR |
+| 51 | 0x0CC | `STAT_STALL_MEMORY` | R | cycles waiting on the cache or on LPDDR: every cycle waiting on a burst or a reply |
 | 52 | 0x0D0 | `STAT_PAGES_READ` | R | pages and half pages read |
 | 53 | 0x0D4 | `STAT_PAGES_WRITTEN` | R | pages and half pages written |
+
+- **The two page counts count bursts** (WORKER6): a page or a half page each. A page or half that did not exist
+  before, a hole, is written without a read and counts as none. With `root` 2 the root's copy counts: a read
+  and one or two writes.
+- The definitions above are as built in v1.37, by the black box (WORKER7) and the real controller (WORKER6)
+  alike, but for one case in the black box ("In v1.37").
 
 Blocks 4 to 7 are unused.
 
@@ -156,6 +173,19 @@ Blocks 4 to 7 are unused.
   can begin without waiting for the final image.
 - **Whole pages are not a mode.** A program image or a jump table arrives as whole pages and so is never read first;
   the Updater is not told.
+- **How it knows, from the data alone** (WORKER6, as built). A page is 512 update words and a half page 256.
+  With *n* the values of the present run of values that this run will still deliver, the smaller of what the run
+  of values has left and `WORD_COUNT`:
+
+  | where the next value goes | *n* | what the Updater does |
+  |---|---|---|
+  | the start of a page | 512 or more | writes the whole page, without reading it |
+  | the start of a half page | 256 or more | writes the half, without reading it |
+  | anywhere else, or fewer | | reads the page or half first, and patches it |
+
+  - ***n* counts only what this run will deliver** (owner): a run of the Updater can end inside a run of values,
+    when `WORD_COUNT` reaches 0 first. Counted so, such a run never leaves a half part-written and unread.
+  - Gold's frames never reach that case: a run ends at a segment's end, where its runs of values end.
 
 ## The data input: a word port from Ingress
 
@@ -188,7 +218,7 @@ and does not handle the words (`INGRESS-INTERFACE.md`).
   it is never a whole word left on the input. The firmware relies on this.
 
 **It replaces the segment queue** (8 KB, filled by `WRITE` packets from Ingress's DMA, with a 256-word credit that
-the firmware managed). v1.37 as merged still has that queue; "In v1.37" below.
+the firmware managed). v1.37 no longer has that queue ("In v1.37", below).
 
 ## The region: the free page queue
 
@@ -197,7 +227,7 @@ Tracer's region. A packet is appended at the queue's tail and the rest of its ad
 
 | part | queue | size | an entry | filled by |
 |---|---|---|---|---|
-| 2 | free page queue | 256 entries | one free page, in [31:0] † | the master tile's core, from its page map |
+| 2 | free page queue | 256 entries | one free page: its address in 128-byte units, in [31:0] (as built, WORKER3 and WORKER6) † | the master tile's core, from its page map |
 | 0, 1, 3-7 | unmapped † | | | part 1 was the segment queue |
 
 **The credit is the replayer's and the Tracer's, unchanged** (owner; replayer chapter 17.8.8):
@@ -211,16 +241,22 @@ Tracer's region. A packet is appended at the queue's tail and the rest of its ad
 
 ## In v1.37
 
-| | as merged (WORKER3, WORKER4) | this design |
-|---|---|---|
-| the data | region part 1, a segment queue of 512 entries, 8 KB; `EVENTS` [2] `segment_credit`, one credit 256 words | the word port |
-| who moves it | the firmware, by Ingress's DMA, a transfer of up to 256 words at a time | Ingress's forward count |
-| the free page queue | as above | unchanged |
+**As built on `main` (2026-11-18):**
 
-- **WORKER6 builds the real controller to the word port,** with the merged segment queue in front of it as a shim,
-  so that today's firmware runs on it unchanged.
-- **WORKER7 puts the forward count into v1.37:** Ingress's black box, the port, and the firmware. The segment queue
-  and the shim go then.
+| | |
+|---|---|
+| the data | the word port, fed by Ingress's forward count (WORKER7). The segment queue, its credit and the shim that stood in front of the real controller are gone (WORKER9's first piece, merged 2026-11-17) |
+| `EVENTS` [2] | reads 0; region part 1 is unmapped |
+| the black box | still there, and what runs by default |
+| the real controller | a state machine with its page memory and decoder (WORKER6), behind a setting, fed by the same port. It passes alone, against the black box run for run, and in the chip |
+| what it is joined to | **still to come** (WORKER9's second piece): the arbiter's client port 1 and the cache's look-up port 1, with the Tracer on the same cache. Today the real controller runs against test pieces that stand in for them |
+
+- **One difference between the two, found by WORKER6 and left:** the black box's test for "covered" is the run
+  of values' remainder alone, not the smaller of it and `WORD_COUNT`. When a run ends inside a run of values it
+  skips a read it should have made, so its `STAT_PAGES_READ` is one low for each such half. Its images are
+  right. Gold's frames never reach the case.
+- **A run with two proofs is not yet made** (owner: in reality the Updater builds the next proof's images while
+  the Tracer runs, and the two overlap on the cache; the single-proof runs cannot show it).
 
 ## Its other connections
 
@@ -236,6 +272,8 @@ Both reach across to the memory side. Latency on them does not matter (owner): t
 - The page map is the master tile's for now (owner, 2026-11-16): a 128 KB bit array, one bit for each 4 KB page.
   Where it lives in the end is the file system's design.
 - Whether an entry of the free page queue carries one page or four.
+- Whether the hardware checks a root's and a free page's address before using it, as the model does
+  (`lpddr_error` before any burst).
 - What a `START` during a run does: an error bit, or undefined as elsewhere.
 - The type number, 5: v1.36 assigns 0 to 4.
 - The peripheral number on the master tile.

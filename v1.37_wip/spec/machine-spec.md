@@ -1,16 +1,30 @@
-# Machine specification — the mesh processor, v1.36
+# Machine specification — the mesh processor, v1.37
 
 This document specifies the hardware of the mesh processor: the tiles, the NoC that joins them, the request tree,
-the peripherals, the control that sequences them, and the registers a tile's program uses. It is written for an
-engineer who builds the machine, for the simulator that models it, and for the software that runs on it.
+the peripherals, the control that sequences them, the memory system, the link to the host, and the registers a
+tile's program uses. It is written for an engineer who builds the machine, for the simulator that models it, and for
+the software that runs on it.
 
-**v1.36 is the RTL's hardware.** Chapters 1 to 19 are the base tile specification of the RTL (Snarky One), which
-was written against v1.3 and v1.35 and refined them where building the hardware decided a question; its chapters,
-their numbers, its names and its text are taken as they stand, and are the authority on what the hardware does.
+**v1.37 is v1.36, the RTL's hardware, with the full system around it.** Chapters 1 to 19 are the base tile
+specification of the RTL (Snarky One), as v1.36 took it, with what v1.37 adds:
+
+- **designed here and not built in the RTL,** the units the RTL pencilled in or left out, which are this
+  specification's to design (`spec/GUIDELINES.md`, section 1): Ingress/Egress's host side (17.6), the Updater
+  (17.10), the memory system (17.11, 23), the host link (28) and the frames (29);
+- **changes to hardware the RTL has built,** each marked *Asked of the RTL*, with its request in
+  `v1.4_wip/planning/RTL-CHANGE-REQUESTS.md` (RCR): the UART (17.6.9), the links between the special tiles (16.1),
+  a peripheral DMA's router input (16.4), the memory tile's peripherals (17.7), and IDs on `lpddr` (23.12). Until
+  the RTL takes one, the RTL's own text is v1.36's.
+
 Chapters 20 to 27 are meshsim's own: the invariants the simulator checks, the timing summary, the rules and figures
-v1.35 states and the RTL's specification does not, the deferred memory system, the budgets, the open items and the
-sort. `spec/CHANGES-v1.35-to-v1.36.md` is the guide from v1.35: what changed, the name table, and where each of
-v1.35's sections went. v1.35's numbering is not kept; a v1.35 section is always cited as "v1.35's".
+v1.35 states and the RTL's specification does not, the memory system, the budgets, the open items and the sort.
+Chapters 28 to 30 are the host link, the frames and the master tile's firmware. `spec/CHANGES-v1.36-to-v1.37.md` is
+the guide from v1.36: what changed, the name table, and where each of v1.36's sections went.
+
+**Where the design's authority lies** (owner, 2026-11-18). For the cache's controller (23.6), the Updater's
+controller (17.10) and the link end (28), **the code is the authority:** their sections are the specification of
+`v1.37_wip/src/units/cache_ctl.*`, `updater_ctl.h` and `updater_wip/link/link_end.*`, `node.*`, and state what
+they do. For everything else designed here, this document is. For the hardware the RTL has built, the RTL is.
 
 **Companion material** (paths in the package):
 - `spec/OVERVIEW.md` and `spec/GUIDELINES.md`: what is being built and where it stands, and the rules the design
@@ -18,23 +32,22 @@ v1.35's sections went. v1.35's numbering is not kept; a v1.35 section is always 
 - `spec/core.md`: the RV32 core's contract (chapter 6 states what the machine requires of it).
 - `spec/jolt/`: the Jolt-specific peripherals, the replayer (17.8, `spec/jolt/replayer.md`) and the Tracer (17.9,
   `spec/jolt/tracer.md`), and the replayer's opcode appendix (`spec/jolt/replayer-opcodes.md`).
+- `spec/host-link.md`, `spec/host-frames.md`, `spec/master-firmware.md`: chapters 28, 29 and 30.
 - `spec/schedule.md`: the 16-group all-to-all schedule (8.4) and the routing ties it fixes (16.2).
 - `spec/history/`: v1.35's documents as they were, each earlier version's guide and the decisions behind it.
   Where a log and this document differ, this document is the authority.
 - `data/tables/`: the replayer's expansion tables (17.8.6), with the opcode table and a manifest.
-- `fw/` and `src/`: the firmware and meshsim, the cycle-level simulator. **The simulator is v1.36's:** it models
-  the RTL's hardware at the register, packet and cycle level, and runs the RTL's firmware images (`fw/`)
-  unmodified, at the RTL chip's cycle counts. `fw/include/mesh.h` and `fw/REGISTERS.md` are generated from this
-  document's tables. What is left of v1.35 in the tree, meshsim's own firmware and the old suites among it, and
-  every decision the simulator takes from the RTL's sources where this document is silent, are listed in
-  `OPEN-v1.36.md`.
+- `fw/` and `src/`: the firmware and meshsim, the cycle-level simulator. Where v1.37's simulator and firmware differ
+  from this document, `updater_wip/planning/sessions/SPEC/FOR-THE-SIMULATOR.md` lists each difference, the work of
+  the session that brings them to it.
 
 **How it is written.**
 - One fact, one place. Chapters 1 to 19 state the hardware contract only: one chapter per module (2.3), each with
   its registers, its behaviour and the errors and events it raises. Chapters 1 to 5 hold what the modules share.
 - The mesh is `MESH_SIZE` × `MESH_SIZE` with `TILE_COUNT` = `MESH_SIZE`². `MESH_SIZE` is 1 to 8, and 8 × 8 (64) is
   the default and the largest. Values given for 8 × 8 are examples of the formula, never the rule.
-- **Markers.** An unmarked statement is decided. In chapters 1 to 19, *Open* marks a subject still to be decided.
+- **Markers.** An unmarked statement is decided. *Asked of the RTL* marks a change to hardware the RTL has built,
+  stated as designed, which waits on the RTL. In chapters 1 to 19, *Open* marks a subject still to be decided.
   In chapters 20 to 27, *(Proposed)* means suggested and not yet ruled on, *(Open)* still to be settled, and
   *(Deferred)* set aside until the design it belongs to. Chapter 26 lists every open, proposed and deferred item,
   under v1.35's item numbers, which are never reused.
@@ -66,7 +79,7 @@ name, where it differs.
 | NoC | the packet network: every tile's router, the special tiles' included, and the links between them (16) | network, mesh |
 | special tile | the master, memory and tracer tiles | C&C 1–3, the controllers, non-tile endpoints |
 | master tile | the special tile that sequences the phases, boots the chip and owns its external IO | C&C 1 |
-| memory tile | the special tile that owns LPDDR and the file system | C&C 2 |
+| memory tile | the special tile that holds the memory system and the RW engine | C&C 2 |
 | tracer tile | the special tile that holds the Tracer | C&C 3 (the page manager) |
 | attach tile | the compute tile whose router connects a special tile to the mesh | tile 0, 1 or 2 |
 | attach port | a router port joining a special tile's router to its attach tile's (16.1) | fifth port |
@@ -80,8 +93,12 @@ name, where it differs.
 | scratchpad | a tile's large SRAM (15) | big SRAM |
 | bank | one independently ported part of the scratchpad | area |
 | peripheral | a unit beside the core: peripheral 1, 2 or 3 of its tile (17) | peripheral |
-| Ingress/Egress | the master tile's peripheral: its lines, its pins and the host interface (17.6) | C&C 1's peripheral, Ingress/Egress and the UART |
-| RW engine | the memory tile's peripheral: its reads and writes of LPDDR (17.7) | the Updater/Binder/RW engine, the memory system |
+| Ingress/Egress | the master tile's peripheral 1: its lines, its pins, the UART and the host link; Ingress its way in, Egress its way out (17.6) | C&C 1's peripheral, Ingress/Egress and the UART |
+| Updater | the master tile's peripheral 2: it builds the files from the host's update words (17.10) | the Updater |
+| memory system | the memory tile's peripheral 1: the cache, the AXI arbiter and the `lpddr` port (17.11, 23) | the memory system, the bus driver |
+| RW engine | the memory tile's peripheral 2: its reads and writes of LPDDR (17.7) | the Updater/Binder/RW engine |
+| cache | the memory system's 512 KiB of lines, shared by the chip, with its controller (23.6) | the shared cache, the translator |
+| AXI arbiter, client, piece | the unit that shares `lpddr` among its clients, each on a port of its own; a part of a burst it sends as one (23.10, 23.11) | the bus driver, the splitter |
 | write buffer | the RW engine's region, which packets fill and a write copies to LPDDR (17.7) | the tag windows |
 | replayer | the compute tile's peripheral: it regenerates the trace's rows (17.8) | the replayer |
 | pass | the replayer's work from one `START`: `RUN_CONFIG.rows` rows (17.8.10) | pass, run |
@@ -92,11 +109,17 @@ name, where it differs.
 | Tracer | the tracer tile's peripheral: it executes the guest and writes each window's record and streams (17.9) | the Tracer |
 | guest | the RV64IMAC program the Tracer executes, whose trace Jolt proves (17.9) | the guest |
 | segment | the Tracer's work from one state write: its runs, one a compute tile's window (17.9.3) | segment |
-| run | the Tracer's work from one `START`: `RUN_CONFIG.rows` rows and the drain of their output (17.9.3, 17.9.6) | run |
-| file, line | the memory system's storage: a tree of 4 KiB pages, named by its root and depth, read and written by 128-byte lines (17.9.5) | file, line |
-| fill port | the Tracer's port to the memory system, `fill` (3, 17.9.5) | the fill bus |
+| run | the Tracer's work from one `START`: `RUN_CONFIG.rows` rows and the drain of their output (17.9.3, 17.9.6); the Updater's: a number of update words applied to a file (17.10) | run |
+| file, line, page, entry, root | LPDDR's storage: a tree of 4 KiB pages, named by its root and depth, read and written by 128-byte lines; an index entry names a page, with its owned bit (23.5) | file, line |
+| fill port | the Tracer's port to the cache, `fill` (3, 17.9.5, 23.6.4) | the fill bus |
+| look-up port | a client's request port to the cache, with the reply bus they share (23.6.2) | the look-up interface |
+| host link, link packet | the link from the host along a chain of ASICs, and its unit: a header of 16 bytes and 0 to 32 128-bit words (28) | the link, a chunk, a packet |
+| link end, chain node, the line | one end of one link of the host link; an ASIC with its two link ends (28.12); the links between the special tiles (16.1) | `End`, `Node`; the control row |
+| frame | one of the host's messages, carried in link packets of a stream (29) | frame |
+| update word | 64 bits of the host's updates: a run's header word or a value (29.3) | update word |
+| foreground, background | the link's two streams (28.2) | active, background |
 | toast pin | the chip's output that says it has failed (17.6) | the "I'm toast" pin |
-| beat | one item a handshake moves on a link of the request tree, a host-interface port or the `lpddr` port (3) | beat |
+| beat | one item a handshake moves on a link of the request tree or an AXI port, `lpddr` or a client's (3) | beat |
 | window | one of the 16 parts of region 0xFF, 512 bytes each: the tile's registers, a peripheral's, or a table (5.2) | register block, window, table window |
 | tile window | the tile's own registers, 0xFFFF_F800–0xFFFF_F9FF (5.2) | register block |
 | block | 16 words of a window, one module's registers (5.3) | |
@@ -167,11 +190,12 @@ name, where it differs.
   module are named for what they do: a generator, an engine, a director, an
   arbiter, a queue, a table. "Port" means only a module's port: the router's
   ports, IMEM's and DMEM's NoC ports, a peripheral's write port, the replayer's
-  row port and the Tracer's fill port.
+  row port, the Tracer's fill port, the cache's look-up ports, the Updater's word
+  port, a client's AXI port and a link end's byte ports.
 - **Registers** are `UPPER_SNAKE`. A unit's registers carry the unit's name as
   their prefix: `DMA_`, `WRITE_`, `READ_`, `REQUEST_`, `RECEIVE_`, `GATHER_`. A
-  peripheral's own carry its part's, where it has parts: `UART_`, `STREAM_`,
-  `RW_`. The control block's registers, which every register window has, carry
+  peripheral's own carry its part's, where it has parts: `UART_`, `RW_`,
+  `EGRESS_`. The control block's registers, which every register window has, carry
   none (5.3).
 - **Arrays** are named for what they hold, with no prefix: the counters
   `COUNTER_1`–`COUNTER_7`, and the tables `STREAM_SRC_ADDR`, `STREAM_DEST_ADDR`,
@@ -190,8 +214,7 @@ name, where it differs.
   An `_ADDR` holds nothing but its address.
 - **Actions.** A register whose store does something is named for what it does:
   `ARRIVE`, `START`, `DMA_START`, `WRITE_SEND_32`, `READ_SEND`, `REQUEST_SEND`,
-  `RELEASE`, `STREAM_SEND`. So is a load that pops: `REQUEST_RECEIVE`,
-  `STREAM_RECEIVE`. A store to `ARRIVE`, `START`, `DMA_START` or `RELEASE` acts
+  `RELEASE`. So is a load that pops: `REQUEST_RECEIVE`, `UART_RX`. A store to `ARRIVE`, `START`, `DMA_START` or `RELEASE` acts
   when its bit 0 is 1, and does nothing when it is 0; its other bits are
   reserved. In every block an action comes after the registers it
   uses, so a block stored in ascending order ends in its action.
@@ -222,12 +245,12 @@ transfer past its table's end.
 The chip is `TILE_COUNT` compute tiles and three special tiles, every one of them
 the base tile (2.2), with its peripherals and straps.
 
-| Kind | Tile id | Peripheral 1 | Receives requests | Barrier |
-| --- | --- | --- | --- | --- |
-| compute tile | 0 to `TILE_COUNT` − 1 | the replayer (17.8), with the `replay_row` port | no | sends `BARRIER_ARRIVE`, takes `BARRIER_RELEASE` |
-| master tile | `TILE_COUNT` | Ingress/Egress (17.6): the error lines, the barrier's master side, the watchdog and the toast pin, `LED`, the UART and the host interface | yes | collects `BARRIER_ARRIVE`, drives `BARRIER_RELEASE` |
-| memory tile | `TILE_COUNT` + 1 | the RW engine (17.7), with the `lpddr` port | yes | neither |
-| tracer tile | `TILE_COUNT` + 2 | the Tracer (17.9), with the `fill` port | yes | neither |
+| Kind | Tile id | Peripheral 1 | Peripheral 2 | Receives requests | Barrier |
+| --- | --- | --- | --- | --- | --- |
+| compute tile | 0 to `TILE_COUNT` − 1 | the replayer (17.8), with the `replay_row` port | none | no | sends `BARRIER_ARRIVE`, takes `BARRIER_RELEASE` |
+| master tile | `TILE_COUNT` | Ingress/Egress (17.6): the error lines, the barrier's master side, the watchdog and the toast pin, `LED`, the UART and the host link | the Updater (17.10) | yes | collects `BARRIER_ARRIVE`, drives `BARRIER_RELEASE` |
+| memory tile | `TILE_COUNT` + 1 | the memory system (17.11): the cache, the AXI arbiter and the `lpddr` port | the RW engine (17.7) | yes | neither |
+| tracer tile | `TILE_COUNT` + 2 | the Tracer (17.9), with the `fill` port | none | yes | neither |
 
 A special tile reaches the mesh through its router's attach port, joined to an
 attach port of its attach tile's router (16.1). The attach tiles are the master
@@ -237,11 +260,13 @@ tile's tile 0, the memory tile's tile `MESH_SIZE` − 1 and the tracer tile's ti
 mesh's first two rows.
 
 **The fill link.** The tracer tile's `fill` port (3, 17.9.5) is a
-point-to-point link to the memory tile, whose **memory system**, the files'
-translator and the shared cache in front of LPDDR, serves it. *Open:* the memory
-system, with the file system (item 119; chapter 23); until it is specified, a model
-of it stands in in the simulator and in the tests of the RTL (Snarky One), and the chip leaves the port at the tracer tile's
-boundary.
+point-to-point link to the memory tile's **memory system** (17.11), whose cache
+walks the files and serves it (23.6). The Updater's AXI port and look-up port
+reach across the same way, from the master tile to the memory system (23.1).
+
+**The line.** The three special tiles are joined, besides their attach ports, by
+**the line:** the master tile's east to the memory tile's west, the memory tile's
+east to the tracer tile's west (16.1). *Asked of the RTL* (RCR 1).
 
 ### 2.2 The base tile
 
@@ -257,7 +282,7 @@ line out and the resets in, and its peripherals' own ports and pins (3, 18).
 - the tile id;
 - the peripherals present, and in each peripheral its type;
 - whether the request unit's receive side is connected, and to which target;
-- the attach ports;
+- the attach ports, and on a special tile the line's ports;
 - whether the barrier's nets are wired.
 
 **Router.** Every tile has the router, special tiles included.
@@ -289,8 +314,10 @@ base_tile
 ├── inject_unit          the read arbiter, the tokens, the return queues, the injection point
 ├── scratchpad           its banks
 ├── router               its ports, queues and arbiters
-└── peripherals 1–3      their kinds': ingress_egress_unit (17.6), rw_engine_unit (17.7),
-                         replayer_unit (17.8), tracer_unit (17.9)
+└── peripherals 1–3      their kinds': ingress_egress_unit (17.6), with its two link ends and
+                         forwarding buffers (28.13); updater_unit (17.10); memory_system_unit
+                         (17.11), with the cache's controller and memory and the AXI arbiter (23);
+                         rw_engine_unit (17.7); replayer_unit (17.8); tracer_unit (17.9)
 ```
 
 | Module | Its registers | Chapter |
@@ -313,14 +340,17 @@ base_tile
   meets the others only through the interfaces of 3, and decodes its own block of
   registers (5.3).
 - **Where a peripheral sits.** A compute tile's peripheral, the replayer, is
-  inside `base_tile`. A special tile's peripherals wrap it: the master, memory
-  and tracer tiles are `base_tile` beside Ingress/Egress, the RW engine or the
-  Tracer, joined at its peripheral interfaces (3).
+  inside `base_tile`. A special tile's peripherals wrap it: the master tile is
+  `base_tile` beside Ingress/Egress and the Updater, the memory tile beside the
+  memory system and the RW engine, and the tracer tile beside the Tracer, joined
+  at its peripheral interfaces (3).
 - **IP.** The core, the scratchpad, the router and the request tree (11.3) know
   nothing of the tile's map or its units. Their chapters are their contracts, and
   other designs may reuse them.
 - **The chip** is the tiles, the links between their routers (16.1), the request
-  tree and the global nets (18).
+  tree and the global nets (18). The Updater's two ports to the memory system and
+  the Tracer's `fill` cross between special tiles; where each unit sits on the
+  floorplan is the RTL's (RCR D).
 
 ## 3. Interfaces
 
@@ -356,19 +386,22 @@ a module's chapter says what it does at them.
 | `nmi`, `meip` | `tile_control_unit` → `core` | one wire each | 6.2 |
 | `request_link` | `request_unit` → the request tree → a receiving tile's `request_unit` | `valid`, `ready`, `beat` (16) | a request is 8 beats (11.3) |
 | `request_credit` | a receiving tile's `request_unit` → the tree's root | `valid` | returns one credit, for a popped request (11.3) |
-| `lvds_in` | the LVDS IO block → the master tile's Ingress/Egress | `tvalid`, `tready`, `tdata` (8·`STREAM_BYTES`), `tlast` | AXI4-Stream (ARM IHI 0051): its other signals take their defaults, so every byte is a data byte. A beat moves when `tvalid` and `tready` are both 1, and a sender holds a beat it offers until then. Ingress/Egress's output is a flip-flop. The LVDS IO block holds `tvalid` at 0 through the reset (18) |
-| `lvds_out` | the master tile's Ingress/Egress → the LVDS IO block | the same | as `lvds_in`'s, the roles swapped: every output of Ingress/Egress is a flip-flop |
-| `lpddr` | the memory tile's RW engine → the LPDDR controller | AXI4's five channels (ARM IHI 0022), by its names: 128-bit data, `LPDDR_ADDRESS_BITS` of byte address | the RW engine is the master: one ID, so no ID signals, and the controller answers the reads in order and the writes in order; INCR bursts, none crossing a 4 KiB boundary; `rready` and `bready` always 1; no lock, cache, protection, QoS, region or user signals, which take AXI4's defaults, so no access is exclusive and an `EXOKAY` is an error response; every output a flip-flop or a constant. The controller answers every burst and write in bounded time, sends no write response before both the write's address and data handshakes, and answers nothing accepted before a reset after it (17.7, 18) |
+| `host_link` | the LVDS IO block ↔ the master tile's Ingress/Egress, two of them: `link_up`, towards the host, and `link_down`, away from it | `rx` (8) in, `tx` (8) out | a byte a link cycle each way, idle 0; no handshake. The link ends' bytes (28.1, 28.13.1). `link_down` is used only with `chain_next` 1 (18). Ingress/Egress's output is a flip-flop |
+| `word_port` | the master tile's Ingress/Egress → its Updater | `valid`, `ready`, `data` (128) | 17.6.6, 17.10.3. `valid` may fall without a move. Every output a flip-flop |
+| `lookup` | a client (the Updater: port 1) → the memory system's cache | `valid`, `ready`, `op` (2), `root` (31), `depth` (2), `page` (30), `level` (2), `entry` (32) | one request outstanding a client; `ready` from the cache. 23.6.2 |
+| `lookup_reply` | the cache → every look-up client, one bus | `valid`, `client` (2), `status` (3), `level` (2), `entry` (32) | no `ready`: a client takes its reply in the cycle it is on the bus. 23.6.2 |
+| `lpddr_client` | a client of LPDDR (the Updater: client 1; the RW engine: client 2) → the memory system's AXI arbiter; the cache is client 0 inside it | AXI4's five channels (ARM IHI 0022), by its names: 128-bit data, `LPDDR_ADDRESS_BITS` of byte address, no ID signals | the client is the master; INCR bursts of 16-byte beats, none crossing a 4 KiB boundary; whole beats; `rready` and `bready` always 1; no lock, cache, protection, QoS, region or user signals, so no access is exclusive and an `EXOKAY` is an error response; every output a flip-flop or a constant. The client's reads are answered in order, and its writes; nothing accepted before a reset is answered after it. 23.10 |
+| `lpddr` | the memory system's AXI arbiter → the LPDDR controller | `lpddr_client`'s, with `arid`, `rid`, `awid` and `bid` of `ID_BITS` | the arbiter is the master, its client's number the ID; the controller answers every burst in bounded time, the reads of one ID in order and its writes in order, sends no write response before both the write's address and its last beat and LPDDR holds it, and answers nothing accepted before a reset after it. 23.12. *Asked of the RTL:* the IDs (RCR A) |
 | `replay_row` | a compute tile's replayer → its row's consumer | `valid`, `ready`, `row` (640) | a row a cycle, in pass order, from the output queue: `valid` while it holds a row, the row held until its handshake (17.8.11). *Open:* its consumer, the materializer |
-| `fill` | the tracer tile's Tracer → the memory tile's memory system (2.1) | four channels, AXI4's in shape: `read_request` (`valid`, `ready`, `root` (31), `depth` (2), `line` (35)); `read_response` (`valid`, `data` (1,024), `status` (2)); `write_request` (`valid`, `ready`, `root`, `depth`, `line`, `data` (1,024)); `write_response` (`valid`, `status` (2)) | a request names one 128-byte line of a file (17.9.5), and moves at its handshake. Each request has exactly one response, on its channel, with no `ready`: the Tracer takes every one, in a cycle after its request's handshake, the next at the earliest. `data` carries the line's byte *b* at bits [8*b* + 7 : 8*b*]. A read's status is `ok`, `hole`, `not_owned` or `beyond` (17.9.5); a write's is 0 `ok`, the line written, or 1 `error`, the line not written, and 2 and 3 are reserved. The Tracer has at most one read and one write outstanding, and every output of it is a flip-flop. The memory system answers every request in bounded time, keeps a read of a line after a write of it already accepted, and answers nothing accepted before a reset after it (18). *Open:* the memory system's side (2.1) and the link's physical width |
+| `fill` | the tracer tile's Tracer → the memory tile's memory system, its cache (2.1, 23.6.4) | four channels, AXI4's in shape: `read_request` (`valid`, `ready`, `root` (31), `depth` (2), `line` (35)); `read_response` (`valid`, `data` (1,024), `status` (2)); `write_request` (`valid`, `ready`, `root`, `depth`, `line`, `data` (1,024)); `write_response` (`valid`, `status` (2)) | a request names one 128-byte line of a file (17.9.5), and moves at its handshake. Each request has exactly one response, on its channel, with no `ready`: the Tracer takes every one, in a cycle after its request's handshake, the next at the earliest. `data` carries the line's byte *b* at bits [8*b* + 7 : 8*b*]. A read's status is `ok`, `hole`, `not_owned` or `beyond` (17.9.5); a write's is 0 `ok`, the line written, or 1 `error`, the line not written, and 2 and 3 are reserved. The Tracer has at most one read and one write outstanding, and every output of it is a flip-flop. The cache answers every request in bounded time, keeps a read of a line after a write of it already accepted, and answers nothing accepted before a reset after it (18, 23.6.4). *Open:* the link's physical width |
 
 The core's own ports, to IMEM, DMEM, `register_bus` and the coprocessor, are
 the core specification's; `core_status`, `nmi` and `meip` are the ones this
-specification adds. `lvds_in`, `lvds_out` and `lpddr` leave the tile, and the
-chip: they are its ports to the LVDS IO block and the LPDDR controller, which
-are outside it. `replay_row` leaves the tile, for a consumer that is *Open*
-(17.8.11), and `fill` leaves the tracer tile, for a memory system that is *Open*
-(2.1).
+specification adds. `host_link` and `lpddr` leave the chip: they are its ports
+to the LVDS IO block and the LPDDR controller, which are outside it.
+`replay_row` leaves the tile, for a consumer that is *Open* (17.8.11). `fill`,
+`lookup`, `lookup_reply` and the Updater's `lpddr_client` cross between special
+tiles, to the memory tile's memory system.
 
 ## 4. The packet
 
@@ -1220,7 +1253,7 @@ Words 1–3 are the operation's. An `op` the target does not define is UB (1.3).
   from word 2's address up, counted on `data_counter`, then, if `reply_counter`
   is non-zero, a 128-bit reply of 0 (11.4).
 - **`WRITE`** asks for a part of the write buffer (17.7). Its 128-bit reply
-  holds the part's address, in the memory tile's region 0x04, in [31:0], and in
+  holds the part's address, in the memory tile's region 0x05, in [31:0], and in
   [34:32] the memory tile's counter, already armed, that counts the part's
   packets. The requester then sends exactly `beats` 128-bit `WRITE`s into the
   part, counted on that counter, and the memory tile writes them to LPDDR once
@@ -1628,7 +1661,8 @@ when its work ends; its own `STATUS`, `ERRORS` and `EVENTS` bits, each event's
 kind and depth; its words, blocks 2–7; its region's map, the sizes each part
 takes and its ownership; its DMA, if it has one; its ports and pins (3, 18); its
 reset; and its parameters (19). Ingress/Egress's is 17.6, the RW engine's 17.7,
-the replayer's 17.8 and the Tracer's 17.9.
+the replayer's 17.8, the Tracer's 17.9, the Updater's 17.10 and the memory
+system's 17.11.
 
 ### 17.1 Window, presence and type
 
@@ -1659,7 +1693,8 @@ the replayer's 17.8 and the Tracer's 17.9.
 
 **Types**, `PARAMS.type`: 0 none, 1 Ingress/Egress (17.6), 2 the RW engine
 (17.7; v1.35's Updater/Binder/RW engine), 3 the Tracer (17.9), 4 the replayer
-(17.8); the others are reserved.
+(17.8), 5 the Updater (17.10), 6 the memory system (17.11) (owner); the others are
+reserved.
 
 ### 17.2 Start, events and errors
 
@@ -1730,9 +1765,10 @@ peripherals can, since only a special tile's router has a free input for it, its
     `EVENTS.dma_done` is posted at its end.
 - **No checks.** The DMA checks nothing, like the write unit.
 
-This is v1.35's DMA (v1.35's 4.17.9): its count in 128-bit words. Ingress/Egress has
-no DMA (17.6); the RW engine's data and replies are whole 128-bit packets
-(17.7), and the Tracer's streams are padded to whole entries (17.9.6).
+This is v1.35's DMA (v1.35's 4.17.9): its count in 128-bit words. Ingress/Egress's
+DMA reads its incoming queues, one 128-bit word an entry (17.6.4); the RW engine's
+data and replies are whole 128-bit packets (17.7), and the Tracer's streams are
+padded to whole entries (17.9.6).
 
 ### 17.5 What every peripheral must do
 
@@ -2109,18 +2145,22 @@ a `WRITE` into the region of other than 128 bits or to a part other than 1; a no
 
 ### 17.7 The RW engine, the memory tile's peripheral
 
-The RW engine is the memory tile's peripheral 1, type 2, version 0: the chip's
-one path to LPDDR, over the `lpddr` port (3). Its work, one job at a time, is a
+The RW engine is the memory tile's peripheral 2, type 2, version 0: the memory
+tile's reads and writes of LPDDR, as client 2 of the AXI arbiter, on an
+`lpddr_client` port (3, 23.10). *Asked of the RTL* (RCR 4): v1.36 has it as
+peripheral 1, with the `lpddr` port to itself; the hardware is v1.36's, its
+window is peripheral 2's, 0xFFFF_FC00, and its region 0x05. Nothing in v1.37's
+proof runs uses it. Its work, one job at a time, is a
 **read**, from LPDDR into its output queue 0, which its DMA sends, or a
 **write**, from its **write buffer**, its region, to LPDDR. It knows nothing of
 requests: the memory tile's core receives them (11.5) and starts the work.
-v1.35's Updater and Binder, and its file system (item 119), are not part of
+The Updater (17.10), the Binder and the file system (item 119) are not part of
 it.
 - **`PARAMS`:** type 2, version 0, and no constants, [31:16] 0.
 - **A beat** is 16 bytes: an `lpddr` data beat, a row of the write buffer and a
   128-bit packet's payload. An LPDDR **beat address** is a byte address over 16.
 
-Its words, at offsets from its window's base, 0xFFFF_FA00:
+Its words, at offsets from its window's base, 0xFFFF_FC00:
 
 | Word | Offset | Register | Access | Fields |
 | --- | --- | --- | --- | --- |
@@ -2177,7 +2217,7 @@ requester, arrives after it (16.2).
 - **Ownership.** While the write runs, a `WRITE` packet into a beat it reads is
   UB (1.3).
 
-**The write buffer** is the RW engine's region, 0x04 on the memory tile:
+**The write buffer** is the RW engine's region, 0x05 on the memory tile:
 `RW_BUFFER_BYTES` of SRAM, at offsets 0 to `RW_BUFFER_BYTES` − 1, in rows of 16
 bytes.
 - **Writes.** It takes `WRITE` packets of 32, 64 and 128 bits from any source,
@@ -2194,7 +2234,7 @@ bytes.
   Writers into the buffer are one at a time, or paced, since nothing paces the
   memory tile's attach link but the program (16.3).
 
-**The `lpddr` port** (3).
+**Its AXI port,** client 2 of the arbiter (3, 23.10).
 - **Bursts.** A job moves its beats by INCR bursts of 16-byte beats, none
   crossing a 4 KiB boundary; their lengths are the implementation's. A write's
   beats enable every byte.
@@ -2206,8 +2246,8 @@ bytes.
 **Its DMA** enters the memory tile's router on its south input (16.4),
 so its packets have the memory tile as src.
 
-**Reset.** The reset ends any job, empties both output queues and the
-`lpddr` port's channels, and zeroes `RW_REPLY_W0`. The write buffer, a peripheral's memory, keeps its
+**Reset.** The reset ends any job, empties both output queues and its AXI
+port's channels, and zeroes `RW_REPLY_W0`. The write buffer, a peripheral's memory, keeps its
 contents (18). `RW_CONFIG`, `RW_LPDDR_ADDR` and `RW_BUFFER_ADDR` are undefined
 until written. *Open:* the soft reset, which v1.35 keeps away from the LPDDR
 controller (18).

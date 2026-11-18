@@ -125,11 +125,11 @@ void window() {
 }
 
 void pass() {
-    printf("pass: the sender passes over a packet's data, a byte a cycle, before the header leaves (pass=1), against no pass (pass=0).\n"
+    printf("pass: the sender passes over a packet's data before the header leaves: 128 bits a cycle (hl, HL's fast unit), a byte a cycle (pass=1), no pass (pass=0).\n"
            "A foreground packet let out now and then: from let out to its first byte on the line, and to its last word delivered.\n");
     for (unsigned words : {1u, 32u}) {
         for (int busy = 0; busy < 2; busy++) {
-            for (const char* rules : {"hl,pass=0", "hl"}) {
+            for (const char* rules : {"hl,pass=0", "hl,pass=1", "hl"}) {
                 const Flow f = flow(rules, 8, 1, words, busy, false);
                 printf("  %-9s %2u-word foreground packets, %-28s to the line %6.1f on average, %4llu at most; delivered %6.1f on average, %4llu at most; background %.4f bytes a cycle\n",
                        rules, words, busy ? "a background flood beside it:" : "an idle link:", f.wait_mean, (unsigned long long)f.wait_max, f.trip_mean,
@@ -139,7 +139,7 @@ void pass() {
     }
     // One-word packets one after another, and full ones: the whole of a transfer.
     for (unsigned words : {1u, 32u}) {
-        for (const char* rules : {"hl,pass=0", "hl"}) {
+        for (const char* rules : {"hl,pass=0", "hl,pass=1", "hl"}) {
             Config cfg; cfg.words = words; cfg.packets[0][FG] = 400;
             std::string err; apply_rules(rules, cfg.p, err);
             Link1 b(cfg);

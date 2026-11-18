@@ -61,7 +61,8 @@ struct Params {
     unsigned flush_zeros = 528;    // the zeros in a row a lost receiver waits for: a full packet's length
     unsigned status_timer = 512;   // cycles of silence before the status is sent again
     unsigned reask = 2048;         // cycles before a resend is asked for again
-    unsigned pass = 1;             // the bytes a cycle of the sender's pass over a packet's data before it leaves; 0: no pass
+    unsigned pass = 16;            // the bytes a cycle of the sender's pass over a packet's data before it leaves: HL's fast
+                                   // unit of 128 bits a cycle (1: a byte a cycle; 0: no pass)
     unsigned restart_words = 32;   // the restart packet's length (the shrunken model's is shorter)
     Rules rules;
     Plant plant = Plant::NONE;

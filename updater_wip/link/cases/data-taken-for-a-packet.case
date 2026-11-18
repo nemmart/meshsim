@@ -1,12 +1,11 @@
 # After a failed header CRC the receiver takes the packet's data for a packet (the data is a header's image), with neither the wait for 528 zeros nor the mask on the data. Either of the two is enough here
 # found by linksearch --rules hl-flush-mask
-sizes number_bits=3 max_words=1 window=2 zeros=40 flush_zeros=32 status_timer=24 queue=8 reask=96 pass=1 restart_words=1 delay=1 words=1 images=1 window0=0 wrong=0 still=0
+sizes number_bits=3 max_words=1 window=2 zeros=40 flush_zeros=32 status_timer=24 queue=8 reask=96 pass=16 restart_words=1 delay=1 words=1 images=1 window0=0 wrong=0 still=0
 packets 1 0 1 0
-offer 0 1 216
 fate 1 4 first0
-offer 1 1 217
+offer 0 1 217
 fate 0 5 header
-quiet 234 20000
+quiet 235 20000
 run hl-flush-mask fail the link started again, and nothing had happened that could excuse it
 run hl-flush ok
 run hl-mask ok

@@ -23,7 +23,7 @@ static long perfect(Config cfg, const char* rules, const char* name) {
 }
 
 int main() {
-    for (const char* rules : {"hl", "hl-ack_now", "hl,pass=0", "hl+stop_holds_again"}) {
+    for (const char* rules : {"hl", "hl-ack_now", "hl,pass=0", "hl,pass=1", "hl+stop_holds_again"}) {
         Config real;                                         // the real sizes: full packets both ways on both streams
         real.packets[0][FG] = 40; real.packets[0][BG] = 300; real.packets[1][FG] = 200; real.packets[1][BG] = 0;
         const long a = perfect(real, rules, "the real sizes");

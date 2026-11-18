@@ -1,6 +1,6 @@
 # The mask's limit. The data is made by one who knows every field of the header its packet will go out under (stream, length, number, acknowledge, hops, stop bits): the CRC and the mask's sequence are both linear, so data can be solved for whose masked bytes are a packet. The header reads as zeros, and the packet inside is taken, as in packet-in-data. A KNOWN LIMIT (HL, 'The data is masked on the wire': whoever made the data would have to know the header's CRC): this case fails under HL as it stands
 # found by linksearch --rules hl,max_words=2,flush_zeros=48,zeros=64
-sizes number_bits=3 max_words=2 window=2 zeros=64 flush_zeros=48 status_timer=24 queue=8 reask=96 pass=1 restart_words=1 delay=1 words=2 images=4 window0=0 wrong=0 still=0
+sizes number_bits=3 max_words=2 window=2 zeros=64 flush_zeros=48 status_timer=24 queue=8 reask=96 pass=16 restart_words=1 delay=1 words=2 images=4 window0=0 wrong=0 still=0
 packets 1 0 0 0
 offer 0 1 289
 fate 0 5 head0

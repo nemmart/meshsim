@@ -1,6 +1,6 @@
 # A packet its own sender made wrong (hops 15 at an end that would forward it): asked for again for ever. HL: the second time running, the error, and the link starts again
 # found by linksearch --rules hl-wrong_twice
-sizes number_bits=3 max_words=1 window=2 zeros=40 flush_zeros=32 status_timer=24 queue=8 reask=96 pass=1 restart_words=1 delay=1 words=1 images=0 window0=0 wrong=1 still=0
+sizes number_bits=3 max_words=1 window=2 zeros=40 flush_zeros=32 status_timer=24 queue=8 reask=96 pass=16 restart_words=1 delay=1 words=1 images=0 window0=0 wrong=1 still=0
 packets 2 0 1 0
 quiet 1 20000
 run hl-wrong_twice fail nothing more goes wrong, and it does not finish

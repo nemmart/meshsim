@@ -1,10 +1,10 @@
 # End 1 starts again from power-on in the middle
 # found by linksearch --rules hl-restart
-sizes number_bits=3 max_words=1 window=2 zeros=40 flush_zeros=32 status_timer=24 queue=8 reask=96 pass=1 restart_words=1 delay=1 words=1 images=0 window0=0 wrong=0 still=0
+sizes number_bits=3 max_words=1 window=2 zeros=40 flush_zeros=32 status_timer=24 queue=8 reask=96 pass=16 restart_words=1 delay=1 words=1 images=0 window0=0 wrong=0 still=0
 packets 2 0 2 0
 offer 0 1 0
 offer 1 1 0
-power 1 64
-quiet 65 20000
+power 1 49
+quiet 50 20000
 run hl-restart fail nothing more goes wrong, and it does not finish
 run hl ok

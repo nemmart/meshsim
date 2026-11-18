@@ -1,5 +1,5 @@
 # The foreground stands still behind the background (NEXT.md, change 1; HL, "why a stopped stream cannot block the other").
-# Found by: linksearch --packets 1 3 0 0 --queue 4 --damage 1 --hold 2
+# Found by: linksearch --rules hl+stop_holds_again --packets 1 3 0 0 --queue 4 --damage 1 --hold 2
 #
 # End 0 sends background packets 1, 2 and 3 and then foreground packet 4. Packets 1 and 2 are taken and are never
 # taken out of end 1's background queue, which is half full with them: end 1 says "stop" for the background.
@@ -11,13 +11,13 @@
 # Second run, HL as it now stands (owner, 2026-11-17): a packet that already has a number is sent again whatever its
 # stream's stop bit. Its room was counted
 # when it was first sent (the window is no more than half a queue). The foreground finishes.
-sizes number_bits=3 max_words=1 window=2 zeros=40 flush_zeros=32 status_timer=24 queue=4 reask=96 pass=1 restart_words=1 delay=1 words=1 images=0 window0=0 wrong=0 still=0
+sizes number_bits=3 max_words=1 window=2 zeros=40 flush_zeros=32 status_timer=24 queue=4 reask=96 pass=16 restart_words=1 delay=1 words=1 images=0 window0=0 wrong=0 still=0
 packets 1 3 0 0
-offer 0 2 233
+offer 0 2 217
 offer 0 2 256
-offer 0 2 297
+offer 0 2 288
 fate 0 7 gone
 hold 2
-quiet 329 20000
+quiet 312 20000
 run hl+stop_holds_again fail the background is never taken again, nothing more goes wrong, and the foreground does not finish
 run hl ok

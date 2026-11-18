@@ -13,11 +13,13 @@ a)  # an acknowledgement as soon as the line is free, the status timer, and the 
     one
     one --rules hl-ack_now
     one --rules hl,pass=0
+    one --rules hl,pass=1
     one --status 2048
     one --status 8192
     one --saturate --quiet-wires
     one --saturate --quiet-wires --rules hl-ack_now
     one --saturate --quiet-wires --rules hl,pass=0
+    one --saturate --quiet-wires --rules hl,pass=1
     ;;
 b)  # the host's window
     one --host-window 8

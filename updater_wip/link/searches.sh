@@ -64,7 +64,7 @@ starve)  # the first header (numbers for each stream) starved one stream's ackno
     one --packets 0 2 8 0 --damage 0 --still 150
     ;;
 rules)   # each rule that the search has not shown to be needed, taken away, and sizes either way
-    for r in -lost_uses_ack -ack_now -flush ,reask=24 ,reask=400 ,pass=0 ,pass=4; do
+    for r in -lost_uses_ack -ack_now -flush ,reask=24 ,reask=400 ,pass=0 ,pass=1; do
         one --rules hl$r --packets 1 0 1 0 --damage 2
         one --rules hl$r --packets 1 1 0 0 --damage 2
         one --rules hl$r --packets 3 0 0 0 --damage 1 --queue 4

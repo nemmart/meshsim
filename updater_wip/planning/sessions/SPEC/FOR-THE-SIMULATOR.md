@@ -53,7 +53,6 @@ section, what the specification says, what `main` has. Kept as the specification
 
 | section | the specification | `main` (be077a7d) |
 | --- | --- | --- |
-| 30.1 | *N* and *s* are the master tile's image's arguments (S5, pending) | two words placed with the image (`system_config`) |
 | 30.2 | the UART turned on by a store to `UART_CONTROL`, if the image prints | v1.36's UART runs from the reset; no store |
 | 30.6 | the tracer tile's result carries its last record to the master tile (owner, MS-2) | `tracer_ctl.c` checks the end state itself and sends no record |
 | 30.7, 29.14 | the reply frame, type 16, 72 words, through Egress | none: no Egress, no reply |

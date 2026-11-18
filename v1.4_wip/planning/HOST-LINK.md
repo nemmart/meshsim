@@ -328,6 +328,36 @@ result = crc XOR 0xFFFFFFFF
     restart flag have moved.
 - A cross-check for any implementation: the CRC-32C of all 16 header bytes of a good packet is 0x48674BC7.
 
+### The data is masked on the wire (owner, 2026-11-17, on WORKER8's second finding)
+
+**Each byte of a packet's data is sent XORed with a sequence that starts from that packet's own header CRC.** A
+receiver that has read the header takes the mask off. One that has not sees bytes that mean nothing.
+
+- **The hole it closes.** A receiver finds a packet's start by the first byte that is not zero. If the line reads
+  as zeros all through a header and the data behind it arrives whole, the receiver sees idle, and then takes the
+  start of the data for a header. **If the data holds a whole packet,** a header with the number expected and
+  data that passes its checksum, that packet is taken: a word is delivered that is not the next, a true packet is
+  lost, and no check fails (WORKER8, `cases/packet-in-data.case`: two events).
+  - By chance it needs a header CRC, the number and a data checksum all to pass, far inside the limit already
+    accepted. **But the background stream carries whatever the host is given to send,** and data that is itself
+    link packets, a capture of this link or a file of test vectors, needs only the header to be lost.
+  - Every form of the header had this. It is as old as "the first byte that is not zero starts a header".
+- **What the mask gives:** whether the link works no longer depends on what the data holds. To get a packet
+  through in the data, whoever made the data would have to know the header's CRC, which covers the acknowledge
+  field of that moment.
+- **What it costs:** a 32-bit shift register for each direction of a link. No new field, no handshake, nothing
+  agreed between the ends beforehand.
+- **What stays as it was:**
+  - the header is not masked, so its first byte is still never zero;
+  - the data checksum is over the data as it is held, not as it is sent;
+  - a packet's data is at most 512 bytes, so it still cannot hold the 528 zeros a lost receiver waits for;
+  - a forwarding ASIC takes the mask off as it checks a packet and puts a new one on with the new header.
+- † **The sequence itself is WORKER8's to define exactly and to test,** with a worked example for this document.
+  Proposed: the CRC-32C register, started at the header CRC, stepped eight times for each data byte with nothing
+  fed in; the byte that masks is its low eight bits after the steps.
+- The ways not taken: a random value for each life of a link, agreed at the restart, which a capture from the
+  same life would still pass; and accepting it, with a rule that the host never sends link packets as data.
+
 ### The CRC as hardware (2026-11-17)
 
 - **A CRC unit is small,** and can take any number of bits a cycle. For CRC-32C, counted from the polynomial
@@ -438,6 +468,10 @@ A receiver expects one number next on a link: the one after the last packet it t
   and that rule would have called it the sender's fault. The owner's count needs no such judgment.)
 
 **Finding a packet's start:**
+
+- **A header that reads as zeros is taken for idle,** and what follows it is then read as a header. That is safe
+  only because the data is masked ("The data is masked on the wire"): unmasked, data that held a packet was
+  taken for one.
 
 - **Idle is zero bytes, in any number,** not only whole words: the first byte that is not zero starts a header.
 - **"The first byte is never zero" is how a receiver finds a packet's start, not a check it can make.** A first

@@ -192,7 +192,7 @@ std::string run(const Options& o, uint64_t seed, Totals& tot) {
                 }
             }
         }
-        if (o.mem_flips && (c.t & 1023) == 0 && rng.chance(0.002)) mem_flips += c.flip(unsigned(rng.below(c.ends())));
+        if (o.mem_flips && (c.t & 1023) == 0 && rng.chance(0.02)) mem_flips += c.flip(unsigned(rng.below(c.ends())));
         c.step();
         // Damage aimed at the packet that has just started; and what is counted from outside.
         for (unsigned w = 0; w < noise.size(); w++) {

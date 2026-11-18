@@ -2,16 +2,17 @@
 
 Draft, 2026-11-16, from the discussion with the owner; rewritten that evening for the owner's forward count, which
 takes the firmware out of the path of the bulk data; and extended on 2026-11-17 to the whole peripheral: Egress,
-the UART, and what a reset does. How the master tile's core (C&C 1 in v1.35's names) takes what the host sends out
-of Ingress, and sends its replies through Egress. It is written so that a worker need not guess: where the owner
-did not rule, a choice is made and marked with a dagger (†). (owner) marks what the owner said.
+the UART, and what a reset does. Brought up to date on 2026-11-18: the register and bit numbers packed (owner),
+and the errors as the link's final protocol has them. How the master tile's core (C&C 1 in v1.35's names) takes
+what the host sends out of Ingress, and sends its replies through Egress. It is written so that a worker need
+not guess: where the owner did not rule, a choice is made and marked with a dagger (†). (owner) marks what the
+owner said.
 
 (The file keeps its name, `INGRESS-INTERFACE.md`, because sessions at work refer to it.)
 
 The link itself, its packets and its checks, is `HOST-LINK.md`. The frames inside the packets are `HOST-FRAMES.md`.
 
-**v1.37 is behind this document.** "In v1.37", at the end, says what is built, what is being built and what is to
-come.
+**v1.37 is behind this document.** "In v1.37", at the end, says what is built and what is to come.
 
 ## Terms
 
@@ -36,7 +37,8 @@ peripheral 1; the Updater is peripheral 2 (`UPDATER-INTERFACE.md`).
 | one outgoing queue | the core's replies to the host, foreground only, with a frame count and a credit |
 | the UART | a byte a store out, a byte a load in, behind FIFOs of 16 bytes |
 | v1.36's control lines | the other tiles' error lines, the barrier's master side, the watchdog, the LED |
-| the link | the packets' checks, numbering and forwarding along the chain (`HOST-LINK.md`); nothing of it is a register |
+| the link | the packets' checks, numbering, sending again and forwarding along the chain (`HOST-LINK.md`). The core sees one thing of it: an error when a link has started again |
+| the pin | "another ASIC follows this one on the chain" (owner): a fact about the board, known before any firmware runs (`HOST-LINK.md`, "The chain") |
 
 - **How the core is woken:** the tile has one bit for each peripheral. `peripheral_1` is up while any event of
   Ingress/Egress that its `EVENTS_MASK` selects is pending; the core then loads the peripheral's `EVENTS` to see
@@ -51,8 +53,8 @@ peripheral 1; the Updater is peripheral 2 (`UPDATER-INTERFACE.md`).
 | stage | what it does |
 |---|---|
 | the link | packets of up to 512 bytes of data |
-| the packet buffer | holds one packet while its checks are made. A packet that passes is accepted: its header word is dropped and its data words go into its stream's queue. A packet that fails is rejected (`HOST-LINK.md`) |
-| the two queues | foreground and background, **16 KB each,** 1,024 words (owner, 2026-11-17: twice what the link's window needs, `HOST-LINK.md`). A stream that fills tells the host to stop sending it (`HOST-LINK.md`) |
+| the packet buffer | holds one packet while its checks are made. A packet that passes is accepted: its header word is dropped and its data words go into its stream's queue. A packet that fails is thrown away, and the link has it sent again (`HOST-LINK.md`) |
+| the two queues | foreground and background, **16 KB each,** 1,024 words (owner, 2026-11-17: four times the link's window of 8 packets, where the rule asks for twice, `HOST-LINK.md`). A stream whose queue is half full tells its neighbour up the chain to stop sending it |
 | the DMA | the standard one (17.4): copies words out of either queue to an address, on this tile or another |
 | the forward count | moves words from the background queue straight to the Updater, or discards them |
 
@@ -69,7 +71,7 @@ Ingress/Egress is the master tile's peripheral 1 (`v1.36/spec/machine-spec.md` 1
 | part | in v1.36 | here |
 |---|---|---|
 | the error lines, the barrier's master side, the watchdog, the LED | built | **as they are** (words 32 to 41, `EVENTS` bits 2 and 3) |
-| the host interface | pencilled in: two stream ports read and written a beat at a time by the core (`STREAM_OUT_W0`–`W2`, `STREAM_SEND`, `STREAM_SEND_LAST`, `STREAM_IN_W0`–`W2`, `STREAM_RECEIVE`, words 64 to 72; `STATUS.stream_last`; `EVENTS.stream_in` and `stream_out`) | **removed** (owner, agreed with Tony, 2026-11-17), and replaced by this document's: Ingress and Egress, below |
+| the host interface | pencilled in: two stream ports read and written a beat at a time by the core (`STREAM_OUT_W0`–`W2`, `STREAM_SEND`, `STREAM_SEND_LAST`, `STREAM_IN_W0`–`W2`, `STREAM_RECEIVE`, words 64 to 72; `STATUS.stream_last`; `EVENTS.stream_in` and `stream_out`) | **removed** (owner, agreed with Tony, 2026-11-17), and replaced by this document's: Ingress and Egress, below. **The new words and bits take the places the old ones leave** (owner: packed, like the other peripherals') |
 | the UART | built: four words at 42 to 45 | **redesigned** (owner, 2026-11-17), below. A request to Tony (`RTL-CHANGE-REQUESTS.md`) |
 | a DMA | none | **the standard one** of 17.4, reading out of Ingress's queues |
 | a region | takes no `WRITE`s | **takes the outgoing queue's words** |
@@ -82,23 +84,22 @@ Ingress/Egress is the master tile's peripheral 1 (`v1.36/spec/machine-spec.md` 1
 | where | register or bit | access | meaning |
 |---|---|---|---|
 | `STATUS` [1] | `dma_busy` | R, live | the DMA's (17.4) |
-| `STATUS` [3] † | `foreground_ready` | R, live | the foreground queue holds words |
-| `STATUS` [4] † | `background_ready` | R, live | the background queue holds words |
+| `STATUS` [2] | `foreground_ready` | R, live | the foreground queue holds words (owner: packed) |
+| `STATUS` [3] | `background_ready` | R, live | the background queue holds words |
 | `STATUS` [12:8] † | `uart_tx_bytes` | R, live | the bytes in the UART's TX FIFO (owner: the UART's flags are in `STATUS`) |
 | `STATUS` [20:16] † | `uart_rx_bytes` | R, live | the bytes in its RX FIFO |
 | `STATUS` [24] † | `rx_overrun` | R | a byte arrived with the RX FIFO full and was dropped; stays until the UART's reset |
 | `STATUS` [25] † | `framing_error` | R | a frame's stop bit was 0 and the frame was dropped; stays until the UART's reset |
 | `ERRORS` [0] | `tile_error` | live | v1.36's: another tile's error line is up |
-| `ERRORS` [1] † | `crc_error` | sticky | a packet failed its header CRC or its data checksum |
-| `ERRORS` [2] † | `sequence_error` | sticky | a packet's number was not the next one on the link |
-| `ERRORS` [3] † | `format_error` | sticky | a packet passed both checks but a field cannot be: its stream, its length, or a reserved bit |
-| `ERRORS` [4] † | `egress_error` | sticky | a word pushed into a full outgoing queue, or with `EGRESS_COUNT` at 0; the word is dropped |
+| `ERRORS` [1] † | `link_error` | sticky | a link of this ASIC has started again, towards the host or away from it: what was on its way is gone ("Errors", below) |
+| `ERRORS` [2] † | `format_error` | sticky | set with `link_error` when the cause was a packet made wrong twice running (`HOST-LINK.md`); for diagnosis |
+| `ERRORS` [3] † | `egress_error` | sticky | a word pushed into a full outgoing queue, or with `EGRESS_COUNT` at 0; the word is dropped |
 | `EVENTS` [1] | `dma_done` | counted, depth 1 | the DMA's transfer has ended (17.4) |
 | `EVENTS` [2], [3] | `all_arrived`, `watchdog` | | v1.36's |
 | `EVENTS` [4], [5] | `uart_rx`, `uart_tx` | live | v1.36's: a byte in the RX FIFO; room in the TX FIFO |
-| `EVENTS` [8] † | `foreground_service` | counted, depth 1 | the foreground queue asks for service (below) |
-| `EVENTS` [9] † | `background_service` | counted, depth 1 | the background queue asks for service (below) |
-| `EVENTS` [10] † | `egress_credit` | counted, depth 2 | the outgoing queue's credit (below) |
+| `EVENTS` [6] | `foreground_service` | counted, depth 1 | the foreground queue asks for service (below) (owner: packed) |
+| `EVENTS` [7] | `background_service` | counted, depth 1 | the background queue asks for service (below) |
+| `EVENTS` [8] | `egress_credit` | counted, depth 2 | the outgoing queue's credit (below) |
 | words 16 to 18 | `DMA_HDR`, `DMA_DEST_ADDR`, `DMA_START` | 17.4's | copies words out of one of Ingress's queues (below) |
 | word 30 | `UART_TX` | W | [7:0] a byte to send. A store pushes it (owner: word 30) |
 | word 31 | `UART_RX` | R | [7:0] the oldest byte received; [8] `valid`. A load pops it (owner: word 31) |
@@ -109,16 +110,23 @@ Ingress/Egress is the master tile's peripheral 1 (`v1.36/spec/machine-spec.md` 1
 |---|---|---|---|
 | 32 to 41 | `ERROR_LINES_0`–`2`, `ARRIVALS_0`, `_1`, `ARRIVE_EXPECT_0`, `_1`, `RELEASE`, `WATCHDOG`, `LED` | v1.36's | unchanged |
 | 42 † | `UART_CONTROL` | R/W | the UART's divider and enables; 0 is its reset (below). 0 at the reset (owner) |
-| 80 † | `FOREGROUND_WORDS` | R, live | the foreground queue's length in words; 0 when empty |
-| 81 † | `BACKGROUND_WORDS` | R, live | the background queue's length in words |
-| 82 † | `DMA_FORWARD_COUNT` | R/W | the forward count (below). 0 at power-on |
-| 83 † | `EGRESS_COUNT` | R/W | the words of the frame being queued for the host that are still to come (below). 0 at power-on |
+| 64 | `FOREGROUND_WORDS` | R, live | the foreground queue's length in words; 0 when empty (owner: words 64 to 67 for the four host words) |
+| 65 | `BACKGROUND_WORDS` | R, live | the background queue's length in words |
+| 66 | `DMA_FORWARD_COUNT` | R/W | the forward count (below). 0 at power-on |
+| 67 | `EGRESS_COUNT` | R/W | the words of the frame being queued for the host that are still to come (below). 0 at power-on |
 
 - **Two service flags, one for each stream** (owner).
 - **Two readable registers: the foreground queue's length and the background queue's** (owner).
 - **There are no thresholds.** They were how the firmware kept its cost down while it moved every word itself.
-- **Gone:** words 43 to 45 (`UART_RX`, `UART_DIVISOR`, `UART_STATUS`) and 64 to 72 (the old host interface);
-  `STATUS` [2] and `EVENTS` [6] and [7] read 0.
+- **The numbers are packed, like the other peripherals'** (owner, 2026-11-17): the two queues' flags at
+  `STATUS` [2] and [3], the three new events at `EVENTS` [6], [7] and [8], the four host words at 64 to 67. They
+  are the places the old host interface leaves: its `STATUS.stream_last` was [2], its two events [6] and [7], its
+  words 64 to 72.
+- **Gone:** words 43 to 45 (`UART_RX`, `UART_DIVISOR`, `UART_STATUS`) and 68 to 72 (the rest of the old host
+  interface), which are unmapped.
+- **Still †:** the UART's fields in `STATUS`, `UART_CONTROL` at word 42, and the three new bits of `ERRORS`.
+- **v1.37 as built has the numbers from before the packing** ("In v1.37"): it changes over when the old stream
+  words come out of its black box (owner).
 - **`START` stays undefined,** as in v1.36: the peripheral has no run.
 - **No load of a word from 32 up has a side effect.** With `STREAM_RECEIVE` gone and `UART_RX` moved, that is now
   true of every peripheral. The loads that act are all below 32: `EVENTS`, which consumes, and `UART_RX`, which
@@ -166,6 +174,9 @@ Ingress/Egress is the master tile's peripheral 1 (`v1.36/spec/machine-spec.md` 1
 
 - **A word moves in a cycle in which `valid` and `ready` are both 1.**
 - Words arrive at the Updater in the stream's order, each once.
+- **`valid` may fall without a word having moved:** a store of 0 to the count, or of a count with `discard` set,
+  takes the offer back. The Updater does not depend on it staying (WORKER6: its tests drop `valid` at random).
+  While the count stands and the queue holds words, Ingress holds `valid`.
 - What the Updater keeps behind the port is its own (`UPDATER-INTERFACE.md`).
 
 ## The rule for a service flag
@@ -272,9 +283,11 @@ What the core does with a background frame:
 
 ## Holding the host back
 
-- **Nothing is counted.** The Updater takes words when it can; when it cannot, the background queue fills; a full
-  queue tells its neighbour up the chain to stop sending that stream (`HOST-LINK.md`: "stop" is for each link). The
-  foreground stream is not touched.
+- **Nothing is counted.** The Updater takes words when it can; when it cannot, the background queue fills. **At
+  half full** its stop bit goes up in every header this ASIC sends to its neighbour up the chain (`HOST-LINK.md`:
+  "stop" is for each link). The foreground stream has a bit of its own and is not touched.
+- **The other half of the queue is for what is already on its way:** "stop" holds only packets that have no
+  number yet, and a window of numbered packets, 4 KB, may still arrive.
 - **The firmware has no part in it.**
 
 ## Egress: sending to the host
@@ -304,7 +317,10 @@ queue. Egress cuts them into packets** (owner, 2026-11-17).
   power-on, so a reply of up to 8 KB needs no wake.
 - **In the firmware** (owner): it registers a transmission; that turns the credit's bit on in `EVENTS_MASK`; on
   each wake it sends what the credit allows. With nothing registered the bit is off, and the credits wait.
-- **What the frames are** is not settled: the replies' formats come with the foreground stream's (Open).
+- **What the frames are** is not settled: the replies' formats come with the foreground stream's (Open). The
+  first is the reply frame of the v1.37 milestone, proposed in `updater_wip/planning/MILESTONE-v1.37.md`.
+- **The outgoing queue's size is this document's,** not the link's: `HOST-LINK.md` gives Egress none. The link
+  keeps its own copies of what it has sent, 8 packets, until they are acknowledged.
 
 ## The UART
 
@@ -343,7 +359,7 @@ along the chain and keeps packet numbers that it shares with both neighbours.
 
 | part | cleared by |
 |---|---|
-| the link: the packet buffer and the checks, the packet numbers and acknowledgements, the packets kept until acknowledged, the forwarding | power-on only. If it loses its place, "lost" and recovery are how it comes back (`HOST-LINK.md`) |
+| the link: the packet buffer and the checks, the packet numbers and acknowledgements, the packets kept until acknowledged, the forwarding | power-on only. If it loses its place, "lost" and recovery are how it comes back. If its two ends no longer agree, the link starts again by itself, and the core is told by `ERRORS.link_error` (`HOST-LINK.md`) |
 | what the core sees of the host: the two incoming queues, `DMA_FORWARD_COUNT`, the outgoing queue, `EGRESS_COUNT` and the credits | power-on only † |
 | the UART | `UART_CONTROL` at 0, which the reset makes it (owner: the reset "just clears the UART queues / UART status") |
 | the barrier's side, the watchdog, the LED | the reset, as v1.36 says |
@@ -355,38 +371,59 @@ along the chain and keeps packet numbers that it shares with both neighbours.
 
 ## Errors
 
-- **A packet that fails a check is fatal** (owner). `ERRORS.crc_error` is set and Ingress accepts no more packets.
-- † A packet number out of order is treated the same way, with `ERRORS.sequence_error`.
-- **So is a packet that passes both checks with a field that cannot be** (owner, 2026-11-17: thrown away "just
-  like a CRC error"). `ERRORS.format_error` says which test failed, for diagnosis; the handling is the same.
-- **The order of the tests is `HOST-LINK.md`'s:** the header CRC, the fields, the data checksum, then the number.
-  So a packet with a bad data checksum and a wrong number is a `crc_error`.
-- Sending again and recovery need the way back to the host, and are for later (`HOST-LINK.md`).
+**Nothing a damaged packet does is an error.** A packet that fails a check or arrives out of order is thrown
+away and sent again, and a receiver that loses its place recovers (`HOST-LINK.md`). None of it reaches a
+register. (As first written here each was fatal, and v1.37 as built still has it so, having no way back to the
+host.)
+
+**The core sees one error of the link, `ERRORS.link_error` †:** a link of this ASIC has started again. What was
+on its way on that link is gone, and the frames above it cannot be trusted.
+
+| what starts a link again (`HOST-LINK.md`, "Starting a link again") | |
+|---|---|
+| the neighbour powers on, or the FPGA is loaded again, under a running link | |
+| a packet made wrong, twice running on the same packet number | `format_error` is set as well (owner: "we raise the ingress error") |
+| the other end asks for a packet this end no longer keeps | (owner: "we raise the error flag and go for a global reset") |
+
+- **Two ends that power on together bring the link up with no error.**
+- † One bit serves both of an ASIC's links, the one towards the host and the one away from it. Whether the core
+  should be told which link, and which cause, is open.
+- **A peripheral's error is its tile's** (owner, 2026-11-17): `link_error`, `egress_error` and the Updater's
+  errors alike raise the master tile's error, which stops everything.
+- **It is not recovered from** (owner: "I don't know how you recover from an updater error"). The host resets the
+  chip; the boot firmware drops what is left in the background queue with the discard count, says it is ready,
+  and the proof starts over.
+  - † What is left in the foreground queue it reads out with the DMA and drops: the discard is the background's.
+- **A neighbour that goes silent raises nothing.** A line that reads as zeros looks idle, and the link waits. It
+  is left open by the owner's ruling (`HOST-LINK.md`, Open).
+- **The UART's line errors are status, not errors** ("The UART").
 
 ## In v1.37
 
-**Decided (owner):** v1.37's Ingress is a black box in the simulator, fed from a file.
+**Decided (owner):** v1.37's Ingress/Egress is a black box in the simulator, behind its real registers. As built
+it is fed from a file. The v1.37 milestone puts a driver and a chain of two ASICs in the file's place
+(`updater_wip/planning/MILESTONE-v1.37.md`).
 
-| | |
-|---|---|
-| the file | gold's frame file, packetized: wrapped in the link's packets with the right checks (owner) |
-| the streams | background only |
-| what the black box does | checks each packet (both checks, and the packet numbers in order), strips the header word, and puts the packet's words in the queue |
-| what it leaves out | everything that needs the way back to the host: acknowledgements, "resend", "lost" and recovery, "stop". The file's next packet simply waits while the queue has no room for it |
+**As built on `main` (2026-11-18), against this document:**
 
-**What is built, what is being built, and what is to come:**
-
-| | as merged (WORKER4) | being built (WORKER7) |
+| | as built | this document |
 |---|---|---|
-| the queues | 16 KB a stream | 8 KB a stream, one constant. **The design is 16 KB again** (owner, 2026-11-17): to be changed back |
-| words 82 and 83 | a threshold for each stream | `DMA_FORWARD_COUNT` at 82; 83 unmapped |
-| the service flag | posted when the words waiting reach the threshold, and none while words are owed | the rule above |
-| the Updater's data | by DMA into its segment queue, under credits the firmware keeps | by the word port |
-| the firmware | about 100 cycles awake a packet's worth, 0.17 to 0.20 of the link's time | a wake a frame |
-| the packet's header | 20-bit numbers for each stream | 18-bit numbers for each stream and the hops field (done on `updater-w7`). **The design is now one run of numbers for a link,** with both stop bits in every header and a restart flag (`HOST-LINK.md`): to come, once WORKER8 has confirmed it. A file of background packets alone is numbered the same either way |
+| the forward count, the word port, the service rule, the firmware waking once a frame | **as here** (WORKER7; merged 2026-11-17 with WORKER9's first piece) | |
+| the queues | 8 KB a stream, one constant (`QUEUE_WORDS` 512) | 16 KB (owner, 2026-11-17) |
+| the register and bit numbers | from before the packing: `STATUS` [3], [4]; `EVENTS` [8], [9]; words 80, 81, 82; 83 unmapped | packed: `STATUS` [2], [3]; `EVENTS` [6], [7], [8]; words 64 to 67 |
+| the old stream words, and v1.36's UART at words 42 to 45 | still there | removed; the UART redesigned |
+| the packet's header | 18-bit numbers for each stream, and the hops field (WORKER7) | one run of numbers for a link, both stop bits in every header, the restart flag, the data masked (`HOST-LINK.md`). A file of background packets alone is numbered the same either way; the mask changes its bytes |
+| a bad packet | fatal: `ERRORS` [1] `crc_error`, [2] `sequence_error`, [3] `format_error`, and no more packets are taken | thrown away and sent again; `link_error` only when a link starts again |
+| the way back to the host | none. The file's next packet waits while the queue has no room for it | acknowledgements, "resend", "lost" and recovery, "stop", the restart: WORKER8's link end (`updater_wip/link/`) |
+| Egress | none: nothing goes back to the host | the outgoing queue, `EGRESS_COUNT`, the credit |
+| the chain | none: one ASIC | two link ends and the forwarding buffers |
 
-**WORKER7's work is built and on its branch, `updater-w7`, not yet merged** (2026-11-17). The 37 proof runs pass
-on it, every image equal to gold's (Quest 213). Measured there, at a byte a cycle:
+- **The streams in the file are background only.**
+- **What the black box does with a packet today:** checks it (both checks, and the packet numbers in order),
+  strips the header word, and puts the packet's words in the queue.
+
+**Measured with the forward count** (WORKER7, Quest 213: the 37 proof runs pass, every image equal to gold's), at
+a byte a cycle:
 
 | | with the thresholds (WORKER4) | with the forward count |
 |---|---|---|
@@ -398,26 +435,31 @@ on it, every image equal to gold's (Quest 213). Measured there, at a byte a cycl
 - **The owner's target, at most 10%, is met on every run.** The figure is all of the master's time awake, of
   which feeding the Updater is a part.
 - **What is left is a cost a proof, not a cost a word:** the boot (about 86,000 cycles), parsing the proof header
-  (about 14,000 at *N* 64) and frame 8's counts. So the share now mostly measures how long the link takes, and
-  rises on a faster link only because the same work is divided by less time.
-- **The hand-over comes about 3% later on the small guests:** that is the queues going from 16 KB to 8 KB, which
-  holds the link sooner during the boot, not the forward count.
+  (about 14,000 at *N* 64) and frame 8's counts. So the share mostly measures how long the link takes, and rises
+  on a faster link only because the same work is divided by less time. A proof is 50 to 100 ms (owner), of which
+  this is 0.2 to 0.6%.
+- **The hand-over comes about 3% later on the small guests** than with 16 KB queues: the smaller queue holds the
+  link sooner during the boot.
 
-**To come, in no worker's brief yet:**
+**To come** (the order and the workers are `MILESTONE-v1.37.md`'s):
 
-- the old host interface's words taken out of the black box, with v1.36's stream tests and any of the RTL's
-  firmware images that use them;
-- the UART as redesigned, with the store to `UART_CONTROL` added to every image that prints;
-- Egress: nothing goes back to the host in v1.37.
+- gold's packetizer, reader and vectors, and v1.37's header, brought to the final protocol: one run of numbers,
+  the stop bits and the restart flag where they now are, the mask, the restart packet;
+- the link's part of the black box replaced by WORKER8's link end, with the chain and Egress;
+- the queues back to 16 KB;
+- the old host interface's words taken out, with v1.36's stream tests and any of the RTL's firmware images that
+  use them, and the numbers packed at the same time;
+- the UART as redesigned, with the store to `UART_CONTROL` added to every image that prints.
 
 **The packetizer** makes the file from gold's frames:
 
 - every packet is on stream 2, the background;
 - each frame starts a new packet; a frame's packets are 32 words long but its last, which holds what remains;
 - packet numbers run from 1; the acknowledge field and the flags are 0;
-- both checks are CRC-32C, as `HOST-LINK.md` defines it.
+- both checks are CRC-32C, as `HOST-LINK.md` defines it;
+- as built it does not mask the data, which the final protocol does.
 
-**What the black box does with the rest:**
+**What the black box as built does with the rest:**
 
 - † zero bytes between packets are idle, and it skips them;
 - † a packet of length 0 takes no number and asks for no service: it is checked and passed over;
@@ -430,7 +472,12 @@ Gold's packetizer and its vectors are `updater_wip/pipeline/gold/` (`packets`, `
 
 ## Open
 
-- The word numbers and bit numbers marked †.
+- The word numbers and bit numbers still marked †: the UART's fields in `STATUS`, `UART_CONTROL` at 42, and
+  `ERRORS` [1] to [3].
+- Whether `link_error` should say which of the ASIC's two links started again, and why.
 - The foreground stream: what the host's commands and the chip's replies are, as frames.
 - Whether another tile may push words into the outgoing queue itself, by its DMA, or only the master tile's core.
-- Whether the forward count wants an event of its own for reaching 0.
+- The outgoing queue's size, 8 KB †, and its region, 0x04 part 1 †.
+- Whether anything short of power-on empties the queues the core sees ("Reset").
+- **The † of this document have not all been put to the owner.** The review of 2026-11-17 reached the service
+  flags; Egress's count and credit, the UART's small rules and the reset's are still as proposed.

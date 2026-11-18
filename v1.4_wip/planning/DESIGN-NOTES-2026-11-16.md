@@ -686,6 +686,8 @@ Written at the owner's request, so that a session starting cold can pick this up
 
 ### The workers' lists not yet applied to the documents
 
+(Applied on 2026-11-18, section 34, but for the figure.)
+
 - **WORKER6, for `UPDATER-INTERFACE.md`:** the decoder's type counts min(`run_left`, `WORD_COUNT`); after an
   error a run stops with `busy` 1 and no `done`; `beyond` is the Updater's own check before it writes the held
   page; a fault's pages are counted before any is taken; a free page entry's unit; what `STAT_PAGES_READ` and
@@ -982,3 +984,131 @@ Rulings as they came; `HOST-LINK.md` has each.
 - **The runner's campaign with the slow unit, Quest 232:** 6,071 runs on chains of 1, 2, 4 and 16, 306 million
   packets, none failed, none refused for want of room.
 - The owner: fix them now, "and figure out what work we can launch to try to get v1.37 finished."
+
+## 34. The link passes on the runner; what the link and the wire cost; the documents squared away (2026-11-18, about 4 a.m.)
+
+**The link.**
+
+- **The first long run of the protocol as it stands passed** (Quest 237, the fast sending unit): 7,519 random
+  runs on chains of 1, 2, 4 and 16, 18 billion cycles, 385 million packets, none failed, no packet refused for
+  want of room. The owner: WORKER8 has shown it is pretty likely the link is fine; the rest of the long runs
+  (Quests 238 to 242) can wait for a night.
+- **A line forced to zeros.** The longest a foreground packet stood ready with the link in step was 384,187
+  cycles: one line of a chain of 16 read as zeros for up to 446,377 cycles, which is the test's own damage. Zeros
+  look idle, so nothing is noticed, the sender's window fills, and it waits until the line is back. The owner:
+  that is sort of correct; "the interesting thing is how long did it take to restart after you let data through
+  again." Over 257,035 recoveries of every kind: 669 cycles on average, 5,187 at most. Now in `HOST-LINK.md`,
+  "Recovery".
+- **The fullest queue was 953 words of 1,024,** against 629 before. The campaign draws the host's window at 64 in
+  one run of five, which the document rules out; WORKER8 is asked which run it was. At a window of 8 it would be
+  a finding.
+- **The link end is ready to build on** (`updater_wip/link/hostlink.h`: `End` and `Node`), on `updater-w8`.
+- **What it costs as hardware** (`sessions/WORKER8/HARDWARE.md`): a link end 630 flip-flops and 4,608 bytes; an
+  ASIC in the middle of a chain 1,424 flip-flops and 77,312 bytes for the link, 110,080 with the chip's two
+  16 KB queues; 85% of the link's memory is the four forwarding buffers. The owner: 100 KB is not an issue
+  beside the Tracer's 768 KB. Now in `HOST-LINK.md`, "The link as hardware".
+- **Two questions from WORKER8, both † and neither ruled on:** what an ASIC does with a background packet that
+  has data and comes from below (the model forwards it, through a 16 KB buffer nothing else uses); and the
+  header's CRC of a packet of length 0 that starts while the fast unit is passing over the next packet's data.
+  Both in `HOST-LINK.md`, Open.
+
+**The wire between processes** (WORKER10, `updater_wip/wire/`, on `updater-w10`).
+
+- **What it is:** the layer under the chain's three processes, and nothing of the protocol or the chip. Each
+  process gives a byte and takes a byte on each link every cycle; bytes given in one window of 64 cycles arrive
+  in the next; a launcher starts the driver and the ASICs and stops them all if one dies.
+- **What it showed:** the same to the cycle as a one-process reference in every case, with the machine free,
+  loaded, pinned to one core and paused at random; stopping never hangs; planted bugs caught.
+- **What it costs:** about 1.5% at the owner's window of 64, nothing at 1,024, about 20% at 16. No promise of
+  silence is needed for the long stretches when a chip traces and the link is idle.
+- **Its check on the runner could not finish inside the time limit.** Under the test's own load, a busy loop
+  on every core, a chain of 16 at a window of 16 took over six minutes a case where it takes under a second on
+  a free machine: 17 processes that must each run every 16 cycles, each waiting its turn behind a busy loop.
+  That is the test's load on that machine, and says nothing against the wire. The owner: these big runs seem
+  pointless. No campaign on the runner for the wire (owner).
+- Now in `updater_wip/planning/MILESTONE-v1.37.md`, "The picture".
+
+**The owner on where v1.37 stands:** the protocol's open questions want a thorough look, "but that's only a
+small corner of our v1.37 work." The bulk is the joint (the Updater's controller on the real arbiter and cache),
+the master tile's side of Ingress/Egress with the reply frame, gold brought to the final protocol, and the chain
+with its driver.
+
+**The documents brought up to what has been decided** (owner: whatever has been discussed about the design goes
+into the files):
+
+| document | what went in |
+|---|---|
+| `INGRESS-INTERFACE.md` | the register and bit numbers packed (`STATUS` [2], [3]; `EVENTS` [6], [7], [8]; words 64 to 67); "Errors" rewritten for the final link: a damaged packet is no error, and the core sees † `link_error` when a link starts again, with `format_error` for a packet made wrong twice; an error is not recovered from; the pin; "stop" at half a queue; `valid` may fall on the word port; "In v1.37" as built on `main` today |
+| `HOST-LINK.md` | Quest 237; the recovery times; "The link as hardware"; WORKER8's two questions; the header's CRC during a pass; the error's name |
+| `UPDATER-INTERFACE.md` | WORKER6's and WORKER7's lists: what stops a run and what it does then; `beyond` and `out_of_pages`; how a whole page or half is known from the data; what the statistics count; a free page entry's unit; "In v1.37" as built |
+| `CACHE-INTERFACE.md` | WORKER6's three: a new page worded so that v1.37's roots fit; nobody discards in v1.37; an update answered `hole` or `beyond` may be fatal |
+| `HOST-FRAMES.md` | WORKER3's five: who fills frame 7's roots and depths; frame 8's counts and the 128-bit word; what the firmware derives from the per-ASIC page counts; a segment's rows; frame 4's base without a file system |
+| `word_port.h` | the four method names the slot wires; `valid` may fall |
+| `MILESTONE-v1.37.md` | WORKER10's eight corrections; the launcher; the final header; where each step stands |
+
+**Not done:**
+
+- The figure `fig_m1_lpddr_path.svg` still shows the Updater on the memory tile.
+- The † of `INGRESS-INTERFACE.md` have not all been put to the owner: the review reached the service flags.
+  Egress's count and credit, the UART's small rules and the reset's stand as proposed.
+- v1.37's code is behind the documents where "In v1.37" says so: the queues at 8 KB, the numbers from before the
+  packing, the header from before the one run of numbers and the mask.
+- The reply frame's fields, and the foreground stream's frames altogether.
+
+## 35. The specification first (2026-11-18, about 4:30 a.m.)
+
+- **The two state machines each work alone, and have not met.** The cache's controller runs the Tracer through
+  the proof runs. The Updater's controller matches the black box byte for byte, on a stand-in cache and a test
+  LPDDR of its own. Joining them is still to do.
+- **The specification has not been written.** v1.37's `spec/` is v1.36's, unchanged. The design is in these
+  planning documents, and the workers built from them: the order of every earlier version turned round.
+- **The owner:** "we should follow the tried and true. We build a spec for the full system." The simulator is
+  then brought to the specification, then the firmware, then the tests.
+- **What follows from it:**
+  - a specification session, `updater_wip/planning/sessions/SPEC/PROMPT.md`: the design as designed, every †
+    ruled on or made an open item, and a list of where the simulator and firmware differ;
+  - the brief for an integrator session, written an hour before, is on hold. It had the simulator leading, and
+    left the old stream words, the UART and the register numbers as built;
+  - the building that comes after takes in what that brief left out.
+
+## 36. Rulings for the specification (2026-11-18, about 5 to 6 a.m.)
+
+The specification session (`updater_wip/planning/sessions/SPEC/`, branch `v137-spec`) put its outline, about 70
+daggers and 14 silences to the owner. These are the owner's rulings on the larger ones. The specification is
+where they are stated; this is how they were reached.
+
+- **Whose word wins** (owner): for the cache's controller, the Updater's controller and the link end, the code
+  is the authority and the specification mirrors it ("it's actually the spec portion of those codes"). For
+  Ingress/Egress, the UART, Egress and the frames, the design documents lead. **Every new component is specified
+  to the depth of the ones already there.** What is inside those three machines is accepted as the code has it,
+  as a block.
+- **One reset.** The session proposed a second net, so that a reset after an error would leave the host link
+  alone. The owner: "Error recovery in general is a nightmare. If we try to figure out the error recovery
+  strategy for the chip in the session we're going to get it wrong. It's a whole can of worms because there is
+  state all over the place." **No second net.** The reset is v1.36's, as at power-on, and reaches the link and
+  the host's queues too. The specification states what raises each error and that it stops the chip; what the
+  host does after that, draining queues and a "ready" message are one open item, not a design.
+  - This undoes "cleared at power-on only" in `INGRESS-INTERFACE.md`, "Reset", and the lines on recovery in its
+    "Errors".
+- **Where the cache lives.** The memory system (the cache, the arbiter, the `lpddr` port) is **the memory tile's
+  peripheral 1,** and as little of a peripheral as will do: it is there so that the cache's error goes out on
+  the tile's error line, with no new net. **The RW engine becomes peripheral 2.** The hardware keeps v1.36's RW
+  engine; nothing in v1.37's proof runs uses it.
+- **The links between the special tiles stay** (owner: "We should put the links in"), though the Updater's move
+  to the master tile took their first reason away.
+  - **Which ports.** The session proposed east and north. The owner: "that's a terrible scheme. Think of the
+    numbers. 64 = c&c1, 65 = c&c2, 66 = c&c3. We have a +/- 1 relationship." **East and west, as in the mesh:**
+    east is tile id + 1 and west is id − 1. Master east to memory west; memory east to tracer west; the route is
+    the ring's rule on the difference of the ids.
+  - **A peripheral's DMA enters on south, the +8 port** (owner: "the peripherals connect via the +8 router"),
+    as v1.35's DMA had the tile's id + 8 for its source. The RTL has it on west today.
+  - **No flow control.** The session proposed credits, from the request's own words, "always flow-controlled".
+    The owner: "I've had this conversation so many times. There are regimes on the mesh. Some need flow
+    control, some don't. Right now, we don't actually have a file system. So as far as I know, flow control is
+    not necessary, and it hasn't been spec'd." **The line's links are the mesh's, with none.** Flow control
+    belongs with the regime that needs it and is designed with the file system. The request's wording was the
+    design session's mistake and is corrected (`RTL-CHANGE-REQUESTS.md`, 1, and the paragraph under the table).
+- **128 bits is "a 128-bit word",** not a beat: the Tracer's and the replayer's chapters say so, and their
+  counters are named `…_words`. `FOREGROUND_WORDS` and `BACKGROUND_WORDS` keep their names. "Beat" keeps the
+  specification's meaning, one item a handshake moves.
+

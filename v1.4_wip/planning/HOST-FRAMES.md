@@ -162,6 +162,17 @@ Nothing about the jump table is here (owner): that is frame 4.
 
 - **What C&C 2 derives for the memory-segments runs** (owner): the 64-bit words before segment *s* (the sum of the
   first *s* counts), the words in *s*, and the total.
+- **What it derives from the per-ASIC page counts** (WORKER3, as v1.37's firmware does). The Tracer's copy's
+  count is the pages of the copy alone:
+
+  | run (`UPDATER-INTERFACE.md`, "The runs") | pages it takes from the free page queue |
+  |---|---|
+  | memory segments, segment *s* | twice the Tracer's copy's count: a page for the final image and a page for the copy |
+  | memory segments, after *s* | the final image's count less the Tracer's copy's |
+
+  Gold's counts are exact for this: `PAGE_COUNT` is 0 at every `done`, in every run.
+- **A segment's rows are in no frame** (WORKER3). † A segment is 2²² rows, 64 windows of 65,536, by definition.
+  A frame would need the figure only if segments were ever cut elsewhere.
 - The advice counts are in frame 8, not here (owner).
 
 ---
@@ -185,6 +196,9 @@ A table is made in one of two ways (owner): **a full new table**, or **entries a
   built from anything: the static analysis, the targets of a common run, or of many runs.
 - **A run's base is always such a table.** A run's own table is dead when the run ends (owner): it is never a later
   run's base.
+  - **Which table, without a file system** (WORKER3): the frame names the base by its path. v1.37 has no file
+    system and skips the names, so its base is the last table that a frame 4 with a path established. With a
+    file system the firmware needs the names. Which is meant for v1.4 is open.
 - C&C 3 takes k, p1 and p3 from here for the Tracer.
 
 ---
@@ -247,6 +261,8 @@ frame 2. A record is 68 × 128 bits, 1,088 bytes; for 128 segments the frame's d
 | 67 | | 0: the template bitmap |
 
 - *N* is the frame's length divided by 68.
+- **Who fills the roots and depths** (WORKER3): whoever made the files. In v1.37 that is the master tile, which
+  writes the Tracer's copy's root and depth and the jump table's root and depth into its ASIC's record.
 
 ---
 
@@ -258,6 +274,8 @@ frame 2. A record is 68 × 128 bits, 1,088 bytes; for 128 segments the frame's d
 | log × *N* | u64 per value | the segment's advice values in row order, zero-padded to a whole number of 128-bit words |
 
 - A log's length in 128-bit words is its count rounded up to even, then halved (owner).
+- **The counts are *N* 32-bit words, so the first log starts on a 128-bit word only when *N* is a multiple of
+  4** (WORKER3). Every *N* in use is. † For any other, the counts are zero-padded to a whole 128-bit word.
 - Advice is never compressed.
 
 ---
@@ -302,6 +320,10 @@ Both workloads at 2²⁹, 128 segments (`updater_wip`, WORKER1's `REPORT.md`, be
 - Frame 9 as a single frame can pass section 16's cap of 2²⁶ words (256 MiB) on a long run. The header's 32-bit length,
   in 128-bit words, has no such cap; whether Ingress needs one, with the frame continuing in further frames, is open.
 - The advice count is in two places (frame 7's word 1 and frame 8's table); they must agree.
+- Frame 4's base table by name, or the last one established (frame 4).
+- The † on a segment's rows (frame 3) and on the padding of frame 8's counts.
+- **The foreground stream's frames,** towards the chip and back: nothing is defined. The first reply frame is
+  proposed in `updater_wip/planning/MILESTONE-v1.37.md`.
 - The fall-back from a base table to a full new table happened on no run; gold is to test it with a made-up case.
 
 - Whether a frame for the Updater should carry its own head, the names and counts, instead of a header frame before

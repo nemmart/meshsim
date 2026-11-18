@@ -8,6 +8,9 @@ until then. Sections 16 and 17 are of the headers before and are history; sectio
 agreed. The long search is complete (Quest 231); the runner's campaign (Quest 237 to 242) is not back. Branch
 `updater-w8`.
 
+**To build on the link:** `updater_wip/link/hostlink.h` and the README's "Using the link end". **The link end as
+hardware:** `HARDWARE.md` beside this file.
+
 **The go-ahead (owner, 2026-11-17),** with the answers to section 15:
 
 1. **Forged headers: yes,** as a form of damage, reported apart.

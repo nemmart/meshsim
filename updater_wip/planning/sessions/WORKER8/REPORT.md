@@ -13,7 +13,7 @@ it, the sender's fast unit.
    there is real harm". With **two** forged headers it is raised and nothing was lost (section 4). With one it
    holds, as searched. It is far inside the limit already accepted, and it errs on the loud side.
 4. **The random campaign on the runner:** the one with the slow unit is back, 6,071 runs, none failed (section
-   9). The one with the fast unit is running.
+   10). The one with the fast unit is running.
 
 Names: HL is `v1.4_wip/planning/HOST-LINK.md` at `870ed9d9`. The code is `updater_wip/link/`. A dagger (†) marks
 what I chose or propose. A cycle is one byte on the link. "The fast unit" is HL's sending unit of 128 bits a
@@ -67,7 +67,7 @@ implementation in Python that read the hex strings out of HL itself.
 | S9 | "When the status is sent", step 1: "on a change" | "resend owed" and "a packet taken" are changes too, with the stop bits |
 | S10 | "The link" | the wire's delay. The window of 8 is never full up to 512 cycles each way and fills at 2,048 (section 5) |
 | S11 | "A packet made wrong": a packet of length 0 that is counted | it is also asked for again, like one with data, though there is nothing to send again |
-| S12 | "The link", "When the status is sent" | a line that reads as zeros for long. It looks idle: the end that hears nothing stays in step and waits, its window full. In the runner's campaign a foreground packet stood ready 515,932 cycles that way (section 9). A live end sends a header every 512 cycles, so † an end that has heard none for some multiple of that could tell its owner the line is silent |
+| S12 | "The link", "When the status is sent" | a line that reads as zeros for long. It looks idle: the end that hears nothing stays in step and waits, its window full. In the runner's campaign a foreground packet stood ready 515,932 cycles that way (section 10). A live end sends a header every 512 cycles, so † an end that has heard none for some multiple of that could tell its owner the line is silent |
 
 ## 2. The figures HL quotes, against mine with the fast unit
 
@@ -315,7 +315,23 @@ bits, and the pass's counter. The mask is one more 32-bit register each way.
 - `figures.sh c` no longer has 32,768; `searches.sh forged` has the line with two forged headers.
 - Nothing else in the link end is changed. The mask, the rules and HL's examples are as in the report before.
 
-## 9. The runner
+## 9. Ready to be built on (2026-11-18)
+
+| | where |
+|---|---|
+| **the interface:** one header, `hostlink.h`, with a link end (`End`) and a chain node (`Node`): a byte in and a byte out a cycle for each link, words pushed in and taken out for each stream, the stop and error outputs, the pin | `updater_wip/link/hostlink.h`; `make lib` builds `build/libhostlink.a` |
+| **how to use it:** two examples that build and run, what a user must promise, what it may rely on | `updater_wip/link/README.md`, "Using the link end"; `examples/` |
+| **its test,** through the header alone: two ends and chains of 1 to 4 under noise, one ASIC that never takes its background, an end powered on under a running link, two ends in two processes | `test_hostlink.cpp` |
+| **the link end as hardware:** every register with its flip-flops, every memory with its size and the reason, the CRC units and when each runs, the budget | `HARDWARE.md` beside this file; `build/linkhw` prints its tables |
+
+- **The budget for one ASIC in the middle of a chain:** 1,424 flip-flops and 77,312 bytes of memory for the link,
+  110,080 bytes with the chip's two queues of 16 KB. 85% of the link's memory is the four forwarding buffers.
+- **`make check` runs all of it:** the examples are built against the library alone and must be in the README
+  word for word; `HARDWARE.md` must hold the program's tables word for word; the list of registers must have a
+  row for each of the model's 47.
+- Nothing in the link end itself is changed by this.
+
+## 10. The runner
 
 | task | what | state |
 |---|---|---|

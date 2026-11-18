@@ -4,11 +4,204 @@ WORKER8's work (`../planning/sessions/WORKER8/`): the link of `v1.4_wip/planning
 written, put on wires that misbehave, and searched. No chip, no mesh, nothing of `v1.37_wip/`.
 
 **Where it stands (2026-11-18):** on HL as it now stands: the header of 16 bytes, one run of packet numbers for a
-link, "stop" holding only packets not yet numbered, and the data masked on the wire. **Everything run so far
-holds:** the searches that fit a session's machine, on one link and on chains of 1, 2 and 3; 18 planted bugs;
-a case for every rule; the random runs made here. The large campaign and the largest searches are the runner's
-(Quest 231 to 236) and have not run yet. `../planning/sessions/WORKER8/REPORT.md` has the results, the figures
-and what is the owner's to weigh; `rates.py` is still of the header before.
+link, "stop" holding only packets not yet numbered, the data masked on the wire, and the sender's fast unit.
+**Everything run so far holds:** the searches, on one link and on chains of 1, 2 and 3; 18 planted bugs; a case for
+every rule; the random runs made here and the runner's campaign. `../planning/sessions/WORKER8/REPORT.md` has the
+results and the figures; `../planning/sessions/WORKER8/HARDWARE.md` has the link end as hardware; `rates.py` is
+still of the header before.
+
+**To build on the link, read the next section and `hostlink.h`, and nothing else.**
+
+## Using the link end
+
+`hostlink.h` is the interface: one header, two classes, and it will keep its shape. `make lib` builds
+`build/libhostlink.a`, which holds it and the model behind it and nothing of the benches.
+
+```
+make lib
+g++ -std=c++17 -I updater_wip/link yours.cpp updater_wip/link/build/libhostlink.a
+```
+
+| class | what it is | for |
+|---|---|---|
+| `hostlink::End` | one end of one link, with its queues | the host's side of the first link; or either side of a link on its own |
+| `hostlink::Node` | an ASIC on the chain: the link towards the host, the link away from it, the forwarding between | the chip's Ingress and Egress; a chain |
+
+- **A cycle is one byte on the link.** Each object has one function, `clock()`, called once a cycle: the byte that
+  arrived goes in, the byte to send comes out. An idle line is `0x00`.
+- **The bytes are all there is between two objects,** so they can sit in one program, in two processes or on two
+  machines. `test_hostlink` runs two ends in two processes with a socket between.
+- **Data is words of 128 bits on two streams,** the foreground and the background. Words are pushed in as packets
+  of 1 to 32 words and taken out a word at a time, with a packet's last word marked.
+
+### Two ends back to back
+
+`examples/back_to_back.cpp`:
+
+```cpp
+// Two ends back to back: a wire each way, one cycle long. End a sends three words on the foreground; end b takes
+// them out.
+#include <cstdio>
+#include <cstring>
+
+#include "hostlink.h"
+
+int main() {
+    hostlink::End a, b;
+    uint8_t a_to_b = 0, b_to_a = 0;        // the two wires: the byte each end sent last cycle
+
+    hostlink::Word message[3] = {};
+    strcpy(reinterpret_cast<char*>(message[0].byte), "one");
+    strcpy(reinterpret_cast<char*>(message[1].byte), "two");
+    strcpy(reinterpret_cast<char*>(message[2].byte), "three");
+    if (!a.push(hostlink::FOREGROUND, message, 3)) return 1;
+
+    unsigned got = 0;
+    for (unsigned cycle = 0; cycle < 20000 && got < 3; cycle++) {
+        const uint8_t from_a = a.clock(b_to_a);        // every end, every cycle
+        const uint8_t from_b = b.clock(a_to_b);
+        a_to_b = from_a; b_to_a = from_b;
+
+        hostlink::Word word;
+        bool last = false;
+        while (b.take(hostlink::FOREGROUND, word, nullptr, &last)) {
+            printf("cycle %u: b took \"%s\"%s\n", cycle, reinterpret_cast<const char*>(word.byte), last ? " (the packet's last word)" : "");
+            got++;
+        }
+    }
+    const hostlink::LinkStatus s = a.status();
+    printf("a: in step %d, error %d\n", s.in_step, s.error);
+    return got == 3 && s.in_step && !s.error ? 0 : 1;
+}
+```
+
+```
+cycle 4736: b took "one"
+cycle 4736: b took "two"
+cycle 4736: b took "three" (the packet's last word)
+a: in step 1, error 0
+```
+
+- The first 4,657 cycles are the two ends coming up from power-on (`build/linkcost start`). Nothing has to be done
+  for it but to keep calling `clock()`.
+
+### A host, two ASICs, and a reply sorted by hops
+
+`examples/chain_reply.cpp`:
+
+```cpp
+// A host, two ASICs on a chain, and a reply from each. The host sends one query; every ASIC gets it; each answers
+// with its own words; the host takes the answers out sorted by hops, which is each ASIC's place on the chain.
+#include <cstdio>
+#include <cstring>
+
+#include "hostlink.h"
+
+static hostlink::Word text(const char* s) {
+    hostlink::Word w = {};
+    strncpy(reinterpret_cast<char*>(w.byte), s, hostlink::WORD_BYTES - 1);
+    return w;
+}
+
+int main() {
+    hostlink::End host;
+    hostlink::Node asic[2] = {hostlink::Node(true),      // the pin: an ASIC follows this one
+                              hostlink::Node(false)};    // the last on the chain
+    const char* name[2] = {"the near one", "the far one"};
+
+    // The wires, a cycle long each: [0] between the host and asic[0], [1] between asic[0] and asic[1].
+    uint8_t down[2] = {}, up[2] = {};
+
+    const hostlink::Word query = text("who is there?");
+    if (!host.push(hostlink::FOREGROUND, &query, 1)) return 1;
+
+    unsigned answers = 0;
+    for (unsigned cycle = 0; cycle < 40000 && answers < 2; cycle++) {
+        const uint8_t from_host = host.clock(up[0]);
+        const hostlink::Node::Bytes from0 = asic[0].clock(down[0], up[1]);
+        const hostlink::Node::Bytes from1 = asic[1].clock(down[1], 0);
+        down[0] = from_host; up[0] = from0.up; down[1] = from0.down; up[1] = from1.up;
+
+        // Each ASIC: take the query, answer it. An answer is two words here: one packet.
+        for (unsigned i = 0; i < 2; i++) {
+            hostlink::Word word;
+            while (asic[i].take(hostlink::FOREGROUND, word)) {
+                printf("cycle %u: asic %u took \"%s\"\n", cycle, i, reinterpret_cast<const char*>(word.byte));
+                const hostlink::Word answer[2] = {text(name[i]), text("and I am well")};
+                if (!asic[i].push(answer, 2)) return 1;
+            }
+        }
+        // The host: each ASIC's answer, by its hops.
+        for (unsigned hops = 0; hops < 2; hops++) {
+            hostlink::Word word;
+            bool last = false;
+            while (host.take_from(hops, word, &last)) {
+                printf("cycle %u: from the ASIC %u hops away: \"%s\"\n", cycle, hops, reinterpret_cast<const char*>(word.byte));
+                if (last) answers++;
+            }
+        }
+    }
+    return answers == 2 && !host.status().error ? 0 : 1;
+}
+```
+
+```
+cycle 4704: asic 0 took "who is there?"
+cycle 4737: asic 1 took "who is there?"
+cycle 4768: from the ASIC 0 hops away: "the near one"
+cycle 4768: from the ASIC 0 hops away: "and I am well"
+cycle 4852: from the ASIC 1 hops away: "the far one"
+cycle 4852: from the ASIC 1 hops away: "and I am well"
+```
+
+- **No ASIC knows its place.** Each sends its reply with hops 0, every ASIC that forwards it adds one, and the
+  host takes each ASIC's words with `take_from(hops)`: 0 is the nearest.
+
+### What a user must promise
+
+| | the promise | if it is broken |
+|---|---|---|
+| 1 | **`clock()` is called once every cycle for every object,** from power-on on, with or without anything to send | the timers count cycles: a status every 512, the wait before asking again. An object that is not clocked is a dead ASIC to its neighbours |
+| 2 | **every byte that `clock()` returns reaches the other end's `clock()`,** in order, after a delay that does not change; where nothing is connected, `0x00` goes in | a byte lost, doubled or changed is damage. The link repairs it, as it repairs noise, but it costs what damage costs |
+| 3 | **the pin is the board's:** `neighbour_below` is true exactly when another ASIC follows | true with nothing below: the ASIC holds what it must forward for a link that never comes up, and in the end stops the host. False with an ASIC below: that ASIC is never heard |
+| 4 | **words are taken out.** A stream with 512 words waiting says "stop" to its neighbour | the background backs up link by link to the host: it moves at the pace of its slowest ASIC. The foreground has its own stop bit and still gets through, so take the foreground promptly |
+| 5 | **a `push()` that returns false is tried again later** | the words were not taken: nothing of them is sent |
+| 6 | **the error is looked at,** and cleared with `clear_error()` | it stays up. The link carries on either way; what was lost stays lost (below) |
+| 7 | **an ASIC's own words go on the foreground only** (`Node::push` has no stream) | |
+| 8 | **no more than 16 ASICs on a chain** | hops is four bits: a packet with hops 15 that must be forwarded is a packet made wrong, and the link starts again |
+| 9 | **the sizes are left alone,** but for a host's window, 16 at most | the window must be no more than half the queue it feeds, or a packet can find no room |
+| 10 | **one thread at a time** uses an object | nothing is locked. Different objects share nothing |
+
+### What a user may rely on
+
+| | what | on what it rests |
+|---|---|---|
+| 1 | **Every word pushed comes out at the other side once, in the order pushed, on its stream, its packet's end where it was,** while no error is raised | the searches of the small model, every state; the runner's campaign of 6,071 runs; `test_hostlink` through this header |
+| 2 | **Every ASIC gets all the host's words;** the host gets each ASIC's words in that ASIC's order under its hops. Different ASICs' packets interleave | the same, on chains of 1 to 16 |
+| 3 | **It cannot stop for good.** Once the damage stops, everything pushed arrives, with no call but `clock()` and `take()` | the searches: from every state reached, with nothing more going wrong, it finishes |
+| 4 | **A stream that is stopped does not hold the other up** | searched with each stream never taken again in turn (`searches.sh held`); `test_hostlink`, with one ASIC that never takes its background |
+| 5 | **Damage on the wire costs time, not words.** A damaged packet is thrown away whole and sent again | the same searches and runs |
+| 6 | **An error means the link started again under this end.** What this end had sent and not yet had acknowledged, 8 packets at most, may be missing at the other side. Nothing is repeated and nothing arrives out of order. The link comes up again by itself, and what is still in the queues goes | `test_hostlink`: an end powered on under a running link; `cases/power-on.case` |
+| 7 | **An end that powers on raises its neighbour's error,** 1,554 cycles later; the link is up again 3,648 cycles after the power-on | `build/linkcost start` |
+| 8 | **The wire's delay may be anything that does not change.** Up to 512 cycles each way the window of 8 is never full | `build/linkcost window` |
+
+**What it does not promise:**
+
+- **A word that goes bad in a queue or a buffer** goes out with a checksum that matches it, and nobody is told. The
+  checks cover the wire, not the memory (HL, "The chain").
+- **A damaged packet that passes both CRCs** by chance, 1 in 2³² of the damaged ones for each check, is taken as
+  good. HL has what each such case does.
+- **A line that reads as zeros for good** looks idle: the end stays in step and waits. `status().in_step` does not
+  show it.
+
+**How long things take** (cycles, an idle link, no damage; `build/linkcost pass`, `start`):
+
+| | cycles |
+|---|---|
+| both ends from power-on to a link in step | 4,657 |
+| a packet of one word, pushed to takeable at the other end | 34 on average, 48 at most |
+| a packet of 32 words | 561 on average, 574 at most |
+| each ASIC a packet passes through | its length again: 16 for the header, 16 a word, and one cycle a word for the check before it leaves |
 
 ## What is here
 
@@ -16,7 +209,8 @@ and what is the owner's to weigh; `rates.py` is still of the header before.
 |---|---|
 | `crc32c.h`, `header.h` | CRC-32C a byte a cycle; the header packed and unpacked; the mask on the data; the restart packet's data; the packet numbers' arithmetic |
 | `link_params.h` | the sizes; **HL's rules, each a switch** (`Rules`), so that a kept case can show what each is for; the planted bugs (`Plant`) |
-| `link_end.h`, `.cpp` | **the link end:** its registers in one struct, one `step()` a cycle, a byte in and a byte out. Kept for the chip's Ingress/Egress model |
+| `hostlink.h`, `.cpp` | **the interface for whoever builds on the link:** `End` and `Node`, with their queues. `examples/` has the two programs above |
+| `link_end.h`, `.cpp` | **the link end, the model of the hardware:** its registers in one struct, one `step()` a cycle, a byte in and a byte out. `HARDWARE.md` is this file as hardware |
 | `node.h`, `.cpp` | **the chain node:** two link ends and the forwarding buffers between them |
 | `archive.h` | registers to bytes and back; the 128-bit hash the search knows a state by |
 | `bench.h`, `.cpp` | one link on the bench: two ends, the wires with their damage, queues, sources, the monitor; the kept cases' format and player |
@@ -25,6 +219,8 @@ and what is the owner's to weigh; `rates.py` is still of the header before.
 | `linkrun.cpp` | the random runs: every wire, consumer and source a process drawn from the seed |
 | `linkcase.cpp` | plays kept cases |
 | `linkcost.cpp` | what the choices cost, at the real sizes, nothing drawn at random: one run of numbers, the shared window, the pass over the data, a packet made wrong, coming up |
+| `test_hostlink.cpp` | the interface used only as its header says: what a user may rely on, each as a test |
+| `linkhw.cpp` | the link end and the node as hardware: every register with its flip-flops, every memory with its bytes, the budget. Prints the tables of `HARDWARE.md` |
 | `test_header.cpp`, `test_link.cpp` | HL's example headers and CRC values; the link on a whole wire at the real sizes, and its figures |
 | `cases/`, `make_cases.sh` | a case for each flaw: it fails under the rules it names and holds under the fix; the script finds them again |
 | `searches.sh`, `plants.sh`, `plants_run.sh`, `figures.sh` | the searches as a table; each planted bug against the search and against the runs; the runs that put figures to HL's proposed numbers |
@@ -35,6 +231,7 @@ and what is the owner's to weigh; `rates.py` is still of the header before.
 ```
 make                      # build/: the programs, optimized (g++)
 make check                # the tests and the kept cases: g++ with the address and undefined-behaviour sanitizers, and clang++
+make lib                  # build/libhostlink.a
 make check VECTORS=<path to gold's VECTORS.txt>     # also every packet of gold's vectors (on updater-w7 until merged)
 ```
 

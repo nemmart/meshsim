@@ -62,7 +62,16 @@ waits for the request to come a second time; a true one always does.
 the header waits until the pass is done; the restart packet has no pass; a packet of length 0 may go while a
 packet with data is still being passed over.
 
-**3. The fast unit's starting value for the header CRC** is 0x641F6454, for HL to state.
+**3. The fast unit's starting value for the header CRC** is 0x641F6454. (Now in HL.)
+
+**4. A background packet with data that comes from below.** HL has the background empty towards the host but does
+not say what an ASIC does with one. The model forwards it, through a forwarding buffer that nothing else ever
+uses: 16 KB an ASIC. † Were it a packet made wrong, that buffer could go (`HARDWARE.md`, section 8).
+
+**5. The header's CRC while a pass is running** (`HARDWARE.md`, section 4). A packet of length 0 may start while
+the fast unit is passing over the next packet's data, and its header needs that unit for a cycle. The model
+charges nothing for it. † Either the pass waits a cycle or the header's CRC has logic of its own; no rule depends
+on the cycle.
 
 ## Still open, as HL has them
 

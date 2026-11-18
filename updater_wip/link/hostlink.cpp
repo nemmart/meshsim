@@ -79,6 +79,11 @@ struct InQueue {
         }
         return false;
     }
+    bool peek(Word& word) const {          // the oldest packet's next word, left in place
+        if (packets.empty()) return false;
+        memcpy(word.byte, packets.front().data + size_t(packets.front().taken) * WORD_BYTES, WORD_BYTES);
+        return true;
+    }
     unsigned waiting(int hops) const {
         if (hops < 0) return words;
         unsigned n = 0;
@@ -207,6 +212,7 @@ Node::Bytes Node::clock(uint8_t from_above, uint8_t from_below) {
 
 bool Node::take(Stream stream, Word& word, bool* last) { return stream <= BACKGROUND && d->in[stream].take(-1, word, nullptr, last); }
 unsigned Node::waiting(Stream stream) const { return stream <= BACKGROUND ? d->in[stream].waiting(-1) : 0; }
+bool Node::peek(Stream stream, Word& word) const { return stream <= BACKGROUND && d->in[stream].peek(word); }
 bool Node::push(const Word* words, unsigned count) { return d->out.put(words, count); }
 unsigned Node::room() const { return d->out.cap - d->out.words; }
 LinkStatus Node::above() const { return status_of(d->node.up, d->cause_up); }

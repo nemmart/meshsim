@@ -26,6 +26,8 @@ SLOT_LINK := $(B)/src/units/periph_slot.o $(REPLAYER_LINK) $(TRACER_LINK)   # TR
 $(B)/test_periph_slot: $(SLOT_LINK) $(B)/tests/statefp.o
 # Ingress/Egress in the master tile's slot (tests/test_ingress_egress.cpp)
 $(B)/test_ingress_egress: $(SLOT_LINK)
+# the chain of chapter 28 with no chips: Ingress/Egress units back to back behind a host's End (v1.37 stage 4)
+$(B)/test_ingress_chain: $(SLOT_LINK)
 
 # the RW engine in the memory tile's slot (tests/test_rw_engine.cpp; tests/rw_engine_teeth.sh plants its bugs)
 $(B)/test_rw_engine: $(SLOT_LINK)

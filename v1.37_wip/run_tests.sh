@@ -54,7 +54,7 @@ SUITES="$SUITES test_periph_slot test_ingress_egress test_rw_engine"            
 SUITES="$SUITES test_rtl_tile test_rtl_stream test_sort test_memory test_segment"           # the firmware on the tile and the chip
 SUITES="$SUITES suite_replayer suite_memsys suite_rvc suite_tracer tracer_block"            # the replayer and the Tracer
 SUITES="$SUITES fwimage"                                                                   # the runs' keys (tools/fwimage)
-SUITES="$SUITES test_file_store test_updater test_ingress_link test_packet_vectors updater_frames packetize"       # v1.37: the file store's pages by address, the Updater black box, Ingress's host link
+SUITES="$SUITES test_file_store test_updater test_ingress_link test_ingress_chain test_packet_vectors updater_frames packetize"       # v1.37: the file store's pages by address, the Updater black box, Ingress's host link
 SUITES="$SUITES test_master proof_run"                                                     # v1.37: the master tile's program, the whole chip from a packet file
 SUITES="$SUITES test_updater_ctl"                                                         # v1.37: the Updater's controller (WORKER6)
 SUITES="$SUITES test_lpddr_model test_axi_arbiter test_cache test_memory_system"                               # updater_wip, WORKER5: the LPDDR model, the AXI arbiter, the cache's controller
@@ -139,7 +139,7 @@ check checker "the checker's report: packets that break a rule, each named once 
 
 # ---- the peripherals ----
 check periph "the peripheral slot: the control block and the DMA (machine-spec 17.1-17.4, the RTL's peripheral_control and peripheral_dma; tests/test_periph_slot.cpp)" -- $S/test_periph_slot
-check ingress-egress "Ingress/Egress: the nets, RELEASE, the watchdog, the error lines, the toast pin, the UART, the host interface (17.6; tests/test_ingress_egress.cpp)" -- $S/test_ingress_egress
+check ingress-egress "Ingress/Egress: the nets, RELEASE, the watchdog, the error lines, the toast pin, the UART, Egress, its words and its UB (17.6; tests/test_ingress_egress.cpp)" -- $S/test_ingress_egress
 
 # ---- the RTL's tile programs, unmodified, on the tile; meshsim's firmware on the chip ----
 check rtl-tile "the RTL's tile programs on one compute tile, with the boot ROM's cycles (tests/test_rtl_tile.cpp)" -- $S/test_rtl_tile
@@ -204,7 +204,8 @@ check cache-synth "WORKER5: the Tracer alone on the cache's controller, eight sy
 # ---- v1.37: the units of the Updater's work, each alone (../updater_wip; CHANGES-v1.37.md) ----
 check file-store "v1.37: the file store's pages by address: placed where told, whole pages, beside the pages it hands out (tests/test_file_store.cpp)" -- $S/test_file_store
 check updater "v1.37: the Updater black box alone: registers, queues and credits, update words raw and LRU, copy-on-write, the Tracer's copy, errors; gold's fixtures, each image against gold's (tests/test_updater.cpp)" -- $S/test_updater
-check ingress-link "v1.37: Ingress's host link, the black box: the link's checks, the rule for a service flag, reading out by the DMA, both streams, the errors, the timing (tests/test_ingress_link.cpp)" -- $S/test_ingress_link
+check ingress-link "v1.37: Ingress's host side on the real link (WORKER8's Node, the host's End): the link's start, the rule for a service flag, the landing, reading out by the DMA, the forward count, both queues, the stop bit, the rates, noise, link_error, the reset (tests/test_ingress_link.cpp)" -- $S/test_ingress_link
+check ingress-chain "v1.37: the chain with no chips: a host's End and two or three Ingress/Egress units back to back; every word to every ASIC, the replies by hops, the chain before an ASIC's own, the stop bits, a reset in the middle (28.12; tests/test_ingress_chain.cpp)" -- $S/test_ingress_chain
 VECTORS=${PACKET_VECTORS:-../updater_wip/pipeline/gold/test/packets}
 if [ -f "$VECTORS/VECTORS.txt" ]; then
   check packet-vectors "v1.37: Ingress's host link against gold's packetizer: every vector, packet file and damaged file of $VECTORS, by the reader and through the black box (tests/test_packet_vectors.cpp)" -- env PACKET_VECTORS="$VECTORS" $S/test_packet_vectors

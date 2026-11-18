@@ -1,17 +1,20 @@
-// test_packet_vectors: Ingress's host side against gold's packetizer (v1.37). The reader (src/units/host_link.h) and
-// the black box (ingress_egress.h) were written from ../v1.4_wip/planning/HOST-LINK.md and INGRESS-INTERFACE.md, not
-// from gold's Java; gold's packetizer, its test vectors and its small packet files are WORKER2's
-// (../updater_wip/pipeline/gold/test/packets/). The two are meant to check each other, and this is where they meet:
+// test_packet_vectors: the host's packet files against gold's packetizer (v1.37). The reader (src/units/host_link.h)
+// was written from ../v1.4_wip/planning/HOST-LINK.md, not from gold's Java; gold's packetizer, its test vectors and
+// its small packet files are WORKER2's (../updater_wip/pipeline/gold/test/packets/). The two are meant to check each
+// other, and this is where they meet. Since stage 4 (the INTEGRATOR) the chip's link is WORKER8's (chapter 28) and a
+// packet file is what the host's end sends, link packet by link packet (tests/host_end.h): "through the link" below
+// is that, the words read out at the chip. The reader's own checks stay the file's.
 //   crc32c   every value of VECTORS.txt;
 //   packet   every packet of VECTORS.txt, alone, with the number its stream expects: the reader's verdict (gold's
 //            checks header-crc and data-checksum are ERRORS.crc_error; stream, length and reserved, format_error;
-//            number, sequence_error), a good packet's fields and data, and the number expected after it; then the
-//            same through the black box: the packet presented with its words, or its error bit;
+//            number, sequence_error), a good packet's fields and data, and the number expected after it; then a good
+//            one through the link: its words at the chip;
 //   file     every packet file: its packets, words and idle bytes by stream as VECTORS.txt counts them, its
-//            background stream's data byte for byte the frame file; then through the black box, every packet read out
-//            by the DMA;
+//            background stream's data byte for byte the frame file; then through the link, every word read out by the
+//            DMA;
 //   damage   every file with one byte changed: the check that refuses it, at which packet, and where that packet's
-//            header was taken to start; through the black box, its error bit, with the packets before it presented.
+//            header was taken to start. (A damaged file is one the host cannot send; damage on the line is noise, which
+//            the link recovers from: test_ingress_link.)
 // Gold's frame-end and truncated are checks of whole files and frames, which Ingress does not know (a frame is the
 // master tile's program's; a file that ends inside a packet is a packet that never arrives).
 //
@@ -27,6 +30,7 @@
 
 #include "harness.h"
 #include "ingress_bench.h"
+#include "packet_writer.h"
 
 using namespace units;
 using namespace ingress_bench;
@@ -134,41 +138,39 @@ const Vectors& vectors() {
 }
 
 // gold's check's name as Ingress's error.
-hostlink::Check check_of(const std::string& expect) {
-    if (expect == "ok") return hostlink::Check::OK;
-    if (expect == "header-crc" || expect == "data-checksum") return hostlink::Check::CRC;
-    if (expect == "stream" || expect == "length" || expect == "reserved") return hostlink::Check::FORMAT;
-    if (expect == "number") return hostlink::Check::SEQUENCE;
+units::hostlink::Check check_of(const std::string& expect) {
+    if (expect == "ok") return units::hostlink::Check::OK;
+    if (expect == "header-crc" || expect == "data-checksum") return units::hostlink::Check::CRC;
+    if (expect == "stream" || expect == "length" || expect == "reserved") return units::hostlink::Check::FORMAT;
+    if (expect == "number") return units::hostlink::Check::SEQUENCE;
     FATAL("test_packet_vectors: VECTORS.txt expects '%s', which is no check of a packet", expect.c_str());
-}
-uint32_t error_of(hostlink::Check c) {
-    return c == hostlink::Check::CRC ? ERR_CRC : c == hostlink::Check::FORMAT ? ERR_FORMAT : c == hostlink::Check::SEQUENCE ? ERR_SEQUENCE : 0;
 }
 uint64_t half(const std::vector<uint8_t>& d, size_t at) { uint64_t v = 0; for (unsigned b = 0; b < 8; b++) v |= uint64_t(d[at + b]) << (8 * b); return v; }
 
-// A file through the black box, every packet read out by the DMA as it asks: the data of each stream as it left, the
-// packets that asked, and ERRORS at the end.
+// A file through the link (tests/host_end.h), every link packet read out by the DMA as its queue asks, until the Node
+// has taken every link packet with data and both queues are empty: the data of each stream as it left, the flags
+// that asked, and ERRORS at the end.
 struct Played { std::vector<uint8_t> data[2]; unsigned asked[2] = {}; uint32_t errors = 0; uint64_t packets = 0; };
-Played play(const std::vector<uint8_t>& file, uint32_t first_number = 1) {
+Played play(const std::vector<uint8_t>& file) {
     Played out;
     Bench b(file);
-    b.ie().link.expect[0] = b.ie().link.expect[1] = first_number;
+    size_t with_data = 0;
+    for (const HostEnd::Packet& p : b.host.packets) with_data += p.n > 0;
     b.mask(EVENT_FOREGROUND_SERVICE | EVENT_BACKGROUND_SERVICE);
-    for (int quiet = 0; quiet < 8;) {
+    for (int guard = 0; guard < 2000000; guard++) {
         b.tick();
+        if (b.ie().link_packets == with_data && b.load(W_FOREGROUND_WORDS) == 0 && b.load(W_BACKGROUND_WORDS) == 0 &&
+            b.ie().queue[0].landing + b.ie().queue[1].landing == 0)
+            break;
         const uint32_t ev = b.events();
-        bool any = false;
         for (unsigned q = 0; q < 2; q++) {
             if (!(ev & (EVENT_FOREGROUND_SERVICE << q))) continue;
-            const uint32_t words = b.load(W_FOREGROUND_WORDS + q);
             const size_t from = b.out.size();
             b.tick();                                       // (the consuming load's cycle)
-            b.dma(q, words, 64, 0x100, 1);
+            b.dma(q, b.load(W_FOREGROUND_WORDS + q), 64, 0x100, 1);
             for (size_t k = from; k < b.out.size(); k++) for (uint64_t h : {b.out[k].lo, b.out[k].hi}) for (unsigned i = 0; i < 8; i++) out.data[q].push_back(uint8_t(h >> (8 * i)));
             out.asked[q]++;
-            any = true;
         }
-        quiet = any ? 0 : quiet + 1;
     }
     out.errors = b.load(P_ERRORS);
     out.packets = b.ie().link_packets;
@@ -181,7 +183,7 @@ TEST(vectors_crc32c) {
     const Vectors& v = vectors();
     if (!v.present) return;
     CHECK(v.crc.size() >= 8);
-    for (const auto& c : v.crc) CHECK_EQ(hostlink::crc32c(c.first.data(), c.first.size()), c.second);
+    for (const auto& c : v.crc) CHECK_EQ(units::hostlink::crc32c(c.first.data(), c.first.size()), c.second);
 }
 
 TEST(vectors_packets_by_the_reader) {
@@ -190,15 +192,15 @@ TEST(vectors_packets_by_the_reader) {
     CHECK(v.packets.size() >= 40);
     unsigned good = 0;
     for (const PacketVector& p : v.packets) {
-        hostlink::Reader r;
+        units::hostlink::Reader r;
         r.open(p.bytes.data(), p.bytes.size());
         r.expect[0] = r.expect[1] = p.next_number;
-        hostlink::Packet got;
-        hostlink::Check check;
+        units::hostlink::Packet got;
+        units::hostlink::Check check;
         size_t taken;
-        if (r.next(got, check, taken) != hostlink::Reader::Next::PACKET) { ::test::fail(__FILE__, __LINE__, "packet %s: no packet read", p.name.c_str()); return; }
+        if (r.next(got, check, taken) != units::hostlink::Reader::Next::PACKET) { ::test::fail(__FILE__, __LINE__, "packet %s: no packet read", p.name.c_str()); return; }
         if (check != check_of(p.expect)) { ::test::fail(__FILE__, __LINE__, "packet %s: gold expects %s, the reader says %d", p.name.c_str(), p.expect.c_str(), int(check)); return; }
-        if (check != hostlink::Check::OK) continue;
+        if (check != units::hostlink::Check::OK) continue;
         good++;
         CHECK_EQ(taken, p.bytes.size());
         CHECK_EQ(got.stream, p.stream); CHECK_EQ(got.flags, p.flags); CHECK_EQ(got.length, p.length);
@@ -227,26 +229,33 @@ TEST(vectors_host_links_examples) {
         if (!found) continue;
         CHECK(found->bytes.size() == 32 && std::equal(e.header, e.header + 16, found->bytes.begin()));
         CHECK(found->expect == "ok");
-        hostlink::Reader r;
+        units::hostlink::Reader r;
         r.open(found->bytes.data(), found->bytes.size());
         r.expect[1] = e.number;
-        hostlink::Packet got;
-        hostlink::Check check;
+        units::hostlink::Packet got;
+        units::hostlink::Check check;
         size_t taken;
-        CHECK(r.next(got, check, taken) == hostlink::Reader::Next::PACKET);
-        CHECK(check == hostlink::Check::OK);
+        CHECK(r.next(got, check, taken) == units::hostlink::Reader::Next::PACKET);
+        CHECK(check == units::hostlink::Check::OK);
         CHECK_EQ(got.number, e.number); CHECK_EQ(got.acknowledge, e.acknowledge); CHECK_EQ(got.hops, e.hops);
     }
 }
 
-TEST(vectors_packets_through_the_black_box) {
+TEST(vectors_packets_through_the_link) {
     const Vectors& v = vectors();
     if (!v.present) return;
     for (const PacketVector& p : v.packets) {
-        const Played got = play(p.bytes, p.next_number);
-        const hostlink::Check want = check_of(p.expect);
-        if (got.errors != error_of(want)) { ::test::fail(__FILE__, __LINE__, "packet %s: gold expects %s, ERRORS is 0x%x", p.name.c_str(), p.expect.c_str(), got.errors); return; }
-        if (want != hostlink::Check::OK) { CHECK_EQ(got.packets, 0u); CHECK_EQ(got.asked[0] + got.asked[1], 0u); continue; }
+        if (check_of(p.expect) != units::hostlink::Check::OK) continue;   // a packet the host cannot send (the file's checks: above)
+        std::vector<uint8_t> bytes = p.bytes;                 // the vector's own number put first: the file's reader expects 1
+        if (p.next_number != 1) {
+            packet_writer::Fields f;
+            f.stream = p.stream; f.flags = p.flags; f.length = p.length; f.number = 1; f.acknowledge = p.acknowledge; f.hops = p.hops;
+            bytes.clear();
+            packet_writer::packet(bytes, f, p.data.data());
+        }
+        const Played got = play(bytes);
+        CHECK_EQ(got.errors, 0u);
+        if (p.length == 0) { CHECK_EQ(got.packets, 0u); CHECK_EQ(got.asked[0] + got.asked[1], 0u); continue; }
         CHECK_EQ(got.packets, 1u);
         const unsigned q = p.stream - 1;
         // a packet of length 0 asks for no service; one with words asks at least once: its words land a word a cycle
@@ -267,19 +276,19 @@ TEST(vectors_files) {
         CHECK(f.expect == "ok");
         CHECK_EQ(bytes.size(), f.count.at("bytes"));
         // by the reader: the counts
-        hostlink::Reader r;
+        units::hostlink::Reader r;
         r.open(bytes.data(), bytes.size());
         r.expect[0] = r.expect[1] = uint32_t(f.count.at("first-number"));
         uint64_t packets[2] = {}, words[2] = {}, empty = 0, idle = 0;
         std::vector<uint8_t> data[2];
         for (;;) {
-            hostlink::Packet p;
-            hostlink::Check check;
+            units::hostlink::Packet p;
+            units::hostlink::Check check;
             size_t taken;
             const auto next = r.next(p, check, taken);
-            if (next == hostlink::Reader::Next::END) { idle += taken; break; }
-            CHECK(next == hostlink::Reader::Next::PACKET);
-            if (check != hostlink::Check::OK) { ::test::fail(__FILE__, __LINE__, "%s: a packet at byte %zu is refused (%d)", f.name.c_str(), r.header_at, int(check)); return; }
+            if (next == units::hostlink::Reader::Next::END) { idle += taken; break; }
+            CHECK(next == units::hostlink::Reader::Next::PACKET);
+            if (check != units::hostlink::Check::OK) { ::test::fail(__FILE__, __LINE__, "%s: a packet at byte %zu is refused (%d)", f.name.c_str(), r.header_at, int(check)); return; }
             idle += taken - 16 - 16 * size_t(p.length);
             packets[p.stream - 1]++; words[p.stream - 1] += p.length; empty += p.length == 0;
             for (unsigned w = 0; w < p.length; w++) for (uint64_t h : {p.lo[w], p.hi[w]}) for (unsigned i = 0; i < 8; i++) data[p.stream - 1].push_back(uint8_t(h >> (8 * i)));
@@ -293,10 +302,11 @@ TEST(vectors_files) {
         CHECK_EQ(words[0], f.count.at("words-stream-1"));
         CHECK(read_file(v.dir + "/" + f.frames_file, frames));
         CHECK(data[1] == frames);                           // the background stream's data is the frame file
-        // through the black box: every packet presented and read out
-        const Played got = play(bytes, uint32_t(f.count.at("first-number")));
+        // through the link: every word read out (the file's own first number is the file's: the End numbers its own)
+        if (f.count.at("first-number") != 1) continue;
+        const Played got = play(bytes);
         CHECK_EQ(got.errors, 0u);
-        CHECK_EQ(got.packets, f.count.at("packets"));
+        CHECK_EQ(got.packets, f.count.at("packets") - f.count.at("packets-length-0"));
         CHECK(got.data[1] == frames);
         CHECK(got.data[0] == data[0]);
     }
@@ -311,24 +321,21 @@ TEST(vectors_damage) {
         if (!read_file(v.dir + "/" + d.file, bytes)) { ::test::fail(__FILE__, __LINE__, "cannot read %s", d.file.c_str()); return; }
         CHECK(d.byte < bytes.size());
         bytes[d.byte] ^= uint8_t(d.mask);
-        hostlink::Reader r;
+        units::hostlink::Reader r;
         r.open(bytes.data(), bytes.size());
         unsigned n = 0;
-        hostlink::Check check = hostlink::Check::OK;
+        units::hostlink::Check check = units::hostlink::Check::OK;
         for (;;) {
-            hostlink::Packet p;
+            units::hostlink::Packet p;
             size_t taken;
-            if (r.next(p, check, taken) != hostlink::Reader::Next::PACKET) break;
+            if (r.next(p, check, taken) != units::hostlink::Reader::Next::PACKET) break;
             n++;
-            if (check != hostlink::Check::OK) break;
+            if (check != units::hostlink::Check::OK) break;
         }
         if (check != check_of(d.expect) || n != d.packet || r.header_at != d.at) {
             ::test::fail(__FILE__, __LINE__, "%s with byte %zu xor 0x%x: gold expects %s at packet %u, byte %zu; the reader says %d at packet %u, byte %zu", d.file.c_str(),
                          d.byte, d.mask, d.expect.c_str(), d.packet, d.at, int(check), n, r.header_at);
             return;
         }
-        const Played got = play(bytes);
-        CHECK_EQ(got.errors, error_of(check));
-        CHECK_EQ(got.packets, uint64_t(n - 1));             // the packets before it were presented
     }
 }

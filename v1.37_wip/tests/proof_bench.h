@@ -26,7 +26,10 @@
 #include <string>
 #include <vector>
 
+#include <functional>
+
 #include "frames.h"
+#include "hostlink.h"
 #include "segment_bench.h"
 
 namespace proof {
@@ -40,6 +43,10 @@ struct Case {
     int link_rate = 1;                           // or bytes a cycle: 1, 2, 4, 8 (WORKER4)
     int updater_lookup = 0;                      // not 0: a slow memory side, every LPDDR burst this many cycles (updater_view.h)
     uint32_t lpddr_seed = 0;                     // the LPDDR model's jitter (MachConfig::lpddr_seed): 0 fixed, or MESHSIM_LPDDR_SEED
+    // v1.37 stage 4: the line's noise, the byte the chip receives in a link cycle (host_end.h: HostEnd::noise); and the
+    // host's end in each cycle before it clocks (to start its link again, say). Null: neither.
+    std::function<uint8_t(int64_t t, unsigned k, uint8_t byte)> noise;
+    std::function<void(::hostlink::End& end, int64_t t)> host_hook;
     // A run that must end early, and how; the proof's checks are then that it did so, and nothing else.
     //   trap  in the master's error path, by an error bit's NMI: with these ERRORS of Ingress and of the Updater;
     //   cut   with the link gone quiet inside a packet (the file ends there): no error bit, the master waiting, the
@@ -57,12 +64,12 @@ struct RunAccount {
 struct Numbers {
     std::vector<RunAccount> runs;
     std::vector<uint32_t> master;                // master_results
-    uint64_t link_packets = 0, link_words = 0, link_bytes = 0;
+    uint64_t link_packets = 0, link_words = 0, link_bytes = 0;   // (v1.37 stage 4: link_bytes the link cycles, a byte each way)
     uint64_t pages_marked = 0;                   // in the page map, with page 0
     uint64_t master_awake = 0;                   // cycles the master's core was not asleep
     uint64_t master_instructions = 0;            // and the instructions it retired
-    uint64_t link_room_cycles = 0;               // the cycles the link waited for room at Ingress
-    int64_t link_last_at = 0;                    // the cycle the link's last byte arrived in
+    uint64_t link_room_cycles = 0;               // the cycles the host held a link packet back, the chip's stop bit up (stage 4)
+    int64_t link_last_at = 0;                    // the cycle the chip's link end took the last link packet with data
     uint64_t master_awake_handed = 0;            // the master's cycles awake to the done of segment s's run (the hand-over)
     uint64_t link_forwarded = 0, link_discarded = 0;   // the background's words the forward count sent to the Updater, and dropped
 };

@@ -256,22 +256,26 @@ TEST(master_faster_links) {
 }
 
 // ---- the error path: an error bit is the master's NMI; it writes what there is into its results and exits
-// a bit of a packet's data changed, in frame 2 (the program image going to the Updater): the black box's link
-// failing a check, ERRORS.link_error (17.6.1; until stage 4, ingress_egress.h, THE LINK)
-TEST(master_bad_packet_crc) {
+// v1.37 stage 4 (28.8, 28.14): noise on the line is no error. A byte the chip receives changed, now and then, in the
+// link's first 200,000 cycles (a bit of one byte in 5,000, so headers, data and the zeros between): the link ends
+// recover, every link packet is sent again until it is taken, and the proof is the same, with no error bit.
+TEST(master_noise_on_the_line_is_recovered) {
     CHECK_EQ(fixture("kin-raw", 20, [](proof::Case& c, segment::Segment& seg) {
-        c.packets[packet_starts(c.packets)[5] + 16 + 37] ^= 0x10;
-        c.expect.trap = true; c.expect.ingress_errors = units::IngressEgress::ERR_LINK;
-        seg.name += ", a data bit changed";
+        c.noise = [](int64_t t, unsigned, uint8_t b) {
+            const uint64_t h = uint64_t(t) * 0x9E3779B97F4A7C15ull;
+            return t < 200000 && (h >> 40) % 5000 == 0 ? uint8_t(b ^ (1u << (h >> 61))) : b;
+        };
+        seg.name += ", noise on the line";
     }).failures, 0);
 }
-// a packet of frame 7 left out: its number not the next, ERRORS.link_error as above
-TEST(master_bad_packet_sequence) {
+// v1.37 stage 4 (28.9, 17.6.12): the host's end starts its link again in the middle of the frames (its power_on, in
+// cycle 60,000): the chip's link end hears "I have started again", its link starts again with link packets it had taken
+// lost to nothing but the host's, and ERRORS.link_error is the master's NMI: the error path.
+TEST(master_host_link_started_again) {
     CHECK_EQ(fixture("kin-raw", 20, [](proof::Case& c, segment::Segment& seg) {
-        const std::vector<size_t> at = packet_starts(c.packets);
-        c.packets.erase(c.packets.begin() + long(at[60]), c.packets.begin() + long(at[61]));
+        c.host_hook = [](::hostlink::End& end, int64_t t) { if (t == 60000) end.power_on(); };
         c.expect.trap = true; c.expect.ingress_errors = units::IngressEgress::ERR_LINK;
-        seg.name += ", a packet left out";
+        seg.name += ", the host's link started again";
     }).failures, 0);
 }
 // frame 1 counts one page too few for the program image: the Updater's ERRORS.out_of_pages

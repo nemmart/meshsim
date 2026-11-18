@@ -1,5 +1,6 @@
 // mach.cpp: the machine harness (mach.h). Configuration and between-cycle code only (D6 doesn't apply).
 #include "mach.h"
+#include "host_end.h"
 
 #include <sys/stat.h>
 
@@ -187,7 +188,7 @@ bool MachConfig::set_args(const std::vector<std::string>& args, std::string& err
 
 // ===================================================================================================== the chip
 struct Chip::Impl {
-    std::vector<uint8_t> link_bytes;   // v1.37: the packet file Ingress reads (Mach::set_link)
+    std::unique_ptr<HostEnd> host;     // v1.37 stage 4: the host's end of the link (Mach::attach_host)
     std::unique_ptr<units::tracer::FileStore> lpddr_store;   // a chip without the host link: LPDDR for the RW engine
     std::unique_ptr<units::CacheSystem> cache_system;   // the memory tile's memory system (17.11)
     units::Hops hops;
@@ -1443,11 +1444,22 @@ units::CacheSystem& Mach::cache_system() {
     if (!c.impl().cache_system) FATAL("mach: no memory system on this machine (MachConfig::special_tiles)");
     return *c.impl().cache_system;
 }
-void Mach::set_link(std::vector<uint8_t> bytes) {
+HostEnd& Mach::attach_host(const std::vector<uint8_t>& packet_file, unsigned rate, unsigned every) {
     Chip::Impl& m = c.impl();
-    m.link_bytes = std::move(bytes);
-    ingress().set_link(m.link_bytes.data(), m.link_bytes.size());
+    m.host = std::make_unique<HostEnd>();
+    std::string why;
+    if (!HostEnd::from_packet_file(packet_file.data(), packet_file.size(), m.host->packets, why, &m.host->file_cut))
+        FATAL("mach: the host's packet file: %s", why.c_str());
+    m.host->rate = rate; m.host->every = every;
+    units::IngressEgress& ie = ingress();
+    m.host->attach(ie);
+    ie.reset(0);                                                      // the link's rate taken: the chip as at the reset
     c.touched(units::unit_prefix(units::ID_MASTER) + "slot");
+    return *m.host;
+}
+HostEnd& Mach::host() {
+    if (!c.impl().host) FATAL("mach: no host attached (Mach::attach_host)");
+    return *c.impl().host;
 }
 
 }  // namespace mach

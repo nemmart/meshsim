@@ -10,6 +10,7 @@
 #include <sstream>
 
 #include "base/fatal.h"
+#include "host_end.h"
 #include "packet_writer.h"
 #include "rtl_images.h"
 #include "sha256.h"
@@ -155,9 +156,10 @@ struct ChipProof final : segment::Proof {
         m.place(units::ID_MASTER, rtl_images::elf_symbol(master_elf, "boot_desc"), desc);
         m.place(units::ID_MASTER, rtl_images::elf_symbol(master_elf, "system_config"), {MS_MAGIC, c.asics, c.segment, 0});
         results_at = rtl_images::elf_symbol(master_elf, "master_results");
-        m.set_link(c.packets);
-        m.ingress().link_cycles_per_byte = c.cycles_per_byte;
-        m.ingress().link_bytes_per_cycle = c.link_rate;
+        // v1.37 stage 4: the host's end of the link (host_end.h) sends the packet file's link packets; "as fast as taken"
+        // (cycles_per_byte 0) is the fastest link, 8 link cycles a chip cycle; N cycles a byte, a link cycle every N
+        HostEnd& host = m.attach_host(c.packets, c.cycles_per_byte == 0 ? 8u : unsigned(c.link_rate), c.cycles_per_byte == 0 ? 1u : unsigned(c.cycles_per_byte));
+        host.noise = c.noise; host.hook = c.host_hook;
         view.attach(m);
         if (c.updater_lookup) view.set_lookup(c.updater_lookup);
         master_rv = &m.c.unit<units::TileCore>(units::unit_prefix(units::ID_MASTER) + "core").rv;
@@ -216,11 +218,11 @@ struct ChipProof final : segment::Proof {
         const FileStore& store = *u.store();
         if (numbers) {
             numbers->master = R;
-            numbers->link_packets = link.link_packets; numbers->link_words = link.link_words; numbers->link_bytes = link.link_bytes;
+            numbers->link_packets = link.link_packets; numbers->link_words = link.link_words; numbers->link_bytes = m.host().link_cycles;
             const auto& core = m.c.unit<units::TileCore>(units::unit_prefix(units::ID_MASTER) + "core").rv;
             numbers->master_awake = core.mcycle - core.cycles_wfi;
             numbers->master_instructions = core.instructions;
-            numbers->link_room_cycles = link.link_room_cycles; numbers->link_last_at = link.link_at;
+            numbers->link_room_cycles = m.host().stop_cycles; numbers->link_last_at = link.link_last_at;
             numbers->link_forwarded = link.link_forwarded; numbers->link_discarded = link.link_discarded;
             numbers->master_awake_handed = awake_handed;
             for (size_t i = 0; i < done.size(); i++) {
@@ -233,6 +235,12 @@ struct ChipProof final : segment::Proof {
             }
         }
         if (!parsed) { fail("the frame file is not as HOST-FRAMES.md says: %s", parse_error.c_str()); return; }
+        if (c.noise) {                               // the noise must have reached the link (stage 4)
+            const ::hostlink::LinkCounts n = link.node->counts_above();
+            if (n.bad_header + n.bad_data + n.ahead == 0) fail("noise on the line, and the chip's link end saw no damaged link packet");
+            else std::printf("%s: the chip's link end: %llu bad headers, %llu bad data, %llu ahead, %llu restarts\n", name, (unsigned long long)n.bad_header,
+                             (unsigned long long)n.bad_data, (unsigned long long)n.ahead, (unsigned long long)n.restarts);
+        }
 
         // ---- a run that must end early: that it did, as expected, and nothing else
         if (c.expect.trap) {
@@ -247,8 +255,8 @@ struct ChipProof final : segment::Proof {
             return;
         }
         if (c.expect.cut) {
-            if (run.finished) fail("the run ended: with the link quiet inside a packet the master must wait");
-            if (!link.link_cut) fail("the file did not end inside a packet");
+            if (run.finished) fail("the run ended: with the host's link packets ended inside a frame the master must wait");
+            if (!m.host().file_cut) fail("the file did not end inside a packet");
             if (R[MR_STATUS] != 0) fail("the master's status is %u, not 0 (waiting)", R[MR_STATUS]);
             if (link.errors(0) != 0 || u.errors(0) != 0) fail("an error bit: Ingress's 0x%x, the Updater's 0x%x; silence is no error", unsigned(link.errors(0)), unsigned(u.errors(0)));
             return;
@@ -290,10 +298,10 @@ struct ChipProof final : segment::Proof {
         }
         if (u.input_words() != 0 || u.free_page_entries() != 0) fail("left in the Updater: %u words on its input, %u free pages", u.input_words(), u.free_page_entries());
         const uint64_t words = c.file.bytes.size() / 16, out = R[MR_LINK_WORDS] + link.link_forwarded + link.link_discarded;
-        if (link.link_cut || link.link_words != words || out != words || (link.forward & units::IngressEgress::FWD_COUNT) != 0)
+        if (link.link_words != words || out != words || (link.forward & units::IngressEgress::FWD_COUNT) != 0)
             fail("the link: %llu words arrived, %u read out by the DMA, %llu forwarded, %llu discarded, of %llu; DMA_FORWARD_COUNT 0x%x at the end%s",
                  (unsigned long long)link.link_words, R[MR_LINK_WORDS], (unsigned long long)link.link_forwarded, (unsigned long long)link.link_discarded,
-                 (unsigned long long)words, link.forward, link.link_cut ? "; the file ends inside a packet" : "");
+                 (unsigned long long)words, link.forward, m.host().file_cut ? "; the file ends inside a packet" : "");
 
         // ---- each image as its run ended, against gold's; the frozen ones again at the end
         for (size_t i = 0; i < done.size() && i < run_names.size(); i++) {

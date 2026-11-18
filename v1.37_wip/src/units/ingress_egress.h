@@ -87,11 +87,28 @@
 //                tracer tile's (ERROR_LINES_2 [1], [2]).
 //   release (64) own LinkOuts, width 0, to every compute tile's tile control unit: BARRIER_RELEASE.
 //
-// THE LINK, until stage 4: the black box's packet file (units/host_link.h; set_link), read at `link_bytes_per_cycle`
-// bytes a cycle or `link_cycles_per_byte` cycles a byte (0: as fast as taken). A link packet that fails a check sets
-// link_error ([1]; with format_error [2] for a field that cannot be) and the link is dead: nothing more is read. (In stage
-// 4 the link is WORKER8's link end and a damaged link packet is no error, 28.14.) The next link packet is not taken while
-// its words do not fit the room. The file ending inside a link packet: `link_cut`. The reset rewinds the file.
+// THE LINK (chapter 28; v1.37 stage 4): WORKER8's `hostlink::Node` (../updater_wip/link, used through hostlink.h
+// alone): the link end towards the host, on the port `link_up`, and with `chain_next` 1 the one away from it, on
+// `link_down`, and the four forwarding buffers. A link cycle is a byte on the line; `link_rate` link cycles a chip
+// cycle (1, 2, 4 or 8; 28.1's "about 1 GB/s" is one at the chip's 1 GHz, item 186), or a link cycle every
+// `link_every` chip cycles (a slower link, for the tests that vary the timing). The ports' bytes are the pins'
+// (Pins::In, Pins::Out: one byte a link cycle each way), so the far end, the host's end or a neighbour, is a test
+// bench's or a chain harness's, through `boundary`; the output bytes are flip-flops. The Node is clocked in every cycle
+// with a far end attached (and not at all without one: a chip with no host is a chip whose link never starts).
+//   - THE NODE'S QUEUES ARE INGRESS'S: a link packet the upper end takes goes into the Node's queue for its stream and
+//     is counted there at once (the room's count, and the stop bit's at half full: 17.6.3, 28.10); Ingress counts the
+//     same words as landing, a 128-bit word a cycle (the packet buffer's hand-over, 28.13.6), one link packet after
+//     another, the first at the end of the cycle the Node took it; the DMA and the forward count take landed words out
+//     of the Node, oldest first.
+//   - EGRESS's link packets go into the Node's own queue towards the host (`Node::push`), one at a time: the Node's
+//     queue is sized to one link packet, so a link packet leaves Egress's outgoing queue, and is counted for the credit,
+//     when the link end has started to send the one before (17.6.8). Without a far end they stay in the outgoing queue,
+//     or go to `egress_out`, a unit test's.
+//   - ERRORS: link_error is either link end's `error`, format_error either's `made_wrong` (28.9, 28.7); nothing calls
+//     `clear_error()`, so only the reset clears them (28.13.2). A damaged link packet is no error (28.14).
+//   - THE RESET (17.6.14): `Node::power_on()`, a new Node: both link ends say "I have started again".
+//   - THE LINK'S MODEL ALLOCATES as it runs (its queues are std::deques): its calls are made with the simulator's
+//     allocation guard lifted (LinkAllocs), the one exception to it.
 //
 // WHAT IS NOT THE RTL'S (OPEN-v1.36.md, (a)): an error line's level reaches ERROR_LINES a cycle later than ERROR_LATENCY
 // says (it crosses a Link(1 + ERROR_LATENCY)).
@@ -103,7 +120,10 @@
 #include "sim.h"
 #include "base/fatal.h"
 #include "units/event_counts.h"
-#include "units/host_link.h"
+#include <memory>
+
+#include "base/alloc_guard.h"
+#include "hostlink.h"                  // ../updater_wip/link: WORKER8's link (namespace ::hostlink)
 #include "units/peripheral.h"
 #include "units/word_port.h"
 
@@ -127,9 +147,16 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
     static constexpr int DIGEST_N = 5;
 
     // ---- the pins (header, THE PINS): a cycle's levels ----
+    static constexpr unsigned MAX_LINK_RATE = 8;            // link cycles a chip cycle, at most
     struct Pins {
-        struct Out { bool uart_tx = true, toast = false, led = false; };
-        struct In { bool uart_rx = true; };                  // the idle input
+        struct Out {
+            bool uart_tx = true, toast = false, led = false;
+            uint8_t link_up_tx[MAX_LINK_RATE] = {}, link_down_tx[MAX_LINK_RATE] = {};   // a byte a link cycle (18: host_link)
+        };
+        struct In {
+            bool uart_rx = true;                             // the idle input
+            uint8_t link_up_rx[MAX_LINK_RATE] = {}, link_down_rx[MAX_LINK_RATE] = {};   // idle: 0
+        };
     };
     using Boundary = void (*)(void* far_end, int64_t t, const Pins::Out& out, Pins::In& in);
     Boundary boundary = nullptr;       // the far end, a test bench's (null: the idle input)
@@ -144,6 +171,11 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
 
     // ---- configuration (set before the run; reset() takes it) ----
     unsigned queue_words = 1024;       // INGRESS_QUEUE_WORDS (17.6.15, 19)
+    unsigned link_rate = 1;            // link cycles a chip cycle: 1, 2, 4, 8 (header, THE LINK)
+    unsigned link_every = 1;           // or chip cycles a link cycle (a slower link): the link's cycles are the chip's
+                                       //   cycles t with t % link_every == 0
+    bool chain_next = false;           // the pin chain_next (18): another ASIC follows on the chain; link_down exists
+    unsigned link_window = 8;          // the link's window, the chip's (28.13.5)
 
     // ---- state: the control lines ----
     EventCounts ev;
@@ -173,13 +205,12 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
     unsigned rx_n_start = 0;
     // ---- the incoming queues (17.6.3) ----
     struct Queue {
-        uint64_t lo[MAX_QUEUE_WORDS], hi[MAX_QUEUE_WORDS];   // the words, from head on: `held` landed, then `landing`
-        unsigned head = 0, held = 0, landing = 0;
+        unsigned held = 0, landing = 0;   // of the Node's words for the stream: landed, and still landing (header, THE LINK)
         bool in_flight = false;        // a DMA transfer from it: DMA_START to dma_done
         bool asking = false;           // it asked for service at the end of the last cycle settled
     } queue[2];                        // 0 the foreground, 1 the background
     struct Landing { uint8_t q; unsigned words; };   // the packet buffer's link packets still landing, oldest first
-    static constexpr unsigned MAX_LANDING = 8;
+    static constexpr unsigned MAX_LANDING = 64;
     Landing landing[MAX_LANDING] = {}; unsigned landing_head = 0, landing_n = 0;
     uint32_t forward = 0;              // DMA_FORWARD_COUNT
     // ---- Egress (17.6.8) ----
@@ -190,20 +221,13 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
     unsigned eg_gone = 0;              // the words gone since the last credit came back (17.6.11: Egress's credit)
     int egress_src = -1;               // the source of the frame being queued (invariant 35's check; not hardware)
     int errors_sticky = 0;             // ERRORS [3:1]
-    // ---- the link until stage 4 (header, THE LINK) ----
-    int64_t link_cycles_per_byte = 1;  // configuration: the link's rate; 0: a packet is there as soon as there is room
-    int64_t link_bytes_per_cycle = 1;  // configuration: bytes a cycle (1, 2, 4, 8)
-    hostlink::Reader link;             // the packet file (set_link)
-    bool link_dead = false, link_cut = false;   // a check failed, or the file is at its end: nothing more is read
-    bool link_has_next = false;        // the file's next packet is read, and on its way or waiting for room
-    bool link_scheduled = false;       //   on its way: it arrives at the end of cycle link_next_at
-    bool link_waited = false;          //   it waited for room at its queue: its bytes start after the wait
-    hostlink::Packet link_next;
-    hostlink::Check link_next_check = hostlink::Check::OK;
-    size_t link_next_bytes = 0;
-    int64_t link_next_at = 0, link_at = 0;   // link_at: the cycle at whose end the last byte taken arrived
-    uint64_t link_packets = 0, link_words = 0, link_bytes = 0;   // statistics: what has arrived
-    uint64_t link_room_cycles = 0;     // statistics: the cycles the link waited for room at a queue
+    // ---- the link (header, THE LINK) ----
+    std::unique_ptr<::hostlink::Node> node;   // made by the reset
+    uint8_t up_tx[MAX_LINK_RATE] = {}, down_tx[MAX_LINK_RATE] = {};   // the output flip-flops: the bytes of the next cycle
+    uint8_t up_rx[MAX_LINK_RATE] = {}, down_rx[MAX_LINK_RATE] = {};   // this cycle's bytes in, from the far end
+    uint64_t link_packets = 0, link_words = 0;   // statistics: the link packets with data the Node took, their words
+    uint64_t link_cycles = 0;          // statistics: the link cycles clocked
+    int64_t link_last_at = 0;          // statistics: the chip cycle the Node last took a link packet with data
     uint64_t link_forwarded = 0, link_discarded = 0, link_count_stores = 0;   // statistics: the forward count's work
     uint64_t egress_words_in = 0, egress_words_out = 0, egress_packets = 0, egress_dropped = 0;   // statistics: Egress
     // ---- statistics and logs (not state) ----
@@ -216,8 +240,13 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
         ev.init(EV_BITS, depth, flags);
         reset(0);
     }
-    // the packet file the link reads until stage 4 (the bytes outlive the unit)
-    void set_link(const uint8_t* bytes, size_t n) { link.open(bytes, n); link_reset(); }
+    // The link's calls, with the simulator's allocation guard lifted (header, THE LINK).
+    struct LinkAllocs {
+        bool was;
+        LinkAllocs() : was(sim::in_run()) { if (was) sim::end_run(); }
+        ~LinkAllocs() { if (was) sim::begin_run(); }
+    };
+    bool link_on() const { return boundary != nullptr; }
 
     // ---- identity ----
     int type() const { return 1; }
@@ -323,7 +352,15 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
 
     // ---- level reads (the end of t - 1, with the nets as begin(t) took them) ----
     bool running(int64_t) const { return false; }
-    int errors(int64_t) const { return ((err_line[0] | err_line[1]) ? ERR_TILE : 0) | errors_sticky; }
+    int errors(int64_t) const {
+        int e = ((err_line[0] | err_line[1]) ? ERR_TILE : 0) | errors_sticky;
+        if (node) {
+            const ::hostlink::LinkStatus a = node->above(), b = node->below();
+            if (a.error || b.error) e |= ERR_LINK;
+            if (a.made_wrong || b.made_wrong) e |= ERR_FORMAT;
+        }
+        return e;
+    }
     uint32_t status_bits(int64_t) const {
         uint32_t s = 0;
         if (queue[0].held > 0) s |= ST_FOREGROUND_READY;
@@ -390,7 +427,11 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
         wordport::SourceOut o;
         const Queue& s = queue[1];
         o.valid = (forward & FWD_COUNT) != 0 && !(forward & FWD_DISCARD) && s.held > 0;
-        if (o.valid) { o.data[0] = s.lo[s.head]; o.data[1] = s.hi[s.head]; }
+        if (o.valid) {                                       // the head, read where it is (hostlink.h: Node::peek)
+            ::hostlink::Word x;
+            if (!node->peek(::hostlink::BACKGROUND, x)) FATAL("Ingress/Egress: a landed word, and the link's background queue has none");
+            std::memcpy(&o.data[0], x.byte, 8); std::memcpy(&o.data[1], x.byte + 8, 8);
+        }
         return o;
     }
     void port_sent(int64_t t) {
@@ -403,7 +444,7 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
     // room every way out made in t; Egress's offer; then the service levels.
     void settle(int64_t t) {
         land(t);
-        link_step(t);
+        if (link_on()) link_clock(t);
         egress_step(t);
         levels(t);
     }
@@ -417,13 +458,19 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
     }
 
     // The outputs' levels in the next cycle to step: every one a flip-flop (18).
-    Pins::Out out() const { Pins::Out o; o.uart_tx = tx_line; o.toast = toast; o.led = led != 0; return o; }
+    Pins::Out out() const {
+        Pins::Out o;
+        o.uart_tx = tx_line; o.toast = toast; o.led = led != 0;
+        std::memcpy(o.link_up_tx, up_tx, sizeof up_tx); std::memcpy(o.link_down_tx, down_tx, sizeof down_tx);
+        return o;
+    }
 
     // ---- the edge that ends t (without the core's access of t: write_word(t, ...) and load_effect(t, ...) follow) ----
     void step(int64_t t) {
         const Pins::Out o = out();
         Pins::In in;
         if (boundary) boundary(far_end, t, o, in);
+        std::memcpy(up_rx, in.link_up_rx, sizeof up_rx); std::memcpy(down_rx, in.link_down_rx, sizeof down_rx);
         stepped_at = t; rx_n_start = rx_n;
         if (wd_count > 0 && --wd_count == 0) {                 // the expiry, unless a store or a RELEASE of t sets the count
             wd_expired_at = t; wd_posted = ev.count_of(EV_WATCHDOG) == 0; wd_toasted = !toast;
@@ -439,7 +486,7 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
         return wd_count == 0 && tx_n == 0 && !tx_busy && !rx_busy && rx_meta && rx_line && rx_line_last && !boundary && !discarding() &&
                landing_n == 0 && !egress_offers();
     }
-    int64_t next_wake_at(int64_t) const { return link_has_next && link_scheduled ? link_next_at : INT64_MAX; }
+    int64_t next_wake_at(int64_t) const { return INT64_MAX; }
     uint64_t violation_count() const { return 0; }
     void digest_words(int64_t* out) const {
         out[0] = int64_t(sim::hash_fields(err_line, arrived_at, cleared_at, expect, wd_count, wd_limit, toast, toast_at, led));
@@ -447,15 +494,20 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
         out[2] = int64_t(sim::hash_fields(ev.count, ev.live_bits, ev.last_post_at));
         out[3] = int64_t(sim::hash_fields(rx, rx_head, rx_n, rx_meta, rx_line, rx_line_last, rx_busy, rx_bit, rx_data, rx_cycles_left,
                                           rx_bit_divisor, rx_overrun, framing));
-        out[4] = int64_t(sim::hash_fields(link.at, link.expect, queue[0].head, queue[0].held, queue[0].landing, queue[0].in_flight, queue[0].asking,
-                                          queue[1].head, queue[1].held, queue[1].landing, queue[1].in_flight, queue[1].asking, forward, errors_sticky,
-                                          link_dead, link_has_next, link_scheduled, link_next_at, link_at, eg_head, eg_n, egress_count, eg_gone));
+        const ::hostlink::LinkCounts ca = node ? node->counts_above() : ::hostlink::LinkCounts(), cb = node ? node->counts_below() : ::hostlink::LinkCounts();
+        out[4] = int64_t(sim::hash_fields(queue[0].held, queue[0].landing, queue[0].in_flight, queue[0].asking, queue[1].held, queue[1].landing,
+                                          queue[1].in_flight, queue[1].asking, forward, errors_sticky, eg_head, eg_n, egress_count, eg_gone, link_cycles,
+                                          ca.good, ca.sent_data, ca.sent_status, ca.restarts, cb.good, cb.sent_data, cb.restarts, up_tx[0], down_tx[0]));
     }
     // The reset (17.6.14): the control lines, the UART in its reset (UART_CONTROL 0), the queues empty, both counts 0,
     // egress_credit at 2, the service levels low, the word port's valid 0, the link from its start.
     void reset(int64_t t) {
         if (queue_words < 64 || queue_words > MAX_QUEUE_WORDS || (queue_words & (queue_words - 1)) != 0)
             FATAL("Ingress/Egress: INGRESS_QUEUE_WORDS must be a power of two from 64 to %u (19): %u", MAX_QUEUE_WORDS, queue_words);
+        if (link_rate != 1 && link_rate != 2 && link_rate != 4 && link_rate != 8)
+            FATAL("Ingress/Egress: the link's rate must be 1, 2, 4 or 8 link cycles a chip cycle: %u", link_rate);
+        if (link_every < 1 || (link_every > 1 && link_rate != 1))
+            FATAL("Ingress/Egress: a link cycle every %u chip cycles, at %u link cycles a chip cycle", link_every, link_rate);
         std::memset(err_line, 0, sizeof err_line);
         for (auto& r : arrived_at) r = INT64_MIN;
         cleared_at = INT64_MIN; expect = 0; wd_count = wd_limit = 0; toast = false; toast_at = -1; led = 0;
@@ -477,15 +529,21 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
         rx_meta = rx_line = rx_line_last = true; rx_busy = false; rx_bit = rx_data = 0; rx_cycles_left = 0; rx_bit_divisor = 0;
         rx_head = rx_n = 0; rx_overrun = framing = false;
     }
-    // The link at the reset: both queues empty, no error, the file from its start.
+    // The link at the reset (17.6.14, 28.14): both queues empty, the Node as at power-on (a new one, at the
+    // configuration: the reset is never inside a run), the output lines idle.
     void link_reset() {
-        for (Queue& s : queue) { s.head = s.held = s.landing = 0; s.in_flight = s.asking = false; }
+        for (Queue& q : queue) { q.held = q.landing = 0; q.in_flight = q.asking = false; }
         landing_head = landing_n = 0;
         forward = 0;
-        link_dead = link_cut = false; link_has_next = link_scheduled = link_waited = false;
-        link_at = 0; link_packets = link_words = link_bytes = link_room_cycles = 0;
+        ::hostlink::Sizes z;
+        z.window = link_window;
+        z.queue_words = queue_words;                     // Ingress's queues (17.6.3)
+        z.send_words = LINK_PACKET_WORDS;                // one link packet from Egress at a time (header, THE LINK)
+        node = std::make_unique<::hostlink::Node>(chain_next, z);
+        std::memset(up_tx, 0, sizeof up_tx); std::memset(down_tx, 0, sizeof down_tx);
+        std::memset(up_rx, 0, sizeof up_rx); std::memset(down_rx, 0, sizeof down_rx);
+        link_packets = link_words = link_cycles = 0; link_last_at = 0;
         link_forwarded = link_discarded = link_count_stores = 0;
-        link.rewind();
     }
 
     // ARRIVALS as a load presented in t reads it (17.6.2)
@@ -493,12 +551,18 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
     uint64_t arrivals(int64_t t) const { uint64_t b = 0; for (unsigned k = 0; k < 64; k++) if (arrived(k, t)) b |= 1ull << k; return b; }
     bool all_arrived(int64_t t) const { return expect != 0 && (arrivals(t) & expect) == expect; }
     unsigned room(unsigned q) const { return queue_words - queue[q].held - queue[q].landing; }   // of the words landed and to land
+    // the Node's words of stream q: Ingress's landed and landing words, as the Node counts them
+    unsigned node_words(unsigned q) const { LinkAllocs a; return node->waiting(::hostlink::Stream(q)); }
 
 private:
     void pop(int q, uint64_t w[2]) {
         Queue& s = queue[q];
-        w[0] = s.lo[s.head]; w[1] = s.hi[s.head];
-        s.head = (s.head + 1) & (queue_words - 1); s.held--;
+        ::hostlink::Word x;
+        bool ok;
+        { LinkAllocs a; ok = node->take(::hostlink::Stream(q), x); }
+        if (!ok || s.held == 0) FATAL("Ingress/Egress: queue %d: a landed word to take, and the link's queue has none", q);
+        std::memcpy(&w[0], x.byte, 8); std::memcpy(&w[1], x.byte + 8, 8);   // its least significant byte first (28.1)
+        s.held--;
     }
     bool discarding() const { return (forward & FWD_COUNT) != 0 && (forward & FWD_DISCARD) && queue[1].held > 0; }
     // The forward count dropping a word in t: only a word landed by the start of t.
@@ -516,49 +580,26 @@ private:
         s.held++; s.landing--;
         if (--l.words == 0) { landing_head = (landing_head + 1) % MAX_LANDING; landing_n--; }
     }
-    // The link's edge that ends t (header, THE LINK): the link packets whose last byte has arrived by t, each checked and
-    // taken into its queue, its first word landing at once; then the file's next, if its queue has room, and its arrival.
-    void link_step(int64_t t) {
-        for (;;) {
-            if (link_dead) return;
-            if (!link_has_next) {
-                switch (link.next(link_next, link_next_check, link_next_bytes)) {
-                    case hostlink::Reader::Next::END: link_dead = true; return;
-                    case hostlink::Reader::Next::CUT: link_dead = link_cut = true; return;
-                    case hostlink::Reader::Next::PACKET: break;
-                }
-                link_has_next = true; link_scheduled = false;
+    // The link's cycles of chip cycle t (header, THE LINK): the Node clocked `link_rate` times, the bytes of t in and the
+    // next cycle's out; a link packet it took with data lands from this cycle, its first word at once if none is landing.
+    void link_clock(int64_t t) {
+        if (link_every > 1 && t % int64_t(link_every) != 0) return;   // no link cycle in this chip cycle: the bytes held
+        LinkAllocs a;
+        for (unsigned k = 0; k < link_rate; k++) {
+            const ::hostlink::Node::Bytes b = node->clock(up_rx[k], chain_next ? down_rx[k] : 0);
+            up_tx[k] = b.up; down_tx[k] = chain_next ? b.down : 0;
+            link_cycles++;
+            for (unsigned q = 0; q < 2; q++) {
+                Queue& s = queue[q];
+                const unsigned w = node->waiting(::hostlink::Stream(q)), known = s.held + s.landing;
+                if (w < known) FATAL("Ingress/Egress: the link's queue %u holds %u words, Ingress counts %u", q, w, known);
+                if (w == known) continue;
+                if (landing_n == MAX_LANDING) FATAL("Ingress/Egress: more than %u link packets landing at once", MAX_LANDING);
+                s.landing += w - known;
+                landing[(landing_head + landing_n++) % MAX_LANDING] = {uint8_t(q), w - known};
+                link_packets++; link_words += w - known; link_last_at = t;
+                if (landing_n == 1) land(t);                     // the first word lands in the cycle it is taken
             }
-            if (!link_scheduled) {
-                // a link packet that passed its checks waits for room at its queue (and in the packet buffer); one that
-                // failed needs none
-                if (link_next_check == hostlink::Check::OK && (room(link_next.stream - 1) < link_next.length || landing_n == MAX_LANDING)) {
-                    link_waited = true; return;
-                }
-                const int64_t from = link_waited ? t : link_at;
-                if (link_waited && t > link_at) link_room_cycles += uint64_t(t - link_at);
-                link_next_at = link_cycles_per_byte == 0 ? t
-                             : from + (int64_t(link_next_bytes) * link_cycles_per_byte + link_bytes_per_cycle - 1) / link_bytes_per_cycle;
-                link_scheduled = true; link_waited = false;
-            }
-            if (link_next_at > t) return;
-            link_at = link_next_at; link_bytes += link_next_bytes;
-            link_has_next = false;
-            switch (link_next_check) {
-                case hostlink::Check::CRC: case hostlink::Check::SEQUENCE: errors_sticky |= ERR_LINK; link_dead = true; return;
-                case hostlink::Check::FORMAT: errors_sticky |= ERR_LINK | ERR_FORMAT; link_dead = true; return;
-                case hostlink::Check::OK: break;
-            }
-            link_packets++; link_words += link_next.length;
-            if (link_next.length == 0) continue;                     // no data: no service
-            const unsigned q = link_next.stream - 1;
-            Queue& s = queue[q];
-            for (unsigned k = 0; k < link_next.length; k++) {
-                const unsigned at = (s.head + s.held + s.landing++) & (queue_words - 1);
-                s.lo[at] = link_next.lo[k]; s.hi[at] = link_next.hi[k];
-            }
-            landing[(landing_head + landing_n++) % MAX_LANDING] = {uint8_t(q), link_next.length};
-            if (landing_n == 1) land(t);                             // the first word lands in the cycle it is taken
         }
     }
     // Egress's offer at the end of t (17.6.8): a link packet when the queue holds 32 words of a frame or the frame's last.
@@ -567,14 +608,22 @@ private:
         for (unsigned k = 0; k < n; k++) if (eg_last[(eg_head + k) % EGRESS_QUEUE_WORDS]) return k + 1;
         return eg_n >= LINK_PACKET_WORDS ? LINK_PACKET_WORDS : 0;
     }
-    bool egress_offers() const { return egress_out && egress_packet() > 0; }
+    bool egress_offers() const { return (egress_out || link_on()) && egress_packet() > 0; }
     void egress_step(int64_t t) {
         const unsigned n = egress_packet();
-        if (n == 0 || !egress_out) return;
+        if (n == 0 || (!egress_out && !link_on())) return;
         uint64_t lo[LINK_PACKET_WORDS], hi[LINK_PACKET_WORDS];
         for (unsigned k = 0; k < n; k++) { const unsigned at = (eg_head + k) % EGRESS_QUEUE_WORDS; lo[k] = eg_lo[at]; hi[k] = eg_hi[at]; }
         const bool ends = eg_last[(eg_head + n - 1) % EGRESS_QUEUE_WORDS];
-        if (!egress_out(egress_ctx, t, lo, hi, n, ends)) return;
+        if (egress_out) {
+            if (!egress_out(egress_ctx, t, lo, hi, n, ends)) return;
+        } else {                                                 // into the Node, when its one link packet's room is free
+            LinkAllocs a;
+            if (node->room() < n) return;
+            ::hostlink::Word w[LINK_PACKET_WORDS];
+            for (unsigned k = 0; k < n; k++) { std::memcpy(w[k].byte, &lo[k], 8); std::memcpy(w[k].byte + 8, &hi[k], 8); }
+            if (!node->push(w, n)) FATAL("Ingress/Egress: the link took no link packet of %u words with room for %u", n, node->room());
+        }
         eg_head = (eg_head + n) % EGRESS_QUEUE_WORDS; eg_n -= n;
         egress_words_out += n; egress_packets++;
         for (eg_gone += n; eg_gone >= EGRESS_CREDIT_WORDS; eg_gone -= EGRESS_CREDIT_WORDS) ev.post(t, EV_EGRESS_CREDIT);

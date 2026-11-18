@@ -1418,6 +1418,28 @@ DEATH_TEST(ie_egress_count_stored_while_not_0_is_ub, "EGRESS_COUNT stored .4. wh
     s.write(5, 1, W_EGRESS_COUNT, 3);
     s.write(6, 1, W_EGRESS_COUNT, 4);
 }
+// invariant 35: a frame's words "from one source at a time" (17.6.13); the next frame may come from another.
+DEATH_TEST(ie_egress_a_frames_words_from_two_sources_is_ub, "from 9 while the frame's words come from 7") {
+    SlotCore s;
+    s.tile = 64;
+    s.install(1, PT_INGRESS);
+    s.write(5, 1, W_EGRESS_COUNT, 1);
+    s.accept(6, 1, 1, lw::hdr(7, 64, lw::M_WRITE, 0, 0x04100000, lw::SIZE_128), 0);
+    s.write(7, 1, W_EGRESS_COUNT, 2);                  // the next frame, from 7 again and then 9
+    s.accept(8, 1, 2, lw::hdr(7, 64, lw::M_WRITE, 0, 0x04100000, lw::SIZE_128), 0);
+    s.accept(9, 1, 3, lw::hdr(9, 64, lw::M_WRITE, 0, 0x04100000, lw::SIZE_128), 0);
+}
+TEST(ie_egress_the_next_frame_may_come_from_another_source) {
+    SlotCore s;
+    s.tile = 64;
+    s.install(1, PT_INGRESS);
+    s.write(5, 1, W_EGRESS_COUNT, 1);
+    s.accept(6, 1, 1, lw::hdr(7, 64, lw::M_WRITE, 0, 0x04100000, lw::SIZE_128), 0);
+    s.write(7, 1, W_EGRESS_COUNT, 1);
+    s.accept(8, 1, 2, lw::hdr(9, 64, lw::M_WRITE, 0, 0x04100000, lw::SIZE_128), 0);
+    CHECK_EQ(s.ingress_egress(1).eg_n, 2u);
+    CHECK_EQ(s.ingress_egress(1).errors_sticky, 0);
+}
 DEATH_TEST(ie_egress_a_write_of_64_bits_is_ub, "a WRITE into its region of size 1 or to part 1") {
     SlotCore s;
     s.tile = 64;

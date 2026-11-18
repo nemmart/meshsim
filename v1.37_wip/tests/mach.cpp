@@ -106,6 +106,7 @@ const Field kFields[] = {
     F_B("checkDisjoint", check_disjoint), F_L("shuffleSeed", shuffle_seed), F_U("maxViolationMessages", max_violation_messages),
     F_B("measureS1", measure_s1), F_B("checkErrors", check_errors), F_B("proof", proof),   // (proof: v1.37's; hostLink until stage 3)
     F_U("lpddrSeed", lpddr_seed),                                     // (lpddrSeed: v1.37, the LPDDR model's jitter)
+    F_U("ingressQueueWords", ingress_queue_words),                    // (v1.37: INGRESS_QUEUE_WORDS, 19)
     F_U("cncRxDepth", cnc_rx_depth),
     F_U("replayerLogEntries", replayer_log_entries),   // (not ref's Config: its -Dreplayer.logq; the kit's -q)
 };
@@ -139,6 +140,7 @@ const std::vector<std::pair<std::string, std::string>>& MachConfig::dropped() {
         {"writeCombining", "v1.36: no bank request queues, so no write to combine with (15)"},
         {"fifoCountBeforePop", "v1.36: it chose how a bank request queue judged its room; there is none (15)"},
         {"sramReadLatency", "v1.36: READ_LATENCY, take to row (15, 19): readLatency"},
+        {"hostLink", "v1.37 stage 3: every chip's master tile has the host link's Ingress/Egress and the Updater; a proof from the host: proof"},
         {"ccDmaDepth", "v1.36: no FIFO in front of a DMA's router input: its ready is room in the queue its packet enters (16.4)"},
         {"logTrace", "v1.36: no TRACE word (a program reports with a REPORT request: 11.5)"},
     };

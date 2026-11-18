@@ -154,6 +154,7 @@ struct Result {
     uint64_t overflows = 0, first_overflow = 0;
     unsigned attached = 0;
     std::vector<std::pair<uint64_t, unsigned>> lost;          // (cycle, tile) of each cycle a router lost a packet in (the NoC)
+    uint64_t route_errors = 0;                                 // run_router: the router's routes to an output no queue feeds
 };
 
 void sort(std::vector<Seen>& v) { std::sort(v.begin(), v.end(), [](const Seen& a, const Seen& b) { return a.key() < b.key(); }); }
@@ -172,7 +173,7 @@ Result run_router(unsigned tile, const std::vector<Ev>& script, uint64_t cycles,
     sim::Sim m = cfg.build();
     m.run(cycles);
     const Stand& s = m.unit<Stand>("stand");
-    Result res{s.out, s.overflows, s.first_overflow, 0, {}};
+    Result res{s.out, s.overflows, s.first_overflow, 0, {}, m.unit<Router>("router").route_errors};
     sort(res.out);
     return res;
 }
@@ -364,6 +365,7 @@ TEST(line_special_router_drops_an_attach_arrival_for_another_tile) {
         const Result r = run_router(me, s, 40, true);
         CHECK(same(r.out, {seen(16, me, LOCAL, s[4], 3)}));
         CHECK_EQ(r.overflows, 0u);
+        CHECK_EQ(r.route_errors, 0u);                        // routed nowhere, not to an output no queue from the attach port feeds
     }
 }
 

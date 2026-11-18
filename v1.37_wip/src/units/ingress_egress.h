@@ -188,6 +188,7 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
     unsigned eg_head = 0, eg_n = 0;
     uint32_t egress_count = 0;         // EGRESS_COUNT
     unsigned eg_gone = 0;              // the words gone since the last credit came back (17.6.11: Egress's credit)
+    int egress_src = -1;               // the source of the frame being queued (invariant 35's check; not hardware)
     int errors_sticky = 0;             // ERRORS [3:1]
     // ---- the link until stage 4 (header, THE LINK) ----
     int64_t link_cycles_per_byte = 1;  // configuration: the link's rate; 0: a packet is there as soon as there is room
@@ -264,9 +265,14 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
             FATAL("Ingress/Egress: undefined behavior at %lld: a WRITE into its region of size %d or to part %u (offset 0x%x, from %d): the "
                   "outgoing queue takes 128-bit WRITEs to part 1 alone (17.6.8)", (long long)t, size, part, offset, src);
         if (eg_n == EGRESS_QUEUE_WORDS || egress_count == 0) { errors_sticky |= ERR_EGRESS; egress_dropped++; return; }
+        if (egress_src >= 0 && src != egress_src)
+            FATAL("Ingress/Egress: undefined behavior at %lld: a WRITE into the outgoing queue from %d while the frame's words come from %d "
+                  "(17.6.13, invariant 35: one source at a time)", (long long)t, src, egress_src);
+        egress_src = src;
         const unsigned at = (eg_head + eg_n++) % EGRESS_QUEUE_WORDS;
         eg_lo[at] = lo; eg_hi[at] = hi;
         eg_last[at] = --egress_count == 0;
+        if (egress_count == 0) egress_src = -1;                  // the frame's last: the next may come from another
         egress_words_in++;
     }
     void run(int64_t t) { FATAL("Ingress/Egress: undefined behavior at %lld: a START (17.6: it has no work)", (long long)t); }
@@ -461,7 +467,7 @@ struct IngressEgress : PeripheralBase<IngressEgress> {
         ev.clear_all();
         ev.live_bits = 0;
         ev.set(t, EV_EGRESS_CREDIT, 2);
-        eg_head = eg_n = 0; egress_count = 0; eg_gone = 0;
+        eg_head = eg_n = 0; egress_count = 0; eg_gone = 0; egress_src = -1;
         errors_sticky = 0;
         link_reset();
     }

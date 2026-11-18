@@ -81,6 +81,8 @@ BUGS=(
   "egress: a word into a full queue kept~$H~s/if (eg_n == EGRESS_QUEUE_WORDS || egress_count == 0)/if (egress_count == 0)/"
   "egress: a word with the count at 0 no error~$H~s/if (eg_n == EGRESS_QUEUE_WORDS || egress_count == 0)/if (eg_n == EGRESS_QUEUE_WORDS)/"
   "egress: a store to EGRESS_COUNT while not 0 not caught (UB)~$H~s/if (egress_count != 0)/if (false)/"
+  "egress: a frame's words from two sources not caught (UB, invariant 35)~$H~s/if (egress_src >= 0 \&\& src != egress_src)/if (false)/"
+  "slot: INGRESS_QUEUE_WORDS not given to the unit~src/units/periph_slot.cpp~s/ie->queue_words = c.ingress_queue_words;/(void)c;/"
   "bus: UART_RX not an own word of block 1~src/units/register_bus.h~s/if (w == 30 || w == 31) return {Target::PERIPH_OWN/if (w == 30) return {Target::PERIPH_OWN/"
   "slot: a low word's stall not published~src/units/periph_slot.cpp~s/if (s.store_stalls(t, n, w)) bits |= 1u << (2 \* Win::K_STALL + i);//"
   "the core tells the slot of no load that pops~src/units/tile_ctl.h~s/if (own_bit(n, Win::R_POPS, w)) c.put(u.periph, CoreOp::load(n, w));//"

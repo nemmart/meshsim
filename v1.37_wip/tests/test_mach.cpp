@@ -390,6 +390,13 @@ TEST(mach_config_front_end) {
     CHECK(!k.set("K", "eight", err) && err.find("not a number") != std::string::npos);
     CHECK(!k.set_args({"cfg.K"}, err));
     CHECK(!mach::MachConfig::dropped().empty());
+    // v1.37 stage 3: INGRESS_QUEUE_WORDS a setting (19), reaching the chip's Ingress/Egress; hostLink gone, by name
+    mach::MachConfig c = mach::Mach::chip_cfg(-1);
+    CHECK(c.set("ingressQueueWords", "512", err) && c.ingress_queue_words == 512u);
+    CHECK(!c.set("hostLink", "true", err) && err.find("dropped") != std::string::npos && err.find("proof") != std::string::npos);
+    Mach m(c);
+    CHECK_EQ(m.ingress().queue_words, 512u);
+    CHECK_EQ(Mach(Mach::chip_cfg(-1)).ingress().queue_words, 1024u);
 }
 
 // The chip (mach.h, THE MASTER SIDE) with no image placed: it builds and steps with the special tiles' straps and the

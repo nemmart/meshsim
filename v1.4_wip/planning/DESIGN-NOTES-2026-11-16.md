@@ -907,3 +907,22 @@ Rulings as they came; `HOST-LINK.md` has each.
   it has identified a cause"): the flaw came back as a four-event case and a one-sentence change, before any
   campaign was run on it.
 - WORKER8 carries on with its brief on that basis. `HOST-LINK.md` has both rules.
+
+## 30. A packet hidden in the data; the data is masked on the wire (2026-11-17, about 8 p.m.)
+
+- **WORKER8 stopped a second time,** with the afternoon's two rulings built and everything else it searched
+  holding. A header that reads as zeros on the wire is taken for idle; the first byte of the data that is not
+  zero then starts a "header"; and if the data holds a whole packet with the number expected, it is taken. A
+  word is delivered that is not the next, a true packet is lost, no check fails. Two events on the shrunken
+  model. As old as the link's framing; found only now because the search had no damage that zeroed a header and
+  left its data, and no data that held a packet.
+- **By chance it is inside the limit already accepted; with data that is itself link packets it is not.**
+- **Decided (owner): the data is masked on the wire,** each byte XORed with a sequence started from that
+  packet's header CRC. A 32-bit shift register a direction; no new field. Whether the link works then does not
+  depend on what the data holds. `HOST-LINK.md`, "The data is masked on the wire". The sequence is WORKER8's to
+  define exactly and test.
+- **A stopped stream cannot block the other:** shown by WORKER8 on eight searches with "stop" holding only
+  packets not yet numbered, up to 3.3 million states each, and the first-written rule fails beside them.
+- **The larger search is not finished:** Quest 230 tried 71,162,948 states with no failure and was cut by its
+  45-minute limit, not by memory. To be run again with a longer limit, reporting how many states were waiting.
+- WORKER9 has not started the joint and WORKER10's runner task is not queued: both wait on the owner.

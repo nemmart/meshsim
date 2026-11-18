@@ -39,6 +39,13 @@ the integrator while you do: you merge into `main` and queue the runner's tasks 
 | the memory tile | nothing of v1.37's proof runs on it. The RW engine is v1.36's, moved to peripheral 2 |
 | the chain | the chip has `link_up`, `link_down` and `chain_next` (3, 18). Run as DRIVER ↔ ASIC0 ↔ ASIC1, three processes |
 
+**The state machines that are built are the basis** (owner, 2026-11-18). The cache's controller and the
+arbiter (`cache_ctl.*`, `axi_arbiter.*`, `cache_system.h`), the Updater's controller (`updater_ctl.h`,
+`updater_top.h`) and the link end (`updater_wip/link/`) are the modules of v1.37's simulator. **Do not write
+any of them again from the specification.** The specification was written from them and checked against them
+by their authors. Your work on them is to join them, to wire them into the chip, and to make the few changes
+the worklist names.
+
 **The specified machine is the machine.** When a stage is done, what it built is on by default and is what the
 tests run. A black box that a state machine replaces (the Updater's, v1.36's cache model) stays only where a
 test compares against it. Say in your plan how each setting ends.

@@ -4880,6 +4880,12 @@ What the host sends on the link for one program and one proof, and the reply the
 its segment: the frame header, the update words and their LRU code, *N* and *s*, frames 1 to 9 and the reply. Its
 specification, 29.1 to 29.16, is `spec/host-frames.md`.
 
+## 30. The master tile's firmware
+
+What the master tile's firmware must do for one proof on one ASIC, as a contract: what its image is given, the boot,
+the frame loop, the Updater's runs and the free page queue, the hand-over to the tracer tile, the segment, the reply at
+its end, and an error. Its specification, 30.1 to 30.9, is `spec/master-firmware.md`.
+
 ## Appendix A. The RTL's implementation
 
 Facts of the RTL (Snarky One) that are not contract: what it holds where chapters 1–19 leave a choice to the

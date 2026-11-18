@@ -429,7 +429,7 @@ from it.
 - **An ASIC's link packets stay in order** end to end, since every link delivers in order; different ASICs'
   interleave.
 - **A background link packet with data that comes from below** is forwarded up, through the fourth forwarding
-  buffer, though nothing sends one *(item 185)*.
+  buffer, though nothing sends one *(item 183)*.
 - **The stop bits of a node:** the upper end's, for each stream, are up when the ASIC's own queue or the forwarding
   buffer down is half full; the lower end's when the forwarding buffer up is half full.
 - **The last ASIC** uses its upper end alone, and no forwarding buffer.
@@ -673,7 +673,7 @@ None of these changes what goes on the line, only when, by 32 cycles at most; no
 The four forwarding buffers are 85 % of the link's memory; the last ASIC on a chain has none. The size is not a
 concern beside the Tracer's (owner). What could be smaller, if it ever is one: the forwarding buffers at 512 words,
 exactly the rule's limit (34,048 bytes saved); none for the background towards the host, with a rule that such a
-link packet is made wrong (17,024, item 185); a window of 4 (half the kept link packets, at a data rate of 0.6252
+link packet is made wrong (17,024, item 183); a window of 4 (half the kept link packets, at a data rate of 0.6252
 bytes a cycle against 0.6389 `[meas: the model]`).
 
 ### 28.14 Errors and the reset
@@ -685,7 +685,7 @@ bytes a cycle against 0.6389 `[meas: the model]`).
   beside it when the cause was a link packet made wrong twice (17.6). **A peripheral's error is its tile's,** so it
   stops the chip (owner). What follows is not designed in v1.37 *(item 181)*.
 - **A neighbour that goes silent raises nothing:** a line that reads as zeros looks idle, and the end waits, its
-  window full, for as long as the silence lasts *(item 186)*.
+  window full, for as long as the silence lasts *(item 184)*.
 - **The reset** is the chip's one reset (18; owner): it reaches the link ends, the forwarding buffers and the ASIC's
   own queues as it reaches everything else. A link end comes out of it as at power-on (28.13.2): it says "I have
   started again", so **its neighbours each raise their error,** and the link comes back up with the next exchange.
@@ -729,10 +729,10 @@ room, which with the sizes right never happens and so says a size is wrong.
 
 ### 28.17 Open items (chapter 26's numbering)
 
+Item 181, what follows an error, is chapter 26's; item 185, the foreground's frames, is 29.16's.
+
 | item | what is to be settled | section | status |
 |---|---|---|---|
-| 181 | everything after an error stops the chip: the host's reset, draining the queues, a "ready" message | 28.14 | open |
-| 185 | a background link packet with data that comes from below: forwarded, through a buffer nothing else uses; or made wrong, saving 17 KiB | 28.12 | open |
-| 186 | a neighbour that goes silent: nothing notices it. A count of status periods with nothing heard would tell, but it must outlast the longest noise, seconds | 28.14 | open |
-| 187 | the foreground stream's frames, towards the chip and back, but the reply frame (29) | 28.2 | open |
-| 188 | the clock of the link ends against the chip's: a link cycle is a byte on the line (28.1) | 28.1, 18 | open |
+| 183 | a background link packet with data that comes from below: forwarded, through a buffer nothing else uses; or made wrong, saving 17 KiB | 28.12 | open |
+| 184 | a neighbour that goes silent: nothing notices it. A count of status periods with nothing heard would tell, but it must outlast the longest noise, seconds | 28.14 | open |
+| 186 | the clock of the link ends against the chip's: a link cycle is a byte on the line (28.1) | 28.1, 18 | open |

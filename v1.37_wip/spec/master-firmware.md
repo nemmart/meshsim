@@ -20,7 +20,7 @@ these **arguments** (6.5: data at addresses the image fixes, with no hardware of
 
 **How the image and its arguments reach a chip** is the master tile's boot over LVDS, which is not designed
 *(item 166)*; until it is, they are placed before the reset ends, as the simulator places them. What no frame
-carries is item 192.
+carries is item 190.
 
 ### 30.2 The boot
 
@@ -69,7 +69,7 @@ off (17.6.4). Then, by the header's `type`:
   Updater's goes ahead, and the run overlaps it. So frames 7 and 8 go on while frame 6's run does.
 - **What it keeps of the header frames:** frame 1's file length and frame 2's counts; frame 3's counts and page
   counts, from which it derives frame 9's three runs (29.7); frame 4's *k*, *p*₁, *p*₃ and frame 5's counts, and
-  whether it names a path (a base table) or not (the proof's table, from the last base established; item 189). The
+  whether it names a path (a base table) or not (the proof's table, from the last base established; item 187). The
   strings it passes over: v1.37 has no file system.
 
 ### 30.4 The Updater's runs and the free page queue

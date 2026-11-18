@@ -24,7 +24,7 @@ per proof. A **base jump table** is frames 4 and 5 sent on their own, ahead of a
 | 9 | memory segments | per proof, last | the Updater, three runs | all *N* segments' update words, one sequence |
 
 **The foreground stream's frame** in v1.37 is one, from the chip: **the reply** (29.14). What the host sends on the
-foreground, and every other reply, is not designed *(item 187)*.
+foreground, and every other reply, is not designed *(item 185)*.
 
 - **The Updater makes every file** (owner): the program image and a base table are written through it, as a run into
   an empty file, so no firmware path loads them.
@@ -174,7 +174,7 @@ A table is made one of two ways (owner): **a full new table,** or **pages that d
 - **A proof's base is always such a table;** a proof's own table is dead when the proof ends, never a later one's base
   (owner).
 - **Which base, without a file system:** v1.37 skips the names, and a proof's base is the last table a frame 4 with a
-  path established *(item 189)*.
+  path established *(item 187)*.
 - The Tracer takes *k*, *p*₁ and *p*₃ from here (17.9.4; 30).
 
 ### 29.9 Frame 5: jump table data
@@ -306,8 +306,8 @@ Both reference workloads at 2²⁹, 128 segments `[meas: gold]`:
 
 | item | what is to be settled | section | status |
 |---|---|---|---|
-| 187 | the foreground stream's frames, towards the chip and back, but the reply | 29.1 | open |
-| 189 | a base table named by its path, with a file system, or the last one established | 29.8 | open |
-| 190 | frame 9 as one frame can pass 2²⁶ 128-bit words on a long run: whether a frame continues in further frames | 29.13 | open |
-| 191 | whether a frame for the Updater carries its own head, the names and counts, in place of a header frame before it | 29.1 | open |
-| 192 | the replayer's and the Tracer's tables and templates, and the tiles' images, are in no frame (30.1) | 29.1 | open |
+| 185 | the foreground stream's frames, towards the chip and back, but the reply | 29.1 | open |
+| 187 | a base table named by its path, with a file system, or the last one established | 29.8 | open |
+| 188 | frame 9 as one frame can pass 2²⁶ 128-bit words on a long run: whether a frame continues in further frames | 29.13 | open |
+| 189 | whether a frame for the Updater carries its own head, the names and counts, in place of a header frame before it | 29.1 | open |
+| 190 | the replayer's and the Tracer's tables and templates, and the tiles' images, are in no frame (30.1) | 29.1 | open |

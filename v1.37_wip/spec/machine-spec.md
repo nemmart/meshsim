@@ -2099,7 +2099,7 @@ The link's are 28.13's. Beside them, at the signals' widths:
 - **A peripheral's error is its tile's** (owner): `link_error`, `egress_error` and the Updater's errors raise the
   master tile's error, and with it the toast pin; the chip stops. What follows (the host's reset, draining the
   queues, the next proof) is not designed in v1.37 *(item 181)*.
-- **A neighbour that goes silent raises nothing** (28.14; item 186).
+- **A neighbour that goes silent raises nothing** (28.14; item 184).
 - **The UART's line errors are status, not errors** (17.6.9).
 
 #### 17.6.13 What software keeps
@@ -3825,7 +3825,8 @@ Kept from v1.35's 6.6: the master tile's software conventions around 17.6's regi
   restarts it (17.6). It is the only watchdog, it counts the chip's clock, and it is the backstop for a tile that
   hangs without an error: a trap that sets no `ERRORS` bit (6.2), a lost packet, a request never answered (23).
 - **The master tile sends** through its own write unit and DMA unit, like any tile (9, 8); its packets enter the
-  mesh at tile 0's attach port, with its own tile id as src (16.2). **It receives** the tiles' requests, `LOAD`s
+  mesh at tile 0's attach port, with its own tile id as src, and a packet for another special tile takes the line
+  (16.2). **It receives** the tiles' requests, `LOAD`s
   and reports among them, from its receive queue (11.1, 11.5), and packets addressed to it land in its memories
   like any tile's, counted by their counter fields.
 - **Pacing.** The master tile sends bulk data between all-to-all passes, or paces it: nothing but the program
@@ -3835,7 +3836,10 @@ Kept from v1.35's 6.6: the master tile's software conventions around 17.6's regi
   and commands crossing the mesh during a phase.
 - **The special tiles and the barrier.** The memory and tracer tiles take no part in the barrier (7.3). The
   memory tile starts from its placed image (`PARAMS.boot_local`, 6.5) and serves requests (23); the tracer tile
-  is loaded at its `LOAD` and then serves the segment (17.9.10). v1.35's "started" requests are not needed: a
+  is loaded at its `LOAD` and then serves the segment (17.9.10). In v1.37 the master tile holds the tracer tile's
+  load back until the Updater has built its segment's files (30.5).
+- **With the host's frames,** the master tile's sequence is chapter 30's: the frame loop, the Updater's runs, the
+  hand-over and the reply. v1.35's "started" requests are not needed: a
   special tile's first request to the master tile, or the master's first to it, is served whenever its receiver
   is up, since the tree holds a request until it is popped (11.3).
 
@@ -3855,13 +3859,14 @@ handlers' reports carry, and then the chip restarts.
 2. **Its error line** sets its bit in the master tile's `ERROR_LINES_0`–`2`, `ERROR_LATENCY` later; the lines are
    live (17.6, 18).
 3. **`tile_error`,** Ingress/Egress's live `ERRORS` [0], sets the master tile's `ERRORS.peripheral_1`, and the
-   master tile takes its NMI. The master tile's own errors raise it directly. **Every error is terminal for the
-   chip:** nothing on the chip recovers.
+   master tile takes its NMI. The master tile's own errors raise it directly: its peripherals' among them,
+   Ingress/Egress's `link_error`, `format_error` and `egress_error` and the Updater's (17.6.12, 17.10.8). The memory
+   tile's carry the memory system's (17.11). **Every error is terminal for the chip:** nothing on the chip
+   recovers, and what follows is not designed in v1.37 *(item 181)*.
 4. **The master tile's handler,** best effort, with nothing waiting for it: it tells the file system to flush its
    logs to LPDDR *(Deferred, item 119)*; **drains the tiles' reports** from its receive queue, told apart by
    their numbers (24 and 25 from a tile still on the ROM's handler, an image's own from 0; 6.5, 11.5); and
-   **sends the dump out,** over the UART, or over the host interface once its beats have a meaning *(Open: the
-   host interface's meaning, 17.6)*. It never returns to the interrupted code, and bounds its waits by
+   **sends the dump out,** over the UART *(Open: a report to the host over the link, with item 181)*. It never returns to the interrupted code, and bounds its waits by
    `mcycle` (6.1). Its details are the master tile's firmware's.
 5. **The toast pin** rises (17.6), and **the outside world resets the chip**: the chip never resets itself (18).
 
@@ -3871,11 +3876,13 @@ handlers' reports carry, and then the chip restarts.
   core on the tree's pace, which the reports' exemption from the per-tile limit allows (11.3).
 - **`LED`** is the software pin: the master tile can blink codes on it while it is healthy (17.6).
 
-**The reset inputs.** The RTL's specification has one reset (18), and marks hard and soft *Open*. v1.35's
+**The reset inputs.** The RTL's specification has one reset (18), and marks hard and soft *Open*. v1.37 keeps
+the one reset (owner): it reaches the host link too, so a reset chip restarts its links and its neighbours raise
+`link_error` (28.14). v1.35's
 intent stands as the proposal *(Open, item 124)*:
 - **hard reset:** everything, the `lpddr` port and the memory side included; LPDDR's contents are lost.
   Power-on is a hard reset, held until power is stable;
-- **soft reset:** everything except a short list: the host interface's link, the `lpddr` port's far side, and
+- **soft reset:** everything except a short list: the host link (17.6, 28), the `lpddr` port's far side, and
   the LPDDR controller and PHY, so refresh continues and **LPDDR keeps the flushed logs**. The exact list is
   open, and 3's `lpddr` and `fill` contracts constrain it: neither far side may answer after a reset anything it
   accepted before it (3, 17.7).
@@ -4710,6 +4717,9 @@ not used here.
 | the replayer (17.8), peripheral 1 on every compute tile: ALU and comparator, the 128 × 64-bit true dual-port register file, two adders, the operand resolution, the decode index, four queue readers and credit counters, three decoders and their size counters; with its memories (queues, ROM, decode table, register file, output queue) | ≈ 256 Kbit of SRAM | ≈ 0.09–0.14 mm² (`spec/jolt/replayer.md`) |
 | **total per compute tile** | | **≈ 0.52–0.61 mm² in v1.35,** with the replayer and an attach port, about 35–40 % of the per-tile logic budget. v1.36's changes all reduce it but the core's two extensions and the read and gather queues' entries. Still inside 1.5 mm² |
 | the special tiles (2.1) | tile instances with the compute tile's scratchpad, `SCRATCHPAD_BYTES`, each a tile's logic plus its peripheral and, with a sending peripheral, its DMA | not estimated here. v1.35 gave them 2 MiB of big SRAM each |
+| the master tile's Ingress/Egress (17.6): the host link, two link ends and four forwarding buffers (28.13.7); the incoming queues; the outgoing queue; the UART | 1,424 flip-flops for the link; 77,312 bytes of SRAM for the link, 32 KiB for the incoming queues, 8 KiB for the outgoing `[derived]` | not estimated in mm². The link's CRC units: two of 128 bits a cycle, about 2,490 XOR gates each before sharing, and two of a byte, about 270 each `[derived]` |
+| the master tile's Updater (17.10) | 4,204 flip-flops, 2,048 of them the LRU table; 4 KiB of page memory and 1 KiB of free page queue `[derived]` | not estimated in mm² |
+| the memory tile's memory system (17.11, 23): the cache's controller, its memory and the AXI arbiter | the cache's memory 512 KiB of data and 13.5 KiB of tags, each two-ported; about 6,870 flip-flops in the controller, five 1,024-bit line registers among them, which an implementation may share; 1,539 in the arbiter `[derived]` | not estimated in mm². The memory system sits with the LPDDR controller and the tracer tile, whose latency matters (RCR D) |
 | once per die: the request tree's nodes (11.3), `MESH_SIZE` row nodes and the root, a 16-byte buffer per input, their arbiters and the root's credit counters; the three receive queues, 128, 256 and 128 × 128 bits at 8 × 8, each in its receiving tile's request unit; the tree's wiring (18 wires a link: 16 data, valid, ready) and a credit wire from each receiving tile | ≈ 74 Kbit | ≈ 0.03 mm² plus wiring |
 
 Rule of thumb: tables go in SRAM (cheap); comparators, multiplexers and per-entry flop state are what spend the
@@ -4763,9 +4773,11 @@ this **control island** and the scratchpad and the links.
 
 ## 26. Open items
 
-What is open, proposed or deferred in v1.36's design, each with the section it affects; possible later additions
-are marked *later*. The replayer's and the Tracer's items are in `spec/jolt/replayer.md` and `spec/jolt/tracer.md`.
-Numbers are v1.35's and are never reused; items 160 and up are new in v1.36 (174 to 177 are the Tracer's). Every earlier item's history is
+What is open, proposed or deferred in v1.37's design, each with the section it affects; possible later additions
+are marked *later*. The replayer's and the Tracer's items are in `spec/jolt/replayer.md` and `spec/jolt/tracer.md`,
+the host link's in `spec/host-link.md` (28.17) and the frames' in `spec/host-frames.md` (29.16).
+Numbers are v1.35's and are never reused; items 160 and up are new in v1.36 (174 to 177 are the Tracer's), and
+178 and up new in v1.37. Every earlier item's history is
 `spec/history/machine-spec-v1.3-section-13.md`, and the decisions are in `spec/history/`.
 
 v1.36 takes the RTL's (Snarky One's) hardware. Where that hardware settles an item, the item is closed below,
@@ -4783,7 +4795,7 @@ row says how. Chapters 1 to 19 mark an open subject *Open* in place; each is an 
 | 61 | The request tree's physical design: node placement and the links' pipeline stages. The RTL has one register a node, cut-through, and wires for links until there is a floorplan | 11.3, 25 | open, informed |
 | 107 | 4.25 MiB of scratchpad per tile, a tentative working figure. `SCRATCHPAD_BYTES` is a power of two, which cannot express it | 5.1, 15, 19 | open: needs a decision |
 | 116 | Read-unit reads overlapping incoming traffic: revisit the rule and invariant 14. The RTL's specification states no rule; v1.35's is kept | 10, 20 | open |
-| 124 | The hard and the soft reset, the soft reset's keep list, the RW engine's and the LPDDR controller's among them. The machine has one reset; the `lpddr` port's contract (3) constrains a soft one | 18, 17.7 | open |
+| 124 | The hard and the soft reset, the soft reset's keep list, the RW engine's and the LPDDR controller's among them. The machine has one reset, which in v1.37 reaches the host link too (owner); the `lpddr` port's contract (3) constrains a soft one | 18, 17.7, 28.14 | open, informed |
 | 128 | `LAND_LATENCY`'s margin, validated across workloads. The RTL's slowest write path is 2·`TABLE_LATENCY` + 2 cycles after the acceptance, so 8 covers `TABLE_LATENCY` ≤ 3: the figure v1.35 asked the RTL for. The validation on the simulator is left | 12.3, 20 | open, informed |
 | 160 | **A peripheral DMA's packets carry the tile's own id as src** (16.4), where item 118 decided src = the id + 8 (owner, 2026-11-05). *(Reversed in v1.36, for the owner to rule on: see `spec/CHANGES-v1.35-to-v1.36.md`)* | 16.4, 17.4 | open: reverses a ruling |
 | 161 | **The Tracer's `EVENTS` and `ERRORS` are packed from bit 0** (17.9.1), where item 144 kept the positions shared with the replayer. *(Reversed in v1.36, for the owner to rule on: see `spec/CHANGES-v1.35-to-v1.36.md`)* | 17.9.1 | open: reverses a ruling |
@@ -4791,23 +4803,28 @@ row says how. Chapters 1 to 19 mark an open subject *Open* in place; each is an 
 | 163 | How exact the simulator must be: the RTL's core, Tracer and replayer stall costs cycle for cycle, or exact rows and results with cycle counts close. v1.36's simulator is the first: the RTL's firmware images run on it unmodified at the RTL chip's cycle counts, and where the contract is silent it takes the RTL's sources (`OPEN-v1.36.md` lists each such decision, and where a path still differs) | 21, 19.1 | built cycle for cycle; for the owner to confirm |
 | 164 | Every `[meas: v1.35]` figure, and every older one, re-measured on v1.36's simulator. Done for the RTL's own runs, which the simulator reproduces: the sort's four runs (27), the segment and the replay (17.8.16, 17.9.17). Left: the figures of meshsim's own firmware, which is not ported (`OPEN-v1.36.md`) | all | open, part done |
 | 165 | The field accelerator: where it attaches, as a peripheral or at the core's coprocessor port; what the coprocessor port serves; its access to the scratchpad; and, before those, its prime, operations and representation | 2.2, 6.1, 15 | open |
-| 166 | The host interface's meaning: the master tile's boot over LVDS, the beats and TLAST | 6.5, 17.6 | open |
+| 166 | The master tile's boot over LVDS: how its image and its arguments, *N* and *s* among them, reach the chip (30.1). The host interface's beats and TLAST are gone with it (17.6) | 6.5, 30.1 | open, narrowed in v1.37 |
 | 167 | How a silicon memory tile's IMEM and DMEM are filled (`boot_local`) | 6.5 | open |
 | 168 | A core load or store of `PTR` or `HIST` that meets its engine: the store lost and the load undefined (12.5), where v1.35 defined both | 12.5 | open: for the owner to confirm |
 | 169 | The gather queue at `TOKEN_COUNT`, its overflow a program error that only the tile's other senders can cause, and the address generator taking no read while the gather unit is busy. It changes the gather steps' cycle counts | 13, 14.1 | open: for the owner to confirm |
 | 170 | Whether `READ_LATENCY` and "a write wins its bank, with no bank queue" are contract values or stay the implementation's. The RTL's 3 cycles rest on placeholder SRAMs | 15, 19 | open |
 | 171 | No start skew: the release reaches every compute tile in the same cycle, where v1.35 allowed 0 or +1. How the net does it is physical, with item 8 | 7.3, 18 | open |
-| 172 | The UART's divisor counts the chip's clock and resets to 115,200 baud. v1.35 counted a reference oscillator, at 57,600, so that the UART works before the PLL locks | 17.6, 19 | open: for the owner to confirm |
+| 172 | The UART's divisor counts the chip's clock. Closed in v1.37 but for that: the UART is off at the reset, `UART_CONTROL` 0, and has no reset divisor (17.6.9) | 17.6.9 | closed (v1.37), but the clock |
 | 173 | Bring-up with every compute tile in every release, no one-at-a-time start and no overlays: what a partial or debug bring-up uses | 6.5, 7.3 | open |
 | 15 | A status bit with the arrival, for per-owner completion | 17.6 | proposed |
 | 27 | Drop the one-read-size-per-group rule. The RTL neither forbids mixed sizes nor tests them | 8.4 | proposed |
 | 28 | 128-bit staging from the master tile. A load is `WRITE` packets straight into IMEM and DMEM (6.5), of any size | 6.5 | proposed, informed |
 | 64 | The request queue and its stall rule. The stall rule is kept (11.1); the queue is `REQUEST_QUEUE_DEPTH` = 4, where v1.35 had 128, and there is no "no longer full" event, so a burst of reports stalls the core | 11.1, 19 | proposed: needs a decision |
 | 48 | Decided: a peripheral's landing is bounded. `PERIPHERAL_LATENCY` is a bound, at most `LAND_LATENCY` − `WRITE_PORT_LATENCY`, and every peripheral specified lands 2 cycles after the director's acceptance; still proposed: whether 2 is the contract | 17.3, 19 | decided, part proposed |
-| 60 | The memory system's side: the memory system behind `fill`, on the memory tile, its translator and shared cache, its latencies, and the link's physical width; with the file system (119) | 2.1, 3, 17.9.5, 23 | deferred |
-| 119 | The file system, with its design. The RW engine, the `READ` and `WRITE` requests, the write buffer and the `lpddr` port are specified (11.5, 17.7); the Tracer's side is specified | 11.5, 17.7, 23 | deferred, part decided |
+| 60 | The memory system's side. Specified in v1.37: the cache, which walks the files, and the AXI arbiter (17.11, 23). Left: the fill link's physical width | 3 | closed (v1.37), but the width |
+| 119 | The file system, with its design. The RW engine, the `READ` and `WRITE` requests and the write buffer are specified (11.5, 17.7); the files as the hardware sees them, the cache and the Updater are specified in v1.37 (23.5, 23.6, 17.10) | 11.5, 17.7, 23 | deferred, part decided |
 | 130 | A 1 × 4 test chip. Decided: the mesh is square, `MESH_SIZE` 1 to 8; a 1 × 4 is not one | 2.1, 16.2, 19 | deferred, part decided |
 | 159 | The simulator checks to add: invariant 17's request limits, its write-buffer rule and its group-transfer rule; invariant 18 for the scratchpad; size 11 and the two stream cases, stopped rather than counted | 20, 4.1, 8.3 | deferred (owner, 2026-11-12) |
+| 178 | A flush of the Tracer's dirty lines, at a trace's end or at shutdown: nothing reads them in LPDDR today | 23.6.3 | open |
+| 179 | The cache writing a set's dirty least recently used line back early, in place, so that a miss finds it clean | 23.6.7 | open |
+| 180 | Who discards a page when the file system hands it out again: in v1.37 nothing is freed | 23.6.8 | open |
+| 181 | **Everything after an error stops the chip:** the host's reset, draining Ingress's queues, a "ready" message to the host, a report of the failure, and the next proof. Not designed in v1.37 (owner: "error recovery in general is a nightmare") | 17.6.12, 17.10.8, 22.28, 28.14, 29.14, 30.8 | open |
+| 182 | Flow control on the line between the special tiles, with the regime that needs it: the file system's traffic. In v1.37 the line is the mesh's regime (owner) | 16.3 | open |
 | 17 | A direct path from the gather unit to the write engine | 13 | later |
 | 18 | Fusing the local gather with the values all-to-all | 8.4, 13 | later |
 | 19 | An arrival-order form of augmenting for `GATHER` | 12.4 | later |
@@ -4818,7 +4835,7 @@ row says how. Chapters 1 to 19 mark an open subject *Open* in place; each is an 
 
 **The index:** where each item lives; *closed* means settled, its record in the history file or below.
 
-1 here; 2 closed (v1.36); 3 closed (v1.36); 4 closed (v1.36); 5 closed (v1.36); 6 closed (v1.36); 7 here; 8 here; 9 closed; 10 here; 11 closed; 12 closed; 13 here; 14 closed; 15 here; 16 closed; 17 here; 18 here; 19 here; 20 here; 21 here; 22 here; 23 closed; 24 here; 25 closed; 26 closed; 27 here; 28 here; 29 closed; 30 closed; 31 closed; 32 closed; 33 closed; 34 closed; 35 `spec/jolt/replayer.md`; 36 `spec/jolt/replayer.md`; 37 closed; 38 `spec/jolt/replayer.md`; 39 `spec/jolt/replayer.md`; 40 closed; 41 closed; 42 `spec/jolt/replayer.md`; 43 closed; 44 closed; 45 closed; 46 closed; 47 closed; 48 here; 49 closed; 50 closed; 51 closed; 52 closed; 53 closed; 54 closed; 55 closed; 56 `spec/jolt/replayer.md`; 57 `spec/jolt/replayer.md`; 58 closed; 59 `spec/jolt/replayer.md`; 60 here; 61 here; 62 closed (owner, 2026-11-12); 63 closed (v1.36); 64 here; 65 closed; 66 closed; 67 closed (v1.36); 68 closed; 69 closed; 70 closed (owner, 2026-11-12); 71 closed; 72 closed; 73 closed; 74 closed; 75 closed; 76 closed; 77 closed; 78 closed; 79 closed; 80 closed; 81 closed; 82 closed (v1.36); 83 closed (v1.36); 84 closed (v1.36); 85 closed; 86 closed; 87 closed; 88 closed; 89 closed; 90 closed; 91 closed; 92 closed; 93 closed; 94 closed; 95 closed; 96 closed; 97 closed; 98 closed; 99 closed; 100 closed; 101 closed; 102 closed; 103 closed (owner, 2026-11-12); 104 closed; 105 closed; 106 closed; 107 here; 108 closed; 109 closed; 110 closed; 111 closed; 112 closed; 113 `spec/jolt/replayer.md`; 114 closed; 115 `spec/jolt/replayer.md`; 116 here; 117 closed (v1.36); 118 closed (v1.36), its decided half reversed (160); 119 here; 120 closed (v1.36); 121 closed (v1.36); 122 closed (v1.36); 123 closed (v1.36), its record in `spec/jolt/replayer.md`; 124 here; 125 here; 126 closed (v1.36); 127 closed; 128 here; 129 closed (v1.36); 130 here; 131 closed; 132 closed; 133 closed (v1.36); 134 closed; 135 closed; 136 closed; 137 `spec/jolt/replayer.md`; 138 closed; 139 `spec/jolt/replayer.md`; 140 closed (v1.36), its record in `spec/jolt/replayer.md`; 141 closed; 142 closed (v1.36); 143 closed; 144 closed, and reversed (161); 145 closed; 146 closed; 147 `spec/jolt/tracer.md`; 148 `spec/jolt/tracer.md`; 149 closed; 150 closed; 151 closed; 152 closed; 153 `spec/jolt/tracer.md`; 154 closed; 155 closed; 156 closed; 157 closed (v1.36), its record in `spec/jolt/tracer.md`; 158 `spec/jolt/replayer.md`; 159 here; 160 here; 161 here; 162 here; 163 here; 164 here; 165 here; 166 here; 167 here; 168 here; 169 here; 170 here; 171 here; 172 here; 173 here; 174 `spec/jolt/tracer.md`; 175 `spec/jolt/tracer.md`; 176 `spec/jolt/tracer.md`; 177 `spec/jolt/tracer.md`.
+1 here; 2 closed (v1.36); 3 closed (v1.36); 4 closed (v1.36); 5 closed (v1.36); 6 closed (v1.36); 7 here; 8 here; 9 closed; 10 here; 11 closed; 12 closed; 13 here; 14 closed; 15 here; 16 closed; 17 here; 18 here; 19 here; 20 here; 21 here; 22 here; 23 closed; 24 here; 25 closed; 26 closed; 27 here; 28 here; 29 closed; 30 closed; 31 closed; 32 closed; 33 closed; 34 closed; 35 `spec/jolt/replayer.md`; 36 `spec/jolt/replayer.md`; 37 closed; 38 `spec/jolt/replayer.md`; 39 `spec/jolt/replayer.md`; 40 closed; 41 closed; 42 `spec/jolt/replayer.md`; 43 closed; 44 closed; 45 closed; 46 closed; 47 closed; 48 here; 49 closed; 50 closed; 51 closed; 52 closed; 53 closed; 54 closed; 55 closed; 56 `spec/jolt/replayer.md`; 57 `spec/jolt/replayer.md`; 58 closed; 59 `spec/jolt/replayer.md`; 60 here, closed (v1.37) but the width; 61 here; 62 closed (owner, 2026-11-12); 63 closed (v1.36); 64 here; 65 closed; 66 closed; 67 closed (v1.36); 68 closed; 69 closed; 70 closed (owner, 2026-11-12); 71 closed; 72 closed; 73 closed; 74 closed; 75 closed; 76 closed; 77 closed; 78 closed; 79 closed; 80 closed; 81 closed; 82 closed (v1.36); 83 closed (v1.36); 84 closed (v1.36); 85 closed; 86 closed; 87 closed; 88 closed; 89 closed; 90 closed; 91 closed; 92 closed; 93 closed; 94 closed; 95 closed; 96 closed; 97 closed; 98 closed; 99 closed; 100 closed; 101 closed; 102 closed; 103 closed (owner, 2026-11-12); 104 closed; 105 closed; 106 closed; 107 here; 108 closed; 109 closed; 110 closed; 111 closed; 112 closed; 113 `spec/jolt/replayer.md`; 114 closed; 115 `spec/jolt/replayer.md`; 116 here; 117 closed (v1.36); 118 closed (v1.36), its decided half reversed (160); 119 here; 120 closed (v1.36); 121 closed (v1.36); 122 closed (v1.36); 123 closed (v1.36), its record in `spec/jolt/replayer.md`; 124 here; 125 here; 126 closed (v1.36); 127 closed; 128 here; 129 closed (v1.36); 130 here; 131 closed; 132 closed; 133 closed (v1.36); 134 closed; 135 closed; 136 closed; 137 `spec/jolt/replayer.md`; 138 closed; 139 `spec/jolt/replayer.md`; 140 closed (v1.36), its record in `spec/jolt/replayer.md`; 141 closed; 142 closed (v1.36); 143 closed; 144 closed, and reversed (161); 145 closed; 146 closed; 147 `spec/jolt/tracer.md`; 148 `spec/jolt/tracer.md`; 149 closed; 150 closed; 151 closed; 152 closed; 153 `spec/jolt/tracer.md`; 154 closed; 155 closed; 156 closed; 157 closed (v1.36), its record in `spec/jolt/tracer.md`; 158 `spec/jolt/replayer.md`; 159 here; 160 here; 161 here; 162 here; 163 here; 164 here; 165 here; 166 here; 167 here; 168 here; 169 here; 170 here; 171 here; 172 here, closed (v1.37) but the clock; 173 here; 174 `spec/jolt/tracer.md`; 175 `spec/jolt/tracer.md`; 176 `spec/jolt/tracer.md`; 177 `spec/jolt/tracer.md`; 178 here; 179 here; 180 here; 181 here; 182 here; 183 `spec/host-link.md`; 184 `spec/host-link.md`; 185 `spec/host-frames.md`; 186 `spec/host-link.md`; 187 `spec/host-frames.md`; 188 `spec/host-frames.md`; 189 `spec/host-frames.md`; 190 `spec/host-frames.md`.
 
 **Closed in v1.36,** each by the RTL's hardware, which v1.36 takes:
 - **2,** the bank request-queue depth, and **4,** the bound on bank queueing: there is no bank queue. A write

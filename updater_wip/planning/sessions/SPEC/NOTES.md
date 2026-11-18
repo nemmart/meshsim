@@ -353,14 +353,14 @@ More will go here as I check the text against the code.
 | 178 | a flush of the Tracer's dirty lines, at a trace's end or at shutdown: nothing reads them today | 23.6.3 |
 | 179 | the cache writing a set's dirty least recently used line back early, in place (WORKER5's recommendation) | 23.6.7 |
 | 180 | who discards a page when the file system hands it out again | 23.6.8 |
-| 185 | a background link packet with data from below (HL-5; owner: as written) | 28.12 |
-| 186 | a neighbour that goes silent | 28.14 |
-| 187 | the foreground stream's frames but the reply | 28.2 |
-| 188 | the link ends' clock against the chip's (S4; owner: as written) | 28.1 |
-| 189 | a base table by name, or the last established (HF) | 29.8 |
-| 190 | frame 9 past 2^26 words: continuation frames (HF) | 29.13 |
-| 191 | an Updater frame with its own head (HF, DN16 section 10) | 29.1 |
-| 192 | what no frame carries: tables, templates, tiles' images (S7) | 29.1, 30 |
+| 183 | a background link packet with data from below (HL-5; owner: as written) | 28.12 |
+| 184 | a neighbour that goes silent | 28.14 |
+| 185 | the foreground stream's frames but the reply | 28.2 |
+| 186 | the link ends' clock against the chip's (S4; owner: as written) | 28.1 |
+| 187 | a base table by name, or the last established (HF) | 29.8 |
+| 188 | frame 9 past 2^26 words: continuation frames (HF) | 29.13 |
+| 189 | an Updater frame with its own head (HF, DN16 section 10) | 29.1 |
+| 190 | what no frame carries: tables, templates, tiles' images (S7) | 29.1, 30 |
 | 182 | flow control on the line between the special tiles, with the regime that needs it: the file system's | 16.3 |
 | 181 | everything after an error stops the chip: the host's reset, draining the queues, a ready frame (S1, S6, II-18) | 23.7, 30 |
 
@@ -376,7 +376,7 @@ More will go here as I check the text against the code.
 | 6 | S11 | ruled (05:50): a bad root or free page address is UB; the check stays the simulator's |
 | — | UI-1 | R: the brief's table has the Updater as the master tile's peripheral 2 |
 | 7 | II-1 the UART's fields in STATUS | ruled (06:02): as proposed, [12:8], [20:16], [24], [25] |
-| 8 | HL-1, HL-3, HL-5 (item 185), S4 (item 188), `chain_next` | ruled (06:02): as written |
+| 8 | HL-1, HL-3, HL-5 (item 183), S4 (item 186), `chain_next` | ruled (06:02): as written |
 | 9 | II-2 Ingress/Egress's ERRORS bits | ruled (06:06): as proposed |
 | 10 | II-3, II-8 to II-15, S8 | ruled (06:06): as written |
 | 11 | MS-1 the reply frame's fields | ruled (06:14): as recommended (29.14) |

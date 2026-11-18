@@ -330,7 +330,7 @@ Run run_chip(const Segment& s, const Rtl* rtl, const Options& o) {
     // ---- the chip, its images and the segment, before the first cycle
     mach::MachConfig mc = mach::Mach::chip_cfg(-1);
     mc.parts = o.parts; mc.threads = o.parts;
-    mc.host_link = o.proof != nullptr;                                 // v1.37
+    mc.proof = o.proof != nullptr;                                 // v1.37
     mc.lpddr_seed = o.lpddr_seed;
     mach::Mach m(mc);
     m.place_elf(units::ID_MASTER, cc1_elf);

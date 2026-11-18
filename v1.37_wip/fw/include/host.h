@@ -1,55 +1,26 @@
-/* host.h: v1.37's master tile, for firmware: the host link in Ingress/Egress and the Updater, the master tile's
- * peripheral 2, with the frames the host sends. Written by hand, beside mesh.h.
+/* host.h: v1.37's master tile, for firmware: the master.c names for Ingress/Egress (17.6, mesh.h's), the Updater, the
+ * master tile's peripheral 2 (17.10), and the frames the host sends (chapter 30). Written by hand, beside mesh.h.
  *
- * mesh.h is generated from the register table and is v1.36's, as spec/ is: what v1.37 adds is not in the specification
- * yet, and is specified by the design documents of ../v1.4_wip/planning/: INGRESS-INTERFACE.md (the host link),
- * UPDATER-INTERFACE.md (the Updater), HOST-FRAMES.md (the frames). Where this file and those differ, this file is
- * wrong. The hardware is there only on a machine built with the host link (MachConfig::host_link; CHANGES-v1.37.md).
+ * mesh.h is generated from the register table. Where this file and spec/ differ, this file is wrong. Every chip's master
+ * tile has this hardware since v1.37's stage 3 (CHANGES-v1.37.md).
  */
 #ifndef HOST_H
 #define HOST_H
 
 #include "mesh.h"
 
-/* ---- Ingress/Egress with the host link (INGRESS-INTERFACE.md): its DMA, block 1, its two queues' lengths and the
- * forward count, which moves the background queue's words to the Updater's word port or drops them. The words
- * of 17.6 are mesh.h's (ingress_egress->...), at the same window. ---- */
-typedef struct {
-    MESH_RO PARAMS;              /* 0x000 */
-    MESH_RO STATUS;              /* 0x004: [3] foreground_ready, [4] background_ready */
-    MESH_RO ERRORS;              /* 0x008: [1] crc_error, [2] sequence_error, [3] format_error */
-    MESH_RO EVENTS;              /* 0x00C: [1] dma_done, [8] foreground_service, [9] background_service; a load consumes */
-    MESH_RO EVENTS_PEEK;         /* 0x010 */
-    MESH_RW EVENTS_MASK;         /* 0x014 */
-    MESH_WO START;               /* 0x018: UB (17.6) */
-    uint32_t _unmapped_01C[9];
-    MESH_RW DMA_HDR;             /* 0x040: the header block [7:0]; dst [14:8]; count [26:15], words; queue [28:27], the stream */
-    MESH_RW DMA_DEST_ADDR;       /* 0x044: where the first word goes; advances by 16 a word */
-    MESH_WO DMA_START;           /* 0x048: copies the next `count` words of the queue out; no more than it holds */
-    uint32_t _unmapped_04C[61];  /* 0x04C-0x13C: block 1's rest, and 17.6's words (mesh.h) */
-    MESH_RO FOREGROUND_WORDS;    /* 0x140, word 80: the words in the foreground queue (live) */
-    MESH_RO BACKGROUND_WORDS;    /* 0x144, word 81: the same for the background */
-    MESH_RW DMA_FORWARD_COUNT;   /* 0x148, word 82: [30:0] the background's words still to move, [31] discard; 0 at the
-                                    reset. A store replaces it; a load gives what remains: 0 is exact, more may be stale.
-                                    UB: a store while a DMA transfer from the background is in flight */
-    uint32_t _unmapped_14C[45];
-} HostLinkRegs;
-_Static_assert(sizeof(HostLinkRegs) == 0x200 && __builtin_offsetof(HostLinkRegs, DMA_HDR) == 0x040 &&
-               __builtin_offsetof(HostLinkRegs, FOREGROUND_WORDS) == 0x140 && __builtin_offsetof(HostLinkRegs, BACKGROUND_WORDS) == 0x144 &&
-               __builtin_offsetof(HostLinkRegs, DMA_FORWARD_COUNT) == 0x148, "HostLinkRegs");
-#define host_link  ((volatile HostLinkRegs *)0xFFFFFA00u)   /* peripheral 1 on the master tile */
-
-#define HL_STATUS_FOREGROUND_READY  (1 << 3)   /* live: the foreground queue holds words */
-#define HL_STATUS_BACKGROUND_READY  (1 << 4)   /* live: the background queue holds words */
-#define HL_EVENT_FOREGROUND_SERVICE (1 << 8)   /* counted, 1: the queue started to ask: it holds words, no DMA transfer from it */
-#define HL_EVENT_BACKGROUND_SERVICE (1 << 9)   /* counted, 1: the same, with DMA_FORWARD_COUNT's count at 0 as well */
-#define HL_ERROR_CRC                (1 << 1)   /* a packet failed its header CRC or its data checksum */
-#define HL_ERROR_SEQUENCE           (1 << 2)   /* a packet's number was not the next one on its stream */
-#define HL_ERROR_FORMAT             (1 << 3)   /* a packet passed both checks with a field that cannot be */
-#define HL_QUEUE_FOREGROUND         0          /* DMA_HDR.queue: the stream */
+/* ---- Ingress/Egress (17.6): mesh.h's IngressEgressRegs, generated from the register table since v1.37's stage 3 (its
+ * two queues' lengths at words 64 and 65, DMA_FORWARD_COUNT at 66, EGRESS_COUNT at 67, the UART in block 1 and at 42).
+ * `host_link` is the master.c name for it. ---- */
+#define host_link                   ingress_egress
+#define HL_STATUS_FOREGROUND_READY  IE_STATUS_FOREGROUND_READY    /* [2] live: the foreground queue holds words */
+#define HL_STATUS_BACKGROUND_READY  IE_STATUS_BACKGROUND_READY    /* [3] live: the background queue holds words */
+#define HL_EVENT_FOREGROUND_SERVICE IE_EVENT_FOREGROUND_SERVICE   /* [6] counted, 1: the queue asks for service (17.6.7) */
+#define HL_EVENT_BACKGROUND_SERVICE IE_EVENT_BACKGROUND_SERVICE   /* [7] counted, 1: the same, DMA_FORWARD_COUNT's count at 0 too */
+#define HL_QUEUE_FOREGROUND         0          /* DMA_HDR.queue (17.6.4) */
 #define HL_QUEUE_BACKGROUND         1
-#define HL_PACKET_WORDS             32         /* a packet's data, at most */
-#define HL_QUEUE_WORDS              512        /* a queue, 8 KB (owner, pencilled in) */
+#define HL_PACKET_WORDS             32         /* a link packet's data, at most (28) */
+#define HL_QUEUE_WORDS              INGRESS_QUEUE_WORDS            /* a queue: 1,024 words, 16 KB (17.6.3) */
 #define HL_FORWARD_COUNT            0x7FFFFFFFu   /* DMA_FORWARD_COUNT [30:0]: the words still to move */
 #define HL_FORWARD_DISCARD          0x80000000u   /* DMA_FORWARD_COUNT [31]: drop them, not to the Updater */
 

@@ -271,19 +271,22 @@ typedef struct {
     MESH_RW DMA_HDR; MESH_RW DMA_ADDR; MESH_WO PULSE_DMA; uint32_t _block_1[13];
 
 /* the master tile's Ingress/Egress (17.6), v1.35's C&C 1's peripheral: READY is ARRIVALS, READY_EXPECT ARRIVE_EXPECT,
- * PULSE_GO RELEASE */
+ * PULSE_GO RELEASE. v1.37 (17.6.1): UART_TX and UART_RX in block 1, beside the DMA's words, and UART_CONTROL at 42 in
+ * place of v1.36's UART_DIVISOR and UART_STATUS (the UART's levels are in STATUS); the programs that used those
+ * changed with it (cc/cc1.c). */
 typedef struct {
-    PERIPHERAL_STD
+    MESH_RO PARAMS; MESH_RO STATUS; MESH_RO ERRORS; MESH_RO EVENTS; MESH_RO EVENTS_PEEK; MESH_RW EVENTS_MASK;
+    MESH_WO PULSE_RUN; uint32_t _block_0[9];
+    MESH_RW DMA_HDR; MESH_RW DMA_ADDR; MESH_WO PULSE_DMA; uint32_t _block_1[11];
+    MESH_WO UART_TX;
+    MESH_RO UART_RX;
     MESH_RO ERROR_LINES[3];
     MESH_RO READY[2];
     MESH_RW READY_EXPECT[2];
     MESH_WO PULSE_GO;
     MESH_RW WATCHDOG;
     MESH_RW LED;
-    MESH_WO UART_TX;
-    MESH_RO UART_RX;
-    MESH_RW UART_DIVISOR;
-    MESH_RW UART_STATUS;
+    MESH_RW UART_CONTROL;
 } Cnc1Regs;
 
 /* the replayer (17.8.1) */
@@ -322,7 +325,8 @@ _Static_assert(__builtin_offsetof(TableRegs, PTR) == 0x400 && __builtin_offsetof
                __builtin_offsetof(TableRegs, GROUP) == 0x1400, "5.2's windows");
 _Static_assert(__builtin_offsetof(Cnc1Regs, PULSE_RUN) == 0x018 && __builtin_offsetof(Cnc1Regs, DMA_HDR) == 0x040 &&
                __builtin_offsetof(Cnc1Regs, ERROR_LINES) == 0x080 && __builtin_offsetof(Cnc1Regs, READY_EXPECT) == 0x094 &&
-               __builtin_offsetof(Cnc1Regs, PULSE_GO) == 0x09C && __builtin_offsetof(Cnc1Regs, UART_STATUS) == 0x0B4,
+               __builtin_offsetof(Cnc1Regs, PULSE_GO) == 0x09C && __builtin_offsetof(Cnc1Regs, UART_TX) == 0x078 &&
+               __builtin_offsetof(Cnc1Regs, UART_CONTROL) == 0x0A8,
                "17.1's and 17.6's offsets");
 _Static_assert(__builtin_offsetof(ReplayerRegs, EXPANSION_OPCODE) == 0x08C && __builtin_offsetof(TracerRegs, CODE_LENGTH) == 0x094 &&
                __builtin_offsetof(TracerRegs, EXPANSION_TEMPLATE) == 0x0AC && __builtin_offsetof(TracerRegs, STAT) == 0x0B0,

@@ -9,9 +9,9 @@ Commands run from this folder.
 
 | | |
 |---|---|
-| the input | **a packet file:** gold's frame file (`HOST-FRAMES.md`) wrapped in the link's packets (`HOST-LINK.md`), read by Ingress at a byte a cycle (or 2, 4, 8: `--link-rate`) into a queue of 512 words a stream (8 KB, pencilled in). **N and s:** how many ASICs the proof is cut for, and which segment this one runs. No frame carries them |
+| the input | **a packet file:** gold's frame file (`HOST-FRAMES.md`) wrapped in the link's packets (`HOST-LINK.md`), read by Ingress at a byte a cycle (or 2, 4, 8: `--link-rate`) into a queue of 1,024 words a stream (16 KiB, 17.6.3; `INGRESS_QUEUE_WORDS`, the chip's setting `ingressQueueWords`), a link packet's words landing a word a cycle. **N and s:** how many ASICs the proof is cut for, and which segment this one runs. No frame carries them |
 | the master tile | runs `fw/cc/master.c`: reads the frames out of Ingress, keeps the page map, drives the Updater through its runs, and hands the tracer tile segment s. **The forward count** (`INGRESS-INTERFACE.md`; WORKER7): it copies a frame's header word by Ingress's DMA, and for a frame of update words starts the Updater's run and writes the frame's length to `DMA_FORWARD_COUNT` once: Ingress sends the words to the Updater's word port itself. Frames 7 and 8 are dropped up to the ASIC's own record or log, which is copied, and the rest dropped |
-| Ingress's host side | a software black box behind its real registers (`INGRESS-INTERFACE.md`) |
+| Ingress's host side | Ingress/Egress at 17.6's registers; its link, until stage 4, a software black box reading the packet file (`src/units/ingress_egress.h`, THE LINK), and Egress's link packets going nowhere |
 | the Updater | its controller, the state machine (spec 17.10), on the memory system's client port 1 and look-up port 1 |
 | the memory tile | its peripheral 1 the memory system (the cache's controller, the AXI arbiter, the LPDDR model: spec 17.11, 23), peripheral 2 the RW engine on the arbiter's client 2; nothing runs on it in a proof |
 | the Updater | builds the memory images in LPDDR: the program image, the jump table, the cycle-0 image, the start image of segment s, the Tracer's copy, the final image |

@@ -127,6 +127,9 @@ constexpr int PERIPHERAL_OWN = 32;   // words 32-127, blocks 2-7: the peripheral
 
 // Ingress/Egress's words (17.6): the master tile's peripheral 1; no work, no DMA, no writes
 constexpr Reg INGRESS_EGRESS[] = {
+    // v1.37: in block 1, beside the DMA's (17.6.1)
+    {"UART_TX", 30, W, "17.6.9", "-", "[7:0] a character to send; stalls while the TX FIFO is full; dropped while the UART is in reset or enable_write is 0"},
+    {"UART_RX", 31, R, "17.6.9", "0 (empty)", "[7:0] the oldest character received, [8] valid; pops it"},
     {"ERROR_LINES_0", 32, R, "17.6", "0", "bit b: the error line of tile b (0-31)"},
     {"ERROR_LINES_1", 33, R, "17.6", "0", "bit b: the error line of tile 32 + b"},
     {"ERROR_LINES_2", 34, R, "17.6", "0", "bit b: the error line of tile 64 + b: [1] the memory tile's, [2] the tracer tile's; [0], the master tile's own, reads 0"},
@@ -137,19 +140,11 @@ constexpr Reg INGRESS_EGRESS[] = {
     {"RELEASE", 39, W, "17.6", "-", "a store with bit 0 set releases the barrier: clears ARRIVALS, restarts the watchdog"},
     {"WATCHDOG", 40, RW, "17.6", "0 (off)", "a store sets the limit and the count, 0 stops it; a load returns the count"},
     {"LED", 41, RW, "17.6", "0", "[0] the led pin"},
-    {"UART_TX", 42, W, "17.6", "-", "[7:0] a byte to send; stalls while the TX FIFO is full"},
-    {"UART_RX", 43, R, "17.6", "0 (empty)", "[7:0] the oldest byte received, [8] valid; pops it"},
-    {"UART_DIVISOR", 44, RW, "17.6", "UART_RESET_DIVISOR", "[15:0] the cycles per bit; 0 is UB"},
-    {"UART_STATUS", 45, RW, "17.6", "0", "the TX FIFO's bytes [4:0], the RX FIFO's [12:8], rx_overrun [16], framing_error [17]; a store clears each error it writes 1"},
-    {"STREAM_OUT_W0", 64, W, "17.6", "0", "word 0 of the next beat out; cleared by the push"},
-    {"STREAM_OUT_W1", 65, W, "17.6", "0", "word 1 of the next beat out"},
-    {"STREAM_OUT_W2", 66, W, "17.6", "0", "word 2 of the next beat out"},
-    {"STREAM_SEND", 67, W, "17.6", "-", "the beat's top word; pushes the beat, TLAST 0; stalls while the transmit FIFO is full"},
-    {"STREAM_SEND_LAST", 68, W, "17.6", "-", "the beat's top word; pushes the beat, TLAST 1"},
-    {"STREAM_IN_W0", 69, R, "17.6", "0 (empty)", "word 0 of the oldest beat in"},
-    {"STREAM_IN_W1", 70, R, "17.6", "0 (empty)", "word 1 of the oldest beat in"},
-    {"STREAM_IN_W2", 71, R, "17.6", "0 (empty)", "word 2 of the oldest beat in"},
-    {"STREAM_RECEIVE", 72, R, "17.6", "0 (empty)", "the oldest beat's top word; pops it"},
+    {"UART_CONTROL", 42, RW, "17.6.9", "0 (the UART in reset)", "[15:0] divider, the cycles a bit; [16] enable_read; [17] enable_write; 0 holds the UART in reset"},
+    {"FOREGROUND_WORDS", 64, R, "17.6.1", "0", "[10:0] the 128-bit words in the foreground queue, 0 to 1,024; live"},
+    {"BACKGROUND_WORDS", 65, R, "17.6.1", "0", "[10:0] the same for the background queue"},
+    {"DMA_FORWARD_COUNT", 66, RW, "17.6.5", "0", "[30:0] count, the words still to move out of the background queue; [31] discard"},
+    {"EGRESS_COUNT", 67, RW, "17.6.8", "0", "the 128-bit words of the frame being queued for the host still to come"},
 };
 // the RW engine's words (17.7): the memory tile's peripheral 1; its DMA sends output queues 0 (a read's beats) and 1 (the reply)
 constexpr Reg RW_ENGINE[] = {
@@ -196,7 +191,7 @@ struct Peripheral {
     const char* c_struct; const char* c_pointer; const char* prefix; const Reg* regs; int n_regs;
 };
 constexpr Peripheral PERIPHERALS[] = {
-    {"Ingress/Egress", 1, "17.6", "the master tile", false, "IngressEgressRegs", "ingress_egress", "IE", INGRESS_EGRESS,
+    {"Ingress/Egress", 1, "17.6", "the master tile", true, "IngressEgressRegs", "ingress_egress", "IE", INGRESS_EGRESS,
      sizeof(INGRESS_EGRESS) / sizeof(Reg)},
     {"the RW engine", 2, "17.7", "the memory tile", true, "RwEngineRegs", "rw_engine", "RW", RW_ENGINE,
      sizeof(RW_ENGINE) / sizeof(Reg)},
@@ -296,14 +291,18 @@ constexpr Field FIELDS[] = {
     {"P_PARAMS", "constants", 16, 16, GET, "the peripheral's constants"},
     // Ingress/Egress (17.6)
     {"LED", "led", 0, 1, DOC, "the led pin"},
-    {"UART_TX", "byte", 0, 8, DOC, "a byte to send"},
-    {"UART_RX", "byte", 0, 8, GET, "the oldest byte received"},
-    {"UART_RX", "valid", 8, 1, FLAG, "1 with a byte; 0 with the RX FIFO empty"},
-    {"UART_DIVISOR", "divisor", 0, 16, DOC, "the cycles per bit"},
-    {"UART_STATUS", "tx_bytes", 0, 5, GET, "the TX FIFO's bytes"},
-    {"UART_STATUS", "rx_bytes", 8, 5, GET, "the RX FIFO's bytes"},
-    {"UART_STATUS", "rx_overrun", 16, 1, FLAG, "a frame ended with the RX FIFO full; a store of 1 clears it"},
-    {"UART_STATUS", "framing_error", 17, 1, FLAG, "a frame's stop bit was 0; a store of 1 clears it"},
+    {"UART_TX", "char", 0, 8, DOC, "a character to send"},
+    {"UART_RX", "char", 0, 8, GET, "the oldest character received"},
+    {"UART_RX", "valid", 8, 1, FLAG, "1 with a character; 0 with the RX FIFO empty"},
+    {"UART_CONTROL", "divider", 0, 16, BOTH, "the cycles of the chip's clock a bit lasts; 0 with a non-zero UART_CONTROL is UB"},
+    {"UART_CONTROL", "enable_read", 16, 1, FLAG, "the line in is listened to"},
+    {"UART_CONTROL", "enable_write", 17, 1, FLAG, "the TX FIFO's characters are sent"},
+    {"FOREGROUND_WORDS", "words", 0, 11, GET, "the 128-bit words in the queue"},
+    {"BACKGROUND_WORDS", "words", 0, 11, GET, "the 128-bit words in the queue"},
+    {"DMA_FORWARD_COUNT", "count", 0, 31, BOTH, "the words still to move"},
+    {"DMA_FORWARD_COUNT", "discard", 31, 1, FLAG, "0 each goes to the Updater, 1 each is dropped"},
+    {"IE_STATUS", "uart_tx_bytes", 8, 5, GET, "STATUS: the characters in the UART's TX FIFO, 0 to 16"},
+    {"IE_STATUS", "uart_rx_bytes", 16, 5, GET, "STATUS: the characters in its RX FIFO"},
     // the RW engine (17.7)
     {"RW_CONFIG", "kind", 0, 1, BOTH, "0 a read, 1 a write"},
     {"RW_CONFIG", "beats", 1, 10, BOTH, "the beats to move, 0-1023"},
@@ -371,14 +370,21 @@ constexpr Bit BITS[] = {
     {"P_EVENT", 0, 1, "done", "counted, 1", "the end of the peripheral's work (17.2)"},
     {"P_EVENT", 1, 1, "dma_done", "counted, 1", "the end of its DMA's transfer (17.4)"},
     // Ingress/Egress (17.6)
-    {"IE_STATUS", 2, 1, "stream_last", "state", "the TLAST of the oldest beat in; 0 while there is none"},
+    {"IE_STATUS", 2, 1, "foreground_ready", "live", "the foreground queue holds words"},
+    {"IE_STATUS", 3, 1, "background_ready", "live", "the background queue holds words"},
+    {"IE_STATUS", 24, 1, "rx_overrun", "state", "a character arrived with the RX FIFO full and was dropped; until the UART's reset"},
+    {"IE_STATUS", 25, 1, "framing_error", "state", "a character's stop bit was 0 and it was dropped; until the UART's reset"},
     {"IE_ERROR", 0, 1, "tile_error", "live", "any bit of ERROR_LINES is 1"},
+    {"IE_ERROR", 1, 1, "link_error", "H", "sticky: a link end of this ASIC has started its link again (28.9)"},
+    {"IE_ERROR", 2, 1, "format_error", "H", "sticky: with link_error, the cause a link packet made wrong twice running (28.7)"},
+    {"IE_ERROR", 3, 1, "egress_error", "P", "sticky: a word written into a full outgoing queue, or with EGRESS_COUNT at 0 (17.6.8)"},
     {"IE_EVENT", 2, 1, "all_arrived", "live", "(ARRIVALS & ARRIVE_EXPECT) = ARRIVE_EXPECT, and not 0"},
     {"IE_EVENT", 3, 1, "watchdog", "counted, 1", "the watchdog's expiry"},
-    {"IE_EVENT", 4, 1, "uart_rx", "live", "a byte in the UART's RX FIFO"},
-    {"IE_EVENT", 5, 1, "uart_tx", "live", "room in the UART's TX FIFO"},
-    {"IE_EVENT", 6, 1, "stream_in", "live", "a beat in the host interface's receive FIFO"},
-    {"IE_EVENT", 7, 1, "stream_out", "live", "room in the host interface's transmit FIFO"},
+    {"IE_EVENT", 4, 1, "uart_rx", "live", "a character in the UART's RX FIFO; 0 while the UART is in reset"},
+    {"IE_EVENT", 5, 1, "uart_tx", "live", "room in the UART's TX FIFO; 0 while the UART is in reset"},
+    {"IE_EVENT", 6, 1, "foreground_service", "counted, 1", "the foreground queue asks for service (17.6.7)"},
+    {"IE_EVENT", 7, 1, "background_service", "counted, 1", "the background queue asks for service (17.6.7)"},
+    {"IE_EVENT", 8, 1, "egress_credit", "counted, 2", "the outgoing queue's credit (17.6.8)"},
     // the RW engine (17.7)
     {"RW_ERROR", 0, 1, "lpddr_error", "P or H", "a read beat or a write response that is not OKAY"},
     // the replayer (17.8.1)
@@ -483,8 +489,8 @@ constexpr Value VALUES[] = {
     {"PARAM", "RECEIVE_QUEUE_DEPTH_MASTER", 128, "the master tile's receive queue (11.3): a tile has at most 1 request outstanding"},
     {"PARAM", "RECEIVE_QUEUE_DEPTH_MEMORY", 256, "the memory tile's: at most 3 outstanding"},
     {"PARAM", "RECEIVE_QUEUE_DEPTH_TRACER", 128, "the tracer tile's: at most 1 outstanding"},
-    {"PARAM", "STREAM_BYTES", 4, "a host-interface beat's TDATA, in bytes (17.6)"},
-    {"PARAM", "STREAM_DEPTH", 4, "each host-interface FIFO's beats"},
+    {"PARAM", "INGRESS_QUEUE_WORDS", 1024, "each incoming queue, in 128-bit words; stop at half (17.6.3)"},
+    {"PARAM", "EGRESS_QUEUE_WORDS", 512, "the outgoing queue; a credit is half of it (17.6.8)"},
     {"PARAM", "UART_FIFO_DEPTH", 16, "each UART FIFO's bytes"},
     {"PARAM", "LPDDR_ADDRESS_BITS", 32, "an LPDDR byte address (17.7)"},
     {"PARAM", "RW_QUEUE_BEATS", 16, "the RW engine's output queue 0"},
@@ -502,6 +508,7 @@ inline uint32_t value(const char* macro) {
 // ---- the peripherals' regions (17.7, 17.8.9, 17.9.2): byte offsets in region 0x04 ---------------------------------------
 struct RegionPart { const char* prefix; const char* macro; uint32_t offset; const char* doc; };
 constexpr RegionPart REGION_PARTS[] = {
+    {"IE", "IE_EGRESS", 0x100000, "part 1: the outgoing queue, 128-bit WRITEs of the frame's words (17.6.8)"},
     {"RW", "RW_BUFFER", 0x000000, "the write buffer, RW_BUFFER_BYTES in rows of 16 bytes; WRITEs of 32, 64 and 128 bits"},
     {"RP", "RP_STATE", 0x000000, "the state word, 16 bytes; its write resets the pass (17.8.8)"},
     {"RP", "RP_STREAMS", 0x000010, "the stream word, 16 bytes"},

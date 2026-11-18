@@ -1,15 +1,12 @@
-// ie_far_end.h: the far ends of Ingress/Egress's pins and ports (machine-spec 17.6, 18, 3), for the tests: the serial
-// line's other end and the LVDS IO block, which are not chip hardware. A test attaches one to the master tile's
+// ie_far_end.h: the far end of Ingress/Egress's pins (machine-spec 17.6, 18), for the tests: the serial line's other
+// end, which is not chip hardware. (v1.37's stage 3: v1.36's LVDS stream, lvds_in and lvds_out, is gone; the host link
+// is chapter 28's.) A test attaches one to the master tile's
 // Ingress/Egress (units/ingress_egress.h, THE PINS AND THE PORTS) with attach(): Ingress/Egress then calls cycle() once
 // in every cycle t, with its outputs' levels in t, and takes the inputs' levels for t that the far end gives.
 //
 //   the trace     every output's level in every cycle from the first one stepped: at(t). Checked contiguous.
 //   uart_rx       `rx`, the pin's level by cycle (1, the idle line, past its end); frame() and needle_frame() write
 //                 frames into it.
-//   lvds_in       `offers`, the beats the block offers in order: each from its cycle `from` (or from the cycle after
-//                 the beat before it was taken, if that is later), TVALID, TDATA and TLAST held until the handshake
-//                 (AXI4-Stream); `taken_at` has each handshake's cycle.
-//   lvds_out      TREADY in cycle t is `ready(t)` (none: 0); `got` has each handshake's cycle, TDATA and TLAST.
 //   `drive`       if set, gives a cycle's inputs itself, after the scripts above (a test whose far end is its own).
 //
 // decode_tx() reads the frames off the trace of uart_tx: for each falling edge after an idle line or a stop bit, the
@@ -63,22 +60,6 @@ struct IeFarEnd {
         }
     }
 
-    // ---- lvds_in ----
-    struct Offer { int64_t from; uint32_t w[4]; bool last; };
-    std::vector<Offer> offers;
-    size_t next_offer = 0;
-    std::vector<int64_t> taken_at;
-    int64_t held_valid = 0;            // cycles a beat was offered and not taken
-
-    // ---- lvds_out ----
-    std::function<bool(int64_t)> ready;
-    struct Got { int64_t t; uint32_t w[4]; bool last; };
-    std::vector<Got> got;
-    // AXI4-Stream's rule on lvds_out: once TVALID is 1 it stays 1, with TDATA and TLAST unchanged, until the handshake
-    uint64_t out_violations = 0;
-    bool out_pending = false;
-    Pins::Out out_was;
-
     std::function<void(int64_t, const Pins::Out&, Pins::In&)> drive;
 
     void attach(units::IngressEgress& ie) { ie.boundary = &IeFarEnd::cycle; ie.far_end = this; }
@@ -95,28 +76,7 @@ struct IeFarEnd {
         if (t != first + int64_t(out.size())) FATAL("IeFarEnd: cycle %lld after %lld: Ingress/Egress skipped a cycle", (long long)t, (long long)(first + int64_t(out.size()) - 1));
         out.push_back(o);
         in.uart_rx = size_t(t) < rx.size() ? rx[size_t(t)] != 0 : true;
-        if (next_offer < offers.size() && t >= offers[next_offer].from) {
-            const Offer& b = offers[next_offer];
-            in.lvds_in_tvalid = true; in.lvds_in_tlast = b.last;
-            for (unsigned k = 0; k < 4; k++) in.lvds_in_tdata[k] = b.w[k];
-        }
-        in.lvds_out_tready = ready ? ready(t) : false;
         if (drive) drive(t, o, in);
-        // the handshakes of this cycle
-        if (in.lvds_in_tvalid && o.lvds_in_tready) { taken_at.push_back(t); if (!drive) next_offer++; }
-        else if (in.lvds_in_tvalid) held_valid++;
-        if (out_pending) {
-            bool same = o.lvds_out_tvalid && o.lvds_out_tlast == out_was.lvds_out_tlast;
-            for (unsigned k = 0; k < 4; k++) same = same && o.lvds_out_tdata[k] == out_was.lvds_out_tdata[k];
-            if (!same) out_violations++;
-        }
-        out_pending = o.lvds_out_tvalid && !in.lvds_out_tready;
-        out_was = o;
-        if (o.lvds_out_tvalid && in.lvds_out_tready) {
-            Got g{t, {}, o.lvds_out_tlast};
-            for (unsigned k = 0; k < 4; k++) g.w[k] = o.lvds_out_tdata[k];
-            got.push_back(g);
-        }
     }
 
     // ---- the UART's line, decoded ----

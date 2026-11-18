@@ -351,10 +351,12 @@ bad packet (17.1). Blocks 0 and 1 are the same on every peripheral; blocks 2-7 a
 
 ### 5.1 Ingress/Egress
 
-Peripheral 1 of the master tile, type 1, version 0 (17.6); it has no DMA: its block 1 reads 0. In C: `ingress_egress->NAME` (`IngressEgressRegs`).
+Peripheral 1 of the master tile, type 1, version 1 (17.6); it has a DMA. In C: `ingress_egress->NAME` (`IngressEgressRegs`).
 
 | offset | block, word | register | access | reset | function | section | `mesh.h` offset |
 |---|---|---|---|---|---|---|---|
+| `0x078` | 1, 14 | `UART_TX` | W | - | [7:0] a character to send; stalls while the TX FIFO is full; dropped while the UART is in reset or enable_write is 0 | 17.6.9 | `IE_OFF_UART_TX` |
+| `0x07C` | 1, 15 | `UART_RX` | R | 0 (empty) | [7:0] the oldest character received, [8] valid; pops it | 17.6.9 | `IE_OFF_UART_RX` |
 | `0x080` | 2, 0 | `ERROR_LINES_0` | R | 0 | bit b: the error line of tile b (0-31) | 17.6 | `IE_OFF_ERROR_LINES_0` |
 | `0x084` | 2, 1 | `ERROR_LINES_1` | R | 0 | bit b: the error line of tile 32 + b | 17.6 | `IE_OFF_ERROR_LINES_1` |
 | `0x088` | 2, 2 | `ERROR_LINES_2` | R | 0 | bit b: the error line of tile 64 + b: [1] the memory tile's, [2] the tracer tile's; [0], the master tile's own, reads 0 | 17.6 | `IE_OFF_ERROR_LINES_2` |
@@ -365,57 +367,66 @@ Peripheral 1 of the master tile, type 1, version 0 (17.6); it has no DMA: its bl
 | `0x09C` | 2, 7 | `RELEASE` | W | - | a store with bit 0 set releases the barrier: clears ARRIVALS, restarts the watchdog | 17.6 | `IE_OFF_RELEASE` |
 | `0x0A0` | 2, 8 | `WATCHDOG` | R/W | 0 (off) | a store sets the limit and the count, 0 stops it; a load returns the count | 17.6 | `IE_OFF_WATCHDOG` |
 | `0x0A4` | 2, 9 | `LED` | R/W | 0 | [0] the led pin | 17.6 | `IE_OFF_LED` |
-| `0x0A8` | 2, 10 | `UART_TX` | W | - | [7:0] a byte to send; stalls while the TX FIFO is full | 17.6 | `IE_OFF_UART_TX` |
-| `0x0AC` | 2, 11 | `UART_RX` | R | 0 (empty) | [7:0] the oldest byte received, [8] valid; pops it | 17.6 | `IE_OFF_UART_RX` |
-| `0x0B0` | 2, 12 | `UART_DIVISOR` | R/W | UART_RESET_DIVISOR | [15:0] the cycles per bit; 0 is UB | 17.6 | `IE_OFF_UART_DIVISOR` |
-| `0x0B4` | 2, 13 | `UART_STATUS` | R/W | 0 | the TX FIFO's bytes [4:0], the RX FIFO's [12:8], rx_overrun [16], framing_error [17]; a store clears each error it writes 1 | 17.6 | `IE_OFF_UART_STATUS` |
-| `0x100` | 4, 0 | `STREAM_OUT_W0` | W | 0 | word 0 of the next beat out; cleared by the push | 17.6 | `IE_OFF_STREAM_OUT_W0` |
-| `0x104` | 4, 1 | `STREAM_OUT_W1` | W | 0 | word 1 of the next beat out | 17.6 | `IE_OFF_STREAM_OUT_W1` |
-| `0x108` | 4, 2 | `STREAM_OUT_W2` | W | 0 | word 2 of the next beat out | 17.6 | `IE_OFF_STREAM_OUT_W2` |
-| `0x10C` | 4, 3 | `STREAM_SEND` | W | - | the beat's top word; pushes the beat, TLAST 0; stalls while the transmit FIFO is full | 17.6 | `IE_OFF_STREAM_SEND` |
-| `0x110` | 4, 4 | `STREAM_SEND_LAST` | W | - | the beat's top word; pushes the beat, TLAST 1 | 17.6 | `IE_OFF_STREAM_SEND_LAST` |
-| `0x114` | 4, 5 | `STREAM_IN_W0` | R | 0 (empty) | word 0 of the oldest beat in | 17.6 | `IE_OFF_STREAM_IN_W0` |
-| `0x118` | 4, 6 | `STREAM_IN_W1` | R | 0 (empty) | word 1 of the oldest beat in | 17.6 | `IE_OFF_STREAM_IN_W1` |
-| `0x11C` | 4, 7 | `STREAM_IN_W2` | R | 0 (empty) | word 2 of the oldest beat in | 17.6 | `IE_OFF_STREAM_IN_W2` |
-| `0x120` | 4, 8 | `STREAM_RECEIVE` | R | 0 (empty) | the oldest beat's top word; pops it | 17.6 | `IE_OFF_STREAM_RECEIVE` |
+| `0x0A8` | 2, 10 | `UART_CONTROL` | R/W | 0 (the UART in reset) | [15:0] divider, the cycles a bit; [16] enable_read; [17] enable_write; 0 holds the UART in reset | 17.6.9 | `IE_OFF_UART_CONTROL` |
+| `0x100` | 4, 0 | `FOREGROUND_WORDS` | R | 0 | [10:0] the 128-bit words in the foreground queue, 0 to 1,024; live | 17.6.1 | `IE_OFF_FOREGROUND_WORDS` |
+| `0x104` | 4, 1 | `BACKGROUND_WORDS` | R | 0 | [10:0] the same for the background queue | 17.6.1 | `IE_OFF_BACKGROUND_WORDS` |
+| `0x108` | 4, 2 | `DMA_FORWARD_COUNT` | R/W | 0 | [30:0] count, the words still to move out of the background queue; [31] discard | 17.6.5 | `IE_OFF_DMA_FORWARD_COUNT` |
+| `0x10C` | 4, 3 | `EGRESS_COUNT` | R/W | 0 | the 128-bit words of the frame being queued for the host still to come | 17.6.8 | `IE_OFF_EGRESS_COUNT` |
 
 Every other word of blocks 2-7 is unmapped.
 
 | register | bits | field | meaning | `mesh.h` |
 |---|---|---|---|---|
 | `LED` | [0] | `led` | the led pin |  |
-| `UART_TX` | [7:0] | `byte` | a byte to send |  |
-| `UART_RX` | [7:0] | `byte` | the oldest byte received | `UART_RX_BYTE(w)` |
-| `UART_RX` | [8] | `valid` | 1 with a byte; 0 with the RX FIFO empty | `UART_RX_VALID` |
-| `UART_DIVISOR` | [15:0] | `divisor` | the cycles per bit |  |
-| `UART_STATUS` | [4:0] | `tx_bytes` | the TX FIFO's bytes | `UART_STATUS_TX_BYTES(w)` |
-| `UART_STATUS` | [12:8] | `rx_bytes` | the RX FIFO's bytes | `UART_STATUS_RX_BYTES(w)` |
-| `UART_STATUS` | [16] | `rx_overrun` | a frame ended with the RX FIFO full; a store of 1 clears it | `UART_STATUS_RX_OVERRUN` |
-| `UART_STATUS` | [17] | `framing_error` | a frame's stop bit was 0; a store of 1 clears it | `UART_STATUS_FRAMING_ERROR` |
+| `UART_TX` | [7:0] | `char` | a character to send |  |
+| `UART_RX` | [7:0] | `char` | the oldest character received | `UART_RX_CHAR(w)` |
+| `UART_RX` | [8] | `valid` | 1 with a character; 0 with the RX FIFO empty | `UART_RX_VALID` |
+| `UART_CONTROL` | [15:0] | `divider` | the cycles of the chip's clock a bit lasts; 0 with a non-zero UART_CONTROL is UB | `UART_CONTROL_DIVIDER(v)`, `UART_CONTROL_DIVIDER_OF(w)` |
+| `UART_CONTROL` | [16] | `enable_read` | the line in is listened to | `UART_CONTROL_ENABLE_READ` |
+| `UART_CONTROL` | [17] | `enable_write` | the TX FIFO's characters are sent | `UART_CONTROL_ENABLE_WRITE` |
+| `FOREGROUND_WORDS` | [10:0] | `words` | the 128-bit words in the queue | `FOREGROUND_WORDS_WORDS(w)` |
+| `BACKGROUND_WORDS` | [10:0] | `words` | the 128-bit words in the queue | `BACKGROUND_WORDS_WORDS(w)` |
+| `DMA_FORWARD_COUNT` | [30:0] | `count` | the words still to move | `DMA_FORWARD_COUNT_COUNT(v)`, `DMA_FORWARD_COUNT_COUNT_OF(w)` |
+| `DMA_FORWARD_COUNT` | [31] | `discard` | 0 each goes to the Updater, 1 each is dropped | `DMA_FORWARD_COUNT_DISCARD` |
+| `IE_STATUS` | [12:8] | `uart_tx_bytes` | STATUS: the characters in the UART's TX FIFO, 0 to 16 | `IE_STATUS_UART_TX_BYTES(w)` |
+| `IE_STATUS` | [20:16] | `uart_rx_bytes` | STATUS: the characters in its RX FIFO | `IE_STATUS_UART_RX_BYTES(w)` |
 
 | bit | state | kind | meaning | `mesh.h` |
 |---|---|---|---|---|
-| 2 | `stream_last` | state | the TLAST of the oldest beat in; 0 while there is none | `IE_STATUS_STREAM_LAST` |
+| 2 | `foreground_ready` | live | the foreground queue holds words | `IE_STATUS_FOREGROUND_READY` |
+| 3 | `background_ready` | live | the background queue holds words | `IE_STATUS_BACKGROUND_READY` |
+| 24 | `rx_overrun` | state | a character arrived with the RX FIFO full and was dropped; until the UART's reset | `IE_STATUS_RX_OVERRUN` |
+| 25 | `framing_error` | state | a character's stop bit was 0 and it was dropped; until the UART's reset | `IE_STATUS_FRAMING_ERROR` |
 
 | bit | error | kind | raised by | `mesh.h` |
 |---|---|---|---|---|
 | 0 | `tile_error` | live | any bit of ERROR_LINES is 1 | `IE_ERROR_TILE_ERROR` |
+| 1 | `link_error` | H | sticky: a link end of this ASIC has started its link again (28.9) | `IE_ERROR_LINK_ERROR` |
+| 2 | `format_error` | H | sticky: with link_error, the cause a link packet made wrong twice running (28.7) | `IE_ERROR_FORMAT_ERROR` |
+| 3 | `egress_error` | P | sticky: a word written into a full outgoing queue, or with EGRESS_COUNT at 0 (17.6.8) | `IE_ERROR_EGRESS_ERROR` |
 
 | bit | event | kind | set by | `mesh.h` |
 |---|---|---|---|---|
 | 2 | `all_arrived` | live | (ARRIVALS & ARRIVE_EXPECT) = ARRIVE_EXPECT, and not 0 | `IE_EVENT_ALL_ARRIVED` |
 | 3 | `watchdog` | counted, 1 | the watchdog's expiry | `IE_EVENT_WATCHDOG` |
-| 4 | `uart_rx` | live | a byte in the UART's RX FIFO | `IE_EVENT_UART_RX` |
-| 5 | `uart_tx` | live | room in the UART's TX FIFO | `IE_EVENT_UART_TX` |
-| 6 | `stream_in` | live | a beat in the host interface's receive FIFO | `IE_EVENT_STREAM_IN` |
-| 7 | `stream_out` | live | room in the host interface's transmit FIFO | `IE_EVENT_STREAM_OUT` |
+| 4 | `uart_rx` | live | a character in the UART's RX FIFO; 0 while the UART is in reset | `IE_EVENT_UART_RX` |
+| 5 | `uart_tx` | live | room in the UART's TX FIFO; 0 while the UART is in reset | `IE_EVENT_UART_TX` |
+| 6 | `foreground_service` | counted, 1 | the foreground queue asks for service (17.6.7) | `IE_EVENT_FOREGROUND_SERVICE` |
+| 7 | `background_service` | counted, 1 | the background queue asks for service (17.6.7) | `IE_EVENT_BACKGROUND_SERVICE` |
+| 8 | `egress_credit` | counted, 2 | the outgoing queue's credit (17.6.8) | `IE_EVENT_EGRESS_CREDIT` |
 
-It does no work and sends nothing: a `START` is undefined behaviour, and its region takes no write. Bit *i* of
-`ERROR_LINES` is tile *i*'s error line; the master tile's own bit, 64, and the bits past 66 read 0. Bit *i* of
-`ARRIVALS` is set when compute tile *i*'s arrival reaches it, and cleared by a `RELEASE`. A beat of the host interface
-is `STREAM_BYTES` bytes, `STREAM_BEAT_WORDS` = ceil(`STREAM_BYTES` / 4) words: software stores the words below the
-beat's top in `STREAM_OUT_W0`-`W2`, then its top word in `STREAM_SEND` or `STREAM_SEND_LAST`; `STREAM_IN_W0`-`W2` read
-the words below the oldest beat's top, and `STREAM_RECEIVE` its top word, which pops it.
+It does no work: a `START` is undefined behaviour. Bit *i* of `ERROR_LINES` is tile *i*'s error line; the master
+tile's own bit, 64, and the bits past 66 read 0. Bit *i* of `ARRIVALS` is set when compute tile *i*'s arrival reaches
+it, and cleared by a `RELEASE`. Its DMA copies words of an incoming queue out (`DMA_HDR.queue`: 0 the foreground, 1 the
+background); `DMA_FORWARD_COUNT` moves the background queue's words to the Updater, or drops them. Its region, 0x04,
+part 1 (`IE_EGRESS`), is the outgoing queue: 128-bit `WRITE`s of a frame's words after a store of its length to
+`EGRESS_COUNT`. The UART is off at the reset, `UART_CONTROL` 0, until a store of its setting.
+
+Its region, 0x04 on the master tile:
+
+| offset | contents | `mesh.h` |
+|---|---|---|
+| `0x100000` | part 1: the outgoing queue, 128-bit WRITEs of the frame's words (17.6.8) | `IE_EGRESS` |
 
 ### 5.2 The RW engine
 
@@ -449,7 +460,7 @@ Every other word of blocks 2-7 is unmapped.
 |---|---|---|---|---|
 | 0 | `lpddr_error` | P or H | a read beat or a write response that is not OKAY | `RW_ERROR_LPDDR_ERROR` |
 
-Its region, 0x04 on the memory tile:
+Its region, 0x05 on the memory tile (v1.37: its peripheral 2):
 
 | offset | contents | `mesh.h` |
 |---|---|---|
@@ -725,8 +736,8 @@ Chapter 19's parameters that software needs, at their defaults, the 8 x 8 mesh's
 | 128 | `RECEIVE_QUEUE_DEPTH_MASTER` | the master tile's receive queue (11.3): a tile has at most 1 request outstanding |
 | 256 | `RECEIVE_QUEUE_DEPTH_MEMORY` | the memory tile's: at most 3 outstanding |
 | 128 | `RECEIVE_QUEUE_DEPTH_TRACER` | the tracer tile's: at most 1 outstanding |
-| 4 | `STREAM_BYTES` | a host-interface beat's TDATA, in bytes (17.6) |
-| 4 | `STREAM_DEPTH` | each host-interface FIFO's beats |
+| 1024 | `INGRESS_QUEUE_WORDS` | each incoming queue, in 128-bit words; stop at half (17.6.3) |
+| 512 | `EGRESS_QUEUE_WORDS` | the outgoing queue; a credit is half of it (17.6.8) |
 | 16 | `UART_FIFO_DEPTH` | each UART FIFO's bytes |
 | 32 | `LPDDR_ADDRESS_BITS` | an LPDDR byte address (17.7) |
 | 16 | `RW_QUEUE_BEATS` | the RW engine's output queue 0 |

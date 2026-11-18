@@ -184,8 +184,8 @@ struct ChipProof final : segment::Proof {
                         "%llu packets and %llu words arrived, %u words read out by the DMA, %llu forwarded, %llu discarded, DMA_FORWARD_COUNT 0x%x, %u and %u words "
                         "waiting; %u pages queued by the master\n", name, int(u.busy()), u.word_count(), u.page_count(), u.input_words(), u.free_page_entries(),
                         unsigned(done.size()), (unsigned long long)link.link_packets, (unsigned long long)link.link_words, R[MR_LINK_WORDS],
-                        (unsigned long long)link.link_forwarded, (unsigned long long)link.link_discarded, link.forward, link.link_stream[0].held,
-                        link.link_stream[1].held, R[MR_PAGES_QUEUED]);
+                        (unsigned long long)link.link_forwarded, (unsigned long long)link.link_discarded, link.forward, link.queue[0].held,
+                        link.queue[1].held, R[MR_PAGES_QUEUED]);
         }
     }
 
@@ -239,8 +239,8 @@ struct ChipProof final : segment::Proof {
             const uint32_t tile_bits = (c.expect.ingress_errors ? 1u << 10 : 0) | (c.expect.updater_errors ? 1u << 11 : 0);   // ERRORS.peripheral_1, _2
             if (!run.finished) fail("no exit: the error path must end the run");
             if (R[MR_STATUS] != MR_TRAP) fail("the master's status is %u: an error bit must end in its error path (%u)", R[MR_STATUS], MR_TRAP);
-            if (R[MR_INGRESS_ERRORS] != uint32_t(c.expect.ingress_errors) || link.link_errors != c.expect.ingress_errors)
-                fail("Ingress's ERRORS: 0x%x as the master read it, 0x%x in the end; expected 0x%x", R[MR_INGRESS_ERRORS], unsigned(link.link_errors), unsigned(c.expect.ingress_errors));
+            if (R[MR_INGRESS_ERRORS] != uint32_t(c.expect.ingress_errors) || link.errors(0) != c.expect.ingress_errors)
+                fail("Ingress's ERRORS: 0x%x as the master read it, 0x%x in the end; expected 0x%x", R[MR_INGRESS_ERRORS], unsigned(link.errors(0)), unsigned(c.expect.ingress_errors));
             if (R[MR_UPDATER_ERRORS] != uint32_t(c.expect.updater_errors) || u.errors(0) != c.expect.updater_errors)
                 fail("the Updater's ERRORS: 0x%x as the master read it, 0x%x in the end; expected 0x%x", R[MR_UPDATER_ERRORS], unsigned(u.errors(0)), unsigned(c.expect.updater_errors));
             if (R[MR_TILE_ERRORS] != tile_bits) fail("the tile's ERRORS 0x%x, expected its peripherals' bits alone, 0x%x", R[MR_TILE_ERRORS], tile_bits);
@@ -250,7 +250,7 @@ struct ChipProof final : segment::Proof {
             if (run.finished) fail("the run ended: with the link quiet inside a packet the master must wait");
             if (!link.link_cut) fail("the file did not end inside a packet");
             if (R[MR_STATUS] != 0) fail("the master's status is %u, not 0 (waiting)", R[MR_STATUS]);
-            if (link.link_errors != 0 || u.errors(0) != 0) fail("an error bit: Ingress's 0x%x, the Updater's 0x%x; silence is no error", unsigned(link.link_errors), unsigned(u.errors(0)));
+            if (link.errors(0) != 0 || u.errors(0) != 0) fail("an error bit: Ingress's 0x%x, the Updater's 0x%x; silence is no error", unsigned(link.errors(0)), unsigned(u.errors(0)));
             return;
         }
 
@@ -276,7 +276,7 @@ struct ChipProof final : segment::Proof {
         if (R[MR_TILE_ERRORS] || R[MR_INGRESS_ERRORS] || R[MR_UPDATER_ERRORS] || R[MR_ERROR_LINES] || R[MR_ERROR_LINES + 1] || R[MR_ERROR_LINES + 2])
             fail("an error bit: the tile's 0x%x, Ingress's 0x%x, the Updater's 0x%x, the error lines 0x%x 0x%x 0x%x", R[MR_TILE_ERRORS], R[MR_INGRESS_ERRORS],
                  R[MR_UPDATER_ERRORS], R[MR_ERROR_LINES], R[MR_ERROR_LINES + 1], R[MR_ERROR_LINES + 2]);
-        if (u.errors(0) != 0 || link.link_errors != 0) fail("ERRORS at the end: the Updater's 0x%x, the link's 0x%x", unsigned(u.errors(0)), unsigned(link.link_errors));
+        if (u.errors(0) != 0 || link.errors(0) != 0) fail("ERRORS at the end: the Updater's 0x%x, the link's 0x%x", unsigned(u.errors(0)), unsigned(link.errors(0)));
         // the joint's checks (cache_system.h) are cachefig::faults'; the Updater's bursts on its port, client 1, alone
         if (u.sys->arb.read_bursts[1] + u.sys->arb.write_bursts[1] == 0) fail("no burst of the Updater's on the arbiter's client 1");
         if (u.sys->arb.read_bursts[2] + u.sys->arb.write_bursts[2] != 0) fail("bursts on the arbiter's client 2, the RW engine's, in a proof");

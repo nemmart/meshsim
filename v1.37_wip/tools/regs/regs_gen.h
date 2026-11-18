@@ -76,7 +76,9 @@ inline void bits(std::string& b, const char* group) {
 // the register at window word i of a window: a peripheral's control block and, with a DMA, its DMA block, then its own
 inline const Reg* window_reg(const Reg* own, int n_own, bool is_peripheral, bool dma, int i) {
     if (!is_peripheral || i >= PERIPHERAL_OWN) return reg_at(own, n_own, i);
-    return i < int(BLOCK_WORDS) || dma ? reg_at(PERIPHERAL, N_PERIPHERAL, i) : nullptr;
+    if (i >= int(BLOCK_WORDS) && !dma) return nullptr;
+    if (const Reg* r = reg_at(PERIPHERAL, N_PERIPHERAL, i)) return r;
+    return i >= int(BLOCK_WORDS) ? reg_at(own, n_own, i) : nullptr;   // v1.37: own words in block 1 (17.6.1's UART)
 }
 inline std::string pad(const std::string& s, size_t width) { return s.size() < width ? s + std::string(width - s.size(), ' ') : s + " "; }
 // one window's struct: its registers as members, in window-word order, and the words between them, unmapped.
@@ -272,12 +274,17 @@ inline std::string mesh_h() {
         for (const RegionPart& r : REGION_PARTS)
             if (same(r.prefix, prefix)) def(b, r.macro, fmt("(PERIPHERAL_BASE(%d) + 0x%06X)", peripheral_slot(r.prefix), r.offset), r.doc);
     };
-    b += "\n/* ---- Ingress/Egress (17.6) ---- */\n";
+    b += "\n/* ---- Ingress/Egress (17.6): its bits, fields, its region ---- */\n";
     bits(b, "IE_STATUS");
     bits(b, "IE_ERROR");
     bits(b, "IE_EVENT");
     fields(b, "UART_RX");
-    fields(b, "UART_STATUS");
+    fields(b, "UART_CONTROL");
+    fields(b, "FOREGROUND_WORDS");
+    fields(b, "BACKGROUND_WORDS");
+    fields(b, "DMA_FORWARD_COUNT");
+    fields(b, "IE_STATUS");
+    parts("IE");
     b += "\n/* ---- the RW engine (17.7): its bits, RW_CONFIG, its region ---- */\n";
     bits(b, "RW_ERROR");
     fields(b, "RW_CONFIG");
@@ -618,14 +625,15 @@ bad packet (17.1). Blocks 0 and 1 are the same on every peripheral; blocks 2-7 a
         std::string title = p.name;
         if (title.compare(0, 4, "the ") == 0) title = "The " + title.substr(4);
         b += fmt("\n### 5.%d %s\n\n", sub++, title.c_str());
-        b += fmt("Peripheral %d of %s, type %d, version 0 (%s); %s. In C: `%s->NAME` (`%s`).\n\n", peripheral_slot(p.prefix), p.tile, p.type, p.section,
+        b += fmt("Peripheral %d of %s, type %d, version %d (%s); %s. In C: `%s->NAME` (`%s`).\n\n", peripheral_slot(p.prefix), p.tile, p.type,
+                 same(p.prefix, "IE") ? 1 : 0, p.section,   // v1.37: Ingress/Egress's version 1 (17.6.1)
                  p.dma ? "it has a DMA" : "it has no DMA: its block 1 reads 0", p.c_pointer, p.c_struct);
         rd::regs(b, p.regs, p.n_regs, (std::string(p.prefix) + "_").c_str());
         b += "\nEvery other word of blocks 2-7 is unmapped.\n";
         const std::string pre = p.prefix;
         if (pre == "IE") {
             b += "\n| register | bits | field | meaning | `mesh.h` |\n|---|---|---|---|---|\n";
-            for (const char* w : {"LED", "UART_TX", "UART_RX", "UART_DIVISOR", "UART_STATUS"})
+            for (const char* w : {"LED", "UART_TX", "UART_RX", "UART_CONTROL", "FOREGROUND_WORDS", "BACKGROUND_WORDS", "DMA_FORWARD_COUNT", "IE_STATUS"})
                 for (const Field& f : FIELDS)
                     if (same(f.word, w)) b += fmt("| `%s` | %s | `%s` | %s | %s |\n", w, bits_of(f.lo, f.width).c_str(), f.name, f.doc, rd::macro_cell(f).c_str());
             b += "\n";
@@ -635,13 +643,17 @@ bad packet (17.1). Blocks 0 and 1 are the same on every peripheral; blocks 2-7 a
             b += "\n";
             rd::bits(b, "IE_EVENT", "event");
             b += R"TB(
-It does no work and sends nothing: a `START` is undefined behaviour, and its region takes no write. Bit *i* of
-`ERROR_LINES` is tile *i*'s error line; the master tile's own bit, 64, and the bits past 66 read 0. Bit *i* of
-`ARRIVALS` is set when compute tile *i*'s arrival reaches it, and cleared by a `RELEASE`. A beat of the host interface
-is `STREAM_BYTES` bytes, `STREAM_BEAT_WORDS` = ceil(`STREAM_BYTES` / 4) words: software stores the words below the
-beat's top in `STREAM_OUT_W0`-`W2`, then its top word in `STREAM_SEND` or `STREAM_SEND_LAST`; `STREAM_IN_W0`-`W2` read
-the words below the oldest beat's top, and `STREAM_RECEIVE` its top word, which pops it.
+It does no work: a `START` is undefined behaviour. Bit *i* of `ERROR_LINES` is tile *i*'s error line; the master
+tile's own bit, 64, and the bits past 66 read 0. Bit *i* of `ARRIVALS` is set when compute tile *i*'s arrival reaches
+it, and cleared by a `RELEASE`. Its DMA copies words of an incoming queue out (`DMA_HDR.queue`: 0 the foreground, 1 the
+background); `DMA_FORWARD_COUNT` moves the background queue's words to the Updater, or drops them. Its region, 0x04,
+part 1 (`IE_EGRESS`), is the outgoing queue: 128-bit `WRITE`s of a frame's words after a store of its length to
+`EGRESS_COUNT`. The UART is off at the reset, `UART_CONTROL` 0, until a store of its setting.
+
+Its region, 0x04 on the master tile:
+
 )TB";
+            rd::parts(b, "IE");
         } else if (pre == "RW") {
             b += "\n| register | bits | field | meaning | `mesh.h` |\n|---|---|---|---|---|\n";
             for (const char* w : {"RW_CONFIG", "RW_LPDDR_ADDR", "RW_BUFFER_ADDR"})
@@ -651,7 +663,7 @@ the words below the oldest beat's top, and `STREAM_RECEIVE` its top word, which 
             rd::values(b, "RW_KIND", "`RW_CONFIG.kind`");
             b += "\n`STATUS` and `EVENTS` have the standard bits alone.\n\n";
             rd::bits(b, "RW_ERROR", "error");
-            b += "\nIts region, 0x04 on the memory tile:\n\n";
+            b += "\nIts region, 0x05 on the memory tile (v1.37: its peripheral 2):\n\n";
             rd::parts(b, "RW");
             b += R"TB(
 `START` starts the job `RW_CONFIG` describes. A read's beats enter output queue 0, which a DMA transfer of

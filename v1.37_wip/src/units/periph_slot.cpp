@@ -105,7 +105,8 @@ void SlotCore::install(unsigned n, PeriphType type, const PeriphSlotConfig& c) {
         // (rw_engine.h: its LPDDR controller comes from the harness after the build, rw_engine(n).attach(slave))
         case PT_INGRESS: {
             auto* ie = new IngressEgress();
-            if (c.host_link) ie->host_link_on();           // v1.37: with the host link, and its DMA
+            ie->queue_words = c.ingress_queue_words;       // v1.37 (17.6.3): INGRESS_QUEUE_WORDS
+            ie->reset(0);
             per[n].p = ie;
             break;
         }
@@ -214,7 +215,7 @@ bool SlotCore::peek(int64_t t, unsigned n, unsigned w, uint32_t& v) {
             case P_DMA_DEST_ADDR: v = has_dma ? dma[n].addr : 0; return has_dma;
             case P_DMA_START: v = 0; return has_dma;
             default:
-                if (w < Win::OWN0) { v = 0; return false; }
+                if (w < Win::OWN0 && !Win::low(w)) { v = 0; return false; }
                 v = 0;
                 if (p.word(t, int(w), v)) return true;
                 v = 0;
@@ -224,13 +225,13 @@ bool SlotCore::peek(int64_t t, unsigned n, unsigned w, uint32_t& v) {
 }
 
 bool SlotCore::defined(unsigned n, unsigned w) {
-    if (w < Win::OWN0) return w <= P_START || (w >= P_DMA_HDR && w <= P_DMA_START);
+    if (w < Win::OWN0 && !Win::low(w)) return w <= P_START || (w >= P_DMA_HDR && w <= P_DMA_START);
     uint32_t v;
     return visit(n, [&](auto& p) { return p.word(0, int(w), v); });
 }
 
 bool SlotCore::store_stalls(int64_t t, unsigned n, unsigned w) {
-    return n >= 1 && n <= 3 && per[n].type != PT_ABSENT && w >= Win::OWN0 && visit(n, [&](auto& p) { return p.store_stalls(t, int(w)); });
+    return n >= 1 && n <= 3 && per[n].type != PT_ABSENT && (w >= Win::OWN0 || Win::low(w)) && visit(n, [&](auto& p) { return p.store_stalls(t, int(w)); });
 }
 
 bool SlotCore::write(int64_t t, unsigned n, unsigned w, uint32_t v) {
@@ -253,7 +254,7 @@ bool SlotCore::write(int64_t t, unsigned n, unsigned w, uint32_t v) {
                 dma[n].addr = v;
                 return true;
             default: {
-                if (w < Win::OWN0) { reserved(t, n, w, true); return true; }
+                if (w < Win::OWN0 && !Win::low(w)) { reserved(t, n, w, true); return true; }
                 int r = p.write_word(t, int(w), v);
                 if (r < 0) { reserved(t, n, w, true); return true; }
                 return r > 0;
@@ -503,8 +504,31 @@ void PeriphSlot::full_values(int64_t t, uint32_t* out) {
             out[Win::reg(n, Win::R_WRITABLE + k)] = wr[k]; out[Win::reg(n, Win::R_MAYSTALL + k)] = may[k];
             out[Win::reg(n, Win::R_POPS + k)] = pops[k];
         }
+        low_values(t, n, out);
     }
     out[Win::R_LIVE] = s.live_events(t) | s.live_errors(t) << 3;
+}
+
+// v1.37: peripheral n's own words in block 1 (Win::LOW0 ..), their values and bits, into `out` (the window's layout).
+void PeriphSlot::low_values(int64_t t, unsigned n, uint32_t* out) {
+    uint32_t bits = 0;
+    for (unsigned i = 0; i < Win::LOW_N; i++) {
+        const unsigned w = Win::LOW0 + i;
+        uint32_t v = 0;
+        const bool def = s.peek(t, n, w, v);
+        out[Win::reg(n, Win::R_LOW + i)] = def ? v : 0;
+        if (!def) continue;
+        bits |= 1u << (2 * Win::K_DEFINED + i);
+        if (s.store_stalls(t, n, w)) bits |= 1u << (2 * Win::K_STALL + i);
+        s.visit(n, [&](auto& q) {
+            bool yes = true;
+            if constexpr (requires { q.writable(0); }) yes = q.writable(int(w));
+            if (yes) bits |= 1u << (2 * Win::K_WRITABLE + i);
+            if (q.may_stall(int(w))) bits |= 1u << (2 * Win::K_MAYSTALL + i);
+            if (q.load_pops(int(w))) bits |= 1u << (2 * Win::K_POPS + i);
+        });
+    }
+    out[Win::reg(n, Win::R_LOWBITS)] = bits;
 }
 
 namespace {
@@ -557,6 +581,12 @@ void PeriphSlot::publish(sim::Ctx& c, int64_t t) {
                 uint32_t v = 0;
                 p.word(t, int(Win::OWN0 + k), v);
                 put(base + Win::R_OWN + k, v);
+            }
+            {   // v1.37: the own words in block 1 (Win::R_LOW), recomputed whole: two words
+                uint32_t lo[Win::REGS];
+                low_values(t, n, lo);
+                for (unsigned i = 0; i < Win::LOW_N; i++) put(base + Win::R_LOW + i, lo[base + Win::R_LOW + i]);
+                put(base + Win::R_LOWBITS, lo[base + Win::R_LOWBITS]);
             }
             if constexpr (kOwnStoreStalls<P>) {
                 uint32_t stall[3] = {};

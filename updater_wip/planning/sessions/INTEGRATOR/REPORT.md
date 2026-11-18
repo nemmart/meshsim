@@ -126,3 +126,63 @@ answers from the memory tile now come by the line, and the segment's end is poll
 inside: in 14 of the 37 runs the Updater's busy cycles and its waits on memory by up to 45 cycles, its waits on data
 by up to 19; the master's cycles awake in none of them. The figures are in `runner/248-proof-numbers.md` and
 `248-cache-figures.txt`.
+
+## Stage 3: Ingress/Egress at its registers (17.6)
+
+### What was built
+
+| | where |
+|---|---|
+| **17.6.1's words and bits**: `UART_TX` and `UART_RX` at words 30 and 31 in block 1, beside the DMA's; `UART_CONTROL` at 42; `FOREGROUND_WORDS`, `BACKGROUND_WORDS`, `DMA_FORWARD_COUNT`, `EGRESS_COUNT` at 64 to 67; `STATUS` [2] and [3] the queues, [12:8] and [20:16] the UART's FIFOs, [24] and [25] its line errors; `ERRORS` [1] `link_error`, [2] `format_error`, [3] `egress_error`; `EVENTS` [6] and [7] the service flags, [8] `egress_credit`; `PARAMS` version 1. v1.36's LVDS stream gone (words 64 to 72, `stream_last`, `stream_in`, `stream_out`, `STREAM_BYTES`, `STREAM_DEPTH`) | `src/units/ingress_egress.h` |
+| **the bus and the slot**: words 30 and 31 a DMA peripheral's own words (the slot publishes their values and bits in `Win::R_LOW`, `R_LOWBITS`); a peripheral without a DMA still reads 0 in all of block 1 (17.1) | `src/units/register_bus.h`, `periph_slot.*`, `tile_ctl.h` |
+| **the incoming queues** (17.6.3): `INGRESS_QUEUE_WORDS`, 1,024 (`MachConfig::ingress_queue_words`, setting `ingressQueueWords`; a power of two from 64 to 4,096); a link packet's words landing a 128-bit word a cycle from the packet buffer, one link packet after another, the first at the end of the cycle it is taken, each counted in `…_WORDS` as it lands; the room of the words landed and still to land (28.13.6) | `ingress_egress.h` |
+| **Egress** (17.6.8): the outgoing queue of 512 words, filled by 128-bit `WRITE`s to region 0x04 part 1, the rest of the address ignored; `EGRESS_COUNT` counting down as each word lands, its last word marked; a link packet offered at 32 words of a frame or its last word; `egress_credit` counted to 2, 2 at the reset, one back each 256 words gone; `egress_error` for a word into a full queue or with the count at 0. Until stage 4 its link packets go to a harness's callback (none: they stay) | `ingress_egress.h` |
+| **the UART** (17.6.9): off at the reset, `UART_CONTROL` 0, which is its reset (both FIFOs emptied, the line errors 0, the line out idle, stores dropped, the events 0); its divider and the two enables gating the line alone; the line errors in `STATUS` until the UART's reset | `ingress_egress.h` |
+| **the UB the simulator stops on** (17.6.15, invariant 35): a `START`; a DMA count past the queue; a background transfer with the count running, or a count stored during one; `EGRESS_COUNT` stored while not 0; a `WRITE` into the region of other than 128 bits or to a part other than 1; a frame's words from two sources; a non-zero `UART_CONTROL` with a divider of 0 | `ingress_egress.h` |
+| **every chip's master tile is v1.37's**: Ingress/Egress with its DMA and the Updater's controller as peripheral 2 in every chip with the special tiles. `MachConfig::host_link` is gone (its setting `hostLink` refused by name); `MachConfig::proof` (setting `proof`) says only that a proof comes from the host: the Tracer and the Updater on one store | `src/units/tile_ctl.*`, `periph_slot.*`; `tests/mach.*`, `segment_bench.*`, `test_memory_system.cpp` |
+| **the register table and the firmware**: `mesh.h` and `REGISTERS.md` regenerated with 17.6.1 (and the part `IE_EGRESS`); `host.h`'s link names now mesh.h's; the port layer's `Cnc1Regs` at v1.37's offsets; `cc1.c` turns the UART on where it first prints, its dump; `cc1.elf` and `master.elf` rebuilt | `tools/regs/`; `fw/include/`, `fw/port/mesh.h`, `fw/cc/cc1.c`, `master.c` |
+| the tests | `tests/test_ingress_egress.cpp` rewritten (36: the control block and the reset values, the window map with block 1, the barrier's and the watchdog's as before, the UART's line both ways at its new words, its reset and enables, Egress's count, link packets, credit and errors, every UB); `test_ingress_link` and `test_packet_vectors` at the new words and the landing; `test_rtl_stream`'s UART at its words; `test_regs`, `test_mach`, `test_master`, the proof bench |
+| the planted bugs | `tests/ie_teeth.sh`, rewritten for v1.37's unit |
+
+### Decisions
+
+- **`cc1.c` turns the UART on at its dump, not at its boot.** 30.2 asks for "one store of its setting to
+  `UART_CONTROL`" if the image prints. A store at the boot moved v1.36's segment runs (`test_segment`'s
+  `chip_trace_test_full` by 1,024 cycles, `test_sort`'s barrier by 10) though they never print: v1.36's program on a
+  chip whose UART is off at the reset is the same program until it prints, and the reference cycles move only on
+  purpose. `master.c` does not print.
+- **Egress's link packets go nowhere until stage 4** (a harness may take them: `egress_out`), so its credit is tested at
+  the unit, with a harness taking them at once or holding them.
+- **The black box's link errors** are `link_error`, with `format_error` for a field that cannot be: the nearest 17.6.1
+  has until stage 4, where a damaged link packet is no error at all.
+
+### Disagreements
+
+None with the specification. Two of my own bugs found on the way: the bus first gave words 30 and 31 to every
+peripheral, so a DMA-less peripheral's block 1 would have faulted there (17.1 says it reads 0); and the v1.36 UART
+test's expectation of a reset divisor.
+
+### The checks
+
+| check | result |
+|---|---|
+| `test_ingress_egress` (36), `test_ingress_link` (44), `test_packet_vectors` (6), `test_rtl_stream` (1), `test_regs` (12), `test_mach` (11), `test_memory_system`, `test_rtl_tile` | pass |
+| `test_master`: the guests, the error path (the black box's damaged packets now `link_error`), the teeth | pass |
+| `./run_tests.sh quick --check` | **all passed**; no log differs |
+| **the reference cycles:** `test_segment`'s and `test_sort`'s the same as `main`'s; `test_rtl_stream`'s UART run each figure one cycle later than the RTL chip's (its program's setting is `lui` and `addi`, one instruction more: the first start bit 35, the led's changes, the status after 644, the done word after 5,211); the proof runs' move (the queues of 1,024, the landing): the runner's | |
+| **the planted bugs** (`ie_teeth.sh`, 44): the UART's line both ways (bit order, a bit's length, the sample point, the synchroniser, the divider mid-character, the stop bit, the overrun, a low level starting a character, a pop of a character entering in the load's cycle); its control (a store dropped or kept with the UART off or `enable_write` 0, `enable_write` 0 sending, `enable_read` 0 listening, a store of 0 not resetting, `uart_tx` 1 in reset, the enables swapped, the events swapped, a divider of 0 not caught); 17.6.1 (version 0, the queues' words at 80 and 81, `background_ready` at [4]); the queues (a link packet landing all at once, the room of the words landed alone); Egress (the count falling as words leave, a credit each 512, a frame's last word not ending its link packet, a word kept in a full queue, a word with the count at 0 no error, a count stored while not 0 not caught, a frame from two sources not caught); the bus (`UART_RX` not an own word), the slot (a low word's stall not published, the queue's size not given), the core's path (no pop told, a pop a cycle late) | **44 of 44 caught** (one plant fixed to build: its first form left a parameter unused). NOTES' "stop at full" is stage 4's: the stop bit is the link end's |
+| the 37 proof runs; with LPDDR jittered; `make check` | the runner (below) |
+
+### The runner
+
+| Quest | item | result |
+|---|---|---|
+| 250 | `suites` at `f873c715`: `./run_tests.sh all --check`, the 37 proof runs | **PASS**: every step; the 37 proof runs; no golden log differs; `fw-build` skipped (no RISC-V toolchain on the runner) |
+| 251 | `suites-varied`: the same with every chip's LPDDR jittered (`LPDDR_SEED` 7) | **PASS**: the same, no log differs |
+| 252 | `check`: `make check` | **PASS**: gcc and clang, debug and release, 1,643 s |
+
+**The proof runs' cycles moved, on purpose: every run is 15,360 to 76,288 cycles shorter than at stage 2** (Quest 248).
+The incoming queues went from 512 words to 17.6.3's 1,024, so the link waits for room less: over the 37 runs its
+waits for room fell from 10,677,833 cycles to 9,207,045, and the link's last byte, and with it the hand-over and the
+end, came earlier by about as much. The Updater's busy and waiting-on-data cycles fall with them; its waits on memory
+move by a few hundred either way. The figures are in `runner/250-proof-numbers.md` and `251-proof-numbers.md`.

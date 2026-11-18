@@ -104,8 +104,9 @@ const Field kFields[] = {
     F_U("readyLatency", ready_latency), F_B("cncGoSettle", cnc_go_settle), F_U("cncReaction", cnc_reaction),
     F_B("checkReadPortOverlap", check_read_port_overlap), F_B("bootLocal", boot_local),   // (bootLocal: v1.36's, not ref's)
     F_B("checkDisjoint", check_disjoint), F_L("shuffleSeed", shuffle_seed), F_U("maxViolationMessages", max_violation_messages),
-    F_B("measureS1", measure_s1), F_B("checkErrors", check_errors), F_B("hostLink", host_link),   // (hostLink: v1.37's)
+    F_B("measureS1", measure_s1), F_B("checkErrors", check_errors), F_B("proof", proof),   // (proof: v1.37's; hostLink until stage 3)
     F_U("lpddrSeed", lpddr_seed),                                     // (lpddrSeed: v1.37, the LPDDR model's jitter)
+    F_U("ingressQueueWords", ingress_queue_words),                    // (v1.37: INGRESS_QUEUE_WORDS, 19)
     F_U("cncRxDepth", cnc_rx_depth),
     F_U("replayerLogEntries", replayer_log_entries),   // (not ref's Config: its -Dreplayer.logq; the kit's -q)
 };
@@ -139,6 +140,7 @@ const std::vector<std::pair<std::string, std::string>>& MachConfig::dropped() {
         {"writeCombining", "v1.36: no bank request queues, so no write to combine with (15)"},
         {"fifoCountBeforePop", "v1.36: it chose how a bank request queue judged its room; there is none (15)"},
         {"sramReadLatency", "v1.36: READ_LATENCY, take to row (15, 19): readLatency"},
+        {"hostLink", "v1.37 stage 3: every chip's master tile has the host link's Ingress/Egress and the Updater; a proof from the host: proof"},
         {"ccDmaDepth", "v1.36: no FIFO in front of a DMA's router input: its ready is room in the queue its packet enters (16.4)"},
         {"logTrace", "v1.36: no TRACE word (a program reports with a REPORT request: 11.5)"},
     };
@@ -260,9 +262,9 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
     g.timing.ref_cycle = c.ref_cycle;
     g.mem_chunks = c.mem_chunks;
     g.periph_present = c.periph_type != 0 ? 1 : 0;
-    if (c.host_link && !c.special_tiles) FATAL("mach: host_link is the chip's (the master tile's Ingress/Egress and Updater)");
-    if (c.host_link && c.parts > 1) FATAL("mach: host_link with the chip split over threads: the Updater and the Tracer share one file store");
-    g.host_link = c.host_link;
+    if (c.proof && !c.special_tiles) FATAL("mach: a proof is the chip's (the master tile's Ingress/Egress and Updater)");
+    if (c.proof && c.parts > 1) FATAL("mach: a proof with the chip split over threads: the Updater and the Tracer share one file store");
+    g.ingress_queue_words = c.ingress_queue_words;
     g.periph_slot = c.periph_type != 0 || c.special_tiles;     // ref: every tile's slot holds its peripheral 1 (type 4)
     if (c.periph_type != 0 && c.periph_type != 4) FATAL("mach: periph_type %d (4 the replayer, or 0)", c.periph_type);
     if (c.test_peripheral_tile >= 64) FATAL("mach: test_peripheral_tile %d (a mesh tile)", c.test_peripheral_tile);
@@ -330,7 +332,7 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         if (seed) { cs.lpddr.jitter = true; cs.lpddr.seed = seed; }
         units::tracer::FileStore* store = nullptr;
         units::tracer::Tracer* tr = nullptr;
-        if (c.host_link) {   // one file store: the Updater's, through the memory system, and the Tracer's
+        if (c.proof) {   // one file store: the Updater's, through the memory system, and the Tracer's
             tr = &m.sim->unit<units::PeriphSlot>(units::unit_prefix(units::ID_TRACER) + "slot").s.tracer(1);
             tr->own_memory(std::make_unique<units::tracer::FileStore>());
             store = tr->store();
@@ -342,13 +344,11 @@ Chip::Chip(const MachConfig& c) : cfg_(c), impl_(std::make_unique<Impl>()) {
         units::PeriphSlot& mem = m.sim->unit<units::PeriphSlot>(units::unit_prefix(units::ID_MEMORY) + "slot");
         mem.s.memory_system(1).attach(m.cache_system.get());
         mem.s.rw_engine(2).attach(&m.cache_system->rw);
-        if (tr) {
-            m.cache_system->attach(*tr);
-            units::UpdaterTop& u = m.sim->unit<units::PeriphSlot>(units::unit_prefix(units::ID_MASTER) + "slot").s.updater_ctl(2);
-            u.lpddr = &m.cache_system->updater_axi;
-            u.cache = &m.cache_system->updater_lookup;
-            u.store = store;
-        }
+        if (tr) m.cache_system->attach(*tr);
+        units::UpdaterTop& u = m.sim->unit<units::PeriphSlot>(units::unit_prefix(units::ID_MASTER) + "slot").s.updater_ctl(2);
+        u.lpddr = &m.cache_system->updater_axi;
+        u.cache = &m.cache_system->updater_lookup;
+        u.store = store;
     }
     m.shifted = {m.sim->type_of(units::tile_unit(0, "ctl")), m.sim->type_of(units::tile_unit(0, "core"))};
     if (!c.special_tiles) m.lines = {m.sim->type_of("row0"), m.sim->type_of("cnc")};
@@ -1431,11 +1431,11 @@ uint32_t Mach::word(unsigned unit, uint32_t a) const { return const_cast<Chip&>(
 
 // ---- v1.37's chip
 units::IngressEgress& Mach::ingress() {
-    if (!c.cfg().host_link) FATAL("mach: no host link on this machine (MachConfig::host_link)");
+    if (!c.cfg().special_tiles) FATAL("mach: no Ingress/Egress on this machine (MachConfig::special_tiles)");
     return c.unit<units::PeriphSlot>(units::unit_prefix(units::ID_MASTER) + "slot").s.ingress_egress(1);
 }
 units::UpdaterTop& Mach::updater() {
-    if (!c.cfg().host_link) FATAL("mach: no Updater on this machine (MachConfig::host_link)");
+    if (!c.cfg().special_tiles) FATAL("mach: no Updater on this machine (MachConfig::special_tiles)");
     return c.unit<units::PeriphSlot>(units::unit_prefix(units::ID_MASTER) + "slot").s.updater_ctl(2);
 }
 units::tracer::FileStore& Mach::store() { return *cache_system().store(); }

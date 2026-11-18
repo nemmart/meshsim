@@ -34,7 +34,7 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
     const std::string t = unit_prefix(k);
     // (harness-only): the test peripheral on one tile
     const bool test_k = int(k) == g.cfg.test_periph_tile;
-    const bool link_k = g.cfg.host_link && k == lw::CC1;   // v1.37's master tile: Ingress/Egress with the host link, and the Updater
+    const bool link_k = k == lw::CC1;                      // v1.37's master tile (stage 3): Ingress/Egress (17.6), with its DMA, and the Updater
     // v1.37: the memory tile has two peripherals, the memory system (17.11) and the RW engine (17.7)
     const uint32_t periph_present = test_k ? 1u : (link_k || k == lw::CC2) ? 3u : g.cfg.periph_present;
     const bool periph_slot = test_k || g.cfg.periph_slot;
@@ -144,7 +144,7 @@ ControlIO add_g1(sim::Config& cfg, unsigned k, void* ctx) {
             pc.controller = k != lw::CC1 || link_k;
             pc.type[1] = k == lw::CC1 ? PT_INGRESS : k == lw::CC2 ? PT_MEMSYS : PT_TRACER;
             if (k == lw::CC2) pc.type[2] = PT_RW;                // v1.37: the RW engine the memory tile's peripheral 2 (17.7)
-            if (link_k) { pc.host_link = true; pc.type[2] = PT_UPDATER_CTL; }   // v1.37: the Updater, its controller (17.10)
+            if (link_k) { pc.ingress_queue_words = g.cfg.ingress_queue_words; pc.type[2] = PT_UPDATER_CTL; }   // v1.37: the Updater, its controller (17.10)
         }
         auto& sl = cfg.add<PeriphSlot>(t + "slot", pc);
         cfg.link(d.periph, sl.region, 3);

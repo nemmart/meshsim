@@ -65,6 +65,9 @@ inline Decoded decode(const Straps& s, uint32_t a, bool store, bool whole_word) 
     }
     if (w < 2 * BLOCK_WORDS) {                               // block 1: the DMA's
         if (!(s.peripheral_dmas >> (n - 1) & 1)) return store ? Decoded{} : Decoded{Target::ZERO, uint8_t(n), uint8_t(w)};
+        // v1.37: own words in block 1 beside the DMA's (17.6.1's UART), the owner's to define; without a DMA the block
+        // reads 0 all the same (17.1)
+        if (w == 30 || w == 31) return {Target::PERIPH_OWN, uint8_t(n), uint8_t(w)};
         static constexpr units::Access kDma[3] = {A_RW, A_RW, A_W};
         return w - BLOCK_WORDS < 3 ? by_access(kDma[w - BLOCK_WORDS], Target::PERIPH_CONTROL, n) : Decoded{};
     }

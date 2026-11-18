@@ -56,15 +56,13 @@ const SpecReg SPEC_PERIPHERAL[] = {
     {"EVENTS_PEEK", 0x010, 'R'}, {"EVENTS_MASK", 0x014, 'B'}, {"START", 0x018, 'W'},
     {"DMA_HDR", 0x040, 'B'}, {"DMA_DEST_ADDR", 0x044, 'B'}, {"DMA_START", 0x048, 'W'},
 };
-// 17.6: Ingress/Egress's words
+// 17.6.1: Ingress/Egress's words (v1.37: UART_TX and UART_RX in block 1, UART_CONTROL at 42, the queues' at 64 to 67)
 const SpecReg SPEC_INGRESS_EGRESS[] = {
+    {"UART_TX", 0x078, 'W'}, {"UART_RX", 0x07C, 'R'},
     {"ERROR_LINES_0", 0x080, 'R'}, {"ERROR_LINES_1", 0x084, 'R'}, {"ERROR_LINES_2", 0x088, 'R'},
     {"ARRIVALS_0", 0x08C, 'R'}, {"ARRIVALS_1", 0x090, 'R'}, {"ARRIVE_EXPECT_0", 0x094, 'B'}, {"ARRIVE_EXPECT_1", 0x098, 'B'},
-    {"RELEASE", 0x09C, 'W'}, {"WATCHDOG", 0x0A0, 'B'}, {"LED", 0x0A4, 'B'}, {"UART_TX", 0x0A8, 'W'}, {"UART_RX", 0x0AC, 'R'},
-    {"UART_DIVISOR", 0x0B0, 'B'}, {"UART_STATUS", 0x0B4, 'B'},
-    {"STREAM_OUT_W0", 0x100, 'W'}, {"STREAM_OUT_W1", 0x104, 'W'}, {"STREAM_OUT_W2", 0x108, 'W'}, {"STREAM_SEND", 0x10C, 'W'},
-    {"STREAM_SEND_LAST", 0x110, 'W'}, {"STREAM_IN_W0", 0x114, 'R'}, {"STREAM_IN_W1", 0x118, 'R'}, {"STREAM_IN_W2", 0x11C, 'R'},
-    {"STREAM_RECEIVE", 0x120, 'R'},
+    {"RELEASE", 0x09C, 'W'}, {"WATCHDOG", 0x0A0, 'B'}, {"LED", 0x0A4, 'B'}, {"UART_CONTROL", 0x0A8, 'B'},
+    {"FOREGROUND_WORDS", 0x100, 'R'}, {"BACKGROUND_WORDS", 0x104, 'R'}, {"DMA_FORWARD_COUNT", 0x108, 'B'}, {"EGRESS_COUNT", 0x10C, 'B'},
 };
 // 17.7: the RW engine's
 const SpecReg SPEC_RW_ENGINE[] = {
@@ -85,7 +83,7 @@ const SpecReg SPEC_TRACER[] = {
 };
 struct SpecPeripheral { int type; const char* prefix; bool dma; const SpecReg* regs; int n; };
 const SpecPeripheral SPEC_PERIPHERALS[] = {   // 17.1's types; 17.6-17.9: which has a DMA
-    {1, "IE", false, SPEC_INGRESS_EGRESS, sizeof SPEC_INGRESS_EGRESS / sizeof(SpecReg)},
+    {1, "IE", true, SPEC_INGRESS_EGRESS, sizeof SPEC_INGRESS_EGRESS / sizeof(SpecReg)},   // v1.37: its DMA (17.6.4)
     {2, "RW", true, SPEC_RW_ENGINE, sizeof SPEC_RW_ENGINE / sizeof(SpecReg)},
     {3, "TR", true, SPEC_TRACER, sizeof SPEC_TRACER / sizeof(SpecReg)},
     {4, "RP", false, SPEC_REPLAYER, sizeof SPEC_REPLAYER / sizeof(SpecReg)},
@@ -109,9 +107,13 @@ const SpecBit SPEC_BITS[] = {
     {"P_STATUS", "busy", 0, 1, false}, {"P_STATUS", "dma_busy", 1, 1, false}, {"P_EVENT", "done", 0, 1, false},
     {"P_EVENT", "dma_done", 1, 1, false},
     // 17.6 Ingress/Egress
-    {"IE_STATUS", "stream_last", 2, 1, false}, {"IE_ERROR", "tile_error", 0, 1, true}, {"IE_EVENT", "all_arrived", 2, 1, true},
+    {"IE_STATUS", "foreground_ready", 2, 1, true}, {"IE_STATUS", "background_ready", 3, 1, true},
+    {"IE_STATUS", "rx_overrun", 24, 1, false}, {"IE_STATUS", "framing_error", 25, 1, false},
+    {"IE_ERROR", "tile_error", 0, 1, true}, {"IE_ERROR", "link_error", 1, 1, false}, {"IE_ERROR", "format_error", 2, 1, false},
+    {"IE_ERROR", "egress_error", 3, 1, false}, {"IE_EVENT", "all_arrived", 2, 1, true},
     {"IE_EVENT", "watchdog", 3, 1, false}, {"IE_EVENT", "uart_rx", 4, 1, true}, {"IE_EVENT", "uart_tx", 5, 1, true},
-    {"IE_EVENT", "stream_in", 6, 1, true}, {"IE_EVENT", "stream_out", 7, 1, true},
+    {"IE_EVENT", "foreground_service", 6, 1, false}, {"IE_EVENT", "background_service", 7, 1, false},
+    {"IE_EVENT", "egress_credit", 8, 1, false},
     // 17.7 the RW engine
     {"RW_ERROR", "lpddr_error", 0, 1, false},
     // 17.8.1 the replayer
@@ -156,9 +158,11 @@ const SpecField SPEC_FIELDS[] = {
     // 17.1 a peripheral's PARAMS
     {"P_PARAMS", "type", 7, 0}, {"P_PARAMS", "version", 15, 8}, {"P_PARAMS", "constants", 31, 16},
     // 17.6 Ingress/Egress
-    {"LED", "led", 0, 0}, {"UART_TX", "byte", 7, 0}, {"UART_RX", "byte", 7, 0}, {"UART_RX", "valid", 8, 8},
-    {"UART_DIVISOR", "divisor", 15, 0}, {"UART_STATUS", "tx_bytes", 4, 0}, {"UART_STATUS", "rx_bytes", 12, 8},
-    {"UART_STATUS", "rx_overrun", 16, 16}, {"UART_STATUS", "framing_error", 17, 17},
+    {"LED", "led", 0, 0}, {"UART_TX", "char", 7, 0}, {"UART_RX", "char", 7, 0}, {"UART_RX", "valid", 8, 8},
+    {"UART_CONTROL", "divider", 15, 0}, {"UART_CONTROL", "enable_read", 16, 16}, {"UART_CONTROL", "enable_write", 17, 17},
+    {"FOREGROUND_WORDS", "words", 10, 0}, {"BACKGROUND_WORDS", "words", 10, 0},
+    {"DMA_FORWARD_COUNT", "count", 30, 0}, {"DMA_FORWARD_COUNT", "discard", 31, 31},
+    {"IE_STATUS", "uart_tx_bytes", 12, 8}, {"IE_STATUS", "uart_rx_bytes", 20, 16},
     // 17.7 the RW engine, at LPDDR_ADDRESS_BITS 32 and RW_BUFFER_BYTES 16 KiB
     {"RW_CONFIG", "kind", 0, 0}, {"RW_CONFIG", "beats", 10, 1}, {"RW_LPDDR_ADDR", "address", 27, 0}, {"RW_BUFFER_ADDR", "address", 9, 0},
     // 17.8.1, 17.9.1 the replayer and the Tracer
@@ -187,7 +191,7 @@ const SpecValue SPEC_VALUES[] = {
     {"BOOT_ROM_BYTES", 256}, {"SCRATCHPAD_BYTES", 4u << 20}, {"WORD_ADDRESS_BITS", 21}, {"WINDOW_LOAD_LATENCY", 2},
     {"TABLE_LOAD_LATENCY", 1}, {"COUNTER_BITS", 20}, {"HIST_BITS", 17}, {"TOKEN_COUNT", 64}, {"GATHER_QUEUE_DEPTH", 64},
     {"READ_QUEUE_DEPTH", 64}, {"REQUEST_QUEUE_DEPTH", 4}, {"RECEIVE_QUEUE_DEPTH_MASTER", 128},
-    {"RECEIVE_QUEUE_DEPTH_MEMORY", 256}, {"RECEIVE_QUEUE_DEPTH_TRACER", 128}, {"STREAM_BYTES", 4}, {"STREAM_DEPTH", 4},
+    {"RECEIVE_QUEUE_DEPTH_MEMORY", 256}, {"RECEIVE_QUEUE_DEPTH_TRACER", 128}, {"INGRESS_QUEUE_WORDS", 1024}, {"EGRESS_QUEUE_WORDS", 512},
     {"UART_FIFO_DEPTH", 16}, {"LPDDR_ADDRESS_BITS", 32}, {"RW_QUEUE_BEATS", 16}, {"RW_BUFFER_BYTES", 16384},
     {"REPLAY_QUEUE_ENTRIES", 256}, {"TRACER_WINDOW_ROWS", 65536}, {"RECORD_WORDS", 68},
     // the address map (5.1), region 0xFF (5.2) and the peripherals' regions (17.8.9, 17.9.2), as mesh.h names them
@@ -198,6 +202,7 @@ const SpecValue SPEC_VALUES[] = {
 };
 struct SpecPart { const char* macro; uint32_t offset; unsigned n = 1; };   // 17.7, 17.8.9, 17.9.2: offsets in peripheral n's region
 const SpecPart SPEC_PARTS[] = {
+    {"IE_EGRESS", 0x100000},                                                // v1.37: the master tile's region, 0x04, part 1 (17.6.8)
     {"RW_BUFFER", 0x000000, 2},                                             // v1.37: the memory tile's peripheral 2's region, 0x05 (17.7)
     {"RP_STATE", 0x000000}, {"RP_STREAMS", 0x000010}, {"RP_IMAGE", 0x000020}, {"RP_RECORD_END", 0x000420},
     {"RP_DECODE_TABLE", 0x001000}, {"RP_ROM", 0x002000}, {"RP_QUEUE_CODE", 0x100000}, {"RP_QUEUE_READ_LOG", 0x200000},
@@ -325,7 +330,9 @@ TEST(register_indices_agree_with_regmap) {
     // every peripheral's own words: in blocks 2-7, in ascending order
     for (const regs::Peripheral& p : regs::PERIPHERALS)
         for (int k = 0; k < p.n_regs; k++) {
-            CHECK(p.regs[k].index >= int(units::P_OWN) && p.regs[k].index < int(units::WINDOW_WORDS));
+            // (v1.37: Ingress/Egress's UART_TX and UART_RX in block 1, words 30 and 31: 17.6.1)
+            CHECK((p.regs[k].index >= int(units::P_OWN) && p.regs[k].index < int(units::WINDOW_WORDS)) ||
+                  (p.type == int(units::PT_INGRESS_EGRESS) && (p.regs[k].index == 30 || p.regs[k].index == 31)));
             CHECK(k == 0 || p.regs[k].index > p.regs[k - 1].index);
         }
     CHECK_EQ(regs::PERIPHERALS[0].type, int(units::PT_INGRESS_EGRESS));

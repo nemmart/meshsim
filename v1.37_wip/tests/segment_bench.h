@@ -173,7 +173,7 @@ struct Run {
     int failures = 0;                           // the checks that failed (each printed)
 };
 // ---- v1.37: the segment from the host's frames (tests/proof_bench.h; CHANGES-v1.37.md). With Options::proof set,
-// run_chip builds the machine with the host link (MachConfig::host_link) and the master runs fw/cc/master.c in place of
+// run_chip builds the machine with the host link (MachConfig::proof) and the master runs fw/cc/master.c in place of
 // cc1.c: nothing of the segment is placed (its record, its advice and its expected end state come from the frames,
 // through the master), the Tracer's memory is the file store the Updater writes, in place of `Fill`, and the checks of
 // C&C 1's mailbox, of the fill port and of the Tracer's last record are the proof's own. A segment with no `window`

@@ -390,6 +390,13 @@ TEST(mach_config_front_end) {
     CHECK(!k.set("K", "eight", err) && err.find("not a number") != std::string::npos);
     CHECK(!k.set_args({"cfg.K"}, err));
     CHECK(!mach::MachConfig::dropped().empty());
+    // v1.37 stage 3: INGRESS_QUEUE_WORDS a setting (19), reaching the chip's Ingress/Egress; hostLink gone, by name
+    mach::MachConfig c = mach::Mach::chip_cfg(-1);
+    CHECK(c.set("ingressQueueWords", "512", err) && c.ingress_queue_words == 512u);
+    CHECK(!c.set("hostLink", "true", err) && err.find("dropped") != std::string::npos && err.find("proof") != std::string::npos);
+    Mach m(c);
+    CHECK_EQ(m.ingress().queue_words, 512u);
+    CHECK_EQ(Mach(Mach::chip_cfg(-1)).ingress().queue_words, 1024u);
 }
 
 // The chip (mach.h, THE MASTER SIDE) with no image placed: it builds and steps with the special tiles' straps and the
@@ -411,14 +418,14 @@ TEST(mach_chip_builds_and_steps) {
         CHECK(ie.word(m.c.cycle() + 1, 33, v) && v == 0u);
     }
     // The stores that may stall, as each slot gives the register bus its peripheral's list (the RTL's register_bus,
-    // own_stalling): Ingress/Egress's UART_TX (block 2, word 10) and STREAM_SEND and STREAM_SEND_LAST (block 4, words 3
-    // and 4); no word of the replayer's, the RW engine's or the Tracer's.
+    // own_stalling): Ingress/Egress's UART_TX alone, v1.37's word 30 in block 1 (17.6.1: R_LOWBITS, two bits a kind);
+    // no word from 32 up, and no word of the replayer's, the RW engine's or the Tracer's.
     {
         using units::Win;
         const auto may = [&](const char* slot, unsigned k) { return m.c.unit<units::PeriphSlot>(slot).published[Win::reg(1, Win::R_MAYSTALL + k)]; };
-        CHECK_EQ(may("cc1.slot", 0), 1u << 10);                 // window word 32 + 10
-        CHECK_EQ(may("cc1.slot", 1), 1u << 3 | 1u << 4);        // window words 64 + 3, 64 + 4
-        CHECK_EQ(may("cc1.slot", 2), 0u);
+        const auto low = [&](const char* slot) { return m.c.unit<units::PeriphSlot>(slot).published[Win::reg(1, Win::R_LOWBITS)]; };
+        for (unsigned k = 0; k < 3; k++) CHECK_EQ(may("cc1.slot", k), 0u);
+        CHECK_EQ(low("cc1.slot") >> (2 * Win::K_MAYSTALL) & 3, 1u);   // word 30, UART_TX; not word 31
         for (const char* s : {"cc2.slot", "cc3.slot", "t0.slot", "t37.slot"})
             for (unsigned k = 0; k < 3; k++) CHECK_EQ(may(s, k), 0u);
     }

@@ -33,7 +33,7 @@
  *  CC_EXPECT: READY_EXPECT_0-1 = slots +0, +1;
  *  CC_EXIT:  SIM_EXIT with the argument;
  *  CC_WATCHDOG: WATCHDOG = the argument (each GO restarts it; 0 off), for the phases after;
- *  CC_UART:  UART_DIVISOR = the argument (the host's baud rate; the harness speeds the dump up with 1).
+ *  CC_UART:  the UART's divider = the argument (the host's baud rate; the harness speeds the dump up with 1).
  *  CC_SEGMENT (v1.3, B1; DECISIONS-v1.3 section 24, 9544e8e and 7c53209): a traced segment's two barriers. Slot +0 the
  *            tiles' command word, +1 C&C 3's start word. The tiles' command; all READY (each tile booted, nothing
  *            armed); GO; C&C 3's start, into its command block (it sends nothing sooner than stage_delay after it); the
@@ -121,8 +121,14 @@ static void run_streams(unsigned n) {
     start_run();
     wait_all(EV_RUN_DONE);                          /* the tables are free for the next run */
 }
+/* v1.37: UART_CONTROL with both enables (17.6.9); v1.36's UART_RESET_DIVISOR, the chip's clock over 115,200 */
+#define CC1_UART_DIVIDER 8681u
+static uint32_t uart_setting(uint32_t divider) { return (divider & 0xFFFFu) | (1u << 16) | (1u << 17); }
 static void boot(void) {
-    if (boot_desc.uart_divisor) cc1->UART_DIVISOR = boot_desc.uart_divisor;   /* the host's baud rate (W14-03) */
+    /* the host's baud rate (W14-03). v1.37 (17.6.9): the UART is off at the reset, UART_CONTROL 0, and has no reset
+     * divisor; without a divisor here it is turned on where it is first used, the dump (30.2: "if the image prints"),
+     * so a run that never dumps keeps v1.36's boot, cycle for cycle */
+    if (boot_desc.uart_divisor) cc1->UART_CONTROL = uart_setting(boot_desc.uart_divisor);
     tile->EVENTS_MASK = EV_REQ_PENDING;             /* v1.36: every LOAD first (6.5) */
     while (mbox[4] < TILES_LOADING) { drain_requests(); if (mbox[4] < TILES_LOADING) __asm__ volatile ("wfi" ::: "memory"); }
     tile->EVENTS_MASK = EV_RESET_MASK;
@@ -219,7 +225,9 @@ void cc1_toast(uint32_t mcause, uint32_t mepc) {
     toast_info[0] = mcause; toast_info[1] = mepc;
     for (int i = 0; i < 3; i++) toast_info[2 + i] = cc1->ERROR_LINES[i];
     toast_info[5] = n; toast_info[6] = begun; toast_info[7] = done; toast_info[8] = flags; toast_info[9] = mcycle();
-    /* the dump (LVDS or UART, D37; the UART stands for both): what C&C 1 knows, then each unit's count, then the reports */
+    /* the dump (LVDS or UART, D37; the UART stands for both): what C&C 1 knows, then each unit's count, then the reports.
+     * v1.37: the UART on first, at v1.36's reset divisor, if nothing has set it (17.6.9) */
+    if (cc1->UART_CONTROL == 0) cc1->UART_CONTROL = uart_setting(CC1_UART_DIVIDER);
     for (int i = 0; i < 9; i++) uart_hex(toast_info[i]);
     cc1->UART_TX = '\n';
     for (uint32_t u = 0; u < 67; u++) if (want[u]) { uart_hex(u); uart_hex(want[u]); uart_hex(got[u]); cc1->UART_TX = '\n'; }
@@ -227,7 +235,7 @@ void cc1_toast(uint32_t mcause, uint32_t mepc) {
         for (int i = 0; i < 4; i++) uart_hex(REPORTS[r][i]);
         cc1->UART_TX = '\n';
     }
-    while (cc1->UART_STATUS & 0x1F) ;               /* the TX FIFO has emptied into the shifter */
+    while (cc1->STATUS & (0x1F << 8)) ;             /* the TX FIFO has emptied into the shifter (17.6.1: STATUS [12:8]) */
     toast_info[10] = mcycle();
     for (;;) ;                                      /* park: the outside world resets the chip */
 }
@@ -269,7 +277,7 @@ int main(void) {
         case CC_EXPECT: cc1->READY_EXPECT[0] = a[0]; cc1->READY_EXPECT[1] = a[1]; break;
         case CC_EXIT: mbox[0]++; sim_exit(arg); break;
         case CC_WATCHDOG: cc1->WATCHDOG = arg; break;
-        case CC_UART: cc1->UART_DIVISOR = arg; break;
+        case CC_UART: cc1->UART_CONTROL = uart_setting(arg); break;   /* at each direction's next idle point (17.6.9) */
         case CC_WAIT: wait_results(arg); break;
         case CC_FAULT: fault_all(); break;
         default: mbox[7] |= 0x80000000u; break;   /* an unknown command: flagged in the mailbox */

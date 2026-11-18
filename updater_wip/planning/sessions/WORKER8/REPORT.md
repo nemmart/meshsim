@@ -1,7 +1,8 @@
 # WORKER8 report: HOST-LINK.md as it stands on 2026-11-17, with the data masked
 
 **The protocol as it now stands holds in everything run so far.** That is every search that fits this machine, on
-one link and on chains of 1, 2 and 3; 18 planted bugs; and 300 random runs under HL's rules and 1,080 under other settings, random runs on chains of 1, 2, 4 and 16.
+one link and on chains of 1, 2 and 3; 18 planted bugs; and 1,380 random runs on chains of 1, 2, 4 and 16, 300 of
+them under HL's rules and 1,080 under other settings.
 **It is not yet the whole brief:** the runner did not run any of my six tasks (section 10), so the large random
 campaign and the searches too large for this machine are still to come.
 

@@ -64,7 +64,7 @@ BUGS=(
   "rx: no overrun (a 17th character taken)~$H~s/else if (frame_ends \&\& rx_n >= FIFO) rx_overrun = true;/else if (frame_ends \&\& rx_n > FIFO) rx_overrun = true;/"
   "rx: a character started by a low level~$H~s/const bool frame_starts = !rx_busy \&\& rx_line_last \&\& !rx_line/const bool frame_starts = !rx_busy \&\& !rx_line/"
   "rx: enable_read 0 does not stop the line in~$H~s/\&\& !rx_line \&\& (uart_control \& UC_ENABLE_READ);/\&\& !rx_line;/"
-  "rx: UART_RX pops a character that entered in the load's cycle~$H~s/(stepped_at == t ? rx_n_start : rx_n) > 0/rx_n > 0/"
+  "rx: UART_RX pops a character that entered in the load's cycle~$H~s/(stepped_at == t ? rx_n_start : rx_n) > 0/(stepped_at == t ? rx_n : rx_n) > 0/"
   "uart: the events uart_rx and uart_tx swapped~$H~s/ev.live(EV_UART_RX, uart_on() \&\& rx_n > 0);/ev.live(EV_UART_TX, uart_on() \&\& rx_n > 0);/; s/ev.live(EV_UART_TX, uart_on() \&\& tx_n < FIFO);/ev.live(EV_UART_RX, uart_on() \&\& tx_n < FIFO);/"
   "uart: uart_tx read 1 in the UART's reset~$H~s/ev.live(EV_UART_TX, uart_on() \&\& tx_n < FIFO);/ev.live(EV_UART_TX, tx_n < FIFO);/"
   "uart: a store of 0 does not reset it~$H~s/if (v == 0) uart_reset();//"

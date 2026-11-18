@@ -72,10 +72,10 @@ section, what the specification says, what `main` has. Kept as the specification
 | section | the specification | `main` (be077a7d) |
 | --- | --- | --- |
 | 30.2 | the UART turned on by a store to `UART_CONTROL`, if the image prints | v1.36's UART runs from the reset; no store — **Closed** (the INTEGRATOR, stage 3, `v137-build` `7a3d0f5d`): `cc1.c` turns the UART on at its dump, where it first prints, so that a run that never prints keeps v1.36's cycles; `master.c` does not print. (Stage 5 adds `test_sort`'s check that the dump's characters leave on the line, and a planted bug without the store) |
-| 30.6 | the tracer tile's result carries its last record to the master tile (owner, MS-2) | `tracer_ctl.c` checks the end state itself and sends no record |
-| 30.7, 29.14 | the reply frame, type 16, 72 words, through Egress | none: no Egress, no reply |
-| 30.8 | the firmware's checks of a frame's contents, a stop with no `ERRORS` bit | as specified (`master.c` 440–567), its result in `master_results` for the harness |
-| 30.8 | an error stops the chip; nothing is recovered | as specified; the handler writes `master_results` for the harness |
+| 30.6 | the tracer tile's result carries its last record to the master tile (owner, MS-2) | `tracer_ctl.c` checks the end state itself and sends no record — **Closed** (the INTEGRATOR, stage 5, `v137-build` `032a5c39`): the tracer tile's load names a place in the master (header words 21–23); its end streams its last record there and writes its figures, before its result (FOR-THE-SPEC 5); every proof's reply carries it, checked against the tracer tile's own record and record *s* + 1 |
+| 30.7, 29.14 | the reply frame, type 16, 72 words, through Egress | none: no Egress, no reply — **Closed** (the INTEGRATOR, stage 5, `v137-build` `032a5c39`): `master.c` builds the 72 words, stores 72 in `EGRESS_COUNT`, streams them into Egress's part 1; Egress sends three link packets; every proof checks the reply at the host's end word by word, and on the chain the driver against gold's files (stage 6) |
+| 30.8 | the firmware's checks of a frame's contents, a stop with no `ERRORS` bit | as specified (`master.c` 440–567), its result in `master_results` for the harness — **Closed** (the INTEGRATOR, stage 5, `v137-build` `53675271`): checked as specified, by `master_stops_on_what_a_frame_says` (seven frames changed); one gap found and fixed: a header frame one row longer than its fields now stops the master |
+| 30.8 | an error stops the chip; nothing is recovered | as specified; the handler writes `master_results` for the harness — **Closed** (the INTEGRATOR, stage 5, `v137-build` `032a5c39`): checked as specified: the trap cases of `test_master` (a page too few, the link's errors); no reply after a stop |
 
 ## The chapters that gather (2, 3, 17.1, 18, 19, 20, 21)
 

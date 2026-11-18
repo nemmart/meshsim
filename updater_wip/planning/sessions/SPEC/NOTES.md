@@ -379,7 +379,10 @@ More will go here as I check the text against the code.
 | 8 | HL-1, HL-3, HL-5 (item 185), S4 (item 188), `chain_next` | ruled (06:02): as written |
 | 9 | II-2 Ingress/Egress's ERRORS bits | ruled (06:06): as proposed |
 | 10 | II-3, II-8 to II-15, S8 | ruled (06:06): as written |
-| 11 | MS-1 the reply frame's fields | asked 06:08 |
+| 11 | MS-1 the reply frame's fields | ruled (06:14): as recommended (29.14) |
+| 12 | every dagger whose recommendation is a plain accept or "as written": UI-4, UI-6, UI-9, UI-12, UI-13, CI-2, CI-3, CI-6, CI-7, CI-8, CI-10, AI-1, AI-2, AI-3, AI-4, AI-6, AI-7, HF-1 to HF-9, II-17, MS-2, HL-6; and the silences S7, S9, S10, S12, S13, S14 as recommended | ruled (06:14): accepted as a block |
+| 13 | S5: how an ASIC learns *N* and *s* | asked 06:15 |
+| to come, one at a time | UI-7, CI-4, and anything new that changes hardware or working code | |
 | next | S5, MS-2, UI-4/6/7/9/12/13, CI-2/3/4/6/7/8/10, AI-1/2/3/4/6/7, HF-1 to HF-9, II-17 (Ingress/Egress's numbers), UI-1, UI-2 and the memory system's type 6 (17.11), UI-3, … | |
 
 ## 11. Found in the sources while writing

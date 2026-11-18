@@ -926,3 +926,31 @@ Rulings as they came; `HOST-LINK.md` has each.
 - **The larger search is not finished:** Quest 230 tried 71,162,948 states with no failure and was cut by its
   45-minute limit, not by memory. To be run again with a longer limit, reporting how many states were waiting.
 - WORKER9 has not started the joint and WORKER10's runner task is not queued: both wait on the owner.
+
+## 31. The protocol on a solid footing; the link document brought up to the code (2026-11-17, about 11 p.m.)
+
+- **WORKER8, with the mask in:** 71.8 million states searched, every search complete, on one link and chains of
+  1, 2 and 3; 18 planted bugs caught; a kept case for every rule; 1,380 random runs on chains of up to 16, none
+  failing. A stopped stream cannot block the other: 7 searches, 9.7 million states. The owner: "it sounds like
+  our protocol is on a solid footing."
+  - Still out: one long search (Quest 231, breadth-first to count what waits, then depth-first, under the
+    runner's limit, which the owner raised to 3h30m), and the random campaign on the runner.
+- **The mask is defined:** the CRC-32C register started at the header CRC with bit 16 set, eight shifts with
+  nothing fed in before each data byte, its low byte masking the byte. Bit 16 keeps it out of the two states
+  that stand still. Three worked examples; the design session computed two of them again and they agree.
+- **The mask closes the false packet number** for any packet with data: a forged header takes the wrong mask
+  off. The limit the owner had accepted that afternoon is gone.
+- **The mask's own limit, accepted:** data made on purpose for the header it will travel under. The CRC and the
+  sequence are linear, so the data is solved for. It needs the host's own data made against the link.
+- **The pass over the data cost more than the design session had written:** 14% of the data rate in the random
+  runs at a byte a cycle, 17% saturated, and a full packet's time doubled on an idle link. A unit of 128 bits a
+  cycle gives it all back.
+- **Decided (owner): two fast units and two slow.** The fast ones, 128 bits a cycle, are for sending: the pass
+  over the data, then the header CRC, which the same unit does by a fixed starting value and 32 zero bits in
+  front. The slow ones, a byte a cycle, are for receiving. Four mask registers beside them.
+- **WORKER8's smaller points taken as it built them:** hops 15 tested in both directions at a node that would
+  forward; a packet of length 0 with a wrong field counted; the restart packet's fields and rounds; "asks for a
+  packet no longer kept" including a "lost"; the 2,048 cycles holding back only what a packet ahead sets off.
+- **`HOST-LINK.md` brought up to the code that passes:** WORKER8's 30 corrections applied, the figures replaced
+  by those measured on the protocol as it stands, the forwarding steps given the mask. WORKER8 is asked to read
+  it against its code once more.

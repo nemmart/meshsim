@@ -111,15 +111,21 @@ The test now checks the count.
 | `test_master`: every proof's loads into the tracer tile by the line | 34 pass |
 | `./run_tests.sh quick --check` | **all passed**; no log differs |
 | **the reference cycles:** `test_segment`'s v1.36 segments (to C&C 1's exit, polled every 512 cycles) the same as `main`'s; the proof runs', against stage 1's (Quest 245): the runner's (below) | |
-| **the planted bugs** (`line_teeth.sh`): L1 the ring's rule reversed; L2 a packet on the line sent back the way it came; L3 a special tile's packet for another by the attach port; L4 an attach port's arrival for another special tile put on the line; L5 the slot's DMA judging its room at the west input (v1.36's); L6 the west output's queues in the wrong order; L7 a DMA's packet for another special tile by the attach port | **7 of 7 caught.** L4 only once `test_special_router` checked the route errors (`ec6730a7`) |
+| **the planted bugs** (`line_teeth.sh`): L1 the ring's rule reversed; L2 a packet on the line sent back the way it came; L3 a special tile's packet for another by the attach port; L4 an attach port's arrival for another special tile put on the line; L5 the slot's DMA judging its room at the west input (v1.36's); L6 the west output's queues in the wrong order; L7 a DMA's packet for another special tile by the attach port | **7 of 7 caught.** L4 only once `test_special_router` checked the route errors (`ec6730a7`, on the branch with stage 3's first commit; it reaches `main` with stage 3's merge) |
 | the 37 proof runs on the line; `make check` | the runner: Quests 248, 249 (below) |
 
 ### The runner
 
 | Quest | item | result |
 |---|---|---|
-| 248 | `suites` at `f24979c6`: `./run_tests.sh all --check`, the 37 proof runs | queued |
-| 249 | `check`: `make check` | queued |
+| 248 | `suites` at `f24979c6`: `./run_tests.sh all --check`, the 37 proof runs | **PASS**: every step; the 37 proof runs (3 real, 24 of the matrix, 10 at 29); no golden log differs; the two `fw-build` steps skipped (no RISC-V toolchain on the runner) |
+| 249 | `check`: `make check` | **PASS**: gcc and clang, debug and release, 1,623 s |
+
+**The reference cycles did not move.** Every run's cycles are stage 1's (Quest 245) to the cycle: the master's
+answers from the memory tile now come by the line, and the segment's end is polled every 512 cycles. What moved is
+inside: in 14 of the 37 runs the Updater's busy cycles and its waits on memory by up to 45 cycles, its waits on data
+by up to 19; the master's cycles awake in none of them. The figures are in `runner/248-proof-numbers.md` and
+`248-cache-figures.txt`.
 
 ## Stage 3: Ingress/Egress at its registers (17.6)
 
@@ -166,3 +172,17 @@ test's expectation of a reset divisor.
 | **the reference cycles:** `test_segment`'s and `test_sort`'s the same as `main`'s; `test_rtl_stream`'s UART run each figure one cycle later than the RTL chip's (its program's setting is `lui` and `addi`, one instruction more: the first start bit 35, the led's changes, the status after 644, the done word after 5,211); the proof runs' move (the queues of 1,024, the landing): the runner's | |
 | **the planted bugs** (`ie_teeth.sh`, 44): the UART's line both ways (bit order, a bit's length, the sample point, the synchroniser, the divider mid-character, the stop bit, the overrun, a low level starting a character, a pop of a character entering in the load's cycle); its control (a store dropped or kept with the UART off or `enable_write` 0, `enable_write` 0 sending, `enable_read` 0 listening, a store of 0 not resetting, `uart_tx` 1 in reset, the enables swapped, the events swapped, a divider of 0 not caught); 17.6.1 (version 0, the queues' words at 80 and 81, `background_ready` at [4]); the queues (a link packet landing all at once, the room of the words landed alone); Egress (the count falling as words leave, a credit each 512, a frame's last word not ending its link packet, a word kept in a full queue, a word with the count at 0 no error, a count stored while not 0 not caught, a frame from two sources not caught); the bus (`UART_RX` not an own word), the slot (a low word's stall not published, the queue's size not given), the core's path (no pop told, a pop a cycle late) | **44 of 44 caught** (one plant fixed to build: its first form left a parameter unused). NOTES' "stop at full" is stage 4's: the stop bit is the link end's |
 | the 37 proof runs; with LPDDR jittered; `make check` | the runner (below) |
+
+### The runner
+
+| Quest | item | result |
+|---|---|---|
+| 250 | `suites` at `f873c715`: `./run_tests.sh all --check`, the 37 proof runs | **PASS**: every step; the 37 proof runs; no golden log differs; `fw-build` skipped (no RISC-V toolchain on the runner) |
+| 251 | `suites-varied`: the same with every chip's LPDDR jittered (`LPDDR_SEED` 7) | **PASS**: the same, no log differs |
+| 252 | `check`: `make check` | **PASS**: gcc and clang, debug and release, 1,643 s |
+
+**The proof runs' cycles moved, on purpose: every run is 15,360 to 76,288 cycles shorter than at stage 2** (Quest 248).
+The incoming queues went from 512 words to 17.6.3's 1,024, so the link waits for room less: over the 37 runs its
+waits for room fell from 10,677,833 cycles to 9,207,045, and the link's last byte, and with it the hand-over and the
+end, came earlier by about as much. The Updater's busy and waiting-on-data cycles fall with them; its waits on memory
+move by a few hundred either way. The figures are in `runner/250-proof-numbers.md` and `251-proof-numbers.md`.

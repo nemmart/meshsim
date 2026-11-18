@@ -781,7 +781,7 @@ which start from an image placed in their IMEM and DMEM before the reset ends,
 as the simulator, the tests of the RTL (Snarky One) and an FPGA build, whose
 memories are initialised, place
 them. It is 0 on the compute tiles and the tracer tile, which the master tile
-loads at their `LOAD`s. *Open:* the master tile's boot over LVDS (17.6), and how
+loads at their `LOAD`s. *Open:* the master tile's boot over LVDS (item 166; its image's arguments, 30.1), and how
 a silicon memory tile's IMEM and DMEM are filled.
 
 **The handler** is also in the ROM, at `mtvec`'s reset value (6.2). It sends the

@@ -58,3 +58,14 @@ section, what the specification says, what `main` has. Kept as the specification
 | 30.7, 29.14 | the reply frame, type 16, 72 words, through Egress | none: no Egress, no reply |
 | 30.3 | an unknown frame type is dropped with one discard count | `master.c` ends in its handler (`MR_FRAME`) |
 | 30.8 | an error stops the chip; nothing is recovered | as specified; the handler writes `master_results` for the harness |
+
+## The chapters that gather (2, 3, 17.1, 18, 19, 20, 21)
+
+| section | the specification | `main` (be077a7d) |
+| --- | --- | --- |
+| 17.1, 17.11 | `PARAMS.type` 6 for the memory system, a window with `ERRORS` [0] `lpddr_error`, sticky, on the memory tile's error line | no such peripheral: `CacheSystem`'s error flag reaches nothing |
+| 3, 18 | the chip's ports `link_up`, `link_down` (a byte each way a link cycle) and the pin `chain_next` | one input file of packets, read by the black box |
+| 19 | the parameters `INGRESS_QUEUE_WORDS` to `CLIENT_BURSTS` | spread over `MachConfig` and the units' constants; `STREAM_BYTES`, `STREAM_DEPTH` and `UART_RESET_DIVISOR` still there |
+| 20 | invariants 35 to 40, each a check: 35 and 36 for Ingress/Egress's and the Updater's UB, 37 by the cache's stale-line check, 38, 39 by the arbiter's and the LPDDR model's checks, 40 by the router's overflow | the Updater's and the arbiter's checks exist (behind their settings); Ingress/Egress's for the new words do not; 38 and 40 have no line or memory system to check |
+| 21.5 | the new units' timing | `run_tests.sh`'s references are v1.36's and the proof runs'; none for the link or the chain |
+| 18, 17.6.14 | the one reset reaches the link ends: a chip coming out of it says "I have started again" | the black box has no link to restart |

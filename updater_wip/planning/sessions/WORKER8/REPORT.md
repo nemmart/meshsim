@@ -6,13 +6,14 @@ it, the sender's fast unit.
 
 **What is new here:**
 
-1. **HL read again, as a stranger would:** 6 places wrong, 9 unclear, 11 silent (section 1), and **the figures it
+1. **HL read again, as a stranger would:** 6 places wrong, 9 unclear, 12 silent (section 1), and **the figures it
    quotes from me are of the slow sending unit:** section 2 has each beside the figure with the fast unit.
 2. **Quest 231, the long search, is complete and holds:** 86,515,438 states (section 3).
 3. **One thing HL says that the runs now contradict:** the error for a packet no longer kept "is raised only when
    there is real harm". With **two** forged headers it is raised and nothing was lost (section 4). With one it
    holds, as searched. It is far inside the limit already accepted, and it errs on the loud side.
-4. **The random campaign on the runner is queued and not back** (section 9).
+4. **The random campaign on the runner:** the one with the slow unit is back, 6,071 runs, none failed (section
+   9). The one with the fast unit is running.
 
 Names: HL is `v1.4_wip/planning/HOST-LINK.md` at `870ed9d9`. The code is `updater_wip/link/`. A dagger (†) marks
 what I chose or propose. A cycle is one byte on the link. "The fast unit" is HL's sending unit of 128 bits a
@@ -66,6 +67,7 @@ implementation in Python that read the hex strings out of HL itself.
 | S9 | "When the status is sent", step 1: "on a change" | "resend owed" and "a packet taken" are changes too, with the stop bits |
 | S10 | "The link" | the wire's delay. The window of 8 is never full up to 512 cycles each way and fills at 2,048 (section 5) |
 | S11 | "A packet made wrong": a packet of length 0 that is counted | it is also asked for again, like one with data, though there is nothing to send again |
+| S12 | "The link", "When the status is sent" | a line that reads as zeros for long. It looks idle: the end that hears nothing stays in step and waits, its window full. In the runner's campaign a foreground packet stood ready 515,932 cycles that way (section 9). A live end sends a header every 512 cycles, so † an end that has heard none for some multiple of that could tell its owner the line is silent |
 
 ## 2. The figures HL quotes, against mine with the fast unit
 
@@ -318,11 +320,36 @@ bits, and the pass's counter. The mask is one more 32-bit register each way.
 | task | what | state |
 |---|---|---|
 | Quest 231 | the long search, the slow unit | **done: complete, holds** (section 3) |
-| Quest 232 to 236 | the campaigns, searches and long noise at the slow unit | parked in `tasks/hold`, since HL no longer has that unit. 232 had probably started before I parked it and will come back all the same |
-| Quest 237 | **the random campaign:** 16 slices of seeds for an hour each, chains of 1, 2, 4 and 16, the fast unit | queued |
+| Quest 232 | the random campaign, the slow unit (`72f12b9a`) | **done: 6,071 runs, none failed** (below). It had started before I parked it |
+| Quest 233 to 236 | the other campaigns, the searches and long noise at the slow unit | parked in `tasks/hold`, since HL no longer has that unit |
+| Quest 237 | **the random campaign:** 16 slices of seeds for an hour each, chains of 1, 2, 4 and 16, the fast unit | running since 05:31 UTC |
 | Quest 238 | the same with forged headers (8 slices) and with flipped bits (8) | queued. A seed may fail there as seed 16 did here: section 4 |
 | Quest 239, 240 | the 17 larger searches, depth-first, 55 minutes each | queued |
 | Quest 241 | long noise, bursts up to 300 ms | queued |
 | Quest 242 | the long search once more, the fast unit | queued |
 
 They run one after another: some 8 hours in all from the first.
+
+**Quest 232, the random campaign with the slow unit** (`results/232-link-w8-campaign/campaign.txt` in the Quest
+repository): 16 slices of seeds for an hour each, 2,000,000 cycles of traffic and noise a run, HL's rules.
+
+| | |
+|---|---|
+| runs | 6,071, on chains of 1, 2, 4 and 16: 2,457, 1,832, 1,158 and 624. **None failed** |
+| cycles; packets | 15,493,691,454; 306,481,395, of them 105,527,464 with data and 3,145,772 sent again |
+| the noise | 13,204,931 bursts; 2,168,526 single bits flipped; 2,807,798 header CRCs failed; 590,292 data checksums failed |
+| recoveries | 195,516: a link's last damaged byte to its next delivery 688 cycles on average, 5,225 at most |
+| the packet number wrapped | 1,495,705 times on a new packet, 77,294 on a packet sent again |
+| a sender went back | 1,030,221 times |
+| the most kept | 8 packets at a node, 64 at the host; 844 words in a queue; 749 in a forwarding buffer, of 1,024 each |
+| the longest wait for the line with nothing else to wait for | 1,054 cycles (the slow unit) |
+| the longest a sender waited for an acknowledgement, the link in step and its wires clean | 3,458 cycles |
+| a foreground packet ready, not stopped, the link in step | 300 cycles on average; **515,932 at most** |
+| never happened | a packet seen before; a packet with no room; a field that cannot be; an acknowledgement behind or beyond; a packet made wrong; a link started again but at power-on; asked for a packet no longer kept |
+
+- **The 515,932 cycles are the wire, not the rules.** Seed 120095, a chain of 4: the wire from the first node to
+  the host was turned to zeros in bursts of up to 373,729 cycles, 180 cycles apart on average. The host heard an
+  idle line, stayed in step, and waited with its window full (501,922 of the cycles). Run again here from the
+  campaign's commit, the seed gives the same figures. It is S12 of section 1.
+- The events that never happened are the ones only a forged header or a sender's fault can make. Quest 238 runs
+  them.

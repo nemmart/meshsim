@@ -20,7 +20,7 @@ bad", "Recovery", "Starting a link again", "Holding the host back", "What a send
   runner, none failing and no packet refused for want of room: 6,071 runs and 306 million packets with the slow
   unit (Quest 232), and **7,519 runs, 18 billion cycles and 385 million packets with the fast unit** (Quest 237)
   (`updater_wip/link/` and `updater_wip/planning/sessions/WORKER8/REPORT.md` and `QUESTIONS.md`, on branch
-  `updater-w8` until it is merged).
+  `main` since 2026-11-18).
 - **The long search is complete and holds** (Quest 231, 2026-11-18): 86,515,438 states, every one tried, in 47
   minutes depth-first. From every state, with either stream never taken again, the other finished.
 - **The runner's long search ran before the fast unit went in.** The fast unit changes when a sender's packets
@@ -765,9 +765,9 @@ is masked on the wire"). The owner had accepted it ("we can live with that") bef
     cycle), and with 64 the queue filled and a packet was refused. With an acknowledgement for every packet the host seldom has more than two or three outstanding.
   - The fullest a queue of 1,024 words got in the random runs was 629; no packet was ever refused, there or in
     either of the runner's campaigns.
-  - **In the runner's campaign with the fast unit the fullest was 953** (Quest 237). That campaign draws the
-    host's window at 64 in one run of five, which the line above rules out, so that is the likely place; which
-    run it was is being traced (WORKER8). If it was a run with the window at 8, it is a finding.
+  - **In the runner's campaign with the fast unit the fullest was 953** (Quest 237). Traced (WORKER8): seed
+    150397, a chain of 4, the first ASIC's background queue under a host whose window the campaign had drawn at
+    64, which the line above rules out. No packet was refused. Not a finding.
 - The sizes before: 16 KB on 2026-11-16, "to make sure we can stop the remote side", which v1.37 had as first
   merged; then 4 KB with the forward count; then 8 KB as a placeholder, which WORKER7 built.
 - This replaces the per-stream window first proposed here, which did the same job with more machinery.

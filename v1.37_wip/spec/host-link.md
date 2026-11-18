@@ -78,8 +78,8 @@ Designed here; not built in the RTL.*
 - **The data is at most 32 words, 512 bytes:** a full link packet is 528 bytes, of which the header is 3.0 %.
   **A sender may always cut smaller** (owner); a receiver takes any length from 0 to 32.
 - **A field that cannot be** (28.7): a `stream` other than 1 or 2; a reserved bit set; or, at an end that would
-  forward the link packet (28.12), `hops` 15 on a link packet with data. A `length` over 32 is a lost place
-  (28.7).
+  forward the link packet (28.12), `hops` 15 on a link packet with data that is not a restart link packet (a
+  restart link packet's `hops` is not tested). A `length` over 32 is a lost place (28.7).
 
 ### 28.4 One run of numbers for a link
 
@@ -199,9 +199,11 @@ check: a first byte that noise turns to zero is taken for idle, and the header C
 
 1. **`header_crc`,** when the header's 16th byte is in. A failure: the receiver has **lost its place** (28.8).
 2. **The fields.** A `length` over 32 under a good `header_crc`: the receiver cannot know how far to pass over, so
-   it is a lost place, counted as a link packet made wrong (below) if its `number` is the one expected. A field that
-   cannot be (28.3): the data is still passed over and checked, and not kept; what it leads to is decided after
-   step 3.
+   it is a lost place, counted as a link packet made wrong (below) if its `number` is the one expected and this end
+   is not lost, not starting again and not answering a restart; the second time, the receiver starts the link again
+   and waits for the 528 zeros without being lost. A field that cannot be (28.3): the data is still passed over and
+   checked, and not kept; what it leads to is decided after step 3, and it is counted only under the same
+   conditions.
 3. **`data_checksum`,** when the data's last byte is in, the mask taken off as it arrived.
 4. **The `number`,** which means something only once the rest has passed.
 
@@ -215,12 +217,15 @@ check: a first byte that noise turns to zero is taken for idle, and the header C
 | a good link packet whose number is **ahead** | throws it away; a resend is owed: one was missed |
 | a link packet of length 0 whose number is ahead | a resend is owed: the last link packet of a burst was lost. So a sender needs no timer to send again |
 | a link packet of length 0 whose number is the one expected | nothing is owed any more: the sender has gone back |
-| the data checksum failing, the number the one expected or ahead | throws it away; a resend is owed. The link does not stop (owner) |
+| the data checksum failing, the number the one expected or ahead | throws it away; for a link packet with data and with this end in step, a resend is owed. The link does not stop (owner). Of length 0, or out of step, nothing is owed: the recovery's own exchange tells the sender where to go back to |
 | the data checksum failing, the number behind | throws it away; nothing is owed |
 | `header_crc` failing | a lost place (28.8) |
 | both checks passing, and a field that cannot be | a link packet made wrong (below) |
 
-- **The `ack` field and the stop bits of every good link packet are taken,** whether or not its data is (28.11).
+- **The `ack` field and the stop bits of every good link packet are taken,** whether or not its data is (28.11),
+  but for three kinds: a restart link packet's (28.9); any ordinary link packet's while this end's `restart` is set
+  (28.9); and **a link packet with a field that cannot be,** whose `ack`, stop bits, `resend` and `lost` are all
+  ignored though both its checks pass.
 - **"A resend is owed"** sets `resend` in **one** header, the next to go, not in every header until the link packet
   comes, which would send the sender back over and over. The debt ends when the link packet is taken, or a link
   packet of length 0 with the number expected comes.
@@ -270,8 +275,8 @@ failed header CRCs in the bad link packet's data.
 - **Both ends lost at once:** an end that is itself lost and hears "lost" answers it, with `lost` and `recovery`
   both set in one link packet. It stops answering at the first good link packet without `lost`.
 - **While lost,** a good link packet's data is not taken; its `ack` and its stop bits are.
-- **An `ack` counts in any state:** every good link packet's releases what it covers. A "lost" link packet's `ack`
-  is also where the sender goes back to.
+- **An `ack` counts in any state** but those three cases (28.7): every good link packet's releases what it covers. A
+  "lost" link packet's `ack` is also where the sender goes back to.
 - **The recovery link packet states its number,** which the receiver checks against the one it expects; it never
   takes its place from it.
 - **Why the zeros work:** 1,024 bytes is longer than the longest link packet, 528 bytes, so whatever length a
@@ -556,7 +561,7 @@ for timing, no synchronizers, one clock, the link cycle (28.1).
 | | What | Then |
 | --- | --- | --- |
 | 1 | a restart link packet | acted on only if its `length` is 32, its checksum passes and its data is the table's; else thrown away as damaged |
-| 2 | the data checksum fails | thrown away; a resend owed if its number is the one expected (at once) or ahead (after the 2,048 cycles) |
+| 2 | the data checksum fails | thrown away; with data and in step, a resend owed if its number is the one expected (asked at once) or ahead (asked at once if nothing has been asked, and again only 2,048 cycles after the last asking, 28.7) |
 | 3 | a field that cannot be, both checks passing | the number expected: `wrong` set and a resend owed; `wrong` already set: the error, and the link starts again. Another number: thrown away |
 | 4 | `ack`, the stop bits, `resend` and `lost` | taken, in any mode but while this end is starting again. A `resend` or a "lost" whose `ack` is behind the last one taken: the error, and the link starts again |
 | 5 | the number, of a link packet with data | the one expected and room: taken, `wrong` cleared. No room: thrown away, a resend owed. Ahead: thrown away, a resend owed. Behind: thrown away, acknowledged |
@@ -647,7 +652,7 @@ pointer after the last whole link packet, since only whole link packets are offe
 
 | | The model | Hardware |
 | --- | --- | --- |
-| 1 | hands a link packet's data to the queue and the forwarding buffer in the cycle of its last byte | a word a cycle, 32 at most: the handing-over counter. The link packet is acknowledged at once; it can be offered for forwarding only when it is whole in the buffer, 32 cycles later at most |
+| 1 | hands a link packet's data to the queue and the forwarding buffer in the cycle of its last byte, and counts its words there at once | a word a cycle, 32 at most: the handing-over counter. The link packet is acknowledged at once; it can be offered for forwarding only when it is whole in the buffer, 32 cycles later at most. **Two counts:** the words landed, for the core and its DMA (17.6.3); and the words landed and still to land, for the room a link packet needs and the stop bit, since a one-word link packet behind a full one is judged exactly 32 cycles after it. The same for a forwarding buffer's words held |
 | 2 | copies a new link packet's data into its kept slot in the cycle its header starts | during the pass, a word a cycle |
 | 3 | computes the data checksum in one step when the header starts, having counted the pass's cycles | the fast unit's register, a word a cycle during the pass |
 | 4 | computes `header_crc` in the cycle the header starts | the fast unit, one cycle (28.13.4) |
@@ -682,13 +687,28 @@ bytes a cycle against 0.6389 `[meas: the model]`).
   thrown away and sent again, and a receiver that loses its place recovers; none of it reaches a register.
 - **A link end's error** is raised when the link starts again under it (28.9), and is sticky until the reset. On the
   chip it is Ingress/Egress's `ERRORS.link_error`, one bit for both of the ASIC's link ends, with `format_error`
-  beside it when the cause was a link packet made wrong twice (17.6). **A peripheral's error is its tile's,** so it
+  beside it when the cause was a link packet made wrong twice (17.6). **Only the end that received the wrong link
+  packet knows that cause:** the end that made it hears "I have started again" and raises its error with no cause.
+  So `format_error` comes up at the neighbour of the ASIC at fault, and `link_error` alone at the ASIC at fault. **A peripheral's error is its tile's,** so it
   stops the chip (owner). What follows is not designed in v1.37 *(item 181)*.
 - **A neighbour that goes silent raises nothing:** a line that reads as zeros looks idle, and the end waits, its
   window full, for as long as the silence lasts *(item 184)*.
 - **The reset** is the chip's one reset (18; owner): it reaches the link ends, the forwarding buffers and the ASIC's
   own queues as it reaches everything else. A link end comes out of it as at power-on (28.13.2): it says "I have
-  started again", so **its neighbours each raise their error,** and the link comes back up with the next exchange.
+  started again". What follows, `[meas: the model]`, 1,380 random runs of an ASIC reset in a running chain of 3, 4
+  or 16, with and without noise, every check passing:
+  - **both neighbours raise their error,** 1,553 cycles after the reset is released on a clean line (the 1,024
+    zeros of the first round, the restart link packet's 528 bytes, and one), a round of 1,552 cycles more for each
+    round noise spoils; **the reset ASIC raises none itself;**
+  - **the links come back up,** every one in step again within 4,022 cycles on clean lines;
+  - **the ASICs above the reset one lose nothing,** of the host's words or of their own to the host;
+  - **below it words go missing,** what the reset ASIC held and what its neighbours had sent it and not yet had
+    acknowledged, **but none is repeated or out of order;**
+  - every ASIC reset at once, with the host running: only the host's end raises an error; the links between the
+    ASICs come up with none, as two ends that power on together (28.9).
+- **Two neighbours reset one after the other:** the one reset first can have `link_error` set shortly afterwards,
+  with nothing wrong in it, its link up again when it hears the second say "I have started again" (13 of 150 runs).
+  What a chip does with such an error is item 181's.
 
 ### 28.15 What the host keeps
 
@@ -704,10 +724,12 @@ The host's end of the first link keeps a link end's rules:
 **The protocol as this chapter states it has been shown on the model** `[meas: the model]`:
 
 - **exhaustive searches** of a shrunken model (a window of 2, queues of a few words, numbers of 3 bits), on one link
-  and on chains of 1, 2 and 3: every reachable state, 86,515,438 in the longest, and from every state, with either
-  stream never taken again, the other finishes;
+  and on chains of 1, 2 and 3: every reachable state, 36.9 million in all with the sender's fast unit, and
+  86,515,438 in the longest, run with the pass at a byte a cycle; from every state, with either stream never taken
+  again, the other finishes;
 - **a kept case for every rule,** which fails without the rule and holds with it, and 18 planted flaws, each caught;
-- **random runs at the real sizes,** noise on every line and consumers that stall up to 1 ms, on chains of 1, 2, 4
+- **random runs at the real sizes,** noise on every line and consumers with stalls of a mean up to 1 ms (single
+  stalls longer), on chains of 1, 2, 4
   and 16: 7,519 runs, 18 billion cycles and 385 million link packets with none failed and none refused for want of
   room.
 
@@ -715,17 +737,17 @@ The host's end of the first link keeps a link end's rules:
 
 | | |
 | --- | --- |
-| the longest a foreground link packet waits for the line | 534 cycles |
+| the longest a foreground link packet waits for the line | 573 cycles in the campaign of 7,519 runs; the bench's bound 594 |
 | the data rate in the random runs, bytes a cycle | 0.5751; 0.8580 with every source saturated |
-| a full foreground link packet on an idle line, let out to delivered | 561 cycles |
+| a full foreground link packet on an idle line, let out to delivered | 561 cycles on average, 574 at most |
 | link packets of length 0, of the data's bytes | 7.64 % on lines otherwise idle |
-| the longest wait for an acknowledgement | 2,727 cycles |
-| the fullest an ASIC's own queue got, of 1,024 words | 953 |
+| the longest wait for an acknowledgement | 3,316 cycles in the campaign, on a link in step with its lines clean |
+| the fullest an ASIC's own queue got, of 1,024 words | 953, under a host whose window the campaign drew at 16 or 64, which 28.15 rules out; with the host's window at 8, 615 in 30 runs, and 767 at most by the window |
 | the fullest a forwarding buffer got, of 1,024 words | 759 |
 
 **The simulator's link ends** are this chapter's model, `End` and `Node` of `updater_wip/link/hostlink.h`, clocked a
-byte a cycle. They count every kind of damage, recovery and restart, and report a link packet refused for want of
-room, which with the sizes right never happens and so says a size is wrong.
+byte a cycle. They count every kind of damage, recovery and restart, report a link packet refused for want of room,
+which with the sizes right never happens and so says a size is wrong, and give an error's cause beside it.
 
 ### 28.17 Open items (chapter 26's numbering)
 

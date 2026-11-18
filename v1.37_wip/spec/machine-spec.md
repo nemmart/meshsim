@@ -1932,9 +1932,12 @@ value, 0 (17.5); while the UART is in reset `uart_rx` and `uart_tx` read 0.
 
 - **The queues know words, not frames:** the core keeps track of frames (17.6.10).
 - **A link packet is taken only with room for all its words** in its queue (28.7); its words land a 128-bit word a
-  cycle from the packet buffer (28.13.6), and each counts in `…_WORDS` as it lands.
+  cycle from the packet buffer (28.13.6), and each counts in `…_WORDS` as it lands. **The room is of another count,**
+  the words landed and still to land: a link packet's words are counted there in the cycle it is taken, so a short
+  link packet judged while a full one is still landing finds the room it would really have (28.13.6).
 - **Holding the host back.** At **half full** a queue's stop bit goes up in every header the upper link end sends
-  (28.10): nothing is counted, and the firmware has no part in it. The other half is for what is already on its way:
+  (28.10), half full by the words landed and still to land; on a chain the bit is also up while the forwarding
+  buffer down for that stream is half full (28.12): nothing is counted, and the firmware has no part in it. The other half is for what is already on its way:
   "stop" holds only link packets with no number yet, and a window of numbered ones, 4 KiB, may still arrive. Each
   stream has its own bit; a full background never holds the foreground.
 - **The two streams are independent:** words waiting on one never hold the other.
@@ -4871,7 +4874,7 @@ row says how. Chapters 1 to 19 mark an open subject *Open* in place; each is an 
 | 178 | A flush of the Tracer's dirty lines, at a trace's end or at shutdown: nothing reads them in LPDDR today | 23.6.3 | open |
 | 179 | The cache writing a set's dirty least recently used line back early, in place, so that a miss finds it clean | 23.6.7 | open |
 | 180 | Who discards a page when the file system hands it out again: in v1.37 nothing is freed | 23.6.8 | open |
-| 181 | **Everything after an error stops the chip:** the host's reset, draining Ingress's queues, a "ready" message to the host, a report of the failure, and the next proof. Not designed in v1.37 (owner: "error recovery in general is a nightmare") | 17.6.12, 17.10.8, 22.28, 28.14, 29.14, 30.8 | open |
+| 181 | **Everything after an error stops the chip:** the host's reset, draining Ingress's queues, a "ready" message to the host, a report of the failure, and the next proof. Not designed in v1.37 (owner: "error recovery in general is a nightmare"). Also what follows a stop of the master tile's own program on a frame's contents (30.8), and a `link_error` with nothing wrong at an ASIC whose neighbour is reset just after it (28.14) | 17.6.12, 17.10.8, 22.28, 28.14, 29.14, 30.8 | open |
 | 191 | Whether the file system, when it is designed, takes over making a file's root, which the Updater does in v1.37 (`RUN_CONFIG.root`, `SOURCE_ROOT`; owner) | 17.10.1, 17.10.5 | open |
 | 182 | Flow control on the line between the special tiles, with the regime that needs it: the file system's traffic. In v1.37 the line is the mesh's regime (owner) | 16.3 | open |
 | 17 | A direct path from the gather unit to the write engine | 13 | later |

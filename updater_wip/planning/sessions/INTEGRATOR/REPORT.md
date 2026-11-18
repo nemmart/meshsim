@@ -250,8 +250,8 @@ Stages 4 and 5 together, at `d54c8601`:
 | Quest | item | result |
 |---|---|---|
 | 253 | `suites`: `./run_tests.sh all --check`, the 37 proof runs, each through the link, the capture against gold's packet file, the reply checked | **PASS**: every step; the 37 proof runs, every one's data link packets as first sent byte for byte gold's packet file (8,277 a run at 2²⁹, none sent again) and its reply right; no golden log differs |
-| 254 | `suites-varied`: the same with LPDDR jittered | queued |
-| 255 | `check`: `make check` | queued |
+| 254 | `suites-varied`: the same with LPDDR jittered | **PASS**: the same, no log differs |
+| 255 | `check`: `make check` | **FAIL**, in its ThreadSanitizer build of the chip (`tsan-chip`): no rule for the link's objects in `build/<cc>-tsan/`. Stage 4 put WORKER8's link into every chip test's link line, and the TSan build's rule covers this folder's sources only. Fixed (`src/threads.mk`: rules for the link's and the wire's sources); the check again: below |
 
 **The proof runs' cycles, stages 4 and 5 against stage 3 (Quest 250):** every run 14,336 to 71,168 cycles longer,
 0.06% to 0.26%. The link's last byte comes 13,815 to 95,951 cycles later: its own link packets (the start, the status

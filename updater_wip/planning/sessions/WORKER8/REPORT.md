@@ -12,8 +12,8 @@ it, the sender's fast unit.
 3. **One thing HL says that the runs now contradict:** the error for a packet no longer kept "is raised only when
    there is real harm". With **two** forged headers it is raised and nothing was lost (section 4). With one it
    holds, as searched. It is far inside the limit already accepted, and it errs on the loud side.
-4. **The random campaign on the runner:** the one with the slow unit is back, 6,071 runs, none failed (section
-   10). The one with the fast unit is running.
+4. **The random campaign on the runner is back, with each unit:** 7,519 runs with the fast unit and 6,071 with
+   the slow, none failed (section 10).
 
 Names: HL is `v1.4_wip/planning/HOST-LINK.md` at `870ed9d9`. The code is `updater_wip/link/`. A dagger (†) marks
 what I chose or propose. A cycle is one byte on the link. "The fast unit" is HL's sending unit of 128 bits a
@@ -88,7 +88,7 @@ the right-hand column on the code as it now is.
 | "The CRC as hardware", the table's empty cell: a full foreground packet on an idle link | | 561 on average, 574 at most |
 | the same table's other rows | 0.5751; 0.8580; 534 | the same: they were already of the fast unit |
 | "When a packet is bad", why 2,048: packets sent to a receiver that had them | 54 at 128 cycles, 18 at 512, none above | 232, 104, none |
-| the same: "the random runs' 2 million packets" | 0 of 2 million | to come with the runner's campaign |
+| the same: "the random runs' 2 million packets" | 0 of 2 million | 0 of 385 million (Quest 237) |
 | "A packet made wrong": the second comes after | 1,071 cycles; 128 words lost | 1,056; 128 |
 | "Starting a link again", what these cost | 4,657; 1,554; 3,648 | the same |
 | "Holding the host back", the timer's table: 512 | 0.4904, 8.79%, 2,548 | 0.5751, 7.64%, 2,727 |
@@ -97,7 +97,7 @@ the right-hand column on the code as it now is.
 | the same: 400 one-word packets from power-on | 31,023 without the acknowledgement at once, 17,489 with | the same |
 | the same: packets of length 0 with and without it | 8.79%, 4.64% | 7.64%, 4.03% |
 | the same: the host's window 8, 16, 64 | 0.5342, 0.5343, 0.5343 | 0.6389, 0.6392, 0.6392 |
-| the same: the fullest queue | 630 | 629 here (60 runs); the runner's campaign to come |
+| the same: the fullest queue | 630 | 629 here (60 runs); 953 in the runner's campaign, which also draws the host's window at 16 and 64. None refused |
 
 - The data rates of the window and host-window rows are of 30 runs, the timer's of 60: different seeds, so 0.64
   and 0.58 are not to be set against each other.
@@ -338,13 +338,36 @@ bits, and the pass's counter. The mask is one more 32-bit register each way.
 | Quest 231 | the long search, the slow unit | **done: complete, holds** (section 3) |
 | Quest 232 | the random campaign, the slow unit (`72f12b9a`) | **done: 6,071 runs, none failed** (below). It had started before I parked it |
 | Quest 233 to 236 | the other campaigns, the searches and long noise at the slow unit | parked in `tasks/hold`, since HL no longer has that unit |
-| Quest 237 | **the random campaign:** 16 slices of seeds for an hour each, chains of 1, 2, 4 and 16, the fast unit | running since 05:31 UTC |
-| Quest 238 | the same with forged headers (8 slices) and with flipped bits (8) | queued. A seed may fail there as seed 16 did here: section 4 |
-| Quest 239, 240 | the 17 larger searches, depth-first, 55 minutes each | queued |
-| Quest 241 | long noise, bursts up to 300 ms | queued |
-| Quest 242 | the long search once more, the fast unit | queued |
+| Quest 237 | **the random campaign:** 16 slices of seeds for an hour each, chains of 1, 2, 4 and 16, the fast unit (`d2b298f7`) | **done: 7,519 runs, none failed** (below) |
+| Quest 238 | the same with forged headers (8 slices) and with flipped bits (8) | parked by the owner until the night of 2026-11-18. A seed may fail there as seed 16 did here: section 4 |
+| Quest 239, 240 | the 17 larger searches, depth-first, 55 minutes each | parked likewise |
+| Quest 241 | long noise, bursts up to 300 ms | parked likewise |
+| Quest 242 | the long search once more, the fast unit | parked likewise |
 
-They run one after another: some 8 hours in all from the first.
+**Quest 237, the random campaign with the fast unit** (`results/237-link-w8-campaign/campaign.txt` in the Quest
+repository): 16 slices of seeds for an hour each, 2,000,000 cycles of traffic and noise a run, HL's rules. The host's
+window is drawn for each run: 8 in three runs of five, 16 or 64 in the others.
+
+| | |
+|---|---|
+| runs | 7,519, on chains of 1, 2, 4 and 16: 3,030, 2,264, 1,475 and 750. **None failed** |
+| cycles; packets | 18,341,787,320; 385,299,289, of them 141,124,036 with data and 4,724,822 sent again |
+| the noise | 16,339,577 bursts; 2,559,617 single bits flipped; 3,332,337 header CRCs failed; 1,150,633 data checksums failed |
+| recoveries | 257,035: a link's last damaged byte to its next delivery 669 cycles on average, 5,187 at most |
+| the packet number wrapped | 2,184,550 times on a new packet, 114,756 on a packet sent again |
+| a sender went back | 1,387,089 times |
+| the most kept | 8 packets at a node, 64 at the host; 953 words in a queue; 759 in a forwarding buffer, of 1,024 each |
+| the longest wait for the line with nothing else to wait for | 573 cycles |
+| the longest a sender waited for an acknowledgement, the link in step and its wires clean | 3,316 cycles |
+| a foreground packet ready, not stopped, the link in step | 206 cycles on average; **384,187 at most** |
+| never happened | a packet seen before; a packet with no room; a field that cannot be; an acknowledgement behind or beyond; a packet made wrong; a link started again but at power-on; asked for a packet no longer kept |
+
+- **The 384,187 cycles are again a wire that read as zeros.** Seed 150255, a chain of 16: one wire was turned to
+  zeros in bursts of up to 446,377 cycles. Run again here from the campaign's commit, the seed gives the same
+  figure, all of it with the window full.
+- **The fullest queue, 953 words of 1,024, is nearer the top than in the runs here** (629). No packet was refused.
+  I have not traced which run it was; the campaign draws the host's window at 64 in one run of five, which HL
+  rules out.
 
 **Quest 232, the random campaign with the slow unit** (`results/232-link-w8-campaign/campaign.txt` in the Quest
 repository): 16 slices of seeds for an hour each, 2,000,000 cycles of traffic and noise a run, HL's rules.

@@ -245,8 +245,13 @@ second at stage 3 and 511,000 at stage 4, the link's two ends clocked a byte at 
 
 ### The runner
 
-To be queued once Quests 250 to 252 are in: `suites` (the 37 proof runs, each against gold's packet file through the
-capture), `suites-varied` and `check`.
+Stages 4 and 5 together, at `d54c8601`:
+
+| Quest | item | result |
+|---|---|---|
+| 253 | `suites`: `./run_tests.sh all --check`, the 37 proof runs, each through the link, the capture against gold's packet file, the reply checked | queued |
+| 254 | `suites-varied`: the same with LPDDR jittered | queued |
+| 255 | `check`: `make check` | queued |
 
 ## Stage 5: chapter 30
 
@@ -334,5 +339,5 @@ stage 4. v1.36's runs do not move.
 
 ### The runner
 
-To be queued with stage 4's once Quests 251 and 252 are in.
+With stage 4's: Quests 253 to 255 (above).
 

@@ -35,3 +35,16 @@ section, what the specification says, what `main` has. Kept as the specification
 | --- | --- | --- |
 | 28 | the link ends are WORKER8's model (`End`, `Node`), one run of numbers for a link, both stop bits in byte 7, the restart flag, the mask, the restart link packet, recovery, two link ends and four forwarding buffers on an ASIC, `chain_next` | Ingress's black box: 18-bit numbers for each stream, the stop bits as before, no mask, no restart; a bad link packet fatal (`crc_error`, `sequence_error`, `format_error`); no way back to the host; one ASIC. The link end is on `updater-w8`, not merged |
 | 28.14 | a damaged link packet is no error; `link_error` only when a link starts again | the black box's `ERRORS` [1] to [3] for each kind of bad link packet |
+
+## Ingress/Egress (machine-spec 17.6)
+
+| section | the specification | `main` (be077a7d) |
+| --- | --- | --- |
+| 17.6.1 | `PARAMS.version` 1 | 0 |
+| 17.6.1 | the packed numbers: `STATUS` [2], [3]; `EVENTS` [6], [7], [8]; words 64 to 67 | `STATUS` [3], [4]; `EVENTS` [8], [9]; words 80, 81, 82; no word for `EGRESS_COUNT` |
+| 17.6.1 | v1.36's host interface gone: words 64 to 72 as listed, `STATUS.stream_last`, `EVENTS.stream_in`, `stream_out`, and the parameters `STREAM_BYTES`, `STREAM_DEPTH` | still there, with v1.36's stream tests and the RTL images that use them |
+| 17.6.9 | the UART redesigned: `UART_TX` 30, `UART_RX` 31, `UART_CONTROL` 42 (0 at the reset, the UART off), the levels and line errors in `STATUS` | v1.36's UART at words 42 to 45, running from the reset at 115,200 baud; every image that prints needs a store to `UART_CONTROL` |
+| 17.6.3 | incoming queues of 16 KiB, 1,024 words, "stop" at half | 8 KiB, `QUEUE_WORDS` 512 |
+| 17.6.8 | Egress: the outgoing queue in region 0x04 part 1, `EGRESS_COUNT`, `egress_credit`, `egress_error` | none: nothing goes back to the host |
+| 17.6.4, 16.4 | Ingress/Egress's DMA on the master tile's south input | the black box's DMA (check its input) |
+| 17.6.14 | the one reset empties the queues and restarts the link | the black box's queues: check what its reset does |

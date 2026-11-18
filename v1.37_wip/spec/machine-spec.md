@@ -1749,19 +1749,42 @@ no DMA (17.6); the RW engine's data and replies are whole 128-bit packets
 - Send nothing unsolicited: its DMA sends only a transfer the core started.
 - Raise errors only for errors.
 
-### 17.6 Ingress/Egress, the master tile's peripheral
+### 17.6 Ingress/Egress, the master tile's peripheral 1
 
-Ingress/Egress is the master tile's peripheral 1, type 1, version 0. It holds
-the chip's control lines and its external IO: every other tile's error line,
-the barrier's master side, the watchdog and the toast pin, `LED`, the UART and
-the host interface. It does no work of its own and sends nothing.
+Ingress/Egress is the master tile's peripheral 1, type 1, version 1. It holds the chip's control lines and its
+external IO: every other tile's error line, the barrier's master side, the watchdog and the toast pin, `LED`, the
+UART, and **the host link** (28) with what the core sees of it: **Ingress,** the host's words in two incoming queues,
+read by its DMA or forwarded to the Updater (17.10); and **Egress,** the chip's replies in one outgoing queue. *The
+control lines are v1.36's, built in the RTL; the UART is redesigned (asked of the RTL, RCR 2); the rest is designed
+here and not built, and replaces v1.36's host interface, whose words are gone (agreed with the RTL, RCR C).*
+
+- **`PARAMS`:** type 1, version 1, and no constants, [31:16] 0.
 - **No work.** A `START` is UB (1.3), so `STATUS.busy` and `EVENTS.done` stay 0.
-- **No DMA.** Its block 1 reads 0 (17.1), and `EVENTS.dma_done` stays 0.
-- **No writes.** Its region takes none: a `WRITE` to the master tile's region
-  0x04 is UB (17.3).
-- **`PARAMS`:** type 1, version 0, and no constants, [31:16] 0.
+- **Its DMA** is the standard one (17.4), reading out of the incoming queues (17.6.4). It enters the master tile's
+  router on its south input (16.4).
+- **Its region,** 0x04 on the master tile, is the outgoing queue (17.6.8).
+- **Its ports and pins** (3, 18): the host link's two link ends, the upper towards the host and the lower away from
+  it, each a byte in and a byte out a cycle; the pin `chain_next`; the word port to the Updater, the source
+  (17.6.6); the UART's `uart_tx` and `uart_rx`; `toast` and `led`.
 
-Its words, at offsets from its window's base, 0xFFFF_FA00:
+| Part | Size | Holds | Section |
+| --- | --- | --- | --- |
+| the link | 28.13: two link ends, four forwarding buffers of 16 KiB | the host link and the chain | 28 |
+| foreground queue, background queue | 1,024 × 128 bits, 16 KiB each | the host's words for this ASIC, a queue a stream | 17.6.3 |
+| outgoing queue | 512 × 128 bits, 8 KiB | the chip's words for the host | 17.6.8 |
+| UART FIFOs | 16 bytes each way | the UART's characters | 17.6.9 |
+
+#### 17.6.1 Its words and bits
+
+**In the control block and the DMA block,** words 0 to 31, beside the standard words (17.1):
+
+| Word | Offset | Register | Access | Fields |
+| --- | --- | --- | --- | --- |
+| 16–18 | 0x040–0x048 | `DMA_HDR`, `DMA_DEST_ADDR`, `DMA_START` | 17.4's | the DMA: `DMA_HDR.queue` names the incoming queue, 0 the foreground and 1 the background (17.6.4) |
+| 30 | 0x078 | `UART_TX` | W | [7:0] a character to send (17.6.9) |
+| 31 | 0x07C | `UART_RX` | R | [7:0] the oldest character received; [8] `valid`. Pops it |
+
+**Its own words,** at offsets from its window's base, 0xFFFF_FA00:
 
 | Word | Offset | Register | Access | Fields |
 | --- | --- | --- | --- | --- |
@@ -1771,142 +1794,318 @@ Its words, at offsets from its window's base, 0xFFFF_FA00:
 | 39 | 0x09C | `RELEASE` | W | releases the barrier |
 | 40 | 0x0A0 | `WATCHDOG` | R/W | [31:0] a store sets the limit, and a load returns the count |
 | 41 | 0x0A4 | `LED` | R/W | [0] the `led` pin |
-| 42 | 0x0A8 | `UART_TX` | W | [7:0] a byte to send |
-| 43 | 0x0AC | `UART_RX` | R | [7:0] the oldest byte received; [8] `valid`. Pops it |
-| 44 | 0x0B0 | `UART_DIVISOR` | R/W | [15:0] the cycles per bit |
-| 45 | 0x0B4 | `UART_STATUS` | R/W | [4:0] the TX FIFO's bytes; [12:8] the RX FIFO's; [16] `rx_overrun`; [17] `framing_error` |
-| 64–66 | 0x100–0x108 | `STREAM_OUT_W0`–`STREAM_OUT_W2` | W | words 0–2 of the next beat out |
-| 67 | 0x10C | `STREAM_SEND` | W | the beat's top word; pushes the beat, TLAST 0 |
-| 68 | 0x110 | `STREAM_SEND_LAST` | W | the beat's top word; pushes the beat, TLAST 1 |
-| 69–71 | 0x114–0x11C | `STREAM_IN_W0`–`STREAM_IN_W2` | R | words 0–2 of the oldest beat in |
-| 72 | 0x120 | `STREAM_RECEIVE` | R | its top word. Pops it |
+| 42 | 0x0A8 | `UART_CONTROL` | R/W | [15:0] `divider`, the cycles a bit; [16] `enable_read`; [17] `enable_write`. 0 holds the UART in reset (17.6.9) |
+| 64 | 0x100 | `FOREGROUND_WORDS` | R | [10:0] the 128-bit words in the foreground queue, 0 to 1,024 |
+| 65 | 0x104 | `BACKGROUND_WORDS` | R | [10:0] the same for the background queue |
+| 66 | 0x108 | `DMA_FORWARD_COUNT` | R/W | [30:0] `count`, the 128-bit words still to move out of the background queue; [31] `discard`: 0 each goes to the Updater, 1 each is dropped (17.6.5) |
+| 67 | 0x10C | `EGRESS_COUNT` | R/W | [31:0] the 128-bit words of the frame being queued for the host still to come (17.6.8) |
 
-Every other word of blocks 2–7 is unmapped (5.3).
+Every other word of blocks 2–7 is unmapped (5.3), v1.36's words 43 to 45 and 68 to 72 among them.
 
-**Its bits.**
-- **`STATUS`:** [2] `stream_last`, the TLAST of the oldest beat in, 0 while
-  there is none.
-- **`ERRORS`:** [0] `tile_error`, live: 1 while any bit of `ERROR_LINES` is 1.
-  It is the one live bit of a peripheral's `ERRORS`. Its kind is that of the
-  tile's error behind it (7.4).
-- **`EVENTS`:**
+- **No load of a word from 32 up has a side effect,** on this peripheral as on every other. The loads that act are
+  below 32: `EVENTS`, which consumes, and `UART_RX`, which pops.
+- **`FOREGROUND_WORDS` and `BACKGROUND_WORDS`** are live: a load after a service flag (17.6.7) sees every word that
+  has arrived by its sample point (6.4).
 
-  | Bit | Event | Kind | Set by |
-  | --- | --- | --- | --- |
-  | 0, 1 | `done`, `dma_done` | counted, 1 | nothing: it has no work and no DMA |
-  | 2 | `all_arrived` | live | (`ARRIVALS` & `ARRIVE_EXPECT`) = `ARRIVE_EXPECT` ≠ 0 |
-  | 3 | `watchdog` | counted, 1 | the watchdog's expiry |
-  | 4 | `uart_rx` | live | a byte in the UART's RX FIFO |
-  | 5 | `uart_tx` | live | room in the UART's TX FIFO |
-  | 6 | `stream_in` | live | a beat in the host interface's receive FIFO |
-  | 7 | `stream_out` | live | room in the host interface's transmit FIFO |
+**`STATUS`:**
 
-  `uart_tx` and `stream_out` read 1 while it is idle, and wake nothing while
-  `EVENTS_MASK` keeps its reset value, 0 (17.5).
+| Bits | Field | Meaning |
+| --- | --- | --- |
+| [0] | `busy` | 0: it has no work |
+| [1] | `dma_busy` | the DMA's (17.4) |
+| [2] | `foreground_ready` | the foreground queue holds words; live |
+| [3] | `background_ready` | the background queue holds words; live |
+| [12:8] | `uart_tx_bytes` | the characters in the UART's TX FIFO, 0 to 16; live |
+| [20:16] | `uart_rx_bytes` | the characters in its RX FIFO; live |
+| [24] | `rx_overrun` | a character arrived with the RX FIFO full and was dropped; until the UART's reset |
+| [25] | `framing_error` | a character's stop bit was 0 and it was dropped; until the UART's reset |
+
+**`ERRORS`:**
+
+| Bit | Error | Kind | Set by |
+| --- | --- | --- | --- |
+| 0 | `tile_error` | that of the tile's error behind it (7.4) | **live:** 1 while any bit of `ERROR_LINES` is 1. The one live bit of a peripheral's `ERRORS` |
+| 1 | `link_error` | H | sticky: a link end of this ASIC has started its link again, towards the host or away from it (28.9) |
+| 2 | `format_error` | H | sticky: set with `link_error` when the cause was a link packet made wrong twice running (28.7) |
+| 3 | `egress_error` | P | sticky: a 128-bit word written into a full outgoing queue, or with `EGRESS_COUNT` at 0; the word is dropped (17.6.8) |
+
+**`EVENTS`:**
+
+| Bit | Event | Kind | Set by |
+| --- | --- | --- | --- |
+| 0 | `done` | counted, 1 | nothing: it has no work |
+| 1 | `dma_done` | counted, 1 | the end of the DMA's transfer (17.4) |
+| 2 | `all_arrived` | live | (`ARRIVALS` & `ARRIVE_EXPECT`) = `ARRIVE_EXPECT` ≠ 0 |
+| 3 | `watchdog` | counted, 1 | the watchdog's expiry |
+| 4 | `uart_rx` | live | a character in the UART's RX FIFO |
+| 5 | `uart_tx` | live | room in the UART's TX FIFO |
+| 6 | `foreground_service` | counted, 1 | the foreground queue asks for service (17.6.7) |
+| 7 | `background_service` | counted, 1 | the background queue asks for service (17.6.7) |
+| 8 | `egress_credit` | counted, 2 | the outgoing queue's credit (17.6.8) |
+
+`uart_tx` reads 1 while the UART runs and its TX FIFO has room, and wakes nothing while `EVENTS_MASK` keeps its reset
+value, 0 (17.5); while the UART is in reset `uart_rx` and `uart_tx` read 0.
+
+#### 17.6.2 The control lines
 
 **The error lines.**
-- Bit *i* of `ERROR_LINES` is tile *i*'s error line (18): 1 while that tile's
-  `ERRORS` is non-zero, `ERROR_LATENCY` behind it. At 8 × 8, `ERROR_LINES_2`'s
-  [1] is the memory tile's and [2] the tracer tile's.
-- The master tile's own bit, `TILE_COUNT`, and the bits past `TILE_COUNT` + 2
-  read 0. The master tile's own line drives the toast pin instead.
-- Through `tile_error`, any other tile's error raises the master tile's
-  `ERRORS.peripheral_1` (17.2), and with it the master's NMI (6.2) and the toast
-  pin.
+- Bit *i* of `ERROR_LINES` is tile *i*'s error line (18): 1 while that tile's `ERRORS` is non-zero,
+  `ERROR_LATENCY` behind it. At 8 × 8, `ERROR_LINES_2`'s [1] is the memory tile's and [2] the tracer tile's.
+- The master tile's own bit, `TILE_COUNT`, and the bits past `TILE_COUNT` + 2 read 0. The master tile's own line
+  drives the toast pin instead.
+- Through `tile_error`, any other tile's error raises the master tile's `ERRORS.peripheral_1` (17.2), and with it
+  the master's NMI (6.2) and the toast pin.
 
 **The barrier, the master tile's side** (7.3).
-- **Arrivals.** Bit *i* of `ARRIVALS` is set at the end of the cycle in which
-  compute tile *i*'s `BARRIER_ARRIVE` pulse reaches Ingress/Egress,
-  `ARRIVE_LATENCY` after the tile sent it (18). A `RELEASE` and the reset clear
-  it. The bits past `TILE_COUNT` − 1 read 0.
-- **`ARRIVE_EXPECT`** names the compute tiles the master tile waits for, its
-  bits laid out as `ARRIVALS`'. The bits past `TILE_COUNT` − 1 are reserved
-  (5.4).
-- **`all_arrived`** is live, so it is current whatever order the master writes
-  `ARRIVE_EXPECT`'s two words in.
-- **`RELEASE`**, a store with bit 0 set, takes effect at the end of *t* + 1 for
-  a store issued in *t* (6.4). Then it:
-  - clears `ARRIVALS`, but keeps an arrival that reaches Ingress/Egress in that
-    cycle;
+- **Arrivals.** Bit *i* of `ARRIVALS` is set at the end of the cycle in which compute tile *i*'s `BARRIER_ARRIVE`
+  pulse reaches Ingress/Egress, `ARRIVE_LATENCY` after the tile sent it (18). A `RELEASE` and the reset clear it. The
+  bits past `TILE_COUNT` − 1 read 0.
+- **`ARRIVE_EXPECT`** names the compute tiles the master tile waits for, its bits laid out as `ARRIVALS`'. The bits
+  past `TILE_COUNT` − 1 are reserved (5.4).
+- **`all_arrived`** is live, so it is current whatever order the master writes `ARRIVE_EXPECT`'s two words in.
+- **`RELEASE`**, a store with bit 0 set, takes effect at the end of *t* + 1 for a store issued in *t* (6.4). Then it:
+  - clears `ARRIVALS`, but keeps an arrival that reaches Ingress/Egress in that cycle;
   - restarts the watchdog (below);
-  - releases: its pulse is on every compute tile's `BARRIER_RELEASE`
-    `RELEASE_LATENCY` cycles later, in the same cycle on every tile (18).
+  - releases: its pulse is on every compute tile's `BARRIER_RELEASE` `RELEASE_LATENCY` cycles later, in the same
+    cycle on every tile (18).
 
 **The watchdog and the toast pin.**
-- **`WATCHDOG`** counts the chip's cycles down, from a **limit** the program
-  sets. The limit and the count are 0 at the reset, and a count of 0 is off.
-  - A store of *N* sets the limit and the count to *N*: *N* > 0 starts it, and 0
-    stops it.
+- **`WATCHDOG`** counts the chip's cycles down, from a **limit** the program sets. The limit and the count are 0 at
+  the reset, and a count of 0 is off.
+  - A store of *N* sets the limit and the count to *N*: *N* > 0 starts it, and 0 stops it.
   - A `RELEASE` sets the count to the limit.
   - A load returns the count.
-  - At the end of every cycle in which the count is non-zero and nothing sets it,
-    it decreases by 1. When it reaches 0, the watchdog **expires**: it posts
-    `EVENTS.watchdog` and sets the toast pin. The count then stays at 0 until a
-    store or a `RELEASE` sets it. So a store of *N* > 0 issued in cycle *t*,
-    with nothing after it, expires at the end of *t* + 1 + *N*.
-- **The toast pin** (18) says the chip has failed. It is a flip-flop, set at
-  the end of a cycle in which the master tile's own error line is high or the
-  watchdog expires, and cleared only by the reset. The chip never resets
+  - At the end of every cycle in which the count is non-zero and nothing sets it, it decreases by 1. When it reaches
+    0, the watchdog **expires**: it posts `EVENTS.watchdog` and sets the toast pin. The count then stays at 0 until a
+    store or a `RELEASE` sets it. So a store of *N* > 0 issued in cycle *t*, with nothing after it, expires at the
+    end of *t* + 1 + *N*.
+- **The toast pin** (18) says the chip has failed. It is a flip-flop, set at the end of a cycle in which the master
+  tile's own error line is high or the watchdog expires, and cleared only by the reset. The chip never resets
   itself: the outside world does (18).
 
 **`LED`** drives the `led` pin (18) from a flip-flop, its bit 0.
 
-**The UART** is the chip's serial port, on the pins `uart_tx` and `uart_rx`
-(18).
-- **Frames.** 8 data bits, the least significant first, no parity and 1 stop
-  bit; the line is 1 while idle. Each bit lasts `UART_DIVISOR` cycles. A new
-  divisor takes effect at each direction's next idle point, so no frame is cut.
-  The divisor counts the chip's clock (6.1), where v1.35 counts a reference
-  oscillator's, and resets to `UART_RESET_DIVISOR`, 115,200 baud. A divisor of 0
-  is UB (1.3).
-- **FIFOs.** A TX FIFO and an RX FIFO of `UART_FIFO_DEPTH` = 16 bytes each, as
-  v1.35 proposes.
-- **Sending.** A store to `UART_TX` pushes its byte into the TX FIFO, and
-  stalls while the FIFO is full (the `reg` interface's `ready`, 3). The
-  transmitter sends the FIFO's bytes in order.
-- **Receiving.** `uart_rx` is asynchronous to the chip's clock, and the receiver
-  synchronises it. A frame starts at a falling edge of the line, and each of its
-  bits is sampled at its middle; the start bit is not checked, so a glitch
-  starts a frame. A frame whose stop bit is 0 is dropped and sets
-  `framing_error`, and one that ends with the RX FIFO full is dropped and sets
-  `rx_overrun`.
-- **`UART_RX`** returns the oldest byte with `valid` 1, and pops it. With the
-  RX FIFO empty it returns 0 and pops nothing.
-- **`UART_STATUS`** has no read side effect. A store clears each of
-  `rx_overrun` and `framing_error` that it writes 1, and ignores its other bits.
-  An error raised in the store's cycle stays set.
-- **Line errors are status:** they never reach `ERRORS`, so noise on the line
-  never raises the toast pin.
+#### 17.6.3 Ingress: the link and the incoming queues
 
-**The host interface** is the chip's link to its host: two AXI4-Stream ports,
-`lvds_in` from the LVDS IO block and `lvds_out` to it (3), each behind a FIFO of
-`STREAM_DEPTH` beats of TDATA and TLAST.
-- **A beat** is TDATA, `STREAM_BYTES` bytes, as `STREAM_BEAT_WORDS` =
-  ⌈`STREAM_BYTES` / 4⌉ words: word *w* is its bits [32*w* + 31 : 32*w*], and its
-  **top word** is word `STREAM_BEAT_WORDS` − 1. A word's bits past TDATA, and the
-  words past the beat, are ignored on a store and read 0.
-- **No meaning.** The ports move beats and give them none. *Open:* the master
-  tile's boot over LVDS, and every meaning of the beats and of TLAST.
-- **Sending**, as the write unit sends (9): a program stores the words below the
-  beat's top in `STREAM_OUT_W0`–`W2`, then its top word in `STREAM_SEND` or
-  `STREAM_SEND_LAST`, which pushes the beat into the transmit FIFO with TLAST 0
-  or 1 and clears `STREAM_OUT_W0`–`W2`. A beat of one word is one store. A send
-  stalls while the transmit FIFO is full.
-- **Receiving**, as the request unit receives (11.1): `STREAM_IN_W0`–`W2` read
-  the words below the oldest beat's top, and `STREAM_RECEIVE` its top word,
-  which pops it. With the receive FIFO empty they read 0, and
-  `STREAM_RECEIVE` pops nothing.
-- **The ports.** `lvds_in_tready` is 1 while the receive FIFO is not full, from
-  the cycle after the reset, and
-  `lvds_out_tvalid` while the transmit FIFO holds a beat, whose TDATA and TLAST
-  it offers until its handshake.
+| Stage | What it does |
+| --- | --- |
+| the upper link end (28) | link packets of up to 32 128-bit words; their checks, numbering, sending again and recovery |
+| the packet buffer | holds one link packet while it is checked (28.13.5). A link packet taken goes, its header dropped, into its stream's queue, and on a chain into the forwarding buffer down (28.12) |
+| the two queues | **foreground and background, 16 KiB, 1,024 128-bit words each** (owner) |
+| two ways out | **the DMA** (17.6.4), from either queue, for what the core must see; **the forward count** (17.6.5), from the background queue, to the Updater or dropped |
 
-**Reset.** The reset zeroes `ARRIVALS`, `ARRIVE_EXPECT`, the watchdog's limit
-and count, `LED`, the toast pin, the UART's line errors and
-`STREAM_OUT_W0`–`W2`; empties the four FIFOs, so `lvds_in_tready` and
-`lvds_out_tvalid` are 0; sets `UART_DIVISOR` to `UART_RESET_DIVISOR`; and leaves
-`uart_tx` idle, at 1. `ERROR_LINES` follow the tiles' `ERRORS`, which the reset
-zeroes too (18).
+- **The queues know words, not frames:** the core keeps track of frames (17.6.10).
+- **A link packet is taken only with room for all its words** in its queue (28.7); its words land a 128-bit word a
+  cycle from the packet buffer (28.13.6), and each counts in `…_WORDS` as it lands.
+- **Holding the host back.** At **half full** a queue's stop bit goes up in every header the upper link end sends
+  (28.10): nothing is counted, and the firmware has no part in it. The other half is for what is already on its way:
+  "stop" holds only link packets with no number yet, and a window of numbered ones, 4 KiB, may still arrive. Each
+  stream has its own bit; a full background never holds the foreground.
+- **The two streams are independent:** words waiting on one never hold the other.
+
+#### 17.6.4 Reading words out: the DMA
+
+The core has Ingress copy the next *n* 128-bit words of a queue to an address (owner), by the standard DMA (17.4):
+
+| Register | What the core writes |
+| --- | --- |
+| `DMA_HDR` | `count`, *n*; `queue`, 0 the foreground or 1 the background; `dst`; the counter and mode the `WRITE`s carry |
+| `DMA_DEST_ADDR` | the address the first word goes to; it advances by 16 a word |
+| `DMA_START` | starts the transfer |
+
+- **Each word is one 128-bit `WRITE`,** as every peripheral DMA sends (17.4), and leaves its queue as it goes.
+- **A frame may be read out in pieces** (owner): the core copies the first word into its own memory, works out what
+  the frame is, and deals with the rest. One transfer may run across link packets, up to the words in the queue.
+- **A count beyond the words in the queue at `DMA_START` is UB** (1.3): the DMA does not wait for words to arrive,
+  since one DMA serves both queues and a transfer waiting on the background would hold a foreground message behind
+  it. The core loads `…_WORDS` and copies no more than that.
+- **Knowing a transfer is complete:** `EVENTS.dma_done`, the last word has left Ingress; and a counter's event at the
+  destination, the words have landed (12.3). The master tile arms its own counter for a copy into its own memory;
+  another tile arms its own. `dma_done` may be masked off when only the landing matters.
+- **A DMA transfer from the background queue while `DMA_FORWARD_COUNT.count` is not 0 is UB** (owner).
+
+#### 17.6.5 The forward count
+
+`DMA_FORWARD_COUNT` (the owner's design) moves words from the background queue straight to the Updater, or drops
+them, with no core in the path: the firmware wakes once a frame, not once a word.
+
+- **While `count` is not 0, one word a cycle leaves the background queue** and `count` falls by one, in each cycle
+  in which the queue holds a word and, when forwarding, the Updater takes it on the word port (17.6.6). **It waits on
+  an empty queue,** so the firmware stores a frame's whole length at once, before the frame's words have arrived
+  (owner).
+- **Discarding** (`discard` 1) does not wait on the Updater, only on the queue: it runs at the link's rate.
+- **Forwarding and a DMA transfer from the foreground queue may move words in the same cycle** (owner).
+- **A store replaces the count;** a store of 0 stops the forwarding (owner).
+- **A load gives what remains,** and may be stale by the time it is used; **a load of 0 is exact,** since only the
+  core raises the count (owner). A load returns both fields: `discard` stays as written when `count` reaches 0.
+- **A store of the count while a DMA transfer from the background queue is in flight is UB** (owner).
+- **There is no event for `count` reaching 0:** it reaches 0 when the frame's last word has entered the Updater, not
+  when it has been decoded, and the firmware learns that a frame is through from the Updater's `done`, or from the
+  next service flag.
+- **A cycle works from the registers as they stood at its start:** a word that arrives at the end of a cycle is the
+  queue's from the next, for both ways out; a store takes effect as any window store does (6.4).
+
+#### 17.6.6 The word port to the Updater
+
+The word port, a `word_port` interface (3), is the only way into the Updater's data (17.10.3). Ingress is its source:
+
+| Signal | Bits | From | Meaning |
+| --- | --- | --- | --- |
+| `valid` | 1 | Ingress | a word is offered: `count` is not 0, `discard` is 0, and the background queue holds a word |
+| `data` | 128 | Ingress | the word at the head of the background queue |
+| `ready` | 1 | the Updater | it takes a word this cycle |
+
+- A word moves in a cycle in which `valid` and `ready` are both 1, and leaves the queue. Words arrive in the
+  stream's order, each once.
+- **`valid` may fall without a word having moved:** a store of 0 to the count, or of a count with `discard` set,
+  takes the offer back. While the count stands and the queue holds words, Ingress holds `valid`.
+- **The Updater's input is flow-controlled, with no credits** (owner): the two units sit side by side.
+- **Every output is a flip-flop.**
+
+#### 17.6.7 The service flags
+
+**A queue asks for service when it holds words and nothing is taking them** (owner):
+
+| Queue | It asks while |
+| --- | --- |
+| foreground | it holds words, and no DMA transfer from it is in flight |
+| background | it holds words, `count` is 0, and no DMA transfer from it is in flight |
+
+- **"Asks" is a level, and the flag, a counted event of depth 1, is posted in the cycle the level rises:** when a
+  word arrives in an empty queue; when `count` reaches 0 with words in the queue; when a DMA transfer from the queue
+  ends with words still in it. A transfer of 0 words counts as a transfer. Words that arrive while the queue already
+  asks post nothing more.
+- **In flight:** a DMA transfer is in flight from a queue while the DMA is busy with a transfer whose
+  `DMA_HDR.queue` names it, from `DMA_START`'s effect to `dma_done` (17.4).
+- **The core wakes, and the flag is consumed,** by a load of `EVENTS` (17.2).
+
+#### 17.6.8 Egress: sending to the host
+
+**The core builds a frame in memory, stores its length in `EGRESS_COUNT`, and writes its words into the outgoing
+queue; Egress cuts them into link packets** (owner).
+
+- **The outgoing queue,** 512 128-bit words, 8 KiB, is filled by 128-bit `WRITE`s into the peripheral's region, 0x04
+  on the master tile, **part 1,** the part named by offset bits [22:20]; the rest of the address is ignored. A write
+  of another size, or to another part, is UB (1.3). The writes reach it as any region's do (17.3), and land in the
+  order they arrive: one source at a time feeds it (14.4).
+- **`EGRESS_COUNT`:** the core stores a frame's length in words, then writes that many. **It counts down as each
+  word lands in the queue,** not as it leaves; the word that takes it to 0 is the frame's last, and is marked so in
+  the queue. So the core, which writes the words, knows when it is 0, and stores the next frame's length without
+  waiting for the link. A store while it is not 0 is UB (1.3); a load gives what remains.
+- **`egress_error`:** a word written into a full queue, or with `EGRESS_COUNT` at 0, is dropped and sets
+  `ERRORS.egress_error`; the write is still counted (17.3).
+- **Link packets.** Egress offers the upper link end a link packet when the queue holds 32 words of a frame, or the
+  frame's last word: a frame's last link packet is the short one, and **a frame ends at the end of a link packet,**
+  as on the way in. Every link packet is on the foreground (owner), with `hops` 0, and goes behind any link packet
+  this ASIC is forwarding towards the host (28.12).
+- **The credit is the replayer's** (17.8.8): `egress_credit`, a counted event of depth 2; one credit is leave to
+  write up to 256 words, 4 KiB; a credit comes back each time 256 words have left the queue. There are 2 at the
+  reset, so a reply of up to 8 KiB needs no wake.
+- **Order.** A frame's words reach the host in the order written, its link packets in order (28.12).
+
+#### 17.6.9 The UART
+
+The chip's serial port, on the pins `uart_tx` and `uart_rx` (18). *Asked of the RTL* (RCR 2): its words, `UART_CONTROL`,
+and its levels and line errors in `STATUS`; the line, the characters, the FIFOs and the two events are v1.36's.
+
+- **`UART_CONTROL` is a plain register** (owner): no bit of it acts when written.
+  - **0 is the UART's reset** (owner): while it is 0, both FIFOs are empty, `rx_overrun` and `framing_error` are 0,
+    the line out is idle at 1 and the line in is ignored; `uart_rx` and `uart_tx` read 0, a store to `UART_TX` is
+    dropped, and `UART_RX` reads 0. **It is 0 at the reset,** so the UART is off until the core turns it on. A
+    program resets the UART by storing 0, and starts it by storing its setting in a later cycle.
+  - **`divider`** is the cycles of the chip's clock a bit lasts. A non-zero `UART_CONTROL` with a `divider` of 0 is
+    UB. A new divider takes effect at each direction's next idle point, so no character is cut.
+  - **The enables only gate the line** (owner). `enable_read` 0: the line in is ignored, no character starts and no
+    line error is raised, and what is in the RX FIFO stays. `enable_write` 0: nothing is sent, and a store to
+    `UART_TX` is dropped, so that it cannot stall for ever.
+- **Characters.** 8 data bits, the least significant first, no parity and 1 stop bit; the line is 1 while idle.
+  Each bit lasts `divider` cycles.
+- **FIFOs.** A TX FIFO and an RX FIFO of `UART_FIFO_DEPTH` = 16 characters each.
+- **Sending.** A store to `UART_TX` pushes its character into the TX FIFO, and stalls while the FIFO is full (the
+  `reg` interface's `ready`, 3). The transmitter sends the FIFO's characters in order.
+- **Receiving.** `uart_rx` is asynchronous to the chip's clock, and the receiver synchronises it. A character starts
+  at a falling edge of the line, and each of its bits is sampled at its middle; the start bit is not checked, so a
+  glitch starts a character. One whose stop bit is 0 is dropped and sets `framing_error`, and one that ends with the
+  RX FIFO full is dropped and sets `rx_overrun`.
+- **`UART_RX`** returns the oldest character with `valid` 1, and pops it. With the RX FIFO empty it returns 0 and
+  pops nothing.
+- **The line errors are status:** they never reach `ERRORS`, so noise on the line never raises the toast pin. Only
+  the UART's reset clears them.
+
+#### 17.6.10 Frames, as Ingress and Egress see them
+
+- **A frame ends at the end of a link packet,** and the next starts at the start of one, so a frame's first word is
+  its header word (29.2). That is the sender's rule, the host's and Egress's; the chip does not depend on it.
+- **Ingress and Egress know link packets and words, not frames.** The core reads a frame's length from its header
+  word and counts the words that follow (30).
+
+#### 17.6.11 Its registers
+
+The link's are 28.13's. Beside them, at the signals' widths:
+
+| Register | Bits | What it holds |
+| --- | --- | --- |
+| each incoming queue's pointers | 10 + 10 + 11 | read, write, the words held |
+| the service levels | 2 | each queue's "asks" of the last cycle, to post a flag when it rises |
+| `DMA_FORWARD_COUNT` | 32 | `count` (31) and `discard` |
+| the word port's outputs | 1 + 128 | `valid` and `data` |
+| the outgoing queue's pointers and marks | 9 + 9 + 10, and a mark a word | read, write, the words held; the frame's last word |
+| `EGRESS_COUNT` | 32 | |
+| Egress's credit | 8 | the words gone since the last credit returned |
+| `UART_CONTROL` | 18 | |
+| the UART | as v1.36's: two FIFOs of 16 × 8 bits, their pointers, the line errors, the transmitter's and the receiver's shift registers, bit counters and divider counters, and the synchroniser | |
+| the control lines | v1.36's: `ARRIVALS`, `ARRIVE_EXPECT`, `WATCHDOG`'s limit and count, `LED`, the toast pin | |
+
+#### 17.6.12 Errors
+
+- **Nothing a damaged link packet does is an error** (28.14). The core sees an error of the link only when a link
+  starts again: `link_error`, with `format_error` when the cause was a link packet made wrong twice.
+- **A peripheral's error is its tile's** (owner): `link_error`, `egress_error` and the Updater's errors raise the
+  master tile's error, and with it the toast pin; the chip stops. What follows (the host's reset, draining the
+  queues, the next proof) is not designed in v1.37 *(item 181)*.
+- **A neighbour that goes silent raises nothing** (28.14; item 186).
+- **The UART's line errors are status, not errors** (17.6.9).
+
+#### 17.6.13 What software keeps
+
+- A DMA transfer copies no more words than its queue holds at `DMA_START`; none from the background queue while
+  `count` is not 0; and no store of the count while one from the background is in flight.
+- **A flag is a reason to look, never proof:** a transfer's end can post a flag that is still pending when the next
+  count is stored. On each wake the core loads `DMA_FORWARD_COUNT` and `BACKGROUND_WORDS`, and acts only on a count
+  of 0 with words waiting.
+- **A count is stored, or a background transfer started, only after a load of the count reads 0,** and with no
+  background transfer in flight. Drops that follow one another are one count: a store replaces a running count.
+- `EGRESS_COUNT` is stored only at 0, and exactly that many words follow it into part 1 of the region, from one
+  source at a time, under the credit.
+- `UART_CONTROL` is non-zero only with a non-zero `divider`.
+
+Breaking one is UB (1.3); `egress_error` is the one this peripheral checks.
+
+#### 17.6.14 Reset
+
+**The reset is the chip's one reset** (18; owner), and reaches everything here:
+
+- **the link** (28.14): both link ends as at power-on, saying "I have started again"; the forwarding buffers and the
+  packet buffers empty;
+- **the queues:** both incoming queues and the outgoing queue empty, `DMA_FORWARD_COUNT` and `EGRESS_COUNT` 0,
+  `egress_credit` at 2, the service levels low, the word port's `valid` 0;
+- **the UART:** `UART_CONTROL` 0, so in its reset (17.6.9);
+- **the control lines:** `ARRIVALS`, `ARRIVE_EXPECT`, the watchdog's limit and count, `LED` and the toast pin 0;
+  `ERRORS`' sticky bits 0. `ERROR_LINES` follow the tiles' `ERRORS`, which the reset zeroes too (18).
+
+#### 17.6.15 The simulator's checks and parameters
+
+**UB the simulator stops on:** a `START`; a DMA count beyond the words in its queue; a DMA transfer from the
+background queue with `count` not 0, or a store of the count during one; a store to `EGRESS_COUNT` while it is not 0;
+a `WRITE` into the region of other than 128 bits or to a part other than 1; a non-zero `UART_CONTROL` with a
+`divider` of 0.
+
+| Parameter | Value | Meaning |
+| --- | --- | --- |
+| `INGRESS_QUEUE_WORDS` | 1,024 | each incoming queue, in 128-bit words; "stop" at half |
+| `EGRESS_QUEUE_WORDS` | 512 | the outgoing queue; a credit is half of it |
+| `UART_FIFO_DEPTH` | 16 | each UART FIFO's characters |
+| the link's | 28.13.4 | |
 
 ### 17.7 The RW engine, the memory tile's peripheral
 

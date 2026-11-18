@@ -4,11 +4,13 @@
 section, what the specification says, what `main` has. Kept as the specification is written (branch `v137-spec`);
 "`main`" is the commit the row was checked against.*
 
-## First: a bug in the cache (WORKER5's review, 2026-11-18; owner: the specification stands)
+## Done since this list was written
 
-| section | the specification | `main` (e7243dd) |
-| --- | --- | --- |
-| 3 (`fill`), 17.9.5, 23.6.4 | **a fill read of a line sees every fill write of it accepted before** (owner): `fill`'s read is not picked while `fill`'s write register holds a write accepted before it, including while that write waits for the miss handler or the slot | **not kept.** The front end's round robin (`cache_ctl.cpp:421`) takes source 4, `fill`'s read, before source 5, its write, when both wait and the pointer is below 4; and a fill write abandoned to wait for the miss handler (`wait_mh`) lets its read hit the old line. **Reproduction** (WORKER5): a look-up keeps the walker busy; a write of line 0 with data 0x2222 is taken, and a read of line 0 the next cycle; the read is answered 0x1111, the old data. No proof run has failed on it: the Tracer's write-backs seldom meet a read of the same line in the window. **The fix** (WORKER5): serve the write register before the read register whenever it is valid; or compare lines, and hold a read whose line equals a waiting write's. Keep the reproduction as a test |
+- **The cache's stale fill read** (WORKER5's review): fixed and merged 2026-11-18 (`cache-fill-order`; Quest 244,
+  the 37 proof runs). `fill`'s read is not picked while `fill`'s write register holds a write accepted before
+  it, as 23.6.4 says. Two tests in `tests/test_cache.cpp` keep it.
+- **The link end's counts, the cause of an error, and the reset in a running chain:** in `updater_wip/link/` on
+  `main` (WORKER8).
 
 ## The memory system (machine-spec 17.11, 23)
 

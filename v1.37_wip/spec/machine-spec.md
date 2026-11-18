@@ -4249,6 +4249,9 @@ alone: its line *l* < 32 is the root's line *l*.
   not picked while `fill`'s write register holds a write accepted before it,** including while that write waits
   for the miss handler or the slot. A read accepted after a write's handshake and before its response is served
   after the write.
+  - **A read and a write taken in the same cycle are not ordered:** the read may see the line as it was before
+    the write, or after it. The Tracer never asks for both for one line in one cycle: it requests a read of a
+    line only once a write of it has been accepted (17.9.5).
 
 #### 23.6.5 The controller: its registers and its states
 

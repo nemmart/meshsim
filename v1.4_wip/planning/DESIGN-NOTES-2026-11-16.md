@@ -954,3 +954,14 @@ Rulings as they came; `HOST-LINK.md` has each.
 - **`HOST-LINK.md` brought up to the code that passes:** WORKER8's 30 corrections applied, the figures replaced
   by those measured on the protocol as it stands, the forwarding steps given the mask. WORKER8 is asked to read
   it against its code once more.
+
+## 32. The long search is complete (2026-11-18, half past midnight)
+
+- **Quest 231 holds:** 86,515,438 states, every one tried, depth-first, in 47 minutes. From every state, with
+  either stream never taken again, the other finished. Breadth-first had reached 39.9 million with 5.3 million
+  still waiting when its 1,400 seconds ran out; depth-first visits the same states with few waiting, so time
+  and not memory is the limit. No splitting was needed.
+- **WORKER8 has made the fast sending unit its default,** since `HOST-LINK.md` now has it, and every case was
+  found again. It parked its five queued tasks of the slow unit (Quests 232 to 236) and queued six on the new
+  code (237 to 242): the two campaigns, the larger searches, long noise, and the long search once more. The
+  figures the document quotes are being measured again; its list of what is still wrong or silent follows.

@@ -18,9 +18,11 @@ bad", "Recovery", "Starting a link again", "Holding the host back", "What a send
   case for every rule, which fails without the rule and holds with it; 1,380 random runs on chains of 1, 2, 4
   and 16, none failing (`updater_wip/link/` and `updater_wip/planning/sessions/WORKER8/REPORT.md` and
   `QUESTIONS.md`, on branch `updater-w8` until it is merged).
-- **What is still out:** one long search, which did not finish in its first two runs, and the random campaign on
-  the runner. The searches are of small sizes (a window of 2, queues of a few words); the random runs are of the
-  real sizes.
+- **The long search is complete and holds** (Quest 231, 2026-11-18): 86,515,438 states, every one tried, in 47
+  minutes depth-first. From every state, with either stream never taken again, the other finished.
+- **What is still out:** the random campaign on the runner, and every figure measured again with the fast
+  sending unit, which the figures here were taken before. The searches are of small sizes (a window of 2, queues
+  of a few words); the random runs are of the real sizes.
 - **Three times that evening the protocol as it stood here was found unsound** and mended: one run of numbers
   with "stop" holding back a packet sent again; a resend request lost; a packet hidden in the data. Each is told
   where its rule is.
@@ -764,8 +766,6 @@ The owner's remark: there must be a mountain of literature on building these. Th
 - **The background behind the foreground** (WORKER8). A background packet waits while any foreground packet is
   ready, so a foreground that never pauses holds the background for as long. That is the order as decided, and
   not a flaw of the protocol; it is a thing to know.
-- **The long search** that has not finished (two foreground and four background packets, a reply, one damaged):
-  71 million states with no failure when it was cut by time. Running again on the runner.
 - **The sizes of the forwarding buffers,** 16 KB as written: the rule asks for 8 KB, and the random runs do not
   press even that.
 - **What the error is called and where it is seen:** a link that started again raises an error to the core. Its

@@ -1,7 +1,7 @@
 # WORKER10 notes: the plan for the wire between processes
 
 Status, 2026-11-17: **the plan has the owner's go-ahead, as written; built and checked here** (`REPORT.md`); the
-runner's campaign waits to be queued. Branch `updater-w10`, from main `f6ea4570`. What was built differently from
+owner decided on no runner campaign (2026-11-18, below). Branch `updater-w10`, from main `f6ea4570`. What was built differently from
 the plan is in "Choices" (4: seq_cst in place of fences; 18: where the task generator lives).
 
 **The go-ahead (owner, 2026-11-17, 06:04),** with the answers to section 8:
@@ -11,6 +11,10 @@ the plan is in "Choices" (4: seq_cst in place of fences; 18: where the task gene
 2. **An explicit `--driver`.**
 3. **On the runner:** the checks must pass, only slower, when there are fewer cores than processes; the tasks
    work at whatever the runner has and report how long they took. (The owner is being asked the core count.)
+
+**No runner campaign (owner, 2026-11-18):** the checks here are enough; task 243 was removed from the queue (it had
+been cut off by a reboot of the runner). Sections 10 and 12 below are the plan as it was; `REPORT.md` section 6 has
+what stands.
 
 Names: *N* clients, so *N* + 1 processes: P0 is the driver, P*k*+1 is client *k*. Link *i* joins P*i* (up) to
 P*i*+1 (down); each link has a **down** direction and an **up** direction. *W* is the window in cycles (64), *B*

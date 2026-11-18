@@ -1,6 +1,6 @@
 # WORKER10 report: the wire between processes
 
-Status, 2026-11-17: **built and checked here** (2 cores); the runner's campaign is ready, not yet run (section 6).
+Status, 2026-11-18: **built and checked here** (2 cores). **No runner campaign** (owner, 2026-11-18; section 6).
 Branch `updater-w10`. The code is `updater_wip/wire/` (its `README.md` says how to run it, with the example loop);
 the plan, the region's layout, the sync's argument and the Choices are in `NOTES.md` beside this file.
 
@@ -68,7 +68,8 @@ on a loop-back of the same delay (so that both see the same machine). The rate i
   The more slots do not help (16 slots: +18%): the data's delay, not the slots, ties them together.
 - With fewer cores than processes it still works, slower: 3 processes on these 2 cores, window 64, +44%; 17 on one
   core, a million cycles of the stand-ins, about a second.
-- **These are a 2-core VM's numbers.** The runner's are the ones to quote: `run_checks.sh`'s `bench` step.
+- **These are a 2-core VM's numbers,** noisy (window 16 varied from +15% to +23% between runs). If the window
+  is ever reopened, `tests/bench.sh` on a quiet machine with a core for each process gives the figures to quote.
 
 ## 4. Settled, and why
 
@@ -113,22 +114,19 @@ of 2, 4 or 8 bytes a cycle is `--lane-bytes` (the region's, set by the launcher)
   same every run. Any wall-clock limit belongs to the launcher (`--stall`), not to the driver's logic.
 - It finishes when it has checked every reply (or decided one is missing), and exits 0 or not.
 
-## 6. The runner
+## 6. The runner: none
 
-**The task:** `updater_wip/wire/tests/make_task.sh NNN-wire-check > NNN-wire-check.sh` (from a clean tree on
-this branch), which embeds `updater_wip/wire/` and runs `tests/run_checks.sh`: build (gcc, clang, every variant),
-the matrix in the four modes with `REPEATS` (5) repeats of each case under gcc and once under clang, the long runs,
-stopping (`ROUNDS`, 5), the plants, the sanitizers, the cost for 1 and 2 clients. It works at whatever core count
-the runner has, and writes `SUMMARY.txt` with each step's time and the core count. Tried end to end here (the plants
-step: 58 s).
+**The owner's decision (2026-11-18): no runs on the runner.** Every check has passed here; the runner would only
+repeat them on a bigger machine. What it could add is the cost on a quiet machine with a core for each process,
+which matters only if the window is reopened (64 is the owner's). The wire's next real test is with the chips and
+the driver, at integration (step 7).
 
-**This session could not attach the Quest repository** (refused), so **the integrator is asked to queue one task:**
-`make_task.sh NNN-wire-check` with every step. Estimated from the times here, on 2 cores: about 2½ hours, of which the
-loaded matrix is about 1½ hours (its 16-client cases: 17 processes and a busy loop a core, on 2 cores); on 17 cores
-or more, well under an hour. If the runner has few cores and time matters: `REPEATS=2`.
-
-**Cores:** everything passes on any number, down to one. The cost is only meaningful with a core for each process
-(2 for `bench-1`, 3 for `bench-2`); the 16-client cases want 17 to be quick.
+Task 243 (`243-wire-check`), queued from this report's first version, was cut off by a reboot of the runner after
+its build steps (exit 137, twice) and **removed from the queue** at the owner's request (Quest `683e681`); its
+results stay. The task's generator stays in `updater_wip/wire/tests/make_task.sh`, with `tests/run_checks.sh`, if
+runs are ever wanted; sized as it is (about 2½ hours on 2 cores, mostly the loaded matrix repeated 5 times) it is
+far more than needed: the matrix once in each mode, a few long runs, stopping, the plants, the sanitizers and the
+cost would take about 15 minutes.
 
 ## 7. For `MILESTONE-v1.37.md`, for the owner
 
@@ -141,12 +139,12 @@ or more, well under an hour. If the runner has few cores and time matters: `REPE
 3. **Add the launcher to "The picture":** `wire-launch --clients 2 -- DRIVER ... -- ASIC ...`; it makes the
    region, starts the three, reports each one's status, stops the rest on a failure, and can start one under gdb.
 4. **The driver, item 4:** "fails when a reply does not come": **in cycles,** so the verdict is the same each run.
-5. **Open, the runner's cores:** "three processes that wait on each other want three" → they work on fewer
+5. **The runner's cores:** "three processes that wait on each other want three" → they work on fewer
    (measured: 3 on 2 cores at window 64, 44% slower; 17 on one core, correct); three for the time to be that of
-   one chip.
+   one chip. (The runner has 16, task 243's `machine.txt`.)
 6. **The window:** 64 costs about 1.5% here with a chip's work; 16 about 20% (the processes are held within a
-   window of each other, so every hiccup of one stops the other); 1,024 nothing measurable. The runner's figures
-   to replace these.
+   window of each other, so every hiccup of one stops the other); 1,024 nothing measurable (on this session's
+   2-core VM; no runner figures, by the owner's decision).
 7. **The check "the same to the cycle":** it holds by construction, and is checked with stand-in ends under load,
    on one core and with pauses (`updater_wip/wire/`); with the chips it is then a check of the chips' own
    determinism.

@@ -1,6 +1,7 @@
 # Guidelines: the rules the design follows
 
-*2026-11-12; confirmed by the owner. Names and section numbers are v1.36's. The spec says what each module does; this page says what every module, and every
+*2026-11-12; confirmed by the owner; v1.37's additions are marked [owner, 2026-11-18]. Names and section numbers are
+v1.37's. The spec says what each module does; this page says what every module, and every
 change, has to respect. Short by design. Each rule names where it comes from: a section of `machine-spec.md`
 (v1.36), a decision, or **[owner]**: the owner's statements of 2026-11-12, first written down here. A ruling is the
 current answer, not a proof: anyone may reopen one with a reason [owner].*
@@ -20,6 +21,13 @@ current answer, not a proof: anyone may reopen one with a reason [owner].*
   into the next version (README), by the rule above; where the owner rules against the RTL, the RTL and the spec
   change together.
 - **Where a decisions log and the spec differ, the spec is the authority** (v1.35's preamble).
+- **For a machine first built in the simulator, its code is the authority on what it does,** and its section states
+  it: in v1.37 the cache's controller, the Updater's controller and the link end ("it's actually the spec portion
+  of those codes"). Where the code and an interface disagree at a boundary, the owner rules [owner, 2026-11-18].
+- **The specification comes first:** a version's design is specified for the full system, then the simulator is
+  brought to it, then the firmware, then the tests [owner, 2026-11-18].
+- **A change to hardware the RTL has built is a request to the RTL,** stated as designed and marked *Asked of the
+  RTL*; a unit the RTL only pencilled in is this specification's to design [owner, 2026-11-16].
 
 ## 2. Who checks what
 
@@ -28,7 +36,7 @@ current answer, not a proof: anyone may reopen one with a reason [owner].*
   or timing only real runs produce. **Undefined behaviour:** the hardware does nothing special; the simulator stops
   and names the access. **There is no third kind:** never a prescribed outcome for a mistake.
 - **The test for a new check:** would simulation catch this on our firmware? If so, it is UB.
-- **Every error is terminal** (6.2, 7.4). There is no HALT state and nothing on the chip recovers: the handler
+- **Every error is terminal** (6.2, 7.4); recovery after one is not designed (item 181) [owner, 2026-11-18]. There is no HALT state and nothing on the chip recovers: the handler
   reports and parks, the toast pin rises, and the outside world resets the chip. So what happens to the offending
   access is left unspecified unless it comes for free.
 - **`ERRORS` means something is wrong.** On a correct program and correct hardware it reads 0 forever; anything
@@ -52,6 +60,8 @@ current answer, not a proof: anyone may reopen one with a reason [owner].*
 
 - **One 32-bit address map** for packets and for the core's own accesses (5.1).
 - **Natural alignment everywhere.** A misaligned packet or unit access is UB; the core's own misaligned load or store traps (4.2, 6.2, 15).
+- **No load of a peripheral's word from 32 up has a side effect;** the loads that act, a consuming `EVENTS` or a
+  pop, are below 32 (17.6.1) [owner, 2026-11-17].
 - **Registers are one word, one `lw` or `sw`.** An unmapped word is an access fault; an action register acts on a
   store with bit 0 set; configuration registers are static during a phase and undefined at reset (1.2, 5.3, 5.4, 18).
 - **Programs wait on events.** `STATUS` is diagnostic only: no program needs to poll it (7.1, 7.2).
@@ -65,7 +75,9 @@ current answer, not a proof: anyone may reopen one with a reason [owner].*
 - **The mesh has two regimes** [owner; the second is proposed, not yet specified]. **Strict rotation:** a schedule
   says who sends when, nothing is backpressured, a full router queue is an error (8.4, 16.3). **Elastic,** for
   traffic into the file system: a per-tile flag masks that error and a full queue backpressures to the address
-  generator, never to the core; the flag changes only between phases, with the mesh empty.
+  generator, never to the core; the flag changes only between phases, with the mesh empty. The line between the
+  special tiles (16.1) is the strict regime until the file system's traffic needs flow control: "there are regimes
+  on the mesh; some need flow control, some don't" [owner, 2026-11-18].
 - **Credits only where a path can't form a cycle** (the request tree, a peripheral's queues); the mesh, a torus, is
   scheduled [owner, from 11.3 and 17.8.8].
 - **A new bulk pattern on the mesh comes with a schedule and a fan-in bound,** checked in simulation [owner].

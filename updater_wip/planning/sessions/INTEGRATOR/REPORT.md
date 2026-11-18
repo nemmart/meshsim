@@ -249,9 +249,15 @@ Stages 4 and 5 together, at `d54c8601`:
 
 | Quest | item | result |
 |---|---|---|
-| 253 | `suites`: `./run_tests.sh all --check`, the 37 proof runs, each through the link, the capture against gold's packet file, the reply checked | queued |
+| 253 | `suites`: `./run_tests.sh all --check`, the 37 proof runs, each through the link, the capture against gold's packet file, the reply checked | **PASS**: every step; the 37 proof runs, every one's data link packets as first sent byte for byte gold's packet file (8,277 a run at 2²⁹, none sent again) and its reply right; no golden log differs |
 | 254 | `suites-varied`: the same with LPDDR jittered | queued |
 | 255 | `check`: `make check` | queued |
+
+**The proof runs' cycles, stages 4 and 5 against stage 3 (Quest 250):** every run 14,336 to 71,168 cycles longer,
+0.06% to 0.26%. The link's last byte comes 20,000 to 51,000 cycles later: its own link packets (the start, the status
+link packets, the acknowledgements) share the line, and its waits for room grew (the stop bit is now the `Node`'s, at
+half a queue: `evm-zone-23` *s* 0's 134,326 cycles to 178,871). The reply adds a few hundred cycles at the end. The
+figures are in `runner/253-proof-numbers.md`.
 
 ## Stage 5: chapter 30
 
@@ -340,4 +346,49 @@ stage 4. v1.36's runs do not move.
 ### The runner
 
 With stage 4's: Quests 253 to 255 (above).
+
+## Stage 6: the driver and the three processes
+
+### What was built
+
+| | where |
+|---|---|
+| **the chip on the wire**: its two link ports on WORKER10's wire (`../updater_wip/wire`, used as it is, built in place with the simulator's flags), `exchange` on the end towards the driver and, with an ASIC below, the one away from it, every chip cycle from cycle 0; `chain_next` 1 when there is one below. `proof_run --clients N --client k` (the launcher's arguments, `wire_args.h`), *s* defaulting to *k* | `tests/wire_ends.h`, `Mach::attach_wire`; `tests/proof_run_main.cpp` |
+| **a chip's end**: its run goes on past the master's exit until its link end has first sent towards the driver its own reply's link packets and those of every ASIC below it, three each, and 4,096 cycles more; then `finish()`. A chip whose proof failed finishes at once | `tests/proof_bench.cpp` (`settled`) |
+| **the driver**: gold's frame file through WORKER8's `End`, each frame a new link packet of at most 32 words, the stop bits the `End`'s; the replies taken by hops (`take_from`); each checked against gold's files in the words they give (`chain_reply.h`: the header word, *s* and *N*, the rows traced, `PAGE_COUNT` 0, the error words 0, the record's state against record *s* + 1); a reply that has not come by `--limit` cycles a failure | `tests/driver_main.cpp`, `tests/chain_reply.h` |
+| **a stand-in ASIC**: the link's `Node` alone, its frames checked byte for byte, its reply made from gold's files (`--silent K`: one that never replies) | `tests/standin_asic_main.cpp` |
+| **the wire loses nothing**: a damaged link packet, or one ahead of its number, at any link end fails the chip or the driver | `tests/proof_bench.cpp`, `tests/driver_main.cpp` |
+| `wire_launch`, `driver`, `standin_asic` in the build; gold's references for segment 1 of the five fixtures | `tests/updater.mk`; `tests/updater/*-s1.images.txt`, `make_fixtures.sh` |
+| the checks | `tests/chain_run.sh` (`run_tests.sh`'s step `chain`); the runner's items `chain-evm-zone`, `chain-cyclone` (2²⁹) |
+| the planted bugs | `tests/chain_proc_teeth.sh` |
+
+### Decisions
+
+- **When a chip finishes** (the plan's open point, settled without changing the wire): the wire does not tell a
+  process that a neighbour has finished, so a chip decides from its own link end. A chip above another must clock
+  its link until the replies from below have passed through it: it counts the link packets with data it has first
+  sent up, which on a wire that loses nothing is all that is needed, and adds a margin.
+- **The driver's output byte is a flip-flop:** the `End`'s byte of a cycle is what it made in the last, as a chip's
+  ports are, so that a cycle's output is final before its input is taken, as the wire requires.
+- **What the driver checks of a reply** is what gold's files give; the chip's own words (`mcycle`, the statistics,
+  the record's words 1, 66 and 67) are the chip's harness's to check, as stage 5 does on a single chip.
+
+### The checks
+
+| check | result |
+|---|---|
+| `chain_run.sh` on the five fixtures (kin-raw, kin-lru, jumps-base, divs, kin-big): the stand-ins | both replies right, in each |
+| a chain of two chips: each chip every check of a proof run (gold's images, its last record against record *s* + 1, the master's results, no damaged link packet), the driver both replies right, sorted by hops | pass, all five |
+| the same run twice | every line of every process the same, the wire's waits and the wall time apart |
+| a chain of one | the chip passes, its reply right |
+| a reply that never comes (stand-in ASIC 1 silent) | the driver fails at its limit, 400,000 cycles, and names ASIC 1 |
+| **the planted bugs across processes** (`chain_proc_teeth.sh`): hops not counted; a forwarded header not sealed again; a stop bit ignored; forwarded link packets out of order; `chain_next` ignored; the replies sorted by hops the wrong way round; a reply that never comes not counted in cycles; a chip cycle without its exchange | **8 of 8 caught**. Stage 4's other two (an own link packet before a forwarded one; `clear_error()` called by the chip) do not show across processes (each reply comes whole and is sorted by hops; nothing is reset mid-run) and stay caught by `test_ingress_chain` |
+| 2²⁹, both workloads, segments 0 and 1, twice | the runner (below) |
+
+The small inputs here are the fixtures (guests); the real workloads are the runner's. A chain of two on a fixture is
+about 240,000 cycles in 1.2 s on this machine's two cores.
+
+### The runner
+
+To be queued once Quests 254 and 255 are in: `chain-evm-zone` and `chain-cyclone`.
 

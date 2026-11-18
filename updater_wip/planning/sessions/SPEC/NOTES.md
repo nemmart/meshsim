@@ -387,4 +387,4 @@ More will go here as I check the text against the code.
 - **MS's reply frame says "length 72"** for 72 words that include the header word; the header's `length` counts the
   data alone, so 71 (29.14).
 - **HF's frame 7 and the end state:** record *s* + 1 equals the Tracer's record at the segment's end in words 0 and
-  2–65 only; its advice field is the next segment's count, and word 66 holds the next ASIC's roots (29.11).
+  2–65 only; its advice field is the next segment's count, and its word 66 has no roots (29.11).

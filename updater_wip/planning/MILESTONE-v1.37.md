@@ -135,9 +135,14 @@ checks it exactly, and a pass shows the whole path: the images built, the segmen
   for the full system." Then the simulator is brought to it, then the firmware, then the tests. The
   specification session's brief is `planning/sessions/SPEC/PROMPT.md`. It writes v1.37's `spec/` from the
   design documents, has every † ruled on or made an open item, and lists where the simulator differs.
-- **Then one session takes everything that is left of the building:** the rest of 3, then 5, 6b, 7 and 8. A
-  brief for it was written before the ruling above (`planning/sessions/INTEGRATOR/PROMPT.md`) and is on hold:
-  it is to be rewritten against the specification. The WORKER11 of step 5 is not started.
+- **The specification is done** (2026-11-18): `v1.37_wip/spec/`, reviewed against the code by its four authors
+  and accepted. Where this plan and the specification differ, the specification wins: the reply frame is its
+  29.14, the registers its 17.6, the link its chapter 28.
+- **Then one session takes the building:** the simulator, then the firmware, then the tests, to the
+  specification (`planning/sessions/INTEGRATOR/PROMPT.md`, rewritten against it). Its worklist is
+  `planning/sessions/SPEC/FOR-THE-SIMULATOR.md`. It takes in the rest of step 3 and steps 2c, 5, 6b, 7 and 8,
+  and what this plan had left out: the old stream words, the UART, the packed numbers, the special tiles' line,
+  the memory system as a peripheral. The WORKER11 of step 5 is not started.
 
 ## How the milestone is checked
 

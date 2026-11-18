@@ -1,188 +1,164 @@
-# The v1.37 integrator (updater_wip): from where it stands to a frozen v1.37
-
-**ON HOLD (owner, 2026-11-18). Do not start from this brief.** The owner ruled, after it was written, that
-v1.37 follows the tried order: the specification for the full system first (`sessions/SPEC/PROMPT.md`), then
-the simulator brought to it, then the firmware, then the tests. This brief has the simulator leading and leaves
-parts of the design unbuilt (the old stream words, the UART, the register numbers). It is to be rewritten
-against the specification and its `FOR-THE-SIMULATOR.md` when they exist.
+# The v1.37 build session (updater_wip): the simulator, the firmware and the tests, to the specification
 
 **The project.** meshsim is the simulator and specification for a parallel compute mesh, part of an ASIC for
 proving the Jolt zkVM. A proof is cut into segments; each ASIC proves one. Before it can, the host sends it the
-data that builds its memory images, over a link of packets. In `v1.37_wip/` the whole chip runs from the host's
-data: the master tile's firmware drives the Updater, which builds the images in LPDDR, and the Tracer runs on
-them through the cache.
+data that builds its memory images, over a link of packets along a chain of ASICs. The master tile's firmware
+takes that data in, the Updater builds the images in LPDDR, and the Tracer runs on them through the cache.
 
-**The goal** (owner). v1.37 is:
+**Where things stand.** v1.37 is made in the order every version was: the specification, then the simulator,
+then the firmware, then the tests (owner). **The specification is written, reviewed and accepted:**
+`v1.37_wip/spec/`. The simulator and firmware in `v1.37_wip/` were built before it, piece by piece, from design
+notes. Most of what the specification describes exists and works. Some of it exists and has never been joined,
+some is built to older numbers, and some is not built.
 
-| part | in v1.37 |
+**Your part is to bring the simulator, then the firmware, then the tests, to the specification,** and you are
+the integrator while you do: you merge into `main` and queue the runner's tasks yourself.
+
+## The authority
+
+1. **`v1.37_wip/spec/` is the authority.** Read `spec/README.md` for which document holds what. The
+   simulator models what it says, at the register, packet and cycle level, as v1.36's simulator models v1.36's.
+2. **The worklist is `updater_wip/planning/sessions/SPEC/FOR-THE-SIMULATOR.md`:** every place the
+   specification's writer found where `main` differs from it, by section, with the file and line. Each row ends
+   closed, with the commit that closed it. You will find more; add them.
+3. **Where the specification is wrong, unclear or silent, that is a question for the owner,** not a choice of
+   yours. Keep them in `sessions/INTEGRATOR/FOR-THE-SPEC.md`, ask the ones that hold you up one at a time, and
+   do not edit `spec/` without the owner's word.
+4. **The design notes in `v1.4_wip/planning/` are history.** They say how each decision was reached. Where
+   they and the specification differ, the specification wins.
+
+## What v1.37's machine is (owner)
+
+| part | in the simulator |
 |---|---|
-| the cache's controller, the Updater's controller | **full simulation of the state machines** |
-| AXI: the arbiter and LPDDR | a model |
-| Ingress/Egress and the UART (IEU) | **a black box behind its real registers** |
-| the master tile | **its real firmware** |
-| the memory tile | nothing runs on it; no RW engine |
-| at the end of a segment | the master writes a reply frame out, with data that shows the segment ran |
-| the daisy chain | DRIVER ↔ ASIC0 ↔ ASIC1, three processes; ASIC0 runs segment 0 and ASIC1 segment 1 |
+| the cache's controller, the AXI arbiter | **the state machines,** as 23 has them. They are on `main` (`cache_ctl.*`, `axi_arbiter.*`), behind a setting |
+| the Updater's controller | **the state machine,** as 17.10 has it. On `main` (`updater_ctl.h`), behind a setting, and never yet joined to the real cache and arbiter |
+| LPDDR | a model (23.12) |
+| Ingress/Egress and the UART | **a black box behind its real registers:** what 17.6 says at its registers, its word port, its region and its link, without modelling its insides as hardware. Its link is WORKER8's link end, which is the specification's (chapter 28) |
+| the master tile | **its real firmware,** to chapter 30 |
+| the memory tile | nothing of v1.37's proof runs on it. The RW engine is v1.36's, moved to peripheral 2 |
+| the chain | the chip has `link_up`, `link_down` and `chain_next` (3, 18). Run as DRIVER ↔ ASIC0 ↔ ASIC1, three processes |
 
-The plan, its picture and its checks are `updater_wip/planning/MILESTONE-v1.37.md`.
-
-**Your part is all of what is left,** and the integrator's job with it. Until now each piece was built by a
-worker on a branch, to a brief, and merged by the design session. The pieces are built. What is left is joining
-them, and the owner wants it done in one session, quickly: **you do the work yourself, stage by stage, and you
-merge into `main` and queue the runner's tasks yourself.** The first four rows of the table are the owner's
-first goal. Reach them first (stage 1), then the reply and the chain.
-
-## Where it stands (2026-11-18)
-
-| piece | by | state |
-|---|---|---|
-| the cache's controller, the AXI arbiter, the LPDDR model | WORKER5 | on `main`, behind `MachConfig::cache_ctl`. The Tracer runs on it in the 37 proof runs |
-| the Updater's controller | WORKER6 | on `main`, behind `--updater-ctl`. It runs on **a test LPDDR and a stand-in cache of its own,** not yet on the real ones |
-| the forward count, the word port, the firmware that wakes once a frame; the header with 18-bit numbers and hops | WORKER7 | on `main` |
-| the two joined on the data side: the shim gone, the controller fed by Ingress's forwarder | WORKER9, step 1 | on `main` (Quests 222 to 226) |
-| **the joint:** the Updater's controller on the real arbiter and the real cache | WORKER9, step 2 | **not started.** Branch `updater-w9` holds nothing beyond `main`. Its brief and plan are `sessions/WORKER9/PROMPT.md` (from "PIECE 2") and `NOTES.md` |
-| the link's protocol on its own: a link end, a chain node, the host's end | WORKER8 | built and tested, on branch **`updater-w8`** at `5c8ad13a`, **not merged.** `updater_wip/link/`; the one header to use is `hostlink.h` (`End`, `Node`) |
-| the wire between processes: shared memory, a sync every 64 cycles, the launcher | WORKER10 | built and tested, on branch **`updater-w10`** at `2a9674b9`, **not merged.** `updater_wip/wire/` |
-| the IEU black box | WORKER3, 4, 7 | on `main`: fed from a packet file; nothing goes back to the host; no Egress; one ASIC; a bad packet is fatal |
-| gold: the frames, the packetizer, the vectors | WORKER1, 2, 7 | on `main`, with the header as WORKER7 built it: numbers for each stream, no mask |
-| the driver, Egress, the reply frame, the chain in the black box | | **not started** |
-
-- **The design documents are up to date as of today** (`v1.4_wip/planning/DESIGN-NOTES-2026-11-16.md`, section
-  34). Where v1.37's code is behind them, `INGRESS-INTERFACE.md` and `UPDATER-INTERFACE.md` say so under
-  "In v1.37".
-- Both unmerged branches touch only their own folders, so each is a plain merge.
+**The specified machine is the machine.** When a stage is done, what it built is on by default and is what the
+tests run. A black box that a state machine replaces (the Updater's, v1.36's cache model) stays only where a
+test compares against it. Say in your plan how each setting ends.
 
 ## Read first
 
-1. The top-level `README.md`; `updater_wip/README.md`; **`updater_wip/planning/MILESTONE-v1.37.md`** in full.
-2. `v1.37_wip/RUNNING-v1.37.md` and `CHANGES-v1.37.md`.
-3. In `v1.4_wip/planning/`: **`INGRESS-INTERFACE.md`**, `UPDATER-INTERFACE.md`, `CACHE-INTERFACE.md`,
-   `AXI-INTERFACE.md` and `HOST-FRAMES.md` in full; `DESIGN-NOTES-2026-11-16.md` sections 21, 22 and 34.
-   - `HOST-LINK.md` is long. Read "Where this document stands", "A packet", "The chain, and the hops field",
-     "Holding the host back" and "The link as hardware". The rest is what WORKER8's code implements; you use
-     that code and do not write the protocol again.
-4. In `updater_wip/planning/sessions/`: `WORKER9/PROMPT.md` and `NOTES.md`; `WORKER6-REPORT.md` ("What the
-   integrator does to join it"); `WORKER5-REPORT.md`; `WORKER7-REPORT.md`.
-5. On `updater-w8`: `updater_wip/link/README.md` ("Using the link end": the two examples, what a user promises
-   and what it may rely on) and `hostlink.h`; `sessions/WORKER8/REPORT.md`.
-6. On `updater-w10`: `updater_wip/wire/README.md` (the loop a process runs) and `sessions/WORKER10/REPORT.md`,
-   sections 4 and 5.
+1. The top-level `README.md`; `updater_wip/README.md`; `v1.37_wip/RUNNING-v1.37.md` and `CHANGES-v1.37.md`.
+2. **`v1.37_wip/spec/`:** `README.md`, `OVERVIEW.md`, `GUIDELINES.md`, and **`CHANGES-v1.36-to-v1.37.md`,** the
+   guide to what changed, unit by unit. Then each chapter as you reach its stage.
+3. **`sessions/SPEC/FOR-THE-SIMULATOR.md`** in full, and `sessions/SPEC/NOTES.md` sections 8 to 11 (how each
+   question ended).
+4. `updater_wip/planning/MILESTONE-v1.37.md`: the picture of the chain, the driver, and how the whole is
+   checked.
+5. In `updater_wip/planning/sessions/`: `WORKER9/PROMPT.md` from "PIECE 2" (the joint, in detail) and
+   `WORKER9/NOTES.md`; `WORKER6-REPORT.md` ("What the integrator does to join it"); `WORKER5-REPORT.md`;
+   `WORKER7-REPORT.md`; the four `SPEC/REVIEW-WORKERn-ANSWER.md`, which say where each author's code differs.
+6. `updater_wip/link/README.md` ("Using the link end") and `hostlink.h`; `updater_wip/wire/README.md` and
+   `sessions/WORKER10/REPORT.md` sections 4 and 5.
 
 ## The stages
 
-Each stage ends with its checks passing, a commit, a merge into `main`, and a report to the owner of a few
-lines. Then go on to the next without waiting.
+Each stage ends with its checks passing, its rows of the worklist closed, a commit, a merge into `main`, and a
+few lines to the owner. Then go on to the next without waiting.
 
-### Stage 0: the two merges
+**The simulator:**
 
-- Merge `updater-w8` and `updater-w10` into `main` (`git merge --no-ff`). Run `make check` in `updater_wip/link/`
-  and the wire's own checks, without its matrix under load, to see that they pass where you are.
-- WORKER8's session may still push reports of runner results to its branch. Merge again when it does.
+### Stage 1: the memory side (17.10, 17.11, 23, 17.7)
 
-### Stage 1: the joint. Both state machines on, in the whole chip
+- **The joint.** The Updater's controller on the arbiter's client port 1 and the cache's look-up port 1, one
+  LPDDR for all, with the Tracer on the same cache. This is WORKER9's second piece, never started: its brief
+  from "PIECE 2" to "THE FIGURES" says what to build and what the joined machine must show. Each disagreement
+  between two pieces is a finding: which was wrong against which section, and the fix.
+- **The memory system as the memory tile's peripheral 1** (17.11): its window, `ERRORS` [0], its error on the
+  tile's error line. The RW engine to peripheral 2 and to the arbiter's client 2, on the one LPDDR.
+- **The reset** reaches the cache, the arbiter and the LPDDR model (23.6.10, 23.11).
+- **The Updater's rows:** `free_page_credit` at `EVENTS` [2], in every place at once; a bad address and the two
+  limits as UB that stops the simulator.
+- **Checked:** the 37 proof runs on the joined machine, every image equal to gold's, `PAGE_COUNT` 0 at every
+  `done`, the Tracer's last record right, no error bit, no stale line; again with LPDDR's timing varied; the
+  Updater and the Tracer shown to overlap on the cache; planted bugs at the joints, each caught.
 
-**This is the owner's first goal.** It is WORKER9's brief from "PIECE 2: THE CONTROLLER ON THE REAL ARBITER AND
-THE REAL CACHE" to "THE FIGURES", and you take it over as written there:
+### Stage 2: the router (16)
 
-- the Updater's controller on the arbiter's client port 1 and the cache's look-up port 1, one LPDDR model for
-  the Updater and the cache alike;
-- a setting for the joined machine, and a statement of which combinations of settings run;
-- **the 37 proof runs with both controllers on:** every image equal to gold's, `PAGE_COUNT` 0 at every `done`,
-  the Tracer's last record equal to record *s* + 1, no error bit, no stale line; again with the LPDDR model's
-  timing varied;
-- the Updater and the Tracer on the cache at once, shown to overlap;
-- planted bugs at the joints, each caught;
-- with every setting off, `./run_tests.sh all --check` and `make check` as before.
+- The line between the special tiles on east and west, with the ring's rule and no flow control; every special
+  tile's DMA on the south input.
+- **Checked:** the master tile's traffic to the tracer tile goes by the line; the router's own tests; the proof
+  runs. Cycles move here, on purpose.
 
-**Each disagreement between two pieces is a finding:** the case, which piece was wrong against which document
-or which document was unclear, and the fix. The joint is the first test of `UPDATER-INTERFACE.md`,
-`CACHE-INTERFACE.md` and `AXI-INTERFACE.md` against each other.
+### Stage 3: Ingress/Egress at its registers (17.6)
 
-Of that brief's figures, take the ones that cost little. The run with two proofs (the Updater building the next
-proof's images while the Tracer runs) is wanted by the owner if it is cheap; if it is not, say what it would
-take and go on.
+- The packed numbers; v1.36's host interface out, with its tests and the images that use it; the UART as
+  redesigned; the queues at `INGRESS_QUEUE_WORDS` 1,024, a parameter; words landing one a cycle; the DMA on
+  south; `PARAMS.version` 1.
+- **Egress:** the outgoing queue in its region, `EGRESS_COUNT`, `egress_credit`, `egress_error`.
+- The firmware's header and images move with the numbers, so that everything still runs. What the firmware
+  newly does comes in stage 5.
+- **Checked:** every row of 17.6's tables by a test at the registers; the UB of invariant 35; the proof runs.
 
-### Stage 2: Egress and the reply frame, on one chip
+### Stage 4: the link and the chain (28, 17.6.3, 17.6.8, 18)
 
-- **Egress in the black box,** as `INGRESS-INTERFACE.md`, "Egress: sending to the host", has it: the outgoing
-  queue, `EGRESS_COUNT`, the credit, `egress_error`.
-- **The master's firmware sends a reply frame at the end of its segment** (owner: "something that shows that it
-  ran"). The frame is `MILESTONE-v1.37.md`'s, "The reply frame": 72 words, the Tracer's end-state record with a
-  few counts. The record must equal gold's record *s* + 1, so it can be checked exactly.
-- Checked on one chip, with the harness collecting what Egress sends: the frame whole, in order, equal to what
-  gold's files give, on the proof runs; planted bugs in the firmware's sending, each caught.
+- **The black box's link becomes WORKER8's `Node`:** a link end up, a link end down, the forwarding buffers,
+  `chain_next`. A damaged link packet is no error; `link_error` and `format_error` as 17.6 has them; the reset
+  restarts the link.
+- **The chip's input is `link_up`,** a byte each way a cycle, in place of a packet file. In one process the
+  host's side is WORKER8's `End`, fed with gold's frames.
+- **Gold's packetizer, reader and vectors** brought to chapter 28, so that gold's link packets and the link
+  end's agree byte for byte.
+- **Checked with no chips:** a host end and two or three black boxes back to back. Then one chip behind a host
+  end: the proof runs as before. The milestone's planted bugs in the chain, each caught.
 
-### Stage 3: the link end and the chain in the black box
+**The firmware:**
 
-- **The link's part of the black box becomes WORKER8's `Node`:** a link end towards the host and one away from
-  it, the forwarding buffers, the pin. The black box keeps what is the chip's: the two queues, the DMA, the
-  forward count, the service flags, Egress's queue, the registers.
-- With it come the things the link end's rules need: **the queues back to 16 KB,** "stop" from a queue that is
-  half full, and the error the core sees when a link starts again (`INGRESS-INTERFACE.md`, "Errors").
-- **Tested with no chips and one process:** a host `End`, and two or three black boxes wired back to back.
-  Packets from the host reach every one; replies come back sorted by hops; a stalled background does not hold
-  the foreground. The milestone's planted bugs in the chain, each caught.
+### Stage 5: chapter 30
 
-### Stage 4: the driver
+- The store to `UART_CONTROL` in every image that prints; the tracer tile's result carrying its last record to
+  the master tile; **the reply frame** through Egress at the segment's end (29.14, 30.7).
+- **Checked:** chapter 30 section by section against `master.c` and `tracer_ctl.c`; the reply whole, in order
+  and equal to what gold's files give, in the words 29.14 says can be compared; planted bugs in the firmware,
+  each caught.
 
-- A process of its own (`MILESTONE-v1.37.md`, "The driver"): it reads gold's data, sends it through WORKER8's
-  host `End`, collects what comes back, sorts it by hops, and checks each ASIC's reply against gold. "A reply
-  does not come" is counted in cycles.
-- **Tested before any chip:** the driver and stand-in ASICs made of `Node`, as processes on WORKER10's wire
-  under its launcher.
+**The tests:**
 
-### Stage 5: DRIVER ↔ ASIC0 ↔ ASIC1
+### Stage 6: the driver and the three processes
 
-- The chip's simulation takes `--clients N --client k`, and calls the wire's `exchange` on its link ends every
-  cycle. The three run under `wire-launch`.
-- **The milestone's checks** (`MILESTONE-v1.37.md`, "How the milestone is checked"), every row: the images, the
-  trace, the replies, the same to the cycle, a chain of one, both controllers on, the planted bugs, and what
-  does not change. On the small inputs where you are, and 2²⁹ on the runner.
+- **The driver** (`MILESTONE-v1.37.md`, "The driver"): a process that reads gold's data, sends it through the
+  host's `End`, sorts what comes back by hops, and checks each ASIC's reply against gold. Tested first against
+  stand-in ASICs made of `Node`, on WORKER10's wire under its launcher.
+- **DRIVER ↔ ASIC0 ↔ ASIC1:** the chip's simulation takes `--clients N --client k` and calls the wire's
+  `exchange` on its link ends every cycle.
+- **Checked:** every row of `MILESTONE-v1.37.md`, "How the milestone is checked". On the small inputs where you
+  are, and 2²⁹ on the runner.
 
-### Stage 6: the freeze, with the owner
+### Stage 7: closing, with the owner
 
-- Gold's packetizer, reader and vectors brought to the final protocol, so that the two golds agree
-  (`MILESTONE-v1.37.md`, step 2c).
-- `RUNNING-v1.37.md` and `CHANGES-v1.37.md` brought up to date; the design brought into v1.37's specification.
-- What is frozen, and when, is the owner's word.
-
-## Decided, so that you are not held up
-
-| question | for this milestone |
-|---|---|
-| the reply frame's fields | as `MILESTONE-v1.37.md` proposes. The owner does not mind what the data is |
-| v1.36's old stream words, and the UART as redesigned | **left as built.** Not part of the chain |
-| the register and bit numbers | the design has them packed, into the places the old stream words leave. Since those words stay, **v1.37 keeps its numbers from before the packing,** and the new ones go beside them: `EGRESS_COUNT` at word 83, `egress_credit` at `EVENTS` [10]. Say in your plan where the new error bits go |
-| the data on the link | the chain runs at a byte a cycle, as WORKER8's link end does. `--link-rate` stays for the file-fed path |
-| the file-fed path | kept, as it is, for the single chip and for comparison. Its packet file has the header from before the final protocol, which a link end would refuse; so with a link end the data comes from the driver, which cuts gold's frames into packets itself. A frame still ends at the end of a packet |
-| whether the two controllers are on by default | off until stage 5 passes; then ask the owner |
-| the foreground stream towards the chip | nothing is defined, and the milestone needs nothing of it |
-| the link's two open questions (`HOST-LINK.md`, Open, both †) | leave the model as WORKER8 built it |
+- Every row of the worklist closed or made an open item with the owner's word.
+- The invariants of chapter 20 each a check in the simulator; chapter 21's timing rows measured and, where the
+  specification's figure is wrong, reported.
+- `RUNNING-v1.37.md` and `CHANGES-v1.37.md` brought up to date. What is frozen, and when, is the owner's word.
 
 ## Rules
 
 - **Propose one plan for the whole of it first,** in `sessions/INTEGRATOR/NOTES.md`, and wait for the owner's
-  go-ahead: for each stage what you will build, how you will check it, the planted bugs, and what you expect to
-  go wrong. **After the go-ahead, work through the stages without asking again.**
-- **Stop and ask only for what is the owner's to decide:** a change to a design document; a change to the
-  link's protocol or to the wire; a check that cannot be made to pass without loosening it; anything that would
-  change hardware Tony has built (that is a request to him, in `RTL-CHANGE-REQUESTS.md`, and the owner's to
-  make). Ask one question at a time.
+  go-ahead: for each stage what you will build, how each setting ends, how you will check it, the planted bugs,
+  and what you expect to go wrong. **After the go-ahead, work through the stages without asking again.**
+- **Stop and ask only for what is the owner's to decide:** a question about the specification that holds you
+  up; a change to the link's code or the wire's; a check that cannot be made to pass without loosening it;
+  anything that would change hardware Tony has built. Ask one question at a time.
 - **Keep replies to the owner short.** A few lines at the end of a stage: what passed, what was found, what is
   next.
-- **Branch `v137-int`,** from `main`. Merge it into `main` yourself at the end of each stage, when the stage's
+- **Branch `v137-build`,** from `main`. Merge it into `main` yourself at the end of each stage, when the stage's
   checks pass (`git merge --no-ff`, then pull without rebasing, and push). Merge `main` in often; never rebase.
-  Frozen folders are never edited.
+  Frozen folders (`v1.36/` and earlier) are never edited.
 - **Exactness is the requirement:** a difference in a check is a bug, never a tolerance.
-- **Reference cycles move, and only on purpose.** With every setting off the proof runs' cycles are Quest 220's,
-  to the cycle, until you change the queues' size or the path the data takes. When they must move, move them
-  once, say why, and record the new ones.
-- **`updater_wip/link/` and `updater_wip/wire/` are used as they are.** If one of them has to change, that is a
-  finding: say so first, and its own checks must still pass.
-- **The design documents in `v1.4_wip/planning/` are not yours to edit.** Keep what you would change in them as
-  a list, `sessions/INTEGRATOR/FOR-THE-DOCUMENTS.md`, for the owner and the design session. The design session
-  that wrote them can be asked through the owner.
-- The master tile's firmware images are built with the pinned xPack toolchain and committed with their hashes
+- **Reference cycles move only on purpose.** Each stage that changes timing (the joint, the line, the queues,
+  the link) moves them once: say why, show that nothing else moved, and record the new ones.
+- **The two state machines and the link end are specified from their code and reviewed against it.** Change
+  them only where a row of the worklist or a finding says so, and keep their own tests passing: `make check` in
+  `updater_wip/link/`, the cache's, the arbiter's and the Updater's unit tests.
+- **`updater_wip/wire/` is test equipment and is used as it is.**
+- The firmware images are built with the pinned xPack toolchain and committed with their hashes
   (`RUNNING-v1.37.md`).
 - **Never write a token into a file.** Never `pkill -f`; use `pgrep` and kill by PID.
 - Commit and push after each completed piece, and end each turn with a clean `git status`.
@@ -199,14 +175,16 @@ take and go on.
 
 ## Not your work
 
-The link's protocol and its searches (WORKER8); the wire's design (WORKER10); the RW engine on the arbiter; the
-old stream words and the new UART; the foreground stream's frames; anything in v1.4 beyond what v1.37 needs.
+A new design for anything the specification states; the link's protocol and its searches; error recovery after
+a stop (item 181); flow control on the special tiles' line (item 182); the file system; the foreground stream's
+frames but the reply; the RW engine beyond its move.
 
 ## Deliverables
 
-- **`v1.37_wip/`:** the joined machine; Egress; the chain in the black box; `--clients` and `--client`; the
-  driver; the tests, the planted bugs, the runner's task; the running guide and `CHANGES-v1.37.md`.
-- **`sessions/INTEGRATOR/NOTES.md`:** the plan, and a "Choices" list of what you decided that no document said.
-- **`sessions/INTEGRATOR/REPORT.md`,** added to at each stage: what was joined; each disagreement found, with
-  the document that let it; each check's result; the figures.
-- **`sessions/INTEGRATOR/FOR-THE-DOCUMENTS.md`:** what you would change in the design documents.
+- **`v1.37_wip/`:** the simulator, the firmware and the tests, to the specification.
+- **`sessions/SPEC/FOR-THE-SIMULATOR.md`:** every row closed, with its commit.
+- **`sessions/INTEGRATOR/NOTES.md`:** the plan, and a "Choices" list of what you decided that the
+  specification did not say.
+- **`sessions/INTEGRATOR/REPORT.md`,** added to at each stage: what was built; each disagreement found, with
+  the section; each check's result; the reference cycles as they moved.
+- **`sessions/INTEGRATOR/FOR-THE-SPEC.md`:** where the specification is wrong, unclear or silent.

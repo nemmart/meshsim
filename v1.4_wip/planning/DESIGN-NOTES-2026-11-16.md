@@ -1112,3 +1112,28 @@ where they are stated; this is how they were reached.
   counters are named `…_words`. `FOREGROUND_WORDS` and `BACKGROUND_WORDS` keep their names. "Beat" keeps the
   specification's meaning, one item a handshake moves.
 
+## 37. The specification is done; the building is next (2026-11-18, about 9:30 a.m.)
+
+- **v1.37's specification is on `main`** (`v1.37_wip/spec/`, merged at `ffd17dad`): `machine-spec.md` with
+  Ingress/Egress rewritten (17.6), the Updater (17.10), the memory system (17.11, 23) and the special tiles'
+  line (16), and three new documents, `host-link.md` (28), `host-frames.md` (29) and `master-firmware.md` (30).
+  No dagger is left in it: each ended as the owner's ruling or as an open item, 178 to 191.
+- **It was reviewed against the code by the four who wrote the code** (the owner's plan), each from a checklist
+  of what the writer had derived and not run. What that found:
+  - **a bug in the cache's controller** (WORKER5): a read on the fill port could be served before a write
+    accepted earlier, and return the old line. The specification's sentence was right and the code wrong. Fixed
+    and merged (`cache-fill-order`; Quest 244, the 37 proof runs), with a sentence added to 23.6.4 for a read
+    and a write taken in the same cycle;
+  - the Updater's chapter right in the main, with a width, a sentence and the statistics' rules corrected
+    (WORKER6); two limits of its addresses made UB;
+  - Ingress/Egress's and the firmware's chapters corrected in eleven places (WORKER7); an unknown frame type is
+    a stop, as the firmware has it, where a known frame the ASIC has no use for is discarded (owner);
+  - the link's chapter breaks no rule of the code (WORKER8). **A reset in a running chain behaves as the
+    chapter says,** in 1,380 runs: both neighbours raise their error and the links come back. With one reset,
+    resetting one ASIC of a chain so stops its neighbours; what follows is item 181.
+- **Merged the same morning:** the link (`updater-w8`, with counters, the cause of an error and the reset run
+  added) and the wire (`updater-w10`). The 953-word queue was a run with the host's window at 64: not a finding.
+- **Next is the simulator, then the firmware, then the tests** (owner), in one session:
+  `updater_wip/planning/sessions/INTEGRATOR/PROMPT.md`, rewritten against the specification. Its worklist is
+  the specification session's `FOR-THE-SIMULATOR.md`.
+

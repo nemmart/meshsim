@@ -87,6 +87,14 @@ void two_ends(uint64_t seed, double noise) {
                   (unsigned long long)sink[i][s].taken, (unsigned long long)src[1 - i][s].pushed);
         }
         CHECK(e[i].status().in_step && !e[i].status().error, "two ends, seed %llu: end %u in step %d, error %d", (unsigned long long)seed, i, e[i].status().in_step, e[i].status().error);
+        // The counts: every packet first sent is taken once; nothing refused, nothing started again.
+        const LinkCounts c = e[i].counts(), o = e[1 - i].counts();
+        CHECK(c.taken == o.sent_data && c.taken > 0, "two ends, seed %llu: end %u took %llu packets of the %llu the other sent", (unsigned long long)seed, i,
+              (unsigned long long)c.taken, (unsigned long long)o.sent_data);
+        CHECK(c.refused == 0 && c.restarts == 0 && c.wrong_once == 0 && c.asked_not_kept == 0, "two ends, seed %llu: end %u refused %llu, started again %llu", (unsigned long long)seed, i,
+              (unsigned long long)c.refused, (unsigned long long)c.restarts);
+        if (noise > 0) CHECK(c.bad_header + c.bad_data > 0 && c.rounds > 0 && o.sent_again > 0 && o.went_back > 0, "two ends, seed %llu: end %u counted no damage under noise", (unsigned long long)seed, i);
+        else CHECK(c.bad_header + c.bad_data + c.bad_fields + c.ahead + c.behind + o.sent_again == 0 && c.rounds > 0, "two ends, seed %llu: end %u counted damage with none", (unsigned long long)seed, i);
     }
     printf("two ends, seed %llu, noise %g a byte: %llu words one way, %llu the other, all taken in order\n", (unsigned long long)seed, noise,
            (unsigned long long)(src[0][0].pushed + src[0][1].pushed), (unsigned long long)(src[1][0].pushed + src[1][1].pushed));
@@ -167,7 +175,14 @@ void power_on_under() {
         wire[0] = out0; wire[1] = out1;
         if (t == 60000) e[1].power_on();
         if (t < 120000 && rng.chance(0.01)) src.packet(rng, [&](const Word* w, unsigned n) { return e[0].push(BACKGROUND, w, n); });
-        if (e[0].status().error) { error_seen = true; CHECK(t > 60000, "power-on: an error before anything happened"); e[0].clear_error(); }
+        if (e[0].status().error) {
+            error_seen = true;
+            CHECK(t > 60000, "power-on: an error before anything happened");
+            const LinkStatus st = e[0].status();                      // why: the other end said so, and nothing else
+            CHECK(st.other_end && !st.made_wrong && !st.not_kept, "power-on: the error's cause is not the other end's starting again");
+            e[0].clear_error();
+            CHECK(!e[0].status().error && !e[0].status().other_end, "power-on: the error is not cleared");
+        }
         Word w;
         while (e[1].take(BACKGROUND, w)) {
             const uint64_t n = number_of(w);
@@ -180,6 +195,8 @@ void power_on_under() {
     CHECK(!e[0].status().error && e[0].status().in_step && e[1].status().in_step, "power-on: the link did not come up again");
     CHECK(any && last_number + 1 == src.pushed, "power-on: the last word pushed did not arrive");
     CHECK(taken < src.pushed, "power-on: nothing was lost, so this test tests nothing");
+    CHECK(e[0].counts().restarts == 1 && e[1].counts().restarts == 0 && !e[1].status().error, "power-on: end 0 started again %llu times, end 1 %llu",
+          (unsigned long long)e[0].counts().restarts, (unsigned long long)e[1].counts().restarts);
     printf("an end powered on under a running link: %llu of %llu words arrived, in order, none twice; the other end raised its error\n",
            (unsigned long long)taken, (unsigned long long)src.pushed);
 }
@@ -198,6 +215,68 @@ void limits() {
     Node last(false);
     CHECK(!last.below().in_step && !last.below().error, "limits: the last ASIC's lower link shows something");
     for (unsigned t = 0; t < 5000; t++) CHECK(last.clock(0, uint8_t(t * 37 + 1)).down == 0, "limits: the last ASIC sends on a link it does not have");
+}
+
+// A packet made wrong, and who is told what. A chain of 17 is one too long: hops is four bits, so the 16th ASIC is
+// sent a packet with hops 15 that it would have to forward. It asks for it again, gets the same, and starts the
+// link again, its cause "made wrong"; the 15th, which made the packet so, hears "I have started again" and no more.
+void made_wrong() {
+    const unsigned n = 17;
+    End host;
+    std::vector<Node> node;
+    for (unsigned i = 0; i < n; i++) node.emplace_back(i + 1 < n);
+    std::vector<uint8_t> down(n, 0), up(n, 0);
+    const Word w = made(7, 0);
+    host.push(BACKGROUND, &w, 1);
+    for (unsigned t = 0; t < 30000; t++) {
+        std::vector<uint8_t> nd(n), nu(n);
+        nd[0] = host.clock(up[0]);
+        for (unsigned i = 0; i < n; i++) {
+            const Node::Bytes b = node[i].clock(down[i], i + 1 < n ? up[i + 1] : 0);
+            nu[i] = b.up; if (i + 1 < n) nd[i + 1] = b.down;
+        }
+        down = nd; up = nu;
+    }
+    const LinkStatus got = node[15].above(), sent = node[14].below();
+    CHECK(got.error && got.made_wrong && !got.other_end && !got.not_kept, "made wrong: the ASIC that was sent it: error %d, made wrong %d, other end %d", got.error, got.made_wrong, got.other_end);
+    CHECK(sent.error && sent.other_end && !sent.made_wrong && !sent.not_kept, "made wrong: the ASIC that sent it: error %d, other end %d, made wrong %d", sent.error, sent.other_end, sent.made_wrong);
+    const LinkCounts c = node[15].counts_above();
+    CHECK(c.wrong_once == 1 && c.wrong_twice == 1 && c.bad_fields == 2 && c.restarts == 1, "made wrong: counted once %llu, twice %llu, fields %llu, restarts %llu",
+          (unsigned long long)c.wrong_once, (unsigned long long)c.wrong_twice, (unsigned long long)c.bad_fields, (unsigned long long)c.restarts);
+    unsigned others = 0, took = 0;
+    for (unsigned i = 0; i < n; i++) {
+        if (i != 15 && node[i].above().error) others++;
+        if (i != 14 && node[i].below().error) others++;
+        Word x; if (node[i].take(BACKGROUND, x)) took++;
+    }
+    CHECK(others == 0 && !host.status().error, "made wrong: %u other ends have an error", others);
+    CHECK(took == 15 && node[15].above().in_step && node[14].below().in_step, "made wrong: %u ASICs took the word", took);
+    printf("a chain of 17: the 16th ASIC is sent hops 15 to forward, twice; it raises \"made wrong\", its neighbour above only \"the other end\"; the 15 above it took the word\n");
+}
+
+// A size set wrong shows as packets refused. The host's window is 64, four times what a queue of 1,024 words allows;
+// the ASIC never takes a word, and nothing it sends reaches the host, so no "stop" does.
+void refused() {
+    Sizes big; big.window = 64;
+    End host(big);
+    Node asic(false);
+    uint8_t down = 0, up = 0;
+    Word w[MAX_WORDS] = {};
+    unsigned pushed = 0;
+    for (unsigned t = 0; t < 60000; t++) {
+        const bool cut = t >= 10000;                                  // from here the host hears nothing
+        const uint8_t h = host.clock(cut ? 0 : up);
+        const Node::Bytes b = asic.clock(down, 0);
+        down = h; up = b.up;
+        if (t == 9999) CHECK(host.status().in_step && asic.above().in_step, "refused: the link is not up");
+        if (cut && pushed < 48 && host.push(BACKGROUND, w, MAX_WORDS)) pushed++;
+    }
+    const LinkCounts c = asic.counts_above();
+    // The 33rd is the one expected and finds no room: refused. Those behind it are ahead of the one expected.
+    CHECK(pushed == 48 && c.taken == 32 && c.refused == 1 && c.ahead >= 15 && asic.waiting(BACKGROUND) == 1024, "refused: pushed %u, taken %llu, refused %llu, ahead %llu, waiting %u", pushed,
+          (unsigned long long)c.taken, (unsigned long long)c.refused, (unsigned long long)c.ahead, asic.waiting(BACKGROUND));
+    CHECK(!asic.above().error, "refused: an error");
+    printf("a host's window of 64 and a line that brings nothing back: the ASIC took 32 full packets, refused the 33rd, and threw %llu away as ahead of it\n", (unsigned long long)c.ahead);
 }
 
 // The bytes are all there is between two ends: one in this process, one in a child, a socket between.
@@ -247,6 +326,8 @@ int main() {
     chain(3, 4, 1e-4, -1);
     chain(4, 3, 0, 1);
     power_on_under();
+    made_wrong();
+    refused();
     two_processes();
     if (failures) { printf("test_hostlink: %d FAILED\n", failures); return 1; }
     printf("test_hostlink: ok\n");

@@ -275,7 +275,7 @@ on under a running link: the other raises its error 1,554 cycles later, and the 
 | | what | then |
 |---|---|---|
 | 1 | a restart packet | acted on only if its length is 32, its checksum passes and its data is the pattern; else thrown away as damaged |
-| 2 | the data checksum fails | thrown away. Resend is owed if its number is the one expected, at once, or ahead, after the 2,048 cycles |
+| 2 | the data checksum fails | thrown away. If the packet has data and the link is in step, a resend is owed: asked at once if its number is the one expected, or if it is ahead and nothing has been asked for yet; if ahead and one has been asked for, again only 2,048 cycles after that |
 | 3 | a field that cannot be, both checks passing | the number expected: the "made wrong" flag, and resend; the flag already set: the error, and the link starts again. Another number: thrown away |
 | 4 | the acknowledge field, the stop bits, "resend" and "lost" | taken, in any mode but while this end is starting again. "Resend" or "lost" with an acknowledge field behind the last one taken: the error, and the link starts again |
 | 5 | the number, of a packet with data | the one expected and room: taken, the flag cleared. No room: thrown away, resend. Ahead: thrown away, resend. Behind: thrown away, acknowledged |
@@ -331,6 +331,39 @@ bits, and the pass's counter. The mask is one more 32-bit register each way.
   row for each of the model's 47.
 - Nothing in the link end itself is changed by this.
 
+**Added on the owner's word, the same day:**
+
+| | where |
+|---|---|
+| **the counts of a link end,** and `refused`, which says a size is wrong | `hostlink.h`: `End::counts()`, `Node::counts_above()`, `counts_below()` |
+| **why an error came:** `made_wrong` (the chip's `format_error`), `not_kept`, `other_end`, beside `error` | `hostlink.h`, `LinkStatus`. A packet made wrong is reported at the end that received it; the end that made it has `other_end` alone (`test_hostlink`, a chain of 17) |
+| **an ASIC reset in a running chain,** as a test: both its neighbours raise their error, their cause `other_end`, and nobody else does; the links come up; above it nothing is missed, below it nothing is repeated or out of order | `test_reset.cpp`: `build/test_reset` makes 1,380 runs; `make check` runs 19 under the sanitizers and 92 under clang |
+
+**`build/test_reset`, 1,380 runs, no check failed.** Cycles are from the release of the reset. Rows 3 to 10 have noise
+(a byte changed with a chance of 2 in 10,000 on every line; 1 in 10,000 on the chain of 16) and a hold of up to
+6,000 cycles.
+
+| what is reset | runs | the neighbour above raises its error | the neighbour below | every link in step again | words that did not arrive, a run |
+|---|---|---|---|---|---|
+| the middle ASIC of 3, no hold, no noise | 150 | 1,553 | 1,553 | 4,015 at most | 120 on average, 353 at most |
+| the middle ASIC of 3, held up to 6,000 cycles, no noise | 150 | 1,553 | 1,553 | 4,022 | 263, 484 |
+| the same, with noise | 150 | 1,553 to 6,209 | 1,553 to 6,209 | 17,638 | 283, 791 |
+| the first ASIC of 3: its upper neighbour is the host | 150 | 1,553 to 6,209 | 1,553 to 4,657 | 23,851 | 460, 1,132 |
+| the last ASIC of 3: none below | 150 | 1,553 to 7,761 | | 18,737 | 67, 212 |
+| any one ASIC of 4 | 150 | 1,553 to 4,657 | 1,553 to 4,657 | 27,911 | 307, 1,623 |
+| any one ASIC of 16 | 30 | 1,553 to 4,657 | 1,553 to 4,657 | 62,825 | 746, 2,074 |
+| every ASIC of 4 at once, the host running on | 150 | 1,553 to 4,657 | | 37,554 | 848, 2,349 |
+| the second ASIC of 4, and again within 4,000 cycles of its release | 150 | 1,553 to 6,965 | 1,553 to 8,069 | 25,082 | 425, 1,196 |
+| the second ASIC of 4, then the third within 4,000 cycles | 150 | 1,553 to 6,209 | 1,837 to 8,497 | 23,896 | 494, 1,385 |
+
+- **The reset ASIC raises no error itself,** and no link further away does. With every ASIC reset at once, only
+  the host's end raises one.
+- **Two neighbours reset one after the other:** in 13 of the 150 runs the one reset first had its own error up
+  afterwards: its link was up again when it heard the second. So a chip can have its link's error set shortly
+  after its own reset with nothing wrong in it.
+- With noise a link also leaves step for the noise's own reasons, so "in step again" in those rows is of the noise
+  as much as of the reset. "Words that did not arrive" adds every taker's.
+
 ## 10. The runner
 
 | task | what | state |
@@ -365,9 +398,11 @@ window is drawn for each run: 8 in three runs of five, 16 or 64 in the others.
 - **The 384,187 cycles are again a wire that read as zeros.** Seed 150255, a chain of 16: one wire was turned to
   zeros in bursts of up to 446,377 cycles. Run again here from the campaign's commit, the seed gives the same
   figure, all of it with the window full.
-- **The fullest queue, 953 words of 1,024, is nearer the top than in the runs here** (629). No packet was refused.
-  I have not traced which run it was; the campaign draws the host's window at 64 in one run of five, which HL
-  rules out.
+- **The fullest queue, 953 words of 1,024, is the first ASIC's background queue under a host whose window was
+  64,** which HL rules out: seed 150397, a chain of 4, run again here from the campaign's commit. No packet was
+  refused. A queue fed by a window of 8 cannot pass 767 words: 511 at most when the last header without "stop"
+  left, and a window of 256 after it. Of the 174 runs of that slice with a host's window over 8, the 146 run
+  again before this one was found had 638 at most.
 
 **Quest 232, the random campaign with the slow unit** (`results/232-link-w8-campaign/campaign.txt` in the Quest
 repository): 16 slices of seeds for an hour each, 2,000,000 cycles of traffic and noise a run, HL's rules.

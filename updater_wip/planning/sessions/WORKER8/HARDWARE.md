@@ -141,7 +141,7 @@ budget for one ASIC in the middle of a chain.
 | | what | then |
 |---|---|---|
 | 1 | a restart packet | acted on only if its length is 32, its checksum passes and its data is the table's; else thrown away as damaged |
-| 2 | the data checksum fails | thrown away. A resend is owed if its number is the one expected, at once, or ahead, after the 2,048 cycles |
+| 2 | the data checksum fails | thrown away. If the packet has data and the link is in step, a resend is owed: asked at once if its number is the one expected, or if it is ahead and nothing has been asked for yet; if ahead and one has been asked for, again only 2,048 cycles after that |
 | 3 | a field that cannot be, both checks passing | the number expected: `wrong` is set, and a resend is owed; `wrong` already set: the error, and the link starts again. Another number: thrown away |
 | 4 | the acknowledge field, the stop bits, "resend" and "lost" | taken, in any mode but while this end is starting again. "Resend" or "lost" with an acknowledge field behind the last one taken: the error, and the link starts again |
 | 5 | the number, of a packet with data | the one expected and room: taken, `wrong` cleared. No room: thrown away, a resend owed. Ahead: thrown away, a resend owed. Behind: thrown away, acknowledged |
@@ -286,6 +286,12 @@ register started at all ones and complemented at the end.
 | 6 | knows a forwarded packet by a CRC of what it holds (`PacketFifo::front`) | by the buffer's read pointer: `prep_key` |
 
 - None of these changes what goes on the wire, only when, by 32 cycles at most. No rule depends on those cycles.
+- **† Two counts of a queue's words.** The model counts a packet's words in the cycle it is taken, and the room
+  for the next packet and "half full" are of that count. In hardware a full packet lands over 32 cycles, and a
+  packet of one word behind it is judged exactly 32 cycles after it: 16 for its header, 16 for its word. So the
+  room and the stop bit must count the words landed **and still to land;** a count of words landed alone, which is
+  what the core's DMA may read, can be one word too many for the room. The same holds for a forwarding buffer's
+  "words held".
 
 ## 8. The budget for one ASIC in the middle of a chain
 

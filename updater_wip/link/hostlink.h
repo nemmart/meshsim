@@ -46,8 +46,41 @@ struct LinkStatus {
     bool in_step = false;                  // false while the link recovers or starts: no data moves on it meanwhile
     bool error = false;                    // the link started again under this end, and packets it had sent and not
                                            // yet had acknowledged are gone. Stays up until clear_error()
+    // Why: each stays up with `error`, and more than one can be up if the link started again more than once.
+    bool made_wrong = false;               // this end was sent a packet made wrong twice running, and started the
+                                           // link again: the fault is the other end's. The chip's format_error
+    bool not_kept = false;                 // this end was asked for a packet it no longer keeps, and started the
+                                           // link again: an acknowledgement it had believed was false
+    bool other_end = false;                // the other end said "I have started again": it was reset or powered
+                                           // on, or it found one of the two causes above
     bool stop_said[2] = {};                // this end's stop bit for each stream, as last sent: its queue is half full
     bool stop_heard[2] = {};               // the other end's: this end sends no new packet of that stream
+};
+
+// What one end of a link has counted since power_on(). Nothing here is an error but `refused`, which says a size is
+// wrong: with the window no more than half the queue it feeds, no packet ever finds its queue without room.
+struct LinkCounts {
+    // received
+    uint64_t good = 0;                     // packets with both checks passing and every field possible
+    uint64_t taken = 0;                    // of those, packets with data taken in order: their words went to a queue
+    uint64_t bad_header = 0;               // a header CRC failed, or a length was over 32: this end lost its place
+    uint64_t bad_data = 0;                 // a data checksum failed: the packet was thrown away
+    uint64_t bad_fields = 0;               // both checks passed and a field could not be (or a length over 32)
+    uint64_t refused = 0;                  // a good packet in order for which its queue had no room: A SIZE IS WRONG
+    uint64_t ahead = 0;                    // a packet, or a number, ahead of the one expected: one was missed
+    uint64_t behind = 0;                   // a packet seen before
+    // sent
+    uint64_t sent_data = 0;                // packets with data, the first time
+    uint64_t sent_again = 0;               // packets with data, sent again
+    uint64_t sent_status = 0;              // packets of length 0, the link in step
+    uint64_t went_back = 0;                // times this end went back to send again, at a "resend" or a "lost"
+    // the link
+    uint64_t rounds = 0;                   // rounds of zeros and one packet: a recovery's or a restart's
+    uint64_t restarts = 0;                 // times the link started again under this end
+    uint64_t wrong_once = 0;               // a packet made wrong, the first time: asked for again
+    uint64_t wrong_twice = 0;              // the second time running: the link started again (`made_wrong`)
+    uint64_t asked_not_kept = 0;           // asked for a packet no longer kept: the link started again (`not_kept`)
+    uint64_t ack_behind = 0, ack_beyond = 0;   // an acknowledge field behind the last taken, or beyond what was sent
 };
 
 // One end of one link.
@@ -77,8 +110,9 @@ public:
     unsigned waiting_from(unsigned hops) const;
 
     LinkStatus status() const;
-    void clear_error();
-    void power_on();                       // as constructed: every register, and the queues empty
+    LinkCounts counts() const;
+    void clear_error();                    // the error and its causes. The chip has none: there only the reset clears
+    void power_on();                       // as constructed: every register, the counts, and the queues empty
 
 private:
     struct Impl;
@@ -111,8 +145,10 @@ public:
 
     LinkStatus above() const;              // the link towards the host
     LinkStatus below() const;              // the link away from it; all false with no neighbour below
-    void clear_error();                    // both links'
-    void power_on();
+    LinkCounts counts_above() const;
+    LinkCounts counts_below() const;       // all zero with no neighbour below
+    void clear_error();                    // both links'. The chip has none: there only the reset clears
+    void power_on();                       // the chip's reset: both link ends, the forwarding buffers, the queues
 
 private:
     struct Impl;

@@ -166,7 +166,7 @@ cycle 4852: from the ASIC 1 hops away: "and I am well"
 | 3 | **the pin is the board's:** `neighbour_below` is true exactly when another ASIC follows | true with nothing below: the ASIC holds what it must forward for a link that never comes up, and in the end stops the host. False with an ASIC below: that ASIC is never heard |
 | 4 | **words are taken out.** A stream with 512 words waiting says "stop" to its neighbour | the background backs up link by link to the host: it moves at the pace of its slowest ASIC. The foreground has its own stop bit and still gets through, so take the foreground promptly |
 | 5 | **a `push()` that returns false is tried again later** | the words were not taken: nothing of them is sent |
-| 6 | **the error is looked at,** and cleared with `clear_error()` | it stays up. The link carries on either way; what was lost stays lost (below) |
+| 6 | **the error is looked at:** `status().error`, with its cause beside it. `clear_error()` takes it down; the chip has no such thing, and there only the reset does | it stays up. The link carries on either way; what was lost stays lost (below) |
 | 7 | **an ASIC's own words go on the foreground only** (`Node::push` has no stream) | |
 | 8 | **no more than 16 ASICs on a chain** | hops is four bits: a packet with hops 15 that must be forwarded is a packet made wrong, and the link starts again |
 | 9 | **the sizes are left alone,** but for a host's window, 16 at most | the window must be no more than half the queue it feeds, or a packet can find no room |
@@ -183,7 +183,24 @@ cycle 4852: from the ASIC 1 hops away: "and I am well"
 | 5 | **Damage on the wire costs time, not words.** A damaged packet is thrown away whole and sent again | the same searches and runs |
 | 6 | **An error means the link started again under this end.** What this end had sent and not yet had acknowledged, 8 packets at most, may be missing at the other side. Nothing is repeated and nothing arrives out of order. The link comes up again by itself, and what is still in the queues goes | `test_hostlink`: an end powered on under a running link; `cases/power-on.case` |
 | 7 | **An end that powers on raises its neighbour's error,** 1,554 cycles later; the link is up again 3,648 cycles after the power-on | `build/linkcost start` |
-| 8 | **The wire's delay may be anything that does not change.** Up to 512 cycles each way the window of 8 is never full | `build/linkcost window` |
+| 8 | **An ASIC that is reset in a running chain raises the error of both its neighbours,** and of nobody else, itself included; the links come up again; the ASICs above it miss nothing, and below it words go missing but none is repeated or out of order | `build/test_reset`: 1,380 runs, an ASIC of 3, 4 or 16 reset at a random cycle, held up to 6,000 cycles, with and without noise; every ASIC at once; the same one twice; two neighbours one after the other |
+| 9 | **The wire's delay may be anything that does not change.** Up to 512 cycles each way the window of 8 is never full | `build/linkcost window` |
+
+**What an end tells its owner** (`status()`, `counts()`; a `Node` has them for each of its links):
+
+| | | |
+|---|---|---|
+| `in_step` | the link is up | false while it recovers or starts: no data moves on it meanwhile |
+| `error` | the link started again under this end | sticky. Packets this end had sent and not had acknowledged are gone |
+| `made_wrong` | why: this end was sent a packet made wrong twice running | the fault is the **other** end's. The chip's `format_error` |
+| `not_kept` | why: this end was asked for a packet it no longer keeps | an acknowledgement it had believed was false |
+| `other_end` | why: the other end said "I have started again" | it was reset or powered on, or it found one of the two causes above |
+| `stop_said`, `stop_heard` | the stop bits, each stream | this end's as last sent; the other end's as last heard |
+| `counts()` | what the end has counted since power-on | packets good, taken, damaged (header, data, fields), ahead, behind; sent, sent again, of length 0; times it went back; rounds; restarts and their causes |
+| `counts().refused` | **a size is wrong** | a good packet in order that found no room in its queue. With the window no more than half the queue it feeds it stays 0 |
+
+- **A packet made wrong is reported at the end that received it,** not at the one that made it: that one only hears
+  "I have started again". `test_hostlink` shows it on a chain of 17, one too long for hops.
 
 **What it does not promise:**
 
@@ -219,7 +236,8 @@ cycle 4852: from the ASIC 1 hops away: "and I am well"
 | `linkrun.cpp` | the random runs: every wire, consumer and source a process drawn from the seed |
 | `linkcase.cpp` | plays kept cases |
 | `linkcost.cpp` | what the choices cost, at the real sizes, nothing drawn at random: one run of numbers, the shared window, the pass over the data, a packet made wrong, coming up |
-| `test_hostlink.cpp` | the interface used only as its header says: what a user may rely on, each as a test |
+| `test_hostlink.cpp` | the interface used only as its header says: what a user may rely on, each as a test; the counts and an error's causes |
+| `test_reset.cpp` | an ASIC reset in the middle of a running chain, on the interface alone: `build/test_reset` makes 1,380 runs in about 9 minutes and prints a table; `make check` runs a few |
 | `linkhw.cpp` | the link end and the node as hardware: every register with its flip-flops, every memory with its bytes, the budget. Prints the tables of `HARDWARE.md` |
 | `test_header.cpp`, `test_link.cpp` | HL's example headers and CRC values; the link on a whole wire at the real sizes, and its figures |
 | `cases/`, `make_cases.sh` | a case for each flaw: it fails under the rules it names and holds under the fix; the script finds them again |

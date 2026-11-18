@@ -2,8 +2,9 @@
 #   make            the programs, optimized (build/)
 #   make check      the header's tests, the link's tests, the kept cases, small searches of a link and of a chain, the
 #                   planted bugs against the search, and forty random runs,
-#                   under gcc with the sanitizers and under clang; then the interface (hostlink.h): its test, the
-#                   README's two examples built against the library alone, and the hardware tables
+#                   under gcc with the sanitizers and under clang; then the interface (hostlink.h): its test, an
+#                   ASIC reset in a running chain (a few runs: build/test_reset alone makes 1,380), the README's two
+#                   examples built against the library alone, and the hardware tables
 #   make lib        build/libhostlink.a, for whoever builds on hostlink.h
 #   make clean
 CXX      ?= g++
@@ -11,7 +12,7 @@ COMMON   := -std=c++20 -fno-exceptions -fno-rtti -Wall -Wextra -Werror -MMD -MP
 OPT      := -O2 -g
 DEBUG    := -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer
 LIB      := link_end.cpp bench.cpp node.cpp chain.cpp hostlink.cpp
-PROGS    := test_header test_link linkcase linksearch linkrun linkcost test_hostlink linkhw
+PROGS    := test_header test_link linkcase linksearch linkrun linkcost test_hostlink test_reset linkhw
 API      := hostlink.cpp link_end.cpp node.cpp
 EXAMPLES := back_to_back chain_reply
 HARDWARE := ../planning/sessions/WORKER8/HARDWARE.md
@@ -55,6 +56,8 @@ check: $(PROGS:%=build/san/%) $(PROGS:%=build/clang/%) $(PROGS:%=build/%)
 	./plants.sh 300000 | tail -1
 	build/san/test_hostlink | tail -1
 	build/clang/test_hostlink | tail -1
+	build/san/test_reset 2 | tail -1
+	build/clang/test_reset 10 | tail -1
 	$(MAKE) --no-print-directory examples
 	./readme_examples.sh
 	build/linkhw > build/hardware.txt

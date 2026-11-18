@@ -1,10 +1,12 @@
 # WORKER8 notes: the plan for the simulation of the host link's protocol
 
-Status, 2026-11-18: **HL as it now stands holds in everything run so far: `REPORT.md` beside this file.** The code in
-`updater_wip/link/` is the header of 16 bytes, one run of packet numbers, "stop" holding only packets not yet
-numbered, and the data masked on the wire. Section 18 has every search's line. Sections 16 and 17 are results on
-the headers before it and are history; sections 1 to 15 are the plan as agreed. The runner's tasks (Quest 231 to
-236) have not run. Branch `updater-w8`.
+Status, 2026-11-18, later: **HL as the owner brought it up to the code holds in everything run: `REPORT.md` beside
+this file.** The code in `updater_wip/link/` is the header of 16 bytes, one run of packet numbers, "stop" holding
+only packets not yet numbered, the data masked on the wire, and the sender's fast unit of 128 bits a cycle.
+Section 19 has every search's line with the fast unit; section 18 has them with the slow unit, which the code had
+until then. Sections 16 and 17 are of the headers before and are history; sections 1 to 15 are the plan as
+agreed. The long search is complete (Quest 231); the runner's campaign (Quest 237 to 242) is not back. Branch
+`updater-w8`.
 
 **The go-ahead (owner, 2026-11-17),** with the answers to section 15:
 
@@ -1002,3 +1004,194 @@ is in `QUESTIONS.md`.
 - The fate `head0` (a header that reads as zeros, its data whole) is among the damage of every search.
 - `--images2`, `--images3`, `--images4`: data that is zeros and then a header's image; data that holds a packet;
   data made for the header it will travel under.
+
+## 19. The same with the sender's fast unit (2026-11-18)
+
+HL now has the sending units at 128 bits a cycle, and the code's default follows it (`Params::pass` is 16 bytes a
+cycle). Every line of section 18 again, on the code as committed, on the session's machine. Every kept case was
+found again by the search.
+
+### 19.1 The searches
+
+**`searches.sh main`: one link, the list of the headers before.** 24 searches, 4,493,052 states.
+
+| the search | states | rest within | |
+|---|---|---|---|
+| `--packets 2 0 2 0 --damage 1` | 447,722 | 312 | holds |
+| `--packets 1 0 1 0 --damage 2` | 87,090 | 296 | holds |
+| `--packets 1 0 0 0 --damage 3` | 31,434 | 303 | holds |
+| `--packets 2 0 0 0 --damage 2` | 39,794 | 328 | holds |
+| `--packets 1 1 0 0 --damage 2` | 79,692 | 328 | holds |
+| `--packets 2 2 0 0 --damage 1` | 191,428 | 376 | holds |
+| `--packets 1 1 1 0 --damage 1` | 160,908 | 312 | holds |
+| `--packets 3 0 0 0 --damage 1 --queue 4` | 39,117 | 344 | holds |
+| `--packets 3 0 0 0 --damage 1 --queue 2` | 45,786 | 344 | holds |
+| `--packets 2 1 0 0 --damage 1 --queue 4` | 82,335 | 344 | holds |
+| `--packets 7 0 0 0 --damage 1` | 375,382 | 472 | holds |
+| `--packets 2 0 1 0 --damage 0 --noise 2` | 212,098 | 312 | holds |
+| `--packets 2 0 1 0 --damage 1 --noise 1` | 627,659 | 312 | holds |
+| `--packets 2 0 1 0 --damage 1 --delay 7` | 192,371 | 330 | holds |
+| `--packets 2 0 1 0 --damage 1 --delay 20` | 399,748 | 396 | holds |
+| `--packets 2 0 1 0 --damage 1 --tick 8` | 303,676 | 312 | holds |
+| `--packets 1 0 1 0 --damage 2 --images` | 87,090 | 296 | holds |
+| `--packets 2 0 2 0 --damage 0 --power 1` | 250,064 | 343 | holds |
+| `--packets 1 0 1 0 --damage 1 --power 1` | 151,297 | 327 | holds |
+| `--packets 2 0 1 0 --damage 1 --flip 1` | 348,898 | 312 | holds |
+| `--packets 2 0 1 0 --damage 1 --wrong 1` | 85,840 | 488 | holds |
+| `--rules hl,number_bits=4 --packets 5 0 0 0 --damage 1 --queue 4 --window0 4` | 213,718 | 408 | holds |
+| `--packets 1 0 1 0 --damage 1 --whole` | 25,244 | 280 | holds |
+| `--packets 1 0 1 0 --damage 1` | 14,661 | 280 | holds |
+
+**`searches.sh held`: one stream never taken again, each in turn; the first line is HL as first written.** 8 searches, 4,892,646 states.
+
+| the search | states | rest within | |
+|---|---|---|---|
+| `--rules hl+stop_holds_again --packets 1 3 0 0 --queue 4 --damage 1 --hold 2` | 19,560 | 376 | FAILS: the background is never taken again, nothing more goes wrong, and the foreground does not finish |
+| `--packets 1 3 0 0 --queue 4 --damage 1 --hold 3` | 302,829 | 376 | holds |
+| `--packets 3 1 0 0 --queue 4 --damage 1 --hold 3` | 302,829 | 376 | holds |
+| `--packets 1 3 0 0 --queue 4 --damage 2 --hold 2` | 1,653,688 | 392 | holds |
+| `--packets 1 2 1 0 --queue 4 --damage 1 --hold 3` | 1,137,824 | 344 | holds |
+| `--packets 1 3 0 0 --queue 4 --damage 0 --noise 2 --hold 3` | 819,635 | 376 | holds |
+| `--chain 1 --cpackets 1 3 0 --queue 4 --damage 1 --hold 3` | 308,983 | 376 | holds |
+| `--chain 1 --cpackets 1 3 1 --queue 4 --damage 0 --hold 3` | 347,298 | 376 | holds |
+
+**`searches.sh chain`: the host and 1, 2 or 3 nodes.** 13 searches, 4,284,626 states.
+
+| the search | states | rest within | |
+|---|---|---|---|
+| `--chain 1 --cpackets 1 1 1 --damage 1` | 167,546 | 312 | holds |
+| `--chain 1 --cpackets 2 0 1 --damage 1` | 84,769 | 312 | holds |
+| `--chain 1 --cpackets 1 0 1 --damage 2` | 88,865 | 296 | holds |
+| `--chain 1 --cpackets 0 2 1 --damage 1 --queue 2` | 311,739 | 312 | holds |
+| `--chain 2 --cpackets 1 0 0 --damage 2` | 562,748 | 348 | holds |
+| `--chain 2 --cpackets 0 1 0 --damage 2` | 560,624 | 348 | holds |
+| `--chain 2 --cpackets 0 0 1 --damage 1` | 256,247 | 314 | holds |
+| `--chain 2 --cpackets 1 0 1 --damage 0` | 348,873 | 335 | holds |
+| `--chain 2 --cpackets 0 2 0 --damage 0 --queue 2 --fwd 2` | 467,356 | 351 | holds |
+| `--chain 2 --cpackets 0 1 0 --damage 1 --queue 2 --fwd 2` | 355,051 | 326 | holds |
+| `--chain 2 --cpackets 0 0 2 --damage 0 --fwd 2` | 790,745 | 376 | holds |
+| `--chain 3 --cpackets 1 0 0 --damage 1` | 76,842 | 365 | holds |
+| `--chain 3 --cpackets 0 0 1 --damage 0` | 213,221 | 348 | holds |
+
+**`searches.sh forged`: one forged header and one damaged packet, field by field.** 24 searches, 5,126,743 states.
+
+| the search | states | rest within | |
+|---|---|---|---|
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates gone,first0,header,data,forge-ack --all` | 64,595 | 318 | holds |
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates gone,first0,header,data,forge-stop --all` | 71,649 | 296 | holds |
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates gone,first0,header,data,forge-stop-bg --all` | 76,186 | 296 | holds |
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates gone,first0,header,data,forge-lost --all` | 64,866 | 280 | holds |
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates gone,first0,header,data,forge-recovery --all` | 55,113 | 296 | holds |
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates gone,first0,header,data,forge-resend --all` | 60,535 | 296 | holds |
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates gone,first0,header,data,forge-number --all` | 76,240 | 296 | holds |
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates gone,first0,header,data,forge-number-back --all` | 59,557 | 296 | holds |
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates gone,first0,header,data,forge-ack-data --all` | 46,229 | 296 | holds |
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates gone,first0,header,data,forge-wrong --all` | 97,290 | 296 | holds |
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates gone,first0,header,data,forge-long --all` | 90,997 | 296 | holds |
+| `--packets 1 0 1 0 --damage 1 --forge 1 --fates gone,first0,header,data,forge-restart --all` | 64,088 | 280 | holds |
+| `--packets 3 0 0 0 --damage 1 --forge 1 --fates gone,first0,header,data,forge-stop --queue 2 --all` | 205,607 | 360 | holds |
+| `--packets 1 3 0 0 --damage 1 --forge 1 --fates gone,first0,header,data,forge-stop-bg --queue 4 --hold 3 --all` | 1,263,177 | 392 | holds |
+| `--packets 2 0 1 0 --damage 1 --forge 1 --fates gone,first0,header,data,forge-ack --all` | 391,044 | 350 | holds |
+| `--packets 3 0 0 0 --damage 1 --forge 1 --fates gone,first0,header,data,forge-ack --all` | 78,163 | 360 | holds |
+| `--packets 2 0 1 0 --damage 0 --forge 2 --fates forge-ack --all` | 92,460 | 317 | holds |
+| `--packets 2 0 0 0 --damage 0 --forge 2 --fates forge-ack,forge-resend --delay 7 --all` | 8,815 | 331 | FAILS: an error for a packet no longer kept, and the other end had taken every packet this end had let go |
+| `--packets 2 0 1 0 --damage 1 --forge 1 --fates gone,first0,header,data,forge-wrong --all` | 550,571 | 328 | holds |
+| `--packets 2 0 1 0 --damage 1 --forge 1 --fates gone,first0,header,data,forge-long --all` | 470,263 | 328 | holds |
+| `--packets 2 0 1 0 --damage 0 --forge 2 --fates forge-wrong,forge-long --all` | 331,960 | 328 | holds |
+| `--packets 2 0 1 0 --damage 1 --forge 1 --fates gone,first0,header,data,forge-number --all` | 439,038 | 328 | holds |
+| `--packets 1 0 1 0 --damage 2 --forge 1 --fates gone,first0,header,data,forge-number --all` | 441,743 | 296 | holds |
+| `--packets 2 0 0 0 --damage 1 --forge 1 --fates gone,first0,header,data,forge-number-back --all` | 26,557 | 328 | holds |
+
+**`searches.sh nested`: data that holds headers or packets; lines 2 and 6 are without the mask, the last is the mask's limit.** 11 searches, 1,596,062 states.
+
+| the search | states | rest within | |
+|---|---|---|---|
+| `--rules hl,max_words=2,flush_zeros=48,zeros=64 --packets 1 0 1 0 --damage 1 --words 2` | 33,510 | 368 | holds |
+| `--rules hl-mask,max_words=2,flush_zeros=48,zeros=64 --packets 1 0 0 0 --damage 1 --images3 --words 2 --all` | 1,312 | 368 | FAILS: word 1 delivered where word 0 was next |
+| `--rules hl,max_words=2,flush_zeros=48,zeros=64 --packets 1 0 0 0 --damage 1 --images3 --words 2 --all` | 1,333 | 368 | holds |
+| `--rules hl,max_words=2,flush_zeros=48,zeros=64 --packets 2 0 1 0 --damage 1 --images3 --words 2 --all` | 424,037 | 423 | holds |
+| `--rules hl-mask,max_words=2,flush_zeros=17,zeros=64 --packets 1 0 1 0 --damage 2 --images2 --words 2 --fates gone,first0,header,data` | 196,706 | 384 | holds |
+| `--rules hl-mask,max_words=2,flush_zeros=16,zeros=64 --packets 1 0 1 0 --damage 2 --images2 --words 2 --fates gone,first0,header,data` | 1,183 | 384 | FAILS: the link started again, and nothing had happened that could excuse it |
+| `--rules hl,max_words=2,flush_zeros=16,zeros=64 --packets 1 0 1 0 --damage 2 --images2 --words 2` | 204,061 | 384 | holds |
+| `--rules hl-flush,max_words=2,zeros=64 --packets 1 0 1 0 --damage 2 --images2 --words 2` | 221,481 | 384 | holds |
+| `--packets 1 0 1 0 --damage 2 --images --all` | 87,090 | 296 | holds |
+| `--rules hl,max_words=2,flush_zeros=48,zeros=64 --packets 2 0 1 0 --damage 1 --images --words 2 --all` | 424,037 | 423 | holds |
+| `--rules hl,max_words=2,flush_zeros=48,zeros=64 --packets 1 0 0 0 --damage 1 --images4 --words 2 --all` | 1,312 | 368 | FAILS: a word delivered that was not sent  |
+
+**`searches.sh rules`: rules taken away and sizes either way.** 21 searches, 1,654,818 states.
+
+| the search | states | rest within | |
+|---|---|---|---|
+| `--rules hl-lost_uses_ack --packets 1 0 1 0 --damage 2` | 87,102 | 296 | holds |
+| `--rules hl-lost_uses_ack --packets 1 1 0 0 --damage 2` | 79,776 | 328 | holds |
+| `--rules hl-lost_uses_ack --packets 3 0 0 0 --damage 1 --queue 4` | 39,117 | 344 | holds |
+| `--rules hl-ack_now --packets 1 0 1 0 --damage 2` | 100,122 | 319 | holds |
+| `--rules hl-ack_now --packets 1 1 0 0 --damage 2` | 128,452 | 365 | holds |
+| `--rules hl-ack_now --packets 3 0 0 0 --damage 1 --queue 4` | 77,238 | 388 | holds |
+| `--rules hl-flush --packets 1 0 1 0 --damage 2` | 95,756 | 296 | holds |
+| `--rules hl-flush --packets 1 1 0 0 --damage 2` | 87,219 | 328 | holds |
+| `--rules hl-flush --packets 3 0 0 0 --damage 1 --queue 4` | 40,723 | 344 | holds |
+| `--rules hl,reask=24 --packets 1 0 1 0 --damage 2` | 85,645 | 296 | holds |
+| `--rules hl,reask=24 --packets 1 1 0 0 --damage 2` | 77,714 | 328 | holds |
+| `--rules hl,reask=24 --packets 3 0 0 0 --damage 1 --queue 4` | 39,047 | 344 | holds |
+| `--rules hl,reask=400 --packets 1 0 1 0 --damage 2` | 103,992 | 547 | holds |
+| `--rules hl,reask=400 --packets 1 1 0 0 --damage 2` | 90,562 | 583 | holds |
+| `--rules hl,reask=400 --packets 3 0 0 0 --damage 1 --queue 4` | 39,117 | 344 | holds |
+| `--rules hl,pass=0 --packets 1 0 1 0 --damage 2` | 75,568 | 280 | holds |
+| `--rules hl,pass=0 --packets 1 1 0 0 --damage 2` | 67,884 | 312 | holds |
+| `--rules hl,pass=0 --packets 3 0 0 0 --damage 1 --queue 4` | 31,495 | 328 | holds |
+| `--rules hl,pass=1 --packets 1 0 1 0 --damage 2` | 118,412 | 296 | holds |
+| `--rules hl,pass=1 --packets 1 1 0 0 --damage 2` | 118,112 | 328 | holds |
+| `--rules hl,pass=1 --packets 3 0 0 0 --damage 1 --queue 4` | 71,765 | 351 | holds |
+
+**`searches.sh window`: no rule to refuse a packet with no room.** 4 searches, 1,294,654 states.
+
+| the search | states | rest within | |
+|---|---|---|---|
+| `--rules hl-refuse --packets 4 0 0 0 --damage 2` | 236,945 | 392 | holds |
+| `--rules hl-refuse --packets 4 0 0 0 --damage 2 --queue 4` | 553,144 | 392 | holds |
+| `--rules hl-refuse --packets 5 0 0 0 --damage 1 --queue 4` | 201,736 | 408 | holds |
+| `--rules hl-refuse --packets 3 1 0 0 --damage 1 --queue 4` | 302,829 | 376 | holds |
+
+**`searches.sh starve`: the other side sends 5 or 8 packets back to back, no sender waits 150 cycles.** 3 searches, 13,577,645 states.
+
+| the search | states | rest within | |
+|---|---|---|---|
+| `--rules hl-ack_now --packets 0 3 5 0 --damage 0 --still 150` | 7,590,535 | 446 | holds |
+| `--packets 0 3 5 0 --damage 0 --still 150` | 2,497,744 | 424 | holds |
+| `--packets 0 2 8 0 --damage 0 --still 150` | 3,489,366 | 520 | holds |
+
+- `starve` is run depth-first (`--deep`).
+- `forged` has one line more than in section 18: two forged headers, a false acknowledgement and then a false
+  "resend". It must fail: the error is raised and nothing was lost (`cases/false-alarm.case`).
+- **On the runner, Quest 231** (the slow unit): `--packets 2 4 1 0 --queue 4 --damage 1 --hold 3`, depth-first,
+  86,515,438 states, 2,813 s, holds. Breadth-first for 1,400 s: 39,859,919 states, 5,275,179 still waiting.
+
+### 19.2 The planted bugs
+
+`plants.sh`: all 18 caught by the search, by the same configurations as in section 18.2. `plants_run.sh 10`:
+
+| planted bug | random runs that catch it |
+|---|---|
+| `ACK_ONE_OFF` | 6 of 10 |
+| `WINDOW_NOT_KEPT` | 1 of 10 |
+| `WRAP_WRONG` | 9 of 10 |
+| `TIMER_NOT_RESTARTED` | 0 of 10 |
+| `DUPLICATE_TAKEN` | 0 of 10 |
+| `STOP_IGNORED` | 6 of 10 |
+| `RECOVERY_ONCE` | 2 of 10 |
+| `ZERO_TAKES_NUMBER` | 10 of 10 |
+| `ACK_FROM_BAD_DATA` | 0 of 10 |
+| `NO_ZEROS` | 5 of 10 |
+| `HOPS_NOT_COUNTED` | 6 of 10 |
+| `NOT_SEALED_AGAIN` | 6 of 10 |
+| `OWN_BEFORE_FORWARDED` | 5 of 10 |
+| `WRONG_FLAG_CLEARED` | 0 of 10 |
+| `ERROR_ON_RELEASE` | 0 of 10 |
+| `RESTART_ANY_DATA` | 0 of 10 |
+| `CHECKSUM_KEPT` | 0 of 10 |
+| `MASK_KEPT` | 4 of 10 |
+
+### 19.3 The cases
+
+`build/linkcase -v cases/*.case`: 28 runs over 14 cases, all as expected.

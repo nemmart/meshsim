@@ -77,7 +77,9 @@ window)  # a packet with no room, without the rule that refuses it: the stop bit
     one --rules hl-refuse --packets 5 0 0 0 --damage 1 --queue 4
     one --rules hl-refuse --packets 3 1 0 0 --damage 1 --queue 4
     ;;
-forged)  # one header forged to pass its CRC, with one packet damaged: field by field. --all: every kind of failure
+forged)  # one header forged to pass its CRC, with one packet damaged: field by field. --all: every kind of failure.
+         # One line has two forged headers, a false acknowledgement and then a false "resend", and must fail:
+         # the error is raised and nothing was lost (cases/false-alarm.case)
     for f in forge-ack forge-stop forge-stop-bg forge-lost forge-recovery forge-resend forge-number forge-number-back forge-ack-data \
              forge-wrong forge-long forge-restart; do
         one --packets 1 0 1 0 --damage 1 --forge 1 --fates $F,$f --all
@@ -87,6 +89,7 @@ forged)  # one header forged to pass its CRC, with one packet damaged: field by 
     one --packets 2 0 1 0 --damage 1 --forge 1 --fates $F,forge-ack --all
     one --packets 3 0 0 0 --damage 1 --forge 1 --fates $F,forge-ack --all
     one --packets 2 0 1 0 --damage 0 --forge 2 --fates forge-ack --all
+    one --packets 2 0 0 0 --damage 0 --forge 2 --fates forge-ack,forge-resend --delay 7 --all       # must fail: the error with nothing lost
     one --packets 2 0 1 0 --damage 1 --forge 1 --fates $F,forge-wrong --all
     one --packets 2 0 1 0 --damage 1 --forge 1 --fates $F,forge-long --all
     one --packets 2 0 1 0 --damage 0 --forge 2 --fates forge-wrong,forge-long --all

@@ -1,210 +1,195 @@
-# WORKER8 report: HOST-LINK.md as it stands on 2026-11-17, with the data masked
+# WORKER8 report: HOST-LINK.md of 2026-11-17 night, read against the code that passes
 
-**The protocol as it now stands holds in everything run so far.** That is every search that fits this machine, on
-one link and on chains of 1, 2 and 3; 18 planted bugs; and 1,380 random runs on chains of 1, 2, 4 and 16, 300 of
-them under HL's rules and 1,080 under other settings.
-**It is not yet the whole brief:** the runner did not run any of my six tasks (section 10), so the large random
-campaign and the searches too large for this machine are still to come.
+**The protocol as HL now has it holds in everything run.** Since the report before: HL was brought up to the code;
+the long search finished and holds; and the code was brought up to HL in the one place where HL had moved past
+it, the sender's fast unit.
 
-Three things are the owner's to weigh, all in `QUESTIONS.md`:
+**What is new here:**
 
-1. **The mask has a limit that is nearer than HL says.** Data made for the header it will travel under still gets
-   a packet through, and it is solved for, not searched (section 2). I have treated it as the known limit HL's own
-   sentence describes, and carried on.
-2. **The pass over the data costs more than HL says** where the two streams meet, and on every idle link
-   (section 5).
-3. **The mask closes the false packet number as well,** for any packet with data (section 2).
+1. **HL read again, as a stranger would:** 6 places wrong, 9 unclear, 11 silent (section 1), and **the figures it
+   quotes from me are of the slow sending unit:** section 2 has each beside the figure with the fast unit.
+2. **Quest 231, the long search, is complete and holds:** 86,515,438 states (section 3).
+3. **One thing HL says that the runs now contradict:** the error for a packet no longer kept "is raised only when
+   there is real harm". With **two** forged headers it is raised and nothing was lost (section 4). With one it
+   holds, as searched. It is far inside the limit already accepted, and it errs on the loud side.
+4. **The random campaign on the runner is queued and not back** (section 9).
 
-Names: HL is `v1.4_wip/planning/HOST-LINK.md`. The code is `updater_wip/link/`. A dagger (†) marks what I chose or
-propose. A cycle is one byte on the link. Every figure here was measured on this branch on 2026-11-17 and
-2026-11-18, on the code as committed, and the command that gives it is named.
+Names: HL is `v1.4_wip/planning/HOST-LINK.md` at `870ed9d9`. The code is `updater_wip/link/`. A dagger (†) marks
+what I chose or propose. A cycle is one byte on the link. "The fast unit" is HL's sending unit of 128 bits a
+cycle; "the slow unit" is a byte a cycle, which the code had until this report. Every figure here was measured
+on this branch on 2026-11-18, on the code as committed, and the command that gives it is named.
 
-## 1. The mask, defined
+## 1. HL read against the code: what is still wrong, unclear or silent
 
-**Each data byte goes on the wire XORed with the low byte of a 32-bit register. The register starts at the
-packet's header CRC with bit 16 set, and takes eight shifts of the CRC-32C register, with nothing fed in, before
-each byte.**
+**The worked examples agree, all of them:** the four example headers, the three mask examples with their header
+CRCs, starting values and wire bytes, the restart pattern and its checksum 0xC8981D21, the two standing states
+of the mask's register, and the check value 0x48674BC7. They are checked by `test_header` and again by a second
+implementation in Python that read the hex strings out of HL itself.
 
-```
-reg = header CRC  OR  0x00010000          the header CRC: the 32-bit number in header bytes 12 to 15, byte 12 lowest
-for each data byte d, in order:
-    repeat 8 times:  reg = (reg >> 1) XOR 0x82F63B78   if reg's bit 0 is 1
-                     reg =  reg >> 1                    otherwise
-    the byte on the wire is  d XOR (reg AND 0xFF)
-```
+**Wrong:**
 
-- **It is HL's proposal with one bit added.** The eight shifts are the CRC unit's step for a byte of zero, so the
-  mask is a second CRC-32C unit that is fed zeros. The receiver does the same, from the header it has just read.
-- † **Why bit 16.** The register has two states that stand still: 0, whose mask is all zeros, and 0xFCA42DAF,
-  whose mask is the byte 0xAF over and over. A header CRC equal to either would send its data in the clear, or
-  as good as. With one bit of the starting value set, and 0xFCA42DAF has that bit clear, no header CRC starts it
-  there. From every other state the register returns only after 2³¹ − 1 shifts. It is one constant
-  (`header.h`, `MASK_SET`); question 1 of `QUESTIONS.md`.
-- **What is held, and what the data checksum is over, is the data without the mask.** A forwarding node takes the
-  mask off as the data arrives and puts the outgoing header's on as it leaves.
-- † The restart packet's data is masked like any other.
-
-**Worked examples** (`test_header`; the bytes agree with a second implementation, in Python):
-
-| | |
-|---|---|
-| **1.** HL's first example header: background, length 1, number 1, acknowledge 0 | `02 01 01 00 00 00 00 00 EA 9A 70 42 A0 8C 06 E1` |
-| its header CRC, and the register's start | 0xE1068CA0, 0xE1078CA0 |
-| the data as held | `00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00` |
-| the data on the wire | `2A 54 C0 74 C0 1C 58 2F A6 5D 27 37 39 C9 47 1F` |
-| **2.** foreground, length 1, number 7, acknowledge 3 | `01 01 07 00 0C 00 00 00 EB 08 C9 D9 9E 94 2A 36` |
-| its header CRC, and the register's start | 0x362A949E, 0x362B949E |
-| the register after each of the first four bytes | 0x3EE668A4, 0x65EFC4D1, 0x21DD8D6C, 0x2CA4813F |
-| the data as held | `00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F` |
-| the data on the wire | `A4 D0 6E 3C 10 A4 2F 89 F5 74 21 9E DE 43 E4 C0` |
-| **3.** the same data forwarded: hops 1, acknowledge 4 | `01 01 07 00 10 00 10 00 EB 08 C9 D9 A3 2B 76 11` |
-| the data on the wire | `79 F1 F2 82 77 D9 B4 AF 91 8F 7C 00 39 96 A1 51` |
-
-- In example 1 the data is zeros, so the wire shows the sequence itself.
-- `test_link` checks the link end against this: every data byte of 12 packets on the wire, byte for byte.
-
-## 2. What the mask closes, and what it does not
-
-| the case | without the mask | with it |
+| | where in HL | what |
 |---|---|---|
-| `packet-in-data`: a header reads as zeros, the data holds a packet | fails: word 1 delivered where word 0 was next | **holds** |
-| `forged-number`: a header forged by noise with a false packet number | fails: a packet taken twice, the next lost | **holds** |
-| `data-taken-for-a-packet`: a lost receiver hunting in data that is a header's image, with no wait for zeros | fails | **holds** |
-| `data-made-on-purpose`: the data made for the header it travels under | fails | **fails** |
+| W1 | "Starting a link again": the error "is raised only when there is real harm"; "the owner's needs no watching and raises none" | true with one forged header. With two it is raised and nothing was lost: section 4 |
+| W2 | "One run of numbers", "What it costs": "no more than 3 packets are ever kept" up to a delay of 512 | 3 with only acknowledgements coming back; 5 with full packets flooding the other way (`linkcost window`) |
+| W3 | "The CRC as hardware": "A byte a cycle is the fit" | stands above the table that makes the sending units 128 bits a cycle. It is true of the receiving units only |
+| W4 | "Holding the host back": "The wait no longer grows with the timer" | that was the slow unit. With the fast unit it grows again: 2,727, 3,380 and 8,356 cycles at 512, 2,048 and 8,192 |
+| W5 | "The chain", "Measured (WORKER8, 240 random runs) ... with buffers of 512 words, 349" | the 349 was of 30 runs, not of the 240 |
+| W6 | "Where this document stands", "What is still out"; "Open", "The long search" and "One run of numbers ... in hand" | the long search is complete and holds; the costs are measured and in the document |
 
-`build/linkcase -v cases/*.case` plays all four both ways: 27 runs over 13 cases, all as expected.
+**Unclear:**
 
-**What it closes besides the hole it was made for:**
+| | where in HL | what a stranger would trip on |
+|---|---|---|
+| U1 | "When a packet is bad": "sets resend" | resend is set in **one** header, the next to go, and not in every header until the packet comes. Only the 2,048 cycles imply it. One who set it in every header would send the sender back over and over |
+| U2 | "Starting a link again", the table's third row: "I have started again, and so have you" | it is said by an end that is starting again and has heard the other's "I have started again" |
+| U3 | the same: "The handshake ends at a restart packet without lost, or at any ordinary packet" | that is when an end stops **answering**. An end stops saying "I have started again" when it hears a restart packet with recovery |
+| U4 | the same: "An end that hears 'I have started again' drops the packets ... and raises an error" | only the first it hears. The packet comes again every round, and an end already answering, or starting itself, does neither again |
+| U5 | "A packet made wrong": the flag "is cleared only when a packet is taken" | and when the link starts again |
+| U6 | "Two streams": "The longest a foreground packet waits for the line is one background packet" | "for the line" leaves out the window and the packets sent again before it. In 60 runs a foreground packet stood ready up to 6,367 cycles in all (section 5) |
+| U7 | "Recovery", the other side, step 2: "carries on from the packet after the acknowledged one" | beside "the answering end sends no data until its answer has been heard": it carries on only then |
+| U8 | "The two checks": the data checksum is of the bytes "in the order they go on the link" | of the bytes as held, in that order. On the link they are masked. The table above it has it right |
+| U9 | "The mask's limit": "the stream, the length, the number, the acknowledge field, hops and the stop bits" | and the four flags of the moment: "resend" is set whenever the sender owes one |
 
-- **The false packet number, for any packet with data.** A header that noise has forged carries another CRC, so
-  the receiver takes the wrong mask off the data and the data checksum fails. The header's fields on a packet
-  with data are now under both checks. HL's "A known limit, accepted" can go. What is left of forged headers is
-  the packet of length 0: a false acknowledgement, false stop bits, a false "resend" or "lost".
-- **The need for the 528 zeros.** With the mask the searches hold without that rule (`hl-flush`: 3 searches of
-  the `rules` list and one of `nested`, 599,010 states). Without the mask it is needed, and by exactly one more zero than a packet's data can hold in
-  front of a header's image: 16 fails and 17 holds at the small sizes, so 497 at the real ones. I would keep it:
-  it spares a lost receiver a string of failed header CRCs, and it is the only guard left against data made on
-  purpose.
+**Silent:**
 
-**What it does not close: data made by one who knows the header.**
+| | where it belongs | what the code does |
+|---|---|---|
+| S1 | "The CRC as hardware", the fast unit's header CRC: "the fixed value that those zeros bring to all ones" | the value is **0x641F6454**: 32 zero bits bring it to 0xFFFFFFFF (checked on HL's first example header) |
+| S2 | the same | † whether the header's first bytes may leave while the pass still runs. The code holds the header until the pass is done, and counts no cycle for the header CRC |
+| S3 | the same | † the restart packet has no pass: its checksum is a constant |
+| S4 | "When a packet is bad" | what ends "resend owed": the packet taken, or a packet of length 0 whose number is the one expected (the sender has gone back) |
+| S5 | "Starting a link again", the false acknowledgement | an acknowledge field **behind** the last one taken releases nothing and changes nothing. HL says it only of one beyond what was sent |
+| S6 | "Recovery" | an end that is lost sends no data either, only its rounds. Step 4 implies it |
+| S7 | "What a sender must keep" | a packet to be sent again goes before any new one of either stream. Go-back-N implies it |
+| S8 | "Holding the host back", "When the status is sent" | † a packet of length 0 may go while a packet with data is still being passed over; the data follows it |
+| S9 | "When the status is sent", step 1: "on a change" | "resend owed" and "a packet taken" are changes too, with the stop bits |
+| S10 | "The link" | the wire's delay. The window of 8 is never full up to 512 cycles each way and fills at 2,048 (section 5) |
+| S11 | "A packet made wrong": a packet of length 0 that is counted | it is also asked for again, like one with data, though there is nothing to send again |
 
-- HL: "whoever made the data would have to know the header's CRC, which covers the acknowledge field of that
-  moment."
-- **They need less.** The CRC is a function of the header's other fields and of the data. The CRC and the mask's
-  sequence are both linear. So for a chosen stream, length, number, acknowledge field, hops and stop bits, **data
-  can be solved for whose masked bytes are a whole packet:** 33 evaluations and 32 equations in 32 unknowns
-  (`bench.cpp`, `made_on_purpose`).
-- **Shown:** `cases/data-made-on-purpose.case`. One packet of two words made so, its header read as zeros, and
-  the packet inside is taken: "a word delivered that was not sent". Two events, as before the mask.
-- **How far those fields can be known.** On a quiet link, well: from the host hops is 0, the stop bits are 0, the
-  acknowledge field stands still while nothing comes back, and the number counts from 1 after a restart. When
-  foreground messages go between, the number and the acknowledge field move as the data's author cannot see.
-- **It still needs the line to read as zeros through that one header.**
-- **What would close it** is a value in the mask's start that the data's author cannot know: the value for each
-  life of a link, which HL set aside. A sequence that is not linear would only turn the solving into a search of
-  2³², which is minutes.
+## 2. The figures HL quotes, against mine with the fast unit
 
-## 3. The two rulings of the afternoon, and the two seeds
+HL's figures are mine, but most were measured with the slow unit. `linkcost`, `figures.sh` and `test_link` give
+the right-hand column on the code as it now is.
 
-- **"Stop" holds only packets not yet numbered.** `cases/stopped-blocks.case` fails under HL as first written and
-  holds now. The searches with one stream never taken again are in section 4.
-- **Asking again at any sign the sender is ahead.** `cases/seeds-227.case` is the cause of Quest 227's two failing
-  seeds (200137, 140162): a "resend" was asked once and lost, and my rule then asked again only at a packet of
-  length 0. Not the host's window alone: the window set how long the sender stood.
+| where in HL | HL has | with the fast unit |
+|---|---|---|
+| "Where this document stands" | 71.8 million states; 1,380 random runs | 36.9 million states here and 86.5 million on the runner; 1,140 runs here (section 3) |
+| "Two streams": the longest wait for the line | 534 | 534 (60 runs) |
+| "One run of numbers", a damaged background packet: a bit of its data | 1,071 at most, 553 on average | 1,056, 700 |
+| the same: a bit of its header | 2,624, 1,677 | 2,144, 1,433 |
+| the same: its first byte zero | 3,152, 1,709 | 2,672, 1,778 |
+| the same: the whole packet gone | 1,598, 993 | 1,584, 1,067 |
+| the same: at a delay of 2,048 a foreground packet waited | 1,404 | 849; 1,550 with full packets the other way |
+| the same: the data rate by window 2, 4, 8, 16 | 0.4750, 0.5256, 0.5342, 0.5319 | 0.5803, 0.6252, 0.6389, 0.6392 |
+| "The chain", the fullest forwarding buffer | 632; 349 with buffers of 512 words | 621 (60 runs); 361 (30 runs) |
+| "The CRC as hardware", the table's empty cell: a full foreground packet on an idle link | | 561 on average, 574 at most |
+| the same table's other rows | 0.5751; 0.8580; 534 | the same: they were already of the fast unit |
+| "When a packet is bad", why 2,048: packets sent to a receiver that had them | 54 at 128 cycles, 18 at 512, none above | 232, 104, none |
+| the same: "the random runs' 2 million packets" | 0 of 2 million | to come with the runner's campaign |
+| "A packet made wrong": the second comes after | 1,071 cycles; 128 words lost | 1,056; 128 |
+| "Starting a link again", what these cost | 4,657; 1,554; 3,648 | the same |
+| "Holding the host back", the timer's table: 512 | 0.4904, 8.79%, 2,548 | 0.5751, 7.64%, 2,727 |
+| the same: 2,048 | 0.4908, 6.42%, 2,128 | 0.5756, 5.95%, 3,380 |
+| the same: 8,192 | 0.4937, 6.20%, 1,822 | 0.5773, 5.76%, 8,356 |
+| the same: 400 one-word packets from power-on | 31,023 without the acknowledgement at once, 17,489 with | the same |
+| the same: packets of length 0 with and without it | 8.79%, 4.64% | 7.64%, 4.03% |
+| the same: the host's window 8, 16, 64 | 0.5342, 0.5343, 0.5343 | 0.6389, 0.6392, 0.6392 |
+| the same: the fullest queue | 630 | 629 here (60 runs); the runner's campaign to come |
 
-## 4. What holds
+- The data rates of the window and host-window rows are of 30 runs, the timer's of 60: different seeds, so 0.64
+  and 0.58 are not to be set against each other.
 
-**The searches of the shrunken model: 71.8 million states in all, every search complete.** Each is every order of loss, damage, stall and delay within its budget,
-and from every state the question "if nothing more goes wrong, does everything arrive?". `--hold` asks it also
-with one stream never taken again. All on the code as committed, with the mask and 5 kinds of damage.
+## 3. What holds
+
+**Quest 231: the long search is complete, and it holds.** `--packets 2 4 1 0 --queue 4 --damage 1 --hold 3`:
+86,515,438 states, every one tried, depth-first, 2,813 seconds on the runner. From every state, with either
+stream never taken again, the other finished. Breadth-first for its 1,400 seconds reached 39,859,919 states with
+5,275,179 still waiting. It was run on the slow unit (`72f12b9a`); it is queued once more on the fast (Quest 242).
+
+**The searches on this machine, with the fast unit: 36.9 million states, every search complete.**
 
 | list (`searches.sh`) | what | searches | states | |
 |---|---|---|---|---|
-| `main` | one link, the list of the headers before | 24 | 7,684,999 | all hold |
-| `held` | a stopped stream cannot block the other: each stream never taken again in turn, queues of 4 words | 7 | 9,681,796 | all hold; one more is HL as first written, and fails |
-| `chain` | the host and 1, 2 or 3 nodes | 13 | 7,271,470 | all hold |
-| `forged` | one forged header and one damaged packet, field by field | 23 | 9,105,569 | all hold, the false packet number among them |
-| `nested` | data that holds headers or packets, and a header that reads as zeros | 11 | 2,255,201 | 8 hold; 2 are without the mask and fail; 1 is the mask's limit and fails |
-| `rules` | without "lost uses the acknowledge field", without "acknowledge at once", without the wait for 528 zeros, asking again after 24 and 400, the pass at 0 and 4 bytes a cycle | 21 | 2,059,605 | all hold |
-| `window` | no rule to refuse a packet with no room | 4 | 2,448,190 | all hold |
-| `starve` | the other side sends 5 or 8 packets back to back; no sender waits 150 cycles for an acknowledgement | 3 | 31,295,019 | all hold; the largest, 18,350,231 states, run depth-first to fit this machine |
+| `main` | one link, the list of the headers before | 24 | 4,493,052 | all hold |
+| `held` | a stopped stream cannot block the other: each stream never taken again in turn | 7 | 4,873,086 | all hold; one more is HL as first written, and fails |
+| `chain` | the host and 1, 2 or 3 nodes | 13 | 4,284,626 | all hold |
+| `forged` | one forged header and one damaged packet, field by field | 24 | 5,126,743 | 23 hold; the 24th has two forged headers and fails: section 4 |
+| `nested` | data that holds headers or packets, and a header that reads as zeros | 11 | 1,596,062 | 8 hold; 2 are without the mask and fail; 1 is the mask's limit and fails |
+| `rules` | without "lost uses the acknowledge field", without "acknowledge at once", without the wait for 528 zeros, asking again after 24 and 400, the pass at a byte a cycle and with none | 21 | 1,654,818 | all hold |
+| `window` | no rule to refuse a packet with no room | 4 | 1,294,654 | all hold |
+| `starve` | the other side sends 5 or 8 packets back to back; no sender waits 150 cycles for an acknowledgement | 3 | 13,577,645 | all hold (run depth-first) |
 
-**The state counts against the header of 20 bytes,** on the lines of `main` that can be compared:
+**The state counts,** on the lines of `main` that can be compared:
 
-| the search | 20 bytes, numbers for each stream | now |
+| the search | 20 bytes, numbers for each stream | HL, the slow unit | HL, the fast unit |
+|---|---|---|---|
+| `--packets 2 0 2 0 --damage 1` | 414,807 | 995,260 | 447,722 |
+| `--packets 1 0 1 0 --damage 2` | 85,494 | 118,412 | 87,090 |
+| `--packets 2 2 0 0 --damage 1` | 141,320 | 467,453 | 191,428 |
+| `--packets 1 1 1 0 --damage 1` | 144,825 | 296,820 | 160,908 |
+| `--packets 7 0 0 0 --damage 1` | 342,638 | 759,530 | 375,382 |
+| `--packets 2 0 1 0 --damage 1 --noise 1` | 598,558 | 975,013 | 627,659 |
+| `--packets 2 0 2 0 --damage 0 --power 1` | 194,272 | 537,172 | 250,064 |
+| `--packets 2 0 1 0 --damage 1 --flip 1` | 327,136 | 559,464 | 348,898 |
+| `--packets 2 0 1 0 --damage 1 --wrong 1` | 41,187 | 120,530 | 85,840 |
+| `--packets 1 0 1 0 --damage 1`, states kept whole, and by the hash | 22,343 and 14,434 | 36,931 and 20,402 | 25,244 and 14,661 |
+| the 24 together | 4,110,540 | 7,684,999 | 4,493,052 |
+
+- Against the header of 20 bytes there are 5 kinds of damage where there were 4, and one machine a direction
+  where there were two. The slow unit's pass was a counter of up to 16 in the state; the fast unit's is one cycle
+  at the small sizes.
+
+**18 planted bugs, every one caught by the search** (`plants.sh`). Random runs alone catch 11 of them within 10
+seeds (`plants_run.sh 10`).
+
+**14 kept cases,** 28 runs, all as expected (`build/linkcase -v cases/*.case`), every one found again by the
+search at the fast unit. New: `false-alarm`.
+
+**The random runs on this machine, with the fast unit:** 1,140 runs under 28 settings (`figures.sh a` to `e`,
+the same 60 or 30 seeds under each), on chains of 1, 2, 4 and 16. **Two failed, neither under HL's rules and
+HL's noise:**
+
+| the run | what failed | why |
 |---|---|---|
-| `--packets 2 0 2 0 --damage 1` | 414,807 | 995,260 |
-| `--packets 1 0 1 0 --damage 2` | 85,494 | 118,412 |
-| `--packets 2 2 0 0 --damage 1` | 141,320 | 467,453 |
-| `--packets 1 1 1 0 --damage 1` | 144,825 | 296,820 |
-| `--packets 7 0 0 0 --damage 1` | 342,638 | 759,530 |
-| `--packets 2 0 1 0 --damage 1 --noise 1` | 598,558 | 975,013 |
-| `--packets 2 0 2 0 --damage 0 --power 1` | 194,272 | 537,172 |
-| `--packets 2 0 1 0 --damage 1 --flip 1` | 327,136 | 559,464 |
-| `--packets 2 0 1 0 --damage 1 --wrong 1` | 41,187 | 120,530 |
-| `--packets 1 0 1 0 --damage 1`, states kept whole, and by the hash | 22,343 and 14,434 | 36,931 and 20,402 |
-| the 24 together | 4,110,540 | 7,684,999 |
+| asking again only after 32,768 cycles (`--rules hl,reask=32768`, seed 18) | "a sender stood still: no acknowledgement in 20,737 cycles" | a request was lost, and the receiver would not ask again for 32,768 cycles. That is what the longer wait costs; the check's bound is 20,736. I have taken 32,768 out of the list |
+| forged headers of every kind among the damage (`--forge`, seed 16) | "an error for a packet no longer kept, and the other end had taken every packet" | two forged headers: section 4 |
 
-- **Why more:** there are 5 kinds of damage where there were 4 (a header that reads as zeros is the fifth); the
-  sender's pass over the data is a counter in the state; the restart packet is a full packet.
-- **Why not more still:** one machine a direction, where there were two.
+- With forged headers among the damage (`figures.sh e`, its first line, 30 runs, none failing): a packet made
+  wrong asked for again 65 times, the error at the second 18 times, asked for a packet no longer kept 2 times, a
+  link started again 40 times. The forging there is far more frequent than noise could make it.
+- With bits flipped in senders' memory (30 runs): 72 bits flipped in kept packets, 7 wrong words delivered
+  unseen, no error and no link standing still.
 
-**What the searches show of the changed rules:**
+`make check` passes with the fast unit: the header with the mask's examples, the link's quick tests, the cases,
+four small searches, 40 random runs, 18 planted bugs, under gcc with the sanitizers and under clang.
 
-- **A stopped stream cannot block the other** (change 1). In every state of the `held` list, with either stream
-  never taken again, the other finishes.
-- **A false acknowledgement** (change 5). With a forged acknowledge field and a damaged packet: where a packet
-  was lost the error is always raised; in no state was the error raised and the packet then arrived after all.
-  With the mask a false acknowledgement can only come on a packet of length 0.
-- **A packet made wrong** (change 4). One forged header that makes a field wrong, or a length of 33: asked for
-  again, and no error. A packet its sender made wrong comes a second time and ends as the error and a link
-  that starts again.
-- **A bit flipped in a sender's memory** (change 3) is delivered unseen and counted apart; the link does not hang.
-- **A restart packet whose data is damaged, or a restart flag forged onto another packet,** changes nothing.
+## 4. The error with nothing lost: two forged headers
 
-**18 planted bugs, every one caught by the search** (`plants.sh`). The five new ones: the "made wrong" flag
-cleared by a packet thrown away; an error on an acknowledgement behind with nothing asked; a restart acted on
-with its pattern wrong; a checksum not made afresh on a packet sent again; the mask of a packet's first sending
-kept for its second. Random runs alone catch 10 of the 18 within 10 seeds (`plants_run.sh 10`); the other 8 need the search.
+**HL says the error for a packet no longer kept is raised only when there is real harm. That holds with one
+forged header, and not with two.**
 
-**A kept case for every rule:** 13 cases, the table in `QUESTIONS.md`.
-
-**The random runs.** On this machine, since the runner's campaign did not run (section 10):
-
-- **240 runs under HL's rules, none failing** (`build/linkrun --seeds 1000 1239 --cycles 300000`): chains of 1, 2, 4
-  and 16 (95, 72, 44 and 29 runs), 190 million cycles, 4.8 million packets, 105,171 bursts of noise.
-- **1,140 more runs under 28 settings, none failing** (`figures.sh a` to `e`, and two with the pass at 16 bytes a
-  cycle): the same 60 or 30 seeds under each setting, 60 of them under HL's rules.
-
-| in the 240 runs | times |
+| cycle | what happens (`cases/false-alarm.case`, the shrunken model, a wire of 7 cycles) |
 |---|---|
-| a header CRC failed | 21,443 |
-| a data checksum failed | 4,978 |
-| "lost" sent; both ends lost at once | 35,220; 5,933 |
-| a packet ahead of the one expected, or a number ahead | 3,955 |
-| a sender went back; packets sent again | 8,296; 23,411 |
-| the number wrapped on a new packet; on a packet sent again | 16,645; 699 |
-| a packet seen before; a packet with no room; a link started again | never |
+| 222 | end 1 sends a packet of length 0, acknowledge 0. **It is forged to acknowledge 1** |
+| 239 | end 0 sends packet 1 |
+| 244 | the forged header arrives. End 0 lets packet 1 go, while it is on its way |
+| 261 | end 1 sends another packet of length 0, acknowledge 0: packet 1 has not landed. **It is forged to "resend"** |
+| 277 | packet 1 lands whole and is taken |
+| 283 | end 0 reads "resend" with an acknowledge field behind the one it took: it is asked for a packet it no longer keeps. It raises the error and the link starts again. Nothing was lost |
 
-| with forged headers among the damage (`figures.sh e`, 30 runs, none failing) | times |
-|---|---|
-| a packet made wrong, the first time: asked for again | 59 |
-| a packet made wrong a second time: the error | 20 |
-| asked for a packet no longer kept: the error | 1 |
-| an acknowledgement behind the last one taken; beyond what was sent | 8; 19 |
-| a link started again | 42 |
+- **Found by a random run** with forged headers (seed 16 of `figures.sh e`), **then by the search:**
+  `linksearch --packets 2 0 0 0 --damage 0 --forge 2 --fates forge-ack,forge-resend --delay 7`, 3 events.
+- **Why my searches before missed it:** they forged two acknowledgements, or one header of any kind and one
+  damaged packet, and on a wire of one cycle two headers do not fit while one packet is on its way.
+- **How likely:** two headers forged by noise, each 1 in 2³² of the damaged ones, the second within a packet's
+  flight of the first. Far inside what is accepted.
+- **What it costs:** a link that starts again and says so, with nothing wrong. Loud, not silent.
+- **A false "lost" does the same as a false "resend"** (the same search with `forge-lost`: the same failure).
+- **I would change nothing but the sentence.** † If it mattered: a sender that is asked for a packet it no longer
+  keeps could wait for the request to come a second time before raising the error; a true one always does.
 
-- The forging there is far more frequent than noise could make it; the counts say the paths were walked, not how
-  often they would be. A second wrong packet came 20 times for 59 firsts because a packet of length 0 counts
-  (question 5 of `QUESTIONS.md`) and an idle link takes nothing that would clear the flag.
-- **With bits flipped in senders' memory** (30 runs, none failing): 47 bits flipped in kept packets, 4 wrong words
-  delivered unseen, no error and no link standing still.
-
-**Two mistakes of my own, found and fixed.** On the second over-long packet running the receiver was left in the
-middle of a header and wrote past its buffer: the sanitizer build found it. And the bench took a second life's
-packet number for the first life's when it checked "an error with nothing lost".
-
-## 5. What things cost
+## 5. What things cost, with the fast unit
 
 **One run of numbers: a damaged background packet and the foreground behind it** (`build/linkcost setback`). A
 background flood at the real sizes; one full foreground packet let out at 101 moments around the damaged packet;
@@ -212,78 +197,64 @@ cycles from let out to delivered, over the same moment with nothing damaged:
 
 | the background packet's damage | at most | on average | packets sent again |
 |---|---|---|---|
-| a bit of its data | 1,071 more | 553 more | 2 |
-| a bit of its header | 2,624 more | 1,677 more | 2 |
-| its first byte zero | 3,152 more | 1,709 more | 3 |
-| the whole packet gone | 1,598 more | 993 more | 3 |
-
-- With numbers for each stream the first row would be 0. The other three lose the receiver's place or a whole
-  packet, and cost the link a recovery whatever the numbering.
+| a bit of its data | 1,056 more | 700 more | 2 |
+| a bit of its header | 2,144 more | 1,433 more | 2 |
+| its first byte zero | 2,672 more | 1,778 more | 3 |
+| the whole packet gone | 1,584 more | 1,067 more | 3 |
 
 **The shared window** (`build/linkcost window`). A background flood, a full foreground packet let out now and
 then, by the wire's delay each way. The background's bytes of data a cycle, and the most packets kept:
 
 | delay | window 2 | window 4 | window 8 | window 16 |
 |---|---|---|---|---|
-| 1 | 0.6806, kept 2 | 0.6824, kept 2 | 0.6824, kept 2 | 0.6824, kept 2 |
-| 128 | 0.5464, kept 2 | 0.6921, kept 2 | 0.6921, kept 2 | 0.6921, kept 2 |
-| 512 | 0.3178, kept 2 | 0.7336, kept 3 | 0.7336, kept 3 | 0.7336, kept 3 |
-| 2,048 | 0.1024, kept 2 | 0.2931, kept 4 | 0.6709, kept 8 | 0.8095, kept 9 |
+| 1 | 0.7556, kept 2 | 0.7556, kept 2 | 0.7556, kept 2 | 0.7556, kept 2 |
+| 128 | 0.7636, kept 2 | 0.7636, kept 2 | 0.7636, kept 2 | 0.7636, kept 2 |
+| 512 | 0.4679, kept 2 | 0.7901, kept 3 | 0.7901, kept 3 | 0.7901, kept 3 |
+| 2,048 | 0.1236, kept 2 | 0.3319, kept 4 | 0.7592, kept 8 | 0.8519, kept 9 |
 
-- **8 is still the right window.** Up to a delay of 512 cycles each way it is never full, and a foreground
-  packet never waits for it; with full packets flooding the other way as well, 5 are kept at most at 512.
-- At a delay of 2,048 the window of 8 fills: a foreground packet then waited up to 1,404 cycles, 893 of them for
-  the window (1,689 and 1,178 with full packets flooding the other way).
-- **In the random runs,** where acknowledgements are lost to noise: the last node's bytes of data a cycle were 0.4750 with a window of 2, 0.5256
-  with 4, 0.5342 with 8 and 0.5319 with 16 (`figures.sh d`, 30 runs each). In the 240 runs a foreground packet
-  stood ready 292 cycles on average; the longest it stood with the window full was 4,514 cycles, and behind
-  packets being sent again 11,873.
+- **8 is still the right window.** Up to a delay of 512 cycles each way it is never full; with full packets
+  flooding the other way as well, 5 are kept at most.
+- At a delay of 2,048 it fills: a foreground packet then waited up to 849 cycles, 818 of them for the window
+  (1,550 and 1,519 with full packets flooding the other way).
+- In the random runs (`figures.sh d`, 30 runs each): 0.5803 bytes a cycle with a window of 2, 0.6252 with 4,
+  0.6389 with 8, 0.6392 with 16.
+- **A foreground packet's whole wait** in 60 random runs: ready at an end, not stopped, the link in step, until
+  it starts: 192 cycles on average, 6,367 at most. The longest with the window full was 2,162; behind packets
+  being sent again, 6,080. Those are with noise losing acknowledgements.
 
-**The pass over the data** (`build/linkcost pass`): a byte a cycle before the header leaves, against no pass.
+**The pass over the data** (`build/linkcost pass`, `figures.sh a`):
 
-| | no pass | with the pass |
-|---|---|---|
-| a one-word foreground packet on an idle link, let out to delivered | 33 on average, 48 at most | 49, 64 |
-| a full foreground packet on an idle link | 529, 544 | 1,041, 1,054 |
-| a full foreground packet beside a background flood, let out to its first byte | 272, 525 | 512, 525 |
-| the background's bytes a cycle in that flood | 0.7548 | 0.6824 |
-| 400 one-word packets back to back, link up to all acknowledged | 12,832 | 12,833 |
-| 400 full packets back to back | 211,247 | 211,744 |
-| the random runs: the last node's bytes of data a cycle (`figures.sh a`, 60 runs) | 0.5703 | 0.4904 |
-| the random runs: the longest a foreground packet waited for the line with nothing else to wait for | 528 | 1,021 |
-| the same runs with every source saturated and the wires quiet: the last node's bytes a cycle | 0.8584 | 0.7138 |
+| | no pass | a byte a cycle | 128 bits a cycle |
+|---|---|---|---|
+| a one-word foreground packet on an idle link, let out to delivered | 33 on average, 48 at most | 49, 64 | 34, 48 |
+| a full foreground packet on an idle link | 529, 544 | 1,041, 1,054 | 561, 574 |
+| a full foreground packet beside a background flood, let out to its first byte | 272, 525 | 512, 525 | 271, 525 |
+| the background's bytes a cycle in that flood | 0.7548 | 0.6824 | 0.7556 |
+| 400 full packets back to back, link up to all acknowledged | 211,247 | 211,744 | 211,264 |
+| the random runs, 60: the last node's bytes of data a cycle | 0.5703 | 0.4904 | 0.5751 |
+| the same with every source saturated and the wires quiet | 0.8584 | 0.7138 | 0.8580 |
+| the longest a foreground packet waited for the line with nothing else to wait for | 528 | 1,021 | 534 |
 
-- **On a busy link of one stream the pass costs one packet's pass at the start and nothing after,** as HL says.
-- **On an idle link it doubles a full packet's time,** and a chain pays it at every hop.
-- **Where the streams meet it costs both.** † As I built it, a foreground packet that arrives takes the sending
-  unit at once, the background packet whose pass was under way starts over, and the line stands idle until the
-  foreground's pass is done. The flood lost a tenth of its rate with a foreground packet every 2,600 cycles or
-  so. The other way to build it sends the ready background packet first, and the foreground waits up to two
-  packets. Question 3 of `QUESTIONS.md`.
-- **In the random runs the pass cost 14% of the data rate, and 17% with every source saturated:** on links that
-  are idle between packets, and wherever a node's next packet changes under the pass, from the background to the
-  foreground or from its own to one it forwards.
-- **A unit of 128 bits a cycle gives it back** (`--rules hl,pass=16`, the same 60 runs): 0.5751 bytes a cycle,
-  0.8580 saturated, and a foreground packet waits 534 cycles at most for the line.
+- **The fast unit gives back all that the slow one cost.**
 
 **A packet made wrong, twice** (`build/linkcost wrong`; full packets back to back, the 10th made wrong): it comes
-again 1,071 cycles later and the error is raised; the next word is delivered 4,192 cycles after that; 128 words
+again 1,056 cycles later and the error is raised; the next word is delivered 3,712 cycles after that; 128 words
 were lost with the restart.
 
 **Coming up** (`build/linkcost start`): both ends from power-on, 4,657 cycles to a link in step. One end powering
 on under a running link: the other raises its error 1,554 cycles later, and the link is up again after 3,648.
 
-## 6. Figures for the numbers HL marks †
+## 6. Figures for the numbers that were proposed, with the fast unit
 
 | the number | what was measured | |
 |---|---|---|
-| **the host's window of 8** | with nothing coming back, the host stops by itself at 8 or 16 packets with the queue at 256 or 512 words of 1,024; at 64 the queue fills and a packet is refused (`test_link`). In 30 random runs each the data rate is the same at 8, 16 and 64 (0.5342, 0.5343, 0.5343), and the host never kept more than 14 (`figures.sh b`) | 8 or 16 both hold; not 64 |
-| **2,048 cycles before asking again** | 30 runs each (`figures.sh c`). Packets sent to a receiver that already had them: 54 at 128 cycles, 18 at 512, none at 2,048, 8,192 and 32,768. The longest a sender waited for an acknowledgement: 1,884, 1,915, 2,548, 3,197, 5,798. The data rate does not move (0.532 to 0.534) | 2,048 is the least of these at which nothing was sent twice for nothing; longer only lengthens the wait |
-| **528 zeros before hunting** | without the mask, 16 fails and 17 holds at the small sizes: one more than a packet's data can hold in front of a header's image, 497 at the real sizes. With the mask the searches hold with none | 528 has room; keep it |
-| **the forwarding buffers' 16 KB** | the fullest a buffer of 1,024 words got in the 240 runs: 632. With buffers of 512 words 349, of 256 words 228; no packet was refused, and the data rate was 0.5342, 0.5316 and 0.5327 (`figures.sh d`, 30 runs each) | the rule asks for twice the window, 512 words, and the runs do not press it; 16 KB is twice that |
-| **the second wrong packet before the error** | one wrong packet is asked for again and the link carries on (forged headers, searched). The second time running is 1,071 cycles after the first for full packets, and costs a restart: 128 words lost | two is right: one would make every forged header on a packet of length 0 a restart |
-| **the status timer, 512** | 60 runs each at 512, 2,048 and 8,192 (`figures.sh a`): the data rate 0.4904, 0.4908, 0.4937; the bytes in packets of length 0, 8.79%, 6.42% and 6.20% of the data's; the longest a sender waited for an acknowledgement on a link in step 2,548, 2,128 and 1,822. The wait no longer grows with the timer: the acknowledgement at once, and asking again, set it now | 512 is kept |
-| **an acknowledgement as soon as the line is free** | 400 one-word packets from power-on to all acknowledged: 17,489 cycles with it, 31,023 without (`test_link`). In 60 runs it puts 8.79% of the data's bytes into packets of length 0, against 4.64% without, on lines that were idle; the data rate is 0.4904 against 0.4929 | kept |
+| **the host's window of 8** | with nothing coming back, the host stops by itself at 8 or 16 packets with the queue at 256 or 512 words of 1,024; at 64 the queue fills and a packet is refused (`test_link`). In 30 random runs each the data rate is the same at 8, 16 and 64 (0.6389, 0.6392, 0.6392), and the host never kept more than 16 | 8 or 16 both hold; not 64 |
+| **2,048 cycles before asking again** | 30 runs each (`figures.sh c`). Packets sent to a receiver that already had them: 232 at 128 cycles, 104 at 512, none at 2,048 and 8,192. The longest a sender waited for an acknowledgement: 1,920, 1,895, 2,728, 6,754. At 32,768 a run failed the check (section 3) | 2,048 is the least of these at which nothing was sent twice for nothing |
+| **528 zeros before hunting** | without the mask, 16 fails and 17 holds at the small sizes: 497 at the real ones. With the mask the searches hold with none (4 searches, 445,179 states) | 528 has room; kept |
+| **the forwarding buffers' 16 KB** | the fullest a buffer of 1,024 words got: 621 (`figures.sh a`, 60 runs). With 512 words 361, with 256 words 228, no packet refused; the data rate 0.6389, 0.6368, 0.6372 (`figures.sh d`, 30 runs each) | the rule asks for 512 words; the runs do not press it |
+| **the second wrong packet before the error** | one wrong packet is asked for again and the link carries on. The second comes 1,056 cycles after the first for full packets and costs a restart, 128 words | two |
+| **the status timer, 512** | 60 runs each at 512, 2,048 and 8,192: the data rate 0.5751, 0.5756, 0.5773; packets of length 0, 7.64%, 5.95% and 5.76% of the data's bytes; the longest a sender waited for an acknowledgement on a link in step 2,727, 3,380 and 8,356 | 512: the wait grows with the timer again |
+| **an acknowledgement as soon as the line is free** | 400 one-word packets from power-on: 17,489 cycles with it, 31,023 without. In 60 runs, packets of length 0 are 7.64% of the data's bytes with it and 4.03% without; the data rate 0.5751 and 0.5705 | kept |
 
 ## 7. The state diagrams
 
@@ -333,81 +304,25 @@ asked, the "made wrong" flag, "acknowledgement owed", the stop bits last sent. A
 acknowledgement taken, the next number to send, the next new number, 8 kept packets, the other end's two stop
 bits, and the pass's counter. The mask is one more 32-bit register each way.
 
-## 8. What I chose where HL is silent (†)
+## 8. What changed in the code since the report before
 
-| where | what I built |
-|---|---|
-| the mask | bit 16 of the starting value set; the restart packet's data masked too |
-| the restart packet | stream field 1, number field 1, hops 0; its acknowledge field and stop bits not used by the receiver; sent in rounds after 1,024 zeros |
-| both ends starting at once | restart with lost and recovery both set. The handshake ends at a restart packet without lost, or at any ordinary packet |
-| an end that is starting again | takes nothing from ordinary packets until it has its answer |
-| a restart packet whose pattern or checksum is wrong | a damaged packet like any other |
-| "asks for a packet no longer kept" | resend, or "lost", with an acknowledge field behind the last one the sender took |
-| a length over 32 | counted as "made wrong" only if its number field is the one expected, and not while the receiver is already lost |
-| a packet made wrong whose number is not the one expected | thrown away as ahead or behind, and not counted |
-| a packet of length 0 with a field that cannot be | counted, if its number field is the one expected (question 5) |
-| asking again | a thrown-away packet with the number expected is asked for at once, every time; the 2,048 cycles hold back only the asking that a packet ahead sets off |
-| hops 15 | tested in both directions at a node that would forward (question 4) |
-| the pass over the data | one unit a direction. It starts on the packet that will go next, and starts over if that changes |
+- **The sender's pass is 128 bits a cycle by default** (`Params::pass` is 16 bytes a cycle). The slow unit and no
+  pass stay as sizes (`,pass=1`, `,pass=0`) for the comparison.
+- **Every case found again** by the search at the fast unit; `cases/false-alarm.case` is new.
+- **`linksearch --deep`, `--seconds`, and the states still waiting at a stop** are what finished the long search.
+- `figures.sh c` no longer has 32,768; `searches.sh forged` has the line with two forged headers.
+- Nothing else in the link end is changed. The mask, the rules and HL's examples are as in the report before.
 
-## 9. HL read against the code: what is wrong, unclear or silent
+## 9. The runner
 
-| where in HL | what |
-|---|---|
-| "Where this document stands" | the figures are of the headers before: 36 million states, 14 planted bugs, 300 runs. Section 4 has today's |
-| "Two streams"; "The chain", "Measured" | "the longest a foreground packet waits is one background packet", and "never waited more than one packet's time for the line": not with the pass a byte a cycle. Up to 1,038 cycles in the 240 runs; 528 without the pass |
-| "A packet", the table | "data checksum: over the data": over the data as held, before the mask |
-| "One run of numbers", "What it costs" | "with 8 background packets not yet acknowledged, a foreground packet waits ... about a packet's time": it does not happen below a wire delay of some 2,000 cycles each way; section 5 has what it costs there |
-| "One run of numbers", "Shown so far" | 604,477 states and a search cut at 2 million: section 4 |
-| "One run of numbers", step 3 | "sent again at once": once it is asked for, and after its pass |
-| "The chain": "From the host ... no value of it is an error" | against "a packet that arrives with hops 15 at an ASIC that would forward it is a bad packet": the forwarding node adds one |
-| "The chain", "An ASIC that forwards a packet" | the five steps lack the mask: off as the packet is checked, on again from the new header's CRC |
-| "The chain": "A hop holds a packet for its length" | and then, on an idle line, for its pass: twice its length |
-| "The chain", "Measured" | 677 words: 632 of 1,024 in the 240 runs |
-| "The two checks": "Together they are a 64-bit check" | true of the header's fields too, now, on a packet with data: the mask ties the data to the header CRC. A packet of length 0 has the header CRC alone |
-| "The two checks": the data checksum "in the order they go on the link" | of the bytes as held; on the link they are masked |
-| "The data is masked on the wire" | the sequence: section 1. "Would have to know the header's CRC": the header's other fields are enough, and the data is solved for; section 2 |
-| "The CRC as hardware", "Four units an ASIC" | and four mask registers, one beside each |
-| "The order a receiver tests in", step 2 | "the hops field is not tested": "When a packet is bad" tests hops 15. And a field's verdict is used only after step 3: "made wrong" needs the data checksum to have passed |
-| "When a packet is bad", the table | silent on a data checksum that fails on a packet whose number is behind: nothing is owed. And on which packets are asked for at once (section 8) |
-| "When a packet is bad": "in 5 million packets ... no receiver was sent a packet it had already taken" | none in the 240 runs' 2 million packets either. With asking again after 128 or 512 cycles, 54 and 18 in 30 runs |
-| "A packet made wrong" | "it could be noise: a damaged header that happened to pass its CRC": with the mask, not on a packet with data. Silent on a wrong packet with another number, on a length over 32 with another number, and on a packet of length 0 |
-| "Finding a packet's start" | "without this it read the bad packet's data as headers": with the mask that needs data made on purpose |
-| "Recovery" | silent on what the "lost" packet is besides its flag: length 0, the next number in its number field, no "resend" |
-| "Starting a link again", the flags' table | lacks restart with lost and recovery together, and how the handshake ends. Silent on the rest of section 8's restart rows |
-| "Starting a link again", "A known limit, accepted" | the false packet number: closed by the mask for a packet with data. The two rates under it are of the header before |
-| "Holding the host back", the timer's table | 2,548, 2,128 and 1,822 cycles now, and the wait no longer grows with the timer (section 6) |
-| "Holding the host back": "29,703 cycles without it and 17,553 with" | 31,023 and 17,489, from power-on |
-| "Holding the host back": "the fullest a queue ... got was 626" | 630 in the 240 runs; none refused |
-| "What a sender must keep": "the searches hold with a timer, without one, or with only one" | the code has no timer that sends again unasked any more; the searches are without one |
-| "Open", "the numbers marked †" | section 6 |
+| task | what | state |
+|---|---|---|
+| Quest 231 | the long search, the slow unit | **done: complete, holds** (section 3) |
+| Quest 232 to 236 | the campaigns, searches and long noise at the slow unit | parked in `tasks/hold`, since HL no longer has that unit. 232 had probably started before I parked it and will come back all the same |
+| Quest 237 | **the random campaign:** 16 slices of seeds for an hour each, chains of 1, 2, 4 and 16, the fast unit | queued |
+| Quest 238 | the same with forged headers (8 slices) and with flipped bits (8) | queued. A seed may fail there as seed 16 did here: section 4 |
+| Quest 239, 240 | the 17 larger searches, depth-first, 55 minutes each | queued |
+| Quest 241 | long noise, bursts up to 300 ms | queued |
+| Quest 242 | the long search once more, the fast unit | queued |
 
-## 10. Not done, and why
-
-| piece | state |
-|---|---|
-| **the search cut short** (`--packets 2 4 1 0 --queue 4 --damage 1 --hold 3`) | Quest 230: 71,162,948 states, no failure, stopped by its time. Queued again as Quest 231, to say how many states wait and then to go depth-first for 10,500 seconds. **It did not run:** below |
-| **the random campaign, the forged and flipped campaigns, long noise** | Quest 232, 233, 236: did not run |
-| **the searches too large for this machine** (`searches.sh big2` to `big18`) | Quest 234, 235: did not run |
-| `rates.py` | still of the header before; the false packet number it rates is closed |
-
-**Why the six tasks did not run.** The runner failed each three times before starting it:
-`timeout: invalid time interval '3h30'`. Its new time limit is spelled as `timeout` does not take; it wants
-`210m` or `12600`. It is set on the runner's box, not in the repository. The tasks are as queued
-(`tasks/231` to `236`, at `72f12b9a`); with the limit mended, deleting `results/231-*` to `results/236-*` runs
-them again (`PIPELINE.md`).
-
-**If the long search still does not finish,** what splitting takes:
-
-- **Depth-first is the first lever, and it is built** (`linksearch --deep`): the same states in another order,
-  with a hundred or so waiting where breadth-first has millions. It needs about 100 bytes a state where
-  breadth-first needed 480, so the runner's 62 GB hold some 350 million states, and time becomes the limit:
-  about 30,000 states a second, so 10,500 seconds is some 320 million.
-- **Then by the kind of damage.** The search has one damaged packet, of 5 kinds. `--fates gone`, `--fates first0`,
-  `--fates header`, `--fates data` and `--fates head0` are five searches that together cover the same failures.
-  Each repeats the states before any damage, and is otherwise a fifth of the whole. No new code: five lines of
-  `searches.sh`, run at once on the runner's 16 cores.
-- **Then by which packet is damaged,** which would need an option that is not built.
-
-`make check` passes: the header with the mask's examples, the link's quick tests, 13 cases, four small searches,
-40 random runs, 18 planted bugs, under gcc with the sanitizers and under clang.
+They run one after another: some 8 hours in all from the first.

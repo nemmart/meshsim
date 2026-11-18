@@ -27,7 +27,7 @@ b)  # the host's window
     one --host-window 64
     ;;
 c)  # the cycles before a resend is asked for again
-    for r in 128 512 2048 8192 32768; do one --host-window 8 --rules hl,reask=$r; done
+    for r in 128 512 2048 8192; do one --host-window 8 --rules hl,reask=$r; done
     ;;
 d)  # the window of every end, and the forwarding buffers
     for w in 2 4 8 16; do one --host-window $w --window $w; done

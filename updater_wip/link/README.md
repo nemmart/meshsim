@@ -60,7 +60,7 @@ same), `--damage`, `--noise`, `--forge`, `--power`, `--flip` (how many of each m
 ## A case file
 
 ```
-sizes number_bits=3 max_words=1 window=2 zeros=40 flush_zeros=32 status_timer=24 queue=4 reask=96 pass=1 restart_words=1 delay=1 words=1 images=0 window0=0 wrong=0 still=0
+sizes number_bits=3 max_words=1 window=2 zeros=40 flush_zeros=32 status_timer=24 queue=4 reask=96 pass=16 restart_words=1 delay=1 words=1 images=0 window0=0 wrong=0 still=0
 packets 1 3 0 0                 # each source's packets
 offer 0 2 233                   # end 0 lets its next background packet out at cycle 233
 fate 0 7 gone                   # the seventh packet end 0 sends is turned to zeros

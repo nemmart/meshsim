@@ -2076,14 +2076,13 @@ Every other word of blocks 2–7 is unmapped (5.3).
 - **`STATUS`** has the standard bits alone (17.1). `busy` is 1 from `START`'s effect until `done` is posted, and
   stays 1 after an error that stops the run (17.10.8).
 
-**`EVENTS`:**
+**`EVENTS`**, packed from bit 0 (5.4; owner):
 
 | Bit | Event | Kind | Set by |
 | --- | --- | --- | --- |
 | 0 | `done` | counted, 1 | the run's end: its words applied and its last page written (17.10.5) |
 | 1 | `dma_done` | counted, 1 | nothing: it has no DMA |
-| 2 | — | | reads 0 |
-| 3 | `free_page_credit` | counted, 2 | the free page queue's credit (17.10.4) |
+| 2 | `free_page_credit` | counted, 2 | the free page queue's credit (17.10.4) |
 
 **`ERRORS`**, sticky until the reset:
 
@@ -2091,7 +2090,7 @@ Every other word of blocks 2–7 is unmapped (5.3).
 | --- | --- | --- | --- |
 | 0 | `queue_overrun` | P | a push into a full free page queue (17.10.4) |
 | 1 | `beyond` | P (H on corrupted data) | a value whose page number is past what `depth` reaches, 2^(10·`depth`) or more (17.10.5) |
-| 2 | `lpddr_error` | H (P for an address the device does not have) | an LPDDR read or write answered with an error; a look-up or update answered `lpddr_error`; and before any burst, a root or a free page that is not a page's address in LPDDR (17.10.8) |
+| 2 | `lpddr_error` | H | an LPDDR read or write answered with an error, or a look-up or update answered `lpddr_error` (17.10.8) |
 | 3 | `out_of_pages` | P | a fault needing more pages than `PAGE_COUNT` (17.10.5) |
 | 4 | `not_owned` | H (P on a bad file) | an update answered `not_owned`: an index page on the path is not the file's own (23.6.3) |
 
@@ -2288,9 +2287,6 @@ As the code holds them, at the signals' widths:
 The decoder stops with it. **It is not recovered from** (owner): a peripheral's error is its tile's, which stops the
 chip (7.4, 22.28); what follows is not designed in v1.37 *(item 181)*.
 
-- **`lpddr_error` before any burst:** a root (`IMAGE_ROOT`, `TRACER_ROOT` with `tracer_copy`, `SOURCE_ROOT` with
-  `root` 2), or a free page as it is taken, that is not a multiple of 32 units or not below LPDDR's end, and a
-  `RUN_CONFIG.root` of 3.
 - **`out_of_pages` takes no page:** a fault's pages are counted before any is taken.
 - **`beyond`** is the Updater's own check; the cache never sees such a request.
 
@@ -2300,7 +2296,9 @@ chip (7.4, 22.28); what follows is not designed in v1.37 *(item 181)*.
 - **`WORD_COUNT`** is the frame's count for the run (29): a run never ends inside a code. **`PAGE_COUNT`** is at
   least the pages the run takes, and the free page queue is given that many, under its credit.
 - **The roots:** each names a file of the stated depth whose root is its own, made before the run (`root` 0) or by
-  it (`root` 1, 2). `IMAGE_ROOT`, `TRACER_ROOT` and `SOURCE_ROOT` name different pages.
+  it (`root` 1, 2). `IMAGE_ROOT`, `TRACER_ROOT` and `SOURCE_ROOT` name different pages. **A root, or a free page,
+  is a page's address in LPDDR:** a multiple of 32 units, below LPDDR's end (owner). `RUN_CONFIG.root` 3 is not
+  used.
 - **A free page is new** (23.6.8): named by no entry, with no line of it in the cache, and used once. In v1.37
   nothing is freed, so every page from the page map is new.
 - **One writer for a file at a time** (23.6.8): no other unit changes the run's files while it runs, and the Tracer
@@ -2308,7 +2306,7 @@ chip (7.4, 22.28); what follows is not designed in v1.37 *(item 181)*.
 - **`continue`** only when the run carries on in the frame of the run before it.
 - The word port's words are the frame's, in order, and nothing else (17.6).
 
-Breaking one is UB (1.3), but for those 17.10.8 checks.
+Breaking one is UB (1.3).
 
 #### 17.10.10 Reset
 
@@ -2320,7 +2318,8 @@ answered after it (23.10, 23.6.2).
 #### 17.10.11 The simulator's checks and parameters
 
 **UB the simulator stops on:** a store to words 32–37 during a run; a `START` during a run; a `WRITE` into its region
-of other than 128 bits or to a part other than 2; and a reply of the cache that cannot come to a correct Updater
+of other than 128 bits or to a part other than 2; a root, as the run starts, or a free page, as it is taken, that
+is not a page's address in LPDDR, and a `RUN_CONFIG.root` of 3; and a reply of the cache that cannot come to a correct Updater
 (17.10.6), which says the controller or the cache is wrong.
 
 **What it counts,** beside the six counters: look-ups and updates, read and write bursts, beats in and out, words

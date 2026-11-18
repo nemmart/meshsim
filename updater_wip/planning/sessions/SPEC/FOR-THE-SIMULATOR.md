@@ -26,3 +26,5 @@ section, what the specification says, what `main` has. Kept as the specification
 | --- | --- | --- |
 | 17.10 | the Updater is its controller (`updater_ctl.h`), on the arbiter's client port 1 and the cache's look-up port 1 | the black box (`updater.h`) by default; the controller behind `MachConfig::updater_ctl`, against test pieces (`tests/ctl_bench.h`), not the arbiter and the cache: WORKER9's joint |
 | 17.10.4, 23.6.8 | v1.37's master tile frees nothing; the cache needs no discard | as specified |
+| 17.10.1 | `EVENTS` packed: `free_page_credit` at [2] | at [3], [2] reading 0 (`updater_top.h`, `updater.h`, the firmware's `host.h`) |
+| 17.10.1, 17.10.11 | a bad root or free page address is UB: the simulator stops on it; `ERRORS.lpddr_error` is not set for it | the controller and the black box set `ERRORS.lpddr_error` and stop the run (WORKER6's C12, WORKER3's C10) |

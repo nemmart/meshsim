@@ -435,3 +435,19 @@ checks of the Updater's window (`updater_top.h`), beside its controller, which s
 `PAGE_COUNT` not 0 at `done` or a wrong image. Five checks no test fires (36's idle rule and other sizes, a free page
 off LPDDR; 37's stale-line check; the arbiter's own burst checks).
 
+### Chapter 21: the timing rows v1.37 adds (21.5), each against the simulator
+
+| row | the specification's figure | measured or held by | result |
+|---|---|---|---|
+| a UART character | 10 × the divider | `ie_uart_tx_every_bit_lasts_the_divider` | as specified |
+| `UART_TX` → the line | the start bit from *t* + 3 into an empty FIFO | `ie_uart_tx_frames_on_the_line_bit_for_bit`; `test_rtl_stream` (the first start bit at 35, the RTL chip's 34 and one instruction more for the setting) | as specified |
+| `uart_rx` | the edge seen 2 cycles late; bit *k* at *k*·*D* + ⌊*D*/2⌋ | `test_ingress_egress`'s receiver tests (`ie_teeth.sh`'s sample point and synchroniser planted, caught) | as specified |
+| the forward count | a word a cycle, or a discard a cycle | `ingress_link_forward_count_*` | as specified |
+| a service flag | set at the end of the cycle "asks" rises, seen by the next cycle's loads | `ingress_link_service_flag_rule`, `…_background` | as specified |
+| Egress | a link packet once 32 words of a frame, or its last, are in | `ie_egress_count_falls_as_words_land_and_frames_end_at_link_packets`; every proof's reply in link packets of 32, 32 and 8 | as specified |
+| the host link | a byte a link cycle; a full link packet 528 bytes | `ingress_link_rates`: three full link packets taken 528 link cycles apart (5,220, 5,748, 6,276) | as specified. The pass over the data (32 cycles), the status at most 512 apart and a recovery's 669 on average are WORKER8's own figures (its `make check` holds its README's), not measured again here |
+| the Updater, the cache, the AXI arbiter | from their code (17.10.5, 23.6.5, 23.6.7, 23.11) | WORKER5's and WORKER6's tests (`test_cache`, `test_axi_arbiter`, `test_updater_ctl`); the joined proofs' figures (`runner/*-cache-figures.txt`) | not measured again here: the units are as built |
+| the line between the special tiles (16.1) | a link of three stages | `test_special_router`'s `line_*` | as specified |
+
+No figure of 21.5 is found wrong.
+

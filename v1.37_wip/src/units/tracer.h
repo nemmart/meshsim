@@ -182,6 +182,8 @@ public:
     bool idle(int64_t) const { return false; }
     // v1.37 (the INTEGRATOR): a fill request outstanding at the fill port, for the memory system's figures
     bool fill_outstanding() const { return fill_.read_outstanding || fill_.write_outstanding; }
+    bool fill_read_outstanding() const { return fill_.read_outstanding; }
+    bool fill_write_outstanding() const { return fill_.write_outstanding; }
     // The wake rule: whether step(t) can change anything. False only when no run is in progress, nothing of the
     // pipeline or the fill port is in flight, and no input or landing is pending; then skipping step(t) is exact.
     bool must_step() const { return running_ || !quiet() || inputs_.n > 0 || landing_.n > 0; }

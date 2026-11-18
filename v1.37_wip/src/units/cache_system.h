@@ -74,6 +74,7 @@ public:
             c.begin(t);
             const cache::Outputs& o = c.ctl.out();
             if (!o.frr_valid) return false;
+            c.took_t_[0] = t;
             std::memcpy(r.data, o.frr_data, sizeof r.data);
             r.status = o.frr_status;
             return true;
@@ -83,6 +84,7 @@ public:
             c.begin(t);
             const cache::Outputs& o = c.ctl.out();
             if (!o.fwr_valid) return false;
+            c.took_t_[1] = t;
             status = o.fwr_status;
             return true;
         };
@@ -132,6 +134,7 @@ public:
         for (auto& p : pending_writes_) p.valid = false;
         for (bool& b : lk_outstanding_) b = false;
         for (auto& u : upd_) u.valid = false;
+        fill_out_[0] = fill_out_[1] = false;
     }
 
     // ---- the clients' posts of a cycle (after begin(t))
@@ -194,13 +197,14 @@ public:
     } rw;
 
     // ---- the joint's checks (header)
-    enum Check : unsigned { J_UPDATE_BEFORE_WRITE = 0, J_WRITE_CACHED_PAGE, J_READ_DIRTY_PAGE, J_UPDATE_NOT_IN_LPDDR, J_HANDSHAKE, J_CHECKS };
+    enum Check : unsigned { J_UPDATE_BEFORE_WRITE = 0, J_WRITE_CACHED_PAGE, J_READ_DIRTY_PAGE, J_UPDATE_NOT_IN_LPDDR, J_HANDSHAKE, J_FILL_HANDSHAKE, J_CHECKS };
     uint64_t joint[J_CHECKS] = {};
     uint64_t joint_violations() const { uint64_t n = 0; for (uint64_t v : joint) n += v; return n; }
     static const char* joint_name(unsigned k) {
         static const char* n[J_CHECKS] = {"an update naming a page whose write is not answered", "a direct write to a page the cache holds a line of",
                                           "a direct read of a page the cache holds a dirty line of", "an update's reply with LPDDR not holding the entry",
-                                          "a look-up's handshake out of turn (two outstanding, or a reply to none)"};
+                                          "a look-up's handshake out of turn (two outstanding, or a reply to none)",
+                                          "a fill request's handshake out of turn (two outstanding on a channel, or a response to none)"};
         return k < J_CHECKS ? n[k] : "?";
     }
     // ---- the overlap of the Updater and the Tracer (WORKER9's figures)
@@ -229,8 +233,10 @@ private:
     static constexpr unsigned MAX_W = 16;
     Range pending_writes_[MAX_W];                  // the Updater's write bursts from AW's handshake to B
     bool lk_outstanding_[lookup::CLIENTS] = {};
+    bool fill_out_[2] = {};                        // the fill port's read and write channels: a request outstanding
+    int64_t took_t_[2] = {INT64_MIN, INT64_MIN};   // the cycle the Tracer last took a response on each
     struct Upd { bool valid = false; lookup::Request r; } upd_[lookup::CLIENTS];   // the update a port has outstanding
-    void checks(int64_t) {
+    void checks(int64_t t) {
         const unsigned C = axi::UPDATER, P = lookup::UPDATER;
         const axi::MasterOut& m = clients[C];
         const axi::SlaveOut& s = arb.client_out(C);
@@ -272,6 +278,12 @@ private:
             }
         }
         if (lk_outstanding_[P] && (tracer_fill_outstanding())) both_outstanding_cycles++;
+        // the fill port (17.9.5): a request a channel outstanding, a response only to one
+        // (and with the Tracer on it, a response only when the Tracer takes it: it polls in every cycle it waits for one)
+        if (o.frr_valid) { if (!fill_out_[0] || (tracer_ && took_t_[0] != t)) joint[J_FILL_HANDSHAKE]++; fill_out_[0] = false; }
+        if (o.fwr_valid) { if (!fill_out_[1] || (tracer_ && took_t_[1] != t)) joint[J_FILL_HANDSHAKE]++; fill_out_[1] = false; }
+        if (in.fr.valid && o.fr_ready) { if (fill_out_[0]) joint[J_FILL_HANDSHAKE]++; fill_out_[0] = true; }
+        if (in.fw.valid && o.fw_ready) { if (fill_out_[1]) joint[J_FILL_HANDSHAKE]++; fill_out_[1] = true; }
     }
     bool tracer_fill_outstanding() const { return tracer_ && tracer_->fill_outstanding(); }
     // Whether LPDDR holds the update's entry: walked from the root through the store's pages (the simulator's view).

@@ -15,9 +15,9 @@
 #     the RISC-V toolchain (fw/build.sh's header; RISCV_PREFIX names it): the step fw-build. With it, RISCV_TESTS and
 #                         COREMARK name the checkouts that step also rebuilds riscv-tests' and CoreMark's images from
 #   The 64K runs' key file (16 MiB) is built here (the step sort-64k of `all`, into build/sort-64k.keys).
-#   CACHE_CTL=1 (updater_wip, WORKER5): the steps proof-real, proof-matrix and proof-29 run the Tracer on the cache's
-#   controller, the AXI arbiter and the LPDDR model (MachConfig::cache_ctl; proof_run --cache), and a step
-#   tracer-block-cache runs tracer-block's segments on it (tracer_block --fill cache). Without it nothing changes.
+#   LPDDR_SEED=S (v1.37, the INTEGRATOR): every chip's LPDDR model in its jitter mode: test_master with
+#   MESHSIM_LPDDR_SEED=S, each proof run with --lpddr-seed S + its number. Without it the model's timing is fixed. (WORKER5's
+#   CACHE_CTL and WORKER6's MESHSIM_UPDATER_CTL are gone: the cache's and the Updater's controllers are the machine.)
 #   The suites build with MODE=suite (release flags, the checker's facts on: src/check.h), into build/$CC_NAME-suite/.
 #
 # ADDING A STEP:
@@ -57,7 +57,7 @@ SUITES="$SUITES fwimage"                                                        
 SUITES="$SUITES test_file_store test_updater test_ingress_link test_packet_vectors updater_frames packetize"       # v1.37: the file store's pages by address, the Updater black box, Ingress's host link
 SUITES="$SUITES test_master proof_run"                                                     # v1.37: the master tile's program, the whole chip from a packet file
 SUITES="$SUITES test_updater_ctl"                                                         # v1.37: the Updater's controller (WORKER6)
-SUITES="$SUITES test_lpddr_model test_axi_arbiter test_cache"                               # updater_wip, WORKER5: the LPDDR model, the AXI arbiter, the cache's controller
+SUITES="$SUITES test_lpddr_model test_axi_arbiter test_cache test_memory_system"                               # updater_wip, WORKER5: the LPDDR model, the AXI arbiter, the cache's controller
 
 if [ "$BUILD" = 1 ]; then
   echo "== building the suites (MODE=suite CC_NAME=$CC_NAME)"
@@ -180,8 +180,8 @@ if [ -d "$INPUTS/v1261/evm-zone-23" ] && [ -d "$INPUTS/v1261/cyclone-22" ] && [ 
 else
   skipped tracer-block "the Tracer alone on the real segments, against gold's files and the RTL's figures" "the workloads' data is not at $INPUTS: MESHSIM_INPUTS"
 fi
-# updater_wip, WORKER5: with CACHE_CTL=1, the same segments on the cache's controller (every run against gold's files;
-# its cycles are the cache's, so not against the RTL's figures)
+# updater_wip, WORKER5: the same segments on the cache's controller, the chip's memory system (every run against gold's
+# files; its cycles are the cache's, so not against the RTL's figures)
 tracer_block_cache() {
   local ps p s c
   for ps in evm-zone-23:0 evm-zone-23:1 cyclone-22:0; do
@@ -191,7 +191,7 @@ tracer_block_cache() {
     done
   done
 }
-if [ "${CACHE_CTL:-}" = 1 ] && [ -d "$INPUTS/v1261/evm-zone-23" ] && [ -d "$INPUTS/v1261/cyclone-22" ] && [ -d "$INPUTS/gold-v1.3" ] && [ -d "$INPUTS/w26-jumpmap" ]; then
+if [ -d "$INPUTS/v1261/evm-zone-23" ] && [ -d "$INPUTS/v1261/cyclone-22" ] && [ -d "$INPUTS/gold-v1.3" ] && [ -d "$INPUTS/w26-jumpmap" ]; then
   check tracer-block-cache "WORKER5: the Tracer alone on the real segments on the cache's controller (EVM Zone 0 and 1, Cyclone 0; compression 0 and 7): every run against gold's files" -- tracer_block_cache
 fi
 
@@ -216,8 +216,10 @@ if command -v javac > /dev/null && [ -d ../updater_wip/pipeline/gold/src ]; then
 else
   skipped updater-fixtures "v1.37: the fixtures made again by gold, against the committed ones" "no javac, or no ../updater_wip/pipeline/gold"
 fi
-check master "v1.37: the master tile's program on the whole chip, from a packet file: gold's frames of the guests in the link's packets, the Updater's images against gold's, the hand-over, the segment traced and replayed; the error path; the checks' teeth (tests/test_master.cpp)" -- $S/test_master
-check updater-ctl "v1.37: the Updater's controller with the test LPDDR and the stand-in cache: gold's fixtures alone and against the black box, random streams, varied timing, the errors (tests/test_updater_ctl.cpp; MESHSIM_UPDATER_CTL puts it in the chip for every step)" -- $S/test_updater_ctl
+master_run() { if [ -n "${LPDDR_SEED:-}" ]; then MESHSIM_LPDDR_SEED=$LPDDR_SEED $S/test_master; else $S/test_master; fi; }
+check master "v1.37: the master tile's program on the whole chip, from a packet file: gold's frames of the guests in the link's packets, the Updater's images against gold's, the hand-over, the segment traced and replayed; the error path; the checks' teeth (tests/test_master.cpp)" -- master_run
+check updater-ctl "v1.37: the Updater's controller with the test LPDDR and the stand-in cache, and joined to the memory system (the real cache, arbiter and LPDDR model): gold's fixtures alone and against the black box, random streams, varied timing, a second client at once, the errors (tests/test_updater_ctl.cpp)" -- $S/test_updater_ctl
+check memory-system "v1.37: the memory system, the memory tile's peripheral 1, in the chip: its window, its error on the error line, the reset, the RW engine on client 2 (tests/test_memory_system.cpp)" -- $S/test_memory_system
 
 
 # ---- the long steps ----
@@ -237,12 +239,13 @@ if [ "$MODE" != quick ]; then
   # frame files, the link's packet files and gold's reference for each segment, is made by pipeline/frames/build.sh
   # into $INPUTS/v137/SET/; its RUNS lists each run's name, N, a segment's windows and the segments to run.
   proof_set() {   # proof_set SET [--recorded]: every run of the set, every segment listed
-    local d=$INPUTS/v137/$1 name n windows list s rec
+    local d=$INPUTS/v137/$1 name n windows list s rec seed k=0
     while read -r name n windows list; do
       for s in $list; do
         rec=""; [ "${2:-}" = --recorded ] && rec="--recorded $name"
+        seed=""; k=$((k + 1)); [ -n "${LPDDR_SEED:-}" ] && seed="--lpddr-seed $((LPDDR_SEED + k))"
         MESHSIM_INPUTS="$INPUTS" $S/proof_run "$d/$name.frames" --packets "$d/$name.packets" --asics "$n" --segment "$s" --windows "$windows" \
-          --gold "$d/$name-s$s.images.txt" $rec --quiet $([ "${CACHE_CTL:-}" = 1 ] && echo --cache) || echo "FAIL proof_run $name, s $s: exit $?"
+          --gold "$d/$name-s$s.images.txt" $rec $seed --quiet || echo "FAIL proof_run $name, s $s: exit $?"
       done
     done < "$d/RUNS"
   }

@@ -800,15 +800,17 @@ TEST(ctl_figures_a_page) {
         {"with the Tracer's copy, shared at level 0: 1 value", run_of(3 * 512 + 5, 1), 2, true, F2},
         {"with the Tracer's copy, shared at level 0: a whole page", run_of(3 * 512, 512), 2, true, F2},
     };
-    std::printf("  %-72s %7s %7s %5s %5s %5s %6s  %s\n", "the page (the root's copy, with root 2, in the run's figures)", "cycles", "bb's", "looks", "upds",
-                "reads", "writes", "waiting: data, pages, memory");
+    std::printf("  %-72s %7s %7s %7s %5s %5s %5s %6s  %s\n", "the page (the root's copy, with root 2, in the run's figures)", "cycles", "joined", "bb's",
+                "looks", "upds", "reads", "writes", "waiting: data, pages, memory (joined)");
     for (const Case& c : cases) {
-        Bench<UpdaterTop> b(timing());
+        Bench<UpdaterTop> b(timing()), j(joined());   // the test pieces; joined to the memory system (the INTEGRATOR, stage 1)
         Bench<Updater> a;
         const PageFigure f = page_figure(b, base, c.u, c.root, c.tracer, c.image), g = page_figure(a, base, c.u, c.root, c.tracer, c.image);
-        std::printf("  %-72s %7u %7u %5llu %5llu %5u %6u  %u, %u, %u\n", c.name, f.cycles, g.cycles, (unsigned long long)f.lookups, (unsigned long long)f.updates,
-                    f.reads, f.writes, f.stall_data, f.stall_pages, f.stall_memory);
+        const PageFigure h = page_figure(j, base, c.u, c.root, c.tracer, c.image);
+        std::printf("  %-72s %7u %7u %7u %5llu %5llu %5u %6u  %u, %u, %u\n", c.name, f.cycles, h.cycles, g.cycles, (unsigned long long)h.lookups,
+                    (unsigned long long)h.updates, h.reads, h.writes, h.stall_data, h.stall_pages, h.stall_memory);
         CHECK(b.violations().empty());
+        CHECK(j.violations().empty());
     }
 }
 // A whole proof's runs on gold's fixtures, the controller against the black box, the timing fixed:

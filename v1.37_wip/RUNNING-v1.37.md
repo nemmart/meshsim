@@ -11,7 +11,9 @@ Commands run from this folder.
 |---|---|
 | the input | **a packet file:** gold's frame file (`HOST-FRAMES.md`) wrapped in the link's packets (`HOST-LINK.md`), read by Ingress at a byte a cycle (or 2, 4, 8: `--link-rate`) into a queue of 512 words a stream (8 KB, pencilled in). **N and s:** how many ASICs the proof is cut for, and which segment this one runs. No frame carries them |
 | the master tile | runs `fw/cc/master.c`: reads the frames out of Ingress, keeps the page map, drives the Updater through its runs, and hands the tracer tile segment s. **The forward count** (`INGRESS-INTERFACE.md`; WORKER7): it copies a frame's header word by Ingress's DMA, and for a frame of update words starts the Updater's run and writes the frame's length to `DMA_FORWARD_COUNT` once: Ingress sends the words to the Updater's word port itself. Frames 7 and 8 are dropped up to the ASIC's own record or log, which is copied, and the rest dropped |
-| Ingress's host side, the Updater | software black boxes behind their real registers (`INGRESS-INTERFACE.md`, `UPDATER-INTERFACE.md`) |
+| Ingress's host side | a software black box behind its real registers (`INGRESS-INTERFACE.md`) |
+| the Updater | its controller, the state machine (spec 17.10), on the memory system's client port 1 and look-up port 1 |
+| the memory tile | its peripheral 1 the memory system (the cache's controller, the AXI arbiter, the LPDDR model: spec 17.11, 23), peripheral 2 the RW engine on the arbiter's client 2; nothing runs on it in a proof |
 | the Updater | builds the memory images in LPDDR: the program image, the jump table, the cycle-0 image, the start image of segment s, the Tracer's copy, the final image |
 | the tracer tile, the compute tiles | v1.36's, unchanged: the Tracer traces segment s on the Tracer's copy, window by window; each window is delivered to its tile and replayed |
 | what is still placed by the harness | the firmware images; the tracer tile's and the tiles' layouts and tables (the decode table, the ROM, the templates); the Tracer's and the replayer's `RUN_CONFIG`; the windows a segment has and their rows |
@@ -21,7 +23,7 @@ Commands run from this folder.
 ```
 build/clang-suite/proof_run FRAMES --asics N --segment S [--windows W] [--rows R] [--gold IMAGES.txt]
                             [--packets FILE] [--recorded RUN] [--fast-link] [--link-rate B]
-                            [--limit CYCLES] [--quiet]
+                            [--lpddr-seed S] [--limit CYCLES] [--quiet]
 ```
 
 | argument | |
@@ -34,6 +36,7 @@ build/clang-suite/proof_run FRAMES --asics N --segment S [--windows W] [--rows R
 | `--recorded RUN` | `evm-zone-23` or `cyclone-22`: every row, record and stream of windows 64 S to 64 S + 63 against the recorded files of `MESHSIM_INPUTS`, as `segment-real` |
 | `--fast-link` | the link's bytes as fast as the master takes them, in place of a byte a cycle |
 | `--link-rate B` | the link at B bytes a cycle: 1 (the default, HL's 1 GB a second at 1 GHz), 2, 4, 8 |
+| `--lpddr-seed S` | the LPDDR model's jitter mode with seed S (0, the default: its timing fixed) |
 
 It prints `run_chip`'s lines (`segment_bench.h`) and the proof's (`proof_bench.h`), then each of the Updater's runs
 (the cycle of its done, its cycles busy, of them waiting on data, on pages and on memory, the pages and half pages it
@@ -101,39 +104,33 @@ build/clang-suite/proof_run tests/updater/divs.frames --asics 64 --segment 20 --
 | the Updater, Ingress's host link, the file store: their tests | `build/clang-suite/test_updater`, `test_ingress_link`, `test_packet_vectors`, `test_file_store` |
 | bugs planted in the master's program, each of which `test_master` must catch | `tests/fw_teeth.sh master:` (the RISC-V toolchain; three minutes) |
 
-## On the cache's controller
+## The memory side
 
-The Tracer's memory is v1.37's model of the memory system (`src/units/mem_system.h`) unless asked otherwise. With the
-setting `cache_ctl` it is the cache's real controller with the AXI arbiter and the LPDDR model behind it
-(`../v1.4_wip/planning/CACHE-INTERFACE.md`, `AXI-INTERFACE.md`; `src/units/cache_system.h`), on the same file store
-the Updater writes. The Updater is still the black box and writes the store directly.
+**The memory tile's peripheral 1 is the memory system** (spec 17.11, 23; v1.37 stage 1): the cache's controller, the AXI
+arbiter and the LPDDR model on the chip's file store (`src/units/memory_system.h`, its hardware `src/units/cache_system.h`).
+Its clients are wired as 23.10 has them: the Tracer's `fill` port; **the Updater, its controller** (`src/units/updater_top.h`,
+`updater_ctl.h`), on the arbiter's client 1 and the cache's look-up port 1; the RW engine, now the memory tile's
+peripheral 2 (window 0xFFFF_FC00, region 0x05), on client 2. There is no setting: it is the machine. (WORKER5's
+`--cache`, `CACHE_CTL` and `MachConfig::cache_ctl`, and WORKER6's `--updater-ctl` and `MESHSIM_UPDATER_CTL`, are gone.)
+The Updater's black box (`src/units/updater.*`) and v1.37's memory model (`src/units/mem_system.h`) stay only where a
+test compares against them.
+
+Every proof run prints the cache's figures (hits and misses by kind of line, evictions, write-backs, the walks, a fill's
+and a look-up's cycles, LPDDR's bursts) and the clients' (the Updater's look-ups and updates, the cycles its look-up and a
+fill request were both outstanding, each client's bursts at the arbiter and the cycles its pieces waited), and fails on
+the cache's error flag, a read of LPDDR nothing wrote, an LPDDR error response, any of **the joint's checks**
+(`cache_system.h`: an update before its page's write is answered; a direct write to a page the cache holds a line of, or
+a read of one it holds a dirty line of; an update's reply with LPDDR not holding the entry; a look-up out of turn), the
+Updater's bursts not on client 1 alone, or none of its requests on look-up port 1.
 
 | | command |
 |---|---|
-| one proof on the cache | `proof_run ... --cache`: the run's lines, the same checks, and the cache's figures (hits and misses by kind of line, evictions, write-backs, the walks, a fill's cycles, LPDDR's bursts); a set error flag or a read of LPDDR nothing wrote fails the run |
-| the guests on the cache | `test_master master_cache` |
+| the LPDDR model's timing varied | `proof_run ... --lpddr-seed S`; `MESHSIM_LPDDR_SEED=S` for every chip of a process (`test_master`); `LPDDR_SEED=S ./run_tests.sh ...` (each proof run with S + its number) |
+| the memory system in the chip: its window, its error on the error line, the reset, the RW engine on client 2 | `test_memory_system` (the step `memory-system`) |
+| the Updater's controller alone on its test pieces, against the black box, and **joined to the memory system** (gold's fixtures, the 90 random scenarios, jittered, a second client on `fill` at once) | `test_updater_ctl` (the step `updater-ctl`); `test_updater_ctl ctl_figures_a_page` prints what a page costs by kind on the test pieces and joined |
 | the units alone | `test_lpddr_model`, `test_axi_arbiter`, `test_cache` (the step `cache`) |
-| the Tracer alone on the cache | `TRACER_CACHE=1 tracer_block --synthetic SEED` (the step `cache-synth`); `tracer_block ... --fill cache` on the real segments |
-| everything on the cache | `CACHE_CTL=1 MESHSIM_INPUTS=... ./run_tests.sh all --check`: the proof steps with `--cache`, and the step `tracer-block-cache` |
-
-## On the Updater's controller
-
-The Updater is the black box (`src/units/updater.*`) unless asked otherwise. With the setting it is its real
-controller (`src/units/updater_ctl.h`, in the shape of hardware; `../updater_wip/planning/sessions/WORKER6-NOTES.md`),
-behind the same registers: its data comes in on the word port from Ingress's forward count, as the black box's does
-(the slot wires either the same way), so the master's firmware is the same for both; its AXI port goes to a test LPDDR
-and its look-up port to the stand-in cache, both on the file store the Tracer reads (`tests/test_lpddr.h`, `tests/standin_cache.h`:
-test pieces, for WORKER5's arbiter, LPDDR model and cache to replace). The setting is `proof::Case::updater_ctl`, or
-the environment variable `MESHSIM_UPDATER_CTL` for every run of a process (any value: on; a number above 0: the test
-pieces' timing varied with that seed).
-
-| | command |
-|---|---|
-| one proof on the controller | `proof_run ... --updater-ctl` (`--updater-ctl-seed SEED`: the timing varied); a check of the test pieces (a read of a page nothing wrote, an update before its page's write was answered) fails the run |
-| the guests on it | `MESHSIM_UPDATER_CTL=1 test_master` |
-| the controller alone and against the black box | `test_updater_ctl` (the step `updater-ctl`): gold's fixtures, the same runs on both (each fed on its word port), random streams, varied timing, the errors; `test_updater_ctl ctl_figures_a_page` prints what a page costs by kind |
-| bugs planted in the controller, each caught | `tests/updater_ctl_teeth.sh` (a rebuild a bug; ten minutes) |
-| everything on it | `MESHSIM_UPDATER_CTL=1 MESHSIM_INPUTS=... ./run_tests.sh all --check`: every step with the Updater (`master`, `proof-real`, `proof-matrix`, `proof-29`) on the controller |
+| the Tracer alone on the cache | `TRACER_CACHE=1 tracer_block --synthetic SEED` (the step `cache-synth`); `tracer_block ... --fill cache` on the real segments (the step `tracer-block-cache`) |
+| bugs planted in the controllers and the joints, each caught | `tests/updater_ctl_teeth.sh` (WORKER6's 14); `tests/joined_teeth.sh` (the joints'; a rebuild a bug) |
 
 ## When a run fails
 

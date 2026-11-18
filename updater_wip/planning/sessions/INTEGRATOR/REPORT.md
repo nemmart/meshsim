@@ -111,15 +111,21 @@ The test now checks the count.
 | `test_master`: every proof's loads into the tracer tile by the line | 34 pass |
 | `./run_tests.sh quick --check` | **all passed**; no log differs |
 | **the reference cycles:** `test_segment`'s v1.36 segments (to C&C 1's exit, polled every 512 cycles) the same as `main`'s; the proof runs', against stage 1's (Quest 245): the runner's (below) | |
-| **the planted bugs** (`line_teeth.sh`): L1 the ring's rule reversed; L2 a packet on the line sent back the way it came; L3 a special tile's packet for another by the attach port; L4 an attach port's arrival for another special tile put on the line; L5 the slot's DMA judging its room at the west input (v1.36's); L6 the west output's queues in the wrong order; L7 a DMA's packet for another special tile by the attach port | **7 of 7 caught.** L4 only once `test_special_router` checked the route errors (`ec6730a7`) |
+| **the planted bugs** (`line_teeth.sh`): L1 the ring's rule reversed; L2 a packet on the line sent back the way it came; L3 a special tile's packet for another by the attach port; L4 an attach port's arrival for another special tile put on the line; L5 the slot's DMA judging its room at the west input (v1.36's); L6 the west output's queues in the wrong order; L7 a DMA's packet for another special tile by the attach port | **7 of 7 caught.** L4 only once `test_special_router` checked the route errors (`ec6730a7`, on the branch with stage 3's first commit; it reaches `main` with stage 3's merge) |
 | the 37 proof runs on the line; `make check` | the runner: Quests 248, 249 (below) |
 
 ### The runner
 
 | Quest | item | result |
 |---|---|---|
-| 248 | `suites` at `f24979c6`: `./run_tests.sh all --check`, the 37 proof runs | queued |
-| 249 | `check`: `make check` | queued |
+| 248 | `suites` at `f24979c6`: `./run_tests.sh all --check`, the 37 proof runs | **PASS**: every step; the 37 proof runs (3 real, 24 of the matrix, 10 at 29); no golden log differs; the two `fw-build` steps skipped (no RISC-V toolchain on the runner) |
+| 249 | `check`: `make check` | **PASS**: gcc and clang, debug and release, 1,623 s |
+
+**The reference cycles did not move.** Every run's cycles are stage 1's (Quest 245) to the cycle: the master's
+answers from the memory tile now come by the line, and the segment's end is polled every 512 cycles. What moved is
+inside: in 14 of the 37 runs the Updater's busy cycles and its waits on memory by up to 45 cycles, its waits on data
+by up to 19; the master's cycles awake in none of them. The figures are in `runner/248-proof-numbers.md` and
+`248-cache-figures.txt`.
 
 ## Stage 3: Ingress/Egress at its registers (17.6)
 

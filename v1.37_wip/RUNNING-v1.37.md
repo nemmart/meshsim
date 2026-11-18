@@ -131,6 +131,27 @@ Updater's bursts not on client 1 alone, or none of its requests on look-up port 
 | the Tracer alone on the cache | `TRACER_CACHE=1 tracer_block --synthetic SEED` (the step `cache-synth`); `tracer_block ... --fill cache` on the real segments (the step `tracer-block-cache`) |
 | bugs planted in the controllers and the joints, each caught | `tests/updater_ctl_teeth.sh` (WORKER6's 14); `tests/joined_teeth.sh` (the joints'; a rebuild a bug) |
 
+## The chain of processes (stage 6)
+
+The driver and each chip are processes of their own, on WORKER10's wire (`../updater_wip/wire/README.md`), started by
+its launcher, which adds the wire's arguments (`--driver`, `--clients N --client k`, the region):
+
+```
+build/clang-release/wire_launch --clients 2 \
+    -- build/clang-release/driver tests/updater/kin-raw.frames --rows-traced 50 --limit 20000000 \
+    -- build/clang-release/proof_run tests/updater/kin-raw.frames --asics 64 --windows 1 --rows 50 \
+       --gold tests/updater/kin-raw-s{k}.images.txt --quiet
+```
+
+| | |
+|---|---|
+| the driver | sends the frame file through its link end and checks every ASIC's reply against gold's files: `--asics A` (the proof's N, 64), `--segments S0,S1,...` (ASIC *k* runs *k* by default), `--rows-traced R` (a segment's windows times its rows), `--limit CYCLES`, after which a reply that has not come is a failure |
+| a chip | `proof_run` as above; `{k}` is the launcher's: the client's number. Every check of a proof run, and the driver checks its reply |
+| a stand-in ASIC | `standin_asic FRAMES [--rows-traced R] [--delay CYCLES] [--silent K]`: the link's Node alone, its reply from gold's files; for the driver and the wire without chips |
+
+`tests/chain_run.sh` runs the chain on the five fixtures (the stand-ins, two chips twice, one chip, a reply that never
+comes); `run_tests.sh`'s step `chain` is it. The runner's task items `chain-evm-zone` and `chain-cyclone` run it at 2²⁹.
+
 ## When a run fails
 
 - **The master's status** is the first line: 1 is a proof made; 2 its error path (the line gives the tile's,

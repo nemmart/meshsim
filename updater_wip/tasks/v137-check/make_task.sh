@@ -12,8 +12,8 @@
 # Reads no persistent data and writes none; writes only results/NNN-name/. Safe to re-run.
 set -eu
 export LC_ALL=C
-NAME=${1:?usage: make_task.sh NNN-name suites|suites-varied|check|faster}; ITEM=${2:?suites, suites-varied, check or faster}
-case $ITEM in suites|suites-varied|check|faster) ;; *) echo "ITEM is suites, suites-varied, check or faster" >&2; exit 1;; esac
+NAME=${1:?usage: make_task.sh NNN-name suites|suites-varied|check|faster|chain-evm-zone|chain-cyclone}; ITEM=${2:?suites, suites-varied, check, faster or chain-WORKLOAD}
+case $ITEM in suites|suites-varied|check|faster|chain-evm-zone|chain-cyclone) ;; *) echo "ITEM is suites, suites-varied, check, faster, chain-evm-zone or chain-cyclone" >&2; exit 1;; esac
 TOP=$(git rev-parse --show-toplevel); HERE=$(cd "$(dirname "$0")" && pwd)
 R=$(cd "$TOP" && git rev-parse --short HEAD); BR=$(cd "$TOP" && git rev-parse --abbrev-ref HEAD)
 [ -z "$(cd "$TOP" && git status --porcelain -- v1.37_wip updater_wip/pipeline/gold updater_wip/link | grep -v '^??')" ] || { echo "make_task.sh: v1.37_wip/ or gold has uncommitted changes" >&2; exit 1; }

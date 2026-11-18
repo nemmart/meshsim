@@ -71,6 +71,7 @@
 #include "units/periph_slot.h"
 #include "units/regmap.h"
 #include "units/rw_engine.h"
+#include "units/router.h"
 
 namespace {
 
@@ -198,6 +199,16 @@ void run_memory(const char* tag, uint32_t seed) {
                 (unsigned long long)engine.beats_written, (unsigned long long)engine.replies, (unsigned long long)engine.port_writes,
                 (unsigned long long)lpddr.calls);
     CHECK(done);
+    // v1.37 (16.1, 16.2): the memory tile's answers to the master tile go by the line, west, and nothing by the attach port
+    {
+        const units::Router& master = m.c.unit<units::Router>("cc1.router");
+        const units::Router& memory = m.c.unit<units::Router>("cc2.router");
+        CHECK(memory.dma_packets > 0);
+        CHECK_EQ(memory.line_out, memory.dma_packets);                  // every DMA packet of the memory tile's, for the master
+        CHECK_EQ(master.line_in, memory.line_out);
+        CHECK_EQ(memory.to_cnc_words, uint64_t(0));
+        CHECK_EQ(memory.route_errors + master.route_errors, uint64_t(0));
+    }
 
     // ---- the summary ----
     std::vector<uint32_t> summary(SUMMARY_WORDS);

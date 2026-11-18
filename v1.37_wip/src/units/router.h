@@ -54,6 +54,19 @@
 // a packet for the tile ejects and any other, a broadcast included, leaves by the attach port; from the attach port, a
 // packet for the tile ejects and any other goes nowhere (router.veryl, `route`).
 // FIFTH_HOLD (an endpoint's Hold and Fifo at the attach port) is a test bench's (tests/bench_master.h).
+//
+// THE LINE (v1.37, 16.1 to 16.4; the INTEGRATOR's stage 2; `line`): the special tiles joined east and west, the master
+// tile's east to the memory tile's west and the memory tile's east to the tracer tile's west, each a link of three
+// stages with no flow control. A special tile's router with the line has in[FROM_LEFT] and out[TO_LEFT] towards the
+// tile id - 1 and in[FROM_RIGHT] and out[TO_RIGHT] towards id + 1 (where they exist: the master tile has no west, the
+// tracer tile no east), and its peripherals' DMA on the south input alone (in[FROM_DOWN], dma_inputs 8). Its routes
+// (16.2): a packet for the tile ejects; a packet for another special tile, from local or the DMA, takes the line by the
+// ring's rule (east if its dst is above the tile's id, west if below), and one arriving on the line goes on the way it
+// came; every other packet from local or the DMA leaves by the attach port; from the attach port, a packet not for the
+// tile goes nowhere, as before. Its queues (16.3): east from local, west and south; west from local, east and south;
+// the eject from local, west, east, south and the attach port; the attach output from local and south: each output's
+// arbiter in that order. dma_room carries the line's queues too (bits 8 + 2d east, 9 + 2d west, and bit 16: the line).
+// Without `line` the special tile's router is the RTL's as built (v1.36; tests/test_router.cpp compares them).
 #pragma once
 
 #include <cstdint>
@@ -79,6 +92,13 @@ struct Router {
     static constexpr uint8_t kNFeeders[kOut] = {3, 3, 5, 5, 6, 5};
     static constexpr uint8_t kFirst[kOut] = {0, 3, 6, 11, 16, 22};          // output o's first FIFO index
     static constexpr unsigned kMaxDepth = 64;                              // the loopback FIFO's (read_tokens)
+    // A special tile's router with the line (16.3): its queues, by output, in the arbiter's order
+    static constexpr uint8_t kFeedersLine[kOut][6] = {
+        {LOOPBACK, FROM_LEFT, FROM_DOWN}, {LOOPBACK, FROM_RIGHT, FROM_DOWN}, {}, {},
+        {LOOPBACK, FROM_LEFT, FROM_RIGHT, FROM_DOWN, FROM_CNC}, {LOOPBACK, FROM_DOWN}};
+    static constexpr uint8_t kNFeedersLine[kOut] = {3, 3, 0, 0, 5, 2};
+    static constexpr uint8_t kFirstLine[kOut] = {0, 3, 6, 6, 6, 11};
+    static constexpr sim::Word ROOM_LINE = sim::Word(1) << 16;             // dma_room: the router has the line
 
     // One of ref's WordFIFOs inside the router. `put_at` and `put_w` keep the last put (accepted or dropped) so the
     // fingerprint can list a put of cycle c apart from the entries, as StateFp does (AUDIT-M2 6.2).
@@ -113,6 +133,9 @@ struct Router {
     bool fifth_link = false;          // attached: the attach port is a link (the chip's); else a bench's Hold and Fifo
     uint8_t dma_inputs = 0;           // a special tile's: the link inputs that carry DMAs (bit 0 west, 1 east, 2 north,
                                       // 3 south: the RTL's DMA_INPUTS)
+    bool line = false;                // a special tile's: the line between the special tiles (16.1; THE LINE above)
+    bool line_west = false, line_east = false;   // with the line: the links towards id - 1 and id + 1 exist
+    uint64_t line_in = 0, line_out = 0;          // statistics: packets taken from the line, put on it
     const uint8_t (*feed)[6] = kFeeders;              // the feeder table
     const uint8_t* nfeed = kNFeeders;
     const uint8_t* first = kFirst;
@@ -142,13 +165,14 @@ struct Router {
     // `tile` 0-63 a compute tile's router (`fifth`: an attach tile's attach port), 64-66 a special tile's (`dma`: its
     // DMA inputs, the RTL's DMA_INPUTS).
     Router(sim::Ports& p, unsigned tile, const NetConfig& c, const Hops* h, bool overflow_event = false,
-           Fifth fifth = FIFTH_HOLD, unsigned dma = 0);
+           Fifth fifth = FIFTH_HOLD, unsigned dma = 0, bool line = false);
     sim::Wake step(sim::Ctx& c);
     sim::Wake step_cc(sim::Ctx& c);   // a special tile's router (step dispatches to it)
     // 16.4: `ready` of DMA input d (0 west .. 3 south) of tile `me`'s router for a packet to `dst`, from dma_room's
     // value in that cycle: the room of the queue the packet goes to; a packet that goes nowhere is always taken.
     static bool dma_ready(sim::Word room, unsigned d, unsigned me, unsigned dst) {
         if (no_tile(dst)) return true;
+        if ((room & ROOM_LINE) && dst != me && lw::controller(dst)) return (room >> (8 + 2 * d + (dst > me ? 0 : 1)) & 1) != 0;   // the line
         return (room >> (2 * d + (dst == me ? 0 : 1)) & 1) != 0;
     }
     uint64_t digest() const;          // the state above (not the statistics, not the pointer)
@@ -177,6 +201,8 @@ private:
     void route_mask(sim::Ctx& c, unsigned mask, unsigned port, uint64_t d, uint64_t a, uint64_t cw, uint32_t taken);
     bool eject_select(sim::Ctx& c, uint32_t& taken);   // the eject selector and its put (both variants)
     void dma_arrivals(sim::Ctx& c);                    // a special tile's: the DMAs' packets that moved in the cycle before
+    unsigned line_output(unsigned dst) const { return dst > me ? unsigned(TO_RIGHT) : unsigned(TO_LEFT); }   // the ring's rule (16.2)
+    sim::Wake step_line(sim::Ctx& c);                  // a special tile's router with the line
     void end_step(sim::Ctx& c, uint32_t taken);        // this cycle's overflows, and dma_room
 };
 
@@ -322,11 +348,13 @@ inline sim::Wake Router::step(sim::Ctx& c) {
 inline void Router::end_step(sim::Ctx& c, uint32_t taken) {
     if (ovf_now) { c.inc(ovf, ovf_now); if (ovf_event) c.put(ovf_ev); ovf_now = 0; }
     if (!dma_inputs) return;
-    sim::Word r = 0;
+    sim::Word r = line ? ROOM_LINE : 0;
     for (unsigned d = 0; d < 4; d++) {
         if (!(dma_inputs >> d & 1)) continue;
         if (room(EJECT, d, taken)) r |= sim::Word(1) << (2 * d);
         if (room(TO_CNC, d, taken)) r |= sim::Word(1) << (2 * d + 1);
+        if (line && line_east && room(TO_RIGHT, d, taken)) r |= sim::Word(1) << (8 + 2 * d);
+        if (line && line_west && room(TO_LEFT, d, taken)) r |= sim::Word(1) << (9 + 2 * d);
     }
     if (r != room_out) { room_out = r; c.drive(dma_room, r); }
 }
@@ -342,7 +370,8 @@ inline void Router::dma_arrivals(sim::Ctx& c) {
         routed++; dma_packets++;
         const unsigned dst = lw::dst(w3[1]);
         if (no_tile(dst)) { dropped++; continue; }
-        const unsigned o = dst == me ? unsigned(EJECT) : unsigned(TO_CNC);
+        const unsigned o = dst == me ? unsigned(EJECT) : line && lw::controller(dst) ? line_output(dst) : unsigned(TO_CNC);
+        if (o == TO_RIGHT || o == TO_LEFT) { if (!(o == TO_RIGHT ? line_east : line_west)) { route_errors++; continue; } line_out++; }
         if (!room(o, d, 0)) FATAL("router %u: DMA input %u moved a packet into a full queue (16.4: its ready was 0)", unsigned(me), d);
         push(c, o, d, w3, 0);
         q[first[o] + slot_of[o][d]].put_at = c.now() - 1;
@@ -354,6 +383,7 @@ inline void Router::dma_arrivals(sim::Ctx& c) {
 // other goes nowhere (16.2 names the packets sent on, those from the local input or a DMA); from local, a packet for
 // the tile ejects and any other, a broadcast included, leaves by the attach port; a reserved dst is dropped.
 inline sim::Wake Router::step_cc(sim::Ctx& c) {
+    if (line) return step_line(c);
     dma_arrivals(c);
     uint32_t taken = 0;
     Sel s;
@@ -374,6 +404,55 @@ inline sim::Wake Router::step_cc(sim::Ctx& c) {
         injected++; routed++;
         if (no_tile(lw::dst(a))) dropped++;
         else route_mask(c, lw::dst(a) == me ? M_EJ : M_CNC, LOOPBACK, d, a, cw, taken);
+    }
+    end_step(c, taken);
+    return occ ? c.next() : sim::Wake::none();
+}
+
+// A special tile's router with the line (THE LINE, in the header): the DMA's packets of the cycle before; the arbiters of
+// the attach output, the eject, and the line's two outputs; then the route blocks: the attach port, local, the line.
+inline sim::Wake Router::step_line(sim::Ctx& c) {
+    dma_arrivals(c);
+    uint32_t taken = 0;
+    Sel s;
+    if (select(TO_CNC, 0x3F, s, taken)) { to_cnc_words++; c.put(to_cc, s.w[0], s.w[1], s.w[2]); }
+    eject_select(c, taken);
+    if (line_east && select(TO_RIGHT, 0x3F, s, taken)) c.put(out[TO_RIGHT], s.w[0], s.w[1], s.w[2]);
+    if (line_west && select(TO_LEFT, 0x3F, s, taken)) c.put(out[TO_LEFT], s.w[0], s.w[1], s.w[2]);
+    if (c.ready(from_cc)) {                       // from the attach port: for the tile, or nowhere
+        const sim::Word* w = c.peek(from_cc);
+        const uint64_t d = w[0], a = w[1], cw = w[2];
+        c.take(from_cc);
+        routed++; from_cnc_words++;
+        if (no_tile(lw::dst(a))) dropped++;
+        else if (lw::dst(a) == me) route_mask(c, M_EJ, FROM_CNC, d, a, cw, taken);
+    }
+    if (c.ready(inj)) {                           // from local: for the tile; another special tile by the line; else attach
+        const sim::Word* w = c.peek(inj);
+        const uint64_t d = w[0], a = lw::with_src(w[1], me), cw = w[2];
+        c.take(inj);
+        injected++; routed++;
+        const unsigned dst = lw::dst(a);
+        if (no_tile(dst)) dropped++;
+        else if (dst == me) route_mask(c, M_EJ, LOOPBACK, d, a, cw, taken);
+        else if (lw::controller(dst)) {
+            const unsigned o = line_output(dst);
+            if (!(o == TO_RIGHT ? line_east : line_west)) route_errors++;
+            else { line_out++; route_mask(c, o == TO_RIGHT ? M_RIGHT : M_LEFT, LOOPBACK, d, a, cw, taken); }
+        } else route_mask(c, M_CNC, LOOPBACK, d, a, cw, taken);
+    }
+    for (unsigned p : {unsigned(FROM_LEFT), unsigned(FROM_RIGHT)}) {   // from the line: for the tile, or on the way it came
+        if (!(p == FROM_LEFT ? line_west : line_east) || !c.ready(in[p])) continue;
+        const sim::Word* w = c.peek(in[p]);
+        const uint64_t d = w[0], a = w[1], cw = w[2];
+        c.take(in[p]);
+        routed++; line_in++;
+        const unsigned dst = lw::dst(a);
+        if (dst == me) { route_mask(c, M_EJ, p, d, a, cw, taken); continue; }
+        const bool on = p == FROM_LEFT ? line_east : line_west;
+        if (!on || !lw::controller(dst)) { route_errors++; continue; }   // 16.2: a packet on the line is a special tile's
+        line_out++;
+        route_mask(c, p == FROM_LEFT ? M_RIGHT : M_LEFT, p, d, a, cw, taken);
     }
     end_step(c, taken);
     return occ ? c.next() : sim::Wake::none();

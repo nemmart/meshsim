@@ -45,6 +45,7 @@
 #include "units/reqbus.h"
 
 namespace units {
+struct Router;
 
 struct PeriphSlot;                // periph_slot.h
 
@@ -110,6 +111,7 @@ struct SpecialIO {
     sim::LinkOut error;           // its error line (a special tile never arrives: its barrier is not wired, 7.3)
     ReqIO req;                    // its request unit, the send and receive sides
     PeriphSlot* slot = nullptr;   // its slot as staged (the control's `io.slot`), or null
+    Router* router = nullptr;     // its router as staged: the line's links (16.1) are wired by build_chip
 };
 
 struct ChipSpec {

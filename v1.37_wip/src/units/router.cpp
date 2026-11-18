@@ -8,7 +8,7 @@
 
 namespace units {
 
-Router::Router(sim::Ports& p, unsigned tile, const NetConfig& c, const Hops* h, bool overflow_event, Fifth fifth, unsigned dma)
+Router::Router(sim::Ports& p, unsigned tile, const NetConfig& c, const Hops* h, bool overflow_event, Fifth fifth, unsigned dma, bool with_line)
     : ovf_event(overflow_event), me(uint8_t(tile)), attached(tile < 64 && c.attached_special(tile) >= 0), loopback_last(c.loopback_last), hops(h) {
     if (tile > 63 && !lw::controller(tile)) FATAL("router: tile %u (0-63 a compute tile, 64-66 a special tile)", tile);
     cc = tile > 63;
@@ -16,8 +16,17 @@ Router::Router(sim::Ports& p, unsigned tile, const NetConfig& c, const Hops* h, 
     if (cc) {
         if (dma > 15) FATAL("router t%u: DMA inputs 0x%x (bit 0 west, 1 east, 2 north, 3 south)", tile, dma);
         dma_inputs = uint8_t(dma);
+        line = with_line;
+        if (line) {                                  // 16.1: the line; the DMA on south alone (16.4)
+            if (dma & 7) FATAL("router t%u: with the line, a special tile's DMA enters on the south input alone (16.4), not 0x%x", tile, dma);
+            line_west = tile > lw::CC1; line_east = tile < lw::CC3;
+            feed = kFeedersLine; nfeed = kNFeedersLine; first = kFirstLine; n_fifos = 13;
+            if (line_west) { p.in(in[FROM_LEFT], "line-west-in", 3); p.out(out[TO_LEFT], "line-west-out", 3); }
+            if (line_east) { p.in(in[FROM_RIGHT], "line-east-in", 3); p.out(out[TO_RIGHT], "line-east-out", 3); }
+        }
         static const char* kDma[4] = {"dma-west", "dma-east", "dma-north", "dma-south"};
         for (unsigned d = 0; d < 4; d++) if (dma_inputs >> d & 1) p.in(in[d], kDma[d], 3);
+        if (line) room_out = ROOM_LINE | 0xFFFF;
         if (dma_inputs) p.out(dma_room, "dma-room", room_out);
         p.in(from_cc, "attach-in", 3);
         p.out(to_cc, "attach-out", 3);

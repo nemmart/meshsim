@@ -13,6 +13,9 @@
 //         counted; an attach output one packet a cycle;
 //   16.4  a special tile's peripheral DMA: an input of its own, the tile's id as src, a packet moved only while the
 //         queue it enters has room, and its packets to its own tile at the eject like any arrival, with no token.
+// These are of v1.36's RTL as built (the special tiles with no line, a DMA on west). v1.37's line between the special
+// tiles (16.1 to 16.4: the line, its routes, its regime, the DMA on south) is the NoC rig with `line` (run_noc's), and
+// its tests are the last ones here (the INTEGRATOR's stage 2).
 //
 // THE RIG. A stand plays everything around a router from a script: the injection point, the four links' last register
 // stages, the attach link, a special tile's DMA; and it records every packet the router sends, with its cycle. Every
@@ -69,16 +72,21 @@ struct Stand {
     sim::CountIn ovf;
     unsigned tile;
     bool links, attach, dma;
+    unsigned dma_in = 0;                                     // the DMA's input: 0 west (v1.36's RTL), 3 south (v1.37, 16.4)
+    bool line = false;                                       // a special tile's router with the line (16.1): `links` the line's
+                                                             //   west and east alone, where the tile has them
     std::vector<Ev> script, dma_script;
     size_t next = 0, dma_next = 0;
     std::vector<Seen> out;
     uint64_t overflows = 0, first_overflow = 0;              // the router's overflow count through the cycle before, and the
                                                              // first cycle that is not 0
     std::vector<uint64_t> lost_in;                           // each cycle the router lost a packet in (its overflow pulse)
-    Stand(sim::Ports& p, unsigned k, bool with_links, bool with_attach, bool with_dma, const std::vector<Ev>& all)
-        : tile(k), links(with_links), attach(with_attach), dma(with_dma) {
+    bool has_link(unsigned i) const { return links && (!line || (i == 0 && tile > MASTER) || (i == 1 && tile < TRACER)); }
+    Stand(sim::Ports& p, unsigned k, bool with_links, bool with_attach, bool with_dma, const std::vector<Ev>& all, bool with_line = false)
+        : tile(k), links(with_links), attach(with_attach), dma(with_dma), line(with_line) {
+        if (line) dma_in = 3;
         p.out(to_local, "to-local", 3); p.in(from_local, "eject", 3); p.in(from_token, "token", 0); p.in(ovf, "ovf");
-        if (links) for (unsigned i = 0; i < 4; i++) { p.out(to_link[i], "to-link", 3); p.in(from_link[i], "from-link", 3); }
+        if (links) for (unsigned i = 0; i < 4; i++) if (has_link(i)) { p.out(to_link[i], "to-link", 3); p.in(from_link[i], "from-link", 3); }
         if (attach) { p.out(to_attach, "to-attach", 3); p.in(from_attach, "from-attach", 3); }
         if (dma) { p.out(to_dma, "to-dma", 3); p.in(dma_room, "dma-room"); }
         for (const Ev& e : all) if (e.tile == tile) (e.port == DMA ? dma_script : script).push_back(e);
@@ -86,7 +94,7 @@ struct Stand {
         std::stable_sort(script.begin(), script.end(), by_cycle);
         std::stable_sort(dma_script.begin(), dma_script.end(), by_cycle);
         for (const Ev& e : all)
-            if (e.tile == tile && (e.at < 2 || (e.port == DMA && !dma) || (e.port == ATTACH && !attach) || (e.port >= WEST && e.port <= SOUTH && !links))) {
+            if (e.tile == tile && (e.at < 2 || (e.port == DMA && !dma) || (e.port == ATTACH && !attach) || (e.port >= WEST && e.port <= SOUTH && !has_link(e.port - WEST)))) {
                 std::fprintf(stderr, "stand %u: no such event: cycle %" PRIu64 " port %s\n", tile, e.at, kPort[e.port]);
                 std::abort();
             }
@@ -100,7 +108,7 @@ struct Stand {
     sim::Wake step(sim::Ctx& c) {
         const uint64_t t = c.now();
         get(c, from_local, LOCAL);
-        if (links) for (unsigned i = 0; i < 4; i++) get(c, from_link[i], WEST + i);
+        if (links) for (unsigned i = 0; i < 4; i++) if (has_link(i)) get(c, from_link[i], WEST + i);
         if (attach) get(c, from_attach, ATTACH);
         if (c.ready(from_token)) { out.push_back(token(t, tile)); c.take(from_token); }
         // a packet lost in a cycle is in the count the cycle after (the stand reads it as at the end of the cycle before)
@@ -116,7 +124,7 @@ struct Stand {
         // the DMA's packet register: the oldest packet not yet taken, offered from its cycle on (16.4); it moves in a
         // cycle the router is ready for it, and is in its queue from the next
         if (dma && dma_next < dma_script.size() && dma_script[dma_next].at <= t &&
-            Router::dma_ready(c.read(dma_room), 0, tile, lw::dst(dma_script[dma_next].hdr))) {
+            Router::dma_ready(c.read(dma_room), dma_in, tile, lw::dst(dma_script[dma_next].hdr))) {
             const Ev& e = dma_script[dma_next++];
             c.put(to_dma, e.id, e.hdr, ~e.id);
         }
@@ -131,11 +139,12 @@ void wire(sim::Config& cfg, Stand& st, Router& r) {
     cfg.link(r.eject, st.from_local, 1);
     cfg.link(r.loop_left, st.from_token, 1);
     cfg.connect(r.ovf, st.ovf);
-    if (st.dma) { cfg.link(st.to_dma, r.in[Router::FROM_LEFT], 1); cfg.connect(r.dma_room, st.dma_room); }   // the west input
+    if (st.dma) { cfg.link(st.to_dma, r.in[st.dma_in == 3 ? Router::FROM_DOWN : Router::FROM_LEFT], 1); cfg.connect(r.dma_room, st.dma_room); }
     if (st.links) {                                          // west, east, north, south (router.h's numbering)
         static const unsigned in_of[4] = {Router::FROM_LEFT, Router::FROM_RIGHT, Router::FROM_UP, Router::FROM_DOWN};
         static const unsigned out_of[4] = {Router::TO_LEFT, Router::TO_RIGHT, Router::TO_UP, Router::TO_DOWN};
-        for (unsigned i = 0; i < 4; i++) { cfg.link(st.to_link[i], r.in[in_of[i]], 1); cfg.link(r.out[out_of[i]], st.from_link[i], 1); }
+        for (unsigned i = 0; i < 4; i++)
+            if (st.has_link(i)) { cfg.link(st.to_link[i], r.in[in_of[i]], 1); cfg.link(r.out[out_of[i]], st.from_link[i], 1); }
     }
     if (st.attach) { cfg.link(st.to_attach, r.from_cc, 1); cfg.link(r.to_cc, st.from_attach, 1); }
 }
@@ -150,13 +159,15 @@ struct Result {
 void sort(std::vector<Seen>& v) { std::sort(v.begin(), v.end(), [](const Seen& a, const Seen& b) { return a.key() < b.key(); }); }
 
 // One router of `tile` (a special tile's with a DMA) and its stand, run for `cycles`.
-Result run_router(unsigned tile, const std::vector<Ev>& script, uint64_t cycles) {
+// With `line` (v1.37, 16.1; a special tile): the router with the line, the stand on its west and east line links, the
+// DMA on south (16.4).
+Result run_router(unsigned tile, const std::vector<Ev>& script, uint64_t cycles, bool line = false) {
     const Hops h = load_hops("data/hops.txt");
     const NetConfig nc;
     sim::Config cfg;
     const bool special = tile >= MASTER;
-    auto& r = cfg.add<Router>("router", tile, nc, &h, false, Router::FIFTH_LINK, special ? 1u : 0u);   // a DMA on its west input
-    auto& st = cfg.add<Stand>("stand", tile, !special, special || r.attached, special, script);
+    auto& r = cfg.add<Router>("router", tile, nc, &h, false, Router::FIFTH_LINK, special ? (line ? 8u : 1u) : 0u, line);   // a DMA on west, or south with the line
+    auto& st = cfg.add<Stand>("stand", tile, !special || line, special || r.attached, special, script, line);
     wire(cfg, st, r);
     sim::Sim m = cfg.build();
     m.run(cycles);
@@ -168,16 +179,25 @@ Result run_router(unsigned tile, const std::vector<Ev>& script, uint64_t cycles)
 
 // The NoC (16.1): east and west one ring through every tile in id order, south and north the columns, which wrap;
 // every link three register stages; each special tile's attach port joined to its attach tile's.
-Result run_noc(const std::vector<Ev>& script, uint64_t cycles) {
+// With `line` (v1.37, 16.1): the special tiles' routers with the line, the master tile's east to the memory tile's west
+// and the memory tile's east to the tracer tile's west, each way a link of three stages; their DMAs on south (16.4).
+Result run_noc(const std::vector<Ev>& script, uint64_t cycles, bool line = false) {
     const Hops h = load_hops("data/hops.txt");
     const NetConfig nc;
     sim::Config cfg;
     Router* r[67];
     const auto name = [](const char* what, unsigned k) { return what + std::to_string(k); };
     for (unsigned k = 0; k < 67; k++) {
-        r[k] = &cfg.add<Router>(name("router", k), k, nc, &h, false, Router::FIFTH_LINK, k >= MASTER ? 1u : 0u);
-        wire(cfg, cfg.add<Stand>(name("stand", k), k, false, false, k >= MASTER, script), *r[k]);
+        r[k] = &cfg.add<Router>(name("router", k), k, nc, &h, false, Router::FIFTH_LINK, k >= MASTER ? (line ? 8u : 1u) : 0u, line && k >= MASTER);
+        Stand& st = cfg.add<Stand>(name("stand", k), k, false, false, k >= MASTER, script);
+        if (line) st.dma_in = 3;
+        wire(cfg, st, *r[k]);
     }
+    if (line)
+        for (unsigned k = MASTER; k < TRACER; k++) {
+            cfg.link(r[k]->out[Router::TO_RIGHT], r[k + 1]->in[Router::FROM_LEFT], 3);
+            cfg.link(r[k + 1]->out[Router::TO_LEFT], r[k]->in[Router::FROM_RIGHT], 3);
+        }
     for (unsigned k = 0; k < 64; k++) {
         cfg.link(r[k]->out[Router::TO_RIGHT], r[(k + 1) % 64]->in[Router::FROM_LEFT], 3);
         cfg.link(r[k]->out[Router::TO_LEFT], r[(k + 63) % 64]->in[Router::FROM_RIGHT], 3);
@@ -330,6 +350,19 @@ TEST(special_router_drops_an_attach_arrival_for_another_tile) {
                                    ev(13, me, ATTACH, 3, me)};
         const Result r = run_router(me, s, 40);
         CHECK(same(r.out, {seen(15, me, LOCAL, s[3], 3)}));
+        CHECK_EQ(r.overflows, 0u);
+    }
+}
+
+// 16.2 with the line (v1.37): an attach port's arrival for another special tile still goes nowhere: only packets from
+// local or the DMA take the line, so a compute tile's packet never does (16.2).
+TEST(line_special_router_drops_an_attach_arrival_for_another_tile) {
+    for (unsigned me = MASTER; me <= TRACER; me++) {
+        const unsigned other = me == MASTER ? MEMORY : me - 1, far = me == TRACER ? MASTER : TRACER;
+        const std::vector<Ev> s = {ev(10, me, ATTACH, 3, 5), ev(11, me, ATTACH, 3, lw::BROADCAST), ev(12, me, ATTACH, 3, other),
+                                   ev(13, me, ATTACH, 3, far), ev(14, me, ATTACH, 3, me)};
+        const Result r = run_router(me, s, 40, true);
+        CHECK(same(r.out, {seen(16, me, LOCAL, s[4], 3)}));
         CHECK_EQ(r.overflows, 0u);
     }
 }
@@ -630,4 +663,87 @@ TEST(fan_in_at_tile_27_loses_what_the_rtls_noc_loses) {
     unsigned ejected = 0;
     for (const Seen& x : r.out) if (x.tile == 27 && x.port == LOCAL) ejected++;
     CHECK_EQ(ejected, 61u);
+}
+
+// ---- v1.37: the line between the special tiles (16.1 to 16.4; the INTEGRATOR's stage 2) ------------------------------
+
+// The links a unicast crosses on v1.37's chip: between two special tiles, the line's, one a special tile (16.2: "one hop
+// a special tile"); else as before, a special tile routed as its attach tile.
+unsigned unicast_links_v137(unsigned src, unsigned dst) {
+    if (src >= MASTER && dst >= MASTER) return unsigned(std::abs(int(dst) - int(src)));
+    return unicast_links(src, dst);
+}
+
+// 16.1, 16.2: every pair of the 67 tiles, one packet at a time, from the local input and from each special tile's DMA (on
+// south): ejected at its destination four cycles a link after it was at its input, the special tiles' packets for one
+// another along the line (the master tile's for the tracer tile through the memory tile's router), every other route as
+// v1.36's; a compute tile's packet for a special tile never takes the line.
+TEST(line_unicast_between_special_tiles_takes_the_line) {
+    std::vector<Ev> s;
+    std::vector<Seen> want;
+    uint64_t t = 10;
+    for (unsigned src = 0; src < 67; src++)
+        for (unsigned port : {unsigned(LOCAL), unsigned(DMA)}) {
+            if (port == DMA && src < MASTER) continue;
+            for (unsigned dst = 0; dst < 67; dst++) {
+                s.push_back(ev(t, src, port, ANY, dst));
+                want.push_back(seen(t + 4 * unicast_links_v137(src, dst) + 2, dst, LOCAL, s.back(), src));
+                t += 48;
+            }
+        }
+    CHECK_EQ(unicast_links_v137(MASTER, TRACER), 2u);        // the line's two links, through the memory tile's router
+    CHECK_EQ(unicast_links_v137(MEMORY, TRACER), 1u);        // v1.36: 3 (tiles 7 and 15, a row apart)
+    CHECK_EQ(unicast_links_v137(20, TRACER), unicast_links(20, TRACER));
+    const Result r = run_noc(s, t + 48, true);
+    CHECK(same(r.out, want));
+    CHECK_EQ(r.overflows, 0u);
+}
+// 16.2: a special tile's broadcast still spreads from its attach tile as that tile's own, by its attach port, with the line.
+TEST(line_broadcast_from_a_special_tile_spreads_from_its_attach_tile) {
+    std::vector<Ev> s;
+    std::vector<Seen> want;
+    uint64_t t = 10;
+    for (unsigned src = MASTER; src < 67; src++)
+        for (unsigned port : {unsigned(LOCAL), unsigned(DMA)}) {
+            s.push_back(ev(t, src, port, ANY, lw::BROADCAST));
+            for (unsigned k = 0; k < 64; k++) want.push_back(seen(t + 4 * (broadcast_hops(mesh_tile(src), k) + 1) + 2, k, LOCAL, s.back(), src));
+            t += 48;
+        }
+    const Result r = run_noc(s, t + 48, true);
+    CHECK(same(r.out, want));
+    CHECK_EQ(r.overflows, 0u);
+}
+// 16.3, invariant 40: the line has no flow control, so traffic that outruns it overflows a queue, which is counted on the
+// router it is in. The tracer tile and the memory tile each send the master tile a packet a cycle, from the tracer's
+// local input and the memory tile's local input and DMA: the memory tile's west output takes one a cycle, and the queue
+// from the line (east), full first, loses packets at the memory tile's router.
+TEST(line_overflows_where_its_traffic_is_not_paced) {
+    std::vector<Ev> s;
+    for (uint64_t i = 0; i < 40; i++) {
+        s.push_back(ev(10 + i, TRACER, LOCAL, ANY, MASTER));
+        s.push_back(ev(10 + i, MEMORY, LOCAL, ANY, MASTER));
+        s.push_back(ev(10 + i, MEMORY, DMA, ANY, MASTER));
+    }
+    const Result r = run_noc(s, 600, true);
+    CHECK(r.overflows > 0);
+    bool only_memory = !r.lost.empty();
+    for (const auto& l : r.lost) if (l.second != MEMORY) only_memory = false;
+    CHECK(only_memory);                                      // counted on the router the full queue is in (16.3)
+    unsigned ejected = 0;
+    for (const Seen& x : r.out) if (x.tile == MASTER && x.port == LOCAL) ejected++;
+    CHECK_EQ(uint64_t(ejected) + r.overflows, uint64_t(120));    // every packet ejected or lost; the DMA's wait for room (16.4)
+}
+// 16.3: the line's output's arbiter, round-robin over its queues in the inputs' order: local, then the line, then the
+// DMA. The memory tile's west output, fed by its local input, the line from the tracer tile and its DMA in one cycle, sends
+// them in that order, a cycle apart.
+TEST(line_output_arbiter_is_round_robin_in_the_inputs_order) {
+    std::vector<Ev> s;
+    s.push_back(ev(30, MEMORY, DMA, ANY, MASTER));
+    s.push_back(ev(30, MEMORY, LOCAL, ANY, MASTER));
+    s.push_back(ev(26, TRACER, LOCAL, ANY, MASTER));          // on the line: at the memory tile's east input in 30
+    const Ev dma = s[0], local = s[1], far = s[2];
+    const Result r = run_noc(s, 200, true);
+    std::vector<Seen> want = {seen(30 + 4 + 2, MASTER, LOCAL, local, MEMORY), seen(30 + 4 + 3, MASTER, LOCAL, far, TRACER),
+                              seen(30 + 4 + 4, MASTER, LOCAL, dma, MEMORY)};
+    CHECK(same(r.out, want));
 }

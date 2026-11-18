@@ -255,7 +255,7 @@ Stages 4 and 5 together, at `d54c8601`:
 | 256, 257 | `suites` and `check` at `c3ad3ad1` | **FAIL**, both at the build: the task's kit lacked `updater_wip/wire` (`wire.h` not found). The kit fixed (`make_task.sh`); again as 260 and 261 at `d974f3a3` |
 | (kits) | before 260 to 263 run: each task's own kit, unpacked alone, carries `updater_wip/wire/` (26 files); from 260's kit, the suite build of `proof_run`, `driver`, `standin_asic`, `wire_launch` and `test_master`, and `chain_run.sh` on it; from 261's, gcc's TSan `test_sort`, built and run | all built; `chain_run`: all ok; TSan: pass |
 | 260 | `suites` at `d974f3a3` (stages 4 to 7's first checks): as 253, with the chain's step | **PASS**: every step, `chain` among them (all ok); the 37 proof runs; no golden log differs |
-| 261 | `check` at `d974f3a3` | queued |
+| 261 | `check` at `d974f3a3` | **PASS**: gcc and clang, debug and release, both TSan groups (the chip's included), 2,115 s |
 
 **The proof runs' cycles, stages 4 and 5 against stage 3 (Quest 250):** every run 14,336 to 71,168 cycles longer,
 0.06% to 0.26%. The link's last byte comes 13,815 to 95,951 cycles later: its own link packets (the start, the status
@@ -397,9 +397,19 @@ about 240,000 cycles in 1.2 s on this machine's two cores.
 | Quest | item | result |
 |---|---|---|
 | 258, 259 | `chain-evm-zone`, `chain-cyclone` at `c3ad3ad1` | **FAIL**: the same missing wire; nothing ran |
-| 262 | `chain-evm-zone` at `d974f3a3`: the driver and two chips at 2²⁹ on EVM Zone, segments 0 and 1, N 128; twice | queued |
-| 263 | `chain-cyclone`: the same on Cyclone | queued |
-| 260 | `suites`: `run_tests.sh`'s step `chain` among the rest | queued |
+| 262 | `chain-evm-zone` at `d974f3a3`: the driver and two chips at 2²⁹ on EVM Zone, segments 0 and 1, N 128; twice | **PASS**, and the second run the same: both chips every check of a proof run against gold's references (*s* 0 in 26,683,904 cycles, *s* 1 in 28,404,224), both replies right (cycles 26,684,767 and 28,405,723 at the driver). ASIC0 ran 1,725,952 cycles past its exit, passing ASIC1's reply up |
+| 263 | `chain-cyclone`: the same on Cyclone | **PASS**, the same twice: *s* 0 in 32,695,808 cycles, *s* 1 in 31,177,728; both replies right |
+| 260 | `suites`: `run_tests.sh`'s step `chain` among the rest | **PASS** (above) |
+
+**Every row of MILESTONE-v1.37.md's "How the milestone is checked" is met:** each ASIC's images equal to gold's
+and its last record to record *s* + 1; the driver's replies, whole and in order, sorted by hops, equal to what gold's
+files give; the same run twice the same to the cycle in all three processes; a chain of one; both controllers in
+every run; the planted bugs in the chain caught; and with the chain apart, `run_tests.sh all --check` and `make
+check` passing (260, 261). On the small inputs here (the fixtures) and at 2²⁹ on the runner, both workloads.
+
+**Stages 4 to 6 merge as one** (into `main`, at the branch's head after `d974f3a3`, the later commits being the
+report, the READMEs and `proof_run`'s usage text): stage 4 broke `make check`'s TSan build of the chip (Quest 255),
+mended only at `c3ad3ad1`, after stage 6 was built, so no earlier point of the branch has a passing `make check`.
 
 ## Stage 7: closing (in progress)
 

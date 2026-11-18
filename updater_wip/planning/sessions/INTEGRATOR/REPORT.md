@@ -179,7 +179,7 @@ test's expectation of a reset divisor.
 |---|---|---|
 | 250 | `suites` at `f873c715`: `./run_tests.sh all --check`, the 37 proof runs | **PASS**: every step; the 37 proof runs; no golden log differs; `fw-build` skipped (no RISC-V toolchain on the runner) |
 | 251 | `suites-varied`: the same with every chip's LPDDR jittered (`LPDDR_SEED` 7) | **PASS**: the same, no log differs |
-| 252 | `check`: `make check` | queued |
+| 252 | `check`: `make check` | **PASS**: gcc and clang, debug and release, 1,643 s |
 
 **The proof runs' cycles moved, on purpose: every run is 15,360 to 76,288 cycles shorter than at stage 2** (Quest 248).
 The incoming queues went from 512 words to 17.6.3's 1,024, so the link waits for room less: over the 37 runs its

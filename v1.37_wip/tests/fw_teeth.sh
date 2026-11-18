@@ -112,7 +112,7 @@ BUGS=(
   "tracer_ctl: the rows traced a window short~tracer/tracer_ctl.c~s/send128(0, status, tracer->ERRORS, tr_results\[TL_R_WINDOWS\] \*/send128(0, status, tracer->ERRORS, (tr_results[TL_R_WINDOWS] - 1) */"
   "cc1: no store to UART_CONTROL, and it prints~cc/cc1.c~s/if (cc1->UART_CONTROL == 0) cc1->UART_CONTROL = uart_setting(CC1_UART_DIVIDER);/;/; s/case CC_UART: cc1->UART_CONTROL = uart_setting(arg); break;/case CC_UART: break;/"
   "host.h: DMA_FORWARD_COUNT's discard at bit 30~include/host.h~s/#define HL_FORWARD_DISCARD          0x80000000u/#define HL_FORWARD_DISCARD          0x40000000u/"
-  "host.h: background_service at the foreground's bit~include/host.h~s/#define HL_EVENT_BACKGROUND_SERVICE (1 << 9)/#define HL_EVENT_BACKGROUND_SERVICE (1 << 8)/"
+  "host.h: background_service at the foreground's bit~include/host.h~s/#define HL_EVENT_BACKGROUND_SERVICE IE_EVENT_BACKGROUND_SERVICE/#define HL_EVENT_BACKGROUND_SERVICE IE_EVENT_FOREGROUND_SERVICE/"
 )
 bad=0
 printf '%-74s %s\n' "bug" "failing tests"

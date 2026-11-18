@@ -8,25 +8,29 @@ import java.util.Locale;
 import java.util.zip.CRC32C;
 
 /**
- * The link's packets (v1.4_wip/planning/HOST-LINK.md), the writing side: the packetizer, which wraps a frame file
- * (HOST-FRAMES.md) in packets for v1.37's Ingress black box (INGRESS-INTERFACE.md, "In v1.37: a black box and a
- * file"). The reading side (PacketFile, PacketReader) is written from the documents and shares nothing with this,
- * its CRC-32C included; the choices are WORKER2's (updater_wip/planning/sessions/WORKER2-NOTES.md).
+ * The link packets of machine-spec chapter 28 (v1.37_wip/spec/host-link.md; v1.37's INTEGRATOR, stage 4: HOST-LINK.md's
+ * packets before), the writing side: the packetizer, which wraps a frame file (chapter 29) in link packets as the
+ * host's link end sends them first on a clean link whose other end only acknowledges. The reading side (PacketFile,
+ * PacketReader) is written from the specification and shares nothing with this, its CRC-32C and its mask included;
+ * the choices before chapter 28 are WORKER2's (updater_wip/planning/sessions/WORKER2-NOTES.md).
  *
  * <pre>
- *   a packet   a header word of 128 bits, then 0 to 32 words of data; every word least significant byte first
- *   byte 0     stream [3:0] (1 foreground, 2 background), flags [7:4]
+ *   a link packet  a header word of 128 bits, then 0 to 32 words of data; every word least significant byte first
+ *   byte 0     stream [3:0] (1 foreground, 2 background), flags [7:4]: resend, lost, recovery, restart (28.3)
  *   byte 1     length, the data's 128-bit words
- *   bytes 2-4  packet number [33:16], 18 bits: 1 to 0x3FFFE on its stream, then 1 again (owner, 2026-11-17; 20 bits before)
- *   bytes 4-6  acknowledge [51:34], 18 bits
- *   byte 6     hops [55:52] in its high four bits: the ASICs that forwarded the packet; whoever makes one writes 0
- *   byte 7     reserved, 0
- *   bytes 8-11 data checksum: CRC-32C of the data's bytes in link order
+ *   bytes 2-4  number [33:16], 18 bits: one run for the link, both streams, 1 to 0x3FFFE, then 1 again (28.4)
+ *   bytes 4-6  ack [51:34], 18 bits: the last number received in order; 0 for none yet
+ *   byte 6     hops [55:52] in its high four bits: the ASICs that forwarded the link packet; whoever makes one writes 0
+ *   byte 7     fg_stop [56], bg_stop [57]; reserved [63:58], 0
+ *   bytes 8-11 data checksum: CRC-32C of the data as it is held, before the mask
  *   bytes 12-15 header CRC: CRC-32C of bytes 0 to 11
+ *   the data   on the line XORed with the mask, a CRC-32C register started from header_crc | 0x10000 and fed zeros (28.6)
  * </pre>
  *
- * The packetizer's file: every packet on stream 2; each frame starts a new packet; a frame's packets hold 32 words
- * but its last, which holds what remains; numbers from 1; acknowledge, hops, flags and reserved 0; no idle bytes.
+ * The packetizer's file: every link packet on stream 2; each frame starts a new one; a frame's link packets hold 32
+ * words but its last, which holds what remains; numbers from 1; ack, hops, flags and the stop bits 0; no idle bytes,
+ * and none of the link's own link packets (status, recovery, restart): what a capture of the host's line holds of its
+ * data link packets, on a link that takes them all at once.
  */
 public final class Packets {
   public static final int FOREGROUND = 1, BACKGROUND = 2;
@@ -47,7 +51,7 @@ public final class Packets {
 
   /** One packet with every field free, for the tests and the vectors: a wrong field can be given right checks. */
   public static final class Packet {
-    public int stream = BACKGROUND, flags, number = FIRST_NUMBER, acknowledge, hops, reserved;
+    public int stream = BACKGROUND, flags, number = FIRST_NUMBER, acknowledge, hops, stops, reserved;   // reserved: bits [63:58]
     public byte[] data = new byte[0];
     /** The length field; -1: the data's words. */
     public int length = -1;
@@ -68,7 +72,7 @@ public final class Packets {
       h[4] = (byte) (((number >>> 16) & 3) | (acknowledge & 63) << 2);   // number [33:32], acknowledge [39:34]
       h[5] = (byte) (acknowledge >>> 6);                                 // acknowledge [47:40]
       h[6] = (byte) (((acknowledge >>> 14) & 15) | (hops & 15) << 4);     // acknowledge [51:48], hops [55:52]
-      h[7] = (byte) reserved;
+      h[7] = (byte) ((stops & 3) | (reserved & 63) << 2);               // fg_stop [56], bg_stop [57], reserved [63:58]
       le32(h, 8, dataChecksumField());
       return h;
     }
@@ -82,34 +86,47 @@ public final class Packets {
       return h;
     }
 
-    /** The whole packet in link order. */
+    /** The whole link packet as it goes on the line: the header, then the data under its mask (28.6). */
     public byte[] bytes() {
       byte[] p = java.util.Arrays.copyOf(header(), 16 + data.length);
-      System.arraycopy(data, 0, p, 16, data.length);
+      byte[] m = mask(headerCrcField(), data.length);
+      for (int i = 0; i < data.length; i++) p[16 + i] = (byte) (data[i] ^ m[i]);
       return p;
     }
+  }
+
+  /** The mask of a link packet's data (28.6): `n` bytes from a register started at header_crc | 0x10000, each the
+   *  register's low byte after eight shifts of the CRC-32C step with no input. */
+  public static byte[] mask(int headerCrc, int n) {
+    byte[] m = new byte[n];
+    int reg = headerCrc | 0x10000;
+    for (int i = 0; i < n; i++) {
+      for (int k = 0; k < 8; k++) reg = (reg & 1) != 0 ? (reg >>> 1) ^ 0x82F63B78 : reg >>> 1;
+      m[i] = (byte) reg;
+    }
+    return m;
   }
 
   static void le32(byte[] b, int at, int v) {
     for (int i = 0; i < 4; i++) b[at + i] = (byte) (v >>> (8 * i));
   }
 
-  /** A packet file built a packet at a time; it keeps each stream's numbering. */
+  /** A packet file built a link packet at a time; it keeps the link's one run of numbers (28.4). */
   public static final class Writer {
     private final ByteArrayOutputStream out = new ByteArrayOutputStream();
-    private final int[] next = {0, FIRST_NUMBER, FIRST_NUMBER};
+    private int next = FIRST_NUMBER;
     public long packets, words, idleBytes;
 
-    /** The number the stream's next data packet takes. */
-    public Writer first(int stream, int number) {
+    /** The number the next data link packet takes, whatever its stream. */
+    public Writer first(int number) {
       if (number < FIRST_NUMBER || number > LAST_NUMBER) {
-        throw new IllegalArgumentException("a packet number is 1 to 0x3FFFE, not " + number);
+        throw new IllegalArgumentException("a link packet's number is 1 to 0x3FFFE, not " + number);
       }
-      next[stream] = number;
+      next = number;
       return this;
     }
 
-    public int next(int stream) { return next[stream]; }
+    public int next() { return next; }
 
     /** Idle: zero bytes between packets. */
     public Writer idle(int bytes) {
@@ -118,26 +135,26 @@ public final class Packets {
       return this;
     }
 
-    /** A packet of 1 to 32 words of data: it takes the stream's next number. */
+    /** A link packet of 1 to 32 words of data: it takes the link's next number. */
     public Writer data(int stream, byte[] b, int off, int words) {
-      if (words < 1 || words > MAX_WORDS) throw new IllegalArgumentException("a packet's data is 1 to 32 words, not " + words);
+      if (words < 1 || words > MAX_WORDS) throw new IllegalArgumentException("a link packet's data is 1 to 32 words, not " + words);
       Packet p = new Packet();
       p.stream = stream;
-      p.number = next[stream];
+      p.number = next;
       p.data = java.util.Arrays.copyOfRange(b, off, off + 16 * words);
-      next[stream] = Packets.next(next[stream]);
+      next = Packets.next(next);
       out.writeBytes(p.bytes());
       packets++;
       this.words += words;
       return this;
     }
 
-    /** A packet of length 0: its number field holds the number the stream's next data packet will carry, and it takes
-     *  none (owner, 2026-11-16). */
+    /** A link packet of length 0: its number field holds the number the next link packet with data will carry, and
+     *  it takes none (28.3). */
     public Writer empty(int stream) {
       Packet p = new Packet();
       p.stream = stream;
-      p.number = next[stream];
+      p.number = next;
       out.writeBytes(p.bytes());
       packets++;
       return this;
@@ -205,12 +222,12 @@ public final class Packets {
 
   /** The frame file as packets on stream 2. */
   public static Result packetize(byte[] frames, Options o) {
-    Writer w = new Writer().first(BACKGROUND, o.first);
+    Writer w = new Writer().first(o.first);
     Result r = new Result();
     r.firstNumber = r.lastNumber = o.first;
     for (int[] c : cuts(frames, o.cut)) {
       if (w.packets > 0) w.idle(o.idle);
-      r.lastNumber = w.next(BACKGROUND);
+      r.lastNumber = w.next();
       w.data(BACKGROUND, frames, c[0], c[1]);
       r.frames += c[2];
     }

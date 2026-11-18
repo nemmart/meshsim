@@ -50,13 +50,15 @@ section, what the specification says, what `main` has. Kept as the specification
 | section | the specification | `main` (be077a7d) |
 | --- | --- | --- |
 | 17.6.1 | `PARAMS.version` 1 | 0 |
-| 17.6.1 | the packed numbers: `STATUS` [2], [3]; `EVENTS` [6], [7], [8]; words 64 to 67 | `STATUS` [3], [4]; `EVENTS` [8], [9]; words 80, 81, 82; no word for `EGRESS_COUNT` |
+| 17.6.1 | the packed numbers: `STATUS` [2], [3]; `EVENTS` [6], [7], [8]; words 64 to 67 | `STATUS` [3], [4] (and v1.36's [2] `stream_last`); `EVENTS` [8], [9]; `EVENTS_MASK` 10 bits, not 9; words 80, 81, 82; no word for `EGRESS_COUNT` |
 | 17.6.1 | v1.36's host interface gone: words 64 to 72 as listed, `STATUS.stream_last`, `EVENTS.stream_in`, `stream_out`, and the parameters `STREAM_BYTES`, `STREAM_DEPTH` | still there, with v1.36's stream tests and the RTL images that use them |
 | 17.6.9 | the UART redesigned: `UART_TX` 30, `UART_RX` 31, `UART_CONTROL` 42 (0 at the reset, the UART off), the levels and line errors in `STATUS` | v1.36's UART at words 42 to 45, running from the reset at 115,200 baud; every image that prints needs a store to `UART_CONTROL` |
 | 17.6.3 | incoming queues of 16 KiB, 1,024 words, "stop" at half | 8 KiB, `QUEUE_WORDS` 512 |
 | 17.6.8 | Egress: the outgoing queue in region 0x04 part 1, `EGRESS_COUNT`, `egress_credit`, `egress_error` | none: nothing goes back to the host |
-| 17.6.4, 16.4 | Ingress/Egress's DMA on the master tile's south input | the black box's DMA (check its input) |
-| 17.6.14 | the one reset empties the queues and restarts the link | the black box's queues: check what its reset does |
+| 17.6.4, 16.4 | Ingress/Egress's DMA on the master tile's south input | on the west input, `FROM_LEFT` (`chip.cpp` 113), as every special tile's DMA (WORKER7) |
+| 17.6.14 | the one reset empties the queues and restarts the link | the black box's reset empties both queues, sets the count to 0 and the service levels low, ends "in flight", and rewinds the packet file, read again from its first byte (`link_reset`, `ingress_egress.h` 549); nothing goes to a host (WORKER7) |
+| 17.6.3 | a taken link packet's words land a 128-bit word a cycle, each counted in `…_WORDS` as it lands | all of a link packet's words land at once, at the end of the cycle of its last byte (`ingress_egress.h` 616–621): `…_WORDS` jumps by its length, and "a word into an empty queue" comes with the whole link packet (WORKER7) |
+| 17.6.15, 19 | `INGRESS_QUEUE_WORDS` a parameter | a constant, `IngressEgress::QUEUE_WORDS` (`ingress_egress.h` 149), not in `MachConfig` (WORKER7) |
 
 ## The firmware (chapters 29, 30)
 
@@ -65,7 +67,8 @@ section, what the specification says, what `main` has. Kept as the specification
 | 30.2 | the UART turned on by a store to `UART_CONTROL`, if the image prints | v1.36's UART runs from the reset; no store |
 | 30.6 | the tracer tile's result carries its last record to the master tile (owner, MS-2) | `tracer_ctl.c` checks the end state itself and sends no record |
 | 30.7, 29.14 | the reply frame, type 16, 72 words, through Egress | none: no Egress, no reply |
-| 30.3 | an unknown frame type is dropped with one discard count | `master.c` ends in its handler (`MR_FRAME`) |
+| 30.3 | an unknown frame type is dropped with one discard count | `master.c` 565 stops on it, `bad_frame(type, MR_D_TYPE)`, as a stop of its own (WORKER7) |
+| 30.8 | the firmware's checks of a frame's contents, a stop with no `ERRORS` bit | as specified (`master.c` 440–567), its result in `master_results` for the harness |
 | 30.8 | an error stops the chip; nothing is recovered | as specified; the handler writes `master_results` for the harness |
 
 ## The chapters that gather (2, 3, 17.1, 18, 19, 20, 21)

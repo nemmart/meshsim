@@ -54,15 +54,22 @@ off (17.6.4). Then, by the header's `type`:
 
 | Frame | What the firmware does with its data |
 | --- | --- |
-| 1, 3, 4: header frames | copies it into its own memory with the DMA, in pieces of at most `BACKGROUND_WORDS`, and reads its fields as they land |
+| 1, 3, 4: header frames | copies it into its own memory with the DMA, in pieces of at most `BACKGROUND_WORDS` **and no more than the frame's words still to come,** since the queue may already hold the next frame's header word, and reads its fields as they land |
 | 2, 5, 6: one run each | sets up and starts the Updater's run (30.4), then stores the frame's `length` in `DMA_FORWARD_COUNT`, once, `discard` 0 |
-| 7: register states | drops the records before *s* with one discard count; copies records *s* and *s* + 1; drops the rest |
+| 7: register states | drops the records before *s* with one discard count; copies record *s*, and record *s* + 1 **only when *s* < *N* − 1** (the last segment has none); drops the rest. Every copy, as for frame 8's, no more than the frame's words still to come |
 | 8: advice logs | copies the *N* counts; drops the logs before *s*; copies log *s*; drops the rest |
 | 9: memory segments | the Updater's three runs (30.4), with one count for the whole frame |
-| any other | drops it, with one discard count of its `length` |
+| any other type | drops it, with one discard count of its `length` |
 
-- **The bulk data never passes through the core:** a frame of update words is one wake, a run's set-up and one store
-  of the count, whatever its length. The next `background_service` is the next frame's header word.
+**The frame's contents are checked by the firmware** (30.8): a frame that fails one is a stop of the master tile's
+own program.
+
+- **The bulk data never passes through the core:** a frame of update words is a few wakes (the flag, the header
+  word's landing, the run's `done`, a free page credit past 256 pages), a run's set-up and one store of the count,
+  whatever its length. **A frame of its header word alone,** `length` 0, needs no store of the count.
+- **The flag after a header word is stale:** the header word's transfer ends with the frame's data still in the
+  queue, which posts a flag before the count is stored (17.6.7). The firmware acts on the next flag only as 17.6.13
+  says: on a count of 0 with words waiting.
 - **A count is stored, or a background transfer started, only after a load of the count reads 0,** with no
   background transfer in flight (17.6.13). Drops that follow one another are one count.
 - **A frame for the Updater waits for the last run's `done`** before it sets up the next run; a frame that is not the
@@ -93,8 +100,11 @@ then `START`.
   128-byte units, under its credit: up to 128 entries for each `free_page_credit` (17.10.4). The firmware refills
   it as credits come back, while the run goes on.
 - **Frame 9's count** is stored once, for the whole frame, after the first run is started. Between the first run's
-  `done` and the second's `START` the stream waits in the background queue and the word port: nothing else is
-  needed.
+  `done` and the second's `START` the stream waits in the background queue, the word port and the Updater's input
+  queue: nothing else is needed.
+- **Between frames** the next frame's first words may wait in the Updater's input queue (17.10.3). A run with
+  `continue` 0 clears only the last frame's padding from the decoder, under 128 bits (29.2), so never a whole word
+  left in the input: the next frame's first run relies on it.
 - **At every `done`, `PAGE_COUNT` reads 0:** the frames' counts are exact (29.7).
 
 ### 30.5 The hand-over to the tracer tile
@@ -134,22 +144,38 @@ the reply** (29.14):
    would wait on `egress_credit` between each 256.
 4. Egress sends it as three link packets on the foreground (17.6.8), behind any it is forwarding from below.
 
-### 30.8 On an error
+### 30.8 On an error, and a stop of its own
 
 **Every error stops the chip** (17.6.12; owner). An error of the master tile's own, Ingress/Egress's or the Updater's
 among them, raises its `ERRORS.peripheral_n` and its NMI (6.2), and the toast pin (17.6.2); another tile's reaches it
 through `tile_error`. The handler reports and parks, as v1.36's does (6.5, 22.28). **Nothing is recovered:** what the
 host does then, draining the queues, a ready message and the next proof are not designed in v1.37 *(item 181)*.
 
+**The firmware also stops on what the frames say** (owner): a stop of the master tile's own program, with no
+`ERRORS` bit and no toast pin. It ends its frame loop and parks; what follows is item 181. Its checks, as v1.37's
+firmware has them:
+
+| Check | The frame |
+| --- | --- |
+| `compression` above 1 | any |
+| a header frame that ends before its fields do; a frame whose data does not end where its fields do | any |
+| frame 3's format version not 1 | 3 |
+| frame 3's page counts for *s* that cannot be: the final image's below the Tracer's copy's | 3 |
+| **order:** a data frame with no header frame before it (frame 2 without frame 1, frame 5 without frame 4, frame 6 without frame 3 and the program image, frame 9 without frame 3, the cycle-0 image and the proof's table); frame 4 naming a base when none is established | 2, 4, 5, 6, 9 |
+| **length:** a data frame's `length` not its header frame's, frame 7's not 68 × *N* | 2, 5, 6, 7, 9 |
+| **room:** the page map used up, or more frames, runs or advice than its memory holds | — |
+
+An unknown frame type is dropped, not stopped on (30.3).
+
 ### 30.9 What it costs
 
-`[meas: v1.37's simulator]`, the forward count, the link at a byte a cycle, the 37 proof runs:
+`[meas: v1.37's simulator]`, the forward count, the link at a byte a cycle:
 
-| | |
+| | On |
 | --- | --- |
-| the master tile's wakes a proof, on the small guests | 46 to 54 |
-| a frame of update words | 2 to 4 wakes and 450 to 1,200 cycles awake, whatever its length |
-| the master tile awake, of the link's time to the hand-over, at 2²⁹ | 2.4 % to 7.0 % (EVM Zone 4.5 % to 7.0 %, Cyclone 2.4 % to 4.1 %); 2.0 % to 4.2 % without the boot |
+| the master tile's wakes a proof: 46 to 54 | the small guests (`test_master`'s fixtures) |
+| a frame of update words: 2 to 4 wakes and 450 to 1,200 cycles awake, whatever its length | the small guests |
+| the master tile awake, of the link's time to the hand-over, at 2²⁹: 2.4 % to 7.0 % (EVM Zone 4.5 % to 7.0 %, Cyclone 2.4 % to 4.1 %); 2.0 % to 4.2 % without the boot | the 37 proof runs (Quest 213) |
 
 What is left is a cost a proof, not a word: the boot (about 86,000 cycles), parsing the proof header (about 14,000 at
 *N* 64) and frame 8's counts. A proof is 50 to 100 ms (owner), of which this is 0.2 % to 0.6 %.

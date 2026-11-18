@@ -1952,11 +1952,14 @@ The core has Ingress copy the next *n* 128-bit words of a queue to an address (o
 - **Each word is one 128-bit `WRITE`,** as every peripheral DMA sends (17.4), and leaves its queue as it goes.
 - **A frame may be read out in pieces** (owner): the core copies the first word into its own memory, works out what
   the frame is, and deals with the rest. One transfer may run across link packets, up to the words in the queue.
-- **A count beyond the words in the queue at `DMA_START` is UB** (1.3): the DMA does not wait for words to arrive,
+- **A count beyond the words in the queue at `DMA_START` is UB** (1.3): the words in the queue when `DMA_START`
+  takes effect, at the end of its cycle, a link packet's words landing in that cycle included, and none later: the DMA does not wait for words to arrive,
   since one DMA serves both queues and a transfer waiting on the background would hold a foreground message behind
   it. The core loads `…_WORDS` and copies no more than that.
 - **Knowing a transfer is complete:** `EVENTS.dma_done`, the last word has left Ingress; and a counter's event at the
-  destination, the words have landed (12.3). The master tile arms its own counter for a copy into its own memory;
+  destination, the words have landed (12.3). **A copy's landing comes after its `dma_done`:** a word lands only
+  after it has left. So a core that waits for the landing alone, `dma_done` masked off, knows the transfer is no
+  longer in flight (17.6.7, 17.6.13). The master tile arms its own counter for a copy into its own memory;
   another tile arms its own. `dma_done` may be masked off when only the landing matters.
 - **A DMA transfer from the background queue while `DMA_FORWARD_COUNT.count` is not 0 is UB** (owner).
 
@@ -1996,7 +1999,9 @@ The word port, a `word_port` interface (3), is the only way into the Updater's d
 - **`valid` may fall without a word having moved:** a store of 0 to the count, or of a count with `discard` set,
   takes the offer back. While the count stands and the queue holds words, Ingress holds `valid`.
 - **The Updater's input is flow-controlled, with no credits** (owner): the two units sit side by side.
-- **Every output is a flip-flop.**
+- **Its outputs come from registers:** `valid` and `data` are functions of `count`, `discard` and the queue's head as
+  registered, so a word stored, discarded or forwarded at the end of *t* changes them from *t* + 1; `ready` is the
+  Updater's flip-flop. There is no separate copy of the offer.
 
 #### 17.6.7 The service flags
 
@@ -2007,10 +2012,13 @@ The word port, a `word_port` interface (3), is the only way into the Updater's d
 | foreground | it holds words, and no DMA transfer from it is in flight |
 | background | it holds words, `count` is 0, and no DMA transfer from it is in flight |
 
-- **"Asks" is a level, and the flag, a counted event of depth 1, is posted in the cycle the level rises:** when a
-  word arrives in an empty queue; when `count` reaches 0 with words in the queue; when a DMA transfer from the queue
-  ends with words still in it. A transfer of 0 words counts as a transfer. Words that arrive while the queue already
-  asks post nothing more.
+- **"Asks" is a level, and the flag, a counted event of depth 1, is posted when the level rises.** Any change that
+  makes it rise posts one: for example a word arriving in an empty queue; `count` reaching 0 with words in the
+  queue; a store of 0 to the count with words waiting; a DMA transfer from the queue ending with words still in it.
+  A transfer of 0 words counts as a transfer. Words that arrive while the queue already asks post nothing more.
+- **Its cycle:** the level is evaluated at the end of a cycle, after that cycle's word port move, DMA take, discard
+  and arrivals, and after a count store or a `DMA_START` that takes effect then (6.4). The flag is set at the end of
+  that cycle and seen by the next cycle's loads (17.2). With a flag already pending, a rise adds nothing: depth 1.
 - **In flight:** a DMA transfer is in flight from a queue while the DMA is busy with a transfer whose
   `DMA_HDR.queue` names it, from `DMA_START`'s effect to `dma_done` (17.4).
 - **The core wakes, and the flag is consumed,** by a load of `EVENTS` (17.2).
@@ -2084,7 +2092,6 @@ The link's are 28.13's. Beside them, at the signals' widths:
 | each incoming queue's pointers | 10 + 10 + 11 | read, write, the words held |
 | the service levels | 2 | each queue's "asks" of the last cycle, to post a flag when it rises |
 | `DMA_FORWARD_COUNT` | 32 | `count` (31) and `discard` |
-| the word port's outputs | 1 + 128 | `valid` and `data` |
 | the outgoing queue's pointers and marks | 9 + 9 + 10, and a mark a word | read, write, the words held; the frame's last word |
 | `EGRESS_COUNT` | 32 | |
 | Egress's credit | 8 | the words gone since the last credit returned |
@@ -3083,7 +3090,7 @@ an attach link included, in four cycles: three register stages and one for the r
 | `UART_TX` → the line | a byte pushed into an empty FIFO has its start bit on `uart_tx` from *t* + 3 | the RTL's | 17.6 | no line modelled |
 | `uart_rx` | the falling edge is seen two cycles after the pin's; bit *k* is sampled *k* · *D* + ⌊*D* / 2⌋ cycles after that, *D* the divisor | the RTL's | 17.6 | no receiver |
 | the forward count | a 128-bit word a cycle from the background queue, while it holds one and the Updater takes it; discarding a word a cycle | contract | 17.6.5 | not modelled |
-| a service flag | posted in the cycle its queue's "asks" rises: a word into an empty queue, the count reaching 0 with words waiting, a DMA transfer ending with words left | contract | 17.6.7 | not modelled |
+| a service flag | set at the end of the cycle its queue's "asks" rises (a word into an empty queue, the count reaching 0 or stored 0 with words waiting, a DMA transfer ending with words left, for example), seen by the next cycle's loads | contract | 17.6.7 | not modelled |
 | Egress | a link packet offered once 32 words of a frame, or its last, are in the outgoing queue; then the link's (28) | contract | 17.6.8 | not modelled |
 | the host link | a byte a link cycle each way; a full link packet 528 bytes; the pass over its data 32 cycles; the status at most 512 cycles apart; a recovery 669 cycles on average | contract; the figures `[meas: the model]` | 28 | not modelled |
 | the Updater | a value a cycle into the page memory while values come and stay in the page, and a cycle for each header word; each page brought in a look-up, each new page a write and its response then an update and its reply | contract, from its code | 17.10.5 | not modelled |

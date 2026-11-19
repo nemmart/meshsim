@@ -86,34 +86,39 @@ Ingress/Egress's model.
 
 **When:** † the first change after v1.37 is frozen.
 
-## 2. A countdown on Ingress/Egress that raises an error when it runs out (2026-11-19)
+## 2. Fix the watchdog (2026-11-19)
 
-**What** (owner): "a 32-bit register that's RW on Ingress/Egress that's a master clock. It gets decremented by 1
-every cycle. If it transitions from 1 to 0, it raises an error condition. If we write 0, it disables it."
+**What the owner asked for:** "a 32-bit register that's RW on Ingress/Egress that's a master clock. It gets
+decremented by 1 every cycle. If it transitions from 1 to 0, it raises an error condition. If we write 0, it
+disables it."
 
-Every row below is ruled: the first four are the owner's words, and the rest were proposed by the design
-session and accepted (owner, 2026-11-19: "all your rulings are right").
+**It is already there** (owner, 2026-11-19: "Oh, then it's already there. Let's change out ADD to just be fix
+the watchdog functionality"). Ingress/Egress has `WATCHDOG` at word 40 (17.6), v1.36's and in the RTL. This
+entry was first written as a new register at word 68; that is withdrawn, and **no new register is added.**
 
-| | |
-|---|---|
-| the register | 32 bits, read and written by the core like any other (owner) |
-| counting | while it is not 0 it goes down by 1 every cycle, whatever the core is doing (owner) |
-| running out | the step from 1 to 0 raises an error (owner) |
-| a store of 0 | turns it off: no count and no error (owner) |
-| a store of anything else | loads it and starts it; storing again before it runs out starts it afresh |
-| a load | what it holds now |
-| at the reset | 0, off |
-| after it runs out | it holds 0 and is off until it is stored again |
-| a store in the cycle it would step from 1 to 0 | the store wins, and there is no error |
-| the error | a sticky bit of Ingress/Egress's `ERRORS`, the next free one, [4]; so its tile's error, which stops the chip, as every peripheral's error does |
-| its name and place | `WATCHDOG`, at word 68, beside the four host words |
+**What `WATCHDOG` does today, and what the owner described:**
+
+| | today (17.6) | the owner's |
+|---|---|---|
+| the register | 32 bits, R/W: a store sets the limit and the count, a load returns the count | the same |
+| counting | down by 1 every cycle while it is not 0 | the same |
+| a store of 0 | stops it | the same |
+| at the reset | 0, off | the same |
+| **running out** | posts `EVENTS.watchdog` and sets the toast pin directly; nothing in `ERRORS` | **"raises an error condition":** a sticky bit of Ingress/Egress's `ERRORS`, the next free one, [4], so the master tile's error, and with it the toast pin, as every peripheral's error does |
+| **a `RELEASE`** | sets the count back to the limit, so a program that keeps releasing never runs out | † not in what the owner described. Kept, it is a keep-alive tied to the barrier; dropped, the count is set only by a store and there is no limit to hold |
+| a store in the cycle it would step from 1 to 0 | not stated | the store wins, and there is no error |
+
+So the fix is in what running out does, and perhaps in the reload on a `RELEASE` (†). The rulings of the first
+writing that still apply were accepted (owner: "all your rulings are right"): 32 bits, the store that wins, off
+after it runs out until it is stored again.
 
 **What it is for:** a limit on how long something may take. Software sets it before a piece of work and sets
-it again, or to 0, when the work is done; if the work hangs, the chip stops with an error and the host sees it,
-where today it would sit for ever. At a count a cycle, 32 bits is 4.29 seconds at 1 GHz: "plenty. 32 bits is the right size" (owner).
+it again, or to 0, when the work is done; if the work hangs, the chip stops with an error and the host sees it.
+At a count a cycle, 32 bits is 4.29 seconds at 1 GHz: "plenty. 32 bits is the right size" (owner).
 
-**What it would touch:** the specification (17.6's words and its `ERRORS`); Ingress/Egress's model. About 32
-flip-flops and a decrementer. No firmware is asked for with it.
+**What it would touch:** the specification (17.6's `WATCHDOG`, `EVENTS` and `ERRORS`; the firmware's use of the
+watchdog in 22); Ingress/Egress's model. **The watchdog is hardware the RTL has built, so the change is asked of
+Tony** when it is designed (`RTL-CHANGE-REQUESTS.md`). No firmware is asked for with it.
 
 ## 3. The next project: the RW peripheral, and the mesh's two regimes (2026-11-19)
 

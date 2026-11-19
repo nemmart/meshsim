@@ -90,7 +90,7 @@ Nothing here needs an answer before you build. Tell us what you chose, and the s
   These are estimates from the simulator's code, not synthesis; yours will replace them.
 - **What is coming next,** so that room can be kept for it (`TO-ADD.md`): twelve statistics counters for each
   link in Ingress/Egress's window, the parent link's at words 96 to 107 and the child link's at 112 to 123; a
-  32-bit countdown register that raises an error when it runs out; and the next project, the RW peripheral,
+  change to `WATCHDOG`, so that running out raises an error in `ERRORS`; and the next project, the RW peripheral,
   with two regimes for a full router queue on a compute tile, an error or flow control.
 - **What is open** in the design is chapter 26 of the specification and 28.17 and 29.16 of the link's and the
   frames'; what the simulator owes is `OPEN-v1.37.md`.

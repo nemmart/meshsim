@@ -67,5 +67,9 @@ asked: Tony settles it and tells us, and the specification's figures follow.
 
 ## For consideration, not requests
 
+- **The watchdog** (`TO-ADD.md`, entry 2): running out to raise an error in Ingress/Egress's `ERRORS`, where
+  v1.36's posts `EVENTS.watchdog` and sets the toast pin directly. Not designed yet; it becomes a request when
+  it is (owner, 2026-11-19: "fix the watchdog functionality").
+
 - **The Tracer's jump cache, from 64 entries to 128** (17.9.4). To look at again as more of the design is done
   (second design note, section 5).

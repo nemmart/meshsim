@@ -1299,3 +1299,8 @@ row of `RTL-CHANGE-REQUESTS.md`; this is the short form.
   at word 68. Ingress/Egress already has a `WATCHDOG`, at word 40 (17.6): a count down from a limit the program
   sets, set again by every `RELEASE`, which on running out posts `EVENTS.watchdog` and raises the toast pin. The
   new one needs another name, or is a change to that one. Not ruled on.
+- **Ruled** (owner, about 5:20 a.m.): "Oh, then it's already there. Let's change out ADD to just be fix the
+  watchdog functionality." No new register. `TO-ADD.md`'s entry 2 is now "Fix the watchdog": running out raises
+  an error in `ERRORS` where today it posts an event and sets the toast pin directly. Whether a `RELEASE` still
+  sets the count back to the limit is not ruled (†). The watchdog is in the RTL, so the change is asked of Tony
+  when it is designed.

@@ -6,9 +6,10 @@ written, put on wires that misbehave, and searched. No chip, no mesh, nothing of
 **Where it stands (2026-11-18):** on HL as it now stands: the header of 16 bytes, one run of packet numbers for a
 link, "stop" holding only packets not yet numbered, the data masked on the wire, and the sender's fast unit.
 **Everything run so far holds:** the searches, on one link and on chains of 1, 2 and 3; 18 planted bugs; a case for
-every rule; the random runs made here and the runner's campaign. `../planning/sessions/WORKER8/REPORT.md` has the
-results and the figures; `../planning/sessions/WORKER8/HARDWARE.md` has the link end as hardware; `rates.py` is
-still of the header before.
+every rule; the random runs made here and the runner's campaign. `REPORT.md` has the results and the figures, and
+`HARDWARE.md` has the link end as hardware. Both are in `../planning/sessions/WORKER8/`; a copy of this folder that
+stands alone (v1.37's `link/`) has them beside this page, with `make_task.sh`, which writes the runner's tasks.
+`rates.py` is still of the header before.
 
 **To build on the link, read the next section and `hostlink.h`, and nothing else.**
 

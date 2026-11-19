@@ -72,6 +72,5 @@ material of the copied code or documents:
 - gold's own development checks (`pipeline/frames/gold/test/frames/old_unchanged.sh`, `guests.sh`,
   `workloads.sh`) compare it with `../v1.36/` and `../v1.3/`; the simulator's checks of gold are its own
   (`tests/updater/make_fixtures.sh --check`, the packet vectors);
-- the link's `Makefile` names WORKER8's notes (`../planning/sessions/WORKER8/HARDWARE.md`) for its documents' target;
 - the documents' history: the session reports and briefs of `../updater_wip/planning/sessions/` that the pages here
   cite as where a figure or a decision came from.

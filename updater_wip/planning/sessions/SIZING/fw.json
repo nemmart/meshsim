@@ -1,0 +1,149 @@
+{
+ "updater": {
+  "raw: a header word": {
+   "fw": 15,
+   "hw": 1,
+   "link": 8.0,
+   "share": 1.875
+  },
+  "raw: a value into the page held, the general path": {
+   "fw": 25,
+   "hw": 1,
+   "link": 8.0,
+   "share": 3.125
+  },
+  "raw: a value, the fast path (a stretch of a run in the page, unrolled by 4)": {
+   "fw": 5.5,
+   "hw": 1,
+   "link": 8.0,
+   "share": 0.6875
+  },
+  "LRU: a hit at index 0, a value": {
+   "fw": 41.8125,
+   "hw": 1,
+   "link": 0.75,
+   "share": 55.75
+  },
+  "LRU: a hit at index 8, a value": {
+   "fw": 131.8125,
+   "hw": 1,
+   "link": 0.75,
+   "share": 175.75
+  },
+  "LRU: a 34-bit miss, a value": {
+   "fw": 63.9375,
+   "hw": 1,
+   "link": 4.25,
+   "share": 15.044117647058824
+  },
+  "LRU: a 66-bit miss, a value": {
+   "fw": 81.9375,
+   "hw": 1,
+   "link": 8.25,
+   "share": 9.931818181818182
+  },
+  "LRU: a header word (a 66-bit miss)": {
+   "fw": 71.9375,
+   "hw": 1,
+   "link": 8.25,
+   "share": 8.719696969696969
+  },
+  "LRU: the fixtures' mix (4469 codes: 80% hits, mean index 0.13; 17.3 bits a code)": {
+   "fw": 50.56596833743566,
+   "hw": 1,
+   "link": 2.1639628552248826,
+   "share": 23.367299588966727
+  }
+ },
+ "cache": {
+  "a look-up, a depth-2 file, both lines in the cache, found at the first way probed; no replacement order kept": {
+   "fw": 105,
+   "hw": 6
+  },
+  "the same, true LRU kept (23.6.1)": {
+   "fw": 193,
+   "hw": 6
+  },
+  "a look-up, a depth-2 file, both lines in the cache, found at the mean way, 4.5 probes; no replacement order kept": {
+   "fw": 126.0,
+   "hw": 6
+  },
+  "the same, true LRU kept (23.6.1), 4.5 probes": {
+   "fw": 214.0,
+   "hw": 6
+  },
+  "a fill read, a depth-3 file, its four lines in the cache, 4.5 probes, true LRU; the line's 32 words copied": {
+   "fw": 482.0,
+   "hw": 10
+  },
+  "a line missing: the probes that miss, the victim, the fetch, the install (besides the wait for LPDDR)": {
+   "fw": 80.5,
+   "hw": 13
+  },
+  "a dirty victim's write-back, besides its wait": {
+   "fw": 9,
+   "hw": 3
+  }
+ },
+ "pages": {
+  "a value in another page: the page held flushed in place, the next looked up and held": {
+   "fw": 39,
+   "hw": 6
+  },
+  "a fault's step at an index level: source read, owned bits cleared (1,024 entries), page taken, written, entry updated": {
+   "fw": 7459,
+   "hw": 5
+  },
+  "the same at the data level (no owned bits to clear)": {
+   "fw": 35,
+   "hw": 5
+  }
+ },
+ "lru_mix": {
+  "frames_lru": 11,
+  "frames_raw": 15,
+  "codes": 4469,
+  "hits": 3571,
+  "m34": 104,
+  "m66": 794,
+  "bits": 77366,
+  "raw_words": 6204,
+  "hit_share": 0.7990601924367867,
+  "bits_a_code": 17.31170284179906,
+  "mean_hit_index": 0.13133576029123495,
+  "hit_index_hist": [
+   3530,
+   4,
+   4,
+   0,
+   2,
+   2,
+   1,
+   3,
+   4,
+   1,
+   1,
+   3,
+   0,
+   0,
+   3,
+   1,
+   2,
+   0,
+   1,
+   1,
+   0,
+   1,
+   1,
+   1,
+   1,
+   1,
+   0,
+   0,
+   2,
+   0,
+   0,
+   1
+  ]
+ }
+}

@@ -1223,3 +1223,19 @@ stopping. They are owed, as an open item of v1.37, for an idle night.
 tiles reworked for the record's path and the reply's layout; the folder made to stand alone, as v1.36's does;
 one last pass on the runner from that tree.
 
+**Added about 2 a.m., from the build session's rework** (`INTEGRATOR/FOR-THE-SPEC.md`, 7 and 8):
+
+- **The master answers the tracer tile's result only after the block has landed.** The answer ends the tracer
+  tile's image, so before that nothing would be there to serve the request for the block. It is what keeps
+  C&C3 ready to respond, and the owner's scheme again: "C&C3 should build the packet in SRAM and be ready to
+  respond when tracing finished. C&C1 decides the actual timing: it does the replays first, then asks for the
+  packet from C&C3, then sends the response out to the daisy chain."
+- **After the reply the master goes on serving its tiles** (it waits for the tracer tile's next `LOAD` before it
+  parks, so its count of them is whole). The reply goes out first and waits for nothing; "parks" is the
+  simulation's word. The owner: fine; "the software will change a lot, so this is not a critical issue at all."
+- **The firmware waits for the block's counter before it sends the reply, and that wait has no test.** With the
+  wait taken out, every run still passes: the master needs more cycles to start its transfer into Egress than
+  the block needs to arrive. The owner: "The firmware should wait. That eliminates the race. I don't really care
+  that we couldn't detect the race; we know it's potentially there if we don't wait." No test is added; it is
+  listed in v1.37's open items as a test owed.
+

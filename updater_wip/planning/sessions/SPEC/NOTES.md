@@ -350,7 +350,7 @@ More will go here as I check the text against the code.
 
 | item | what | where |
 | --- | --- | --- |
-| 178 | a flush of the Tracer's dirty lines, at a trace's end or at shutdown: nothing reads them today | 23.6.3 |
+| 178 | a flush of the Tracer's dirty lines, at a trace's end or at shutdown: closed (owner, 2026-11-19): none is needed, the run state is thrown away and the Updater has applied the updates in another set of pages | 23.6.3 |
 | 179 | the cache writing a set's dirty least recently used line back early, in place (WORKER5's recommendation) | 23.6.7 |
 | 180 | who discards a page when the file system hands it out again | 23.6.8 |
 | 183 | a background link packet with data from below (HL-5; owner: as written) | 28.12 |
@@ -388,6 +388,8 @@ More will go here as I check the text against the code.
 | — | reviews before any merge | owner (06:31): checklists for WORKER5, WORKER6, WORKER7, WORKER8 in this folder |
 | 16 | the four reviews' answers | ruled (07:19), applied: WORKER5 list 1 (57d5d6d), its stale read a bug in the code, first in FOR-THE-SIMULATOR; WORKER6 list 1, the reach limits UB (8397c00); WORKER7 both lists, the firmware's frame checks a stop of its own in 30.8 (e6db0dc); WORKER8 list 1, the reset as measured in 28.14, the stale `link_error` under item 181, list 2 to FOR-THE-SIMULATOR. Not merged |
 | 17 | an unknown frame type | ruled (07:44): a stop, one of the firmware's content checks (30.8); a known type's frame this ASIC has no use for is discarded (30.3) |
+| 18 | the build session's six notes (`INTEGRATOR/FOR-THE-SPEC.md`), ruled in `v1.4_wip/planning/DESIGN-NOTES-2026-11-16.md` 39 | applied on `v137-spec-39`: 1 the 32-bit index bounds the reach (17.10.2, invariant 36, 29.4); 2 the three joint checks named with their rules (23.6.8, 23.6.11, invariant 37); 3 one handshake, one request, on the client, verified by an assertion in the RTL (17.9.5, 23.6.4); 4 the RW engine's figure at its own port, and where the simulator's cycles no longer match the RTL's tests (17.7, 21.5); 5 the last record pulled by `SEND_END` (17.9.10, 11.5, 30.6), the reply 72 data words (29.14, 30.7); 6 no bit for a reply that has left (17.6.8, 30.7). Item 192, the link's parked runs. Name chosen: `SEND_END`, and its fields (word 0 [20:18] `data_counter`, word 1 the address) |
+| 19 | item 178, a flush of the Tracer's dirty lines | ruled (00:40): closed, none needed (23.6.3, chapter 26) |
 | to come, one at a time | anything new that changes hardware or working code | |
 
 ## 11. Found in the sources while writing

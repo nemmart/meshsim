@@ -131,20 +131,47 @@ each compute tile arrives when its window has landed; at the **second barrier,**
 tile releases and every compute tile replays; at the **third,** the passes end. The master tile serves the requests
 it receives meanwhile, the tiles' results and the tracer tile's among them, and the Updater's third run ends.
 
-**The tracer tile's result** carries its last record, the Tracer's record at the segment's end (17.9.2), to the
-master tile (owner): the master tile does not reach into the tracer tile.
+**The tracer tile's result** says the trace is done, as v1.36's does.
+
+**The tracer tile's last record is pulled, not pushed** (owner): the master tile does not reach into the tracer
+tile; it asks, and the tracer tile sends.
+
+1. **When its trace ends, the tracer tile prepares one block in its own memory,** everything it gives to the reply,
+   then sends its result. This overlaps the compute tiles' replays, so it costs the segment no time.
+
+   | Word | Holds |
+   | --- | --- |
+   | 0 | [31:0] the rows traced, the windows run times `RUN_CONFIG.rows`; [63:32] the Tracer's `ERRORS`; [95:64] its `STATUS`; [127:96] 0 |
+   | 1–68 | the Tracer's record at the segment's end (17.9.2), 68 words |
+
+2. **When the master tile has the report that all the replay is done,** every compute tile's result and the tracer
+   tile's in, it sets aside the block's 69 words in its own memory, as words 4 to 72 of the reply's buffer (29.14),
+   **arms a counter for 69 packets,** and **sends the tracer tile one request,** `SEND_END` (17.9.10), target 2
+   (11.2): word 0 [20:18] that counter as `data_counter`; word 1 the byte address of the reply's word 4; words 2
+   and 3, 0. It asks for the data alone, no reply (11.4), and is outstanding until the data has landed (11.3).
+3. **The tracer tile sends the block by one DMA transfer,** 69 128-bit `WRITE`s to that address up, counted on that
+   counter, along the line between the special tiles (16.1).
+4. **When the counter reaches 0, every word has landed,** and the master tile sends the reply (30.7).
+
+It is firmware on both tiles, and no hardware.
 
 ### 30.7 The segment's end: the reply
 
-When the segment has run (the three releases, every result in, the Updater's last `done`), **the master tile sends
-the reply** (29.14):
+When the segment has run (the three releases, every result in, the Updater's last `done`) and the tracer tile's
+block has landed (30.6), **the master tile sends the reply** (29.14):
 
-1. **It builds the frame in its own memory:** 72 128-bit words, the header word first, `length` 71.
-2. **It stores 72 in `EGRESS_COUNT`** (17.6.8), which is 0.
-3. **It writes the 72 words into part 1 of its own region 0x04** with 128-bit `WRITE`s, from one sending unit, in
-   order. 72 words take one credit of the two the reset gives, so no wake is needed; a reply of more than 256 words
+1. **It writes words 0 to 3 of the reply's buffer,** the header word first, `length` 72. Words 4 to 72 are the
+   block, already there: it copies nothing.
+2. **It stores 73 in `EGRESS_COUNT`** (17.6.8), which is 0.
+3. **It writes the 73 words into part 1 of its own region 0x04** with 128-bit `WRITE`s, from one sending unit, in
+   order. 73 words take one credit of the two the reset gives, so no wake is needed; a reply of more than 256 words
    would wait on `egress_credit` between each 256.
-4. Egress sends it as three link packets on the foreground (17.6.8), behind any it is forwarding from below.
+4. Egress sends it as three link packets on the foreground (17.6.8), 32, 32 and 9 words, behind any it is
+   forwarding from below.
+
+**Then it is done** (owner): once `EGRESS_COUNT` reads 0 the frame is the link's, and the master tile does not wait
+for it to leave; no bit would tell it. The host's frames are requests and the reply is the answer. **A simulation
+ends when the host has every ASIC's reply,** not when a master tile parks.
 
 ### 30.8 On an error, and a stop of its own
 

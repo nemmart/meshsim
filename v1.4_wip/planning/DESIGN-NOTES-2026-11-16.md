@@ -1265,3 +1265,37 @@ one last pass on the runner from that tree.
 - **After it:** the folder's document check and copies check pass, and the final pass on the runner is made from
   the tree as it then stands.
 
+
+## 41. The list for Tony, gone through with the owner; the release note (2026-11-19, about 4:30 to 5:15 a.m.)
+
+The owner asked to go through what is asked of Tony one item at a time. What he said of each is recorded in its
+row of `RTL-CHANGE-REQUESTS.md`; this is the short form.
+
+| item | the owner |
+|---|---|
+| the line between the special tiles (RCR 1) | in the design: "c&c1 <-> c&c2 <-> c&c3". No wrap-around link from C&C3 to C&C1: little traffic between them |
+| the UART's registers (RCR 2) | better: "registers above 32 should actually be registers and not things like queue end points" |
+| a special tile's DMA (RCR 3) | "these should go into the +8 links" |
+| the memory tile's peripherals (RCR 4) | Tony is "expecting a full redesign" of the RW engine, so its move to peripheral 2 comes with that |
+| the host interface removed (C) | agreed, as before |
+| the port to the LPDDR controller (A) | **a question, not a request:** "I really don't know how our AXI interface will look. I'm not sure he does either" |
+| the AXI arbiter (B) | Tony knows it is coming |
+| where the Updater sits (D) | Tony's to decide. A guess and not a preference: close to C&C1, the AXI port and the cache's request bus running across the chip |
+| the link's clock (item 186) | "an RTL/backend issue": they settle it and change the cycle counts |
+| the header's CRC while the fast unit is busy | the same: the RTL's |
+| the pins | **`lvds_parent`, `lvds_child` and `chain_end`** (1: the last ASIC on the chain; the opposite sense to `chain_next`). A rename for v1.4; v1.37 is frozen with `link_up`, `link_down`, `chain_next` |
+| the assertion on `fill` | fine as it stands |
+| where the simulator's cycles no longer match the RTL's tests | told as information; nothing done now; matched again when the RTL has the arbiter and the DMA on south |
+| the sizes | given as "a preliminary sizing of the state machines & control circuits for Cache and Updater", by a pointer |
+
+- **A release note** (owner: "We probably should start a release note doc... Release note might be a good
+  spot"). **`v1.37/RELEASE-NOTE-v1.37.md`** is the one page for Tony, in four parts: asked of you, a question for
+  you, yours to settle, for your information. It also says what is coming next, so that room can be kept: the
+  link's statistics, the countdown register and the RW peripheral (`TO-ADD.md`).
+- **It is a new file in a frozen folder.** The rule lets a frozen folder take an errata file; the release note
+  is taken the same way: it edits nothing that was there, and the folder's document check passes with it. The
+  design session's choice, the owner not having said; it moves with one `git mv` if he wants it elsewhere.
+- **Found while writing it, for the owner:** `TO-ADD.md`'s entry 2 names the new countdown register `WATCHDOG`,
+  at word 68. Ingress/Egress already has a `WATCHDOG`, at word 40 (17.6): a count down from a limit the program
+  sets, set again by every `RELEASE`, which on running out posts `EVENTS.watchdog` and raises the toast pin. The
+  new one needs another name, or is a change to that one. Not ruled on.

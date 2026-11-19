@@ -15,6 +15,12 @@ link** is the one to the next ASIC on the daisy chain. ("Server" and "client" we
 the arbiter's clients and the simulator's `--client`.) v1.37's specification says "up" and "down" (`link_up`,
 `link_down`), so this is a rename there.
 
+**The pins' names** (owner, 2026-11-19, going through the list for Tony): **`lvds_parent`** and
+**`lvds_child`** for the two links, in place of `link_up` and `link_down`; and **`chain_end`** in place of
+`chain_next`, with the opposite sense: 1 says this ASIC is the last on the daisy chain, so its child link is
+unused and nothing is forwarded down, where `chain_next` 1 said another ASIC follows. v1.37 is frozen with the
+old names; Tony is given the new ones (`v1.37/RELEASE-NOTE-v1.37.md`), and the specification takes them in v1.4.
+
 **Why statistics.** The simulator's link end counts every kind of damage and recovery. The chip as specified
 shows the core none of it: Ingress/Egress has no statistics words, and the only thing a core sees of a link is
 `link_error` when it starts again. On real hardware nothing would say how noisy a link is. The owner wants an

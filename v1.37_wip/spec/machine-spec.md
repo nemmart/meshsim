@@ -4261,18 +4261,18 @@ alone: its line *l* < 32 is the root's line *l*.
 | Register | Bits | What it holds |
 | --- | --- | --- |
 | a look-up port's request register, × 4 | 135 | `valid`; `op` (2), `root` (31), `depth` (2), `page` (30), `level` (2), `entry` (32); three waits: **parked** (an update in the slot), **for the miss handler**, **for the slot**; **the failed line** (31) and its valid bit: a line whose fetch for this request failed |
-| `fill`'s read register | 102 | `valid`; root (31), depth (2), line (35); the wait for the miss handler; the failed line and its bit |
+| `fill`'s read register | 103 | `valid`; root (31), depth (2), line (35); the wait for the miss handler; the failed line and its bit; whether it was taken while `fill`'s write register held a write, and so waits behind it (23.6.4) |
 | `fill`'s write register | 1,127 | as the read's, with the line's 1,024 bits and the wait for the slot |
 | the front end | 7 | the round-robin pointer over the six sources (3); the source a miss was just handled for, and its valid bit |
-| the walker | 1,358 | its state (2); the source (3); the level *k* (2); the discard's line count (6); the page at level *k* (31); the line being looked up (31); the hit way (3); whether every entry so far was owned; the line's dirty bit; a read pending; the line register (1,024); the set's tag row as read (216); a reply waiting for the bus: status (3), level (2), entry (32) |
+| the walker | 1,141 | its state (2); the source (3); the level *k* (2); the discard's line count (6); the page at level *k* (31); the line being looked up (31); the hit way (3); whether every entry so far was owned; a read pending; the line register (1,024); a reply waiting for the bus: status (3), level (2), entry (32). The set's tag row is not a register of the walker's: it is the tag memory's output, which holds the row until the next read, and the walker is its only reader |
 | the miss handler | 1,321 | its state (3); the line to install (31) and its set (9) and way (3); the victim's tag (22), valid and dirty bits; whether it allocates without a read; its error bit; `arvalid`; a copy made; the source it serves (3); the beats in (4); the set's tag row (216); the line buffer (1,024) |
-| the AXI writer | 1,070 | busy; the address taken; the beat (4); the line address (31); the line (1,024); a queue of 4 kinds, update or write-back, in the order of their responses, with its head and count |
-| the update slot | 81 | valid; its source (3), set (9), way (3), level (2), line (31), and the entry before (32) |
+| the AXI writer | 1,064 | busy; the address taken; the beat (4); the line address (25, as AW carries it); the line (1,024); a queue of 4 kinds, update or write-back, in the order of their responses, with its head and count |
+| the update slot | 80 | valid; its source, a look-up port (2); set (9), way (3), level (2), line (31), and the entry before (32) |
 | the tag-write guard | 10 | the set the miss handler last wrote (9), and whether that write was in or after the cycle of the walker's tag read: a row read before it landed is read again |
 | the error | 1 | sticky: an LPDDR error no client was told of (23.6.9) |
-| the outputs | 1,259 | the four `ready`s; the reply bus (40); `fill`'s two `ready`s, its read response (`valid`, `status`, 1,024 bits of `data`) and its write response (`valid`, `status`); the AXI port's AR (`arvalid`, 25 bits of line address), AW (the same) and W (`wvalid`, `wdata`, `wlast`); the error |
+| the outputs | 1,258 | the four `ready`s; the reply bus (40); `fill`'s two `ready`s, its read response (`valid`, `status` (2), 1,024 bits of `data`) and its write response (`valid`, `status`); the AXI port's AR (`arvalid`, 25 bits of line address), AW (the same) and W (`wvalid`, `wdata`, `wlast`); the error |
 
-**In all about 6,880 flip-flops** (6,876 as counted), five of them line registers of 1,024 bits: the request
+**In all about 6,650 flip-flops** (6,652 as counted), five of them line registers of 1,024 bits: the request
 register of `fill`'s write, the walker's line, the miss handler's buffer, the AXI writer's line and `fill`'s read
 response. An implementation may share them where their uses never overlap.
 
@@ -4773,7 +4773,7 @@ not used here.
 | the special tiles (2.1) | tile instances with the compute tile's scratchpad, `SCRATCHPAD_BYTES`, each a tile's logic plus its peripheral and, with a sending peripheral, its DMA | not estimated here. v1.35 gave them 2 MiB of big SRAM each |
 | the master tile's Ingress/Egress (17.6): the host link, two link ends and four forwarding buffers (28.13.7); the incoming queues; the outgoing queue; the UART | 1,424 flip-flops for the link; 77,312 bytes of SRAM for the link, 32 KiB for the incoming queues, 8 KiB for the outgoing `[derived]` | not estimated in mm². The link's CRC units: two of 128 bits a cycle, about 2,490 XOR gates each before sharing, and two of a byte, about 270 each `[derived]` |
 | the master tile's Updater (17.10) | 4,193 flip-flops, 2,048 of them the LRU table; 4 KiB of page memory and 1 KiB of free page queue `[derived]` | not estimated in mm² |
-| the memory tile's memory system (17.11, 23): the cache's controller, its memory and the AXI arbiter | the cache's memory 512 KiB of data and 13.5 KiB of tags, each two-ported; about 6,880 flip-flops in the controller, five 1,024-bit line registers among them, which an implementation may share; 1,539 in the arbiter `[derived]` | not estimated in mm². The memory system sits with the LPDDR controller and the tracer tile, whose latency matters (RCR D) |
+| the memory tile's memory system (17.11, 23): the cache's controller, its memory and the AXI arbiter | the cache's memory 512 KiB of data and 13.5 KiB of tags, each two-ported; about 6,650 flip-flops in the controller, five 1,024-bit line registers among them, which an implementation may share; 1,539 in the arbiter `[derived]` | not estimated in mm². The memory system sits with the LPDDR controller and the tracer tile, whose latency matters (RCR D) |
 | once per die: the request tree's nodes (11.3), `MESH_SIZE` row nodes and the root, a 16-byte buffer per input, their arbiters and the root's credit counters; the three receive queues, 128, 256 and 128 × 128 bits at 8 × 8, each in its receiving tile's request unit; the tree's wiring (18 wires a link: 16 data, valid, ready) and a credit wire from each receiving tile | ≈ 74 Kbit | ≈ 0.03 mm² plus wiring |
 
 Rule of thumb: tables go in SRAM (cheap); comparators, multiplexers and per-entry flop state are what spend the

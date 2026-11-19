@@ -1137,3 +1137,29 @@ where they are stated; this is how they were reached.
   `updater_wip/planning/sessions/INTEGRATOR/PROMPT.md`, rewritten against the specification. Its worklist is
   the specification session's `FOR-THE-SIMULATOR.md`.
 
+## 38. v1.37 built to the specification; the controllers sized (2026-11-18 evening to 2026-11-19)
+
+- **The build session brought the simulator, the firmware and the tests to the specification in a day**
+  (`updater_wip/planning/sessions/INTEGRATOR/REPORT.md`), using the state machines already built as its basis
+  (owner). Merged into `main`: the Updater's controller on the real arbiter and cache, with the memory system as
+  the memory tile's peripheral 1; the special tiles' line; Ingress/Egress at the specification's registers,
+  with Egress and the new UART; WORKER8's link end as the chip's link; the reply frame; the driver and two
+  chips as three processes on WORKER10's wire. At 2²⁹ on both workloads the driver and two chips pass every
+  proof check against gold, both replies match, and a second run is the same to the cycle (Quests 260 to 263).
+  - It found a firmware bug (a header frame one row too long did not stop the master) and left six notes for
+    the specification (`INTEGRATOR/FOR-THE-SPEC.md`), two of them gaps: how the tracer tile's 68-word record
+    reaches the master, and that nothing tells the master the reply has left the outgoing queue.
+  - What is left is the owner's: what is frozen and when, and WORKER8's parked runs of the link (Quests 238 to
+    242).
+- **The owner asked how big the two controllers are,** and why: "we're really replacing a general processor with
+  a fixed logic controller. Is that the right call?" A session counted them from the code. **Each is about one
+  and a half cores of logic** (the cache's controller 41 to 84 kGE, the Updater's 42 to 59, the core 34 to 43),
+  **and in firmware the same work would take a core 25 to 100 times as many cycles:** 3 cores' worth of time to
+  keep up with raw update words in short runs, 10 to 23 with LRU-coded ones, and a cache 17 to 48 times slower
+  on a hit. So the call rests on speed, not on size. What it gives up is that the update word's format and the
+  cache's rules cannot be patched in a made chip; the policy stays in the master tile's firmware.
+  - Written up in `CONTROLLER-SIZING.md`; the full report and its scripts are
+    `updater_wip/planning/sessions/SIZING/`.
+  - It corrected the specification's count of the cache's controller, 6,876 flip-flops to 6,652 (23.6.5 and
+    chapter 24).
+

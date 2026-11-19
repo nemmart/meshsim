@@ -5,10 +5,11 @@
 # pipeline/gold, which is v1.3's and pinned by pipeline/FROM-V1.3.sha256). tools/check_copies.sh checks them.
 # Added 2026-11-19, before the freeze: the link's report and its hardware document (link/REPORT.md, link/HARDWARE.md) and
 # its task generator for the runner (link/make_task.sh), all WORKER8's, from updater_wip/planning/sessions/WORKER8/;
-# link/README.md copied again, its pointer to the report now right in both places.
+# link/README.md copied again, its pointer to the report now right in both places; link/Makefile copied again, taking
+# HARDWARE.md from beside it when it is there.
 181314065df2f2fdaf920b1a8b5311daa216a2d6489a06ada5b49cc514d89417  link/.gitignore  updater_wip/link/.gitignore
 00a25ce27a0b1717479cee5d8c9966c49f20427f7a475d767f9f0c4c774dfe6d  link/HARDWARE.md  updater_wip/planning/sessions/WORKER8/HARDWARE.md
-e19b94cbdf64d0017c47a76a08293d6ec006fefda31ef6274483af8092a749de  link/Makefile  updater_wip/link/Makefile
+6d45cbe47555aa50d6967b8e853117f663c8b00c462f695f4a404760a61945ba  link/Makefile  updater_wip/link/Makefile
 b0f8d8a8442a65cbbc76fa922566d1caabe3c910e353cb27fa178194bfdc8e9c  link/README.md  updater_wip/link/README.md
 bb4678b842d71cdcdd2e1c25cbd7dadadd049477b71a9d3cb0822d0e88b97c37  link/REPORT.md  updater_wip/planning/sessions/WORKER8/REPORT.md
 3b8e3384e2d1c05f5e2e45936561892df96982cbdf09f25dc230ae189dda5f5c  link/archive.h  updater_wip/link/archive.h

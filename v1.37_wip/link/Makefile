@@ -15,7 +15,8 @@ LIB      := link_end.cpp bench.cpp node.cpp chain.cpp hostlink.cpp
 PROGS    := test_header test_link linkcase linksearch linkrun linkcost test_hostlink test_reset linkhw
 API      := hostlink.cpp link_end.cpp node.cpp
 EXAMPLES := back_to_back chain_reply
-HARDWARE := ../planning/sessions/WORKER8/HARDWARE.md
+# HARDWARE.md is beside this file in a copy of the folder that stands alone, and with WORKER8's papers otherwise.
+HARDWARE := $(if $(wildcard HARDWARE.md),HARDWARE.md,../planning/sessions/WORKER8/HARDWARE.md)
 VECTORS  ?=
 
 all: $(PROGS:%=build/%) lib
@@ -62,7 +63,7 @@ check: $(PROGS:%=build/san/%) $(PROGS:%=build/clang/%) $(PROGS:%=build/%)
 	./readme_examples.sh
 	build/linkhw > build/hardware.txt
 	@if grep . build/hardware.txt | grep -Fxv -f $(HARDWARE) | grep -q .; then echo "HARDWARE.md does not hold linkhw's tables:"; grep . build/hardware.txt | grep -Fxv -f $(HARDWARE) | head -5; exit 1; fi
-	@echo "HARDWARE.md holds linkhw's tables as they are"
+	@echo "$(HARDWARE) holds linkhw's tables as they are"
 	@echo "make check: ok"
 
 examples: $(EXAMPLES:%=build/ex_%)

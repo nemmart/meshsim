@@ -33,6 +33,11 @@ it cannot be added once the chip is made.
 **The counters** †, twelve for each link, 32 bits each, 24 registers and about 768 flip-flops in all. They wrap,
 and software takes the difference of two readings.
 
+**Where they are** (owner): plain registers in Ingress/Egress's window, read by the core like any other.
+**The parent link's at words 96 to 107, the child link's at words 112 to 123,** a block of 16 each, the same
+counter at the same place in both. (The owner's first thought was 64 and 96; words 64 to 67 are the four host
+words.)
+
 | counter | counts |
 |---|---|
 | good received | link packets that passed both checks |
@@ -65,14 +70,12 @@ and software takes the difference of two readings.
 | the link packets' error rate | (bad headers + bad data) ÷ (good received + bad headers + bad data) |
 | what sending again cost | sent again ÷ sent |
 
-**A command to read them.** † The counters are of use only if the host can ask for them: a frame on the
-foreground stream that has every ASIC send its counters back, sorted by hops at the host. It is the case the
-owner gave when the chain was designed (the FPGA runs a query on all the ASICs and puts the answers together by
-the hop count). Nothing on the foreground is designed but the reply frame, so the counters and the command are
-best done together.
+**No firmware goes with them** (owner: "don't worry about the firmware support. These should just be mapped
+into the registers"). How the host comes to read them, a command on the foreground stream or anything else, is
+not part of this.
 
 **What it would touch:** the specification (17.6's words, chapter 28's names and a list of what a link end
-counts, 29 for the command); the link's code (`hostlink.h` counts recovery rounds but not by direction, and not
-stops); Ingress/Egress's model; the master tile's firmware for the command.
+counts); the link's code (`hostlink.h` counts recovery rounds but not by direction, and not stops);
+Ingress/Egress's model.
 
 **When:** † the first change after v1.37 is frozen.

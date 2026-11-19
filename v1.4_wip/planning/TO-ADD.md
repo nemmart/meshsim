@@ -79,3 +79,30 @@ counts); the link's code (`hostlink.h` counts recovery rounds but not by directi
 Ingress/Egress's model.
 
 **When:** † the first change after v1.37 is frozen.
+
+## 2. A countdown on Ingress/Egress that raises an error when it runs out (2026-11-19)
+
+**What** (owner): "a 32-bit register that's RW on Ingress/Egress that's a master clock. It gets decremented by 1
+every cycle. If it transitions from 1 to 0, it raises an error condition. If we write 0, it disables it."
+
+| | |
+|---|---|
+| the register | 32 bits, read and written by the core like any other (owner) |
+| counting | while it is not 0 it goes down by 1 every cycle, whatever the core is doing (owner) |
+| running out | the step from 1 to 0 raises an error (owner) |
+| a store of 0 | turns it off: no count and no error (owner) |
+| a store of anything else | † loads it and starts it; storing again before it runs out starts it afresh |
+| a load | † what it holds now |
+| at the reset | † 0, off |
+| after it runs out | † it holds 0 and is off until it is stored again |
+| a store in the cycle it would step from 1 to 0 | † the store wins, and there is no error |
+| the error | † a sticky bit of Ingress/Egress's `ERRORS`, the next free one, [4]; so its tile's error, which stops the chip, as every peripheral's error does |
+| its name and place | † `WATCHDOG`, at word 68, beside the four host words |
+
+**What it is for** †: a limit on how long something may take. Software sets it before a piece of work and sets
+it again, or to 0, when the work is done; if the work hangs, the chip stops with an error and the host sees it,
+where today it would sit for ever. At a count a cycle, 32 bits is 4.29 seconds at 1 GHz.
+
+**What it would touch:** the specification (17.6's words and its `ERRORS`); Ingress/Egress's model. About 32
+flip-flops and a decrementer. No firmware is asked for with it.
+

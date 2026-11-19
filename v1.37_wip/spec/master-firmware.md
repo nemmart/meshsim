@@ -141,7 +141,7 @@ tile; it asks, and the tracer tile sends.
 
    | Word | Holds |
    | --- | --- |
-   | 0 | [31:0] the rows traced, the windows run times `RUN_CONFIG.rows`; [63:32] the Tracer's `ERRORS`; [95:64] its `STATUS`; [127:96] 0 |
+   | 0 | [31:0] the rows traced, the sum of `RUN_CONFIG.rows` over the segment's runs; [63:32] the Tracer's `ERRORS`; [95:64] its `STATUS`; [127:96] 0 |
    | 1–68 | the Tracer's record at the segment's end (17.9.2), 68 words |
 
 2. **When the master tile has the report that all the replay is done,** every compute tile's result and the tracer
@@ -151,7 +151,13 @@ tile; it asks, and the tracer tile sends.
    and 3, 0. It asks for the data alone, no reply (11.4), and is outstanding until the data has landed (11.3).
 3. **The tracer tile sends the block by one DMA transfer,** 69 128-bit `WRITE`s to that address up, counted on that
    counter, along the line between the special tiles (16.1).
-4. **When the counter reaches 0, every word has landed,** and the master tile sends the reply (30.7).
+4. **When the counter reaches 0, every word has landed:** the master tile answers the tracer tile's result, and
+   sends the reply (30.7).
+
+**The master tile answers the tracer tile's result only after the block has landed** (owner). The answer ends the
+tracer tile's image (6.5), and after it nothing on that tile would serve `SEND_END`; so the tracer tile, its result
+sent, serves requests until the answer comes. It is what keeps the tracer tile ready to respond, and the master
+tile decides the timing: the replays first, then the block, then the reply.
 
 It is firmware on both tiles, and no hardware.
 
@@ -169,9 +175,11 @@ block has landed (30.6), **the master tile sends the reply** (29.14):
 4. Egress sends it as three link packets on the foreground (17.6.8), 32, 32 and 9 words, behind any it is
    forwarding from below.
 
-**Then it is done** (owner): once `EGRESS_COUNT` reads 0 the frame is the link's, and the master tile does not wait
-for it to leave; no bit would tell it. The host's frames are requests and the reply is the answer. **A simulation
-ends when the host has every ASIC's reply,** not when a master tile parks.
+**The reply waits for nothing further** (owner): once `EGRESS_COUNT` reads 0 the frame is the link's, and the master
+tile does not wait for it to leave; no bit would tell it. The host's frames are requests and the reply is the
+answer. **Then the master tile goes on serving its tiles' requests,** the tracer tile's `LOAD` that follows its
+result's answer among them (6.5). **A simulation ends when the host has every ASIC's reply;** a master tile that
+"parks" after its reply is the simulation's word, not the chip's.
 
 ### 30.8 On an error, and a stop of its own
 

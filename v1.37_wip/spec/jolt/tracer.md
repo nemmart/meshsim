@@ -609,7 +609,9 @@ trace ends the tracer tile prepares one block of 69 128-bit words in its own
 memory, its figures and the record at the segment's end, and sends its result,
 which says the trace is done; once the replay is done the master tile asks for
 the block by one request, `SEND_END`, and the tracer tile sends it by one DMA
-transfer.
+transfer. The master tile answers the result only once the block has landed,
+since the answer ends the tracer tile's image: until then the tracer tile
+serves requests.
 
 **The handshakes** are requests to the tracer tile (target 2, 11.5), so no
 timing is assumed, as the load waits for its `LOAD` (6.5):

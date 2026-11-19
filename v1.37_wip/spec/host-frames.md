@@ -286,8 +286,8 @@ tile makes the final image and the Tracer's copy from the start image, while the
 | 5–72 | | the Tracer's record at the segment's end, 68 words (17.9.2) |
 
 - **Words 4 to 72 are the tracer tile's block,** which lands in the reply's own buffer (30.6): the master tile copies
-  nothing. **The rows traced** are the windows run times the rows of a window, `RUN_CONFIG.rows` (17.9.3): a run
-  traces exactly that many.
+  nothing. **The rows traced** are the sum of `RUN_CONFIG.rows` over the segment's runs (17.9.3): a run traces
+  exactly that many.
 
 - **A reply is sent only when the segment has run:** every error stops the chip (17.6.12), so its error words are 0.
   A report of a failure goes with the recovery that is not designed *(item 181)*.

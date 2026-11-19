@@ -222,6 +222,7 @@ constexpr uint32_t RL_N_FROM_RECORD = 0xFFFFFFFF, RL_WAIT_BARRIERS = 1, RL_WAIT_
 constexpr uint32_t TABLES = 0x40, INDEX = 0xC40, TEMPLATES = 0xD80;
 constexpr uint32_t RECORD = 0x10000, CODE = 0x10400, READ_LOG = 0x20400, WRITE_LOG = 0x40400;
 constexpr uint32_t TRACER_RECORD = 0x10000, EXPECTED = 0x10200, FINAL = 0x10400, ADVICE = 0x10800;
+static_assert(EXPECTED + 4 * 68 <= FINAL - 4, "the row before FINAL holds the block's word 0 (30.6)");
 // ---- C&C 1's program (fw/cc/cc1.c): its commands, boot_desc's words, its mailbox; the master's image rows' places
 // (its three commands each count in its mailbox, CC_EXIT before it exits)
 constexpr uint32_t CC_SEGMENT = 0x54, CC_WAIT = 0x52, CC_EXIT = 0x58;
@@ -231,7 +232,7 @@ constexpr uint32_t BOOT_DESC_MAGIC = 0xB007DE5C, EXIT_DONE = 0x45584954;
 constexpr uint32_t REPLAY_PMEM = 0x0000, REPLAY_DMEM = 0x2000, TRACER_PMEM = 0x4000, TRACER_DMEM = 0x6000, COUNT_ROW = 0x8000;
 // ---- the programs' results: replay_ctl.c's rp_results and tracer_ctl.c's tr_results, by index
 enum : unsigned { RP_STATUS = 0, RP_PASSES = 1, RP_CONDITIONS = 2, RP_MISSING = 5 };
-enum : unsigned { TR_STATUS = 0, TR_WINDOWS = 1, TR_MISSING = 5, TR_ERRORS = 6, TR_ADVICE_LEFT = 7, TR_END_DIFF = 8, TR_CONDITIONS = 9, TR_STRAYS = 10 };
+enum : unsigned { TR_STATUS = 0, TR_WINDOWS = 1, TR_MISSING = 5, TR_ERRORS = 6, TR_ADVICE_LEFT = 7, TR_END_DIFF = 8, TR_CONDITIONS = 9, TR_STRAYS = 10, TR_BLOCKS_SENT = 11 };
 constexpr uint64_t POLL_CYCLES = 512;
 // The RTL test's cycle 0 is the first after the reset; the simulator's cycles count from 1.
 constexpr int64_t CYCLE_OFFSET = 1;
@@ -449,6 +450,8 @@ Run run_chip(const Segment& s, const Rtl* rtl, const Options& o) {
     if (tr(TR_ERRORS) != 0 || tr(TR_CONDITIONS) != 0) fail("the Tracer's ERRORS 0x%x, the tracer tile's 0x%x", tr(TR_ERRORS), tr(TR_CONDITIONS));
     if (tr(TR_ADVICE_LEFT) != 0 || tr(TR_END_DIFF) != 0) fail("the advice left %u; the end state differs at word %u", tr(TR_ADVICE_LEFT), tr(TR_END_DIFF));
     if (tr(TR_STRAYS) != 0) fail("%u requests at the tracer tile that are no handshake", tr(TR_STRAYS));
+    if (tr(TR_BLOCKS_SENT) != (o.proof ? 1u : 0u))                     // v1.37 (30.6): v1.37's master asks once; C&C 1's harness never
+        fail("the tracer tile sent its block %u times; %u expected", tr(TR_BLOCKS_SENT), o.proof ? 1u : 0u);
     for (unsigned tile = 0; tile < T; tile++) {
         const uint32_t status = m.word(tile, rp_results + 4 * RP_STATUS), passes = m.word(tile, rp_results + 4 * RP_PASSES);
         const uint32_t conditions = m.word(tile, rp_results + 4 * RP_CONDITIONS), rows_run = replayer[tile]->rows_done();

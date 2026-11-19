@@ -29,12 +29,13 @@
  * than stage_delay after its start (Q17, DECISIONS-v1.3 section 24; no "booted" packets).
  *   5. checks the advice left (the last record's word 1 [124:102]) is 0 and the end state (words 0, 2-65) equals the
  *      expected one (the next segment's frame 2, if given), and returns its status (crt0: the simulator's exit word).
- *   6. v1.37 (30.6), only when its header names a place in the master tile (word 21; v1.36's harnesses leave it 0):
- *      its result carries its last record to the master. The 68 words, from where the last window's queue 0 landed
- *      them in its own big SRAM, go to the master by one stream, and a word of the segment's figures {rows traced,
- *      the Tracer's ERRORS, the status, 0} by its core, both counted on the master's counter (word 23), before main
- *      returns and crt0 sends the result. The rows traced are the windows run times RUN_CONFIG.rows: a run traces
- *      exactly that many (17.9.3), and nothing is added to the windows' loop.
+ *   6. v1.37 (30.6, the owner's ruling of 2026-11-19): the block the reply carries is prepared when the trace ends,
+ *      69 rows in its big SRAM: word 0 {rows traced, the Tracer's ERRORS, the status, 0} in the row before the own
+ *      record, words 1-68 the record where the last window's queue 0 landed it. The rows traced are the windows run
+ *      times RUN_CONFIG.rows (a run traces exactly that many, 17.9.3). Then main sends the result itself, as crt0
+ *      would, and while its reply is awaited serves the master's request for the block (SEND_END, 17.9.10: word 0 [20:18]
+ *      the data_counter, word 1 the byte address, both the master's; no reply) by one DMA of the 69 rows. The master answers the result once
+ *      the block has landed; v1.36's at once, with no request. Then the image ends, as crt0's does.
  * Q14: an expansion being fed when a segment's record is loaded is dropped (one segment per run here: nothing is pending).
  *
  * On C&C 3 a stream's d below 64 is relative to tile 2 (4.2: a controller stands for its tile), so the program's own
@@ -310,16 +311,34 @@ int main(void) {
     tr_results[TL_R_ERRORS] = tracer->ERRORS;
     tr_results[TL_R_CONDITIONS] = tile->ERRORS;
     tr_results[TL_R_STATUS] = status;
-    /* 6. v1.37: the last record and the figures to the master tile (30.6) */
-    if (hdr[TL_H_RESULT]) {
-        const uint32_t ctr = hdr[TL_H_RESULT_COUNTER];
-        wait_rd_idle();
-        stream_to(0, hdr[TL_H_OWN_RECORD], hdr[TL_H_RESULT], 68, ctr, DST_CC1);
-        tile->DMA_CONFIG = DMA_CFG_RUN(RUN_STREAMS, 0, 1);
-        start_run();
-        wait_event(EV_RUN_DONE, base_mask);
-        send_to(ROUTER_HDR_W(DST_CC1, MODE_WRITE, ctr), hdr[TL_H_RESULT_INFO]);
-        send128(0, status, tracer->ERRORS, tr_results[TL_R_WINDOWS] * (hdr[TL_H_RUN_CONFIG] & 0xFFFFFFu));
+    /* 6. v1.37 (30.6; the owner's ruling, DESIGN-NOTES section 39): the block, word 0 {rows traced, the Tracer's ERRORS,
+     *    the status, 0} in the row before the own record, which holds words 1-68; then the result, sent here; then, while
+     *    its reply is awaited, the master's SEND_END served by one DMA, no reply (17.9.10). Under v1.36's master the reply comes
+     *    at once and no request does. Then the image ends, as crt0's would. */
+    const uint32_t block = hdr[TL_H_OWN_RECORD] - 4;
+    tile->WRITE_COUNTER[CTR_CM - 1] = 1;
+    send_to(ROUTER_HDR_W(me, MODE_WRITE, CTR_CM), sram_addr(block));
+    send128(0, status, tracer->ERRORS, tr_results[TL_R_WINDOWS] * (hdr[TL_H_RUN_CONFIG] & 0xFFFFFFu));
+    wait_event(EV_CTR(CTR_CM), base_mask);
+    tile->WRITE_COUNTER[CTR_REPLY - 1] = 1;                           /* the result's reply counter, armed first (11.4) */
+    request_send(tile->ERRORS, 0, status, REQ_RESULT_EXIT);
+    for (;;) {
+        tile->EVENTS_MASK = EV_REQ_PENDING | EV_CTR(CTR_REPLY);
+        __asm__ volatile ("wfi" ::: "memory");
+        while (tile->EVENTS_PEEK & EV_REQ_PENDING) {
+            const uint32_t w0 = tile->REQUEST_GET_W0, dest = tile->REQUEST_GET_W1, who = REQ_REQUESTOR(w0);
+            (void)tile->REQUEST_RECEIVE;
+            if (REQ_OP(w0) != REQ_OP_SEND_END || who < 64) { tr_results[TL_R_STRAYS]++; continue; }
+            wait_rd_idle();
+            stream_to(0, block, dest, TL_BLOCK_WORDS, REQ_DATA_CTR(w0), who);
+            tile->DMA_CONFIG = DMA_CFG_RUN(RUN_STREAMS, 0, 1);
+            start_run();
+            wait_event(EV_RUN_DONE, 0);
+            tr_results[TL_R_BLOCKS_SENT]++;
+        }
+        tile->EVENTS_MASK = EV_CTR(CTR_REPLY);                         /* consumed by the load, as crt0's */
+        if (tile->EVENTS & EV_CTR(CTR_REPLY)) break;
     }
-    return (int)status;
+    __asm__ volatile ("jr %0" :: "r"(RESET_PC));                      /* the image's end (6.5), every counter at 0 */
+    __builtin_unreachable();
 }

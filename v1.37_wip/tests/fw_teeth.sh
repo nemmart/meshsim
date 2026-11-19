@@ -6,7 +6,7 @@
 # test_sort sort_16_kv32, test_memory and test_segment's generated segments. A bug is caught when a test fails or
 # stops; the table names the tests that failed. Not planted: a handshake sent early or not waited for (ARMED,
 # STREAMS_ARMED), whose race these runs' timings never provoke, so that no test can catch it; likewise the reply sent
-# without waiting for the tracer tile's record (30.6), which lands long before the master has every result. (WORKER4's unplanted bug in
+# without waiting for the tracer tile's block (30.6), whose one DMA lands before Egress reads those rows. (WORKER4's unplanted bug in
 # cc/master.c, the count of words loaded with a transfer in flight, went with the thresholds: WORKER7.) A bug that
 # breaks one of the forward count's undefined cases is caught by the simulator's stop, "died".
 #
@@ -14,8 +14,9 @@
 # crt0.S, the sort's port and schedule), in the port layer (port/mesh.h), and in the two programs new in v1.36
 # (cc/memory.c, cc/cc_mem.c). v1.37: and in the master tile's program for the host's frames (cc/master.c, with
 # include/host.h), which test_master alone runs: a bug there is run against test_master, the others as before; a bug
-# in the tracer tile's program against both, since its result carries its last record to v1.37's master alone (30.6).
-# Stage 5 (the INTEGRATOR): the reply (30.7) and the tracer tile's result (30.6), checked at the host's end.
+# in the tracer tile's program against both, since it sends its block to v1.37's master alone (30.6).
+# Stage 5 (the INTEGRATOR): the reply (30.7) and the tracer tile's result (30.6), checked at the host's end; reworked
+# for the owner's ruling of 2026-11-19 (the block the master asks for, the reply's 73 words; DESIGN-NOTES section 39).
 # Usage: tests/fw_teeth.sh [FILTER] (from anywhere): only the bugs whose name FILTER, an extended regular expression,
 # matches (e.g. '^(cc1|crt0):'); exit 1 if a bug goes
 # uncaught or its sed plants nothing. JOBS sets make's -j (8); TEETH_DIR the scratch directory (default: a new
@@ -92,7 +93,9 @@ BUGS=(
   "master: log s - 1 kept for log s~cc/master.c~s/if (k < S) before += rows;/if (k + 1 < S) before += rows;/"
   "master: the page map's last row not written back~cc/master.c~/^        map_flush();$/d"
   "master: page 0 not marked~cc/master.c~s/map_row\[0\] = 1; map_row\[1\] = 0;/map_row[0] = 0; map_row[1] = 0;/"
-  "master: the tracer tile's result unanswered~cc/master.c~s/op == OP_RESULT \&\& who <= TILE_TRACER/op == OP_RESULT \&\& who < TILE_TRACER/"
+  "master: the tracer tile's result unanswered~cc/master.c~/^    answer_result(tracer_result); /d"
+  "master: the tracer tile's result answered at once, before its block is asked for~cc/master.c~s/            tracer_result = w0;  /            answer_result(w0); tracer_result = w0;  /"
+  "master: the block's counter armed a row short~cc/master.c~s/    \*counter(CTR_TRACER) = BLOCK_ROWS;/    *counter(CTR_TRACER) = BLOCK_ROWS - 1;/"
   "master: an update frame's count one long~cc/master.c~s/if (frame_left) forward(frame_left);            \/\* a frame of its header/if (frame_left) forward(frame_left + 1);            \/* a frame of its header/"
   "master: frame 9's count one short~cc/master.c~s/if (frame_left) forward(frame_left);        \/\* one count for the three runs/if (frame_left) forward(frame_left - 1);        \/* one count for the three runs/"
   "master: an update frame dropped, not sent~cc/master.c~s/if (frame_left) forward(frame_left);            \/\* a frame of its header/if (frame_left) forward(HL_FORWARD_DISCARD | frame_left);            \/* a frame of its header/"
@@ -103,12 +106,15 @@ BUGS=(
   "master: a run started without the last one's done~cc/master.c~/^    if (run_out) run_wait();$/d"
   "master: a header frame's whole row left unread not seen~cc/master.c~s/if (parse_left || parse_words - parse_at >= 4) bad_frame/if (parse_left) bad_frame/"
   "master: frame 3's version not checked~cc/master.c~s/if (next32() != 1) bad_frame(type, MR_D_VERSION);/(void)next32();/"
-  "reply: s and N swapped~cc/master.c~s/write128(updater->PAGE_COUNT, tracer_info\[0\], N, S);/write128(updater->PAGE_COUNT, tracer_info[0], S, N);/"
-  "reply: EGRESS_COUNT 71~cc/master.c~s/    host_link->EGRESS_COUNT = ML_REPLY_ROWS;/    host_link->EGRESS_COUNT = ML_REPLY_ROWS - 1;/"
-  "reply: record s + 1 from the master's memory for the tracer tile's~cc/master.c~s/    stream(0, ML_REPLY, IE_EGRESS, ML_REPLY_ROWS, SIZE_128, 0, MODE_WRITE, TILE_MASTER);/    stream(0, ML_REPLY, IE_EGRESS, 4, SIZE_128, 0, MODE_WRITE, TILE_MASTER); stream(1, ML_EXPECT, IE_EGRESS, RECORD_WORDS, SIZE_128, 0, MODE_WRITE, TILE_MASTER);/; s/^    transfer(1);$/    transfer(2);/"
-  "reply: the record before the reply's header and figures~cc/master.c~s/    stream(0, ML_REPLY, IE_EGRESS, ML_REPLY_ROWS, SIZE_128, 0, MODE_WRITE, TILE_MASTER);/    stream(0, ML_REPLY + 16, IE_EGRESS, RECORD_WORDS, SIZE_128, 0, MODE_WRITE, TILE_MASTER); stream(1, ML_REPLY, IE_EGRESS, 4, SIZE_128, 0, MODE_WRITE, TILE_MASTER);/; s/^    transfer(1);$/    transfer(2);/"
+  "reply: s and N swapped~cc/master.c~s/write128(updater->PAGE_COUNT, 0, N, S);/write128(updater->PAGE_COUNT, 0, S, N);/"
+  "reply: EGRESS_COUNT 72~cc/master.c~s/    host_link->EGRESS_COUNT = ML_REPLY_ROWS;/    host_link->EGRESS_COUNT = ML_REPLY_ROWS - 1;/"
+  "reply: record s + 1 from the master's memory for the tracer tile's~cc/master.c~s/    stream(0, ML_REPLY, IE_EGRESS, ML_REPLY_ROWS, SIZE_128, 0, MODE_WRITE, TILE_MASTER);/    stream(0, ML_REPLY, IE_EGRESS, 5, SIZE_128, 0, MODE_WRITE, TILE_MASTER); stream(1, ML_EXPECT, IE_EGRESS, RECORD_WORDS, SIZE_128, 0, MODE_WRITE, TILE_MASTER);/; s/^    transfer(1);$/    transfer(2);/"
+  "reply: the record before the reply's header and figures~cc/master.c~s/    stream(0, ML_REPLY, IE_EGRESS, ML_REPLY_ROWS, SIZE_128, 0, MODE_WRITE, TILE_MASTER);/    stream(0, ML_REPLY + 20, IE_EGRESS, RECORD_WORDS, SIZE_128, 0, MODE_WRITE, TILE_MASTER); stream(1, ML_REPLY, IE_EGRESS, 5, SIZE_128, 0, MODE_WRITE, TILE_MASTER);/; s/^    transfer(1);$/    transfer(2);/"
   "reply: the last run's STAT_STALL_DATA for STAT_CYCLES~cc/master.c~s/write128(updater->STAT_STALL_DATA, updater->STAT_CYCLES, hi, lo);/write128(updater->STAT_STALL_DATA, updater->STAT_STALL_DATA, hi, lo);/"
-  "tracer_ctl: the result without the record~tracer/tracer_ctl.c~s/hdr\[TL_H_RESULT\], 68, ctr, DST_CC1);/hdr[TL_H_RESULT], 0, ctr, DST_CC1);/"
+  "tracer_ctl: the block a row short~tracer/tracer_ctl.c~s/stream_to(0, block, dest, TL_BLOCK_WORDS, /stream_to(0, block, dest, TL_BLOCK_WORDS - 1, /"
+  "tracer_ctl: the block's figures over the record's word 0~tracer/tracer_ctl.c~s/const uint32_t block = hdr\[TL_H_OWN_RECORD\] - 4;/const uint32_t block = hdr[TL_H_OWN_RECORD];/"
+  "tracer_ctl: the master's request not served~tracer/tracer_ctl.c~s/if (REQ_OP(w0) != REQ_OP_SEND_END || who < 64)/if (1)/"
+  "tracer_ctl: the block on no counter, not SEND_END's~tracer/tracer_ctl.c~s/TL_BLOCK_WORDS, REQ_DATA_CTR(w0), who);/TL_BLOCK_WORDS, 0, who);/"
   "tracer_ctl: the rows traced a window short~tracer/tracer_ctl.c~s/send128(0, status, tracer->ERRORS, tr_results\[TL_R_WINDOWS\] \*/send128(0, status, tracer->ERRORS, (tr_results[TL_R_WINDOWS] - 1) */"
   "cc1: no store to UART_CONTROL, and it prints~cc/cc1.c~s/if (cc1->UART_CONTROL == 0) cc1->UART_CONTROL = uart_setting(CC1_UART_DIVIDER);/;/; s/case CC_UART: cc1->UART_CONTROL = uart_setting(arg); break;/case CC_UART: break;/"
   "host.h: DMA_FORWARD_COUNT's discard at bit 30~include/host.h~s/#define HL_FORWARD_DISCARD          0x80000000u/#define HL_FORWARD_DISCARD          0x40000000u/"

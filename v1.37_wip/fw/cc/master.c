@@ -59,13 +59,18 @@
  * header's word for it 0: no check); advice log s; the header's HASH_MUL, HASH_STEP, HASH_LINES and ADVICE_N; then
  * the image and the load's COUNT, last. tracer_ctl.c finds its segment in place when it starts: it is unchanged.
  * Then the segment's second barrier (every window has landed), whose release is the replay; the 64 tiles' results and
- * the tracer tile's; the third run's done. The tracer tile's result carries its last record (30.6): its load names
- * the reply's rows 4-71 and a word here for its figures, counted on CTR_TRACER.
+ * the tracer tile's; the third run's done. The tracer tile's result says its trace is done; its answer is held.
  *
- * THE REPLY (30.7, 29.14), when the segment has run: 72 rows in the scratchpad, the header word (type 16, length 71),
- * s, N, the rows traced and PAGE_COUNT; mcycle and the last run's STAT_CYCLES and STAT_STALL_DATA; the four ERRORS;
- * then the tracer tile's record. 72 to EGRESS_COUNT, the rows to Egress's part 1 by one stream, and EGRESS_COUNT
- * awaited at 0 again; then the exit.
+ * THE TRACER TILE'S BLOCK (30.6; the owner's ruling, DESIGN-NOTES section 39): it prepared, when its trace ended, 69
+ * rows in its SRAM, {rows traced, the Tracer's ERRORS, its status} and its end-state record. Once all the replay is
+ * done the master arms CTR_TRACER for 69 rows and sends it one request (SEND_END: word 0 [20:18] the counter, word 1
+ * the byte address of the reply's row 4; no reply); the tracer tile sends the block by one DMA into the reply's own buffer. Then its result is
+ * answered, which ends its image, and its LOAD comes.
+ *
+ * THE REPLY (30.7, 29.14), when the block has landed: 73 rows in the scratchpad, the header word (type 16, length 72),
+ * s, N, 0 and PAGE_COUNT; mcycle and the last run's STAT_CYCLES and STAT_STALL_DATA; the master's, Ingress/Egress's
+ * and the Updater's ERRORS; then the block's 69. 73 to EGRESS_COUNT, the rows to Egress's part 1 by one stream; when
+ * EGRESS_COUNT is 0 the frame is the link's (the owner: an RPC answered), and the exit.
  *
  * ERRORS: any error bit is the NMI (6.2), and so are Ingress's (a packet that fails a check) and the Updater's through
  * the tile's ERRORS.peripheral_n. The handler writes what there is into master_results and exits. What a frame says
@@ -90,7 +95,9 @@ extern volatile uint32_t sim_exit_word[2];
 #define CTR_LINK             1             /* the words Ingress's DMA sends here */
 #define CTR_READ             2             /* the read unit's rows */
 #define CTR_SELF             3             /* the write unit's rows to the master's own scratchpad */
-#define CTR_TRACER           4             /* v1.37 (30.6): the tracer tile's last record and its figures, 69 rows */
+#define CTR_TRACER           4             /* v1.37 (30.6): the tracer tile's block, 69 rows */
+#define BLOCK_ROWS           69            /* its figures' row and its end-state record */
+#define OP_SEND_END          3             /* the request for it, to the tracer tile (its firmware's op, 17.9.10) */
 #define TILE_MASK   (EVENT_REQUEST_PENDING | EVENT_PERIPHERAL(1) | EVENT_PERIPHERAL(2) | EVENT_DMA_DONE | \
                      EVENT_COUNTER_DONE(CTR_LINK) | EVENT_COUNTER_DONE(CTR_READ) | EVENT_COUNTER_DONE(CTR_SELF) | \
                      EVENT_COUNTER_DONE(CTR_TRACER))
@@ -122,7 +129,7 @@ static volatile uint32_t frame_header[4] __attribute__((aligned(16)));
 static volatile uint32_t buffer[4 * PARSE_ROWS] __attribute__((aligned(16)));        /* the parser's */
 static volatile uint32_t files_word[4] __attribute__((aligned(16)));                 /* record s's word 66 */
 static volatile uint32_t map_row[4] __attribute__((aligned(16)));                    /* the page map's row the cursor is in */
-static volatile uint32_t tracer_info[4] __attribute__((aligned(16)));                /* the tracer tile's figures (30.6): rows, ERRORS, status */
+static uint32_t tracer_result;                                                     /* the tracer tile's result, its answer held (30.6); 0 none */
 static uint32_t map_at, map_cursor, map_dirty;                                       /* that row; the next page to look at */
 
 /* what the frames said */
@@ -164,15 +171,21 @@ void master_trap(void) {
 /* ---------------------------------------------------------------- events and requests */
 /* The requests (11.5): a LOAD is counted (the boot and the hand-over answer them); a tile's result is answered where
  * its word 0 says, which ends the tile's image (crt0.S); anything else is counted. Never pops an empty queue. */
+static void answer_result(uint32_t w0) {
+    write_to(HDR_DST(REQUEST_REQUESTER(w0)) | HEADER(MODE_WRITE, RESULT_COUNTER(w0), SIZE_32), RESULT_ADDR(w0));
+    write32(1);
+}
 static void drain_requests(void) {
     while (tile->EVENTS_PEEK & EVENT_REQUEST_PENDING) {
         uint32_t w0 = tile->REQUEST_IN_W0;
         (void)tile->REQUEST_RECEIVE;                /* the last word pops */
         uint32_t op = REQUEST_OP_OF(w0), who = REQUEST_REQUESTER(w0);
         if (op == OP_LOAD) R[MR_LOADS]++;
-        else if (op == OP_RESULT && who <= TILE_TRACER) {
-            write_to(HDR_DST(who) | HEADER(MODE_WRITE, RESULT_COUNTER(w0), SIZE_32), RESULT_ADDR(w0));
-            write32(1);
+        else if (op == OP_RESULT && who == TILE_TRACER && !tracer_result) {
+            tracer_result = w0;                     /* answered once its block has landed (30.6) */
+            R[MR_RESULTS]++;
+        } else if (op == OP_RESULT && who < TILE_TRACER) {
+            answer_result(w0);
             R[MR_RESULTS]++;
         } else R[MR_OTHERS]++;
     }
@@ -417,18 +430,13 @@ static void hand_over(void) {
     uint32_t w1 = (image_depth >> 1 & 1) | root_table << 1;
     uint32_t w2 = (files_word[2] & ~3u) | table_depth, w3 = files_word[3];
     tile_seen &= ~EVENT_COUNTER_DONE(CTR_SELF);
-    *counter(CTR_SELF) = 4;
+    *counter(CTR_SELF) = 3;
     write_to(SELF(CTR_SELF, SIZE_128), SCRATCHPAD_ADDRESS(ML_RECORD + 4 * 66));
     write128(w3, w2, w1, w0);
     write_to(SELF(CTR_SELF, SIZE_128), SCRATCHPAD_ADDRESS(ML_HEADER));
     write128(advice_values, table_k, table_p3, table_p1);   /* HASH_MUL, HASH_STEP, HASH_LINES; ADVICE_N */
     write128(0, 0, 0, 0);
-    /* v1.37 (30.6): where the tracer tile's result puts its last record (the reply's rows 4-71) and its figures, and
-     * the counter they are counted on, armed before its load */
-    write128(0, CTR_TRACER, (uint32_t)tracer_info, SCRATCHPAD_ADDRESS(ML_REPLY + 4 * 4));
     wait_counter(CTR_SELF);
-    tile_seen &= ~EVENT_COUNTER_DONE(CTR_TRACER);
-    *counter(CTR_TRACER) = RECORD_WORDS + 1;
     /* the tracer tile's load: its segment, then its image, then the COUNT */
     const uint32_t d = TILE_TRACER;
     unsigned i = 0;
@@ -438,7 +446,6 @@ static void hand_over(void) {
     stream(i++, ML_ADVICE, SCRATCHPAD_ADDRESS(boot_desc[MD_H_TR_ADVICE]), advice_rows, SIZE_128, 0, MODE_WRITE, d);
     stream(i++, ML_HEADER, SCRATCHPAD_ADDRESS(TL_H_HASH_MUL), 3, SIZE_32, 0, MODE_WRITE, d);
     stream(i++, ML_HEADER + 3, SCRATCHPAD_ADDRESS(TL_H_ADVICE_N), 1, SIZE_32, 0, MODE_WRITE, d);
-    stream(i++, ML_HEADER + 8, SCRATCHPAD_ADDRESS(TL_H_RESULT), 3, SIZE_32, 0, MODE_WRITE, d);
     R[MR_HANDED] = mcycle(); R[MR_HANDED_WAKES] = wakes; R[MR_HANDED_READS] = reads;
     transfer(image_streams(i, d, &boot_desc[MD_H_TRACER]));
     R[MR_BOOT] = 4;
@@ -450,18 +457,25 @@ static void hand_over(void) {
  * region by one stream of the DMA unit, in order. One credit of the two covers them: no wait on egress_credit. Then
  * the words are in the outgoing queue when EGRESS_COUNT is 0 again; Egress sends them as three link packets. */
 static void reply(void) {
-    wait_counter(CTR_TRACER);                       /* the tracer tile's last record and figures have landed */
+    /* the tracer tile's block, asked for (30.6): CTR_TRACER armed first, then the request */
+    tile_seen &= ~EVENT_COUNTER_DONE(CTR_TRACER);
+    *counter(CTR_TRACER) = BLOCK_ROWS;
+    tile->REQUEST_OUT_W0 = REQUEST_TARGET(TARGET_TRACER) | REQUEST_OP(OP_SEND_END) | REQUEST_OWN(CTR_TRACER);   /* [20:18] */
+    tile->REQUEST_OUT_W1 = SCRATCHPAD_ADDRESS(ML_REPLY + 4 * 4);
+    tile->REQUEST_OUT_W2 = 0;
+    tile->REQUEST_SEND = 0;
+    wait_counter(CTR_TRACER);                       /* every row of it in the reply's buffer */
+    answer_result(tracer_result);                   /* its result answered: the tracer tile's image ends */
     uint32_t hi, lo;
     do { hi = mcycleh(); lo = mcycle(); } while (hi != mcycleh());
     R[MR_REPLY_MCYCLE] = lo; R[MR_REPLY_MCYCLE + 1] = hi;
-    R[MR_TRACER_ROWS] = tracer_info[0]; R[MR_TRACER_ERRORS] = tracer_info[1]; R[MR_TRACER_STATUS] = tracer_info[2];
     tile_seen &= ~EVENT_COUNTER_DONE(CTR_SELF);
     *counter(CTR_SELF) = 4;
     write_to(SELF(CTR_SELF, SIZE_128), SCRATCHPAD_ADDRESS(ML_REPLY));
-    write128(ML_REPLY_ROWS - 1, FRAME_REPLY, 0, 0);                              /* compression 0, type 16, length 71 */
-    write128(updater->PAGE_COUNT, tracer_info[0], N, S);                         /* s, N, the rows traced, PAGE_COUNT */
+    write128(ML_REPLY_ROWS - 1, FRAME_REPLY, 0, 0);                              /* compression 0, type 16, length 72 */
+    write128(updater->PAGE_COUNT, 0, N, S);                                      /* s, N, 0, PAGE_COUNT */
     write128(updater->STAT_STALL_DATA, updater->STAT_CYCLES, hi, lo);            /* mcycle, the last run's statistics */
-    write128(tracer_info[1], updater->ERRORS, host_link->ERRORS, tile->ERRORS);  /* the errors: 0, as the segment ran */
+    write128(0, updater->ERRORS, host_link->ERRORS, tile->ERRORS);               /* the errors: 0, as the segment ran */
     wait_counter(CTR_SELF);
     host_link->EGRESS_COUNT = ML_REPLY_ROWS;
     stream(0, ML_REPLY, IE_EGRESS, ML_REPLY_ROWS, SIZE_128, 0, MODE_WRITE, TILE_MASTER);
@@ -602,9 +616,11 @@ static void frame(void) {
         hand_over();                                /* tracing begins, while the stream goes on */
         barrier();                                  /* every tile's window has landed: the replay */
         R[MR_BOOT] = 5;
-        while (R[MR_RESULTS] < TILES_LOADING || R[MR_LOADS] < 2 * TILES_LOADING) work();   /* each result, and the LOAD after it */
+        /* every result, and the LOAD after each but the tracer tile's, whose answer waits for its block */
+        while (R[MR_RESULTS] < TILES_LOADING || R[MR_LOADS] < 2 * TILES_LOADING - 1) work();
         run_wait();
-        reply();                                    /* the segment has run: the reply (30.7) */
+        reply();                                    /* the segment has run: the block, the reply (30.6, 30.7) */
+        while (R[MR_LOADS] < 2 * TILES_LOADING) work();   /* the tracer tile's LOAD, after its result's answer */
         break;
     }
     default: bad_frame(type, MR_D_TYPE);

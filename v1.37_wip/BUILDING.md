@@ -1,8 +1,14 @@
 # Building v1.36
 
 > *v1.37: this page is v1.36's, and holds for this folder: v1.37 adds nothing to install. Its master program
-> (`fw/cc/master.c`) is built by `fw/build.sh` with the same toolchain; the host's side of its proof steps
-> (`pipeline/frames/build.sh`) needs a JDK (Java 21), as `pipeline/` does.*
+> (`fw/cc/master.c`) is built by `fw/build.sh` with the same toolchain (the xPack riscv-none-elf-gcc 15.2.0-1 the
+> committed images were built with). The simulator builds three sources more, all in this folder and held to their
+> bytes at the copy (`FROM-UPDATER.sha256`): WORKER8's link (`link/`: `hostlink.cpp`, `link_end.cpp`, `node.cpp`),
+> into every chip's Ingress/Egress and the harnesses' host end; WORKER10's wire (`wire/`: `wire.cpp`,
+> `wire_args.cpp`, `launch.cpp`), for the chain of processes (`make build/clang-suite/wire_launch
+> build/clang-suite/driver build/clang-suite/standin_asic`); and, for the host's side of the proof steps
+> (`pipeline/frames/build.sh`, `tests/updater/make_fixtures.sh`), the frames' gold (`pipeline/frames/gold/`), which
+> needs a JDK (Java 21), as `pipeline/` does. `pipeline/gold/` is v1.3's gold, pinned, for the segment files.*
 
 *For anyone building v1.36: what to install, which build to use for what, and one command for each thing you build.*
 Commands run from this folder. Running the suites, tools and kits is `RUNNING.md`.

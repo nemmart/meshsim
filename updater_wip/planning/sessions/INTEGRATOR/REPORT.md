@@ -425,7 +425,7 @@ Invariants 1 to 33 are v1.36's, checked as v1.36's simulator checks them (with t
 | 35: no store to `EGRESS_COUNT` while not 0 | FATAL | `ie_egress_count_stored_while_not_0_is_ub` |
 | 35: `WRITE`s of 128 bits, to part 1 alone, from one source at a time | FATAL, each | `ie_egress_a_write_of_64_bits_is_ub`, `…_to_part_0_is_ub`, `…_to_part_2_is_ub`, `ie_egress_a_frames_words_from_two_sources_is_ub` |
 | 35: no non-zero `UART_CONTROL` with a divider of 0 | FATAL | `ie_uart_control_with_a_divider_of_0_is_ub` |
-| 35, hardware: `egress_error` | counted in `ERRORS` | `test_ingress_egress`'s Egress tests; `fw_teeth`'s `EGRESS_COUNT` 71 |
+| 35, hardware: `egress_error` | counted in `ERRORS` | `test_ingress_egress`'s Egress tests; `fw_teeth`'s `EGRESS_COUNT` one short (71, then 72 since the record's rework) |
 | 36: words 32–37 and `START` only while idle | `updater_top.h`: FATAL | none fires it |
 | 36: `WRITE`s of 128 bits to part 2 alone | FATAL | `ctl_region_part_1_is_unmapped` (another size: none) |
 | 36: from one source at a time | `updater_top.h` (`accept`): FATAL, one source from a run's first push to its `done` (stage 7, the owner's word) | `ctl_free_pages_from_two_sources_is_ub`; `ctl_the_next_runs_free_pages_from_another_source_are_kept` |
@@ -455,10 +455,61 @@ off LPDDR; 37's stale-line check; the arbiter's own burst checks).
 | `uart_rx` | the edge seen 2 cycles late; bit *k* at *k*·*D* + ⌊*D*/2⌋ | `test_ingress_egress`'s receiver tests (`ie_teeth.sh`'s sample point and synchroniser planted, caught) | as specified |
 | the forward count | a word a cycle, or a discard a cycle | `ingress_link_forward_count_*` | as specified |
 | a service flag | set at the end of the cycle "asks" rises, seen by the next cycle's loads | `ingress_link_service_flag_rule`, `…_background` | as specified |
-| Egress | a link packet once 32 words of a frame, or its last, are in | `ie_egress_count_falls_as_words_land_and_frames_end_at_link_packets`; every proof's reply in link packets of 32, 32 and 8 | as specified |
+| Egress | a link packet once 32 words of a frame, or its last, are in | `ie_egress_count_falls_as_words_land_and_frames_end_at_link_packets`; every proof's reply in link packets of 32, 32 and 8 (32, 32 and 9 since the record's rework: 73 words) | as specified |
 | the host link | a byte a link cycle; a full link packet 528 bytes | `ingress_link_rates`: three full link packets taken 528 link cycles apart (5,220, 5,748, 6,276) | as specified. The pass over the data (32 cycles), the status at most 512 apart and a recovery's 669 on average are WORKER8's own figures (its `make check` holds its README's), not measured again here |
 | the Updater, the cache, the AXI arbiter | from their code (17.10.5, 23.6.5, 23.6.7, 23.11) | WORKER5's and WORKER6's tests (`test_cache`, `test_axi_arbiter`, `test_updater_ctl`); the joined proofs' figures (`runner/*-cache-figures.txt`) | not measured again here: the units are as built |
 | the line between the special tiles (16.1) | a link of three stages | `line_unicast_between_special_tiles_takes_the_line`: every pair of the 67 tiles, from local and each DMA, ejected 4 cycles a link after it was sent (the three stages and the router's), the master tile to the tracer tile two links | as specified |
 
 No figure of 21.5 is found wrong.
 
+
+### The tracer tile's last record, pulled (the owner's ruling of 2026-11-19, design notes 39)
+
+**Built** (`820cfb20`): stage 5's push is gone, and with it the places in the tracer tile's load (its header words
+21–23, the master's `tracer_info`, the header's third row). `tracer_ctl.c`, when its trace ends and its checks are
+done, writes the block's word 0 {rows traced, the Tracer's `ERRORS`, its status, 0} into the row before its own
+record, so that the block is 69 rows in one piece; sends its result itself, as `crt0.S` would; and while it awaits the
+answer serves `SEND_END` by one DMA of the 69 rows, then ends its image as `crt0.S` does. `master.c` holds the tracer
+tile's answer; once every result is in (and the LOADs after the compute tiles') and the third run done, it arms
+`CTR_TRACER` for 69, sends `SEND_END` (target 2, op 3, word 0 [20:18] the counter, word 1 the byte address of the
+reply's row 4), waits for the counter, answers the result, writes rows 0–3 and sends the 73 rows. Under v1.36's C&C 1
+(the segment harness) the result is answered at once and no `SEND_END` comes: `test_segment` checks the block was sent
+0 times there and once under the master.
+
+**Checked:** `test_master`'s 35 tests, every proof's reply word by word (73 words, link packets ending at 32, 64, 73;
+word 4 the rows traced, the Tracer's `ERRORS` 0 and the status 1; words 5–72 against the tracer tile's own record
+and record *s* + 1); `chain_run.sh` (the stand-ins, the chains of two twice, the chain of one, the silent ASIC); the
+planted bugs, 17 of 17 caught (`fw_teeth.sh '^(reply|tracer_ctl|master: the (tracer|block))'`): the reply's five
+reworked, the tracer tile's four of v1.36 and five new (the block a row short, its figures over the record's word 0,
+`SEND_END` not served, the block on no counter, the rows traced a window short), and the master's three (the result
+unanswered; answered at once, before `SEND_END`; the counter armed a row short). Not planted: the reply sent without
+waiting for the block, which lands before Egress reads those rows in every run here.
+
+**Against the specification as the spec session wrote it** (`b7afdb2b`: 29.14, 30.6, 30.7, 17.9.10): the block, the
+request's words, the one DMA, the reply's layout, 73 in `EGRESS_COUNT` and the three link packets are as specified
+(the request's format was brought to the specification's before the commit: the counter in word 0 [20:18], not in
+word 2). **Two differences, told to the owner** (FOR-THE-SPEC 7 and 8): the specification does not say when the
+master answers the tracer tile's result, and the firmware cannot answer it before the block has landed (the answer
+ends the tracer tile's image, 6.5); and after `EGRESS_COUNT` 0 the master takes the tracer tile's `LOAD` before it
+parks, where the specification has it done. `SEND_END`'s op, 3, is the firmware's (item 176).
+
+### The folder made to stand alone
+
+The link's, the wire's and the frames' gold's sources are copied in from `../updater_wip` (`link/`, `wire/`,
+`pipeline/frames/gold/`: their tracked files, 50, 24 and 165) and held to those bytes (`FROM-UPDATER.sha256`, checked by
+`tools/check_copies.sh`); the build, `run_tests.sh`, the fixtures' and frames' scripts, the vectors' default and the
+chain teeth use them, and the Quest kit is `v1.37_wip/` alone. `OPEN-v1.37.md` lists what is open and owed, WORKER8's
+long runs (Quests 238 to 242) among it, not holding the freeze. The folder is not renamed.
+
+### The runner, from the folder alone (Quests 264 to 268, `v137-build` `62a0b205`)
+
+Each task's kit is `v1.37_wip/` alone (`git archive`), with gold's classes built beside it; every kit was unpacked and
+built here first. **All pass:** 264, `run_tests.sh all --check` with the chain's step and the 37 proof runs through
+the link, every image against gold's, 0 differences against v1.36's logs; 265, the same with every chip's LPDDR
+model jittered; 266, `make check` from a clean tree (debug and release, gcc and clang, TSan); 267 and 268, the chain
+of processes at 2²⁹ on EVM Zone and on Cyclone, both replies (73 words, three link packets) against gold's files,
+each run twice the same. The 37 proof runs end 1 to 11 cycles sooner than at stage 6 (Quest 260): the tracer tile no
+longer streams its record before its result. One step skipped, as in every pass: `fw-build`, the firmware rebuilt
+against the committed images, which needs the RISC-V toolchain the runner has not; the images were built here with
+the pinned xPack toolchain. After it, `main`'s last changes to the specification (30.6, 30.7, 29.14,
+17.9.10) state FOR-THE-SPEC 7 and 8 as built, and `OPEN-v1.37.md` (b) says so; the documents' and copies' checks pass.

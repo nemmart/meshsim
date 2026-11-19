@@ -1,21 +1,35 @@
 #!/bin/bash
-# make_task.sh: writes a Quest task for the runner from this repository's updater_wip/link at a commit.
+# make_task.sh: writes a Quest task for the runner from the link's sources.
 #   make_task.sh <number> <item> <commit> <out dir>      item: campaign, campaign2, long-noise, searches-a, searches-b, search-big1
+#   make_task.sh <number> <item> - <out dir>             the same from the files as they are, with no git
+# Which link: the folder this script is in, if that is a link folder (a copy that stands alone, as v1.37's link/);
+# else this repository's updater_wip/link (the script's home is updater_wip/planning/sessions/WORKER8/tasks/).
 # The task holds the link's sources as a kit (base64 of a tar), builds them on the runner, and runs the item. It
 # writes only results/<task>/; its scratch is in /tmp and is removed first and last; it is safe to run again.
+# An item the task does not know builds the kit, runs the header's tests and the cases, and stops: a check of the kit.
 set -eu
 NUM=$1; ITEM=$2; REV=$3; OUT=$4
-ROOT=$(git rev-parse --show-toplevel)
+HERE=$(cd "$(dirname "$0")" && pwd)
 NAME=$NUM-link-w8-$ITEM
 KIT=$(mktemp)
-git -C "$ROOT" archive --format=tar "$REV" updater_wip/link | gzip -9n > "$KIT"
+if [ "$REV" = - ]; then
+    # The files as they are: the link folder itself, without what it builds. The same bytes each time.
+    [ -f "$HERE/link_end.cpp" ] && DIR=$HERE || DIR=$HERE/../../../../link
+    DIR=$(cd "$DIR" && pwd); LINK=link; WHAT="link/, its files as they were"
+    tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner --exclude=link/build --transform "s|^$(basename "$DIR")|link|" \
+        -C "$(dirname "$DIR")" -cf - "$(basename "$DIR")" | gzip -9n > "$KIT"
+else
+    ROOT=$(git -C "$HERE" rev-parse --show-toplevel)
+    if [ -f "$HERE/link_end.cpp" ]; then LINK=$(git -C "$HERE" rev-parse --show-prefix); LINK=${LINK%/}; else LINK=updater_wip/link; fi
+    git -C "$ROOT" archive --format=tar "$REV" "$LINK" | gzip -9n > "$KIT"
+    WHAT="$LINK at $(git -C "$ROOT" rev-parse --short=8 "$REV")"
+fi
 SHA=$(sha256sum "$KIT" | cut -d' ' -f1)
-SHORT=$(git -C "$ROOT" rev-parse --short=8 "$REV")
 {
 cat <<HEAD
 #!/bin/bash
-# Task $NAME -- meshsim updater_wip WORKER8: the host link's protocol on its own (updater_wip/link at $SHORT,
-# updater-w8; updater_wip/planning/sessions/WORKER8/tasks/make_task.sh), item: $ITEM.
+# Task $NAME -- meshsim updater_wip WORKER8: the host link's protocol on its own ($WHAT;
+# made by make_task.sh), item: $ITEM.
 #   campaign    the random runs: 16 slices at once, each a range of seeds for an hour, 2 million cycles of traffic
 #               and noise a seed, chains of 1, 2, 4 and 16; then the slices added up. Any failing seed is a FAIL.
 #   campaign2   the same with forged headers among the damage (8 slices), and with bits flipped in senders' memory (8).
@@ -32,11 +46,11 @@ sed -n '/^__KIT_BEGIN__\$/,/^__KIT_END__\$/p' "\$0" | sed '1d;\$d' | base64 -d >
 GOT=\$(sha256sum "\$W/kit.tgz" | cut -d' ' -f1); echo "kit sha256 \$GOT"
 [ "\$GOT" = "$SHA" ] || { echo "kit sha256 mismatch (want $SHA)"; exit 2; }
 tar -xzf "\$W/kit.tgz" -C "\$W" || exit 2
-cd "\$W/updater_wip/link" || exit 2
+cd "\$W/$LINK" || exit 2
 ITEM=$ITEM; FAIL=0; T0=\$(date +%s)
 verdict() { echo "VERDICT \$1: \$2"; echo "\$1 \$2" >> "\$RES/VERDICTS"; case \$2 in PASS*) ;; *) FAIL=1;; esac; }
 : > "\$RES/VERDICTS"
-{ echo "kit: meshsim $SHORT (updater-w8), updater_wip/link"; echo "host \$(hostname); \$(nproc) CPUs"; g++ --version | head -1; free -g | sed -n 2p; } | tee "\$RES/machine.txt"
+{ echo "kit: meshsim, $WHAT"; echo "host \$(hostname); \$(nproc) CPUs"; g++ --version | head -1; free -g | sed -n 2p; } | tee "\$RES/machine.txt"
 make -j8 all > "\$RES/build.log" 2>&1 && build/test_header > "\$RES/test_header.txt" 2>&1 && build/linkcase cases/*.case > "\$RES/cases.txt" 2>&1
 if [ \$? = 0 ]; then verdict build PASS; else verdict build FAIL; rm -rf "\$W"; exit 1; fi
 HEAD

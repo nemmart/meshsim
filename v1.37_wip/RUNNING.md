@@ -71,7 +71,7 @@ about 2.5 minutes after the build, `quick --check` about 40 seconds.
 | `file-store` (v1.37) | both | `test_file_store` | <1 s | the file store's pages by address: a page placed where told, beside the pages it hands out |
 | `updater` (v1.37) | both | `test_updater` | <1 s | the Updater black box alone, against `UPDATER-INTERFACE.md`; on gold's frame files of four guests, every image against gold's (`tests/updater/`) |
 | `ingress-link` (v1.37) | both | `test_ingress_link` | <1 s | Ingress's host link, the black box, against `INGRESS-INTERFACE.md` and `HOST-LINK.md` |
-| `packet-vectors` (v1.37) | both, with gold's vectors | `test_packet_vectors` | <1 s | gold's packetizer's vectors, packet files and damaged files (`../updater_wip/pipeline/gold/test/packets`; `PACKET_VECTORS` names another folder) |
+| `packet-vectors` (v1.37) | both, with gold's vectors | `test_packet_vectors` | <1 s | gold's packetizer's vectors, packet files and damaged files (`pipeline/frames/gold/test/packets`; `PACKET_VECTORS` names another folder) |
 | `updater-fixtures` (v1.37) | both, with a JDK | `tests/updater/make_fixtures.sh --check` | 10 s | the fixtures made again by gold, equal to the committed ones |
 | `master` (v1.37) | both | `test_master` | 10 s | the whole chip from a packet file, on the guests' fixtures, under `fw/cc/master.c`: every image against gold's, the page map, the hand-over, the segment traced and replayed; the error path; runs that must fail |
 | `proof-real` (v1.37) | all, with `MESHSIM_INPUTS` and its `v137/real` | `proof_run ... --recorded RUN`, for `segment-real`'s three segments | 1 min | every row, record and stream against the recorded files, as `segment-real`; every image against gold's |

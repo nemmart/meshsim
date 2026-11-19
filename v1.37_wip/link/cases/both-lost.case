@@ -1,0 +1,9 @@
+# Both ends lose their place at once; each waits for the other's recovery
+# found by linksearch --rules hl-lost_answers
+sizes number_bits=3 max_words=1 window=2 zeros=40 flush_zeros=32 status_timer=24 queue=8 reask=96 pass=16 restart_words=1 delay=1 words=1 images=0 window0=0 wrong=0 still=0
+packets 2 0 2 0
+fate 0 3 first0
+fate 1 3 first0
+quiet 202 20000
+run hl-lost_answers fail nothing more goes wrong, and it does not finish
+run hl ok

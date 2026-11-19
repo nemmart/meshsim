@@ -9,11 +9,11 @@
  *              pages 128 r to 128 r + 127, page p bit p mod 128. Written by the master alone
  *   0x48000    record s, 68 rows, as frame 7 has it, its word 66 with the roots and depths
  *   0x48200    record s + 1, 68 rows: the end state the tracer tile checks its last record against
- *   0x48400    three rows for the tracer tile's header: HASH_MUL, HASH_STEP, HASH_LINES, ADVICE_N; zeros; v1.37's
- *              words 21-23, where its result's last record and figures go and on which counter (30.6)
- *   0x48480    the reply (30.7): 72 rows, its header word and three of figures, then the tracer tile's last record,
- *              which the tracer tile's result writes here. Then unused to 0x48880 (the scrap area until WORKER7), so
- *              that no address after it moves
+ *   0x48400    two rows for the tracer tile's header: HASH_MUL, HASH_STEP, HASH_LINES, ADVICE_N; zeros (v1.37's
+ *              third row, the places of words 21-23, is gone: the owner's ruling of 2026-11-19)
+ *   0x48480    the reply (30.7): 73 rows, its header word and three of figures, then the tracer tile's block (30.6),
+ *              69 rows, which it sends here by one DMA on the master's request. Then unused to 0x48880 (the scrap
+ *              area until WORKER7), so that no address after it moves
  *   0x48880    advice log s, a row for each two values, to the scratchpad's end
  */
 #ifndef MASTER_LAYOUT_H
@@ -24,8 +24,8 @@
 #define ML_RECORD            0x48000u
 #define ML_EXPECT            0x48200u
 #define ML_HEADER            0x48400u
-#define ML_REPLY             0x48480u      /* v1.37 (30.7): the reply, 72 rows; rows 4-71 the tracer tile's last record (30.6) */
-#define ML_REPLY_ROWS        72u
+#define ML_REPLY             0x48480u      /* v1.37 (30.7): the reply, 73 rows; rows 4-72 the tracer tile's block (30.6) */
+#define ML_REPLY_ROWS        73u
 #define ML_ADVICE            0x48880u
 #define ML_ADVICE_ROWS       ((0x100000u - ML_ADVICE) / 4u)
 
@@ -93,11 +93,8 @@
 #define MR_FRAME_AWAKE       123  /* 123-138: mcycle less the cycles in WFI when each frame's header word was in (WORKER7):
                                    * the first is the boot's cost */
 #define MR_REPLY_MCYCLE      139  /* 139-140: v1.37 (30.7), the mcycle the reply carries, [31:0] then [63:32] */
-#define MR_TRACER_ROWS       141  /* the tracer tile's figures as its result sent them (30.6): the rows traced, */
-#define MR_TRACER_ERRORS     142  /*   the Tracer's ERRORS, */
-#define MR_TRACER_STATUS     143  /*   the tracer tile's status */
-#define MR_REPLIED           144  /* 1 once the reply's 72 words are in the outgoing queue (EGRESS_COUNT back to 0) */
-#define MR_WORDS             145
+#define MR_REPLIED           141  /* 1 once the reply's 73 words are in the outgoing queue (EGRESS_COUNT back to 0) */
+#define MR_WORDS             142
 #define MR_MAX_RUNS          8
 #define MR_MAX_FRAMES        16
 

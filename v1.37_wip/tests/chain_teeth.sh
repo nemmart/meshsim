@@ -1,7 +1,7 @@
 #!/bin/bash
 # chain_teeth.sh: the milestone's planted bugs in the chain (v1.37 stage 4, the INTEGRATOR), each of which the tests
-# must catch. Not in make check (a rebuild per bug). The simulator and the link's sources (v1.37_wip/ and
-# ../updater_wip/link/, which the simulator builds in place) are copied into a scratch directory side by side, each bug
+# must catch. Not in make check (a rebuild per bug). The simulator with the link's sources (link/, which it builds) is
+# copied into a scratch directory, each bug
 # planted there by sed, the tests rebuilt (clang release) and run: test_ingress_chain (the chain with no chips),
 # test_ingress_link (one chip's link) and test_ingress_egress. A bug is caught when a test fails; the table names the
 # tests that failed. The link's own plants are WORKER8's (HL_PLANT, link_params.h), switched on by turning the test
@@ -11,13 +11,11 @@
 # uncaught or its sed plants nothing. JOBS sets make's -j (2); TEETH_DIR the scratch directory (default: a new one).
 set -u
 SIM=$(cd "$(dirname "$0")/.." && pwd)
-LINK=$(cd "$SIM/../updater_wip/link" && pwd)
 FILTER=${1:-}
 JOBS=${JOBS:-2}
 if [ -n "${TEETH_DIR:-}" ]; then T=$TEETH_DIR; rm -rf "$T"; mkdir -p "$T"; else T=$(mktemp -d); trap 'rm -rf "$T"' EXIT; fi
-mkdir -p "$T/v1.37_wip" "$T/updater_wip/link"
-(cd "$SIM" && tar cf - --exclude=./build --exclude=./results .) | (cd "$T/v1.37_wip" && tar xf -)
-(cd "$LINK" && tar cf - --exclude=./build .) | (cd "$T/updater_wip/link" && tar xf -)
+mkdir -p "$T/v1.37_wip"
+(cd "$SIM" && tar cf - --exclude=./build --exclude=./results --exclude=./link/build --exclude=./wire/build .) | (cd "$T/v1.37_wip" && tar xf -)
 W=$T/v1.37_wip
 B=build/clang-release
 TESTS="test_ingress_chain test_ingress_link test_ingress_egress"
@@ -37,7 +35,7 @@ build || { tail -30 "$W/build.log"; echo "teeth: the pristine tree didn't build"
 r=$(run)
 [ "$r" = " -" ] || { echo "teeth: the pristine tree fails: $r"; exit 2; }
 echo "pristine: all pass"
-L=../updater_wip/link
+L=link
 H=src/units/ingress_egress.h
 # name ~ file ~ sed expression [~ file ~ sed expression ...]   (files relative to v1.37_wip/)
 BUGS=(

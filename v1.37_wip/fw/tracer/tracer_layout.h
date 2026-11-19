@@ -11,8 +11,8 @@
  *   0x010C0    the end state expected (the next segment's frame 2 as words 0-65), or none (header word 8 = 0)
  *   0x02000    the segment's advice: 64-bit values, two per 128-bit entry, low value first
  *   0x58000    the controller-fed template words (128 bits each), as replay_layout.h
- * v1.37: when header word 21 names a place in the master tile, the program's end sends its last record there and a word
- * of the segment's figures where word 22 says, both on the master's counter in word 23, before its result (30.6).
+ * v1.37: the program's end prepares the block the reply carries (30.6), the row before the own record and the record,
+ * and sends it to the master by one DMA when the master's request asks, before the result's reply ends the image.
  * The header gives every region's address, so the placements are defaults. The tiles' replay regions are replay_layout.h's:
  * header words 16-19 give the record and stream chunks every tile uses.
  */
@@ -42,11 +42,8 @@
 #define TL_H_T_RLOG          18
 #define TL_H_T_WLOG          19
 #define TL_H_FIRST_TILE      20   /* window n goes to tile FIRST_TILE + n: 0 */
-/* v1.37 (30.6): the result carries the last record to the master tile. Written by the master's load; 0 in v1.36's
- * harnesses, which send nothing more. */
-#define TL_H_RESULT          21   /* where in the master tile the last record's 68 words go (an address there), or 0 */
-#define TL_H_RESULT_INFO     22   /* where the segment's figures go, one 128-bit word: rows traced, the Tracer's ERRORS, the status */
-#define TL_H_RESULT_COUNTER  23   /* the master tile's counter both are counted on: 69 words */
+/* v1.37 (30.6): the block the reply carries, 69 rows, from the row before TL_H_OWN_RECORD's: that row must be free. */
+#define TL_BLOCK_WORDS       69
 #define TL_H_WORDS           32
 
 /* results: tr_results[16] in data memory (the harness finds it in the .sym file) */
@@ -61,5 +58,6 @@
 #define TL_R_END_DIFF        8    /* the first record word (0-65) that differs from the expected end state, + 1; 0 none */
 #define TL_R_CONDITIONS      9    /* the controller's ERRORS */
 #define TL_R_STRAYS          10   /* v1.36: requests popped that are no handshake (17.9.10) */
+#define TL_R_BLOCKS_SENT     11   /* v1.37: the block sent to the master on its SEND_END (30.6): 1 under v1.37's master */
 
 #endif

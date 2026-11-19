@@ -1,4 +1,4 @@
-// wire_ends.h: the chip's two link ports on WORKER10's wire (../updater_wip/wire), for v1.37's chain of processes
+// wire_ends.h: the chip's two link ports on WORKER10's wire (wire/), for v1.37's chain of processes
 // (MILESTONE-v1.37.md, "The picture"; the INTEGRATOR's stage 6). In place of the host's End (host_end.h), Ingress/
 // Egress's far end is the wire: every chip cycle, from cycle 0, `exchange` on the end towards the driver with the
 // bytes of `link_up`, and, with an ASIC below, on the end away from it with the bytes of `link_down` (and the pin

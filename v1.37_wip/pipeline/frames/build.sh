@@ -2,7 +2,7 @@
 # build.sh SET...: the host's side of v1.37's proof steps (run_tests.sh: proof-matrix, proof-real, proof-29), from the
 # pinned sources: for each run, gold's frame file (`gold frames`), the link's packet file (`gold packets`), and gold's
 # reference for each segment the steps run (`gold frames-images`: every image's SHA-256). Gold is the frames' gold,
-# ../../../updater_wip/pipeline/gold (not ../gold, v1.36's). Seconds a run: gold is an emulator.
+# ./gold (copied from ../updater_wip/pipeline/gold, FROM-UPDATER.sha256; not ../gold, v1.3's). Seconds a run: gold is an emulator.
 #
 #   SET     matrix  the small inputs (EVM Zone trace-23, Cyclone input/22), N 64, cut into segments of 8 windows
 #                   (--segment-rows=524288), each four ways: its update-word frames raw or LRU-coded, a full new jump
@@ -29,10 +29,10 @@ HERE=$(cd "$(dirname "$0")" && pwd); . "$HERE/../inputs/pins.sh"
 OUT=${OUT:-$HOME/meshsim-inputs}; mkdir -p "$OUT"; OUT=$(cd "$OUT" && pwd)
 T=${JAP_DIR:-$OUT/src/jolt-asic-planning}/tracer
 [ -d "$T" ] || { echo "frames: no tracer folder at $T (JAP_DIR)"; exit 1; }
-GOLD=$(cd "$HERE/../../../updater_wip/pipeline/gold" 2>/dev/null && pwd) || true
+GOLD=$(cd "$HERE/gold" 2>/dev/null && pwd) || true
 CLASSES=${GOLD_CLASSES:-}
 if [ -z "$CLASSES" ]; then
-  [ -n "$GOLD" ] || { echo "frames: no ../updater_wip/pipeline/gold, and GOLD_CLASSES names no classes"; exit 1; }
+  [ -n "$GOLD" ] || { echo "frames: no pipeline/frames/gold, and GOLD_CLASSES names no classes"; exit 1; }
   command -v javac > /dev/null || { echo "frames: no javac (a JDK, Java 21), and GOLD_CLASSES names no classes"; exit 1; }
   CLASSES=$OUT/build/gold-frames; rm -rf "$CLASSES"; mkdir -p "$CLASSES"
   javac -d "$CLASSES" $(find "$GOLD/src" -name '*.java') 2> "$OUT/build/gold-frames.log" || { cat "$OUT/build/gold-frames.log"; exit 1; }

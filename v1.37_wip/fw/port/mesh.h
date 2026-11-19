@@ -199,6 +199,13 @@
 #define REQ_OP_LOAD        3u   /* the master tile's: the boot ROM's, the tile waits for its next image (6.5) */
 #define REQ_OP_ARMED       1u   /* the tracer tile's firmware's (17.9.10): the tile armed its start and totals counters */
 #define REQ_OP_STREAMS_ARMED 2u /*   and its stream counter */
+#define REQ_OP_SEND_END    3u   /* v1.37, the master's to the tracer tile (30.6, 17.9.10): send the block; word 0 [20:18] the
+                                 * data_counter, word 1 the byte address of its word 0, both the master's; no reply */
+#define REQ_DATA_CTR(w0)   (((w0) >> 18) & 0x7u)
+#ifndef __ASSEMBLER__
+/* a tile's result, as crt0.S sends it when main returns (REQ_EXIT there): its reply on CTR_REPLY at its reply word */
+#define REQ_RESULT_EXIT    ((1u << 10) * REQ_OP_RESULT + (1u << 18) * CTR_REPLY + (1u << 21) * (REPLY_WORD(DST_CC1) >> 4))
+#endif
 
 /* The reset PC, the boot ROM's first byte (5.1, 6.5), to which the image ends by jumping */
 #define RESET_PC           0x02000000

@@ -2,12 +2,11 @@
 # make_task.sh -- v1.37_wip's checks as a Quest task (WORKER3; v136-check's generator, for v1.37_wip).
 #   updater_wip/tasks/v137-check/make_task.sh NNN-name suites|suites-varied|check|faster > NNN-name.sh     (commit first: the kit is HEAD's)
 # (suites-varied, the INTEGRATOR's: suites with every chip's LPDDR model jittered; body.sh's header)
-# Writes a self-contained task with an embedded kit: v1.37_wip/, updater_wip/pipeline/gold, updater_wip/link (the
-# link's sources, which v1.37_wip builds in place since stage 4) and updater_wip/wire (the wire's, since stage 6) at
-# HEAD (git archive),
-# gold's and jumpmap's classes built here (pipeline/inputs/lib/classes.sh) and the frames' gold's (updater_wip/pipeline/
-# gold: classes-frames), so that the runner needs no javac, and, for suites, the link's test vectors:
-# updater_wip/pipeline/gold/test/packets, HEAD's if it has them, else those of $VECTORS_REV (default origin/updater-w2).
+# Writes a self-contained task with an embedded kit: v1.37_wip/ alone at HEAD (git archive), which since the freeze's
+# preparation carries the link's, the wire's and the frames' gold's sources (link/, wire/, pipeline/frames/gold;
+# FROM-UPDATER.sha256), gold's and jumpmap's classes built here (pipeline/inputs/lib/classes.sh) and the frames' gold's
+# (classes-frames), so that the runner needs no javac; for suites, the link's test vectors are the kit's own
+# (v1.37_wip/pipeline/frames/gold/test/packets).
 # The body is body.sh (its header lists the items). The suites item also reads Quest task 111's kit from the queue
 # (jolt-asic-planning at the pin, with the workloads' inputs, the 2^29 ones too).
 # Reads no persistent data and writes none; writes only results/NNN-name/. Safe to re-run.
@@ -17,20 +16,16 @@ NAME=${1:?usage: make_task.sh NNN-name suites|suites-varied|check|faster|chain-e
 case $ITEM in suites|suites-varied|check|faster|chain-evm-zone|chain-cyclone) ;; *) echo "ITEM is suites, suites-varied, check, faster, chain-evm-zone or chain-cyclone" >&2; exit 1;; esac
 TOP=$(git rev-parse --show-toplevel); HERE=$(cd "$(dirname "$0")" && pwd)
 R=$(cd "$TOP" && git rev-parse --short HEAD); BR=$(cd "$TOP" && git rev-parse --abbrev-ref HEAD)
-[ -z "$(cd "$TOP" && git status --porcelain -- v1.37_wip updater_wip/pipeline/gold updater_wip/link updater_wip/wire | grep -v '^??')" ] || { echo "make_task.sh: v1.37_wip/ or gold has uncommitted changes" >&2; exit 1; }
+[ -z "$(cd "$TOP" && git status --porcelain -- v1.37_wip | grep -v '^??')" ] || { echo "make_task.sh: v1.37_wip/ has uncommitted changes" >&2; exit 1; }
 K=$(mktemp -d); trap 'rm -rf "$K"' EXIT
 mkdir -p "$K/kit"
-(cd "$TOP" && git archive --format=tar HEAD v1.37_wip updater_wip/pipeline/gold updater_wip/link updater_wip/wire) | tar -x -C "$K/kit"   # (link: v1.37 stage 4)
+(cd "$TOP" && git archive --format=tar HEAD v1.37_wip) | tar -x -C "$K/kit"   # the folder alone: it stands alone
 VEC="HEAD's"
 if [ "$ITEM" != check ]; then
   bash "$K/kit/v1.37_wip/pipeline/inputs/lib/classes.sh" "$K/kit/v1.37_wip" "$K/kit/classes" >&2
   mkdir -p "$K/kit/classes-frames"
-  javac -d "$K/kit/classes-frames" $(find "$K/kit/updater_wip/pipeline/gold/src" -name '*.java') >&2
-  P=updater_wip/pipeline/gold/test/packets
-  if [ ! -f "$K/kit/$P/VECTORS.txt" ]; then
-    VR=${VECTORS_REV:-origin/updater-w2}; VEC="$(cd "$TOP" && git rev-parse --short "$VR")'s ($VR)"
-    (cd "$TOP" && git archive --format=tar "$VR" "$P") | tar -x -C "$K/kit"
-  fi
+  javac -d "$K/kit/classes-frames" $(find "$K/kit/v1.37_wip/pipeline/frames/gold/src" -name '*.java') >&2
+  P=v1.37_wip/pipeline/frames/gold/test/packets
   [ -f "$K/kit/$P/VECTORS.txt" ] || { echo "make_task.sh: no VECTORS.txt" >&2; exit 1; }
 fi
 echo "meshsim $R ($BR), v1.37_wip's check kit ($ITEM; the link's vectors: $VEC), built $(date -u +%F)" > "$K/kit/VERSION"

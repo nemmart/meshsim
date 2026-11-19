@@ -120,7 +120,7 @@ int main(int argc, char** argv) {
         if (!done_at[h]) { std::printf("FAIL %s: not come in %llu cycles (%zu words)\n", who.c_str(), (unsigned long long)t, got[h].size()); bad++; continue; }
         const int b = chain::check_reply(who, f, seg[h], asics, rows, got[h], ends[h]);
         bad += b;
-        if (!b) std::printf("driver: ASIC %u's reply (segment %u): 72 words in three link packets at cycle %llu, as gold's files give\n", h, seg[h], (unsigned long long)done_at[h]);
+        if (!b) std::printf("driver: ASIC %u's reply (segment %u): 73 words in three link packets at cycle %llu, as gold's files give\n", h, seg[h], (unsigned long long)done_at[h]);
     }
     {   // the wire loses nothing: a damaged link packet, or one ahead of its number, is a fault of an end
         const ::hostlink::LinkCounts c = end.counts();

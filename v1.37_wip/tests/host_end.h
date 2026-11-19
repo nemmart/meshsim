@@ -1,5 +1,5 @@
 // host_end.h: the host's end of the first link (machine-spec 28; v1.37 stage 4, the INTEGRATOR), for the harnesses:
-// WORKER8's `hostlink::End` (../updater_wip/link, hostlink.h) on the master tile's port `link_up`, through Ingress/
+// WORKER8's `hostlink::End` (link/, hostlink.h) on the master tile's port `link_up`, through Ingress/
 // Egress's far end (ingress_egress.h, THE PINS, THE LINK). Not chip hardware: the host is outside the chip.
 //
 //   THE HOST'S LINK PACKETS are given as they are to go: each a stream and 1 to 32 words, in order (a frame starts a

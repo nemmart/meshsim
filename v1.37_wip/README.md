@@ -1,27 +1,36 @@
 # meshsim v1.37
 
-> **v1.37 is v1.36 with the first end-to-end path** (`../updater_wip/`, WORKER3). The simulator is started with one
+> **v1.37 is v1.36 with the full system around it: the first end-to-end path.** The simulator is started with one
 > file, the packets that come over the link from the host, and with N and s; the master tile's firmware
-> (`fw/cc/master.c`) reads the frames out of Ingress and drives the Updater; the Updater builds the memory images;
-> the Tracer traces its segment on them, and the compute tiles replay it. From the INTEGRATOR's stage 4 the link is
-> chapter 28's: the host's link end (WORKER8's `End`) sends the packet file's link packets on `link_up`, a byte each
-> way a link cycle, to the chip's own link end in Ingress/Egress, and a chain of ASICs is linked by `link_down`. **The forward count** (WORKER7, the owner's design; in place of
-> WORKER4's threshold): Ingress moves a frame's bulk data to the Updater itself, over a flow-controlled word port, or
-> drops it; the master writes the frame's length once and wakes a few times a frame, not for its words.
+> (`fw/cc/master.c`) reads the frames out of Ingress and drives the Updater; the Updater builds the memory images in
+> LPDDR, through the cache and the AXI arbiter; the Tracer traces its segment on them, and the compute tiles replay
+> it; the master pulls the tracer tile's last record and sends the reply up the link. The link is chapter 28's: the
+> host's link end sends the packet file's link packets on `link_up`, a byte each way a link cycle, to the chip's own
+> link end in Ingress/Egress, and a chain of ASICs is linked by `link_down`, each chip a process of its own on the wire
+> if wanted. **Ingress moves a frame's bulk data to the Updater itself** (the forward count), over a flow-controlled
+> word port, or drops it; the master writes the frame's length once and wakes a few times a frame.
 >
 > | to | read |
 > |---|---|
-> | run it | `RUNNING-v1.37.md` |
-> | see what v1.37 adds, piece by piece, and what specifies each | `CHANGES-v1.37.md` |
-> | see how it was checked, and its figures | `../updater_wip/planning/sessions/WORKER3-REPORT.md`; for the threshold, `../updater_wip/planning/sessions/WORKER4-REPORT.md`; for the forward count, `WORKER7/REPORT.md` there |
+> | run it | `RUNNING-v1.37.md` (v1.36's suites and tools: `RUNNING.md`) |
+> | build it | `BUILDING.md` |
+> | see what v1.37 adds, piece by piece, and what specifies each | `CHANGES-v1.37.md`; the specification's own guide, `spec/CHANGES-v1.36-to-v1.37.md` |
+> | know what is open, and what is owed | `OPEN-v1.37.md` (v1.36's items: `OPEN-v1.36.md`) |
+> | see how it was checked, and its figures | the build's report, `../updater_wip/planning/sessions/INTEGRATOR/REPORT.md`, and the workers' reports beside it |
 >
-> **Everything else in this folder is v1.36's, copied unchanged (main, 67aaeb86), and reads as v1.36:** this page
-> below the line, `BUILDING.md` and `RUNNING.md` but for what they mark v1.37, `OPEN-v1.36.md`, `spec/`,
-> `tools/freeze/README.md`. v1.37's chip is v1.36's but for what `CHANGES-v1.37.md` lists (the
-> memory side, the line between the special tiles, Ingress/Egress at 17.6's registers, the link and the chain), and every test, suite and
-> figure of v1.36 below still holds here but for these: the RTL's stream run is gone with v1.36's LVDS stream, and the
-> UART run's figures are each one cycle later (its program turns the UART on, one instruction more). The specification is
-> not changed: what v1.37 adds is specified by the design documents of `../v1.4_wip/planning/`.
+> **The folder stands alone, as v1.36's does:** WORKER8's link (`link/`), WORKER10's wire (`wire/`) and the frames'
+> gold (`pipeline/frames/gold/`) are copied in from `../updater_wip` and held to their bytes at the copy
+> (`FROM-UPDATER.sha256`, checked by `tools/check_copies.sh` in `make check` and `run_tests.sh`'s layout step).
+> **`spec/` is v1.37's specification.** The rest of this page below the line is v1.36's, and reads as v1.36: every
+> test, suite and figure of v1.36 still holds here but for what `CHANGES-v1.37.md` and `OPEN-v1.37.md` list (the
+> RTL's stream run is gone with v1.36's LVDS stream, and the UART run's figures are each one cycle later: its program
+> turns the UART on, one instruction more).
+>
+> | v1.37 adds to the layout | what |
+> |---|---|
+> | `link/`, `wire/` | the link's and the wire's sources, built by the simulator (`src/units/tracer.mk`) |
+> | `pipeline/frames/` | the host's side of the proof steps: gold's frames, packets and reference images (`build.sh`), and the frames' gold (`gold/`) |
+> | `FROM-UPDATER.sha256` | the copies' hashes |
 
 ---
 

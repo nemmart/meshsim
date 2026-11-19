@@ -17,7 +17,7 @@ FLAGS += -pthread
 $(TB)/%.o: %.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(TSAN_FLAGS) -c $< -o $@
-# the sources outside this folder that the chip's tests link (tracer.mk): WORKER8's link (stage 4) and WORKER10's wire
+# the copied sources the chip's tests link (tracer.mk; FROM-UPDATER.sha256): WORKER8's link (stage 4) and WORKER10's wire
 # (stage 6), each with its own include folder, as in every other build
 $(TB)/link/%.o: $(LINK_DIR)/%.cpp
 	@mkdir -p $(dir $@)

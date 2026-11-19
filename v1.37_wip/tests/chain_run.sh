@@ -50,7 +50,7 @@ done
 F=tests/updater/kin-raw.frames
 if timeout 300 $B/wire_launch --clients 2 -- $B/driver $F --rows-traced 50 --limit 400000 -- $B/standin_asic $F --rows-traced 50 --silent 1 > "$W/silent.log" 2>&1; then
   echo "FAIL a reply that never comes: the run passed"; fail=$((fail + 1))
-elif grep -q "ASIC 1's reply (segment 1): not come in 400000 cycles" "$W/silent.log" && grep -q "ASIC 0's reply (segment 0): 72 words" "$W/silent.log"; then
+elif grep -q "ASIC 1's reply (segment 1): not come in 400000 cycles" "$W/silent.log" && grep -q "ASIC 0's reply (segment 0): 73 words" "$W/silent.log"; then
   echo "a reply that never comes: the driver fails at its limit, 400,000 cycles, and names ASIC 1"
 else
   echo "FAIL a reply that never comes: not as expected"; grep -E "FAIL|wire-launch" "$W/silent.log" | head -6; fail=$((fail + 1))

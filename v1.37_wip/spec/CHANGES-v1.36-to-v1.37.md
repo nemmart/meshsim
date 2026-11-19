@@ -46,7 +46,7 @@ Each item: what changed, and whether it touches the RTL: **RTL** a change to bui
 | the Tracer (17.9) | none: its `fill` is served by the cache; its segment comes in its load (17.9.10) | none |
 | the reset (18) | still one reset; it reaches the host link and Ingress/Egress's queues too | none |
 | the master tile's firmware (30) | the frame loop, the Updater's runs, the hand-over, the reply | none |
-| the tracer tile's firmware (17.9.10, 30.6) | its result carries its last record to the master tile | none |
+| the tracer tile's firmware (17.9.10, 30.6) | at its trace's end it prepares a block of 69 words, its figures and its last record; the master tile pulls it by one request, `SEND_END`, and it sends it by one DMA transfer into the reply's buffer | none |
 
 ## 3. What is asked of the RTL
 
@@ -105,8 +105,8 @@ Each item: what changed, and whether it touches the RTL: **RTL** a change to bui
 | 22.27, 22.28 | edited: chapter 30; the new errors; the one reset |
 | 23 | 23.1 and the opening rewritten; 23.5 the files; 23.6 the cache, replacing v1.36's model; 23.10–23.13 new |
 | 24 | the new units' rows |
-| 26 | items 60, 124, 166, 172 changed; 178–182 new; 183–190 in chapters 28 and 29 |
-| `jolt/tracer.md` 17.9.10, 17.9.14, 17.9.15, 17.9.17, 17.9.18 | the cache behind `fill`; the segment in the load; items 148 and 174 |
+| 26 | items 60, 124, 166, 172 changed; 178 new and closed; 179–182 and 191 new; 183–190 in chapters 28 and 29, 192 in chapter 28 |
+| `jolt/tracer.md` 17.9.5, 17.9.10, 17.9.14, 17.9.15, 17.9.17, 17.9.18 | the fill port's rule of one handshake, one request; the cache behind `fill`; the segment in the load; the last block pulled by `SEND_END`; items 148 and 174 |
 | — | chapters 28, 29, 30 in `host-link.md`, `host-frames.md`, `master-firmware.md`: new |
 
 ## 6. Rulings this version records

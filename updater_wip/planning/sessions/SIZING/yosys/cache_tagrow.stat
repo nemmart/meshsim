@@ -1,0 +1,25 @@
+
+5. Printing statistics.
+
+=== cache_tagrow ===
+
+        +----------Local Count, excluding submodules.
+        | 
+     1863 wires
+     2786 wire bits
+       18 public wires
+      941 public wire bits
+       13 ports
+      710 port bits
+     2068 cells
+       26   $_ANDNOT_
+      576   $_AND_
+      291   $_MUX_
+      716   $_NAND_
+       16   $_NOR_
+        6   $_NOT_
+      343   $_ORNOT_
+       58   $_OR_
+       22   $_XNOR_
+       14   $_XOR_
+

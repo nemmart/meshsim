@@ -1261,7 +1261,8 @@ Words 1–3 are the operation's. An `op` the target does not define is UB (1.3).
 - Every other `op` is the memory tile's firmware's: its file system's (item 119;
   chapter 23).
 
-**The tracer tile's** (target 2): every `op` is its firmware's (17.9.10).
+**The tracer tile's** (target 2): every `op` is its firmware's (17.9.10): the compute tiles' `ARMED` and
+`STREAMS_ARMED`, and the master tile's `SEND_END`, which asks for the segment's last block (30.6).
 
 ## 12. `receive_unit`
 
@@ -2039,6 +2040,9 @@ queue; Egress cuts them into link packets** (owner).
   word lands in the queue,** not as it leaves; the word that takes it to 0 is the frame's last, and is marked so in
   the queue. So the core, which writes the words, knows when it is 0, and stores the next frame's length without
   waiting for the link. A store while it is not 0 is UB (1.3); a load gives what remains.
+- **A frame is the link's once `EGRESS_COUNT` is 0** (owner): no bit says the outgoing queue is empty or a frame
+  has left, and the core does not wait for it. The host's frames are requests and the chip's replies their
+  answers: once the master tile has handed an answer to Egress, it is done.
 - **`egress_error`:** a word written into a full queue, or with `EGRESS_COUNT` at 0, is dropped and sets
   `ERRORS.egress_error`; the write is still counted (17.3).
 - **Link packets.** Egress offers the upper link end a link packet when the queue holds 32 words of a frame, or the
@@ -2244,7 +2248,8 @@ bytes.
   Writers into the buffer are one at a time, or paced, since nothing paces the
   memory tile's attach link but the program (16.3).
 
-**Its AXI port,** client 2 of the arbiter (3, 23.10).
+**Its AXI port,** client 2 of the arbiter (3, 23.10). Its timing (21.5) is at its own port; behind the arbiter its
+bursts reach `lpddr` a cycle later (23.11), and the LPDDR model answers them, not the RTL test's slave.
 - **Bursts.** A job moves its beats by INCR bursts of 16-byte beats, none
   crossing a 4 KiB boundary; their lengths are the implementation's. A write's
   beats enable every byte.
@@ -2398,8 +2403,9 @@ The decoder turns the word port's 128-bit words into **update words**, 64 bits e
   next in the cycle the run takes it. **A header word waits for the output register too,** so with values coming
   steadily each header word costs the run one cycle with no value (`STAT_STALL_DATA` + 1).
 - **The limit of a run of values** (owner): a header word whose start plus its count passes 2³², a word index past
-  2³² − 1, is UB. So the Updater names a page below 2²³ only, at depth 3 too, where the file's depth would reach
-  2³⁰: a value whose page is 2²³ or more is beyond what the Updater can reach, and UB (29.4).
+  2³² − 1, is UB. **The index's 32 bits are what bound the Updater's reach:** a value's page is its index over 512,
+  so every page the Updater names is below 2²³, 32 GiB of file, at depth 3 too, where the file's depth would reach
+  2³⁰ (29.4).
 - **`continue`** 1 keeps the table, the bits in the buffer and the open run of values from the last run: the run
   carries on in the same frame. `continue` 0 clears all three at `START`: a new frame. A frame's padding, always
   under 128 bits (29.2), is so cleared, and never a whole word left on the input.
@@ -2978,13 +2984,15 @@ Invariants 27 to 34 are new in v1.36: rules the machine states as UB that v1.35 
 36. **The Updater's rules** (17.10.9): words 32–37 and `START` only while it is idle; `WRITE`s into its region of
     128 bits, to part 2 alone, from one source at a time; every root and free page a page's address in LPDDR, every
     free page new; `WORD_COUNT` the frame's count, so that no run ends inside a code; no run of values past word
-    index 2³² − 1, and no page at 2²³ or above. **Hardware:**
+    index 2³² − 1, which bounds its pages too (17.10.2). **Hardware:**
     `ERRORS.queue_overrun`, `beyond`, `out_of_pages`.
 37. **The cache's clients' rules** (23.6.8): a page's data in LPDDR before an entry names it; one writer for a file
     at a time; an owned index page changed only by `update`; a page used only after its discard's reply; a page
-    the Tracer reads not written directly while it does, and one it has written not read directly. The stale-line
-    check (23.6.11) catches a breach of the first, third, fourth or fifth when it leaves a stale clean line that is
-    read again.
+    the Tracer reads not written directly while it does, and one it has written not read directly. The simulator's
+    checks (23.6.11): where the Updater meets the cache, an update before its page's write is answered (the first),
+    a direct write to a page the cache holds a line of (the third, and the fifth while a line of the page is
+    cached), a direct read of a page it holds a dirty line of (the sixth); and the stale-line check, a breach of the
+    first, third, fourth or fifth that leaves a stale clean line read again.
 38. **The memory system's rules** (17.11): no `START`, and no `WRITE` to the memory tile's region 0x04.
 39. **The AXI ports' rules** (23.10, 23.13): every burst at a multiple of 16, not across 4 KiB, its `wlast` on its
     last beat alone, its W beats back to back. A fault of a unit's design, not a program's: the simulator stops on
@@ -3099,9 +3107,15 @@ an attach link included, in four cycles: three register stages and one for the r
 | the Updater | a value a cycle into the page memory while values come and stay in the page, and a cycle for each header word; each page brought in a look-up, each new page a write and its response then an update and its reply | contract, from its code | 17.10.5 | not modelled |
 | the cache | 2 cycles a level on hits; a look-up of a depth-2 file on hits 6 cycles from its handshake; an update 87 with its path in the cache `[model]` | contract, from its code | 23.6.5, 23.6.7 | 6 cycles a hit, 80 a miss (v1.36's model) |
 | the AXI arbiter | a cycle each way: an address taken in *t* at `lpddr` from *t* + 1, a beat or response from `lpddr` at its client a cycle later; a line read about 80 cycles on the simulator's LPDDR | contract, from its code; the model's | 23.11, 23.12 | not modelled |
-| the RW engine | a `START` issued in *t* raises the job's first burst address on AR or AW of its AXI port from *t* + 3, and a write's first beat on W from *t* + 4; then a beat a cycle while the port takes them. A read ends in the cycle its last beat comes, a write in the cycle its last burst is answered | the RTL's | 17.7 | no model |
+| the RW engine | a `START` issued in *t* raises the job's first burst address on AR or AW of its own AXI port from *t* + 3, and a write's first beat on W from *t* + 4; then a beat a cycle while the port takes them. Behind the arbiter (23.11) each burst reaches `lpddr` a cycle later. A read ends in the cycle its last beat comes, a write in the cycle its last burst is answered | the RTL's, at its own port | 17.7 | no model |
 | the replayer | 3 cycles a row, 5 for a multiply, plus stalls | contract (the schedules); the RTL's (the stalls) | 17.8.7 (`spec/jolt/replayer.md`) | the same schedules |
 | the Tracer | 4 cycles a row, 6 for a multiply, plus stalls and the memory system's waits | contract (the schedules); the RTL's (the stalls) | 17.9.7 (`spec/jolt/tracer.md`) | the same schedules; no pipeline costs |
+
+**Where the simulator's cycles no longer match the RTL's tests** (owner; to be reworked with a real RW engine):
+- **the RW engine's,** behind the arbiter: its bursts reach `lpddr` a cycle after they leave its port, and the LPDDR
+  model answers them, not the RTL test's slave (`chip_memory_test.rs`) (17.7, 23.11);
+- **a special tile's peripheral DMA,** on the south input, where the RTL has it on west for the memory and tracer
+  tiles (16.4; RCR 3).
 
 ### 21.6 Events
 
@@ -4209,11 +4223,18 @@ every entry above it; then the entry at level *L* becomes *E*, whatever it was.
 - **A line with a write in flight** is not discarded until its write's response has come; the discard waits.
 - **The reply comes when none of the page's 32 lines is in the cache.**
 
-There is no flush (owner): updates write through, and nothing reads the Tracer's dirty lines in LPDDR *(item 178)*.
+**There is no flush, and none is needed** (owner): updates write through, and the Tracer's dirty lines are its run
+state, which is thrown away; the Updater has already applied the segment's updates in another set of pages (17.10).
+Nothing reads the Tracer's dirty lines in LPDDR.
 
 #### 23.6.4 The Tracer's port
 
-`fill` is v1.36's, unchanged (3, 17.9.5); the cache is its other side. Its line is the file's line, line *l* & 31 of
+`fill` is v1.36's, unchanged (3, 17.9.5); the cache is its other side.
+
+> **Each cycle in which a request channel's `valid` and `ready` are both 1 is one request.** The cache takes it as
+> such and serves it. A client that holds `valid` one cycle past its handshake has made a second request, which the
+> cache serves too, and whose response reaches nobody. **The client must not do it** (17.9.5); nothing in the
+> cache can tell. **It is verified in the RTL, by an assertion on the port.** Its line is the file's line, line *l* & 31 of
 page *l* >> 5 (23.5), its `data` the line's byte *b* at bits [8*b* + 7 : 8*b*].
 
 **A read** walks (root, depth, line) to the data line, through every index line on the path, and answers with the
@@ -4261,18 +4282,18 @@ alone: its line *l* < 32 is the root's line *l*.
 | Register | Bits | What it holds |
 | --- | --- | --- |
 | a look-up port's request register, × 4 | 135 | `valid`; `op` (2), `root` (31), `depth` (2), `page` (30), `level` (2), `entry` (32); three waits: **parked** (an update in the slot), **for the miss handler**, **for the slot**; **the failed line** (31) and its valid bit: a line whose fetch for this request failed |
-| `fill`'s read register | 102 | `valid`; root (31), depth (2), line (35); the wait for the miss handler; the failed line and its bit |
+| `fill`'s read register | 103 | `valid`; root (31), depth (2), line (35); the wait for the miss handler; the failed line and its bit; whether it was taken while `fill`'s write register held a write, and so waits behind it (23.6.4) |
 | `fill`'s write register | 1,127 | as the read's, with the line's 1,024 bits and the wait for the slot |
 | the front end | 7 | the round-robin pointer over the six sources (3); the source a miss was just handled for, and its valid bit |
-| the walker | 1,358 | its state (2); the source (3); the level *k* (2); the discard's line count (6); the page at level *k* (31); the line being looked up (31); the hit way (3); whether every entry so far was owned; the line's dirty bit; a read pending; the line register (1,024); the set's tag row as read (216); a reply waiting for the bus: status (3), level (2), entry (32) |
+| the walker | 1,141 | its state (2); the source (3); the level *k* (2); the discard's line count (6); the page at level *k* (31); the line being looked up (31); the hit way (3); whether every entry so far was owned; a read pending; the line register (1,024); a reply waiting for the bus: status (3), level (2), entry (32). The set's tag row is not a register of the walker's: it is the tag memory's output, which holds the row until the next read, and the walker is its only reader |
 | the miss handler | 1,321 | its state (3); the line to install (31) and its set (9) and way (3); the victim's tag (22), valid and dirty bits; whether it allocates without a read; its error bit; `arvalid`; a copy made; the source it serves (3); the beats in (4); the set's tag row (216); the line buffer (1,024) |
-| the AXI writer | 1,070 | busy; the address taken; the beat (4); the line address (31); the line (1,024); a queue of 4 kinds, update or write-back, in the order of their responses, with its head and count |
-| the update slot | 81 | valid; its source (3), set (9), way (3), level (2), line (31), and the entry before (32) |
+| the AXI writer | 1,064 | busy; the address taken; the beat (4); the line address (25, as AW carries it); the line (1,024); a queue of 4 kinds, update or write-back, in the order of their responses, with its head and count |
+| the update slot | 80 | valid; its source, a look-up port (2); set (9), way (3), level (2), line (31), and the entry before (32) |
 | the tag-write guard | 10 | the set the miss handler last wrote (9), and whether that write was in or after the cycle of the walker's tag read: a row read before it landed is read again |
 | the error | 1 | sticky: an LPDDR error no client was told of (23.6.9) |
-| the outputs | 1,259 | the four `ready`s; the reply bus (40); `fill`'s two `ready`s, its read response (`valid`, `status`, 1,024 bits of `data`) and its write response (`valid`, `status`); the AXI port's AR (`arvalid`, 25 bits of line address), AW (the same) and W (`wvalid`, `wdata`, `wlast`); the error |
+| the outputs | 1,258 | the four `ready`s; the reply bus (40); `fill`'s two `ready`s, its read response (`valid`, `status` (2), 1,024 bits of `data`) and its write response (`valid`, `status`); the AXI port's AR (`arvalid`, 25 bits of line address), AW (the same) and W (`wvalid`, `wdata`, `wlast`); the error |
 
-**In all about 6,880 flip-flops** (6,876 as counted), five of them line registers of 1,024 bits: the request
+**In all about 6,650 flip-flops** (6,652 as counted), five of them line registers of 1,024 bits: the request
 register of `fill`'s write, the walker's line, the miss handler's buffer, the AXI writer's line and `fill`'s read
 response. An implementation may share them where their uses never overlap.
 
@@ -4413,9 +4434,10 @@ handshake to the answer:
 | **a page the Tracer has written is not read directly** | its newest lines may be in the cache alone, dirty |
 
 Breaking one is UB (1.3): the firmware that hands out the pages and starts the runs is what keeps them. The
-stale-line check (23.6.11) catches, at the next read of a line still cached and clean, a page changed in LPDDR
-under the cache: so a breach of the first, third, fourth or fifth rule when it leaves such a line; not the second
-or the sixth, and not an old dirty line written back over a page's new contents. **An update answered `hole` or `beyond`** cannot come to a client that looked up
+simulator's checks of them are 23.6.11's: the three where the Updater meets the cache catch the first, third and
+sixth rules as they are broken, and the fifth when a line of the page is cached; the stale-line check catches, at
+the next read of a line still cached and clean, a page changed in LPDDR under the cache. None catches the second,
+or an old dirty line written back over a page's new contents. **An update answered `hole` or `beyond`** cannot come to a client that looked up
 first, so a client may treat one as fatal.
 
 #### 23.6.9 Errors
@@ -4446,6 +4468,17 @@ segments. Nothing accepted before a reset is answered after it.
   difference stops the simulator. It catches, at that read, a page changed in LPDDR under the cache (23.6.8); a
   stale line evicted, or never read again, goes unseen, and dirty lines are not compared. A line whose update's
   write failed is left out.
+- **The checks where the Updater meets the cache,** on the Updater's look-up port and AXI port, counted, each failing
+  the run:
+
+  | Check | The rule of 23.6.8 it catches |
+  | --- | --- |
+  | an update naming a page whose write by the Updater is not yet answered | the data is in LPDDR before the index names it |
+  | a direct write to a page the cache holds a line of | an owned index page changes only by `update`; and a data page the Tracer reads is not written directly while it does, when a line of it is cached |
+  | a direct read of a page the cache holds a dirty line of | a page the Tracer has written is not read directly |
+
+  Beside them: at an update's reply, LPDDR holds the new entry; and one look-up outstanding a client, a reply only
+  to a client with one.
 - **By construction,** every dirty line written back is one a fill write made: only `fill`'s write sets a dirty bit.
 - A look-up port's `op` 3, an R beat the miss handler did not ask for, a line of other than 8 beats, a B response
   with no write outstanding, a write-back's response out of turn, two reads or two writes of one memory in a cycle,
@@ -4773,7 +4806,7 @@ not used here.
 | the special tiles (2.1) | tile instances with the compute tile's scratchpad, `SCRATCHPAD_BYTES`, each a tile's logic plus its peripheral and, with a sending peripheral, its DMA | not estimated here. v1.35 gave them 2 MiB of big SRAM each |
 | the master tile's Ingress/Egress (17.6): the host link, two link ends and four forwarding buffers (28.13.7); the incoming queues; the outgoing queue; the UART | 1,424 flip-flops for the link; 77,312 bytes of SRAM for the link, 32 KiB for the incoming queues, 8 KiB for the outgoing `[derived]` | not estimated in mm². The link's CRC units: two of 128 bits a cycle, about 2,490 XOR gates each before sharing, and two of a byte, about 270 each `[derived]` |
 | the master tile's Updater (17.10) | 4,193 flip-flops, 2,048 of them the LRU table; 4 KiB of page memory and 1 KiB of free page queue `[derived]` | not estimated in mm² |
-| the memory tile's memory system (17.11, 23): the cache's controller, its memory and the AXI arbiter | the cache's memory 512 KiB of data and 13.5 KiB of tags, each two-ported; about 6,880 flip-flops in the controller, five 1,024-bit line registers among them, which an implementation may share; 1,539 in the arbiter `[derived]` | not estimated in mm². The memory system sits with the LPDDR controller and the tracer tile, whose latency matters (RCR D) |
+| the memory tile's memory system (17.11, 23): the cache's controller, its memory and the AXI arbiter | the cache's memory 512 KiB of data and 13.5 KiB of tags, each two-ported; about 6,650 flip-flops in the controller, five 1,024-bit line registers among them, which an implementation may share; 1,539 in the arbiter `[derived]` | not estimated in mm². The memory system sits with the LPDDR controller and the tracer tile, whose latency matters (RCR D) |
 | once per die: the request tree's nodes (11.3), `MESH_SIZE` row nodes and the root, a 16-byte buffer per input, their arbiters and the root's credit counters; the three receive queues, 128, 256 and 128 × 128 bits at 8 × 8, each in its receiving tile's request unit; the tree's wiring (18 wires a link: 16 data, valid, ready) and a credit wire from each receiving tile | ≈ 74 Kbit | ≈ 0.03 mm² plus wiring |
 
 Rule of thumb: tables go in SRAM (cheap); comparators, multiplexers and per-entry flop state are what spend the
@@ -4874,7 +4907,7 @@ row says how. Chapters 1 to 19 mark an open subject *Open* in place; each is an 
 | 119 | The file system, with its design. The RW engine, the `READ` and `WRITE` requests and the write buffer are specified (11.5, 17.7); the files as the hardware sees them, the cache and the Updater are specified in v1.37 (23.5, 23.6, 17.10) | 11.5, 17.7, 23 | deferred, part decided |
 | 130 | A 1 × 4 test chip. Decided: the mesh is square, `MESH_SIZE` 1 to 8; a 1 × 4 is not one | 2.1, 16.2, 19 | deferred, part decided |
 | 159 | The simulator checks to add: invariant 17's request limits, its write-buffer rule and its group-transfer rule; invariant 18 for the scratchpad; size 11 and the two stream cases, stopped rather than counted | 20, 4.1, 8.3 | deferred (owner, 2026-11-12) |
-| 178 | A flush of the Tracer's dirty lines, at a trace's end or at shutdown: nothing reads them in LPDDR today | 23.6.3 | open |
+| 178 | A flush of the Tracer's dirty lines, at a trace's end or at shutdown. Closed in v1.37: none is needed (owner). The Tracer's run state is thrown away, and the Updater has already applied the updates in another set of pages (23.6.3) | 23.6.3 | closed (v1.37) |
 | 179 | The cache writing a set's dirty least recently used line back early, in place, so that a miss finds it clean | 23.6.7 | open |
 | 180 | Who discards a page when the file system hands it out again: in v1.37 nothing is freed | 23.6.8 | open |
 | 181 | **Everything after an error stops the chip:** the host's reset, draining Ingress's queues, a "ready" message to the host, a report of the failure, and the next proof. Not designed in v1.37 (owner: "error recovery in general is a nightmare"). Also what follows a stop of the master tile's own program on a frame's contents (30.8), and a `link_error` with nothing wrong at an ASIC whose neighbour is reset just after it (28.14) | 17.6.12, 17.10.8, 22.28, 28.14, 29.14, 30.8 | open |
@@ -4890,7 +4923,7 @@ row says how. Chapters 1 to 19 mark an open subject *Open* in place; each is an 
 
 **The index:** where each item lives; *closed* means settled, its record in the history file or below.
 
-1 here; 2 closed (v1.36); 3 closed (v1.36); 4 closed (v1.36); 5 closed (v1.36); 6 closed (v1.36); 7 here; 8 here; 9 closed; 10 here; 11 closed; 12 closed; 13 here; 14 closed; 15 here; 16 closed; 17 here; 18 here; 19 here; 20 here; 21 here; 22 here; 23 closed; 24 here; 25 closed; 26 closed; 27 here; 28 here; 29 closed; 30 closed; 31 closed; 32 closed; 33 closed; 34 closed; 35 `spec/jolt/replayer.md`; 36 `spec/jolt/replayer.md`; 37 closed; 38 `spec/jolt/replayer.md`; 39 `spec/jolt/replayer.md`; 40 closed; 41 closed; 42 `spec/jolt/replayer.md`; 43 closed; 44 closed; 45 closed; 46 closed; 47 closed; 48 here; 49 closed; 50 closed; 51 closed; 52 closed; 53 closed; 54 closed; 55 closed; 56 `spec/jolt/replayer.md`; 57 `spec/jolt/replayer.md`; 58 closed; 59 `spec/jolt/replayer.md`; 60 here, closed (v1.37) but the width; 61 here; 62 closed (owner, 2026-11-12); 63 closed (v1.36); 64 here; 65 closed; 66 closed; 67 closed (v1.36); 68 closed; 69 closed; 70 closed (owner, 2026-11-12); 71 closed; 72 closed; 73 closed; 74 closed; 75 closed; 76 closed; 77 closed; 78 closed; 79 closed; 80 closed; 81 closed; 82 closed (v1.36); 83 closed (v1.36); 84 closed (v1.36); 85 closed; 86 closed; 87 closed; 88 closed; 89 closed; 90 closed; 91 closed; 92 closed; 93 closed; 94 closed; 95 closed; 96 closed; 97 closed; 98 closed; 99 closed; 100 closed; 101 closed; 102 closed; 103 closed (owner, 2026-11-12); 104 closed; 105 closed; 106 closed; 107 here; 108 closed; 109 closed; 110 closed; 111 closed; 112 closed; 113 `spec/jolt/replayer.md`; 114 closed; 115 `spec/jolt/replayer.md`; 116 here; 117 closed (v1.36); 118 closed (v1.36), its decided half reversed (160); 119 here; 120 closed (v1.36); 121 closed (v1.36); 122 closed (v1.36); 123 closed (v1.36), its record in `spec/jolt/replayer.md`; 124 here; 125 here; 126 closed (v1.36); 127 closed; 128 here; 129 closed (v1.36); 130 here; 131 closed; 132 closed; 133 closed (v1.36); 134 closed; 135 closed; 136 closed; 137 `spec/jolt/replayer.md`; 138 closed; 139 `spec/jolt/replayer.md`; 140 closed (v1.36), its record in `spec/jolt/replayer.md`; 141 closed; 142 closed (v1.36); 143 closed; 144 closed, and reversed (161); 145 closed; 146 closed; 147 `spec/jolt/tracer.md`; 148 `spec/jolt/tracer.md`; 149 closed; 150 closed; 151 closed; 152 closed; 153 `spec/jolt/tracer.md`; 154 closed; 155 closed; 156 closed; 157 closed (v1.36), its record in `spec/jolt/tracer.md`; 158 `spec/jolt/replayer.md`; 159 here; 160 here; 161 here; 162 here; 163 here; 164 here; 165 here; 166 here; 167 here; 168 here; 169 here; 170 here; 171 here; 172 here, closed (v1.37) but the clock; 173 here; 174 `spec/jolt/tracer.md`; 175 `spec/jolt/tracer.md`; 176 `spec/jolt/tracer.md`; 177 `spec/jolt/tracer.md`; 178 here; 179 here; 180 here; 181 here; 182 here; 183 `spec/host-link.md`; 184 `spec/host-link.md`; 185 `spec/host-frames.md`; 186 `spec/host-link.md`; 187 `spec/host-frames.md`; 188 `spec/host-frames.md`; 189 `spec/host-frames.md`; 190 `spec/host-frames.md`; 191 here.
+1 here; 2 closed (v1.36); 3 closed (v1.36); 4 closed (v1.36); 5 closed (v1.36); 6 closed (v1.36); 7 here; 8 here; 9 closed; 10 here; 11 closed; 12 closed; 13 here; 14 closed; 15 here; 16 closed; 17 here; 18 here; 19 here; 20 here; 21 here; 22 here; 23 closed; 24 here; 25 closed; 26 closed; 27 here; 28 here; 29 closed; 30 closed; 31 closed; 32 closed; 33 closed; 34 closed; 35 `spec/jolt/replayer.md`; 36 `spec/jolt/replayer.md`; 37 closed; 38 `spec/jolt/replayer.md`; 39 `spec/jolt/replayer.md`; 40 closed; 41 closed; 42 `spec/jolt/replayer.md`; 43 closed; 44 closed; 45 closed; 46 closed; 47 closed; 48 here; 49 closed; 50 closed; 51 closed; 52 closed; 53 closed; 54 closed; 55 closed; 56 `spec/jolt/replayer.md`; 57 `spec/jolt/replayer.md`; 58 closed; 59 `spec/jolt/replayer.md`; 60 here, closed (v1.37) but the width; 61 here; 62 closed (owner, 2026-11-12); 63 closed (v1.36); 64 here; 65 closed; 66 closed; 67 closed (v1.36); 68 closed; 69 closed; 70 closed (owner, 2026-11-12); 71 closed; 72 closed; 73 closed; 74 closed; 75 closed; 76 closed; 77 closed; 78 closed; 79 closed; 80 closed; 81 closed; 82 closed (v1.36); 83 closed (v1.36); 84 closed (v1.36); 85 closed; 86 closed; 87 closed; 88 closed; 89 closed; 90 closed; 91 closed; 92 closed; 93 closed; 94 closed; 95 closed; 96 closed; 97 closed; 98 closed; 99 closed; 100 closed; 101 closed; 102 closed; 103 closed (owner, 2026-11-12); 104 closed; 105 closed; 106 closed; 107 here; 108 closed; 109 closed; 110 closed; 111 closed; 112 closed; 113 `spec/jolt/replayer.md`; 114 closed; 115 `spec/jolt/replayer.md`; 116 here; 117 closed (v1.36); 118 closed (v1.36), its decided half reversed (160); 119 here; 120 closed (v1.36); 121 closed (v1.36); 122 closed (v1.36); 123 closed (v1.36), its record in `spec/jolt/replayer.md`; 124 here; 125 here; 126 closed (v1.36); 127 closed; 128 here; 129 closed (v1.36); 130 here; 131 closed; 132 closed; 133 closed (v1.36); 134 closed; 135 closed; 136 closed; 137 `spec/jolt/replayer.md`; 138 closed; 139 `spec/jolt/replayer.md`; 140 closed (v1.36), its record in `spec/jolt/replayer.md`; 141 closed; 142 closed (v1.36); 143 closed; 144 closed, and reversed (161); 145 closed; 146 closed; 147 `spec/jolt/tracer.md`; 148 `spec/jolt/tracer.md`; 149 closed; 150 closed; 151 closed; 152 closed; 153 `spec/jolt/tracer.md`; 154 closed; 155 closed; 156 closed; 157 closed (v1.36), its record in `spec/jolt/tracer.md`; 158 `spec/jolt/replayer.md`; 159 here; 160 here; 161 here; 162 here; 163 here; 164 here; 165 here; 166 here; 167 here; 168 here; 169 here; 170 here; 171 here; 172 here, closed (v1.37) but the clock; 173 here; 174 `spec/jolt/tracer.md`; 175 `spec/jolt/tracer.md`; 176 `spec/jolt/tracer.md`; 177 `spec/jolt/tracer.md`; 178 here, closed (v1.37); 179 here; 180 here; 181 here; 182 here; 183 `spec/host-link.md`; 184 `spec/host-link.md`; 185 `spec/host-frames.md`; 186 `spec/host-link.md`; 187 `spec/host-frames.md`; 188 `spec/host-frames.md`; 189 `spec/host-frames.md`; 190 `spec/host-frames.md`; 191 here; 192 `spec/host-link.md`.
 
 **Closed in v1.36,** each by the RTL's hardware, which v1.36 takes:
 - **2,** the bank request-queue depth, and **4,** the bound on bank queueing: there is no bank queue. A write

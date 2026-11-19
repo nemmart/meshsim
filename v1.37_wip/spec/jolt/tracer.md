@@ -358,7 +358,15 @@ bytes, fully associative, true LRU, a hit taking no extra cycle.
 - The state write invalidates both, and drops their dirty lines (17.9.3).
 
 **The fill port**, `fill` (3), is the Tracer's whole interface to the memory
-system. A request reads or writes one 128-byte line of a file, named by (root,
+system.
+
+> **One handshake, one request. Each cycle in which a request channel's `valid`
+> and `ready` are both 1 is one request. The Tracer drops `valid` in the cycle
+> after its handshake, unless it has a new request to make:** a `valid` held a
+> cycle longer is a second request, which the cache serves (23.6.4), and its
+> response reaches nobody. It is the client's rule; the cache cannot tell. **It is
+> verified in the RTL, by an assertion on the port.**
+ A request reads or writes one 128-byte line of a file, named by (root,
 depth, line), for one of three reasons: an instruction miss, a data miss with its
 dirty victim's write-back, and a map probe's line. A read's response carries a
 status:
@@ -596,8 +604,12 @@ v1.35's 4.21.10, and relies on these rules:
 **In v1.37** the master tile answers the tracer tile's `LOAD` only once the
 Updater has built the segment's files, and the load carries the segment: its
 record, the end state it is checked against, its advice and the map's
-constants (30.5). The tracer tile's result carries its last record to the master
-tile (30.6).
+constants (30.5). **Its last record is pulled, not pushed** (30.6): when its
+trace ends the tracer tile prepares one block of 69 128-bit words in its own
+memory, its figures and the record at the segment's end, and sends its result,
+which says the trace is done; once the replay is done the master tile asks for
+the block by one request, `SEND_END`, and the tracer tile sends it by one DMA
+transfer.
 
 **The handshakes** are requests to the tracer tile (target 2, 11.5), so no
 timing is assumed, as the load waits for its `LOAD` (6.5):
@@ -606,6 +618,13 @@ timing is assumed, as the load waits for its `LOAD` (6.5):
 - **`STREAMS_ARMED`.** At its window, once its totals have landed, it reads its
   streams' lengths from them, arms its stream counter, and sends
   `STREAMS_ARMED`.
+- **`SEND_END`.** The master tile, once the replay is done, asks for the block
+  (30.6): word 0 [20:18] `data_counter`, the master tile's counter armed for the
+  block's 69 packets; word 1, the byte address in the master tile's memory where
+  the block's word 0 goes; words 2 and 3, 0. The tracer tile answers with the
+  data alone, no reply (11.4): one DMA transfer of 69 128-bit `WRITE`s, from that
+  address up, counted on `data_counter`, along the line between the special
+  tiles (16.1).
 - **The tracer tile sends a tile nothing its request has not allowed:** a
   tile's record pieces only after its `ARMED`, its streams only after its
   `STREAMS_ARMED`. The requester field names the tile, and the tracer tile pops

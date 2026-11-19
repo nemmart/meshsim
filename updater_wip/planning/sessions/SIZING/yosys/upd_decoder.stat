@@ -1,0 +1,27 @@
+
+5. Printing statistics.
+
+=== upd_decoder ===
+
+        +----------Local Count, excluding submodules.
+        | 
+     7748 wires
+    10354 wire bits
+       56 public wires
+     2501 public wire bits
+       12 ports
+      202 port bits
+    10034 cells
+      145   $_ANDNOT_
+     3699   $_AND_
+     1133   $_MUX_
+     1306   $_NAND_
+     1007   $_NOR_
+       15   $_NOT_
+       78   $_ORNOT_
+      394   $_OR_
+     2048   $_SDFFE_PP0P_
+      201   $_SDFF_PP0_
+        2   $_XNOR_
+        6   $_XOR_
+

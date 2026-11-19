@@ -109,3 +109,21 @@ where today it would sit for ever. At a count a cycle, 32 bits is 4.29 seconds a
 **What it would touch:** the specification (17.6's words and its `ERRORS`); Ingress/Egress's model. About 32
 flip-flops and a decrementer. No firmware is asked for with it.
 
+## 3. The next project: the RW peripheral, and the mesh's two regimes (2026-11-19)
+
+**The owner:** "The next project for us is the RW peripheral. With it we're going to add the regimes to the
+compute tile for router queue full = error versus router queue full = flow control."
+
+- **The RW peripheral.** In v1.37 it is v1.36's RW engine, unchanged but for its place: the memory tile's
+  peripheral 2 and the arbiter's client 2. Nothing in v1.37's proof runs uses it. The owner, of its figures in
+  the specification: "All that stuff will get reworked once we have a real RW engine anyway."
+- **The two regimes.** Today a full router queue is always an error: the links have no flow control, the program
+  paces its traffic, and a packet pushed into a full queue sets `router_overflow` (chapter 16). The owner's
+  standing view: "There are regimes on the mesh. Some need flow control, some don't." With the RW peripheral the
+  compute tile gets both: one in which a full queue is an error, and one in which a full queue holds the sender
+  back.
+- **What is already waiting on it:** flow control on the line between the special tiles, the specification's
+  open item 182, left out of v1.37 because nothing there needed it.
+
+Nothing of this is designed. It is recorded here so that it is the starting point.
+

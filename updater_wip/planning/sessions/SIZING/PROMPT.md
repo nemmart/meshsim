@@ -1,5 +1,8 @@
 # How big are the two controllers? (updater_wip)
 
+You are sizing the two controllers in v1.37 of meshsim, the repository `nemmart/meshsim`, on `main`. This brief
+is also in the repository, at `updater_wip/planning/sessions/SIZING/PROMPT.md`.
+
 **The project.** meshsim is the simulator and specification for a parallel compute mesh, part of an ASIC for
 proving the Jolt zkVM. v1.37's simulator has two controllers written as state machines, each specified from its
 code and checked against it by its author:
@@ -86,8 +89,8 @@ Give figures and what they rest on. Whether it is the right call is the owner's 
 
 ## Rules
 
-- **First tell the owner, in a few lines, how you will count and what you will assume, and wait for the
-  go-ahead.** Then do it in one pass.
+- **Do not ask questions, and do not wait for a go-ahead: this brief is the owner's go-ahead.** Do the whole
+  count in one pass. Where something is unclear, choose, and write the choice and its reason in the report.
 - **Keep the reply to the owner short:** one table, four rows (the cache's controller, the Updater's
   controller, the arbiter, the core), with the states, the control word's width, the flip-flops, the logic's
   gates low and high, and the memory in bits. Under it a second small table: the cycles a core would take

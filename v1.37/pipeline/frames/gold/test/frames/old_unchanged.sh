@@ -6,7 +6,7 @@
 set -e
 cd "$(dirname "$0")/../.."
 OLD=/tmp/gold-v136-classes; rm -rf "$OLD"; mkdir -p "$OLD"
-javac -d "$OLD" -nowarn $(find ../../../v1.36/pipeline/gold/src -name '*.java') 2>&1 | grep -v "^Note:\|Picked up" || true
+javac -d "$OLD" -nowarn $(find ../../../../v1.36/pipeline/gold/src -name '*.java') 2>&1 | grep -v "^Note:\|Picked up" || true
 W=/tmp/gold-old-unchanged; rm -rf "$W"; mkdir -p "$W/empty"
 fail=0; n=0
 same() {  # same <name> <program dir> <input dir> [options]: the segments file from both golds, and their output

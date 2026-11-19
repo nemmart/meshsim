@@ -1,7 +1,7 @@
 // packet_writer.h: a frame file wrapped in the link's packets, for the tests (v1.37; machine-spec chapter 28,
 // spec/host-link.md, from stage 4; ../v1.4_wip/planning/HOST-LINK.md before).
 //
-// The packetizer is gold's (../updater_wip/pipeline/gold: `gold packets`, WORKER2's), and gold's vectors and packet
+// The packetizer is gold's (pipeline/frames/gold: `gold packets`, WORKER2's), and gold's vectors and packet
 // files are what Ingress's black box (src/units/host_link.h, ingress_egress.h) is checked against
 // (tests/test_packet_vectors.cpp). This writer is the tests' own, for a test that makes its packets on the spot from a
 // frame file: written from HOST-LINK.md before gold's was there, by the reader's author, so by itself it shows only

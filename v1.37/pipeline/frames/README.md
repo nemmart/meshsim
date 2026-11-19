@@ -14,7 +14,7 @@ each run the proof steps of `../../run_tests.sh` use (`proof-real`, `proof-matri
 | `RUNS` | a line a run: its name, N, the windows a segment has, the segments to run | |
 | `SHA256SUMS` | every file's SHA-256 | |
 
-Gold here is the frames' gold, `../../../updater_wip/pipeline/gold` (HOST-FRAMES.md's and HOST-LINK.md's), not
+Gold here is the frames' gold, `gold/` (HOST-FRAMES.md's and HOST-LINK.md's), not
 `../gold`, which is v1.36's. The workloads are `../inputs/pins.sh`'s, from jolt-asic-planning at its pin.
 
 | set | runs | segments |

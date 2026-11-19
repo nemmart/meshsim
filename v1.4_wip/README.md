@@ -25,7 +25,7 @@ before v1.36 was read; `planning/V136-SCOPE.md` says where the two meet and wher
 | `planning/HOST-LINK.md` | the link under the frames: two streams, packets with a 128-bit header (18-bit numbers, a hops field), the two checks, recovery from a loss of sync, stop and resume, and the daisy chain: every link its own, a forwarding ASIC checking, renumbering and re-sealing each packet |
 | `planning/V136-SCOPE.md` | v1.36 against this design: the names, seven collisions and how the first pass ruled on them, what v1.36 already gives, what was not yet read |
 | `planning/TO-ADD.md` | things the owner wants added that are not in v1.37, each with why and what was settled. The first: statistics for each host link, the names "parent" and "child" for an ASIC's two links, as plain registers; then a countdown register on Ingress/Egress that raises an error when it runs out |
-| `planning/CONTROLLER-SIZING.md` | how big the cache's controller and the Updater's controller are, beside the arbiter and the tile's core: states, control word, flip-flops, gates; what a core would take to do the same work in firmware; what fixed logic gives up. The full report is `updater_wip/planning/sessions/SIZING/REPORT.md` |
+| `planning/CONTROLLER-SIZING.md` | how big the cache's controller and the Updater's controller are, beside the arbiter and the tile's core: states, control word, flip-flops, gates; what a core would take to do the same work in firmware; what fixed logic gives up. The full report is `v1.37/planning/updater/sessions/SIZING/REPORT.md` |
 | `planning/RTL-CHANGE-REQUESTS.md` | what the design asks Tony to change in hardware the RTL has built |
 | `diagrams/svg/fig_m1_lpddr_path.svg` | the figure: LPDDR, the memory controller, the AXI arbiter, the cache and their clients. **Stale since 2026-11-16:** it shows the Updater on the memory tile, fed over the peripheral bus |
 | `diagrams/src/fig_m1_lpddr_path.py` | its generator; it uses `wip/diagrams/src/common.py` |
@@ -41,8 +41,9 @@ Each document marks what the owner decided, what is proposed and what is open.
 
 ## Beside it
 
-- `updater_wip/`: where the Updater and the cache controller are built in simulation, as a design input to v1.4;
-  gold's frames first. Its sessions' prompts are there.
+- `v1.37/`: where the Updater and the cache controller were built in simulation, as a design input to v1.4, and
+  frozen on 2026-11-19. The project's own folder, `updater_wip/`, was removed then; its sessions' prompts, notes and
+  reports are `v1.37/planning/updater/sessions/`.
 - `fs_wip/`: the file system's own folder, with the shell's specification. The file system is the step after v1.4's
   deliverable; its design decisions so far are in the first design note here.
 - `v1.36/`: the base.

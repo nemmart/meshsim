@@ -14,7 +14,7 @@ set -e
 cd "$(dirname "$0")/../.."
 CP=build
 W=/tmp/gold-frames-guests; rm -rf "$W"; mkdir -p "$W/empty"
-JUMPMAP=../../../v1.36/pipeline/jumpmap
+JUMPMAP=../../../../v1.36/pipeline/jumpmap
 python3 "$JUMPMAP/test/make_jump_guest.py" "$W" > /dev/null
 # keccak256 with input, trusted and untrusted advice (sizes not multiples of 8)
 mkdir -p "$W/kin" "$W/kin-input"

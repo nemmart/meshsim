@@ -4,7 +4,7 @@
 machine specification's. This chapter is the link that carries the host's frames (chapter 29) to the master tile's
 Ingress/Egress (17.6), and the chip's replies back, along a chain of ASICs: the link packet, its checks, numbering,
 sending again, recovery, starting a link again, "stop", the chain, and the link end as hardware. **The link end of
-`updater_wip/link/` (`link_end.*`, `node.*`) is this chapter's authority** on what a link end does: this text states
+`v1.37/link/` (`link_end.*`, `node.*`) is this chapter's authority** on what a link end does: this text states
 what it does, and where the model does in one cycle what hardware spreads over several, what hardware does (28.13.6).
 Designed here; not built in the RTL.*
 
@@ -745,7 +745,7 @@ The host's end of the first link keeps a link end's rules:
 | the fullest an ASIC's own queue got, of 1,024 words | 953, under a host whose window the campaign drew at 16 or 64, which 28.15 rules out; with the host's window at 8, 615 in 30 runs, and 767 at most by the window |
 | the fullest a forwarding buffer got, of 1,024 words | 759 |
 
-**The simulator's link ends** are this chapter's model, `End` and `Node` of `updater_wip/link/hostlink.h`, clocked a
+**The simulator's link ends** are this chapter's model, `End` and `Node` of `v1.37/link/hostlink.h`, clocked a
 byte a cycle. They count every kind of damage, recovery and restart, report a link packet refused for want of room,
 which with the sizes right never happens and so says a size is wrong, and give an error's cause beside it.
 

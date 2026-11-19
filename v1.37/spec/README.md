@@ -9,7 +9,7 @@ RTL* where it is stated. v1.37 adds what the RTL pencilled in or left out, desig
 frames, Ingress/Egress's host side, the Updater, the memory system (the cache, the AXI arbiter, LPDDR's port), the
 links between the special tiles, and the master tile's firmware as a contract. **For the cache's controller, the
 Updater's controller and the link end, the code is the authority** (owner, 2026-11-18): their sections state what it
-does. Where v1.37's simulator and firmware differ from this specification, `updater_wip/planning/sessions/SPEC/
+does. Where v1.37's simulator and firmware differ from this specification, `v1.37/planning/updater/sessions/SPEC/
 FOR-THE-SIMULATOR.md` lists each difference.
 
 1. `OVERVIEW.md`: what is being built and where it stands. Two pages.

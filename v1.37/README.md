@@ -19,11 +19,14 @@
 > | build it | `BUILDING.md` |
 > | see what v1.37 adds, piece by piece, and what specifies each | `CHANGES-v1.37.md`; the specification's own guide, `spec/CHANGES-v1.36-to-v1.37.md` |
 > | know what is open, and what is owed | `OPEN-v1.37.md` (v1.36's items: `OPEN-v1.36.md`) |
-> | see how it was checked, and its figures | the build's report, `../updater_wip/planning/sessions/INTEGRATOR/REPORT.md`, and the workers' reports beside it |
+> | see how it was checked, and its figures | the build's report, `planning/updater/sessions/INTEGRATOR/REPORT.md`, and the workers' reports beside it |
 >
 > **The folder stands alone, as v1.36's does:** WORKER8's link (`link/`), WORKER10's wire (`wire/`) and the frames'
-> gold (`pipeline/frames/gold/`) are copied in from `../updater_wip` and held to their bytes at the copy
-> (`FROM-UPDATER.sha256`, checked by `tools/check_copies.sh` in `make check` and `run_tests.sh`'s layout step).
+> gold (`pipeline/frames/gold/`) are copied in from the project's folder, `updater_wip/`, and held to their bytes at
+> the copy (`FROM-UPDATER.sha256`, checked by `tools/check_copies.sh` in `make check` and `run_tests.sh`'s layout step).
+> **`updater_wip/` is gone** (2026-11-19, with the freeze): its code is those copies, its planning papers (the
+> milestone, every session's brief, notes and report) are `planning/updater/`, and its task generator for the runner
+> is `tools/v137-check/`. A page or a comment that names a path under `updater_wip/` names where a thing was built.
 > **`spec/` is v1.37's specification.** The rest of this page below the line is v1.36's, and reads as v1.36: every
 > test, suite and figure of v1.36 still holds here but for what `CHANGES-v1.37.md` and `OPEN-v1.37.md` list (the
 > RTL's stream run is gone with v1.36's LVDS stream, and the UART run's figures are each one cycle later: its program

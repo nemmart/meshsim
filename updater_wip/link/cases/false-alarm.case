@@ -1,9 +1,0 @@
-# Two forged headers: a false acknowledgement lets a packet go that is still on its way, and then a false 'resend' with the true acknowledge field behind it reaches the sender before the packet lands. The sender is asked for a packet it no longer keeps and raises the error; the packet then arrives whole, and nothing was lost. A KNOWN LIMIT: with one forged header the error is raised only when a packet is lost (searched); this needs two. The wire's delay is 7 cycles so that two headers fit while one packet is on its way
-# found by linksearch --rules hl
-sizes number_bits=3 max_words=1 window=2 zeros=40 flush_zeros=32 status_timer=24 queue=8 reask=96 pass=16 restart_words=1 delay=7 words=1 images=0 window0=0 wrong=0 still=0
-packets 2 0 0 0
-fate 1 4 forge-ack
-offer 0 1 238
-fate 1 5 forge-resend
-quiet 271 20000
-run hl fail an error for a packet no longer kept, and the other end had taken every packet this end had let go

@@ -20,7 +20,7 @@ else
   RUNS="evm-zone-29 $EZ $EZ/inputs/trace-29-4599adc50712 -
 cyclone-29 $CY $CY/input/29/input-15961266 -"
 fi
-PUBLISHED=../../../v1.3/planning/sessions/WORKER18-data/v13/segment-files-v1.3.sha256
+PUBLISHED=../../../../v1.3/planning/sessions/WORKER18-data/v13/segment-files-v1.3.sha256
 J="java -Xmx5g -cp build"
 fail=0
 echo "$RUNS" | while read name prog in cuts; do

@@ -1,5 +1,5 @@
 // frames.h: the host's frames, read (v1.37; ../v1.4_wip/planning/HOST-FRAMES.md, "HF"): a frame file as gold writes it
-// (../updater_wip/pipeline/gold: `frames`), its frames one after another, each a header word of 128 bits (the
+// (pipeline/frames/gold: `frames`), its frames one after another, each a header word of 128 bits (the
 // compression in [7:0], the type in [95:64], the length in 128-bit words in [127:96]) and its data. Written from HF, for
 // the tests: what the master tile's program must find in each frame, and what the Updater must make of them.
 //

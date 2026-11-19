@@ -338,7 +338,7 @@ same LPDDR,** differing only in when.
 - **It keeps section 1's handshake exactly:** one request outstanding a client, `ready` a flip-flop, one reply a
   cycle on the shared bus, its `client` field set.
 - **The same stand-in is the cache's reference in Part B:** random traffic against it, every reply and LPDDR's
-  contents at the end equal (`updater_wip/planning/sessions/WORKER5-NOTES.md`).
+  contents at the end equal (`v1.37/planning/updater/sessions/WORKER5-NOTES.md`).
 
 ## 9. The C++ header
 

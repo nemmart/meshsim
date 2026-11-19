@@ -318,7 +318,7 @@ queue. Egress cuts them into packets** (owner, 2026-11-17).
 - **In the firmware** (owner): it registers a transmission; that turns the credit's bit on in `EVENTS_MASK`; on
   each wake it sends what the credit allows. With nothing registered the bit is off, and the credits wait.
 - **What the frames are** is not settled: the replies' formats come with the foreground stream's (Open). The
-  first is the reply frame of the v1.37 milestone, proposed in `updater_wip/planning/MILESTONE-v1.37.md`.
+  first is the reply frame of the v1.37 milestone, proposed in `v1.37/planning/updater/MILESTONE-v1.37.md`.
 - **The outgoing queue's size is this document's,** not the link's: `HOST-LINK.md` gives Egress none. The link
   keeps its own copies of what it has sent, 8 packets, until they are acknowledged.
 
@@ -402,7 +402,7 @@ on its way on that link is gone, and the frames above it cannot be trusted.
 
 **Decided (owner):** v1.37's Ingress/Egress is a black box in the simulator, behind its real registers. As built
 it is fed from a file. The v1.37 milestone puts a driver and a chain of two ASICs in the file's place
-(`updater_wip/planning/MILESTONE-v1.37.md`).
+(`v1.37/planning/updater/MILESTONE-v1.37.md`).
 
 **As built on `main` (2026-11-18), against this document:**
 
@@ -414,7 +414,7 @@ it is fed from a file. The v1.37 milestone puts a driver and a chain of two ASIC
 | the old stream words, and v1.36's UART at words 42 to 45 | still there | removed; the UART redesigned |
 | the packet's header | 18-bit numbers for each stream, and the hops field (WORKER7) | one run of numbers for a link, both stop bits in every header, the restart flag, the data masked (`HOST-LINK.md`). A file of background packets alone is numbered the same either way; the mask changes its bytes |
 | a bad packet | fatal: `ERRORS` [1] `crc_error`, [2] `sequence_error`, [3] `format_error`, and no more packets are taken | thrown away and sent again; `link_error` only when a link starts again |
-| the way back to the host | none. The file's next packet waits while the queue has no room for it | acknowledgements, "resend", "lost" and recovery, "stop", the restart: WORKER8's link end (`updater_wip/link/`) |
+| the way back to the host | none. The file's next packet waits while the queue has no room for it | acknowledgements, "resend", "lost" and recovery, "stop", the restart: WORKER8's link end (`v1.37/link/`) |
 | Egress | none: nothing goes back to the host | the outgoing queue, `EGRESS_COUNT`, the credit |
 | the chain | none: one ASIC | two link ends and the forwarding buffers |
 
@@ -467,7 +467,7 @@ a byte a cycle:
   ignored, as it is on every packet from the host (`HOST-LINK.md`), and the packetizer writes 0;
 - † at the end of the file no more packets come, which is not an error.
 
-Gold's packetizer and its vectors are `updater_wip/pipeline/gold/` (`packets`, `packets-read`,
+Gold's packetizer and its vectors are `v1.37/pipeline/frames/gold/` (`packets`, `packets-read`,
 `test/packets/VECTORS.txt`).
 
 ## Open

@@ -60,14 +60,10 @@ pipeline/frames/gold/README.md	updater_wip/planning/sessions/WORKER2-NOTES.md	hi
 pipeline/frames/gold/README.md	updater_wip/planning/sessions/WORKER1-REPORT.md	historical	held to ../updater_wip's bytes (FROM-UPDATER.sha256); a document of ../updater_wip or ../v1.4_wip, where the code was written
 pipeline/frames/gold/README.md	v1.37/spec/host-link.md	historical	held to ../updater_wip's bytes (FROM-UPDATER.sha256); a document of ../updater_wip or ../v1.4_wip, where the code was written
 pipeline/frames/gold/README.md	updater_wip/planning/sessions/WORKER2-REPORT.md	historical	held to ../updater_wip's bytes (FROM-UPDATER.sha256); a document of ../updater_wip or ../v1.4_wip, where the code was written
-spec/CHANGES-v1.36-to-v1.37.md	updater_wip/planning/sessions/SPEC/FOR-THE-SIMULATOR.md	historical	the specification's, cited from the repository's root: a document of ../updater_wip or ../v1.4_wip, not kept in this version
 spec/CHANGES-v1.36-to-v1.37.md	v1.4_wip/planning/RTL-CHANGE-REQUESTS.md	historical	the specification's, cited from the repository's root: a document of ../updater_wip or ../v1.4_wip, not kept in this version
-spec/CHANGES-v1.36-to-v1.37.md	updater_wip/planning/sessions/SPEC/NOTES.md	historical	the specification's, cited from the repository's root: a document of ../updater_wip or ../v1.4_wip, not kept in this version
 spec/CHANGES-v1.36-to-v1.37.md	v1.4_wip/planning/DESIGN-NOTES-2026-11-16.md	historical	the specification's, cited from the repository's root: a document of ../updater_wip or ../v1.4_wip, not kept in this version
 spec/OVERVIEW.md	FOR-THE-SIMULATOR.md	historical	the specification's, cited from the repository's root: a document of ../updater_wip or ../v1.4_wip, not kept in this version
-spec/host-link.md	updater_wip/link/hostlink.h	historical	the specification's, cited from the repository's root: a document of ../updater_wip or ../v1.4_wip, not kept in this version
 spec/machine-spec.md	v1.4_wip/planning/RTL-CHANGE-REQUESTS.md	historical	the specification's, cited from the repository's root: a document of ../updater_wip or ../v1.4_wip, not kept in this version
-spec/machine-spec.md	updater_wip/planning/sessions/SPEC/FOR-THE-SIMULATOR.md	historical	the specification's, cited from the repository's root: a document of ../updater_wip or ../v1.4_wip, not kept in this version
 wire/README.md	updater_wip/planning/MILESTONE-v1.37.md	historical	held to ../updater_wip's bytes (FROM-UPDATER.sha256); a document of ../updater_wip or ../v1.4_wip, where the code was written
 wire/README.md	updater_wip/planning/sessions/WORKER10/NOTES.md	historical	held to ../updater_wip's bytes (FROM-UPDATER.sha256); a document of ../updater_wip or ../v1.4_wip, where the code was written
 link/bench.h	NOTES.md	historical	held to ../updater_wip's bytes (FROM-UPDATER.sha256); a document of ../updater_wip or ../v1.4_wip, where the code was written
@@ -83,7 +79,6 @@ pipeline/frames/gold/src/gold/Packets.java	updater_wip/planning/sessions/WORKER2
 pipeline/frames/gold/src/gold/SegmentWriter.java	wip/planning/sessions/WORKER18-NOTES.md	historical	held to ../updater_wip's bytes (FROM-UPDATER.sha256); a document of ../updater_wip or ../v1.4_wip, where the code was written
 pipeline/frames/gold/test/gold/InlineVectorTest.java	wip/planning/sessions/WORKER18-NOTES.md	historical	held to ../updater_wip's bytes (FROM-UPDATER.sha256); a document of ../updater_wip or ../v1.4_wip, where the code was written
 pipeline/frames/gold/test/guests/check_guests.sh	wip/planning/sessions/WORKER18-NOTES.md	historical	held to ../updater_wip's bytes (FROM-UPDATER.sha256); a document of ../updater_wip or ../v1.4_wip, where the code was written
-src/units/updater_ctl.h	../updater_wip/planning/sessions/WORKER6-NOTES.md	historical	a document of ../updater_wip/planning (the INTEGRATOR's brief, notes and milestone; the workers' notes), where the work was planned; not kept in this version
 tests/chain_run.sh	MILESTONE-v1.37.md	historical	a document of ../updater_wip/planning (the INTEGRATOR's brief, notes and milestone; the workers' notes), where the work was planned; not kept in this version
 tests/driver_main.cpp	MILESTONE-v1.37.md	historical	a document of ../updater_wip/planning (the INTEGRATOR's brief, notes and milestone; the workers' notes), where the work was planned; not kept in this version
 tests/host_end.h	NOTES.md	historical	a document of ../updater_wip/planning (the INTEGRATOR's brief, notes and milestone; the workers' notes), where the work was planned; not kept in this version
@@ -93,3 +88,7 @@ tests/proof_run_main.cpp	MILESTONE-v1.37.md	historical	a document of ../updater_
 tests/wire_ends.h	MILESTONE-v1.37.md	historical	a document of ../updater_wip/planning (the INTEGRATOR's brief, notes and milestone; the workers' notes), where the work was planned; not kept in this version
 wire/wire.cpp	NOTES.md	historical	held to ../updater_wip's bytes (FROM-UPDATER.sha256); a document of ../updater_wip or ../v1.4_wip, where the code was written
 wire/wire.h	NOTES.md	historical	held to ../updater_wip's bytes (FROM-UPDATER.sha256); a document of ../updater_wip or ../v1.4_wip, where the code was written
+# v1.37, 2026-11-19: the runner's task generator, moved here from updater_wip/tasks/v137-check when that folder was removed
+tools/v137-check/body.sh	proof-numbers.md	output	a file the task writes into its results
+tools/v137-check/body.sh	faster-numbers.md	output	a file the task writes into its results
+tools/v137-check/body.sh	fast-numbers.md	output	a file the task writes into its results

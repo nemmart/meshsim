@@ -7,6 +7,11 @@
 # its task generator for the runner (link/make_task.sh), all WORKER8's, from updater_wip/planning/sessions/WORKER8/;
 # link/README.md copied again, its pointer to the report now right in both places; link/Makefile copied again, taking
 # HARDWARE.md from beside it when it is there.
+# 2026-11-19, with the freeze: updater_wip/ was removed. The third column is where each file was built, and is no
+# longer a path of the repository; its planning papers are planning/updater/. Four files were changed here at
+# that removal and are held to their bytes as changed: gold's three development scripts that reach ../v1.36 and
+# ../v1.3 (test/frames/guests.sh, old_unchanged.sh, workloads.sh: one folder deeper here), and the wire's task
+# generator (wire/tests/make_task.sh: it takes the wire's folder from where it sits).
 181314065df2f2fdaf920b1a8b5311daa216a2d6489a06ada5b49cc514d89417  link/.gitignore  updater_wip/link/.gitignore
 00a25ce27a0b1717479cee5d8c9966c49f20427f7a475d767f9f0c4c774dfe6d  link/HARDWARE.md  updater_wip/planning/sessions/WORKER8/HARDWARE.md
 6d45cbe47555aa50d6967b8e853117f663c8b00c462f695f4a404760a61945ba  link/Makefile  updater_wip/link/Makefile
@@ -73,7 +78,7 @@ e89a011531c9bdbd5beae000a7a5c2a771e16a45a822bd86c03f2c6980759111  wire/node_main
 6f30fea84457ea7e58d96b90246d49992b35a5f39b731ae9da7d637cc0fb899d  wire/standin.h  updater_wip/wire/standin.h
 32970a1dfdee717abb28dbf30e0afdb6a1dde7a7bd1969a217e8d04271a8052c  wire/tests/bench.sh  updater_wip/wire/tests/bench.sh
 460adecba768f401b30cedc49c9d97e0690d259d88a7f91da55504f5b008dd32  wire/tests/case.sh  updater_wip/wire/tests/case.sh
-7202d4d3a3d98947d1f469a8073406478fe7974f6dbade539d4d79beb63de2b3  wire/tests/make_task.sh  updater_wip/wire/tests/make_task.sh
+f6c47dfdebd892deb6e2b472f5b16b7e0c79a5cdd08d7e492ff506b494eb6583  wire/tests/make_task.sh  updater_wip/wire/tests/make_task.sh
 c4bd0c44043dd08e8bf1da74b1c3f0f6a21d3b50ad5207ab58cf2e7138d0c362  wire/tests/matrix.sh  updater_wip/wire/tests/matrix.sh
 f25cdbf6b5a2b3065f2e1c79d2820df7eaf48363844134e280ba0e857a658ab8  wire/tests/plants.sh  updater_wip/wire/tests/plants.sh
 af9ef492da80c0f4f7cfc9ce05295839d2a964865409124163236a76901a642d  wire/tests/run_checks.sh  updater_wip/wire/tests/run_checks.sh
@@ -141,9 +146,9 @@ f186395bab13dcd9ba1e7f46cbc4d67193f69fa9fc0f256e7d840912439417fc  pipeline/frame
 d3c627ae9c739f3488e09e0892eff43ae56544129f58a9fdd6ebf273cd406c5c  pipeline/frames/gold/test/act4/run_act4.py  updater_wip/pipeline/gold/test/act4/run_act4.py
 c99116927e15a55ff27ffa7162ec6771988afde6b39bab60e91de235906bcd9e  pipeline/frames/gold/test/cuts/cyclone-22-hardcuts.cuts  updater_wip/pipeline/gold/test/cuts/cyclone-22-hardcuts.cuts
 882d520566b59b5ec5159b52087a25213db7d5e01ff8e9221e01e24b8fb7d727  pipeline/frames/gold/test/cuts/evm-zone-23-hardcuts.cuts  updater_wip/pipeline/gold/test/cuts/evm-zone-23-hardcuts.cuts
-307d420529cfa40412faf93c947db713dc388f636893995890f7ac8dcb7bab27  pipeline/frames/gold/test/frames/guests.sh  updater_wip/pipeline/gold/test/frames/guests.sh
-4c4d7d01dd448b576c4deb825598651672dbbc0b8c6955521affc510b4d54be0  pipeline/frames/gold/test/frames/old_unchanged.sh  updater_wip/pipeline/gold/test/frames/old_unchanged.sh
-6f623e0f72cb44ef3421526248a5426fad29486be861c9c9d8a927df171da733  pipeline/frames/gold/test/frames/workloads.sh  updater_wip/pipeline/gold/test/frames/workloads.sh
+8ba3e6514168d6870b08bd41fc1f8d8a3cde85a8ff1a738f0b4a1ce8cef815f4  pipeline/frames/gold/test/frames/guests.sh  updater_wip/pipeline/gold/test/frames/guests.sh
+2c7a8509c1f7380e638d8dc8b7a9b94c6563478c32b0fcc69fd849d6e04a59d1  pipeline/frames/gold/test/frames/old_unchanged.sh  updater_wip/pipeline/gold/test/frames/old_unchanged.sh
+5a2d5227fb4cf8490802c59a3eab370d06bcaf0ff051a0d41ed9c688741d52c1  pipeline/frames/gold/test/frames/workloads.sh  updater_wip/pipeline/gold/test/frames/workloads.sh
 3b2350818c3290d710ee82d71070cb01e4233ca4113a77934a6784d735357d0b  pipeline/frames/gold/test/gold/FramesTest.java  updater_wip/pipeline/gold/test/gold/FramesTest.java
 aa85be4289ae6a08b878676b4aac5897f53433f1284441c1523b4dd6e93ba48c  pipeline/frames/gold/test/gold/InlineEmitTest.java  updater_wip/pipeline/gold/test/gold/InlineEmitTest.java
 998dad1b9ae087caf6c35a1042d5ac305667984f387b6026574a369258f1e247  pipeline/frames/gold/test/gold/InlineVectorTest.java  updater_wip/pipeline/gold/test/gold/InlineVectorTest.java

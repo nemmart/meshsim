@@ -12,6 +12,7 @@
 | `machine.sh` | records what the machine is and chooses CPUs for a run | `tools/machine.sh record [FILE]`; `tools/machine.sh cpus KIND [N]` |
 | `doccheck.sh`, `doccheck.mk` | the documents' checks: every cited path exists in this folder, every folder a reader starts in has a README, every document code names is there. A path into Snarky One is written as such ("Snarky One's …") and is not checked; `doccheck-exempt.txt` lists the other exemptions | `make doccheck`; `tools/doccheck.sh [-v]` |
 | `freeze/` | the version's file list (`freeze/frozen.sh`, `freeze/exclude.txt`), which the documents' check reads, and what freezing v1.36 takes (its `README.md`) | `freeze/README.md` |
+| `v137-check/` | v1.37's checks as a task for the measurement runner (`v137-check/make_task.sh`; its `README.md`) |
 | `test_machine.sh`, `fake_sysfs.sh` | `machine.sh`'s test on fake `/sys` trees with known CPU layouts | `tools/test_machine.sh` |
 
 To change a register: edit `regs/regtable.h` (and `src/units/regmap.h`, the simulator's decoding), regenerate both files

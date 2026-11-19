@@ -22,10 +22,10 @@ over 2026-11-14 to 2026-11-18, and the code of three machines built from that de
 - **the master tile's firmware** as a contract (30).
 
 **What the RTL is asked for** is section 3. **Nothing else of v1.36's hardware changes.** Where v1.37's simulator and
-firmware are behind, `updater_wip/planning/sessions/SPEC/FOR-THE-SIMULATOR.md` lists it.
+firmware are behind, `v1.37/planning/updater/sessions/SPEC/FOR-THE-SIMULATOR.md` lists it.
 
 **Whose word wins** (owner, 2026-11-18): for the cache's controller, the Updater's controller and the link end, the
-code (`cache_ctl.*`, `updater_ctl.h`, `updater_wip/link/`); for Ingress/Egress, the UART, Egress and the frames, the
+code (`cache_ctl.*`, `updater_ctl.h`, `v1.37/link/`); for Ingress/Egress, the UART, Egress and the frames, the
 design documents; for hardware the RTL has built, the RTL.
 
 ## 2. Unit by unit
@@ -112,7 +112,7 @@ Each item: what changed, and whether it touches the RTL: **RTL** a change to bui
 ## 6. Rulings this version records
 
 The owner's rulings of 2026-11-18 on the specification, each stated where it applies (the session's record is
-`updater_wip/planning/sessions/SPEC/NOTES.md`; how each was reached, `v1.4_wip/planning/DESIGN-NOTES-2026-11-16.md`
+`v1.37/planning/updater/sessions/SPEC/NOTES.md`; how each was reached, `v1.4_wip/planning/DESIGN-NOTES-2026-11-16.md`
 section 36):
 
 - one reset, reaching the link; error recovery not designed (item 181);

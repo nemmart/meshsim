@@ -105,7 +105,7 @@ Each item: what changed, and whether it touches the RTL: **RTL** a change to bui
 | 22.27, 22.28 | edited: chapter 30; the new errors; the one reset |
 | 23 | 23.1 and the opening rewritten; 23.5 the files; 23.6 the cache, replacing v1.36's model; 23.10–23.13 new |
 | 24 | the new units' rows |
-| 26 | items 60, 124, 166, 172 changed; 178–182 new; 183–190 in chapters 28 and 29 |
+| 26 | items 60, 124, 166, 172 changed; 178 new and closed; 179–182 and 191 new; 183–190 in chapters 28 and 29, 192 in chapter 28 |
 | `jolt/tracer.md` 17.9.5, 17.9.10, 17.9.14, 17.9.15, 17.9.17, 17.9.18 | the fill port's rule of one handshake, one request; the cache behind `fill`; the segment in the load; the last block pulled by `SEND_END`; items 148 and 174 |
 | — | chapters 28, 29, 30 in `host-link.md`, `host-frames.md`, `master-firmware.md`: new |
 

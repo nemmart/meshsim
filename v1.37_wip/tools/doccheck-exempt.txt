@@ -48,10 +48,11 @@ fw/sort/PORTING.md	sw/mesh.h	historical	meshsim v1.25's file (its meshsim/sw/), 
 fw/sort/PORTING.md	sw/crt0.S	historical	meshsim v1.25's file (its meshsim/sw/), which the port layer replaces
 # v1.37 (the INTEGRATOR, readying the freeze): what v1.37 cites of ../updater_wip and ../v1.4_wip, and the copies held to ../updater_wip's bytes
 link/README.md	v1.4_wip/planning/HOST-LINK.md	historical	held to ../updater_wip's bytes (FROM-UPDATER.sha256); a document of ../updater_wip or ../v1.4_wip, where the code was written
-link/README.md	../planning/sessions/WORKER8/REPORT.md	historical	held to ../updater_wip's bytes (FROM-UPDATER.sha256); a document of ../updater_wip or ../v1.4_wip, where the code was written
-link/README.md	../planning/sessions/WORKER8/HARDWARE.md	historical	held to ../updater_wip's bytes (FROM-UPDATER.sha256); a document of ../updater_wip or ../v1.4_wip, where the code was written
 link/README.md	updater_wip/link/build/libhostlink.a	output	the link library built by its own Makefile, in ../updater_wip/link
-link/README.md	HARDWARE.md	historical	held to ../updater_wip's bytes (FROM-UPDATER.sha256); a document of ../updater_wip or ../v1.4_wip, where the code was written
+link/HARDWARE.md	v1.4_wip/planning/HOST-LINK.md	historical	held to ../updater_wip's bytes (FROM-UPDATER.sha256); a document of ../updater_wip or ../v1.4_wip, where the code was written
+link/REPORT.md	v1.4_wip/planning/HOST-LINK.md	historical	held to ../updater_wip's bytes (FROM-UPDATER.sha256); a document of ../updater_wip or ../v1.4_wip, where the code was written
+link/REPORT.md	updater_wip/link/hostlink.h	historical	held to ../updater_wip's bytes (FROM-UPDATER.sha256); a document of ../updater_wip or ../v1.4_wip, where the code was written
+link/REPORT.md	updater_wip/link/README.md	historical	held to ../updater_wip's bytes (FROM-UPDATER.sha256); a document of ../updater_wip or ../v1.4_wip, where the code was written
 pipeline/frames/gold/README.md	v1.4_wip/planning/HOST-FRAMES.md	historical	held to ../updater_wip's bytes (FROM-UPDATER.sha256); a document of ../updater_wip or ../v1.4_wip, where the code was written
 pipeline/frames/gold/README.md	updater_wip/planning/sessions/WORKER1-NOTES.md	historical	held to ../updater_wip's bytes (FROM-UPDATER.sha256); a document of ../updater_wip or ../v1.4_wip, where the code was written
 pipeline/frames/gold/README.md	v1.4_wip/planning/HOST-LINK.md	historical	held to ../updater_wip's bytes (FROM-UPDATER.sha256); a document of ../updater_wip or ../v1.4_wip, where the code was written

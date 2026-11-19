@@ -3,9 +3,14 @@
 # (updater_wip/link, last changed at b59529dd), WORKER10's wire (updater_wip/wire, db9cb7ad), gold with
 # the host's frames and chapter 28's packets (updater_wip/pipeline/gold, bc85fd2e; here pipeline/frames/gold, beside
 # pipeline/gold, which is v1.3's and pinned by pipeline/FROM-V1.3.sha256). tools/check_copies.sh checks them.
+# Added 2026-11-19, before the freeze: the link's report and its hardware document (link/REPORT.md, link/HARDWARE.md) and
+# its task generator for the runner (link/make_task.sh), all WORKER8's, from updater_wip/planning/sessions/WORKER8/;
+# link/README.md copied again, its pointer to the report now right in both places.
 181314065df2f2fdaf920b1a8b5311daa216a2d6489a06ada5b49cc514d89417  link/.gitignore  updater_wip/link/.gitignore
+00a25ce27a0b1717479cee5d8c9966c49f20427f7a475d767f9f0c4c774dfe6d  link/HARDWARE.md  updater_wip/planning/sessions/WORKER8/HARDWARE.md
 e19b94cbdf64d0017c47a76a08293d6ec006fefda31ef6274483af8092a749de  link/Makefile  updater_wip/link/Makefile
-6654215818febaa64663ed2dec1a440d37a2e64c2518440ddd734719b7b8bb86  link/README.md  updater_wip/link/README.md
+b0f8d8a8442a65cbbc76fa922566d1caabe3c910e353cb27fa178194bfdc8e9c  link/README.md  updater_wip/link/README.md
+bb4678b842d71cdcdd2e1c25cbd7dadadd049477b71a9d3cb0822d0e88b97c37  link/REPORT.md  updater_wip/planning/sessions/WORKER8/REPORT.md
 3b8e3384e2d1c05f5e2e45936561892df96982cbdf09f25dc230ae189dda5f5c  link/archive.h  updater_wip/link/archive.h
 552bcbe463aaf81984d9be91fbeccc3414472b8967e601828d90b3900db7be01  link/bench.cpp  updater_wip/link/bench.cpp
 bdaee01dbba6faabdc3909f871d66c8ac4df5ee06b298a3a244c178dc6965916  link/bench.h  updater_wip/link/bench.h
@@ -41,6 +46,7 @@ af32490ea679b1273b1e37fedd101fb0a339938af6406a6aebdbd6d6983fc8d0  link/link_end.
 fa4e6dbd404b3e7e8b6ad5196c22cfa3dbf9560abc363d0b3420dce589ce3dc9  link/linkrun.cpp  updater_wip/link/linkrun.cpp
 533c9074d0e6779b31bb5a443a4f196a60dc2c7ada192277e066677c5f36f4bf  link/linksearch.cpp  updater_wip/link/linksearch.cpp
 5378816ca6e12205ba9041b9d22550d0f68c8ed846352c07b8cc79172a677630  link/make_cases.sh  updater_wip/link/make_cases.sh
+12ca6ce93921426a490080aa07ec55289f60eccbea59658b320b0a6304936ed3  link/make_task.sh  updater_wip/planning/sessions/WORKER8/tasks/make_task.sh
 7b2382d5a8f136cc40dbab40b755f4176bdee5bc201ee2530dc2fc6add783121  link/node.cpp  updater_wip/link/node.cpp
 6e7abc77e6f9e677ca14661a333d74dcaf7c928737bf110f009e3bc16e79433c  link/node.h  updater_wip/link/node.h
 7bab9b0b2054f525131180b3baaad131b271af24c61f4c357ca1d15a2d211316  link/plants.sh  updater_wip/link/plants.sh

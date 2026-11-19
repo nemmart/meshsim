@@ -725,8 +725,8 @@ The host's end of the first link keeps a link end's rules:
 
 - **exhaustive searches** of a shrunken model (a window of 2, queues of a few words, numbers of 3 bits), on one link
   and on chains of 1, 2 and 3: every reachable state, 36.9 million in all with the sender's fast unit, and
-  86,515,438 in the longest, run with the pass at a byte a cycle; from every state, with either stream never taken
-  again, the other finishes;
+  86,515,438 in the longest, run with the pass at a byte a cycle (its run with the fast unit is owed, item 192);
+  from every state, with either stream never taken again, the other finishes;
 - **a kept case for every rule,** which fails without the rule and holds with it, and 18 planted flaws, each caught;
 - **random runs at the real sizes,** noise on every line and consumers with stalls of a mean up to 1 ms (single
   stalls longer), on chains of 1, 2, 4
@@ -758,3 +758,4 @@ Item 181, what follows an error, is chapter 26's; item 185, the foreground's fra
 | 183 | a background link packet with data that comes from below: forwarded, through a buffer nothing else uses; or made wrong, saving 17 KiB | 28.12 | open |
 | 184 | a neighbour that goes silent: nothing notices it. A count of status periods with nothing heard would tell, but it must outlast the longest noise, seconds | 28.14 | open |
 | 186 | the clock of the link ends against the chip's: a link cycle is a byte on the line (28.1) | 28.1, 18 | open |
+| 192 | **WORKER8's long runs of the link with the fast unit are owed** (Quests 238 to 242, parked): a large campaign of forged headers and of bits flipped in a sender's memory, cases searched and tested at small sizes, each ending in the link starting again and the chip stopping. They do not hold v1.37's freeze (owner); they are owed for an idle night | 28.16 | open |

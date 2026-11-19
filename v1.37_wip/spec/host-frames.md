@@ -99,8 +99,8 @@ Frames 2, 5, 6 and 9 carry **update words:** one sequence of 64-bit words, made 
 - **A file's length is fixed when it is made, and sets its depth** (23.5). No update adds a level; an update past its
   depth's reach is an error (17.10.1, `beyond`).
 - **What the Updater reaches:** an update word's start is a 32-bit word index, so a run of values ends at index
-  2³² − 1 at the latest, and a page below 2²³, 32 GiB of file: a depth-3 file's 2³⁰ pages are beyond it past that.
-  A frame that passes either is UB (17.10.2).
+  2³² − 1 at the latest; a frame that passes it is UB (17.10.2). **The index's 32 bits are what bound the reach:** a
+  page is an index over 512, so below 2²³, 32 GiB of file, and a depth-3 file's pages past that are beyond it.
 - **A copy has its source's length** (owner). The program image's length is in frame 1; the cycle-0, start and final
   images and the Tracer's copy all inherit it. **A jump table's length follows from *k*:** 2*ᵏ* lines, in pages.
 - **Whoever makes the files makes every root,** by creating the file or copying its source, before the Updater runs
@@ -266,14 +266,14 @@ tile makes the final image and the Tracer's copy from the start image, while the
 ### 29.14 The reply
 
 **At the end of its segment the master tile sends one frame to the host,** on the foreground: frame type 16, its
-`length` 71, so 72 128-bit words on the link, three link packets (owner: "something that shows that it ran").
+`length` 72, so 73 128-bit words on the link, three link packets (owner: "something that shows that it ran").
 
 | Word | Bits | Holds |
 | --- | --- | --- |
-| 0 | | the frame header: `compression` 0, `type` 16, `length` 71 |
+| 0 | | the frame header: `compression` 0, `type` 16, `length` 72 |
 | 1 | [31:0] | *s* |
 | | [63:32] | *N* |
-| | [95:64] | the rows traced |
+| | [95:64] | 0 |
 | | [127:96] | the Updater's `PAGE_COUNT` as the last run left it |
 | 2 | [63:0] | the master tile's `mcycle` at the segment's end |
 | | [95:64] | the Updater's `STAT_CYCLES` |
@@ -281,13 +281,18 @@ tile makes the final image and the Tracer's copy from the start image, while the
 | 3 | [31:0] | the master tile's `ERRORS` |
 | | [63:32] | Ingress/Egress's `ERRORS` |
 | | [95:64] | the Updater's `ERRORS` |
-| | [127:96] | the Tracer's `ERRORS` |
-| 4–71 | | the Tracer's record at the segment's end, 68 words (17.9.2) |
+| | [127:96] | 0 |
+| 4 | | the tracer tile's block's word 0 (30.6): [31:0] the rows traced, [63:32] the Tracer's `ERRORS`, [95:64] its `STATUS`, [127:96] 0 |
+| 5–72 | | the Tracer's record at the segment's end, 68 words (17.9.2) |
+
+- **Words 4 to 72 are the tracer tile's block,** which lands in the reply's own buffer (30.6): the master tile copies
+  nothing. **The rows traced** are the windows run times the rows of a window, `RUN_CONFIG.rows` (17.9.3): a run
+  traces exactly that many.
 
 - **A reply is sent only when the segment has run:** every error stops the chip (17.6.12), so its error words are 0.
   A report of a failure goes with the recovery that is not designed *(item 181)*.
-- **What it shows:** the record in words 4–71 equals the host's record *s* + 1 (29.11), so a check of it shows the
-  whole path: the images built, the segment traced, the reply returned.
+- **What it shows:** the record in words 5–72 equals the host's record *s* + 1 in the 65 words 29.11 names, so a
+  check of it shows the whole path: the images built, the segment traced, the reply returned.
 - **On the chain** each ASIC's reply comes up with `hops` its place (28.12), and replies of different ASICs
   interleave link packet by link packet: the host sorts them by `hops`.
 

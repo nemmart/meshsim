@@ -67,7 +67,7 @@ def ins(P, name):
 def lru_mix():
     import subprocess, sys
     root = os.path.abspath(os.path.join(HERE, '..', '..', '..', '..'))
-    files = [os.path.join(root, 'v1.37_wip', 'tests', 'updater', f) for f in
+    files = [os.path.join(root, 'v1.37', 'tests', 'updater', f) for f in
              ('divs.frames', 'jumps-base.frames', 'kin-big.frames', 'kin-lru.frames', 'kin-raw.frames')]
     files.append(os.path.join(root, 'updater_wip', 'pipeline', 'gold', 'test', 'packets', 'small.frames'))
     files = [f for f in files if os.path.exists(f)]

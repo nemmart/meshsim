@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """count.py: the size of v1.37's two controllers, the AXI arbiter and the tile's core (SIZING/PROMPT.md).
 
-Everything here is counted from the code in v1.37_wip/src/units/ (cache_ctl.*, updater_ctl.h, updater_top.h,
+Everything here is counted from the code in v1.37/src/units/ (cache_ctl.*, updater_ctl.h, updater_top.h,
 axi_arbiter.*), with machine-spec.md 23.6, 17.10 and 23.11 as the guide to what each register is for. Run it:
 
     python3 count.py            # prints the tables, and writes COUNTS.md beside it

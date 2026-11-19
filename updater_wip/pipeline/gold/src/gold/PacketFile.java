@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * A packet file read and checked: chapter 28's link packets (v1.37_wip/spec/host-link.md; v1.37's INTEGRATOR, stage
+ * A packet file read and checked: chapter 28's link packets (v1.37/spec/host-link.md; v1.37's INTEGRATOR, stage
  * 4), for the reader. Written from the specification and from WORKER2's NOTES.md sections 2 to 4, not from the
  * packetizer: it shares no code with Packets, and its CRC-32C and its mask are its own, from the definitions.
  *

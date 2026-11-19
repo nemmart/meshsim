@@ -513,3 +513,15 @@ longer streams its record before its result. One step skipped, as in every pass:
 against the committed images, which needs the RISC-V toolchain the runner has not; the images were built here with
 the pinned xPack toolchain. After it, `main`'s last changes to the specification (30.6, 30.7, 29.14,
 17.9.10) state FOR-THE-SPEC 7 and 8 as built, and `OPEN-v1.37.md` (b) says so; the documents' and copies' checks pass.
+
+### The freeze (2026-11-19, the owner's word)
+
+`main` merged in first (the specification's last changes to 30.6, 30.7, 29.14 and 17.9.10, which state FOR-THE-SPEC
+7 and 8 as built; `OPEN-v1.37.md` (b) says so), and the branch merged into `main`. Then `v1.37_wip/` renamed to
+`v1.37/` (`git mv`), and what names the old path as a live pointer brought to the new one: the task generator
+(`updater_wip/tasks/v137-check/`), the sizing session's two scripts, the top-level and `updater_wip/` READMEs, the
+design documents of `v1.4_wip/` that point into the code, one path in `spec/machine-spec.md`, the chain teeth
+scripts, and the comments of the copied gold and link that cite the specification's path (changed in the copy and in
+its source together, the hashes taken again, each still equal). The dated records (session briefs, notes, reports and
+reviews; the design notes; the milestone) keep the name as it was when they were written. The documents' check and
+the copies' check pass in `v1.37/`; the suite rebuilt there, and gold's packets check run in the copy, pass.

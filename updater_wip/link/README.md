@@ -1,7 +1,7 @@
 # updater_wip/link: the host link's protocol, on its own
 
 WORKER8's work (`../planning/sessions/WORKER8/`): the link of `v1.4_wip/planning/HOST-LINK.md` ("HL") built as it is
-written, put on wires that misbehave, and searched. No chip, no mesh, nothing of `v1.37_wip/`.
+written, put on wires that misbehave, and searched. No chip, no mesh, nothing of `v1.37/`.
 
 **Where it stands (2026-11-18):** on HL as it now stands: the header of 16 bytes, one run of packet numbers for a
 link, "stop" holding only packets not yet numbered, the data masked on the wire, and the sender's fast unit.

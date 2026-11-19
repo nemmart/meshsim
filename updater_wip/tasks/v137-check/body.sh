@@ -1,5 +1,5 @@
-# body.sh -- the body of the v1.37_wip check's Quest tasks (make_task.sh inlines it after a head that sets REPO, RES, W,
-# KIT, KS = the kit's v1.37_wip/, REV and ITEM). v136-check's body, for v1.37_wip. ITEM:
+# body.sh -- the body of the v1.37 check's Quest tasks (make_task.sh inlines it after a head that sets REPO, RES, W,
+# KIT, KS = the kit's v1.37/, REV and ITEM). v136-check's body, for v1.37. ITEM:
 #   suites   1 convert_delivery (clang release); 2 the small inputs (EVM Zone trace-23, Cyclone input/22) built from the
 #            pinned sources with pipeline/inputs/build.sh, jolt-asic-planning from Quest task 111's kit, gold's and
 #            jumpmap's classes from this kit, each build against its manifest (check.sh); 3 ./run_tests.sh all --check with

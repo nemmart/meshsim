@@ -9,7 +9,7 @@ end.
 client of LPDDR, the Updater's controller, so that it works with the cache's controller the first time they meet. The
 two are built by two workers who share no code (owner); this document and its header are what they share.
 
-**The C++ types** are `v1.37_wip/src/units/axi_port.h`: no logic, what both workers compile against.
+**The C++ types** are `v1.37/src/units/axi_port.h`: no logic, what both workers compile against.
 
 **Where it comes from:** `DESIGN-NOTES-2026-11-15.md` sections 2 and 7 (the bus driver, which became the AXI
 arbiter); `DESIGN-NOTES-2026-11-16.md` section 4 ("What the sequence rests on"); `RTL-CHANGE-REQUESTS.md` comments A
@@ -225,7 +225,7 @@ v1.36 (`rw_engine.h`, "THE LPDDR PORT"). The model stands behind the arbiter.
 
 ### One memory
 
-- **The model's memory is the file store's pages** (`v1.37_wip/src/units/file_store.h`, pages by address), so the
+- **The model's memory is the file store's pages** (`v1.37/src/units/file_store.h`, pages by address), so the
   images the Updater builds and the lines the cache and the Tracer read are one memory. In v1.36 the RW engine's
   LPDDR and the file store's are two models (third note, section 14); with the setting on there is one.
 - **A read of bytes nothing has written** returns zeros, and is counted as a fault of the run: a test fails on it †.
@@ -280,7 +280,7 @@ or changed while it waited stops the simulator.
 
 ## 7. The C++ header
 
-`v1.37_wip/src/units/axi_port.h`, types and constants only:
+`v1.37/src/units/axi_port.h`, types and constants only:
 
 | in it | what |
 |---|---|

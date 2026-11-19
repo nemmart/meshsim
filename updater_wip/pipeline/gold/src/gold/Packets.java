@@ -8,7 +8,7 @@ import java.util.Locale;
 import java.util.zip.CRC32C;
 
 /**
- * The link packets of machine-spec chapter 28 (v1.37_wip/spec/host-link.md; v1.37's INTEGRATOR, stage 4: HOST-LINK.md's
+ * The link packets of machine-spec chapter 28 (v1.37/spec/host-link.md; v1.37's INTEGRATOR, stage 4: HOST-LINK.md's
  * packets before), the writing side: the packetizer, which wraps a frame file (chapter 29) in link packets as the
  * host's link end sends them first on a clean link whose other end only acknowledges. The reading side (PacketFile,
  * PacketReader) is written from the specification and shares nothing with this, its CRC-32C and its mask included;

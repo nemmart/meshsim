@@ -17,10 +17,10 @@ end first, with software black boxes, and the real controllers afterwards.
    the frames into the memory images. **Done** (WORKER1).
 2. **The packetizer** wraps gold's frame file in the link's packets (`v1.4_wip/planning/HOST-LINK.md`). **Done**
    (WORKER2).
-3. **v1.37, done** (WORKER3; `v1.37_wip/RUNNING-v1.37.md` says how to run it): the simulator is started with the packet file; the master tile's real firmware reads the frames out
+3. **v1.37, done** (WORKER3; `v1.37/RUNNING-v1.37.md` says how to run it): the simulator is started with the packet file; the master tile's real firmware reads the frames out
    of Ingress and drives the Updater; the Tracer traces on the images the Updater built. Ingress and the Updater
    are software black boxes behind their real registers (`INGRESS-INTERFACE.md`, `UPDATER-INTERFACE.md`); the cache
-   is v1.36's software model; nothing runs on the memory tile. WORKER3, in `v1.37_wip/`.
+   is v1.36's software model; nothing runs on the memory tile. WORKER3, in `v1.37_wip/` (frozen as `v1.37/`, 2026-11-19).
 4. **The threshold** in Ingress's black box and the firmware. **Done** (WORKER4), and since replaced in the design
    by item 6.
 5. **The two real controllers, by two workers who share no code** (owner): the cache's (WORKER5) and the Updater's
@@ -47,15 +47,16 @@ frame back. It has the picture, the steps and who does each.
 | `pipeline/gold/` | gold with the frames (`frames`, `frames-read`, `frames-images`; WORKER1) and the link's packets (`packets`, `packets-read`, the vectors in `test/packets/`; WORKER2): a copy of `v1.36/pipeline/gold/` with their work; its `README.md` says how to run it |
 | `planning/MILESTONE-v1.37.md` | the plan for v1.37: the daisy chain, the driver, the reply frame, the order of the work |
 | `planning/sessions/` | the sessions, numbered from WORKER1 in a series of their own |
-| `../v1.37_wip/` | the simulator and firmware for v1.37: v1.36 copied unchanged (main, 67aaeb86), then WORKER3's work |
+| `../v1.37/` | the simulator and firmware for v1.37, frozen 2026-11-19 (built as `v1.37_wip/`: v1.36 copied unchanged, main 67aaeb86, then the workers' and the INTEGRATOR's work) |
 | `tasks/v137-check/` | the same for v1.37, with the proof steps: the host's side made on the runner, then `proof-real`, `proof-matrix` and `proof-29` (WORKER3) |
 | `tasks/v136-check/` | the generator of v1.36's own checks as Quest tasks: the suites, with the small inputs built on the runner, and `make check` |
 
 The design documents stay in `v1.4_wip/`: the three design notes, `HOST-FRAMES.md`, `HOST-LINK.md`,
 `INGRESS-INTERFACE.md`, `UPDATER-INTERFACE.md` and the figure.
 
-**Two golds, for now:** the frames are in `pipeline/gold/` here. `v1.37_wip/pipeline/gold/` is v1.36's, without
-them, and is what v1.36's own inputs and suites use. They are brought together when v1.37 is frozen.
+**Two golds:** the frames are in `pipeline/gold/` here. In the frozen `v1.37/` it is copied as
+`pipeline/frames/gold/` (held to these bytes, `v1.37/FROM-UPDATER.sha256`), beside `v1.37/pipeline/gold/`, v1.3's,
+pinned, which v1.36's own inputs and suites use.
 
 ## Sessions
 

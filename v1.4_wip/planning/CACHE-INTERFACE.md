@@ -10,7 +10,7 @@ end.
 Updater's controller so that it works with the cache's controller the first time they meet. It says what the cache
 does, seen from its ports, and nothing of how it is built.
 
-**The C++ types** are `v1.37_wip/src/units/lookup_port.h`: no logic, what both workers compile against.
+**The C++ types** are `v1.37/src/units/lookup_port.h`: no logic, what both workers compile against.
 
 **Where it comes from:** `DESIGN-NOTES-2026-11-15.md` section 3 (the cache and its look-up interface);
 `DESIGN-NOTES-2026-11-16.md` sections 1 to 4 (the cache as a controller and a cache memory; flush and discard;
@@ -342,7 +342,7 @@ same LPDDR,** differing only in when.
 
 ## 9. The C++ header
 
-`v1.37_wip/src/units/lookup_port.h`, types and constants only:
+`v1.37/src/units/lookup_port.h`, types and constants only:
 
 | in it | what |
 |---|---|

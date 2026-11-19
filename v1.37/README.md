@@ -1,5 +1,8 @@
 # meshsim v1.37
 
+> *Frozen 2026-11-19, from the work folder `v1.37_wip/` renamed (`tools/freeze/README.md`); never edited again but for an
+> errata file (`spec/GUIDELINES.md`, 8).*
+>
 > **v1.37 is v1.36 with the full system around it: the first end-to-end path.** The simulator is started with one
 > file, the packets that come over the link from the host, and with N and s; the master tile's firmware
 > (`fw/cc/master.c`) reads the frames out of Ingress and drives the Updater; the Updater builds the memory images in

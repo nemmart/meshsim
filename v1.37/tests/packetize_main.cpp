@@ -4,7 +4,7 @@
 //   packetize FRAMES PACKETS [--idle N]     write PACKETS from FRAMES
 //   packetize --read PACKETS [FRAMES]       check every packet; with FRAMES, the data must be that file, byte for byte
 //
-// PROVISIONAL: the packetizer is WORKER2's (../updater_wip/pipeline/gold), which replaces this when it is written.
+// PROVISIONAL: the packetizer is WORKER2's (pipeline/frames/gold), which replaces this when it is written.
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>

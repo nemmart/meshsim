@@ -1,9 +1,0 @@
-# A header reads as zeros (a burst that ends where the data starts) and the data holds a packet: a header and a word. Without the mask the receiver sees idle, then takes the packet inside for the next one: its word is delivered, the true packet is acknowledged and let go, and no check fails. HL, 'The data is masked on the wire': on the wire the data is no packet, a header CRC fails, and the link repairs
-# found by linksearch --rules hl-mask,max_words=2,flush_zeros=48,zeros=64
-sizes number_bits=3 max_words=2 window=2 zeros=64 flush_zeros=48 status_timer=24 queue=8 reask=96 pass=16 restart_words=1 delay=1 words=2 images=3 window0=0 wrong=0 still=0
-packets 1 0 0 0
-offer 0 1 289
-fate 0 5 head0
-quiet 328 20000
-run hl-mask,max_words=2,flush_zeros=48,zeros=64 fail word 1 delivered where word 0 was next
-run hl,max_words=2,flush_zeros=48,zeros=64 ok

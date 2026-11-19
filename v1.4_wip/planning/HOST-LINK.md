@@ -19,7 +19,7 @@ bad", "Recovery", "Starting a link again", "Holding the host back", "What a send
   and holds with it; 1,140 random runs on chains of 1, 2, 4 and 16, none failing; and two campaigns on the
   runner, none failing and no packet refused for want of room: 6,071 runs and 306 million packets with the slow
   unit (Quest 232), and **7,519 runs, 18 billion cycles and 385 million packets with the fast unit** (Quest 237)
-  (`updater_wip/link/` and `updater_wip/planning/sessions/WORKER8/REPORT.md` and `QUESTIONS.md`, on branch
+  (`v1.37/link/` and `v1.37/planning/updater/sessions/WORKER8/REPORT.md` and `QUESTIONS.md`, on branch
   `main` since 2026-11-18).
 - **The long search is complete and holds** (Quest 231, 2026-11-18): 86,515,438 states, every one tried, in 47
   minutes depth-first. From every state, with either stream never taken again, the other finished.
@@ -30,7 +30,7 @@ bad", "Recovery", "Starting a link again", "Holding the host back", "What a send
   memory, the larger searches, the long bursts of noise, and the long search again (Quests 238 to 242). The
   searches are of small sizes (a window of 2, queues of a few words); the random runs are of the real sizes.
 - **The figures here are the fast unit's,** but where one says otherwise.
-- **The link end is built to be used** (WORKER8, 2026-11-18): one header, `updater_wip/link/hostlink.h`, with an
+- **The link end is built to be used** (WORKER8, 2026-11-18): one header, `v1.37/link/hostlink.h`, with an
   `End` (one end of a link, with its queues) and a `Node` (an ASIC on a chain, the pin its argument), each
   clocked once a cycle with the bytes that arrived going in and the bytes to send coming out. What it costs as
   hardware is "The link as hardware", below, from `sessions/WORKER8/HARDWARE.md`.
@@ -303,7 +303,7 @@ The data passes through unchanged, as it is held.
 
 **Both checks are CRC-32C** (Castagnoli; the one in iSCSI, SCTP and ext4; RFC 3720, appendix B.4). The choice is
 settled (owner, 2026-11-17: "we can just pick one"); its definition here is exact, and gold's packetizer and its test vectors use it
-(`updater_wip/pipeline/gold/test/packets/VECTORS.txt`).
+(`v1.37/pipeline/frames/gold/test/packets/VECTORS.txt`).
 
 | | |
 |---|---|
@@ -791,7 +791,7 @@ is masked on the wire"). The owner had accepted it ("we can live with that") bef
 
 ## The link as hardware (WORKER8, 2026-11-18)
 
-Counted from the model, register by register, in `updater_wip/planning/sessions/WORKER8/HARDWARE.md`: every
+Counted from the model, register by register, in `v1.37/planning/updater/sessions/WORKER8/HARDWARE.md`: every
 register with its flip-flops, every memory with its size and the reason, the units and when each runs, and what
 the model does in one cycle that hardware must spread over several. Its tables are printed by a program
 (`build/linkhw`) and checked against the document; the widths were checked against the model in a run of

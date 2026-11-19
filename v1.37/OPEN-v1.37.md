@@ -9,12 +9,12 @@ it was). What is open in the design is the specification's chapter 26 (`spec/mac
 
 | item | what | where |
 |---|---|---|
-| **WORKER8's long runs of the link** (Quests 238 to 242, parked) | a large campaign with the fast unit: forged headers, and bits flipped in a sender's memory, each ending in the link starting again and the chip stopping. The cases were searched and tested at small sizes; the evidence for what the link does in service is the searches, 13,000 random runs and 690 million packets, 1,380 resets in a running chain, the specification's review and the proof runs through the link. **The owner: they do not hold the freeze; owed for an idle night** (design notes 39) | spec item 192 (`spec/host-link.md`); `link/README.md`; `../updater_wip/planning/sessions/SPEC/FOR-THE-SIMULATOR.md` 28.9, 28.7 |
+| **WORKER8's long runs of the link** (Quests 238 to 242, parked) | a large campaign with the fast unit: forged headers, and bits flipped in a sender's memory, each ending in the link starting again and the chip stopping. The cases were searched and tested at small sizes; the evidence for what the link does in service is the searches, 13,000 random runs and 690 million packets, 1,380 resets in a running chain, the specification's review and the proof runs through the link. **The owner: they do not hold the freeze; owed for an idle night** (design notes 39) | spec item 192 (`spec/host-link.md`); `link/README.md`; `planning/updater/sessions/SPEC/FOR-THE-SIMULATOR.md` 28.9, 28.7 |
 
 ## (b) The firmware's choices where the specification was silent: now stated
 
 The owner ruled on the build's notes 1 to 8 (design notes 39), and the specification now states each as built. The
-last two, from the last record's rework (`../updater_wip/planning/sessions/INTEGRATOR/FOR-THE-SPEC.md` 7 and 8), are
+last two, from the last record's rework (`planning/updater/sessions/INTEGRATOR/FOR-THE-SPEC.md` 7 and 8), are
 in `spec/master-firmware.md` 30.6 and 30.7 and `spec/jolt/tracer.md` 17.9.10: **the master answers the tracer tile's
 result only once the block has landed**, the tracer tile serving requests until then; and **the reply waits for
 nothing further**, after which the master goes on serving its tiles, the tracer tile's `LOAD` among them. Nothing is
@@ -33,7 +33,7 @@ runs, are the firmware's windows run times the segment's one `RUN_CONFIG.rows`: 
 
 ## (d) Rules with no check, and checks no test fires
 
-From the INTEGRATOR's report, stage 7 (`../updater_wip/planning/sessions/INTEGRATOR/REPORT.md`):
+From the INTEGRATOR's report, stage 7 (`planning/updater/sessions/INTEGRATOR/REPORT.md`):
 
 | rule | as it stands |
 |---|---|
@@ -69,9 +69,14 @@ material of the copied code or documents:
 
 - `tools/doccheck.sh` counts a document of `../v1.4_wip/planning/` (the design documents behind what v1.37 adds) as in
   the tree when a page here names it;
-- gold's own development checks (`pipeline/frames/gold/build.sh`'s tests of the jump guest, `pipeline/frames/gold/test/frames/old_unchanged.sh`,
-  `guests.sh`, `workloads.sh`) reach `../v1.36/` and `../v1.3/` by paths written for `updater_wip/pipeline/gold`, so they run
-  there, not in the copy; its packets check (`pipeline/frames/gold/test/packets/packets.sh`) runs in the copy; the simulator's checks of gold are its own
-  (`tests/updater/make_fixtures.sh --check`, the packet vectors);
-- the documents' history: the session reports and briefs of `../updater_wip/planning/sessions/` that the pages here
-  cite as where a figure or a decision came from.
+- gold's own development checks (`pipeline/frames/gold/build.sh`, with `pipeline/frames/gold/test/frames/guests.sh`
+  and `pipeline/frames/gold/test/frames/old_unchanged.sh`) reach `../v1.36/` for v1.36's gold and jumpmap, and
+  `pipeline/frames/gold/test/frames/workloads.sh` reaches `../v1.3/` for the published hashes and needs the
+  workloads' data. They run in the copy (2026-11-19: the
+  three scripts' paths, written for `updater_wip/pipeline/gold`, were brought to this folder when `updater_wip/` was
+  removed, and `build.sh` passes here: 80 runs on the guests, 168 byte-identical to v1.36's gold, the packets). The
+  simulator's checks of gold are its own (`tests/updater/make_fixtures.sh --check`, the packet vectors).
+
+**The documents' history is in the folder:** the session reports, notes and briefs that the pages here cite as where
+a figure or a decision came from are `planning/updater/sessions/`, moved from `updater_wip/planning/` when that folder
+was removed (2026-11-19).

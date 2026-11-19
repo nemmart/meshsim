@@ -23,7 +23,7 @@ the guide from v1.36: what changed, the name table, and where each of v1.36's se
 
 **Where the design's authority lies** (owner, 2026-11-18). For the cache's controller (23.6), the Updater's
 controller (17.10) and the link end (28), **the code is the authority:** their sections are the specification of
-`v1.37/src/units/cache_ctl.*`, `updater_ctl.h` and `updater_wip/link/link_end.*`, `node.*`, and state what
+`v1.37/src/units/cache_ctl.*`, `updater_ctl.h` and `v1.37/link/link_end.*`, `node.*`, and state what
 they do. For everything else designed here, this document is. For the hardware the RTL has built, the RTL is.
 
 **Companion material** (paths in the package):
@@ -38,7 +38,7 @@ they do. For everything else designed here, this document is. For the hardware t
   Where a log and this document differ, this document is the authority.
 - `data/tables/`: the replayer's expansion tables (17.8.6), with the opcode table and a manifest.
 - `fw/` and `src/`: the firmware and meshsim, the cycle-level simulator. Where v1.37's simulator and firmware differ
-  from this document, `updater_wip/planning/sessions/SPEC/FOR-THE-SIMULATOR.md` lists each difference, the work of
+  from this document, `v1.37/planning/updater/sessions/SPEC/FOR-THE-SIMULATOR.md` lists each difference, the work of
   the session that brings them to it.
 
 **How it is written.**

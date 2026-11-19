@@ -7,7 +7,7 @@ owner asked how big each is: how many states, how wide the control word, about h
 
 A session sized them from the code, with the AXI arbiter and the tile's core beside them. **Its full report, with
 every register, every control signal, the firmware outlines and the scripts that do the counting, is
-`updater_wip/planning/sessions/SIZING/REPORT.md`.** This is what it found. It is not part of the specification:
+`v1.37/planning/updater/sessions/SIZING/REPORT.md`.** This is what it found. It is not part of the specification:
 the specification states the machine, and this is an estimate about it.
 
 ## The sizes

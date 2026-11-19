@@ -1,7 +1,7 @@
 // test_packet_vectors: the host's packet files against gold's packetizer (v1.37). The reader (src/units/host_link.h)
 // was written from ../v1.4_wip/planning/HOST-LINK.md, not from gold's Java, and brought to chapter 28 (one run of
 // numbers, the stop bits, the mask) in stage 4 beside gold; gold's packetizer, its test vectors and
-// its small packet files are WORKER2's (../updater_wip/pipeline/gold/test/packets/). The two are meant to check each
+// its small packet files are WORKER2's (pipeline/frames/gold/test/packets/). The two are meant to check each
 // other, and this is where they meet. Since stage 4 (the INTEGRATOR) the chip's link is WORKER8's (chapter 28) and a
 // packet file is what the host's end sends, link packet by link packet (tests/host_end.h): "through the link" below
 // is that, the words read out at the chip. The reader's own checks stay the file's.

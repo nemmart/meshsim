@@ -1239,3 +1239,29 @@ one last pass on the runner from that tree.
   that we couldn't detect the race; we know it's potentially there if we don't wait." No test is added; it is
   listed in v1.37's open items as a test owed.
 
+## 40. v1.37 frozen, and `updater_wip/` removed (2026-11-19, about 4 a.m.)
+
+- **The last pass on the runner, from the folder standing alone, was green** (Quests 264 to 268): the suites and
+  the 37 proof runs, the same with LPDDR's timing varied, `make check` with the sanitizers, and the chain of the
+  driver and two chips at 2²⁹ on both workloads, each second run the same as the first.
+- **The build session froze it** by renaming `v1.37_wip/` to `v1.37/` (`0775024f`), after merging the
+  specification's last changes in. The link's report, its hardware document and its task generator went into
+  the folder's `link/` first, and the link's own `make check` passes from inside it.
+- **`updater_wip/` is removed** (owner: "we'll want to clean up updater_wip (delete it) at the same time we land
+  v1.37"; and of its papers: "let's keep the planning docs around"). Done by the design session:
+  - **the code** (the link, the wire, gold with the frames) was already copied into v1.37 and held to its bytes.
+    Every one of the 239 files deleted was checked against its copy's hash first;
+  - **the planning papers** (the milestone, every session's brief, notes and report, the specification's
+    worklist and reviews, the sizing report) moved, as they were, to **`v1.37/planning/updater/`**, as v1.36's
+    session reports are in `v1.36/planning/`;
+  - **the task generator for the runner** moved to `v1.37/tools/v137-check/`;
+  - **gold's own development checks now run in the copy:** three scripts' paths to `v1.36/` and `v1.3/` were one
+    folder short there. `build.sh` passes from `v1.37/pipeline/frames/gold`: 80 runs on the guests, 168
+    byte-identical to v1.36's gold, the packets. The wire's task generator takes its folder from where it sits;
+  - what named a path under `updater_wip/` in v1.37's own pages, the specification and the design documents
+    names the new place. Source comments that say "`updater_wip`, WORKER5" name the project and are left; so are
+    the dated records, these notes among them: **a path written `updater_wip/planning/...` in them is now
+    `v1.37/planning/updater/...`,** and `v1.37_wip` is `v1.37`.
+- **After it:** the folder's document check and copies check pass, and the final pass on the runner is made from
+  the tree as it then stands.
+

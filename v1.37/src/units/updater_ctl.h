@@ -1,5 +1,5 @@
 // updater_ctl.h: the Updater's controller, in the shape of hardware (updater_wip, WORKER6; the plan is
-// ../updater_wip/planning/sessions/WORKER6-NOTES.md, "NOTES" below). It sits behind the black box's registers
+// planning/updater/sessions/WORKER6-NOTES.md, "NOTES" below). It sits behind the black box's registers
 // (../v1.4_wip/planning/UPDATER-INTERFACE.md, "UI"); updater_top.h makes it the slot's peripheral. Header-only, as the RW
 // engine is.
 //

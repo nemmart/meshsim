@@ -323,7 +323,7 @@ Both workloads at 2²⁹, 128 segments (`updater_wip`, WORKER1's `REPORT.md`, be
 - Frame 4's base table by name, or the last one established (frame 4).
 - The † on a segment's rows (frame 3) and on the padding of frame 8's counts.
 - **The foreground stream's frames,** towards the chip and back: nothing is defined. The first reply frame is
-  proposed in `updater_wip/planning/MILESTONE-v1.37.md`.
+  proposed in `v1.37/planning/updater/MILESTONE-v1.37.md`.
 - The fall-back from a base table to a full new table happened on no run; gold is to test it with a made-up case.
 
 - Whether a frame for the Updater should carry its own head, the names and counts, instead of a header frame before

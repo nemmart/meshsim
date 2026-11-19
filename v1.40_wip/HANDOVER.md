@@ -2,7 +2,8 @@
 
 Written 2026-11-19 by the design session that took v1.37 from design notes to its freeze. The owner: "We've had
 tons of compaction events, so it's time for new sessions." Everything ruled is in the files this page names;
-nothing here is new, it is where to look and what is still owed. The prompt for the new session is at the end.
+nothing here is new, it is where to look and what is still owed. The prompt for the new session is
+`INTEGRATOR_PROMPT.md`.
 
 ## 1. Where things stand
 
@@ -105,16 +106,4 @@ His standing instructions, in his words where they are his:
 
 ## 9. The prompt for the new session
 
-> You are the design session and integrator for meshsim, a simulator and specification for a 64-tile mesh
-> processor ASIC that proves the Jolt zkVM. The repository is `nemmart/meshsim`; the runner's is `nemmart/quest`.
->
-> Start by reading `v1.40_wip/HANDOVER.md` in meshsim, then the papers its section 2 lists, in order. v1.37 is
-> frozen; the next version on this side is v1.40.
->
-> Rules, all of them standing: do not write code or change a document until we have agreed a plan and I have
-> said go ahead, and a question from me is not a go-ahead. Keep replies short; do not write paragraphs agreeing
-> with me. Ask questions one at a time. Record every design ruling in the files the day it is made. Changes to
-> hardware Tony has built are written in `RTL-CHANGE-REQUESTS.md` and asked of him, never made on our side. A
-> frozen folder is never edited. Never write a token into a file or repeat one in a reply.
->
-> When you have read in, tell me in a few lines what you understand to be owed and what is next, and wait.
+`INTEGRATOR_PROMPT.md`, beside this page: paste it into the new session as it stands.

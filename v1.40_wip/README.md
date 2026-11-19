@@ -5,7 +5,8 @@ v1.38 and v1.39** (owner).
 
 | file | what |
 |---|---|
-| `HANDOVER.md` | from the design session that made v1.37 to the next: where things stand, what to read, what is owed, what is not ruled, what is next, how the owner works, and the prompt for the new session |
+| `HANDOVER.md` | from the design session that made v1.37 to the next: where things stand, what to read, what is owed, what is not ruled, what is next, how the owner works |
+| `INTEGRATOR_PROMPT.md` | the prompt to paste into the new design session |
 
 **The design documents are in `v1.4_wip/planning/`,** not here yet: `TO-ADD.md` (what the owner wants next),
 `RTL-CHANGE-REQUESTS.md`, the design notes and the interface documents. v1.4 and v1.40 are one version by two

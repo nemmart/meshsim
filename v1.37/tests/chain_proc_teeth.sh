@@ -7,7 +7,7 @@
 # rebuild per bug). Two of stage 4's are not here: an ASIC's own link packet before a forwarded one, and clear_error()
 # called by the chip. Neither shows across processes (each reply comes whole and is sorted by hops; nothing is reset in
 # the middle of a run); test_ingress_chain catches both (chain_teeth.sh).
-# v1.37_wip/, with the link's and the wire's sources (link/, wire/), is copied into a scratch directory with its
+# v1.37/, with the link's and the wire's sources (link/, wire/), is copied into a scratch directory with its
 # builds, each bug planted there by sed and the programs rebuilt.
 #   tests/chain_proc_teeth.sh [FILTER]    (FILTER: an extended regular expression on the bugs' names)
 # Exit 1 if a bug goes uncaught or its sed plants nothing. JOBS sets make's -j (2).
@@ -15,8 +15,8 @@ set -u
 SIM=$(cd "$(dirname "$0")/.." && pwd)
 FILTER=${1:-}
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
-cp -a "$SIM" "$T/v1.37_wip"
-W=$T/v1.37_wip
+cp -a "$SIM" "$T/v1.37"
+W=$T/v1.37
 L=link
 H=src/units/ingress_egress.h
 (cd "$W" && JOBS=${JOBS:-2} bash tests/chain_run.sh kin-raw > "$T/pristine.log" 2>&1) || { cat "$T/pristine.log"; echo "teeth: the pristine chain fails"; exit 2; }

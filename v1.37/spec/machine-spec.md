@@ -23,7 +23,7 @@ the guide from v1.36: what changed, the name table, and where each of v1.36's se
 
 **Where the design's authority lies** (owner, 2026-11-18). For the cache's controller (23.6), the Updater's
 controller (17.10) and the link end (28), **the code is the authority:** their sections are the specification of
-`v1.37_wip/src/units/cache_ctl.*`, `updater_ctl.h` and `updater_wip/link/link_end.*`, `node.*`, and state what
+`v1.37/src/units/cache_ctl.*`, `updater_ctl.h` and `updater_wip/link/link_end.*`, `node.*`, and state what
 they do. For everything else designed here, this document is. For the hardware the RTL has built, the RTL is.
 
 **Companion material** (paths in the package):

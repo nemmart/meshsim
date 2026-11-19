@@ -69,8 +69,9 @@ material of the copied code or documents:
 
 - `tools/doccheck.sh` counts a document of `../v1.4_wip/planning/` (the design documents behind what v1.37 adds) as in
   the tree when a page here names it;
-- gold's own development checks (`pipeline/frames/gold/test/frames/old_unchanged.sh`, `guests.sh`,
-  `workloads.sh`) compare it with `../v1.36/` and `../v1.3/`; the simulator's checks of gold are its own
+- gold's own development checks (`pipeline/frames/gold/build.sh`'s tests of the jump guest, `pipeline/frames/gold/test/frames/old_unchanged.sh`,
+  `guests.sh`, `workloads.sh`) reach `../v1.36/` and `../v1.3/` by paths written for `updater_wip/pipeline/gold`, so they run
+  there, not in the copy; its packets check (`pipeline/frames/gold/test/packets/packets.sh`) runs in the copy; the simulator's checks of gold are its own
   (`tests/updater/make_fixtures.sh --check`, the packet vectors);
 - the documents' history: the session reports and briefs of `../updater_wip/planning/sessions/` that the pages here
   cite as where a figure or a decision came from.

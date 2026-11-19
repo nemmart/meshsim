@@ -139,7 +139,7 @@ Results: `updater_wip/planning/sessions/WORKER1-REPORT.md` (Quest 197; Quest 200
 
 ## The link's packets (v1.37, WORKER2)
 
-The frames ride on the link in link packets: machine-spec chapter 28 (`v1.37_wip/spec/host-link.md`), from v1.37's
+The frames ride on the link in link packets: machine-spec chapter 28 (`v1.37/spec/host-link.md`), from v1.37's
 INTEGRATOR stage 4 (`v1.4_wip/planning/HOST-LINK.md` before). v1.37's simulator is started with one
 file, the packets, which its Ingress black box reads (`INGRESS-INTERFACE.md`, "In v1.37: a black box and a file").
 

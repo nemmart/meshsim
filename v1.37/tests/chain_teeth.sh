@@ -14,9 +14,9 @@ SIM=$(cd "$(dirname "$0")/.." && pwd)
 FILTER=${1:-}
 JOBS=${JOBS:-2}
 if [ -n "${TEETH_DIR:-}" ]; then T=$TEETH_DIR; rm -rf "$T"; mkdir -p "$T"; else T=$(mktemp -d); trap 'rm -rf "$T"' EXIT; fi
-mkdir -p "$T/v1.37_wip"
-(cd "$SIM" && tar cf - --exclude=./build --exclude=./results --exclude=./link/build --exclude=./wire/build .) | (cd "$T/v1.37_wip" && tar xf -)
-W=$T/v1.37_wip
+mkdir -p "$T/v1.37"
+(cd "$SIM" && tar cf - --exclude=./build --exclude=./results --exclude=./link/build --exclude=./wire/build .) | (cd "$T/v1.37" && tar xf -)
+W=$T/v1.37
 B=build/clang-release
 TESTS="test_ingress_chain test_ingress_link test_ingress_egress"
 build() { (cd "$W" && make -s CC_NAME=clang MODE=release -j"$JOBS" $(for t in $TESTS; do echo $B/$t; done) > "$W/build.log" 2>&1); }
@@ -37,7 +37,7 @@ r=$(run)
 echo "pristine: all pass"
 L=link
 H=src/units/ingress_egress.h
-# name ~ file ~ sed expression [~ file ~ sed expression ...]   (files relative to v1.37_wip/)
+# name ~ file ~ sed expression [~ file ~ sed expression ...]   (files relative to v1.37/)
 BUGS=(
   "hops not counted along the chain~$L/node.cpp~s/HL_PLANT(p, HOPS_NOT_COUNTED)/true/g"
   "a forwarded link packet's header not sealed again~$L/link_end.cpp~s/HL_PLANT(p, NOT_SEALED_AGAIN)/true/"

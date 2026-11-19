@@ -4,8 +4,8 @@ Started 2026-11-19 (owner: "Let's start a file with things we want to add"). Eac
 asked for that is not in v1.37: what it is, why, what was settled in the discussion, and what it would touch.
 (owner) marks what the owner said; a dagger (†) marks what was proposed and not ruled on.
 
-This is not the list of open questions. Those are chapter 26 of `v1.37_wip/spec/machine-spec.md`, and
-`v1.37_wip/OPEN-v1.37.md` for the simulator's.
+This is not the list of open questions. Those are chapter 26 of `v1.37/spec/machine-spec.md`, and
+`v1.37/OPEN-v1.37.md` for the simulator's.
 
 ## 1. Statistics for each host link, and the names "parent" and "child" (2026-11-19)
 

@@ -650,7 +650,7 @@ public final class PacketsTest {
     Packets.Packet rp = Packets.restartPacket(Packets.LOST);
     expect(rp.dataChecksumField() == 0xC8981D21 && rp.data.length == 512 && rp.data[0] == 2 && rp.data[31] == (byte) 0x83
         && rp.data[32] == 2 && rp.data[511] == (byte) 0x83, "28.9's restart link packet: data checksum 0xC8981D21, the primes 2 to 131");
-    // machine-spec 28.5's four example headers and 28.6's masked data lines, copied from v1.37_wip/spec/host-link.md:
+    // machine-spec 28.5's four example headers and 28.6's masked data lines, copied from v1.37/spec/host-link.md:
     // the packetizer's bytes on the line
     String[][] examples = {
         {"host-link-example", "02 01 01 00 00 00 00 00 EA 9A 70 42 A0 8C 06 E1 2A 54 C0 74 C0 1C 58 2F A6 5D 27 37 39 C9 47 1F"},

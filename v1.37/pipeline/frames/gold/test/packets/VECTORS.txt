@@ -1,4 +1,4 @@
-# Test vectors for chapter 28's link packets (v1.37_wip/spec/host-link.md, 28.3 to 28.6; v1.37's INTEGRATOR, stage 4;
+# Test vectors for chapter 28's link packets (v1.37/spec/host-link.md, 28.3 to 28.6; v1.37's INTEGRATOR, stage 4;
 # v1.4_wip/planning/HOST-LINK.md's packets before), for a reader written from the specification. Made by gold's
 # packets-vectors command (updater_wip/pipeline/gold, WORKER2); do not edit: the build regenerates this file and
 # compares. The choices behind it are in updater_wip/planning/sessions/WORKER2-NOTES.md.

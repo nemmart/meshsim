@@ -10,7 +10,7 @@
 181314065df2f2fdaf920b1a8b5311daa216a2d6489a06ada5b49cc514d89417  link/.gitignore  updater_wip/link/.gitignore
 00a25ce27a0b1717479cee5d8c9966c49f20427f7a475d767f9f0c4c774dfe6d  link/HARDWARE.md  updater_wip/planning/sessions/WORKER8/HARDWARE.md
 6d45cbe47555aa50d6967b8e853117f663c8b00c462f695f4a404760a61945ba  link/Makefile  updater_wip/link/Makefile
-b0f8d8a8442a65cbbc76fa922566d1caabe3c910e353cb27fa178194bfdc8e9c  link/README.md  updater_wip/link/README.md
+fc2f1c93e88641ae89979762ee8dc8f14952b3d9a46de294addfbf604e74a519  link/README.md  updater_wip/link/README.md
 bb4678b842d71cdcdd2e1c25cbd7dadadd049477b71a9d3cb0822d0e88b97c37  link/REPORT.md  updater_wip/planning/sessions/WORKER8/REPORT.md
 3b8e3384e2d1c05f5e2e45936561892df96982cbdf09f25dc230ae189dda5f5c  link/archive.h  updater_wip/link/archive.h
 552bcbe463aaf81984d9be91fbeccc3414472b8967e601828d90b3900db7be01  link/bench.cpp  updater_wip/link/bench.cpp
@@ -85,7 +85,7 @@ af9ef492da80c0f4f7cfc9ce05295839d2a964865409124163236a76901a642d  wire/tests/run
 a0af826cbb3b292536921f33cfadfb7516a496f317c9346b47d669f318183f23  wire/wire_args.cpp  updater_wip/wire/wire_args.cpp
 6752fe2ff11448e8dba33b49a0232732fc9618f6597b115a9b7463fb451b1772  wire/wire_args.h  updater_wip/wire/wire_args.h
 c7cd0fc55d4b88bc4ed87b1cdc33670d9046174ab762188a0f2ce10290bb56e0  pipeline/frames/gold/.gitignore  updater_wip/pipeline/gold/.gitignore
-4a80b3c0cf1f60741ba10f5c11d76da528ac0de045cfdb31596eb00b346d96d4  pipeline/frames/gold/README.md  updater_wip/pipeline/gold/README.md
+6e9410b31d4752d497d30c5e6580fdb41549eb2e42b026844ffb5143e986acca  pipeline/frames/gold/README.md  updater_wip/pipeline/gold/README.md
 d0e169a73f8b60f595478dc69b8063b0ab42963030500d8fe709d05ca7e34eb1  pipeline/frames/gold/build.sh  updater_wip/pipeline/gold/build.sh
 5fc0f9696a9d6b42a1e7c921eda78315c8907cff465ec151b501af30f3a76578  pipeline/frames/gold/check.sh  updater_wip/pipeline/gold/check.sh
 b9bb00e5314b1b22826b0a0d31d2182dc46615f43764117f34828fc8b61059d5  pipeline/frames/gold/src/gold/AdviceFile.java  updater_wip/pipeline/gold/src/gold/AdviceFile.java
@@ -118,10 +118,10 @@ b4fd4011115d37a0faaa69018cc7af073020f84ad27e5eccb249bb064a8d972d  pipeline/frame
 5b4bd789a53ffa3ba9b55bc374c4c7b738c4db67f25ec791c608ba59232fd7c8  pipeline/frames/gold/src/gold/Main.java  updater_wip/pipeline/gold/src/gold/Main.java
 e5461b5d01829947daa3e622a30269d8f6847bb2d7eea3224cc8077842fac789  pipeline/frames/gold/src/gold/Memory.java  updater_wip/pipeline/gold/src/gold/Memory.java
 a9088c95b3bc055e7eba3049af787c6830f591e636eefdaa2893e7c52fa43139  pipeline/frames/gold/src/gold/Op.java  updater_wip/pipeline/gold/src/gold/Op.java
-dc1f7b2016a1a17d0eda94eb35e1737f322e3d177fe62b9a672b51c8bb2e091f  pipeline/frames/gold/src/gold/PacketFile.java  updater_wip/pipeline/gold/src/gold/PacketFile.java
+9029af20fdc5fea1eb7d81a40b14099204ea04306dd1c0527cdd523c6d118de1  pipeline/frames/gold/src/gold/PacketFile.java  updater_wip/pipeline/gold/src/gold/PacketFile.java
 4f127bddbbe6924fb939163f944fbf17cf8114d783d173e65e66fe58f9a23d3b  pipeline/frames/gold/src/gold/PacketReader.java  updater_wip/pipeline/gold/src/gold/PacketReader.java
-34c35a547987fae8f0e5004a61ebd89371bc859d765d413b6e39e0725da76f33  pipeline/frames/gold/src/gold/PacketVectors.java  updater_wip/pipeline/gold/src/gold/PacketVectors.java
-804b32d25983d7c9753c92a7a60d8a63b82e8b4719a67760f099e24a1ee4d385  pipeline/frames/gold/src/gold/Packets.java  updater_wip/pipeline/gold/src/gold/Packets.java
+8b4e7a00958009924a65a06c1718f936bd7f5660e79657b1834b34e764e03e59  pipeline/frames/gold/src/gold/PacketVectors.java  updater_wip/pipeline/gold/src/gold/PacketVectors.java
+ee52c8979827ae83fe6d313c6fe8a7855453d93c3e95f9ffeeaf55a155948d90  pipeline/frames/gold/src/gold/Packets.java  updater_wip/pipeline/gold/src/gold/Packets.java
 bf83a95e324b6a81dfe47446a7282d8184b497c36bf19d9588d94df9bdc4f813  pipeline/frames/gold/src/gold/PageImage.java  updater_wip/pipeline/gold/src/gold/PageImage.java
 2a0cf36f6cd18e3a31080bb3c8c74e5f57cf11abde25e955c029fb4f3adca739  pipeline/frames/gold/src/gold/Program.java  updater_wip/pipeline/gold/src/gold/Program.java
 e740fefed607682e4a400b1adf9664c16611dfbef1e3e899323ad3d2f990d499  pipeline/frames/gold/src/gold/ProofParams.java  updater_wip/pipeline/gold/src/gold/ProofParams.java
@@ -147,7 +147,7 @@ c99116927e15a55ff27ffa7162ec6771988afde6b39bab60e91de235906bcd9e  pipeline/frame
 3b2350818c3290d710ee82d71070cb01e4233ca4113a77934a6784d735357d0b  pipeline/frames/gold/test/gold/FramesTest.java  updater_wip/pipeline/gold/test/gold/FramesTest.java
 aa85be4289ae6a08b878676b4aac5897f53433f1284441c1523b4dd6e93ba48c  pipeline/frames/gold/test/gold/InlineEmitTest.java  updater_wip/pipeline/gold/test/gold/InlineEmitTest.java
 998dad1b9ae087caf6c35a1042d5ac305667984f387b6026574a369258f1e247  pipeline/frames/gold/test/gold/InlineVectorTest.java  updater_wip/pipeline/gold/test/gold/InlineVectorTest.java
-dc030ed475b2b46abc0aa83f54c6704e0c0913951c9bd9200b85fd612e9eaf40  pipeline/frames/gold/test/gold/PacketsTest.java  updater_wip/pipeline/gold/test/gold/PacketsTest.java
+822d48ce63235d8bb9374d49317e9fb65018ecebab9cd0d49586262ba56c7b1d  pipeline/frames/gold/test/gold/PacketsTest.java  updater_wip/pipeline/gold/test/gold/PacketsTest.java
 1f9864dcc281940e89eab5eb51cc663cacb2d8aff12646486372b324784c45bb  pipeline/frames/gold/test/guests/assert_eq_fail/program.elf  updater_wip/pipeline/gold/test/guests/assert_eq_fail/program.elf
 9841aff43ef9b82d19b3306dc340dd6f53e6034f66e5aec7764121a0554ff613  pipeline/frames/gold/test/guests/assert_eq_fail/program.json  updater_wip/pipeline/gold/test/guests/assert_eq_fail/program.json
 f6b1315a2320f651a88e1757c5fc08e14078f49335abb7beeb5f3ec1e326fd30  pipeline/frames/gold/test/guests/assert_eq_pass/program.elf  updater_wip/pipeline/gold/test/guests/assert_eq_pass/program.elf
@@ -237,8 +237,8 @@ c39dc544d115c2656f4b50dcd1a83325cb3ab882686f37c12730b17871b53baa  pipeline/frame
 9841aff43ef9b82d19b3306dc340dd6f53e6034f66e5aec7764121a0554ff613  pipeline/frames/gold/test/guests/unprovable_wfi/program.json  updater_wip/pipeline/gold/test/guests/unprovable_wfi/program.json
 f6b9c9758a9d6c95f13366e74fbc50085ec78e2323849b2ecdcda58aae3d62e0  pipeline/frames/gold/test/inline-emit-digests.txt  updater_wip/pipeline/gold/test/inline-emit-digests.txt
 51892e9d5362a1cddd1bd4aa5d22fb4a33b028af311d0ec02f08488858187be5  pipeline/frames/gold/test/inline-vectors.jsonl.gz  updater_wip/pipeline/gold/test/inline-vectors.jsonl.gz
-d2ca0bcc92f22b1f8755da1f56ab782e9938f8605aa432f7a7e2c2f46ee131d4  pipeline/frames/gold/test/packets/VECTORS.txt  updater_wip/pipeline/gold/test/packets/VECTORS.txt
-8538a8e73df586c68ce78024974710c64f2d6fb409882944e6e4a7a5258a1ca9  pipeline/frames/gold/test/packets/check_vectors.py  updater_wip/pipeline/gold/test/packets/check_vectors.py
+0f37bfe65922620e1a50acdc61e5182d656bda4348be02012c5e080e6ad041f5  pipeline/frames/gold/test/packets/VECTORS.txt  updater_wip/pipeline/gold/test/packets/VECTORS.txt
+a5960ffa419dff4d1b5e46f2a2e8578816859bad3d05eeb5b471980dee491a64  pipeline/frames/gold/test/packets/check_vectors.py  updater_wip/pipeline/gold/test/packets/check_vectors.py
 5f22b59c07ad686683a7b870cda9dd2e4f1ee71cdb49f6fcb26cfd81bf514607  pipeline/frames/gold/test/packets/frames_unchanged.sh  updater_wip/pipeline/gold/test/packets/frames_unchanged.sh
 f688161e4d91adff58ac91ee175150998fac9eebc4bdad80680ae3f6ba9cd439  pipeline/frames/gold/test/packets/packets.sh  updater_wip/pipeline/gold/test/packets/packets.sh
 6fcb0845da08646a7c4776892332bb9c85c931063ee6279e570b9bc86434b08b  pipeline/frames/gold/test/packets/restart.packets  updater_wip/pipeline/gold/test/packets/restart.packets

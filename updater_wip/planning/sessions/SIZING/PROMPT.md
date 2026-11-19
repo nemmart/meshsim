@@ -13,6 +13,10 @@ code and checked against it by its author:
 gates to build it.** The answer goes to the people deciding whether these are small blocks of logic or something
 that needs a closer look, so it must be a figure they can trust with its reasoning shown, not a guess.
 
+**Why the owner asks:** "we're really replacing a general processor with a fixed logic controller. Is that the
+right call?" The work these two do could have been firmware on a tile's core. So the figures are wanted beside
+the core's, and beside what a core would take to do the same work.
+
 ## What to report, for each controller
 
 1. **The states.** Each controller is several small machines working together (the cache has a front end, a
@@ -38,6 +42,35 @@ that needs a closer look, so it must be a figure they can trust with its reasoni
 **The AXI arbiter** (`axi_arbiter.*`, 23.11; 1,539 flip-flops in the specification) is not one of the two, but
 it is small and sits between them. Give it the same three figures as a third line, kept apart.
 
+## The comparison with a processor
+
+4. **The core's size, beside theirs.** The tile's core is RV32I with C, Zmmul, Zicsr and Zicond, `WFI`, the CSRs
+   and the trap logic, with IMEM and DMEM of 32 KiB each (`spec/core.md`; `machine-spec.md` 6 and 24, which
+   budgets about 0.15 mm² for the core, its memories and its registers together, as a rough estimate). Estimate
+   its gates the same way and with the same costs as the controllers', its logic and its memories apart, and
+   say how sure you are: its insides are not modelled gate by gate in the simulator, so use the specification
+   and what is published for cores of its kind, and name what you used.
+5. **What a core would take to do the same work.** For each controller's main loop, write the firmware a core
+   would run in its place, in outline, and count its instructions and so its cycles:
+   - **the Updater:** per update word decoded and placed (a header word, a value into a page already held, a
+     value that starts a new page), and per page fault walked. Set it beside the rate the link delivers: a
+     byte a cycle, so a 64-bit update word every 8 cycles (`spec/host-link.md`; the forward count in 17.6);
+   - **the cache:** per look-up answered from a cached line, and per miss. Set it beside the controller's own
+     figures in 23.6.7, the look-up of 6 cycles above all.
+
+   Use the core's real cost a cycle from `spec/core.md` (what a load, a store, a branch and a multiply take),
+   and say what else a core would need that it does not have today: a path of its own to LPDDR, to the cache's
+   memory, to the page memory.
+   - There is one measured point to check against. With the master tile's firmware only copying the host's
+     data to the Updater, it was awake 17 to 20% of the link's time; taken out of that path it is 2.4 to 7.0%
+     (`v1.4_wip/planning/INGRESS-INTERFACE.md`, "In v1.37").
+6. **The other side of the trade.** In a few lines: what is fixed in each controller that firmware could have
+   changed after the chip is made (the update word's format and its LRU code in the decoder; the cache's
+   eviction and write-back rules), and what stays in firmware today (which runs, which roots, which free pages,
+   what each frame means: `spec/master-firmware.md`).
+
+Give figures and what they rest on. Whether it is the right call is the owner's to judge.
+
 ## How
 
 - **Count from the code,** with the specification as the guide to what each register and state is for. Where
@@ -55,9 +88,11 @@ it is small and sits between them. Give it the same three figures as a third lin
 
 - **First tell the owner, in a few lines, how you will count and what you will assume, and wait for the
   go-ahead.** Then do it in one pass.
-- **Keep the reply to the owner short:** one table, three rows (the cache's controller, the Updater's
-  controller, the arbiter), with the states, the control word's width, the flip-flops, the logic's gates low
-  and high, and the memory in bits. Then two or three lines on what dominates and how sure you are.
+- **Keep the reply to the owner short:** one table, four rows (the cache's controller, the Updater's
+  controller, the arbiter, the core), with the states, the control word's width, the flip-flops, the logic's
+  gates low and high, and the memory in bits. Under it a second small table: the cycles a core would take
+  against the cycles each controller takes, for an update word and for a look-up. Then two or three lines on
+  what dominates and how sure you are.
 - Branch `v137-sizing`, from `main`. Commit your report and your counting to
   `updater_wip/planning/sessions/SIZING/`, push, and say when it is there.
 - Attach the repository to the session to push, or clone with the token from your user preferences. **Never
@@ -68,5 +103,6 @@ it is small and sits between them. Give it the same three figures as a third lin
 
 - `sessions/SIZING/REPORT.md`: the table; for each controller its states, its control word signal by signal,
   its registers, its datapath operators and the gate estimate with its assumptions; where the code and the
-  specification differ.
+  specification differ; the core's estimate and its sources; the firmware outlines with their instruction
+  counts; what is fixed in logic that firmware could have changed.
 - `sessions/SIZING/`: the counting itself, as a script or tables.

@@ -1,0 +1,59 @@
+{
+ "cache": {
+  "named_states": 12,
+  "named_ff": 5,
+  "state_ff": 40,
+  "ctl_width": 110,
+  "ctl_rows": 86,
+  "ctl_words": 85,
+  "ff_coded": 6652,
+  "ff_low": 4157,
+  "ff_spec": 6876,
+  "ffge_low": 23570.19,
+  "ffge_high": 37716.84,
+  "logic_low": 17797.85,
+  "logic_high": 46562.649,
+  "mem_bits": 4304896
+ },
+ "updater": {
+  "named_states": 18,
+  "named_ff": 8,
+  "state_ff": 26,
+  "ctl_width": 95,
+  "ctl_rows": 106,
+  "ctl_words": 93,
+  "ff_coded": 4193,
+  "ff_low": 4017,
+  "ff_spec": 4193,
+  "ffge_low": 22776.39,
+  "ffge_high": 23774.31,
+  "logic_low": 18788.58,
+  "logic_high": 34935.8385,
+  "mem_bits": 40960
+ },
+ "arbiter": {
+  "named_states": 0,
+  "named_ff": 0,
+  "state_ff": 45,
+  "ctl_width": 49,
+  "ctl_rows": 12,
+  "ctl_words": 11,
+  "ff_coded": 1539,
+  "ff_low": 1155,
+  "ff_spec": 1539,
+  "ffge_low": 6548.85,
+  "ffge_high": 8726.13,
+  "logic_low": 3817.4800000000005,
+  "logic_high": 8246.1095,
+  "mem_bits": 0
+ },
+ "core": {
+  "ff_low": 1917,
+  "ff_coded": 2014,
+  "ffge_low": 10869.39,
+  "ffge_high": 11419.38,
+  "logic_low": 23103.31,
+  "logic_high": 31496.407,
+  "mem_bits": 526336
+ }
+}

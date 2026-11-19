@@ -1163,3 +1163,63 @@ where they are stated; this is how they were reached.
   - It corrected the specification's count of the cache's controller, 6,876 flip-flops to 6,652 (23.6.5 and
     chapter 24).
 
+## 39. Before the freeze: the build session's six notes for the specification, ruled on (2026-11-19, after midnight)
+
+The build session left six notes where the specification was wrong, unclear or silent
+(`updater_wip/planning/sessions/INTEGRATOR/FOR-THE-SPEC.md`). The owner went through them one at a time.
+
+| note | section | the ruling |
+|---|---|---|
+| 1 | 17.10.2, 17.10.11 | "A page at 2²³ or above is UB" cannot arise and goes: a page number is a value's 32-bit index over 512, so the limit on the index (a run past 2³² − 1) is the only one a program can reach. Say that the index's 32 bits are what bound the reach |
+| 2 | 20 (invariant 37), 23.6.11 | name the three checks the build added where the Updater meets the cache (an update before its page's write is answered; a direct write to a page the cache holds a line of; a direct read of one it holds a dirty line of), and say which check catches which rule |
+| 3 | 17.9.5, 23.6.4 | **a rule on the client, stated loudly, and not a simulator check** (owner: "this is a bug that the RTL will either have or won't have. 'Catching' it in the simulator won't help us make sure the RTL has it right. This probably just needs to be documented loud and clear as 'it better not do this or else'"). Each cycle in which `valid` and `ready` are both 1 is one request; a client that holds `valid` a cycle longer has made a second, which the cache serves. It is to be verified in the RTL, as an assertion on the port. The simulator's check may stay in the code; the specification does not present it as what keeps the rule |
+| 4 | 17.7, 21.5 | the RW engine's figure is at its own port; behind the arbiter its bursts reach `lpddr` a cycle later. List it, with the special tiles' DMA on south, where the simulator's cycles no longer match the RTL's tests. The owner: "All that stuff will get reworked once we have a real RW engine anyway" |
+| 5 | 30.6, 30.7, 29.14 | **the tracer tile's last record is pulled, not pushed** (below) |
+| 6 | 30.7, 17.6.8 | **no bit for "the reply has left".** The owner: "I view it as an RPC system. The FPGA makes requests of C&C1; once C&C1 sends the answer it's done." A frame is the link's once `EGRESS_COUNT` is 0; the core does not wait for it to leave; a simulation ends when the host has every reply, not when a master parks |
+
+**How the tracer tile's last record reaches the master** (owner). The build session had the master name, in the
+segment's load, a place in its own memory, and the tracer tile write its record there at its end, before its
+result. The owner: "no no, that's not how these should move." As ruled:
+
+1. **When its trace ends, the tracer tile (C&C3) prepares one block in its SRAM,** everything it gives to the
+   reply. This overlaps the compute tiles' replays (owner), so it costs the segment no time.
+2. **When the master (C&C1) has the report that all the replay is done,** it sets aside the block's words in its
+   own memory, **arms a counter** for them, and **sends the tracer tile one request** to move the block there. A
+   request names its target (11.2), and the tracer tile receives requests.
+3. **The tracer tile sends the block by one DMA.**
+4. **When the counter says every word has landed, the master sends the reply through Egress,** and is done.
+
+The master still does not reach into the tracer tile: it asks, and the tracer tile sends.
+
+- **The block is 69 128-bit words:** word 0, [31:0] the rows traced, [63:32] the Tracer's `ERRORS`, [95:64] its
+  status, the rest 0; words 1 to 68, the end-state record (17.9.2). The rows traced are the windows run times
+  the rows of a window.
+- **The block lands in the reply's own buffer,** so the master copies nothing. **The reply (29.14) becomes 72
+  data words,** 73 on the link:
+
+  | word | holds |
+  |---|---|
+  | 0 | the frame header: compression 0, type 16, length 72 |
+  | 1 | [31:0] *s*, [63:32] *N*, [95:64] 0, [127:96] `PAGE_COUNT` as the last run left it |
+  | 2 | [63:0] the master tile's `mcycle` at the segment's end, [95:64] the Updater's `STAT_CYCLES`, [127:96] its `STAT_STALL_DATA` |
+  | 3 | [31:0] the master tile's `ERRORS`, [63:32] Ingress/Egress's, [95:64] the Updater's, [127:96] 0 |
+  | 4 | the block's word 0: the rows traced, the Tracer's `ERRORS`, its status |
+  | 5–72 | the end-state record, 68 words |
+
+  The rows traced and the Tracer's `ERRORS` move from words 1 and 3 into word 4. What is compared with gold's
+  record *s* + 1 is the same 65 words of the record as before.
+- The tracer tile's result is as it was: it says the trace is done.
+- It is firmware on both tiles and no hardware.
+
+**WORKER8's parked runs of the link (Quests 238 to 242) do not hold the freeze** (owner: not now, "if we're at
+least 99% confident the link is right"). The design session's answer: on what the link does in service (noise,
+sending again, recovery, "stop", forwarding) the evidence is the searches, 13,000 random runs and 690 million
+packets, 1,380 resets in a running chain, the specification's review and the proof runs through the link. What
+the parked runs would add is a large campaign of forged headers and of bits flipped in a sender's memory with
+the fast unit, cases searched and tested at small sizes, which all end in the link starting again and the chip
+stopping. They are owed, as an open item of v1.37, for an idle night.
+
+**What the freeze now waits on, in order:** the specification brought to these rulings; the firmware of both
+tiles reworked for the record's path and the reply's layout; the folder made to stand alone, as v1.36's does;
+one last pass on the runner from that tree.
+

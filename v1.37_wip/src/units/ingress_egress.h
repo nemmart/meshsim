@@ -87,7 +87,7 @@
 //                tracer tile's (ERROR_LINES_2 [1], [2]).
 //   release (64) own LinkOuts, width 0, to every compute tile's tile control unit: BARRIER_RELEASE.
 //
-// THE LINK (chapter 28; v1.37 stage 4): WORKER8's `hostlink::Node` (../updater_wip/link, used through hostlink.h
+// THE LINK (chapter 28; v1.37 stage 4): WORKER8's `hostlink::Node` (link/, used through hostlink.h
 // alone): the link end towards the host, on the port `link_up`, and with `chain_next` 1 the one away from it, on
 // `link_down`, and the four forwarding buffers. A link cycle is a byte on the line; `link_rate` link cycles a chip
 // cycle (1, 2, 4 or 8; 28.1's "about 1 GB/s" is one at the chip's 1 GHz, item 186), or a link cycle every
@@ -123,7 +123,7 @@
 #include <memory>
 
 #include "base/alloc_guard.h"
-#include "hostlink.h"                  // ../updater_wip/link: WORKER8's link (namespace ::hostlink)
+#include "hostlink.h"                  // link/: WORKER8's link (namespace ::hostlink)
 #include "units/peripheral.h"
 #include "units/word_port.h"
 

@@ -1,6 +1,6 @@
 // host_link.h: a packet file of chapter 28's link packets, read packet by packet (v1.37; spec/host-link.md 28.3 to
 // 28.6, from stage 4; ../v1.4_wip/planning/HOST-LINK.md before). The chip's receiver is the link's Node
-// (../updater_wip/link, in ingress_egress.h); this is the tests' reader of a file of link packets: gold's vectors
+// (link/, in ingress_egress.h); this is the tests' reader of a file of link packets: gold's vectors
 // (test_packet_vectors), the packets a proof is sent as (HostEnd::from_packet_file), packetize. No simulator types.
 //
 // A LINK PACKET is a header word of 128 bits, then its data, 0 to 32 words of 128 bits, every word as 16 bytes on the

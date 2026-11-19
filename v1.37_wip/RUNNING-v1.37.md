@@ -11,7 +11,7 @@ Commands run from this folder.
 |---|---|
 | the input | **a packet file:** gold's frame file (`HOST-FRAMES.md`) wrapped in chapter 28's link packets (`spec/host-link.md`; gold's `packets`), which the host's link end (WORKER8's `End`, `tests/host_end.h`) sends on `link_up`, a byte each way a link cycle (1, 2, 4 or 8 a chip cycle: `--link-rate`), to the chip's Node in Ingress/Egress, which lands them into a queue of 1,024 words a stream (16 KiB, 17.6.3; `INGRESS_QUEUE_WORDS`, the chip's setting `ingressQueueWords`), a link packet's words landing a word a cycle. **N and s:** how many ASICs the proof is cut for, and which segment this one runs. No frame carries them |
 | the master tile | runs `fw/cc/master.c`: reads the frames out of Ingress, keeps the page map, drives the Updater through its runs, and hands the tracer tile segment s. **The forward count** (`INGRESS-INTERFACE.md`; WORKER7): it copies a frame's header word by Ingress's DMA, and for a frame of update words starts the Updater's run and writes the frame's length to `DMA_FORWARD_COUNT` once: Ingress sends the words to the Updater's word port itself. Frames 7 and 8 are dropped up to the ASIC's own record or log, which is copied, and the rest dropped |
-| Ingress's host side | Ingress/Egress at 17.6's registers; its link, from stage 4, WORKER8's Node (`../updater_wip/link`; `src/units/ingress_egress.h`, THE LINK), the host's End at the other end of the line. The End's data link packets as first sent are checked against the packet file, byte for byte |
+| Ingress's host side | Ingress/Egress at 17.6's registers; its link, from stage 4, WORKER8's Node (`link/`; `src/units/ingress_egress.h`, THE LINK), the host's End at the other end of the line. The End's data link packets as first sent are checked against the packet file, byte for byte |
 | the Updater | its controller, the state machine (spec 17.10), on the memory system's client port 1 and look-up port 1 |
 | the memory tile | its peripheral 1 the memory system (the cache's controller, the AXI arbiter, the LPDDR model: spec 17.11, 23), peripheral 2 the RW engine on the arbiter's client 2; nothing runs on it in a proof |
 | the Updater | builds the memory images in LPDDR: the program image, the jump table, the cycle-0 image, the start image of segment s, the Tracer's copy, the final image |
@@ -48,9 +48,11 @@ awake at the first frame (the boot), and each frame's wakes and transfers. It ex
 **The checks** (`tests/proof_bench.h` has the list): the master's status and every request answered; `PAGE_COUNT` 0
 at every done; no error bit anywhere; the link read to its end; every image as its run ended against gold's, and
 the frozen ones again at the end; the page map against the files' pages; what was handed to the tracer tile against
-the frames; the Tracer's last record against record s + 1; and `run_chip`'s own: the tracer tile's and every compute
-tile's results, each replayer's end state against the next window's start, and with `--recorded` every row and
-delivery.
+the frames; the Tracer's last record against record s + 1; **the reply** (29.14): its 73 words at the host's end in
+link packets of 32, 32 and 9, word by word (word 4 the tracer tile's figures, which it sent with its record on the
+master's `SEND_END`, 30.6; words 5-72 the record, against the tracer tile's own and record s + 1); and `run_chip`'s
+own: the tracer tile's and every compute tile's results (the block sent once), each replayer's end state against the
+next window's start, and with `--recorded` every row and delivery.
 
 ## The real workloads
 
@@ -133,7 +135,7 @@ Updater's bursts not on client 1 alone, or none of its requests on look-up port 
 
 ## The chain of processes (stage 6)
 
-The driver and each chip are processes of their own, on WORKER10's wire (`../updater_wip/wire/README.md`), started by
+The driver and each chip are processes of their own, on WORKER10's wire (`wire/README.md`), started by
 its launcher, which adds the wire's arguments (`--driver`, `--clients N --client k`, the region):
 
 ```

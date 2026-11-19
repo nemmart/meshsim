@@ -1,7 +1,7 @@
 #!/bin/bash
 # make_fixtures.sh: the Updater's and the master tile's fixtures (v1.37), made by gold from the repository's guests.
 #   tests/updater/make_fixtures.sh [--check]
-# Gold is ../updater_wip/pipeline/gold (the frames' gold; not this folder's pipeline/gold, which is v1.36's), compiled
+# Gold is pipeline/frames/gold (the frames' gold, copied from ../updater_wip; not pipeline/gold, which is v1.3's), compiled
 # into a scratch folder: it needs a JDK (Java 21) and python3. For each fixture it writes
 #   tests/updater/NAME.frames        gold's frame file (`frames`), N 64
 #   tests/updater/NAME-sS.images.txt gold's reference for segment S (`frames-images`): each image's SHA-256 and pages
@@ -18,7 +18,7 @@ set -eu
 export LC_ALL=C
 cd "$(dirname "$0")/../.."
 CHECK=0; [ "${1:-}" = --check ] && CHECK=1
-GOLD=../updater_wip/pipeline/gold
+GOLD=pipeline/frames/gold
 command -v javac > /dev/null || { echo "make_fixtures: no javac (a JDK, Java 21)"; exit 2; }
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 javac -d "$W/classes" $(find "$GOLD/src" -name '*.java') 2> "$W/javac.log" || { cat "$W/javac.log"; exit 2; }

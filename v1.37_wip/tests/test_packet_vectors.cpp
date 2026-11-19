@@ -82,7 +82,7 @@ const Vectors& vectors() {
     if (read) return v;
     read = true;
     const char* env = std::getenv("PACKET_VECTORS");
-    v.dir = env && *env ? env : "../updater_wip/pipeline/gold/test/packets";
+    v.dir = env && *env ? env : "pipeline/frames/gold/test/packets";
     std::ifstream in(v.dir + "/VECTORS.txt");
     if (!in) {
         std::printf("test_packet_vectors: SKIPPED: no %s/VECTORS.txt (gold's packetizer, WORKER2's; PACKET_VECTORS names another folder)\n", v.dir.c_str());

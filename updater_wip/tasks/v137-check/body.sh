@@ -137,7 +137,7 @@ if [ "$ITEM" = suites ]; then
 
   sec "3. ./run_tests.sh all --check (JOBS=$N; MESHSIM_INPUTS=$IN; LPDDR_SEED=$SEED)"
   t=$(date +%s)
-  ( cd "$KS" && LPDDR_SEED=$SEED MESHSIM_INPUTS=$IN PACKET_VECTORS=$KIT/updater_wip/pipeline/gold/test/packets STEP_TIMES=1 JOBS=$N ./run_tests.sh all --check ) > "$RES/run_tests.log" 2>&1; R=$?
+  ( cd "$KS" && LPDDR_SEED=$SEED MESHSIM_INPUTS=$IN PACKET_VECTORS=$KS/pipeline/frames/gold/test/packets STEP_TIMES=1 JOBS=$N ./run_tests.sh all --check ) > "$RES/run_tests.log" 2>&1; R=$?
   took run_tests "$t"
   tail -45 "$RES/run_tests.log"
   cp "$KS/results/.step-times" "$RES/step-times.txt" 2>/dev/null; cp "$KS/results/.differs" "$RES/differs.txt" 2>/dev/null

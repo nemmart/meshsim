@@ -202,21 +202,21 @@ check cache "WORKER5: the LPDDR model, the AXI arbiter and the cache's controlle
 cache_synth() { for seed in 1 2 3 4 5 6 7 8; do TRACER_CACHE=1 $S/tracer_block --synthetic $seed --quiet || echo "FAIL tracer_block --synthetic $seed on the cache: exit $?"; done; }
 check cache-synth "WORKER5: the Tracer alone on the cache's controller, eight synthetic guests against their interpreter (tracer_block --synthetic, with the cache)" -- cache_synth
 
-# ---- v1.37: the units of the Updater's work, each alone (../updater_wip; CHANGES-v1.37.md) ----
+# ---- v1.37: the units of the Updater's work, each alone (CHANGES-v1.37.md) ----
 check file-store "v1.37: the file store's pages by address: placed where told, whole pages, beside the pages it hands out (tests/test_file_store.cpp)" -- $S/test_file_store
 check updater "v1.37: the Updater black box alone: registers, queues and credits, update words raw and LRU, copy-on-write, the Tracer's copy, errors; gold's fixtures, each image against gold's (tests/test_updater.cpp)" -- $S/test_updater
 check ingress-link "v1.37: Ingress's host side on the real link (WORKER8's Node, the host's End): the link's start, the rule for a service flag, the landing, reading out by the DMA, the forward count, both queues, the stop bit, the rates, noise, link_error, the reset (tests/test_ingress_link.cpp)" -- $S/test_ingress_link
 check ingress-chain "v1.37: the chain with no chips: a host's End and two or three Ingress/Egress units back to back; every word to every ASIC, the replies by hops, the chain before an ASIC's own, the stop bits, a reset in the middle (28.12; tests/test_ingress_chain.cpp)" -- $S/test_ingress_chain
-VECTORS=${PACKET_VECTORS:-../updater_wip/pipeline/gold/test/packets}
+VECTORS=${PACKET_VECTORS:-pipeline/frames/gold/test/packets}
 if [ -f "$VECTORS/VECTORS.txt" ]; then
   check packet-vectors "v1.37: Ingress's host link against gold's packetizer: every vector, packet file and damaged file of $VECTORS, by the reader and through the black box (tests/test_packet_vectors.cpp)" -- env PACKET_VECTORS="$VECTORS" $S/test_packet_vectors
 else
   skipped packet-vectors "v1.37: Ingress's host link against gold's packetizer's vectors and packet files" "no $VECTORS/VECTORS.txt: gold's packetizer is not on this branch yet (PACKET_VECTORS names another folder)"
 fi
-if command -v javac > /dev/null && [ -d ../updater_wip/pipeline/gold/src ]; then
-  check updater-fixtures "v1.37: the fixtures made again by gold (../updater_wip/pipeline/gold), equal to the committed ones (tests/updater/make_fixtures.sh --check)" -- bash tests/updater/make_fixtures.sh --check
+if command -v javac > /dev/null && [ -d pipeline/frames/gold/src ]; then
+  check updater-fixtures "v1.37: the fixtures made again by gold (pipeline/frames/gold), equal to the committed ones (tests/updater/make_fixtures.sh --check)" -- bash tests/updater/make_fixtures.sh --check
 else
-  skipped updater-fixtures "v1.37: the fixtures made again by gold, against the committed ones" "no javac, or no ../updater_wip/pipeline/gold"
+  skipped updater-fixtures "v1.37: the fixtures made again by gold, against the committed ones" "no javac, or no pipeline/frames/gold"
 fi
 master_run() { if [ -n "${LPDDR_SEED:-}" ]; then MESHSIM_LPDDR_SEED=$LPDDR_SEED $S/test_master; else $S/test_master; fi; }
 check master "v1.37: the master tile's program on the whole chip, from a packet file: gold's frames of the guests in the link's packets, the Updater's images against gold's, the hand-over, the segment traced and replayed; the error path; the checks' teeth (tests/test_master.cpp)" -- master_run

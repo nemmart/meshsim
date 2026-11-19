@@ -500,3 +500,16 @@ The link's, the wire's and the frames' gold's sources are copied in from `../upd
 `tools/check_copies.sh`); the build, `run_tests.sh`, the fixtures' and frames' scripts, the vectors' default and the
 chain teeth use them, and the Quest kit is `v1.37_wip/` alone. `OPEN-v1.37.md` lists what is open and owed, WORKER8's
 long runs (Quests 238 to 242) among it, not holding the freeze. The folder is not renamed.
+
+### The runner, from the folder alone (Quests 264 to 268, `v137-build` `62a0b205`)
+
+Each task's kit is `v1.37_wip/` alone (`git archive`), with gold's classes built beside it; every kit was unpacked and
+built here first. **All pass:** 264, `run_tests.sh all --check` with the chain's step and the 37 proof runs through
+the link, every image against gold's, 0 differences against v1.36's logs; 265, the same with every chip's LPDDR
+model jittered; 266, `make check` from a clean tree (debug and release, gcc and clang, TSan); 267 and 268, the chain
+of processes at 2²⁹ on EVM Zone and on Cyclone, both replies (73 words, three link packets) against gold's files,
+each run twice the same. The 37 proof runs end 1 to 11 cycles sooner than at stage 6 (Quest 260): the tracer tile no
+longer streams its record before its result. One step skipped, as in every pass: `fw-build`, the firmware rebuilt
+against the committed images, which needs the RISC-V toolchain the runner has not; the images were built here with
+the pinned xPack toolchain. After it, `main`'s last changes to the specification (30.6, 30.7, 29.14,
+17.9.10) state FOR-THE-SPEC 7 and 8 as built, and `OPEN-v1.37.md` (b) says so; the documents' and copies' checks pass.

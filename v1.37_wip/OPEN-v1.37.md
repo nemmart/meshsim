@@ -11,15 +11,16 @@ it was). What is open in the design is the specification's chapter 26 (`spec/mac
 |---|---|---|
 | **WORKER8's long runs of the link** (Quests 238 to 242, parked) | a large campaign with the fast unit: forged headers, and bits flipped in a sender's memory, each ending in the link starting again and the chip stopping. The cases were searched and tested at small sizes; the evidence for what the link does in service is the searches, 13,000 random runs and 690 million packets, 1,380 resets in a running chain, the specification's review and the proof runs through the link. **The owner: they do not hold the freeze; owed for an idle night** (design notes 39) | spec item 192 (`spec/host-link.md`); `link/README.md`; `../updater_wip/planning/sessions/SPEC/FOR-THE-SIMULATOR.md` 28.9, 28.7 |
 
-## (b) The firmware's choices where the specification was silent, ruled
+## (b) The firmware's choices where the specification was silent: now stated
 
-The owner ruled on the build's notes 1 to 6 (design notes 39) and, on 2026-11-19, on 7 and 8, from the last record's
-rework (`../updater_wip/planning/sessions/INTEGRATOR/FOR-THE-SPEC.md`): both as built. For the specification to say:
-
-| | what the specification says | what the firmware does |
-|---|---|---|
-| 30.6 | the tracer tile sends its result when its block is ready, before `SEND_END`; it does not say when the master answers it. The answer ends the tracer tile's image (6.5), after which nothing serves `SEND_END` | **accepted:** `master.c` holds the answer until the block has landed; `tracer_ctl.c` serves `SEND_END` while it awaits it |
-| 30.7 | "then it is done", once `EGRESS_COUNT` is 0 | **kept:** the reply goes out first, and the master then goes on serving: it takes the tracer tile's `LOAD`, which follows that answer, before it parks (its count of `LOAD`s whole, 130). `SEND_END` is op 3, the firmware's (item 176) |
+The owner ruled on the build's notes 1 to 8 (design notes 39), and the specification now states each as built. The
+last two, from the last record's rework (`../updater_wip/planning/sessions/INTEGRATOR/FOR-THE-SPEC.md` 7 and 8), are
+in `spec/master-firmware.md` 30.6 and 30.7 and `spec/jolt/tracer.md` 17.9.10: **the master answers the tracer tile's
+result only once the block has landed**, the tracer tile serving requests until then; and **the reply waits for
+nothing further**, after which the master goes on serving its tiles, the tracer tile's `LOAD` among them. Nothing is
+open here. (The rows traced, which the specification now gives as the sum of `RUN_CONFIG.rows` over the segment's
+runs, are the firmware's windows run times the segment's one `RUN_CONFIG.rows`: the same number.) `SEND_END` is op
+3, the firmware's (item 176).
 
 ## (c) Where the simulator differs from the RTL (the specification's own list, 21.5)
 

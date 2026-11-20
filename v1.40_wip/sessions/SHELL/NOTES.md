@@ -22,7 +22,7 @@ shell's specification `fs_wip/planning/SHELL-SPEC.md` (section numbers below are
 
 No `host/fs_mem.*`. The shell's C is the same on both builds; only `host/` is C++.
 
-### 1.2 How the tests seed the file system †
+### 1.2 How the tests seed the file system (owner, 2026-11-20)
 
 Keep section 12's `.seed` file, each line mapped onto API calls by `host/seed.cpp`:
 
@@ -94,7 +94,7 @@ Most-shaping first; each with my recommendation.
 
 | # | Question | Recommendation | Ended |
 | --- | --- | --- | --- |
-| 1 | How the tests seed the file system | 1.2: keep `.seed`, mapped onto the API, with `cow`, `copy`, `proof`, `open`, `reset` | † |
+| 1 | How the tests seed the file system | 1.2: keep `.seed`, mapped onto the API, with `cow`, `copy`, `proof`, `open`, `reset` | **yes** (owner, 2026-11-20) |
 | 2 | Recovery mode, now that a soft reset just mounts | drop it: `shell_main(void)`, one prompt `<cwd>> ` | † |
 | 3 | `ls`'s order and how it sorts | byte order; the batched selection of 1.4.2 | † |
 | 4 | Showing COW in `ls -l` and `stat` | 1.4.3 | † |

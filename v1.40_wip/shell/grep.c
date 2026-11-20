@@ -92,14 +92,17 @@ void cmd_grep(int argc, char **argv) {
     g.re = argv[i++];
     g.rn = str_len(g.re);
     g.flags = f;
-    g.many = argc - i > 1;
+    g.many = argc - i > 1 || (g_globmask >> i);
     if (g.rn > RE_MAX) { epf("grep: pattern too long\n"); return; }
-    for (; i < argc && !g_stop; i++) {
-        g.arg = argv[i];
+    struct ops o;
+    ops_start(&o, "grep", argc, argv, i);
+    const char *a;
+    while ((a = ops_next(&o)) != 0) {
+        g.arg = a;
         g.lineno = g.count = 0;
-        if (arg_path("grep", argv[i], g_path1)) continue;
+        if (arg_path("grep", a, g_path1)) continue;
         const int fd = fs_open(g_path1, FS_READ);
-        if (fd < 0) { err_path("grep", argv[i], fd); continue; }
+        if (fd < 0) { err_path("grep", a, fd); continue; }
         u32 n = 0;
         int chunked = 0;                                  /* the line so far was cut at 1,024 bytes */
         long got;
@@ -116,7 +119,7 @@ void cmd_grep(int argc, char **argv) {
             }
             if (interrupted()) { stopped(); break; }
         }
-        if (got < 0) err_path("grep", argv[i], (int)got);
+        if (got < 0) err_path("grep", a, (int)got);
         if (!g_stop && n) line(&g, n);
         fs_close(fd);
         if (g_stop) break;

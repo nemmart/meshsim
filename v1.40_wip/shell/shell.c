@@ -129,8 +129,9 @@ int edit_line(char *buf, u32 cap, int ctrl_d) {
 /* Tokens in place in g_line: the result is never longer than what it comes from. Returns argc, or -1 (reported). */
 static int parse(char **rfile, int *append) {
     char *r = g_line, *w = g_line, *tok = 0;
-    int argc = 0, in_tok = 0, redir = 0, want_file = 0;
+    int argc = 0, in_tok = 0, redir = 0, want_file = 0, star = 0;
     *rfile = 0;
+    g_globmask = 0;
     for (;;) {
         char c = *r;
         if (c == 0 || c == ' ' || c == '\t' || c == '>') {
@@ -139,7 +140,8 @@ static int parse(char **rfile, int *append) {
                 in_tok = 0;
                 if (want_file) { *rfile = tok; want_file = 0; }
                 else if (argc == SH_ARGS) { epf("syntax error: too many arguments\n"); return -1; }
-                else g_argv[argc++] = tok;
+                else { if (star) g_globmask |= 1u << argc; g_argv[argc++] = tok; }
+                star = 0;
             }
             if (c == 0) break;
             r++;
@@ -164,6 +166,7 @@ static int parse(char **rfile, int *append) {
             }
             continue;
         }
+        if (c == '*') star = 1;                           /* an unquoted *: a pattern (glob.c) */
         *w++ = c;
         r++;
     }
@@ -183,6 +186,7 @@ static void run_line(void) {
         if (!c) { epf("%s: command not found\n", g_argv[0]); return; }
     }
     if (rfile) {
+        if (has_star(rfile)) { epf("sh: %s: * in a new name\n", rfile); return; }
         const int e = path_resolve(rfile, g_path1);
         if (e) { epf("sh: %s: %s\n", rfile, fs_msg(e)); return; }
         if (sink_open(g_path1, rfile, append ? FS_APPEND : FS_APPEND | FS_TRUNC)) return;

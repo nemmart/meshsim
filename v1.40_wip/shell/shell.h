@@ -58,6 +58,19 @@ void usage(const char *name);
 int  opts(int argc, char **argv, const char *spec, u32 *flags, char **vals);   /* first operand, or -1 (usage shown) */
 int  arg_path(const char *cmd, const char *arg, char *out);                   /* path_resolve, error shown: 0 or -1 */
 
+/* ---- glob.c: * in file names (owner, 2026-11-20) */
+struct ops {                                           /* a command's file arguments, a pattern's matches among them */
+    const char *cmd;
+    char **argv;
+    int argc, i, pat, have_last;
+    u32 dlen, n, k, matched, count;                    /* count: the arguments given so far */
+};
+extern u32 g_globmask;                                 /* bit i: argv[i] has an unquoted * */
+int  has_star(const char *s);
+void ops_start(struct ops *o, const char *cmd, int argc, char **argv, int first);
+const char *ops_next(struct ops *o);                   /* the next file argument, or 0 */
+const char *one_operand(const char *cmd, int argc, char **argv, int i);   /* argv[i], a pattern matching one, or 0 */
+
 /* ---- grep.c */
 int  re_match(const unsigned char *re, u32 rn, const unsigned char *t, u32 tn, int icase);
 void cmd_grep(int argc, char **argv);

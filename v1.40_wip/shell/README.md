@@ -9,6 +9,7 @@ the shell decided where the spec is silent, the findings for the API, and the si
 | `shell.c` | `shell_main`, the line editor, the parser and redirection, paths, the error messages |
 | `cmds.c` | the commands but `grep`; option parsing |
 | `grep.c` | the matcher (Pike's, with its backtracking in a static stack) and `grep` |
+| `glob.c` | `*` in file names: a command's file arguments, a pattern's matches among them, sorted |
 | `fmt.c` | the formatter and the sinks: the console (`\n` as `\r\n`), a redirection's 4 KB buffer |
 | `str.c`, `div.c` | string helpers and `memcpy` and its kin; the division helpers the compilers call |
 | `shell.h`, `console.h` | what the files share; the console's three calls |

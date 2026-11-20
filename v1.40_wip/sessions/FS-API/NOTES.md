@@ -64,6 +64,10 @@ In the order they were settled.
 | 19 | Open for reading and writing at once | no: one writer, or readers (owner, 2026-11-20) |
 | 20 | A root not yet made | the entry's root is 0 until `cow_commit`, the page waiting in bytes 124–127 (owner, 2026-11-20) |
 | 21 | `fs_list`'s order | slot order; the shell sorts (owner, 2026-11-20) |
+| 22 | Writing without copying | the caller resends its last partial 128-bit word with each write, so every word lands whole; a write is a grant: an address in a scratchpad page buffer, the bytes allowed, a counter (owner, 2026-11-20). `FS-WRITE-PATH.md` |
+| 23 | Grants in flight | four, on four of the memory tile's seven counters (owner, 2026-11-20) |
+| 24 | The RW unit | the memory tile's peripheral, its data input on the router's +8 link; whole pages of 2 or 4 KiB; data flows in while full pages drain out (owner, 2026-11-20) |
+| 25 | Where the write path is written | not in FS-API.md, which it does not change: `FS-WRITE-PATH.md` and FOR-THE-HARDWARE.md (owner, 2026-11-20) |
 
 **Still open,** with what depends on each: FS-API.md section 8, and these the emulation added:
 

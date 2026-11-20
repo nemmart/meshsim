@@ -12,11 +12,10 @@
 //   copy <src> <dst> <pages> [frozen]        cow_copy of a frozen COW file, a run writing <pages>, cow_commit
 //   proof <wd> <stem> <tiles>                a working directory as a proof that failed in software leaves it
 //                                            (FS-API 3.3, 3.4, 3.6): map, cycle0, start, final (frozen), tracer
-//                                            (never frozen), logs/ with each tile's three run logs and its own log
+//                                            (never frozen), logs/ with each tile's three run logs and its own log,
+//                                            held open through the segment; every tile writes all its logs
 //   open <path> r|w                          the file left open by a compute tile, to read or to write
 //   reset                                    power_on(pages, soft): a mount
-//   known-bug <text>                         the emulation's invariants are known not to hold at the end: check()
-//                                            is skipped, and <text> printed to stderr
 //
 // <pages> is a list like 0,1,1030, or - for none. Blank lines and lines from # are ignored.
 //
@@ -186,16 +185,15 @@ void proof(const std::string& wd, const std::string& stem, uint32_t tiles) {
     set_tracing(true);
     for (uint64_t pg : mine) if (!tracer_write(croot, cdepth, pg, 7, 0xC0FFEE)) fail("tracer_write");
     // the logs: each tile's own, open through the segment; the run logs, three at a time, by the tracer tile
-    // (Unlike run_proof, each tile's own log is opened for each line and closed again: a log open per tile through
-    // the segment needs a writer's buffer per tile, and the emulation has 32 (SHELL NOTES, findings).)
-    auto tile_log = [&](uint32_t t, const std::string& line) {
+    // the logs: each tile's own, open through the segment (128 writers: FS-API 4.6); the run logs, three at a time,
+    // by the tracer tile
+    std::vector<int> fd(tiles);
+    for (uint32_t t = 0; t < tiles; t++) {
         set_caller(Caller::TILE, int(t));
-        const int f = fs_open((logs + "/tile" + std::to_string(t) + ".log").c_str(), FS_APPEND);
-        ok(f, "fs_open");
-        if (fs_write(f, line.data(), long(line.size())) != long(line.size())) fail("fs_write");
-        ok(fs_close(f), "fs_close");
-    };
-    for (uint32_t t = 0; t < tiles; t++) tile_log(t, "tile " + std::to_string(t) + ": segment 1 starts\n");
+        fd[t] = fs_open((logs + "/tile" + std::to_string(t) + ".log").c_str(), FS_APPEND);
+        ok(fd[t], "fs_open");
+        fs_fprintf(fd[t], "tile %u: segment 1 starts\n", t);
+    }
     const uint32_t fail_at = tiles / 2;
     for (uint32_t t = 0; t < tiles; t++) {
         set_caller(Caller::TRACER);
@@ -208,12 +206,16 @@ void proof(const std::string& wd, const std::string& stem, uint32_t tiles) {
             if (fs_write(f, b.data(), long(n)) != long(n)) fail("fs_write");
             ok(fs_close(f), "fs_close");
         }
-        const std::string ts = "tile " + std::to_string(t);
-        tile_log(t, ts + ": window " + std::to_string(t) + " replayed\n");
-        if (t == fail_at) tile_log(t, ts + ": check failed at row 12345\n");
+        set_caller(Caller::TILE, int(t));
+        fs_fprintf(fd[t], "tile %u: window %u replayed\n", t, t);
+        if (t == fail_at) fs_fprintf(fd[t], "tile %u: check failed at row 12345\n", t);
     }
     set_tracing(false);
-    for (uint32_t t = 0; t < tiles; t++) tile_log(t, "tile " + std::to_string(t) + ": done\n");
+    for (uint32_t t = 0; t < tiles; t++) {
+        set_caller(Caller::TILE, int(t));
+        fs_fprintf(fd[t], "tile %u: done\n", t);
+        ok(fs_close(fd[t]), "fs_close");
+    }
     set_caller(Caller::MASTER);
     ok(cow_freeze(fin.c_str()), "cow_freeze");
     ok(fs_unreserve(r), "fs_unreserve");
@@ -223,7 +225,6 @@ void proof(const std::string& wd, const std::string& stem, uint32_t tiles) {
 
 std::vector<std::string> g_seed_open;   // the paths left open, for main.cpp
 bool g_seed_writer = false;
-std::string g_seed_known_bug;
 
 void seed_run(const char* file) {
     if (!file) { power(); return; }
@@ -301,11 +302,6 @@ void seed_run(const char* file) {
             ok(fd, "fs_open");
             g_seed_open.push_back(w[1]);
             if (w[2] == "w") g_seed_writer = true;
-        } else if (k == "known-bug") {
-            // the emulation's invariants are known not to hold at the end: check() is skipped, and the bug named
-            std::string why;
-            for (size_t j = 1; j < w.size(); j++) why += (j > 1 ? " " : "") + w[j];
-            g_seed_known_bug = why;
         } else if (k == "reset") {
             power_on(g_cap, false);
             g_seed_open.clear();

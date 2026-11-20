@@ -1,4 +1,6 @@
 cap 256
 dir /a
 gen /fill 900000 char:F
-known-bug the emulation leaks the pages a writer took when fs_close or fs_flush meets FS_ENOSPC (SHELL NOTES, findings)
+file /a/small
+before
+.

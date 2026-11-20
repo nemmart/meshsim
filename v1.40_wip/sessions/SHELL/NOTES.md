@@ -36,10 +36,9 @@ Keep section 12's `.seed` file, each line mapped onto API calls by `host/seed.cp
 | `program <stem> <pages> <list>` | a stored program, FS-API 3.2: `<stem>.pages` (the listed pages written) and `<stem>.map`, both frozen; `proof` uses it |
 | `cow <path> <pages> <list> [frozen]` | a COW file as `store_program` makes one: `fs_reserve_pages`, `cow_create`, an Updater run (stand-in) writing the listed pages (`-` none) with `words_for`'s pattern, `cow_commit`, `cow_freeze` if `frozen`, `fs_unreserve` |
 | `copy <src> <dst> <list> [frozen]` | `cow_copy` and a run with `root` 2 writing the listed pages; so `src` has copies |
-| `proof <wd> <stem> <tiles>` | a working directory as `run_proof` leaves it after a failure in software: `map`, `cycle0`, `start`, `final` (frozen), `tracer` (never frozen), `logs/` with each tile's three run logs and its own log; tile `tiles/2` logs the failed check. Every tile writes its logs (`run_proof` stops at the failing one). Each tile's own log is opened per line and closed again, not held open through the segment: 112 open at once need more writers' buffers than the emulation has (finding 8). With 112 tiles, `logs/` has 448 entries |
+| `proof <wd> <stem> <tiles>` | a working directory as `run_proof` leaves it after a failure in software: `map`, `cycle0`, `start`, `final` (frozen), `tracer` (never frozen), `logs/` with each tile's three run logs and its own log; tile `tiles/2` logs the failed check. Every tile writes its logs (`run_proof` stops at the failing one). Each tile's own log is held open through the segment, as `run_proof` holds it: 112 tiles and the tracer tile's three are 115 writers, inside the 128 (finding 8). With 112 tiles, `logs/` has 448 entries |
 | `open <path> r\|w` | leaves the file open by a compute tile, for the `FS_EBUSY` tests |
 | `reset` | `power_on(…, soft)`: a mount |
-| `known-bug <text>` | the emulation's invariants are known not to hold at the end: `check()` is skipped and `<text>` printed (test 16, finding 9) |
 
 The Updater-driving code is `workflows.cpp`'s (static there, and `v1.40_wip/fs/` is not refactored), so `seed.cpp`
 copies it: `cow` and `copy` from `store_program` and `run`, `proof` from `run_proof`, each copy marked in `seed.cpp`
@@ -122,12 +121,16 @@ Most-shaping first; each with my recommendation.
    `tile1`, `tile10`, `tile11` … `tile2`. Names that should sort by number are written zero-padded (owner,
    2026-11-20); FS-API 3.4 names no convention for the run logs or the tiles' own logs.
 
-8. **The writers' buffers are too few for the tiles' own logs.** FS-API 3.4: each compute tile writes its own logs and
+8. **The writers' buffers were too few for the tiles' own logs.** *Closed: a pool of 128, named by the fd entry's
+   position word (owner, 2026-11-20; FS-API 4.6), merged from `fs-api`; the `proof` seed holds 115 open.* FS-API 3.4: each compute tile writes its own logs and
    "may have at least four files open"; 4.6 gives a writer a buffer from a pool of up to 32 (5 bits of the fd entry,
    open point 7); the emulation has 32 and answers the 33rd writer `FS_EBUSY`. 64 compute tiles each with one log open
    through a segment, and the tracer tile's three run logs, need 67; four files a tile, 259. Found by the `proof`
    seed with 112 tiles (`run_proof` uses 4).
-9. **What `FS_ENOSPC` leaves behind is not said, and the emulation leaks pages.** When `fs_write`, `fs_flush` or
+9. **What `FS_ENOSPC` leaves behind was not said, and the emulation leaked pages.** *Closed: the file keeps every
+   byte in the pages it has stored, its length cut back to them, the bytes of the page that found no room lost;
+   `fs_close` writes the index lines and the entry all the same (owner, 2026-11-20; FS-API 5.2), merged from
+   `fs-api`. Test 16 checks the shell against that rule, with `check()` (3d).* As found: When `fs_write`, `fs_flush` or
    `fs_close` finds no page, the emulation's `flush` returns before writing the index lines and the entry: the pages
    already written out stay taken and are named by nothing (`check()`: "page N is taken in the map, unused by the
    walk", against FS-API 4.1), the entry keeps the length of its last flush (0 for a new file), and nothing written
@@ -137,7 +140,8 @@ Most-shaping first; each with my recommendation.
    made.** FS-API needs to say what a file holds after `FS_ENOSPC`, whether its pages are kept or freed, and whether
    the writer can go on.
 10. **`fs_write`'s result when it runs out of room part way** is `FS_ENOSPC`, and the bytes it did take are not
-    counted: the caller cannot tell how much of its data is in the file. FS-API 5.2 says "appends n bytes".
+    counted. With 5.2's rule the caller can learn what the file kept from `fs_stat`'s length, after the call; the
+    shell does not need more (it reports `no space` once and stops writing).
 11. **`fs_read_page` past a file's end** (FS-API 5.2) is not said; the emulation gives zeros and 0, as for a hole.
     SHELL-SPEC said the bytes past the length are undefined. The shell never asks past the length (from `fs_stat`).
 
@@ -191,7 +195,19 @@ Per object, RV32I + Zmmul, `.text` before `--gc-sections` (GCC / clang): `cmds.o
 
 ## 3c. Fixes in `v1.40_wip/fs/`
 
-None. The one bug found (finding 9) is not fixed: the session's permission check refused the edit.
+None by this session. The bug of finding 9 was fixed on `fs-api` (README finding 9 there) and merged into `shell`
+(2026-11-20).
+
+## 3d. After the merge of `fs-api` (owner, 2026-11-20)
+
+- **Test 16's consistency check runs again:** the `known-bug` seed line and its skip of `check()` are gone.
+- **The tiles' logs are held open** through the segment by the `proof` seed, as `run_proof` holds them.
+- **Test 16 is written against FS-API 5.2's rule.** In a file system of 256 pages with 31 free: `cat` of 3.6 MB into
+  `/a/copy` is `no space`; the file keeps the 30 data pages it stored (its index page is the 31st), length 122,880,
+  every byte an `F`; `df` shows 0 free. `cat /fill >> /a/small` (7 bytes in its page) fills that page, which was
+  stored already and is rewritten, and loses the next: length 4,096, `before` then 4,089 `F`. `echo x >> /a/small`
+  finds no page at `fs_close` and is `no space`, the length unchanged. `rm /a/copy` gives back all 31 pages, the free
+  count as before; `echo after >> /a/small` then works. `check()` holds at the end.
 
 ## 4. Pushing
 

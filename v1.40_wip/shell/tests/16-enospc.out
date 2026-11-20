@@ -1,20 +1,41 @@
 /> df
-pages: 256 total, 223 used, 33 free
+pages: 256 total, 225 used, 31 free
 bytes: 1.0 MB total, 0.9 MB used, 0.1 MB free
-/> echo before > /a/small
 /> cat /fill /fill /fill /fill > /a/copy
 sh: /a/copy: no space
-/> wc /a/copy
-       0        0        0 /a/copy
 /> df
 pages: 256 total, 256 used, 0 free
 bytes: 1.0 MB total, 1.0 MB used, 0.0 MB free
+/> wc /a/copy
+       0        1   122880 /a/copy
+/> stat /a/copy
+name: /a/copy
+type: file
+length: 122880
+pages: 31
+depth: 1
+flags: none
+copies: 0
+/> grep -c -v "^F*$" /a/copy
+0
+/> cat /fill >> /a/small
+sh: /a/small: no space
+/> wc /a/small
+       1        2     4096 /a/small
+/> head -n 1 /a/small
+before
+/> grep -c "^F*$" /a/small
+4
+/> echo x >> /a/small
+sh: /a/small: no space
 /> rm /a/copy
 /> df
-pages: 256 total, 256 used, 0 free
-bytes: 1.0 MB total, 1.0 MB used, 0.0 MB free
-/> echo x >> /a/small
-/> cat /a/small
-before
-x
+pages: 256 total, 225 used, 31 free
+bytes: 1.0 MB total, 0.9 MB used, 0.1 MB free
+/> echo after >> /a/small
+/> wc /a/small
+       2        2     4102 /a/small
+/> hexdump -s 4088 /a/small
+00000ff8  46 46 46 46 46 46 46 46  61 66 74 65 72 0a        |FFFFFFFFafter.|
+00001006
 /> 

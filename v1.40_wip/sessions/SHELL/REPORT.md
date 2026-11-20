@@ -1,6 +1,6 @@
 # SHELL: the session's report
 
-*2026-11-20. Branch `shell`, from `fs-api`; not merged. The notes, with every ruling and finding: `NOTES.md`.*
+*2026-11-20. Branch `shell`, from `fs-api`, with `fs-api` merged in again (12e3161); not merged into `main`. The notes, with every ruling and finding: `NOTES.md`.*
 
 ## What was done
 
@@ -15,29 +15,27 @@
   programs as the master tile makes them with the Updater's stand-in, a proof's working directory as a failed proof
   leaves it, files left open, a soft reset.
 - **The tests:** 16 scripted sessions (`make test`), passing with GCC and clang, covering section 12's list (but the
-  recovery prompt), and a proof's working directory after a mount (448 logs, sorted), the rules for files open
-  elsewhere, frozen and COW files and the Tracer's copy, Ctrl-C, and running out of space. The division helpers
+  recovery prompt), and a proof's working directory after a mount (448 logs, sorted, written with every tile's log
+  open), the rules for files open elsewhere, frozen and COW files and the Tracer's copy, Ctrl-C, and running out of
+  space against FS-API 5.2's rule. The division helpers
   against the host's division (2.46 million checks), and the matcher against Pike's recursive one (a million cases).
   After every session the harness checks that the shell closed every file, and the emulation's invariants.
 - **The RV32 build and the sizes:** links with both compilers, with and without C, with no undefined symbol; the
   division helpers linked are `div.o`'s. Code 11.2 to 17.6 KB of the 32 KB budget; data 13.8 KB; the deepest stack
   chain about 0.7 KB (`NOTES.md` 3b).
-- **Eleven findings for the API** (`NOTES.md` section 3), for the owner's review.
+- **Eleven findings for the API** (`NOTES.md` section 3), for the owner's review; 8 and 9 closed by the owner.
 
 ## What is open
 
-1. **The emulation's page leak at `FS_ENOSPC`** (finding 9): a bug against FS-API 4.1. The fix (in `fs_emu.cpp`'s
-   `flush`) was refused by this session's permission check and is not made; test 16 skips `check()` and says why.
-   Once FS-API says what a file holds after `FS_ENOSPC`, the emulation can follow it and test 16 can drop its
-   `known-bug` line.
-2. **The writers' buffers** (finding 8): 32 cannot serve 64 compute tiles with a log open each. The `proof` seed
-   opens each tile's log per line to stay inside them.
-3. **The findings** 1 to 11, and the shell's own choices where SHELL-SPEC is silent (`NOTES.md` 3a, all †).
-4. **The API's four additions** (`FS_TRUNC`, `fs_stat`, `fs_df`, `fs_list`'s cursor) are used as `fs.h` has them,
+1. **Closed by the merge of `fs-api`** (owner, 2026-11-20): the page leak at `FS_ENOSPC` (finding 9; test 16 now
+   checks FS-API 5.2's rule, with `check()`) and the writers' buffers (finding 8; 128, and the `proof` seed holds
+   115 logs open).
+2. **The findings** 1 to 7, 10 and 11, and the shell's own choices where SHELL-SPEC is silent (`NOTES.md` 3a, all †).
+3. **The API's four additions** (`FS_TRUNC`, `fs_stat`, `fs_df`, `fs_list`'s cursor) are used as `fs.h` has them,
    not yet ruled.
-5. **Recovery mode** is dropped for now (owner); if it comes back, `shell_main` takes its mode again and the prompt
+4. **Recovery mode** is dropped for now (owner); if it comes back, `shell_main` takes its mode again and the prompt
    its `[recovery] ` prefix.
-6. **SHELL-SPEC section 6's stretch** (cursor movement, history) is not done; the budget has room for it.
+5. **SHELL-SPEC section 6's stretch** (cursor movement, history) is not done; the budget has room for it.
 
 ## What the next sessions need to know
 

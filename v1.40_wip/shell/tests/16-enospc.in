@@ -1,9 +1,16 @@
 df\r
-echo before > /a/small\r
 cat /fill /fill /fill /fill > /a/copy\r
-wc /a/copy\r
 df\r
+wc /a/copy\r
+stat /a/copy\r
+grep -c -v "^F*$" /a/copy\r
+cat /fill >> /a/small\r
+wc /a/small\r
+head -n 1 /a/small\r
+grep -c "^F*$" /a/small\r
+echo x >> /a/small\r
 rm /a/copy\r
 df\r
-echo x >> /a/small\r
-cat /a/small\r
+echo after >> /a/small\r
+wc /a/small\r
+hexdump -s 4088 /a/small\r

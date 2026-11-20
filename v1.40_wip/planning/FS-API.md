@@ -315,7 +315,7 @@ not the shell, not a compute tile.
 | `int fs_fprintf(int fd, const char *fmt, ...)` | all | formats into the file, as `fs_write` |
 | `int fs_mkdir(const char *path)` | all | an empty directory |
 | `int fs_remove(const char *path)` | all | a file with no copies and not open, or an empty directory; a COW file by the walk (4.4) |
-| `int fs_list(const char *path, u32 *pos, struct fs_dirent *e)` † | all | the entry at the cursor `*pos`, which starts at 0 and is advanced past it; 1 an entry, 0 the end |
+| `int fs_list(const char *path, u32 *pos, struct fs_dirent *e)` † | all | the entry at the cursor `*pos`, which starts at 0 and is advanced past it; 1 an entry, 0 the end. **In slot order,** not creation order: a new entry may take a removed one's slot. The shell sorts what it prints (owner, 2026-11-20) |
 | `int fs_stat(const char *path, struct fs_stat *st)` † | all | a file's type, flags, length, pages, depth and copies |
 | `int fs_df(u64 *total, u64 *free)` † | all | the pages of LPDDR, and those free |
 

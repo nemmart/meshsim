@@ -258,8 +258,22 @@ bottom level name. **Every page has one owner** (DESIGN-NOTES section 3), so the
 
 ### 4.6 An open file, in the memory tile
 
-† A record for each open file: its entry's address, root, depth, length, position, flags; and for one being written,
-**the data page it is filling (4 KiB) and the current line of each index level above it (128 bytes each)**. An
+**The fd table** (owner, 2026-11-20): **at most 512 files open at once, an entry of 16 bytes each**, 8 KiB. An fd is
+its entry's index.
+
+| Bytes | Field |
+| --- | --- |
+| 0–3 | [19:0] the root's page number; [21:20] the depth; [24:22] the mode (`FS_READ`, `FS_APPEND`, `FS_WRITE`); [25] COW; [26] in use; [31:27] † the writer's buffer slot, below |
+| 4–7 | the length: **in bytes for a streamed file, in pages for a COW file** (owner, 2026-11-20), so that a COW file's 32 GiB (29.4) fits |
+| 8–11 | the directory entry's address, in 128-byte units: its page × 32 + its slot |
+| 12–15 | the position, for `fs_read`; an append always writes at the length |
+
+- **A streamed file is at most 4 GiB,** its length's 32 bits.
+- **The buffers are a pool of their own** †, since only a few fds are being written at a time: an fd being written
+  names its slot in bits [31:27].
+
+**A writer's buffer** †: **the data page it is filling (4 KiB) and the current line of each index level above it
+(128 bytes each)**. An
 appended file fills its entries in order, so only that line changes; it is written to LPDDR when its 32 entries are
 full, every 128 KiB of data, and at `fs_flush`, `fs_close` and `fs_shutdown`. So an open file being written costs
 about 4.2 KiB, and its index writes about 0.1 % of its data.
@@ -368,7 +382,8 @@ There is no kernel and no permission check (owner, 2026-11-19): who may call wha
 4. The "may be cached" map, and the discard at `fs_reserve_pages` (4.2).
 5. The directory entry's fields in bytes 112–127, and the type values (4.3).
 6. The superblock's lines (4.4).
-7. The open file's record and buffers (4.6); `fs_flush`.
+7. The writers' buffer pool: its size (5 bits of the fd entry name up to 32 slots) and what a writer does when it is
+   full (4.6); `fs_flush`.
 8. The shell's four additions: `FS_TRUNC`, `fs_stat`, `fs_df`, `fs_list`'s cursor (`SHELL-SPEC.md` section 14).
 9. Whether the proof's success removes the logs and the Tracer's copy, and when `wd` goes (3.5); whether one call
    removes a tree (3.9).

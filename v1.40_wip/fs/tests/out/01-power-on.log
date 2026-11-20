@@ -1,0 +1,6 @@
+[master] format: 16384 pages
+[master] fs_df() = 0: 16384 total, 16383 free
+[master] fs_list("/", 0) = 0
+[master] mount: 1 entries, 16383 pages free
+[master] fs_df() = 0: 16384 total, 16383 free
+# stats: 0 pages taken, 0 freed, 0 discards (0 while tracing); LPDDR 1 page writes, 0 line writes, 0 page reads, 4 line reads

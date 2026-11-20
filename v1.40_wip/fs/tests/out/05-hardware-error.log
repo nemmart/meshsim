@@ -1,0 +1,102 @@
+# === a proof: /proofs/p3, N 4, s 0
+[master] fs_mkdir("/proofs/p3") = 0
+[master] fs_mkdir("/proofs/p3/logs") = 0
+[master] fs_stat("/programs/sha.pages") = 0: length 2097152, 8 pages, depth 1, 0 copies
+[master] fs_stat("/programs/sha.map") = 0: length 8192, 3 pages, depth 1, 0 copies
+# the host's counts: map 0, cycle-0 1, start 0, Tracer's copy 2, final 5; reserved 13 with the roots
+[master] fs_reserve_pages(13) = 0, r 0 (0 discarded)
+[master] cow_root("/programs/sha.map") = 0: root 0x280, depth 1
+[master] cow_copy("/programs/sha.map", "/proofs/p3/map", r 0) = 0: root 0xbbc0, depth 1; source root 0x280
+# Updater run (frame 5: the proof's table): root 2, depth 1, tracer_copy 0, IMAGE_ROOT 0xbbc0, TRACER_ROOT 0x0, SOURCE_ROOT 0x280, 0 words, PAGE_COUNT 0
+[master] cow_freeze("/proofs/p3/map") = 0
+[master] cow_root("/programs/sha.pages") = 0: root 0x380, depth 1
+[master] cow_copy("/programs/sha.pages", "/proofs/p3/cycle0", r 0) = 0: root 0xbba0, depth 1; source root 0x380
+[master] fs_acquire_pages(0, 1) = 1
+# Updater run (frame 6: the data image): root 2, depth 1, tracer_copy 0, IMAGE_ROOT 0xbba0, TRACER_ROOT 0x0, SOURCE_ROOT 0x380, 513 words, PAGE_COUNT 1
+[master] cow_freeze("/proofs/p3/cycle0") = 0
+[master] cow_root("/proofs/p3/cycle0") = 0: root 0xbba0, depth 1
+[master] cow_copy("/proofs/p3/cycle0", "/proofs/p3/start", r 0) = 0: root 0xbb60, depth 1; source root 0xbba0
+# Updater run (frame 9: the segments before s): root 2, depth 1, tracer_copy 0, IMAGE_ROOT 0xbb60, TRACER_ROOT 0x0, SOURCE_ROOT 0xbba0, 0 words, PAGE_COUNT 0
+[master] cow_freeze("/proofs/p3/start") = 0
+[master] cow_root("/proofs/p3/start") = 0: root 0xbb60, depth 1
+[master] cow_copy("/proofs/p3/start", "/proofs/p3/final", r 0) = 0: root 0xbb40, depth 1; source root 0xbb60
+[master] cow_copy("/proofs/p3/start", "/proofs/p3/tracer", r 0) = 0: root 0xbb20, depth 1; source root 0xbb60
+[master] fs_acquire_pages(0, 4) = 4
+# Updater run (frame 9: segment s, with the Tracer's copy): root 2, depth 1, tracer_copy 1, IMAGE_ROOT 0xbb40, TRACER_ROOT 0xbb20, SOURCE_ROOT 0xbb60, 1026 words, PAGE_COUNT 4
+[master] fs_acquire_pages(0, 3) = 3
+# Updater run (frame 9: the segments after s): root 0, depth 1, tracer_copy 0, IMAGE_ROOT 0xbb40, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 1539 words, PAGE_COUNT 3
+[master] cow_root("/proofs/p3/tracer") = 0: root 0xbb20, depth 1
+[master] cow_root("/proofs/p3/map") = 0: root 0xbbc0, depth 1
+# hand-over: memory_root 0xbb20 depth 1, map_root 0xbbc0 depth 1, to record s's word 66
+[tile 0] fs_open("/proofs/p3/logs/tile0.log", 0x2) = 0
+[tile 0] fs_write(0, 25) = 25
+[tile 1] fs_open("/proofs/p3/logs/tile1.log", 0x2) = 1
+[tile 1] fs_write(1, 25) = 25
+[tile 1] fs_flush(1) = 0
+[tile 2] fs_open("/proofs/p3/logs/tile2.log", 0x2) = 2
+[tile 2] fs_write(2, 25) = 25
+[tile 3] fs_open("/proofs/p3/logs/tile3.log", 0x2) = 3
+[tile 3] fs_write(3, 25) = 25
+[tracer] fs_open("/proofs/p3/logs/tile0.code", 0x2) = 4
+[tracer] fs_write(4, 3000) = 3000
+[tracer] fs_close(4) = 0
+[tracer] fs_open("/proofs/p3/logs/tile0.read", 0x2) = 4
+[tracer] fs_write(4, 12000) = 12000
+[tracer] fs_close(4) = 0
+[tracer] fs_open("/proofs/p3/logs/tile0.write", 0x2) = 4
+[tracer] fs_write(4, 21000) = 21000
+[tracer] fs_close(4) = 0
+[tile 0] fs_write(0, 26) = 26
+[tracer] fs_open("/proofs/p3/logs/tile1.code", 0x2) = 4
+[tracer] fs_write(4, 30000) = 30000
+[tracer] fs_close(4) = 0
+[tracer] fs_open("/proofs/p3/logs/tile1.read", 0x2) = 4
+[tracer] fs_write(4, 39000) = 39000
+[tracer] fs_close(4) = 0
+[tracer] fs_open("/proofs/p3/logs/tile1.write", 0x2) = 4
+[tracer] fs_write(4, 3000) = 3000
+[tracer] fs_close(4) = 0
+[tile 1] fs_write(1, 26) = 26
+[tracer] fs_open("/proofs/p3/logs/tile2.code", 0x2) = 4
+[tracer] fs_write(4, 12000) = 12000
+[tracer] fs_close(4) = 0
+[tracer] fs_open("/proofs/p3/logs/tile2.read", 0x2) = 4
+[tracer] fs_write(4, 21000) = 21000
+[tracer] fs_close(4) = 0
+[tracer] fs_open("/proofs/p3/logs/tile2.write", 0x2) = 4
+[tracer] fs_write(4, 30000) = 30000
+[tracer] fs_close(4) = 0
+[tile 2] fs_write(2, 26) = 26
+[tile 2] fs_write(2, 22) = 22
+# tile 2 raises a hardware error: the master tile's NMI handler closes out the file system
+[master] fs_shutdown() = 0, 4 files closed
+[master] fs_df = FS_ESHUTDOWN
+[tile 3] fs_write = FS_ESHUTDOWN
+# the master tile parks; the outside world makes a soft reset
+[master] mount: 52 entries, 16180 pages free
+[shell] fs_open("/proofs/p3/logs/tile2.log", 0x1) = 0
+[shell] fs_read(0, 4096) = 73
+[shell] fs_read(0, 4096) = 0
+[shell] fs_close(0) = 0
+[shell] fs_open("/proofs/p3/logs/tile1.code", 0x1) = 0
+[shell] fs_read(0, 4096) = 4096
+[shell] fs_read(0, 4096) = 4096
+[shell] fs_read(0, 4096) = 4096
+[shell] fs_read(0, 4096) = 4096
+[shell] fs_read(0, 4096) = 4096
+[shell] fs_read(0, 4096) = 4096
+[shell] fs_read(0, 4096) = 4096
+[shell] fs_read(0, 4096) = 1328
+[shell] fs_read(0, 4096) = 0
+[shell] fs_close(0) = 0
+# --- now an error in the file system's own path: no fs_shutdown
+[tile 9] fs_open("/proofs/p3/logs/crash.log", 0x2) = 0
+[tile 9] fs_write(0, 3000) = 3000
+[tile 9] fs_flush(0) = 0
+[tile 9] fs_write(0, 9000) = 9000
+[master] mount: 53 entries, 16179 pages free
+[shell] fs_open("/proofs/p3/logs/crash.log", 0x1) = 0
+[shell] fs_read(0, 4096) = 3000
+[shell] fs_read(0, 4096) = 0
+[shell] fs_close(0) = 0
+# stats: 75 pages taken, 0 freed, 0 discards (0 while tracing); LPDDR 64 page writes, 72 line writes, 192 page reads, 1263 line reads

@@ -1,0 +1,74 @@
+# shell> ls /
+[shell] fs_list("/", 0) = 1, "programs"
+#   d--          640 programs/
+[shell] fs_list("/", 1) = 1, "proofs"
+#   d--          384 proofs/
+[shell] fs_list("/", 2) = 0
+# shell> ls -l /proofs/p3
+[shell] fs_list("/proofs/p3", 0) = 1, "logs"
+#   d--         1792 logs/
+[shell] fs_list("/proofs/p3", 1) = 1, "map"
+#   -fs         8192 map
+[shell] fs_list("/proofs/p3", 2) = 1, "cycle0"
+#   -fs      2097152 cycle0
+[shell] fs_list("/proofs/p3", 3) = 1, "start"
+#   -fs      2097152 start
+[shell] fs_list("/proofs/p3", 4) = 1, "final"
+#   --s      2097152 final
+[shell] fs_list("/proofs/p3", 5) = 1, "tracer"
+#   --s      2097152 tracer
+[shell] fs_list("/proofs/p3", 6) = 0
+# shell> stat /proofs/p3/start
+[shell] fs_stat("/proofs/p3/start") = 0: length 2097152, 1 pages, depth 1, 2 copies
+#   length 2097152, pages 1, depth 1, copies 2
+# shell> tail -n 2 /proofs/p3/logs/tile0.log
+[shell] fs_stat("/proofs/p3/logs/tile0.log") = 0: length 51, 1 pages, depth 0, 0 copies
+[shell] fs_open("/proofs/p3/logs/tile0.log", 0x1) = 0
+[shell] fs_read_page(0, 0) = 0
+[shell] fs_close(0) = 0
+#   tile 0: segment 0 starts
+tile 0: window 0 replayed
+
+# shell> hexdump -n 16 /proofs/p3/cycle0
+[shell] fs_open("/proofs/p3/cycle0", 0x1) = 0
+[shell] fs_read(0, 16) = 16
+[shell] fs_close(0) = 0
+# shell> cat /proofs/p3/tracer
+[shell] fs_open("/proofs/p3/tracer", 0x1) = -7
+# shell> echo hello > /notes
+[shell] fs_open("/notes", 0xa) = 0
+[shell] fs_write(0, 6) = 6
+[shell] fs_close(0) = 0
+# shell> echo more >> /notes
+[shell] fs_open("/notes", 0x2) = 0
+[shell] fs_write(0, 5) = 5
+[shell] fs_close(0) = 0
+# shell> cat /notes
+[shell] fs_open("/notes", 0x1) = 0
+[shell] fs_read(0, 4096) = 11
+[shell] fs_read(0, 4096) = 0
+[shell] fs_close(0) = 0
+# shell> echo again > /notes
+[shell] fs_open("/notes", 0xa) = 0
+[shell] fs_write(0, 6) = 6
+[shell] fs_close(0) = 0
+[shell] fs_open("/notes", 0x1) = 0
+[shell] fs_read(0, 4096) = 6
+[shell] fs_read(0, 4096) = 0
+[shell] fs_close(0) = 0
+# shell> echo x > /programs/fib.pages
+[shell] fs_open("/programs/fib.pages", 0xa) = -6
+# shell> rm /programs/fib.pages
+[shell] fs_remove("/programs/fib.pages") = -7
+# shell> mkdir /tmp
+[shell] fs_mkdir("/tmp") = 0
+# shell> rmdir /proofs
+[shell] fs_remove("/proofs") = -5
+# shell> rm /notes
+[shell] fs_remove("/notes") = 0, 1 pages freed
+# shell> rmdir /tmp
+[shell] fs_remove("/tmp") = 0, 0 pages freed
+# shell> df
+[shell] fs_df() = 0: 16384 total, 16179 free
+#   pages: 16384 total, 205 used, 16179 free
+# stats: 2 pages taken, 2 freed, 0 discards (0 while tracing); LPDDR 3 page writes, 13 line writes, 51 page reads, 413 line reads

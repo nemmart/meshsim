@@ -1,0 +1,193 @@
+[master] format: 1024 pages
+# --- storing /programs/small
+[master] fs_mkdir("/programs") = 0
+[master] fs_reserve_pages(204) = 0, r 0 (0 discarded)
+[master] cow_create("/programs/small.pages", 1024, r 0) = 0: root 0x19a0, depth 1
+[master] fs_acquire_pages(0, 128) = 128
+[master] fs_acquire_pages(0, 72) = 72
+# Updater run (the program image, empty): root 1, depth 1, tracer_copy 0, IMAGE_ROOT 0x19a0, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 102600 words, PAGE_COUNT 200
+[master] cow_freeze("/programs/small.pages") = 0
+[master] cow_create("/programs/small.map", 2, r 0) = 0: root 0x80, depth 1
+[master] fs_acquire_pages(0, 2) = 2
+# Updater run (the base table, empty): root 1, depth 1, tracer_copy 0, IMAGE_ROOT 0x80, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 1026 words, PAGE_COUNT 2
+[master] cow_freeze("/programs/small.map") = 0
+[master] fs_unreserve(0) = 0, 0 pages back
+[master] fs_mkdir("/proofs") = 0
+# === a proof: /proofs/a, N 4, s 1
+[master] fs_mkdir("/proofs/a") = 0
+[master] fs_mkdir("/proofs/a/logs") = 0
+[master] fs_stat("/programs/small.pages") = 0: length 4194304, 201 pages, depth 1, 0 copies
+[master] fs_stat("/programs/small.map") = 0: length 8192, 3 pages, depth 1, 0 copies
+# the host's counts: map 1, cycle-0 2, start 100, Tracer's copy 100, final 300; reserved 508 with the roots
+[master] fs_reserve_pages(508) = 0, r 0 (0 discarded)
+[master] cow_root("/programs/small.map") = 0: root 0x80, depth 1
+[master] cow_copy("/programs/small.map", "/proofs/a/map", r 0) = 0: root 0x5980, depth 1; source root 0x80
+[master] fs_acquire_pages(0, 1) = 1
+# Updater run (frame 5: the proof's table): root 2, depth 1, tracer_copy 0, IMAGE_ROOT 0x5980, TRACER_ROOT 0x0, SOURCE_ROOT 0x80, 513 words, PAGE_COUNT 1
+[master] cow_freeze("/proofs/a/map") = 0
+[master] cow_root("/programs/small.pages") = 0: root 0x19a0, depth 1
+[master] cow_copy("/programs/small.pages", "/proofs/a/cycle0", r 0) = 0: root 0x5940, depth 1; source root 0x19a0
+[master] fs_acquire_pages(0, 2) = 2
+# Updater run (frame 6: the data image): root 2, depth 1, tracer_copy 0, IMAGE_ROOT 0x5940, TRACER_ROOT 0x0, SOURCE_ROOT 0x19a0, 1026 words, PAGE_COUNT 2
+[master] cow_freeze("/proofs/a/cycle0") = 0
+[master] cow_root("/proofs/a/cycle0") = 0: root 0x5940, depth 1
+[master] cow_copy("/proofs/a/cycle0", "/proofs/a/start", r 0) = 0: root 0x58e0, depth 1; source root 0x5940
+[master] fs_acquire_pages(0, 100) = 100
+# Updater run (frame 9: the segments before s): root 2, depth 1, tracer_copy 0, IMAGE_ROOT 0x58e0, TRACER_ROOT 0x0, SOURCE_ROOT 0x5940, 51300 words, PAGE_COUNT 100
+[master] cow_freeze("/proofs/a/start") = 0
+[master] cow_root("/proofs/a/start") = 0: root 0x58e0, depth 1
+[master] cow_copy("/proofs/a/start", "/proofs/a/final", r 0) = 0: root 0x4c40, depth 1; source root 0x58e0
+[master] cow_copy("/proofs/a/start", "/proofs/a/tracer", r 0) = 0: root 0x4c20, depth 1; source root 0x58e0
+[master] fs_acquire_pages(0, 128) = 128
+[master] fs_acquire_pages(0, 72) = 72
+# Updater run (frame 9: segment s, with the Tracer's copy): root 2, depth 1, tracer_copy 1, IMAGE_ROOT 0x4c40, TRACER_ROOT 0x4c20, SOURCE_ROOT 0x58e0, 51300 words, PAGE_COUNT 200
+[master] fs_acquire_pages(0, 128) = 128
+[master] fs_acquire_pages(0, 72) = 72
+# Updater run (frame 9: the segments after s): root 0, depth 1, tracer_copy 0, IMAGE_ROOT 0x4c40, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 102600 words, PAGE_COUNT 200
+[master] cow_root("/proofs/a/tracer") = 0: root 0x4c20, depth 1
+[master] cow_root("/proofs/a/map") = 0: root 0x5980, depth 1
+# hand-over: memory_root 0x4c20 depth 1, map_root 0x5980 depth 1, to record s's word 66
+[tile 0] fs_open("/proofs/a/logs/tile0.log", 0x2) = 0
+[tile 0] fs_write(0, 25) = 25
+[tile 1] fs_open("/proofs/a/logs/tile1.log", 0x2) = 1
+[tile 1] fs_write(1, 25) = 25
+[tile 1] fs_flush(1) = 0
+[tracer] fs_open("/proofs/a/logs/tile0.code", 0x2) = 2
+[tracer] fs_write(2, 3000) = 3000
+[tracer] fs_close(2) = 0
+[tracer] fs_open("/proofs/a/logs/tile0.read", 0x2) = 2
+[tracer] fs_write(2, 12000) = 12000
+[tracer] fs_close(2) = 0
+[tracer] fs_open("/proofs/a/logs/tile0.write", 0x2) = 2
+[tracer] fs_write(2, 21000) = 21000
+[tracer] fs_close(2) = 0
+[tile 0] fs_write(0, 26) = 26
+[tracer] fs_open("/proofs/a/logs/tile1.code", 0x2) = 2
+[tracer] fs_write(2, 30000) = 30000
+[tracer] fs_close(2) = 0
+[tracer] fs_open("/proofs/a/logs/tile1.read", 0x2) = 2
+[tracer] fs_write(2, 39000) = 39000
+[tracer] fs_close(2) = 0
+[tracer] fs_open("/proofs/a/logs/tile1.write", 0x2) = 2
+[tracer] fs_write(2, 3000) = 3000
+[tracer] fs_close(2) = 0
+[tile 1] fs_write(1, 26) = 26
+[tile 0] fs_write(0, 13) = 13
+[tile 0] fs_close(0) = 0
+[tile 1] fs_write(1, 13) = 13
+[tile 1] fs_close(1) = 0
+[master] cow_freeze("/proofs/a/final") = 0
+[master] fs_unreserve(0) = 0, 0 pages back
+# the reply: the proof succeeded; the Tracer's copy and the logs removed (3.5)
+[master] fs_remove("/proofs/a/tracer") = 0, 101 pages freed, may be cached
+[master] fs_list("/proofs/a/logs", 0) = 1, "tile0.log"
+[master] fs_list("/proofs/a/logs", 1) = 1, "tile1.log"
+[master] fs_list("/proofs/a/logs", 2) = 1, "tile0.code"
+[master] fs_list("/proofs/a/logs", 3) = 1, "tile0.read"
+[master] fs_list("/proofs/a/logs", 4) = 1, "tile0.write"
+[master] fs_list("/proofs/a/logs", 5) = 1, "tile1.code"
+[master] fs_list("/proofs/a/logs", 6) = 1, "tile1.read"
+[master] fs_list("/proofs/a/logs", 7) = 1, "tile1.write"
+[master] fs_list("/proofs/a/logs", 8) = 0
+[master] fs_remove("/proofs/a/logs/tile0.log") = 0, 1 pages freed
+[master] fs_remove("/proofs/a/logs/tile1.log") = 0, 1 pages freed
+[master] fs_remove("/proofs/a/logs/tile0.code") = 0, 1 pages freed
+[master] fs_remove("/proofs/a/logs/tile0.read") = 0, 4 pages freed
+[master] fs_remove("/proofs/a/logs/tile0.write") = 0, 7 pages freed
+[master] fs_remove("/proofs/a/logs/tile1.code") = 0, 9 pages freed
+[master] fs_remove("/proofs/a/logs/tile1.read") = 0, 11 pages freed
+[master] fs_remove("/proofs/a/logs/tile1.write") = 0, 1 pages freed
+[master] fs_remove("/proofs/a/logs") = 0, 1 pages freed
+[master] fs_remove("/proofs/a/final") = 0, 301 pages freed, may be cached
+[master] fs_remove("/proofs/a/start") = 0, 101 pages freed, may be cached
+[master] fs_remove("/proofs/a/cycle0") = 0, 3 pages freed, may be cached
+[master] fs_remove("/proofs/a/map") = 0, 2 pages freed, may be cached
+[master] fs_remove("/proofs/a") = 0, 1 pages freed
+[master] fs_df() = 0: 1024 total, 816 free
+# free now: 816 pages, of them may be cached: the next proof's reservation must take some
+# === a proof: /proofs/b, N 4, s 1
+[master] fs_mkdir("/proofs/b") = 0
+[master] fs_mkdir("/proofs/b/logs") = 0
+[master] fs_stat("/programs/small.pages") = 0: length 4194304, 201 pages, depth 1, 0 copies
+[master] fs_stat("/programs/small.map") = 0: length 8192, 3 pages, depth 1, 0 copies
+# the host's counts: map 1, cycle-0 2, start 100, Tracer's copy 100, final 300; reserved 508 with the roots
+[master] fs_reserve_pages(508) = 0, r 0 (508 discarded)
+[master] cow_root("/programs/small.map") = 0: root 0x80, depth 1
+[master] cow_copy("/programs/small.map", "/proofs/b/map", r 0) = 0: root 0x5980, depth 1; source root 0x80
+[master] fs_acquire_pages(0, 1) = 1
+# Updater run (frame 5: the proof's table): root 2, depth 1, tracer_copy 0, IMAGE_ROOT 0x5980, TRACER_ROOT 0x0, SOURCE_ROOT 0x80, 513 words, PAGE_COUNT 1
+[master] cow_freeze("/proofs/b/map") = 0
+[master] cow_root("/programs/small.pages") = 0: root 0x19a0, depth 1
+[master] cow_copy("/programs/small.pages", "/proofs/b/cycle0", r 0) = 0: root 0x5940, depth 1; source root 0x19a0
+[master] fs_acquire_pages(0, 2) = 2
+# Updater run (frame 6: the data image): root 2, depth 1, tracer_copy 0, IMAGE_ROOT 0x5940, TRACER_ROOT 0x0, SOURCE_ROOT 0x19a0, 1026 words, PAGE_COUNT 2
+[master] cow_freeze("/proofs/b/cycle0") = 0
+[master] cow_root("/proofs/b/cycle0") = 0: root 0x5940, depth 1
+[master] cow_copy("/proofs/b/cycle0", "/proofs/b/start", r 0) = 0: root 0x58e0, depth 1; source root 0x5940
+[master] fs_acquire_pages(0, 100) = 100
+# Updater run (frame 9: the segments before s): root 2, depth 1, tracer_copy 0, IMAGE_ROOT 0x58e0, TRACER_ROOT 0x0, SOURCE_ROOT 0x5940, 51300 words, PAGE_COUNT 100
+[master] cow_freeze("/proofs/b/start") = 0
+[master] cow_root("/proofs/b/start") = 0: root 0x58e0, depth 1
+[master] cow_copy("/proofs/b/start", "/proofs/b/final", r 0) = 0: root 0x4c40, depth 1; source root 0x58e0
+[master] cow_copy("/proofs/b/start", "/proofs/b/tracer", r 0) = 0: root 0x4c20, depth 1; source root 0x58e0
+[master] fs_acquire_pages(0, 128) = 128
+[master] fs_acquire_pages(0, 72) = 72
+# Updater run (frame 9: segment s, with the Tracer's copy): root 2, depth 1, tracer_copy 1, IMAGE_ROOT 0x4c40, TRACER_ROOT 0x4c20, SOURCE_ROOT 0x58e0, 51300 words, PAGE_COUNT 200
+[master] fs_acquire_pages(0, 128) = 128
+[master] fs_acquire_pages(0, 72) = 72
+# Updater run (frame 9: the segments after s): root 0, depth 1, tracer_copy 0, IMAGE_ROOT 0x4c40, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 102600 words, PAGE_COUNT 200
+[master] cow_root("/proofs/b/tracer") = 0: root 0x4c20, depth 1
+[master] cow_root("/proofs/b/map") = 0: root 0x5980, depth 1
+# hand-over: memory_root 0x4c20 depth 1, map_root 0x5980 depth 1, to record s's word 66
+[tile 0] fs_open("/proofs/b/logs/tile0.log", 0x2) = 0
+[tile 0] fs_write(0, 25) = 25
+[tile 1] fs_open("/proofs/b/logs/tile1.log", 0x2) = 1
+[tile 1] fs_write(1, 25) = 25
+[tile 1] fs_flush(1) = 0
+[tracer] fs_open("/proofs/b/logs/tile0.code", 0x2) = 2
+[tracer] fs_write(2, 3000) = 3000
+[tracer] fs_close(2) = 0
+[tracer] fs_open("/proofs/b/logs/tile0.read", 0x2) = 2
+[tracer] fs_write(2, 12000) = 12000
+[tracer] fs_close(2) = 0
+[tracer] fs_open("/proofs/b/logs/tile0.write", 0x2) = 2
+[tracer] fs_write(2, 21000) = 21000
+[tracer] fs_close(2) = 0
+[tile 0] fs_write(0, 26) = 26
+[tracer] fs_open("/proofs/b/logs/tile1.code", 0x2) = 2
+[tracer] fs_write(2, 30000) = 30000
+[tracer] fs_close(2) = 0
+[tracer] fs_open("/proofs/b/logs/tile1.read", 0x2) = 2
+[tracer] fs_write(2, 39000) = 39000
+[tracer] fs_close(2) = 0
+[tracer] fs_open("/proofs/b/logs/tile1.write", 0x2) = 2
+[tracer] fs_write(2, 3000) = 3000
+[tracer] fs_close(2) = 0
+[tile 1] fs_write(1, 26) = 26
+[tile 0] fs_write(0, 13) = 13
+[tile 0] fs_close(0) = 0
+[tile 1] fs_write(1, 13) = 13
+[tile 1] fs_close(1) = 0
+[master] cow_freeze("/proofs/b/final") = 0
+[master] fs_unreserve(0) = 0, 0 pages back
+# the reply: the proof succeeded; the Tracer's copy and the logs removed (3.5)
+[master] fs_remove("/proofs/b/tracer") = 0, 101 pages freed, may be cached
+[master] fs_list("/proofs/b/logs", 0) = 1, "tile0.log"
+[master] fs_list("/proofs/b/logs", 1) = 1, "tile1.log"
+[master] fs_list("/proofs/b/logs", 2) = 1, "tile0.code"
+[master] fs_list("/proofs/b/logs", 3) = 1, "tile0.read"
+[master] fs_list("/proofs/b/logs", 4) = 1, "tile0.write"
+[master] fs_list("/proofs/b/logs", 5) = 1, "tile1.code"
+[master] fs_list("/proofs/b/logs", 6) = 1, "tile1.read"
+[master] fs_list("/proofs/b/logs", 7) = 1, "tile1.write"
+[master] fs_list("/proofs/b/logs", 8) = 0
+[master] fs_remove("/proofs/b/logs/tile0.log") = 0, 1 pages freed
+[master] fs_remove("/proofs/b/logs/tile1.log") = 0, 1 pages freed
+[master] fs_remove("/proofs/b/logs/tile0.code") = 0, 1 pages freed
+[master] fs_remove("/proofs/b/logs/tile0.read") = 0, 4 pages freed
+[master] fs_remove("/proofs/b/logs/tile0.write") = 0, 7 pages freed
+[master] fs_remove("/proofs/b/logs/tile1.code") = 0, 9 pages freed
+[master] fs_remove("/proofs/b/logs/tile1.read") = 0, 11 pages freed
+[master] fs_remove("/proofs/b/logs/tile1.write") = 0, 1 pages freed
+[master] fs_remove("/proofs/b/logs") = 0, 1 pages freed
+# stats: 1297 pages taken, 682 freed, 508 discards (0 while tracing); LPDDR 80 page writes, 170 line writes, 26 page reads, 1286 line reads

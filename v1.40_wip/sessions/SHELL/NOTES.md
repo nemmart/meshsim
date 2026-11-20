@@ -50,7 +50,7 @@ Sections 3 (build constraints, `div.c`, the budget), 4 (console), 6 (line editor
 ### 1.4 What changes
 
 1. **`fs.h` is `v1.40_wip/fs/fs.h`:** `fs_open`'s flags `u32`; the shell calls only section 5.2's calls (FS-API 6).
-2. **`ls` sorts, in byte order of the names** †, within the static buffers: a **batched selection**. Each pass reads
+2. **`ls` sorts, in byte order of the names** (owner, 2026-11-20), within the static buffers: a **batched selection**. Each pass reads
    the whole directory with `fs_list` and keeps, in the 4 KB page buffer (free during `ls`), the 36 smallest entries
    (name, type, flags, length: 112 bytes) above the last one printed; it prints them, and the next pass starts above
    the last. Names are unique, so "above" is exact. 450 entries are 13 passes, about 5,900 `fs_list` calls; no file is
@@ -97,7 +97,7 @@ Most-shaping first; each with my recommendation.
 | --- | --- | --- | --- |
 | 1 | How the tests seed the file system | 1.2: keep `.seed`, mapped onto the API, with `cow`, `copy`, `proof`, `open`, `reset` | **yes** (owner, 2026-11-20) |
 | 2 | Recovery mode, now that a soft reset just mounts | drop it: `shell_main(void)`, one prompt `<cwd>> ` | **dropped, for now** (owner, 2026-11-20) |
-| 3 | `ls`'s order and how it sorts | byte order; the batched selection of 1.4.2 | † |
+| 3 | `ls`'s order and how it sorts | byte order; the batched selection of 1.4.2 | **byte order** (owner, 2026-11-20): names that should sort by number are written zero-padded (`tile02`); the batched selection † |
 | 4 | Showing COW in `ls -l` and `stat` | 1.4.3 | † |
 | 5 | Where the code goes | `v1.40_wip/shell/` | † |
 
@@ -115,6 +115,10 @@ Most-shaping first; each with my recommendation.
 6. **A sorted `ls` costs a request to the memory tile per entry per pass:** about 5,900 `fs_list` calls for a proof's
    `logs/` (1.4.2), on the tile the design keeps free. A batched `fs_list` (several entries an answer) could be
    considered later; not designed here.
+
+7. **The logs' names are not zero-padded:** `workflows.cpp` names them `tile0.code` … `tile63.code`, so `ls` shows
+   `tile1`, `tile10`, `tile11` … `tile2`. Names that should sort by number are written zero-padded (owner,
+   2026-11-20); FS-API 3.4 names no convention for the run logs or the tiles' own logs.
 
 The findings are collected here for the owner's review at the end, not settled one at a time.
 

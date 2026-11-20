@@ -4,7 +4,7 @@ pwd x\r
 echo\r
 echo a  b\tc\r
 df x\r
-cat\r
+cat\r\x04
 more\r
 more a b\r
 head\r

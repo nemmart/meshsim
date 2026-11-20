@@ -157,8 +157,15 @@ static void cmd_ls(int argc, char **argv) {
 }
 
 /* ------------------------------------------------------------------ cat, more */
+/* No file: lines typed at the console, each written out at its Enter, until Ctrl-D on an empty line (owner,
+ * 2026-11-20). Ctrl-C drops the line being typed and stops; the lines before it stay written. The line is edited as
+ * the prompt's is; g_path2 holds it (cat resolves no path). */
+static void cat_console(void) {
+    while (edit_line(g_path2, SH_LINE, 1) == 1) pf("%s\n", g_path2);
+}
+
 static void cmd_cat(int argc, char **argv) {
-    if (argc < 2) { usage("cat"); return; }
+    if (argc < 2) { cat_console(); return; }
     for (int i = 1; i < argc && !g_stop; i++) {
         const int fd = open_read("cat", argv[i]);
         if (fd < 0) continue;
@@ -429,7 +436,7 @@ const struct cmd g_cmds[] = {
     {"ls", "ls [-l] [path...]", cmd_ls},
     {"cd", "cd [dir]", cmd_cd},
     {"pwd", "pwd", cmd_pwd},
-    {"cat", "cat file...", cmd_cat},
+    {"cat", "cat [file...]", cmd_cat},
     {"more", "more file", cmd_more},
     {"head", "head [-n N] file...", cmd_head},
     {"tail", "tail [-n N] file...", cmd_tail},

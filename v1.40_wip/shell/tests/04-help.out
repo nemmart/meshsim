@@ -3,7 +3,7 @@ help
 ls [-l] [path...]
 cd [dir]
 pwd
-cat file...
+cat [file...]
 more file
 head [-n N] file...
 tail [-n N] file...
@@ -28,7 +28,6 @@ a bc
 /> df x
 usage: df
 /> cat
-usage: cat file...
 /> more
 usage: more file
 /> more a b

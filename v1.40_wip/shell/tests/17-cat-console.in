@@ -1,0 +1,25 @@
+cat > /foo\r
+hello\r
+wor\x7fld\r
+\x7fgone\x15\r
+\x04
+cat /foo\r
+cat >> /foo\r
+partial\x04 more\r
+\e[Aarrows ignored\r
+\x04
+cat /foo\r
+cat\r
+said twice\r
+\x04
+cat > /bar\r
+kept\r
+dropped\x03
+cat /bar\r
+cat > /empty\r
+\x04
+wc /empty /bar\r
+cat /nosuch > /x\r
+cat > /bar\r
+\x03
+wc /bar\r

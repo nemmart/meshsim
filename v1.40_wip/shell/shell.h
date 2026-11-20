@@ -48,6 +48,7 @@ const char *fs_msg(int e);
 void err_path(const char *cmd, const char *path, int e);
 void err_cmd(const char *cmd, int e);
 void stopped(void);                                    /* prints ^C and sets g_stop */
+int  edit_line(char *buf, u32 cap, int ctrl_d);       /* the line editor: 1 a line, 0 Ctrl-C, -1 end, 2 Ctrl-D */
 
 /* ---- cmds.c */
 struct cmd { const char *name; const char *usage; void (*fn)(int argc, char **argv); };

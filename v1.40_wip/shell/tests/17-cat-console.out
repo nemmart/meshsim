@@ -1,0 +1,37 @@
+/> cat > /foo
+hello
+wor ld
+gone    
+/> cat /foo
+hello
+wold
+
+/> cat >> /foo
+partial more
+arrows ignored
+/> cat /foo
+hello
+wold
+
+partial more
+arrows ignored
+/> cat
+said twice
+said twice
+/> cat > /bar
+kept
+dropped^C
+/> cat /bar
+kept
+/> cat > /empty
+/> wc /empty /bar
+       0        0        0 /empty
+       1        1        5 /bar
+       1        1        5 total
+/> cat /nosuch > /x
+cat: /nosuch: no such file or directory
+/> cat > /bar
+^C
+/> wc /bar
+       0        0        0 /bar
+/> 

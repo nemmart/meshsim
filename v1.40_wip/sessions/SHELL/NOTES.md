@@ -66,6 +66,10 @@ Sections 3 (build constraints, `div.c`, the budget), 4 (console), 6 (line editor
 6. **No recovery mode, for now** (owner, 2026-11-20): `shell_main(void)`, one prompt `<cwd>> `; section 6's
    `[recovery]` prompt and section 12's test of it go. Section 14's item 3 is overtaken (the mount rebuilds the maps,
    FS-API 3.1) and is not mine.
+7. **`cat` with no file reads the console** (owner, 2026-11-20): lines typed, edited as at the prompt, each written at
+   its Enter, until Ctrl-D on an empty line; so `cat > f` writes a file. Ctrl-C drops the line being typed and stops.
+   SHELL-SPEC sections 6, 9 and 12 updated at the owner's request (`fs_wip/` is otherwise a source, not edited).
+   Test 17.
 
 ### 1.5 Tests beyond section 12
 
@@ -174,9 +178,9 @@ The findings are collected here for the owner's review at the end, not settled o
 12. **`div.c`'s `udiv64` shifts by constants only:** GCC calls `__lshrdi3` and `__ashldi3` for a 64-bit shift by a
     variable on RV32, which the link found (section 3 expected this); rewriting the loop was smaller than adding them.
 
-## 3b. The sizes (`make size`, 2026-11-20)
+## 3b. The sizes (`make size`, 2026-11-20, with `cat` from the console)
 
-**The shell may use compressed instructions** (owner, 2026-11-20): RV32IC + Zmmul, 11.2 KB (GCC) or 12.7 KB (clang)
+**The shell may use compressed instructions** (owner, 2026-11-20): RV32IC + Zmmul, 11.4 KB (GCC) or 12.8 KB (clang)
 of code. The Makefile still builds without C unless `C=1` †.
 
 Code is `.text` + `.rodata`, budget 32,768 bytes. The data: `.bss` 13.5 KB (the line, the cwd, two path scratches,
@@ -184,10 +188,10 @@ the page buffer, the redirect buffer, grep's line, the matcher's 256 bytes), `.d
 
 | build | `.text` | `.rodata` | code | `.data` | `.bss` |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| GCC 13.2, RV32I + Zmmul | 14,504 | 1,656 | 16,160 | 8 | 13,808 |
-| GCC 13.2, RV32IC + Zmmul (`C=1`) | 9,564 | 1,656 | 11,220 | 8 | 13,808 |
-| clang 18, RV32I + Zmmul | 16,072 | 1,536 | 17,608 | 4 | 13,804 |
-| clang 18, RV32IC + Zmmul (`C=1`) | 11,132 | 1,536 | 12,668 | 4 | 13,804 |
+| GCC 13.2, RV32I + Zmmul | 14,740 | 1,744 | 16,484 | 8 | 13,808 |
+| GCC 13.2, RV32IC + Zmmul (`C=1`) | 9,696 | 1,744 | 11,440 | 8 | 13,808 |
+| clang 18, RV32I + Zmmul | 16,308 | 1,536 | 17,844 | 4 | 13,804 |
+| clang 18, RV32IC + Zmmul (`C=1`) | 11,290 | 1,536 | 12,826 | 4 | 13,804 |
 
 Per object, RV32I + Zmmul, `.text` before `--gc-sections` (GCC / clang): `cmds.o` 9,305 / 10,281; `shell.o` 2,853 /
 3,087; `fmt.o` 2,016 / 2,240; `grep.o` 1,888 / 1,890; `div.o` 860 / 1,496; `str.o` 744 / 824.

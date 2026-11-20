@@ -147,6 +147,7 @@ optional seed file (section 12).
 | Ctrl-U | 0x15 | erase the whole line |
 | Ctrl-W | 0x17 | erase the last word (trailing spaces, then non-spaces) |
 | Ctrl-C | 0x03 | echo `^C\r\n`, drop the line, new prompt |
+| Ctrl-D | 0x04 | ignored at the prompt; ends `cat`'s console input on an empty line (section 9; owner, 2026-11-20) |
 | escape sequences | `ESC [` ... final byte 0x40-0x7E, or `ESC O x` | consumed and ignored (arrow keys insert nothing) |
 
 - **Stretch** (only once everything else passes, and inside the budget): left/right/Home/End with insertion mid-line and
@@ -186,7 +187,7 @@ has several. Bad options or missing arguments print `usage: <usage line>`. An un
 | `ls` | `ls [-l] [path...]` | no path: the cwd. A directory: its entries in directory order, one per line, directories with a trailing `/`. A file: its own name. With several paths, each directory's listing is preceded by `<path>:` and separated by a blank line. **`-l`**: `<t><f><s> <length> <name>`, with `t` `d` (directory), `-` (file) or `?` (other), `f` `f` if frozen else `-`, `s` `s` if sparse else `-`, the length in bytes right-aligned in 12 columns |
 | `cd` | `cd [dir]` | no argument: `/`. Checks with `fs_stat` that it is a directory (`not a directory` otherwise) |
 | `pwd` | `pwd` | the cwd |
-| `cat` | `cat file...` | the files' bytes, concatenated, as they are |
+| `cat` | `cat [file...]` | the files' bytes, concatenated, as they are. **No file** (owner, 2026-11-20): lines typed at the console, edited as at the prompt (section 6), each written out at its Enter with `\n`, until Ctrl-D on an empty line (Ctrl-D elsewhere is ignored); so `cat > f` writes a file from the console. Ctrl-C drops the line being typed and stops; the lines before it stay written. At the end of input (host scripts), as Ctrl-D |
 | `more` | `more file` | pages of 23 lines (long lines wrap at 80 columns and count as several), then `--More-- (NN%)` (percent of bytes shown). Space: next page; Enter: next line; `q` or Ctrl-C: stop. The prompt is erased (`\r`, spaces, `\r`) before going on. Redirected: same as `cat` |
 | `head` | `head [-n N] file...` | the first N lines (default 10) |
 | `tail` | `tail [-n N] file...` | the last N lines (default 10), found by reading **backward from the last page** with `fs_read_page` and the length from `fs_stat`, never from the start. A last line without a newline counts as a line. With several files, each is preceded by `==> <path> <==` and separated by a blank line (also `head`) |
@@ -231,7 +232,7 @@ One internal formatter writing to the current sink (the console with `\n` → `\
   `>>`, a redirect whose open fails, a redirect to a frozen file, running out of space mid-redirect; path resolution (`.`,
   `..` past `/`, `//`, trailing `/`, a 95- and a 96-byte name, an over-long path); `tail` on files of 0, 1, 4,095, 4,096,
   4,097 and 8,192 bytes, with and without a final newline, and a last line longer than a page; `head`/`tail` with several
-  files; `more` paging with Space, Enter and `q`; `grep` with each metacharacter, anchors, `\`, `-i -n -c -v`, an over-long
+  files; `more` paging with Space, Enter and `q`; `cat` from the console, with `>` and `>>`, editing keys, Ctrl-D mid-line and on an empty line, and Ctrl-C; `grep` with each metacharacter, anchors, `\`, `-i -n -c -v`, an over-long
   line; `hexdump` with `-s`/`-n` across a page boundary; Ctrl-C interrupting `cat` of a 1 MB file; `df`; recovery mode's
   prompt.
 - `make rv32` links with the stubs (failing on any undefined symbol, section 3) and `make size` prints `.text`, `.rodata`,

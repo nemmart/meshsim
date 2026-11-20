@@ -86,15 +86,17 @@ static int get(void) {
 
 static void erase(u32 *n) { (*n)--; con_s("\b \b"); }
 
-/* 1 a line in g_line; 0 Ctrl-C (a new prompt); -1 the end of input */
-static int read_line(void) {
+/* A line into buf (at most cap - 1 bytes), echoed and edited. Returns 1 a line (Enter); 0 Ctrl-C (^C echoed);
+ * -1 the end of input; with ctrl_d, 2 for Ctrl-D on an empty line (owner, 2026-11-20: cat's end of input). Ctrl-D
+ * elsewhere is ignored, as any other control byte. */
+int edit_line(char *buf, u32 cap, int ctrl_d) {
     u32 n = 0;
     for (;;) {
         int c = get();
         if (c < 0) return -1;
         if (c == '\n' && g_last_cr) { g_last_cr = 0; continue; }
         g_last_cr = c == '\r';
-        if (c == '\r' || c == '\n') { con_s("\r\n"); g_line[n] = 0; return 1; }
+        if (c == '\r' || c == '\n') { con_s("\r\n"); buf[n] = 0; return 1; }
         if (c == 0x1B) {                                  /* ESC [ ... final 0x40-0x7E, or ESC O x: ignored */
             c = get();
             if (c == '[') {
@@ -109,14 +111,15 @@ static int read_line(void) {
         if (c == 0x08 || c == 0x7F) { if (n) erase(&n); else con_putc(0x07); continue; }
         if (c == 0x15) { while (n) erase(&n); continue; }
         if (c == 0x17) {
-            while (n && g_line[n - 1] == ' ') erase(&n);
-            while (n && g_line[n - 1] != ' ') erase(&n);
+            while (n && buf[n - 1] == ' ') erase(&n);
+            while (n && buf[n - 1] != ' ') erase(&n);
             continue;
         }
         if (c == 0x03) { con_s("^C\r\n"); return 0; }
+        if (c == 0x04 && ctrl_d && n == 0) return 2;
         if (c >= 0x20 && c <= 0x7E) {
-            if (n >= SH_LINE - 1) { con_putc(0x07); continue; }
-            g_line[n++] = (char)c;
+            if (n >= cap - 1) { con_putc(0x07); continue; }
+            buf[n++] = (char)c;
             con_putc(c);
         }
     }
@@ -194,7 +197,7 @@ void shell_main(void) {
     for (;;) {
         con_s(g_cwd);
         con_s("> ");
-        const int r = read_line();
+        const int r = edit_line(g_line, SH_LINE, 0);
         if (r < 0) return;
         if (r > 0) run_line();
     }

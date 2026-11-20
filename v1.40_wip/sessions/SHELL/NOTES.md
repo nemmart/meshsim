@@ -6,7 +6,7 @@ shell's specification `fs_wip/planning/SHELL-SPEC.md` (section numbers below are
 
 ## 1. The outline (waiting for the owner's go-ahead)
 
-### 1.1 Where the code goes †
+### 1.1 Where the code goes (owner, 2026-11-20)
 
 `v1.40_wip/shell/`, with SHELL-SPEC section 2's layout, less the dummy:
 
@@ -99,7 +99,7 @@ Most-shaping first; each with my recommendation.
 | 2 | Recovery mode, now that a soft reset just mounts | drop it: `shell_main(void)`, one prompt `<cwd>> ` | **dropped, for now** (owner, 2026-11-20) |
 | 3 | `ls`'s order and how it sorts | byte order; the batched selection of 1.4.2 | **byte order** (owner, 2026-11-20): names that should sort by number are written zero-padded (`tile02`); the batched selection † |
 | 4 | Showing COW in `ls -l` and `stat` | 1.4.3 | **yes** (owner, 2026-11-20) |
-| 5 | Where the code goes | `v1.40_wip/shell/` | † |
+| 5 | Where the code goes | `v1.40_wip/shell/` | **yes** (owner, 2026-11-20) |
 
 ## 3. Findings for the API (to grow as the shell is built)
 

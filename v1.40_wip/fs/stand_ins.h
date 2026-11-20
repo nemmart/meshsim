@@ -4,6 +4,7 @@
 // cache would hold, so that the emulation can check the rules of 23.6.8.
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <vector>
@@ -25,7 +26,7 @@ class Updater {
 public:
     // The free page queue: a page pushed by the master tile, as v1.37's feed_pages does.
     void push(uint32_t unit_address) { queue_.push_back(unit_address); }
-    size_t queued() const { return queue_.size(); }
+    std::size_t queued() const { return queue_.size(); }
     // A run over the update words given (header words and values, 29.3). Returns PAGE_COUNT at its done.
     uint64_t run(const Run& r, const std::vector<uint64_t>& words);
 

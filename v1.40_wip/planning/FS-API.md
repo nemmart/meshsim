@@ -312,6 +312,11 @@ not the shell, not a compute tile.
 | `int fs_stat(const char *path, struct fs_stat *st)` † | all | a file's type, flags, length, pages, depth and copies |
 | `int fs_df(u64 *total, u64 *free)` † | all | the pages of LPDDR, and those free |
 
+**One writer, or readers** (owner, 2026-11-20): a file is open for writing by one fd, or for reading by any number,
+never both. `FS_READ` does not combine with `FS_APPEND` or `FS_WRITE` (`FS_EINVAL`); opening a file to write while it
+is open at all, or to read while it is open to write, is `FS_EBUSY`. (A writer's newest pages are named only by the
+index lines in its buffer, 4.6, until it flushes.)
+
 ### 5.3 COW files (master tile only)
 
 Made only by the master tile, built only by the Updater (owner, 2026-11-19). **The Tracer may change the contents of

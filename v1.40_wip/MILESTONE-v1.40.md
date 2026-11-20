@@ -15,8 +15,21 @@ Ingress/Egress unit). On the software side, we want to get the file system and a
 |---|---|---|
 | **the RW unit** | hardware, improved | v1.36's RW engine, unchanged but for its place; nothing in v1.37's proof runs uses it. Not designed: `v1.4_wip/planning/TO-ADD.md`, entry 3, with the compute tile's two regimes for a full router queue. Tony expects to redesign it in full |
 | **Ingress/Egress** | hardware, changed | asked for so far: the statistics for each link, with the names `lvds_parent`, `lvds_child` and `chain_end` (`TO-ADD.md`, entry 1), and the watchdog's fix (entry 2) |
-| **the file system** | software, working | deferred since v1.35 (the specification's item 119). v1.37 fixes what the hardware sees of a file (23.5); everything above that is not designed |
-| **a small shell** | software, working | new on 2026-11-19; nothing written |
+| **the file system** | software, working | deferred since v1.35 (the specification's item 119), and nothing of it is built. What exists is design, in v1.35's terms: the unit API `fs.h` (owner, 2026-11-10; `fs_wip/README.md`), with four additions not confirmed; the superblock, formatting and recovery, copy-on-write, directory entries and the working directory (`v1.4_wip/planning/DESIGN-NOTES-2026-11-14.md`, sections 2 to 6). v1.37 fixes what the hardware sees of a file (23.5) |
+| **a small shell** | software, working | specified on 2026-11-10 and never built: `fs_wip/planning/SHELL-SPEC.md`, a console shell on the master tile's UART, against a dummy console and a dummy file system in memory |
+
+## The order (owner, 2026-11-19)
+
+"I think we should tackle things roughly in the following order":
+
+1. **design the file system API;**
+2. **write a tiny shell client on top of the file system API;**
+3. **write a C++ emulation of the file system API,** "so we can test, without having to have the device level
+   file system working" ("maybe this is part of 2");
+4. **the RW hardware, and the mesh changes;**
+5. **implement the file system on the hardware.**
+
+So the RW unit is specified from what the file system asks of it, not before.
 
 ## How the work is done (owner)
 

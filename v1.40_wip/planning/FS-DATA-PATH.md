@@ -1,8 +1,9 @@
-# The write path: how a tile's bytes reach a file
+# The data path: how a tile's bytes reach a file, and come back
 
 *The FS-API session, 2026-11-20. (owner) marks a ruling, with its date; a dagger (†) a proposal not ruled on. For
 step 4 (the RW unit and the mesh) and step 5 (the device's file system). The API (`FS-API.md`) is unchanged by it:
-this is how the memory tile and a caller's library carry out `fs_write` and `fs_fprintf`.*
+this is how the memory tile and a caller's library carry out `fs_write`, `fs_fprintf`, `fs_write_page`, `fs_read` and
+`fs_read_page`.*
 
 ## 1. Why
 
@@ -70,7 +71,23 @@ RW unit's write buffer should hold two pages, so that the DMA never waits on LPD
 **`fs_flush` and `fs_close`** send the part-filled buffer out the same way, a whole page (the bytes past the length do
 not matter), then the writer's index lines and its directory entry (FS-API 4.6).
 
-## 5. What it costs
+## 5. Which calls go through the memory tile (owner, 2026-11-20)
+
+**Only a whole page read skips the memory tile's scratchpad.**
+
+| Call | Its data's path |
+| --- | --- |
+| `fs_read_page` | **straight:** the core finds the page in the index and sets the RW unit's read job; the RW unit's output goes to the caller's buffer, counted on the caller's counter. The memory tile's scratchpad holds none of it |
+| `fs_write_page` | through the scratchpad: the page into a buffer, by a grant of a whole page (3), then out over +8 (4) |
+| `fs_write`, `fs_fprintf` | through the scratchpad: sections 3 and 4 |
+| `fs_read` | through the scratchpad: the page read into it, then the 128-bit words that cover the bytes asked for sent to the caller. The caller's library takes its bytes out of them: the one copy is the caller's, not the memory tile's |
+
+- **The tiles cannot write the RW unit directly:** only the memory tile's DMA reaches its data input, by +8 (owner,
+  2026-11-20: "I don't think it could go straight").
+- **The index reads** a walk or a look-up makes (FS-API 4.4) are the memory tile's own: lines or pages read into its
+  scratchpad †.
+
+## 6. What it costs
 
 - **Scratchpad:** two buffers of 4 KiB a writer. About 67 writers at once (the 64 compute tiles' logs and the tracer
   tile's three run logs) take about 540 KiB of the memory tile's 4 MiB; 256 (four a tile) would take 2 MiB.
@@ -79,11 +96,11 @@ not matter), then the writer's index lines and its directory entry (FS-API 4.6).
 - **The mesh:** each grant is a request, an answer and the data; the run logs are FOR-THE-HARDWARE.md's 2.4 to 4.8
   bytes a cycle into the memory tile, and the same out over +8 to the RW unit.
 
-## 6. Open
+## 7. Open
 
 1. How the caller learns the length at `fs_open` (in the answer, as a field †).
 2. Two buffers a writer, or a shared pool, and the fd table's field for it.
 3. The order in which waiting grants are served (first come, first served †).
 4. A page of 2 KiB or 4 KiB for the RW unit's jobs, and the size of its write buffer.
-5. **The read path is not designed:** `fs_read` and `fs_read_page` for the shell, and the walk's index reads. Whether
-   the RW unit's output queue 0 sends a page to the caller directly, or through the scratchpad.
+5. How a `fs_read_page` request names the caller's buffer and counter, and how the RW unit's output is addressed to
+   it (17.7's output queue 0 and its DMA).

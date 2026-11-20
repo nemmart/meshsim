@@ -49,3 +49,10 @@ lines in it, the LRU code, the free page queue's credits (the pages are fed befo
    `FS_EBUSY`). A call that removes a tree in the right order would serve the host's cleanup and the shell's `rm -r`.
 8. **The index lines cost what 4.6 says:** workflow 3 writes a 5 MB run log, 1,281 data pages, among its other files;
    the whole workflow, every directory entry and every other file's index included, makes 162 line writes.
+9. **Out of space, a write lost what it had stored** (found by the shell session, 2026-11-20): `fs_flush` stopped at
+   the page that found no room, so the index lines naming the pages before it never reached LPDDR; they stayed taken
+   and in no file. **Fixed:** the lines and the entry go out all the same, the length cut back to the pages stored
+   (FS-API.md 5.2, owner, 2026-11-20). Workflow 9 fills the file system and checks it.
+10. **32 writers were too few** (the shell session): 64 tiles each with a log open need 67. A writer's buffer index
+   now lives in its fd entry's position word, and the pool is 128 (FS-API.md 4.6, owner, 2026-11-20); workflow 9 opens
+   128 at once.

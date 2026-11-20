@@ -7,6 +7,7 @@ v1.38 and v1.39** (owner).
 |---|---|
 | `HANDOVER.md` | from the design session that made v1.37 to the next: where things stand, what to read, what is owed, what is not ruled, what is next, how the owner works |
 | `INTEGRATOR_PROMPT.md` | the prompt to paste into the new design session |
+| `MILESTONE-v1.40.md` | what v1.40 is, in the owner's words (the RW unit, the changes to Ingress/Egress, the file system, a small shell), how the work is done, what is carried in from v1.37, and the sessions as they are agreed |
 
 **The design documents are in `v1.4_wip/planning/`,** not here yet: `TO-ADD.md` (what the owner wants next),
 `RTL-CHANGE-REQUESTS.md`, the design notes and the interface documents. v1.4 and v1.40 are one version by two

@@ -61,8 +61,9 @@ Sections 3 (build constraints, `div.c`, the budget), 4 (console), 6 (line editor
    `cat` of the Tracer's copy or of a file open for writing is `busy`; `rm` of a file with copies is `busy`; `>` on a
    COW file is `read-only file`.
 5. **`echo`'s note into `/syslog`** goes from `help` and the docs: v1.40 has no `/syslog`.
-6. **Recovery mode:** section 6's `[recovery]` prompt and `shell_main(int mode)` wait for the owner (Q2). Section 14's
-   item 3 is overtaken (the mount rebuilds the maps, FS-API 3.1) and is not mine.
+6. **No recovery mode, for now** (owner, 2026-11-20): `shell_main(void)`, one prompt `<cwd>> `; section 6's
+   `[recovery]` prompt and section 12's test of it go. Section 14's item 3 is overtaken (the mount rebuilds the maps,
+   FS-API 3.1) and is not mine.
 
 ### 1.5 Tests beyond section 12
 
@@ -95,7 +96,7 @@ Most-shaping first; each with my recommendation.
 | # | Question | Recommendation | Ended |
 | --- | --- | --- | --- |
 | 1 | How the tests seed the file system | 1.2: keep `.seed`, mapped onto the API, with `cow`, `copy`, `proof`, `open`, `reset` | **yes** (owner, 2026-11-20) |
-| 2 | Recovery mode, now that a soft reset just mounts | drop it: `shell_main(void)`, one prompt `<cwd>> ` | † |
+| 2 | Recovery mode, now that a soft reset just mounts | drop it: `shell_main(void)`, one prompt `<cwd>> ` | **dropped, for now** (owner, 2026-11-20) |
 | 3 | `ls`'s order and how it sorts | byte order; the batched selection of 1.4.2 | † |
 | 4 | Showing COW in `ls -l` and `stat` | 1.4.3 | † |
 | 5 | Where the code goes | `v1.40_wip/shell/` | † |

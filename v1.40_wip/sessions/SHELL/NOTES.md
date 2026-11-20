@@ -176,6 +176,9 @@ The findings are collected here for the owner's review at the end, not settled o
 
 ## 3b. The sizes (`make size`, 2026-11-20)
 
+**The shell may use compressed instructions** (owner, 2026-11-20): RV32IC + Zmmul, 11.2 KB (GCC) or 12.7 KB (clang)
+of code. The Makefile still builds without C unless `C=1` †.
+
 Code is `.text` + `.rodata`, budget 32,768 bytes. The data: `.bss` 13.5 KB (the line, the cwd, two path scratches,
 the page buffer, the redirect buffer, grep's line, the matcher's 256 bytes), `.data` 4 to 8 bytes.
 

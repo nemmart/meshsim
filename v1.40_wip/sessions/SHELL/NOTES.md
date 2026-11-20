@@ -38,8 +38,9 @@ Keep section 12's `.seed` file, each line mapped onto API calls by `host/seed.cp
 | `open <path> r\|w` | leaves the file open by a compute tile, for the `FS_EBUSY` tests |
 | `reset` | `power_on(…, soft)`: a mount |
 
-The Updater-driving code is `workflows.cpp`'s (static there), so `seed.cpp` carries its own copy of the few lines it
-needs.
+The Updater-driving code is `workflows.cpp`'s (static there, and `v1.40_wip/fs/` is not refactored), so `seed.cpp`
+copies it: `cow` and `copy` from `store_program` and `run`, `proof` from `run_proof`, each copy marked in `seed.cpp`
+with the function and the commit of `workflows.cpp` it came from.
 
 ### 1.3 What I take from SHELL-SPEC as it stands
 
@@ -110,6 +111,11 @@ Most-shaping first; each with my recommendation.
    can print only `busy`.
 5. **A path not normalized** is `FS_EINVAL` in the emulation; FS-API says paths are normalized, not what happens
    when one is not. `fs_remove("/")` is `FS_EBUSY` in the emulation, unsaid in FS-API.
+6. **A sorted `ls` costs a request to the memory tile per entry per pass:** about 5,900 `fs_list` calls for a proof's
+   `logs/` (1.4.2), on the tile the design keeps free. A batched `fs_list` (several entries an answer) could be
+   considered later; not designed here.
+
+The findings are collected here for the owner's review at the end, not settled one at a time.
 
 ## 4. Pushing
 

@@ -75,7 +75,7 @@ Sections 3 (build constraints, `div.c`, the budget), 4 (console), 6 (line editor
 
 ### 1.6 The order I will build in
 
-Each step committed, and pushed once I can (section 4).
+Each step committed and pushed.
 
 1. `Makefile`, `div.c`, `str.c`, `fmt.c`; the division tests on the host, both compilers.
 2. The host console, the test runner and `seed.cpp`; the line editor, the parser, paths; `help`, `pwd`, `echo`, `cd`.
@@ -113,5 +113,5 @@ Most-shaping first; each with my recommendation.
 
 ## 4. Pushing
 
-The session could not attach `nemmart/meshsim` for pushing (the request was refused); it reads the repository
-anonymously. The branch `shell` exists locally only.
+The first request to attach the repository for pushing was refused; with the owner's permission (2026-11-20) it was
+attached, and the branch `shell` is pushed.

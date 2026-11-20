@@ -50,24 +50,26 @@ bool bit(const std::vector<uint32_t>& m, uint32_t p) { return (m[p >> 5] >> (p &
 void setbit(std::vector<uint32_t>& m, uint32_t p, bool v) { if (v) m[p >> 5] |= 1u << (p & 31); else m[p >> 5] &= ~(1u << (p & 31)); }
 
 // ------------------------------------------------------------------ the scratchpad: the fd table (4.6)
-constexpr int MAX_FDS = 512, FD_BYTES = 16, MAX_SLOTS = 32, MAX_RES = 8;
+constexpr int MAX_FDS = 512, FD_BYTES = 16, MAX_SLOTS = 128, MAX_RES = 8;
 uint8_t g_fdtab[MAX_FDS * FD_BYTES];
-// word 0: [19:0] root's page number (0: none); [21:20] depth; [24:22] mode; [25] COW; [26] in use; [31:27] slot
-// word 1: length (bytes; pages for a COW file); word 2: the entry's address in units; word 3: the read position
+// word 0: [19:0] root's page number (0: none); [21:20] depth; [24:22] mode; [25] COW; [26] in use; [31:27] 0
+// word 1: length (bytes; pages for a COW file); word 2: the entry's address in units;
+// word 3: a reader's position; a writer's buffer index (a writer has no position: it writes at the length or a page)
 struct Fd {
     uint32_t root_pg, depth, mode, cow, inuse, slot, length, entry, pos;
 };
 Fd fd_get(int fd) {
     const uint8_t* e = g_fdtab + fd * FD_BYTES;
-    const uint32_t w0 = get32(e);
-    return Fd{w0 & 0xFFFFFu, (w0 >> 20) & 3u, (w0 >> 22) & 7u, (w0 >> 25) & 1u, (w0 >> 26) & 1u, (w0 >> 27) & 31u,
-              get32(e + 4), get32(e + 8), get32(e + 12)};
+    const uint32_t w0 = get32(e), mode = (w0 >> 22) & 7u, w3 = get32(e + 12);
+    const bool writer = mode & (FS_APPEND | FS_WRITE);
+    return Fd{w0 & 0xFFFFFu, (w0 >> 20) & 3u, mode, (w0 >> 25) & 1u, (w0 >> 26) & 1u, writer ? w3 : 0u,
+              get32(e + 4), get32(e + 8), writer ? 0u : w3};
 }
 void fd_put(int fd, const Fd& f) {
     uint8_t* e = g_fdtab + fd * FD_BYTES;
     if (f.root_pg > 0xFFFFFu) fatal("a root past 2^20 pages");
-    put32(e, f.root_pg | f.depth << 20 | f.mode << 22 | f.cow << 25 | f.inuse << 26 | f.slot << 27);
-    put32(e + 4, f.length); put32(e + 8, f.entry); put32(e + 12, f.pos);
+    put32(e, f.root_pg | f.depth << 20 | f.mode << 22 | f.cow << 25 | f.inuse << 26);
+    put32(e + 4, f.length); put32(e + 8, f.entry); put32(e + 12, (f.mode & (FS_APPEND | FS_WRITE)) ? f.slot : f.pos);
 }
 uint32_t root_unit(uint32_t root_pg) { return root_pg ? root_pg * PAGE_UNITS : NONE; }
 
@@ -390,8 +392,8 @@ uint32_t dir_add(uint32_t dir_a, const Ent& e) {
         if (idx % 32 == 0) {                                        // a new page of entries, all free
             Entries en; uint32_t root = d.root, depth = d.depth();
             const uint32_t pg = put_page(en, root, depth, idx / 32, nullptr);
-            if (pg == NONE) return NONE;
             d.root = root; set_depth(d, depth);
+            if (pg == NONE) { ent_write(dir_a, d); return NONE; }        // what it grew is linked
             a = pg;
         } else a = dir_slot(Ent{d}, idx - 1) + 1;
         d.length += LINE_BYTES;
@@ -419,27 +421,33 @@ int fd_find_entry(uint32_t entry, bool writers_only) {
 }
 bool fd_ok(int fd) { return fd >= 0 && fd < MAX_FDS && fd_get(fd).inuse; }
 // A writer's data page out to LPDDR, if it holds changes.
+// No room (FS_ENOSPC): the page's bytes are lost and the length is cut back to the pages stored (FS-API 5.2). A page
+// stored already, and rewritten (a page flushed part full), is never short of room. The tree as put_page left it is
+// kept: what it grew and made is linked, so nothing is lost to the maps.
 int write_out(Fd& f, Slot& s) {
     if (!s.data_dirty) return 0;
     Entries en{&s};
     uint32_t root = root_unit(f.root_pg), depth = f.depth;
-    if (put_page(en, root, depth, s.data_pg, s.data) == NONE) return FS_ENOSPC;
-    f.root_pg = pgno(root); f.depth = depth;
+    const uint32_t d = put_page(en, root, depth, s.data_pg, s.data);
+    f.root_pg = root == NONE ? 0 : pgno(root); f.depth = depth;
     s.data_dirty = false;
-    return 0;
+    if (d != NONE) return 0;
+    if (f.length > s.data_pg * PAGE_BYTES) f.length = s.data_pg * PAGE_BYTES;
+    s.data_pg = NONE;
+    return FS_ENOSPC;
 }
 // fs_flush's work: the data page and the index lines to LPDDR, then the entry's root, depth and length.
 int flush(int fd) {
     Fd f = fd_get(fd);
     if (!(f.mode & (FS_APPEND | FS_WRITE))) return 0;
     Slot& s = g_slots[f.slot];
-    if (int r = write_out(f, s)) return r;
+    const int r = write_out(f, s);                                  // FS_ENOSPC: the lines and the entry still go out
     flush_lines(s);
     Ent e = ent_read(f.entry);
     e.root = root_unit(f.root_pg); e.length = f.length; set_depth(e, f.depth);
     ent_write(f.entry, e);
     fd_put(fd, f);
-    return 0;
+    return r;
 }
 // A streamed file's pages back, by the walk; a COW file's are marked "may be cached".
 void free_tree(const Ent& e) {
@@ -763,8 +771,9 @@ int fs_write_page(int fd, u64 pg, const void* buf) {
     Entries en{&s};
     uint32_t root = root_unit(f.root_pg), depth = f.depth;
     uint8_t b[PAGE_BYTES]; std::memcpy(b, buf, PAGE_BYTES);
-    if (put_page(en, root, depth, pg, b) == NONE) { logf("fs_write_page(%d, %llu) = FS_ENOSPC", fd, (unsigned long long)pg); return FS_ENOSPC; }
-    f.root_pg = pgno(root); f.depth = depth;
+    const uint32_t d = put_page(en, root, depth, pg, b);
+    f.root_pg = root == NONE ? 0 : pgno(root); f.depth = depth;
+    if (d == NONE) { fd_put(fd, f); logf("fs_write_page(%d, %llu) = FS_ENOSPC", fd, (unsigned long long)pg); return FS_ENOSPC; }
     if ((pg + 1) * PAGE_BYTES > f.length) f.length = u32((pg + 1) * PAGE_BYTES);
     fd_put(fd, f);
     logf("fs_write_page(%d, %llu) = 0", fd, (unsigned long long)pg);

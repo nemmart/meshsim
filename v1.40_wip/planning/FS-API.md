@@ -270,14 +270,15 @@ its entry's index.
 
 | Bytes | Field |
 | --- | --- |
-| 0–3 | [19:0] the root's page number; [21:20] the depth; [24:22] the mode (`FS_READ`, `FS_APPEND`, `FS_WRITE`); [25] COW; [26] in use; [31:27] † the writer's buffer slot, below |
+| 0–3 | [19:0] the root's page number; [21:20] the depth; [24:22] the mode (`FS_READ`, `FS_APPEND`, `FS_WRITE`); [25] COW; [26] in use; [31:27] 0 |
 | 4–7 | the length: **in bytes for a streamed file, in pages for a COW file** (owner, 2026-11-20), so that a COW file's 32 GiB (29.4) fits |
 | 8–11 | the directory entry's address, in 128-byte units: its page × 32 + its slot |
-| 12–15 | the position, for `fs_read`; an append always writes at the length |
+| 12–15 | **a reader's position**, for `fs_read`; **a writer's buffer index** (owner, 2026-11-20): a writer has no position, since an append writes at the length and `fs_write_page` names its page |
 
 - **A streamed file is at most 4 GiB,** its length's 32 bits.
-- **The buffers are a pool of their own** †, since only a few fds are being written at a time: an fd being written
-  names its slot in bits [31:27].
+- **The writers' buffers are a pool of 128** (owner, 2026-11-20): the 64 compute tiles' logs, the tracer tile's three
+  and room to spare. An `fs_open` to write when all 128 are in use is `FS_EBUSY`. At two pages a writer
+  (`FS-DATA-PATH.md` 4), 1 MiB of the memory tile's scratchpad.
 
 **A writer's buffer** †: **the data page it is filling (4 KiB) and the current line of each index level above it
 (128 bytes each)**. An
@@ -307,9 +308,9 @@ not the shell, not a compute tile.
 | --- | --- | --- |
 | `int fs_open(const char *path, int flags)` | all | an fd; `FS_READ`, `FS_APPEND` (creates the file if missing), `FS_WRITE` (page writes); `FS_TRUNC` † with `FS_APPEND` empties it first |
 | `long fs_read(int fd, void *buf, long n)` | all | up to n bytes at the position; 0 at the end |
-| `long fs_write(int fd, const void *buf, long n)` | all | appends n bytes; they are in the file system's buffer when it returns, not yet in LPDDR |
+| `long fs_write(int fd, const void *buf, long n)` | all | appends n bytes; they are in the file system's buffer when it returns, not yet in LPDDR. **`FS_ENOSPC`:** no page for the bytes; the file keeps every byte in the pages it has stored, its length cut back to them, and the bytes of the page that found no room are lost (owner, 2026-11-20) |
 | `int fs_flush(int fd)` † | all | returns when every byte written so far, and the index lines naming them, are in LPDDR |
-| `int fs_close(int fd)` | all | as `fs_flush`, then the fd is free |
+| `int fs_close(int fd)` | all | as `fs_flush`, then the fd is free, even when the flush is `FS_ENOSPC` (as `fs_write`'s): the index lines and the entry are written all the same |
 | `int fs_read_page(int fd, u64 page, void *buf)` | all | 4 KiB at page × 4,096 |
 | `int fs_write_page(int fd, u64 page, const void *buf)` | all | 4 KiB at page × 4,096; never to a COW file (`FS_EROFS`) |
 | `int fs_fprintf(int fd, const char *fmt, ...)` | all | formats into the file, as `fs_write` |
@@ -397,8 +398,7 @@ There is no kernel and no permission check (owner, 2026-11-19): who may call wha
 4. The "may be cached" map, and the discard at `fs_reserve_pages` (4.2).
 5. The directory entry's fields in bytes 112–127, and the type values (4.3).
 6. The superblock's lines (4.4).
-7. The writers' buffer pool: its size (5 bits of the fd entry name up to 32 slots) and what a writer does when it is
-   full (4.6); `fs_flush`.
+7. `fs_flush`. (The writers' buffer pool: 128, ruled 2026-11-20.)
 8. The shell's four additions: `FS_TRUNC`, `fs_stat`, `fs_df`, `fs_list`'s cursor (`SHELL-SPEC.md` section 14).
 9. Whether the proof's success removes the logs and the Tracer's copy, and when `wd` goes (3.5); whether one call
    removes a tree (3.9).

@@ -11,6 +11,7 @@
 //   6 the shell after the soft reset (3.8, SHELL-SPEC section 9), as call sequences
 //   7 removing the working directories (3.9): leaves first, every page back
 //   8 a second proof on freed pages (4.2): the discards made at fs_reserve_pages, none while the Tracer runs
+//   9 many writers at once (4.6: 128 buffers), and a file system full: fs_write's FS_ENOSPC keeps the pages stored
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -488,6 +489,64 @@ int main() {
     run_proof(b2);
     EXPECT(stats().discards > d0);                            // pages reused, each discarded first
     EXPECT(stats().discards_while_tracing == 0);              // ... at fs_reserve_pages, not while the Tracer ran
+    check(); report();
+
+    begin("09-many-writers-and-full");
+    power_on(256, true);                                       // 1 MiB: easy to fill
+    set_caller(Caller::MASTER);
+    EXPECT(fs_mkdir("/logs") == 0);
+    std::vector<int> fds;
+    for (int t = 0; t < 128; t++) {                            // 64 tiles' logs, the tracer tile's three, and more
+        set_caller(Caller::TILE, t);
+        const std::string f = "/logs/w" + std::to_string(t);
+        const int x = fs_open(f.c_str(), FS_APPEND);
+        EXPECT(x >= 0);
+        fds.push_back(x);
+        fs_fprintf(x, "writer %d\n", t);
+    }
+    set_caller(Caller::TILE, 128);
+    EXPECT(fs_open("/logs/w128", FS_APPEND) == FS_EBUSY);      // the 129th: every buffer in use
+    for (int t = 0; t < 128; t++) { set_caller(Caller::TILE, t); EXPECT(fs_close(fds[t]) == 0); }
+    check();
+    note("--- the file system filled by one writer");
+    set_caller(Caller::TILE, 0);
+    fd = fs_open("/big", FS_APPEND);
+    EXPECT(fd >= 0);
+    std::vector<uint8_t> chunk(3000);
+    uint64_t sent = 0;
+    long w = 0;
+    for (int k = 0; k < 10000 && w >= 0; k++) {
+        for (size_t i = 0; i < chunk.size(); i++) chunk[i] = uint8_t((sent + i) * 7);
+        w = fs_write(fd, chunk.data(), long(chunk.size()));
+        if (w > 0) sent += uint64_t(w);
+    }
+    EXPECT(w == FS_ENOSPC);
+    note("fs_write failed after %llu bytes accepted", (unsigned long long)sent);
+    const int closed = fs_close(fd);
+    EXPECT(closed == 0 || closed == FS_ENOSPC);
+    EXPECT(fs_stat("/big", &st) == 0);
+    EXPECT(st.length % 4096 == 0 && st.length > 0 && st.length <= sent);   // the pages stored, and no more
+    note("kept: %llu bytes in %llu pages", (unsigned long long)st.length, (unsigned long long)st.pages);
+    {
+        const int r2 = fs_open("/big", FS_READ);
+        std::vector<uint8_t> back(st.length);
+        EXPECT(fs_read(r2, back.data(), long(back.size())) == long(back.size()));
+        bool same = true;
+        for (uint64_t i = 0; i < back.size() && same; i++) same = back[i] == uint8_t(i * 7);
+        EXPECT(same);
+        fs_close(r2);
+    }
+    check();                                                   // no page taken and in no file
+    {   // a new file in a full file system: its entry fits in a directory page already there; its first byte does not
+        const int m = fs_open("/logs/more", FS_APPEND);
+        EXPECT(m >= 0);
+        EXPECT(fs_write(m, "x", 1) == 1);                      // into the buffer
+        EXPECT(fs_close(m) == FS_ENOSPC);                      // no page for it: the file keeps nothing
+        EXPECT(fs_stat("/logs/more", &st) == 0 && st.length == 0);
+        check();
+    }
+    set_caller(Caller::SHELL);
+    EXPECT(fs_remove("/big") == 0);
     check(); report();
 
     if (g_out) std::fclose(g_out);

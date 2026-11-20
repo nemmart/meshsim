@@ -94,15 +94,16 @@ not matter), then the writer's index lines and its directory entry (FS-API 4.6).
 
 - **Scratchpad:** two buffers of 4 KiB a writer. About 67 writers at once (the 64 compute tiles' logs and the tracer
   tile's three run logs) take about 540 KiB of the memory tile's 4 MiB; 256 (four a tile) would take 2 MiB.
-- **The fd table** (FS-API 4.6) names a writer's buffer in 5 bits, 32 writers: too few. Either more bits, or a
-  writer's buffers indexed by its fd †.
+- **The fd table** names a writer's buffer in its position word, which a writer does not use: a pool of 128 writers
+  (owner, 2026-11-20; FS-API.md 4.6).
 - **The mesh:** each grant is a request, an answer and the data; the run logs are FOR-THE-HARDWARE.md's 2.4 to 4.8
   bytes a cycle into the memory tile, and the same out over +8 to the RW unit.
 
 ## 7. Open
 
 1. How the caller learns the length at `fs_open` (in the answer, as a field †).
-2. Two buffers a writer, or a shared pool, and the fd table's field for it.
+2. Two buffers a writer, or fewer shared among them. (The pool: 128 writers, named by the fd entry's position word, ruled
+   2026-11-20.)
 3. The order in which waiting grants are served (first come, first served †).
 4. A page of 2 KiB or 4 KiB for the RW unit's jobs, and the size of its write buffer.
 5. How a `fs_read_page` request names the caller's buffer and counter, and how the RW unit's output is addressed to

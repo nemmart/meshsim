@@ -31,6 +31,14 @@ Ingress/Egress unit). On the software side, we want to get the file system and a
 
 So the RW unit is specified from what the file system asks of it, not before.
 
+**Of the API** (owner, 2026-11-19): the calls of 2026-11-10 "look like the set for streaming files. There will
+need to be more for copy on write files." A session of its own builds the specification: "it needs to look at
+the exact functions being done by C&C1 in the current code and make sure we have equivalents. Seems like we
+need: cow_pages to acquire pages. And we need some kind of function to build the root. We should have API calls
+for all of these so that we can build implementations." The master tile's page map (`map_format`, `map_take`,
+`map_flush`) is what sits behind `cow_pages`; `feed_pages` "is probably a local function in c&c1 that feeds the
+pages from the cow_pages call to the updater."
+
 ## How the work is done (owner)
 
 **The design session manages the other sessions; it does not, in the main, build.** "Your job is not primarily
@@ -49,4 +57,6 @@ Owed, and not part of the four features (`HANDOVER.md`, sections 3 and 4):
 
 ## The sessions
 
-None yet.
+| session | step | what | brief | status |
+|---|---|---|---|---|
+| FS-API | 1 | the specification of the file system's API and its header: the streaming calls of 2026-11-10, and the copy-on-write calls (`cow_pages`, a call that builds a root, and equivalents for everything the master tile's firmware does by hand today) | `sessions/FS-API/PROMPT.md` | brief written 2026-11-19, for the owner to read; not started |

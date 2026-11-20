@@ -12,6 +12,9 @@ writing 24 to 48 MB of run logs in about 10 ms (FS-API 3.4). It must not copy by
 scratchpad has no byte addressing and no byte moves, only 128-bit words. A `printf` of 37 bytes appended at byte 21 of
 a word would otherwise cost the memory tile a read of that word, a merge and a shift of everything after it.
 
+**The rule behind it** (owner, 2026-11-20): work moves from the memory tile to the callers wherever it can. A little
+more work on a compute tile costs little, since it is spread over 64 of them; the memory tile serves them all.
+
 ## 2. The pieces
 
 | Piece | Its part |

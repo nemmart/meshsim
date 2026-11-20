@@ -55,7 +55,7 @@ Sections 3 (build constraints, `div.c`, the budget), 4 (console), 6 (line editor
    (name, type, flags, length: 112 bytes) above the last one printed; it prints them, and the next pass starts above
    the last. Names are unique, so "above" is exact. 450 entries are 13 passes, about 5,900 `fs_list` calls; no file is
    read. An entry made or removed between passes is shown or not, never twice.
-3. **`ls -l` and `stat` show COW** †: `ls -l` gets a fourth column, `c` for a COW file (`-fsc 2097152 cycle0`);
+3. **`ls -l` and `stat` show COW** (owner, 2026-11-20): `ls -l` gets a fourth column, `c` for a COW file (`-fsc 2097152 cycle0`);
    `stat`'s `flags:` line lists `frozen sparse cow`, or `none`.
 4. **The errors the shell now meets** (PROMPT "What changed" 3) print with section 5's messages, unchanged:
    `cat` of the Tracer's copy or of a file open for writing is `busy`; `rm` of a file with copies is `busy`; `>` on a
@@ -98,7 +98,7 @@ Most-shaping first; each with my recommendation.
 | 1 | How the tests seed the file system | 1.2: keep `.seed`, mapped onto the API, with `cow`, `copy`, `proof`, `open`, `reset` | **yes** (owner, 2026-11-20) |
 | 2 | Recovery mode, now that a soft reset just mounts | drop it: `shell_main(void)`, one prompt `<cwd>> ` | **dropped, for now** (owner, 2026-11-20) |
 | 3 | `ls`'s order and how it sorts | byte order; the batched selection of 1.4.2 | **byte order** (owner, 2026-11-20): names that should sort by number are written zero-padded (`tile02`); the batched selection † |
-| 4 | Showing COW in `ls -l` and `stat` | 1.4.3 | † |
+| 4 | Showing COW in `ls -l` and `stat` | 1.4.3 | **yes** (owner, 2026-11-20) |
 | 5 | Where the code goes | `v1.40_wip/shell/` | † |
 
 ## 3. Findings for the API (to grow as the shell is built)

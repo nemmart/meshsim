@@ -1,0 +1,14 @@
+cat /mb\r
+\x03
+wc /mb /mb\r
+\x03
+grep -c line /mb /mb\r
+\x03
+head -n 100000 /mb > /h\r
+\x03
+wc /h\r
+tail -n 100000 /mb > /t\r
+\x03
+ls /many\r
+\x03
+echo after\r

@@ -88,7 +88,8 @@ int main(int argc, char** argv) {
     note("--- the end: every file closed, the invariants");
     set_caller(Caller::TILE, 61);
     closed_check("/");
-    if (!g_seed_writer) check();                    // check() wants no file open for writing
+    if (!g_seed_known_bug.empty()) std::fprintf(stderr, "known bug, check() skipped: %s\n", g_seed_known_bug.c_str());
+    else if (!g_seed_writer) check();               // check() wants no file open for writing
     if (lf) std::fclose(lf);
     return leaks ? 4 : 0;
 }

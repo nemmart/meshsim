@@ -1,0 +1,100 @@
+/> head /ten
+t1
+t2
+t3
+t4
+t5
+t6
+t7
+t8
+t9
+t10
+/> head -n 3 /ten
+t1
+t2
+t3
+/> head -n0 /ten
+/> head -n2 /ten /one /nosuch /ten
+==> /ten <==
+t1
+t2
+
+==> /one <==
+only
+head: /nosuch: no such file or directory
+
+==> /ten <==
+t1
+t2
+/> tail /ten
+t3
+t4
+t5
+t6
+t7
+t8
+t9
+t10
+t11
+t12
+/> tail -n 1 /ten
+t12
+/> tail -n0 /ten
+/> tail -n 3 /empty
+/> tail /one
+only
+/> tail -n 2 /n1
+l/> wc /n1 /n4095 /n4096 /n4097 /n8192 /nl4096 /x4096
+       0        1        1 /n1
+     467      934     4095 /n4095
+     467      935     4096 /n4096
+     467      935     4097 /n4097
+     922     1845     8192 /n8192
+     468      934     4096 /nl4096
+     467      935     4096 /x4096
+    3258     6519    28673 total
+/> tail -n 2 /n4095
+line 466
+line 467
+/> tail -n 2 /n4096
+line 467
+l/> tail -n 2 /n4097
+line 467
+li/> tail -n 2 /n8192
+line 922
+li/> tail -n 2 /nl4096
+line 467
+
+/> tail -n 2 /x4096
+line 467
+Z/> tail -n 2 /nl8192
+line 922
+l
+/> tail -n 1 /longlast > /ll
+/> wc /ll
+       0        1     9000 /ll
+/> tail -n 3 /longlast > /ll
+/> head -n 2 /ll
+a
+b
+/> tail -n 3 /n8192 /one
+==> /n8192 <==
+line 921
+line 922
+li
+==> /one <==
+only
+/> tail -n 1000 /n8192 > /t
+/> head -n 1 /t
+line 1
+/> wc /t
+     922     1845     8192 /t
+/> tail -n x /ten
+usage: tail [-n N] file...
+/> tail /d
+tail: /d: is a directory
+/> head /d
+head: /d: is a directory
+/> tail /nosuch
+tail: /nosuch: no such file or directory
+/> 

@@ -1,0 +1,17 @@
+echo spaces > "/d/my file"\r
+ls\r
+ls /d\r
+ls -l /d\r
+ls -l d/alpha d/zeta\r
+ls /d/alpha /e /d\r
+ls /nosuch /d/alpha/x /e\r
+rm /d/beta\r
+echo new > /d/aardvark\r
+mkdir /d/Mid/sub\r
+ls /d\r
+ls "/d/my file"\r
+cat "/d/my file"\r
+ls -l /d/my\r
+cd /d\r
+ls -l . Mid\r
+ls -l\r

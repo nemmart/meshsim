@@ -1,0 +1,30 @@
+ls /\r
+ls -l /programs /proofs\r
+cd /proofs/p1\r
+ls -l\r
+ls logs > /proofs/list\r
+wc /proofs/list\r
+head -n 8 /proofs/list\r
+tail -n 4 /proofs/list\r
+ls -l logs/tile56.log logs/tile56.code logs/tile9.write\r
+cat logs/tile56.log logs/tile0.log\r
+grep -n check logs/tile55.log logs/tile56.log logs/tile57.log\r
+tail -n 1 logs/tile111.log\r
+hexdump -n 32 logs/tile1.code\r
+wc logs/tile1.code logs/tile1.read logs/tile1.write\r
+stat start final tracer /programs/fib.pages\r
+hexdump -s 4096 -n 16 cycle0\r
+hexdump -s 4096 -n 16 start\r
+hexdump -s 0x406000 -n 16 final\r
+hexdump -n 16 tracer\r
+cat tracer\r
+tail tracer\r
+rm tracer start /programs/fib.pages\r
+echo x > final\r
+echo x >> map\r
+rm tracer\r
+rm final\r
+rm start\r
+stat cycle0\r
+rmdir /proofs/p1\r
+df\r

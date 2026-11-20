@@ -1,0 +1,31 @@
+/> ls -l /logs
+----            5 r
+----           15 w
+/> cat /logs/w
+cat: /logs/w: busy
+/> tail /logs/w
+tail: /logs/w: busy
+/> hexdump /logs/w
+hexdump: /logs/w: busy
+/> stat /logs/w
+name: /logs/w
+type: file
+length: 15
+pages: 1
+depth: 0
+flags: none
+copies: 0
+/> echo x >> /logs/r
+sh: /logs/r: busy
+/> echo x > /logs/r
+sh: /logs/r: busy
+/> echo x > /logs/w
+sh: /logs/w: busy
+/> rm /logs/r /logs/w
+rm: /logs/r: busy
+rm: /logs/w: busy
+/> cat /logs/r
+read
+/> grep read /logs/r
+read
+/> 

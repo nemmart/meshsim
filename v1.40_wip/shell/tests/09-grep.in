@@ -1,0 +1,30 @@
+grep apple /g\r
+grep -i apple /g\r
+grep -n -i APPLE /g /h\r
+grep -c a /g /h\r
+grep -c -v a /g\r
+grep -v -n a /g\r
+grep -ni ^a /g\r
+grep "b$" /g\r
+grep a.b /g\r
+grep "a\\.b" /g\r
+grep ax*b /g\r
+grep "^ax*b$" /g\r
+grep "^.*$" /h\r
+grep "r\\*" /g\r
+grep "\\\\" /g\r
+grep "d\\$" /g\r
+grep "d$" /g\r
+grep "^^" /g\r
+grep "^\\^" /g\r
+grep "r$s" /g\r
+grep x /g\r
+grep -c k /long\r
+grep -n key /long\r
+grep -n "^k*$" /long > /chunks\r
+wc /chunks\r
+grep pie /nosuch /g /h\r
+grep -z a /g\r
+grep "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" /g\r
+grep "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" /g\r
+grep "a*b*a*b*a*b*a*b*a*b*a*b*a*b*a*b*c" /g\r

@@ -1,49 +1,66 @@
 /* grep.c: Rob Pike's matcher (The Practice of Programming, ch. 9) and grep (SHELL-SPEC sections 9 and 10).
  * c a literal byte, . any byte, ^ at the start anchors, $ at the end anchors, * zero or more of the previous element,
- * \ makes the next byte literal. A pattern is at most 128 bytes. The matcher recurses only at a *, so its depth is
- * bounded by the pattern's stars (at most 64); the line and -i are statics, to keep each frame small. */
+ * \ makes the next byte literal. A pattern is at most 128 bytes.
+ *
+ * Pike's matchstar recurses once per *, up to 64 deep for a pattern of 128 bytes: over the 2 KB stack. So the same
+ * search, in the same order (each * the shortest first), keeps its backtracking points in a static stack instead: for
+ * each * reached, where the pattern goes on after it and the text position the rest was last tried at. */
 #include "shell.h"
 
 #define RE_MAX   128
 #define GREP_MAX 1024
 
-static const unsigned char *g_t;
-static u32 g_tn;
+static const unsigned char *g_re, *g_t;
+static u32 g_rn, g_tn;
 static int g_ic;
+static struct { unsigned short r, ti; } g_bt[RE_MAX / 2];    /* a * per two bytes of pattern at most */
 
 static int fold(int c) { return g_ic && c >= 'A' && c <= 'Z' ? c + 32 : c; }
 
-/* the element at re: 2 bytes for \x (unless the \ is the pattern's last byte), else 1 */
-static u32 elen(const unsigned char *re, u32 rn) { return re[0] == '\\' && rn > 1 ? 2 : 1; }
+/* the element at r: 2 bytes for \x (unless the \ is the pattern's last byte), else 1 */
+static u32 elen(u32 r) { return g_re[r] == '\\' && r + 1 < g_rn ? 2 : 1; }
 
-static int ematch(const unsigned char *re, u32 el, int c) {
-    if (el == 2) return fold(re[1]) == fold(c);
-    if (re[0] == '.') return 1;
-    return fold(re[0]) == fold(c);
+static int ematch(u32 r, int c) {
+    if (elen(r) == 2) return fold(g_re[r + 1]) == fold(c);
+    if (g_re[r] == '.') return 1;
+    return fold(g_re[r]) == fold(c);
 }
 
-static int here(const unsigned char *re, u32 rn, u32 ti) {
+/* the pattern from r matched at text position ti, through to its end */
+static int here(u32 r, u32 ti) {
+    u32 sp = 0;
     for (;;) {
-        if (rn == 0) return 1;
-        if (rn == 1 && re[0] == '$') return ti == g_tn;
-        const u32 el = elen(re, rn);
-        if (el < rn && re[el] == '*') {
-            for (;;) {                                    /* the shortest first, as Pike's matchstar */
-                if (here(re + el + 1, rn - el - 1, ti)) return 1;
-                if (ti >= g_tn || !ematch(re, el, g_t[ti])) return 0;
-                ti++;
+        if (r == g_rn) return 1;
+        if (r + 1 == g_rn && g_re[r] == '$') {
+            if (ti == g_tn) return 1;
+        } else {
+            const u32 el = elen(r);
+            if (r + el < g_rn && g_re[r + el] == '*') {           /* zero of it first; come back for more */
+                g_bt[sp].r = (unsigned short)r; g_bt[sp].ti = (unsigned short)ti; sp++;
+                r += el + 1;
+                continue;
             }
+            if (ti < g_tn && ematch(r, g_t[ti])) { r += el; ti++; continue; }
         }
-        if (ti < g_tn && ematch(re, el, g_t[ti])) { re += el; rn -= el; ti++; continue; }
-        return 0;
+        /* failed: the latest * takes one more byte, if it can; else the one before it */
+        for (;;) {
+            if (!sp) return 0;
+            const u32 sr = g_bt[sp - 1].r, sti = g_bt[sp - 1].ti;
+            if (sti < g_tn && ematch(sr, g_t[sti])) {
+                g_bt[sp - 1].ti = (unsigned short)(sti + 1);
+                r = sr + elen(sr) + 1; ti = sti + 1;
+                break;
+            }
+            sp--;
+        }
     }
 }
 
 int re_match(const unsigned char *re, u32 rn, const unsigned char *t, u32 tn, int icase) {
-    g_t = t; g_tn = tn; g_ic = icase;
-    if (rn && re[0] == '^') return here(re + 1, rn - 1, 0);
+    g_re = re; g_rn = rn; g_t = t; g_tn = tn; g_ic = icase;
+    if (rn && re[0] == '^') { g_re++; g_rn--; return here(0, 0); }
     for (u32 ti = 0; ti <= tn; ti++)
-        if (here(re, rn, ti)) return 1;
+        if (here(0, ti)) return 1;
     return 0;
 }
 

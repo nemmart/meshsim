@@ -267,12 +267,9 @@ static void cmd_tail(int argc, char **argv) {
         if (lines && len) {
             start = 0;
             for (u64 at = len; at-- > 0;) {
+                if ((at + 1) % SH_PAGE == 0 && interrupted()) { stopped(); bad = 1; break; }   /* a page done */
                 if (load("tail", argv[i], fd, at / SH_PAGE)) { bad = 1; break; }
-                if (g_page[at % SH_PAGE] != '\n' || at == len - 1) {
-                    if (at % SH_PAGE == 0 && interrupted()) { stopped(); bad = 1; break; }
-                    continue;
-                }
-                if (++seen == lines) { start = at + 1; break; }
+                if (g_page[at % SH_PAGE] == '\n' && at != len - 1 && ++seen == lines) { start = at + 1; break; }
             }
         }
         for (u64 at = start; !bad && at < len;) {

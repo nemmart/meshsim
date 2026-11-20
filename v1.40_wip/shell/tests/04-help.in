@@ -1,0 +1,20 @@
+help\r
+help me\r
+pwd x\r
+echo\r
+echo a  b\tc\r
+df x\r
+cat\r
+more\r
+more a b\r
+head\r
+tail -n\r
+grep x\r
+wc\r
+hexdump\r
+stat\r
+mkdir\r
+rmdir\r
+rm\r
+ls -x\r
+head -q f\r

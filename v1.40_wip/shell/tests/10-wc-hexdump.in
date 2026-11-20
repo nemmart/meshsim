@@ -1,0 +1,16 @@
+wc /w\r
+wc /empty /w /nosuch /d\r
+wc /bytes\r
+hexdump -n 40 /bytes\r
+hexdump -s 4090 -n 0x20 /bytes\r
+hexdump -s0x1ffe /bytes\r
+hexdump -s 8200 /bytes\r
+hexdump -s 9000 /bytes\r
+hexdump /w\r
+hexdump /empty\r
+hexdump -s 4096 -n 3 /bytes > /hd\r
+cat /hd\r
+hexdump -s x /bytes\r
+hexdump -n 1 /w /w\r
+hexdump /d\r
+hexdump /nosuch\r

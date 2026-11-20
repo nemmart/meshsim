@@ -1,0 +1,9 @@
+dir /logs
+file /logs/w
+written so far
+.
+file /logs/r
+read
+.
+open /logs/w w
+open /logs/r r

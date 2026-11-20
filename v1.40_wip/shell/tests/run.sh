@@ -18,6 +18,7 @@ for in in tests/*.in; do
     rc=$?
     if [ $rc -eq 0 ] && cmp -s "$out/$name.actual" "$t.out"; then
         echo "ok   $name"
+        sed 's/^/     /' "$out/$name.err"
     else
         fails=$((fails + 1))
         echo "FAIL $name (exit $rc)"

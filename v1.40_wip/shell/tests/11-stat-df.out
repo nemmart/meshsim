@@ -1,0 +1,82 @@
+/> stat /f
+name: /f
+type: file
+length: 13
+pages: 1
+depth: 0
+flags: none
+copies: 0
+/> stat /d /big
+name: /d
+type: dir
+length: 0
+pages: 0
+depth: 0
+flags: none
+copies: 0
+
+name: /big
+type: file
+length: 10000
+pages: 4
+depth: 1
+flags: none
+copies: 0
+/> stat /img /img2 /open /
+name: /img
+type: file
+length: 8388608
+pages: 6
+depth: 2
+flags: frozen sparse cow
+copies: 1
+
+name: /img2
+type: file
+length: 8388608
+pages: 3
+depth: 2
+flags: frozen sparse cow
+copies: 0
+
+name: /open
+type: file
+length: 40960
+pages: 2
+depth: 1
+flags: sparse cow
+copies: 0
+
+name: /
+type: dir
+length: 768
+pages: 1
+depth: 0
+flags: none
+copies: 0
+/> stat /nosuch /f
+stat: /nosuch: no such file or directory
+name: /f
+type: file
+length: 13
+pages: 1
+depth: 0
+flags: none
+copies: 0
+/> df
+pages: 1024 total, 18 used, 1006 free
+bytes: 4.0 MB total, 0.1 MB used, 3.9 MB free
+/> echo 1234567 >> /f
+/> stat /f
+name: /f
+type: file
+length: 21
+pages: 1
+depth: 0
+flags: none
+copies: 0
+/> rm /big
+/> df
+pages: 1024 total, 14 used, 1010 free
+bytes: 4.0 MB total, 0.1 MB used, 3.9 MB free
+/> 

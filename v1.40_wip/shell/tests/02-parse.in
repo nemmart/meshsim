@@ -1,0 +1,16 @@
+echo "two  spaces" one\r
+echo a"b c"d "" end\r
+echo "quote \\" and backslash \\\\ and \\n"\r
+echo back\\slash outside\r
+echo "open\r
+echo 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15\r
+echo 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16\r
+nosuch a b\r
+echo ">" ">>" not redirections\r
+echo a > f1 > f2\r
+echo a >> f1 > f2\r
+echo a >\r
+echo a >>\r
+nosuch > f3\r
+>f4\r
+ls\r

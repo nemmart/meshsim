@@ -1,0 +1,48 @@
+/> mkdir /a /a/b /a/b/c /d /x/y
+mkdir: /d: file exists
+mkdir: /x/y: no such file or directory
+/> ls /a /a/b
+/a:
+b/
+
+/a/b:
+c/
+/> echo one > /a/n
+/> echo two >> /a/n
+/> echo three >>/a/n
+/> cat /a/n
+one
+two
+three
+/> echo new >/a/n
+/> cat /a/n
+new
+/> pwd > rel
+/> cat /rel
+/
+/> echo x > /nosuch/f
+sh: /nosuch/f: no such file or directory
+/> echo x > /d
+sh: /d: is a directory
+/> echo x > /img
+sh: /img: read-only file
+/> echo x >> /img
+sh: /img: read-only file
+/> cat /a/n > /a/n
+cat: /a/n: busy
+/> cat /a/n
+/> rmdir /a/b
+rmdir: /a/b: directory not empty
+/> rmdir /a/n /nosuch
+rmdir: /a/n: not a directory
+rmdir: /nosuch: no such file or directory
+/> rmdir /a/b/c /a/b
+/> rm /a /a/n /a/n
+rm: /a: is a directory
+rm: /a/n: no such file or directory
+/> rm /img
+/> ls /a
+/> df
+pages: 256 total, 6 used, 250 free
+bytes: 1.0 MB total, 0.0 MB used, 1.0 MB free
+/> 

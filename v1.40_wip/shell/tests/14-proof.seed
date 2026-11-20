@@ -1,0 +1,5 @@
+dir /programs
+program /programs/fib 2048 0,1,2,3,1030,2040
+dir /proofs
+proof /proofs/p1 /programs/fib 112
+reset

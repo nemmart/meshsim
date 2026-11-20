@@ -1,0 +1,16 @@
+cat /a /b /a\r
+cat /nosuch /a\r
+cat /d\r
+more /short\r
+more /rows\r
+ \r\rq
+more /rows\r
+\x03
+more /rows\r
+xyz \n 
+more /wrap\r
+ 
+more /rows > /copy\r
+wc /rows /copy\r
+more /d\r
+more /nosuch\r

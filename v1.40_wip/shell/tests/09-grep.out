@@ -1,0 +1,75 @@
+/> grep apple /g
+apple
+/> grep -i apple /g
+apple
+Apple pie
+/> grep -n -i APPLE /g /h
+/g:1:apple
+/g:2:Apple pie
+/h:1:another apple
+/> grep -c a /g /h
+/g:9
+/h:1
+/> grep -c -v a /g
+3
+/> grep -v -n a /g
+2:Apple pie
+7:b
+10:end$
+/> grep -ni ^a /g
+1:apple
+2:Apple pie
+4:a.b
+5:axxxb
+6:ab
+/> grep "b$" /g
+a.b
+axxxb
+ab
+b
+/> grep a.b /g
+a.b
+/> grep "a\.b" /g
+a.b
+/> grep ax*b /g
+axxxb
+ab
+/> grep "^ax*b$" /g
+axxxb
+ab
+/> grep "^.*$" /h
+another apple
+/> grep "r\*" /g
+star*
+/> grep "\\" /g
+back\slash
+/> grep "d\$" /g
+end$
+/> grep "d$" /g
+/> grep "^^" /g
+^caret
+/> grep "^\^" /g
+^caret
+/> grep "r$s" /g
+dollar$sign
+/> grep x /g
+axxxb
+/> grep -c k /long
+3
+/> grep -n key /long
+3:key
+/> grep -n "^k*$" /long > /chunks
+/> wc /chunks
+       2        2     2006 /chunks
+/> grep pie /nosuch /g /h
+grep: /nosuch: no such file or directory
+/g:Apple pie
+/> grep -z a /g
+usage: grep [-n] [-i] [-c] [-v] pattern file...
+/> grep "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" /g
+grep: pattern too long
+/> grep "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" /g
+/> grep "a*b*a*b*a*b*a*b*a*b*a*b*a*b*a*b*c" /g
+back\slash
+^caret
+/> 

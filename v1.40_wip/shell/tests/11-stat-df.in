@@ -1,0 +1,9 @@
+stat /f\r
+stat /d /big\r
+stat /img /img2 /open /\r
+stat /nosuch /f\r
+df\r
+echo 1234567 >> /f\r
+stat /f\r
+rm /big\r
+df\r

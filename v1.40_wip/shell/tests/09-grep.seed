@@ -1,0 +1,22 @@
+file /g
+apple
+Apple pie
+banana
+a.b
+axxxb
+ab
+b
+star*
+back\slash
+end$
+^caret
+dollar$sign
+.
+file /h
+another apple
+.
+gen /long 2000 char:k
+file /long
+
+key
+.

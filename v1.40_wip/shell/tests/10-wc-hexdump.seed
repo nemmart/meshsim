@@ -1,0 +1,8 @@
+file /w
+one two  three
+	tab	sep
+.
+file /empty nonl
+.
+gen /bytes 8200 bytes
+dir /d

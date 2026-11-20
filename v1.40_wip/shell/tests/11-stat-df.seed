@@ -1,0 +1,9 @@
+cap 1024
+dir /d
+file /f
+twelve bytes
+.
+gen /big 10000 bytes
+cow /img 2048 0,1,1500 frozen
+copy /img /img2 1 frozen
+cow /open 10 0

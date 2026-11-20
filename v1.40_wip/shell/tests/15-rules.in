@@ -1,0 +1,11 @@
+ls -l /logs\r
+cat /logs/w\r
+tail /logs/w\r
+hexdump /logs/w\r
+stat /logs/w\r
+echo x >> /logs/r\r
+echo x > /logs/r\r
+echo x > /logs/w\r
+rm /logs/r /logs/w\r
+cat /logs/r\r
+grep read /logs/r\r

@@ -1,0 +1,9 @@
+df\r
+echo before > /a/small\r
+cat /fill /fill /fill /fill > /a/copy\r
+wc /a/copy\r
+df\r
+rm /a/copy\r
+df\r
+echo x >> /a/small\r
+cat /a/small\r

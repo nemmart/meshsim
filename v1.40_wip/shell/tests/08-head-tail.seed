@@ -1,0 +1,40 @@
+file /ten
+t1
+t2
+t3
+t4
+t5
+t6
+t7
+t8
+t9
+t10
+t11
+t12
+.
+file /empty nonl
+.
+gen /n1 1 lines
+gen /n4095 4095 lines
+gen /n4096 4096 lines
+gen /n4097 4097 lines
+gen /n8192 8192 lines
+gen /nl4096 4095 lines
+file /nl4096
+
+.
+gen /x4096 4095 lines
+gen /x4096 1 char:Z
+gen /nl8192 8191 lines
+file /nl8192
+
+.
+file /longlast
+a
+b
+.
+gen /longlast 9000 char:Q
+file /one
+only
+.
+dir /d

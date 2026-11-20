@@ -1,0 +1,30 @@
+head /ten\r
+head -n 3 /ten\r
+head -n0 /ten\r
+head -n2 /ten /one /nosuch /ten\r
+tail /ten\r
+tail -n 1 /ten\r
+tail -n0 /ten\r
+tail -n 3 /empty\r
+tail /one\r
+tail -n 2 /n1\r
+wc /n1 /n4095 /n4096 /n4097 /n8192 /nl4096 /x4096\r
+tail -n 2 /n4095\r
+tail -n 2 /n4096\r
+tail -n 2 /n4097\r
+tail -n 2 /n8192\r
+tail -n 2 /nl4096\r
+tail -n 2 /x4096\r
+tail -n 2 /nl8192\r
+tail -n 1 /longlast > /ll\r
+wc /ll\r
+tail -n 3 /longlast > /ll\r
+head -n 2 /ll\r
+tail -n 3 /n8192 /one\r
+tail -n 1000 /n8192 > /t\r
+head -n 1 /t\r
+wc /t\r
+tail -n x /ten\r
+tail /d\r
+head /d\r
+tail /nosuch\r

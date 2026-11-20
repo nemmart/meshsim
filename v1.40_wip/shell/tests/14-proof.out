@@ -1,0 +1,132 @@
+/> ls /
+programs/
+proofs/
+/> ls -l /programs /proofs
+/programs:
+-fsc        16384 fib.map
+-fsc      8388608 fib.pages
+
+/proofs:
+d---          768 p1/
+/> cd /proofs/p1
+/proofs/p1> ls -l
+-fsc      8388608 cycle0
+-fsc      8388608 final
+d---        57344 logs/
+-fsc        16384 map
+-fsc      8388608 start
+--sc      8388608 tracer
+/proofs/p1> ls logs > /proofs/list
+/proofs/p1> wc /proofs/list
+     448      448     5384 /proofs/list
+/proofs/p1> head -n 8 /proofs/list
+tile0.code
+tile0.log
+tile0.read
+tile0.write
+tile1.code
+tile1.log
+tile1.read
+tile1.write
+/proofs/p1> tail -n 4 /proofs/list
+tile99.code
+tile99.log
+tile99.read
+tile99.write
+/proofs/p1> ls -l logs/tile56.log logs/tile56.code logs/tile9.write
+----          103 logs/tile56.log
+----        30000 logs/tile56.code
+----        39000 logs/tile9.write
+/proofs/p1> cat logs/tile56.log logs/tile0.log
+tile 56: segment 1 starts
+tile 56: window 56 replayed
+tile 56: check failed at row 12345
+tile 56: done
+tile 0: segment 1 starts
+tile 0: window 0 replayed
+tile 0: done
+/proofs/p1> grep -n check logs/tile55.log logs/tile56.log logs/tile57.log
+logs/tile56.log:3:tile 56: check failed at row 12345
+/proofs/p1> tail -n 1 logs/tile111.log
+tile 111: done
+/proofs/p1> hexdump -n 32 logs/tile1.code
+00000000  07 26 45 64 83 a2 c1 e0  ff 1e 3d 5c 7b 9a b9 d8  |.&Ed......=\{...|
+00000010  f7 16 35 54 73 92 b1 d0  ef 0e 2d 4c 6b 8a a9 c8  |..5Ts.....-Lk...|
+00000020
+/proofs/p1> wc logs/tile1.code logs/tile1.read logs/tile1.write
+     118      704    30000 logs/tile1.code
+     153      916    39000 logs/tile1.read
+      12       71     3000 logs/tile1.write
+     283     1691    72000 total
+/proofs/p1> stat start final tracer /programs/fib.pages
+name: start
+type: file
+length: 8388608
+pages: 3
+depth: 2
+flags: frozen sparse cow
+copies: 2
+
+name: final
+type: file
+length: 8388608
+pages: 5
+depth: 2
+flags: frozen sparse cow
+copies: 0
+
+name: tracer
+type: file
+length: 8388608
+pages: 3
+depth: 2
+flags: sparse cow
+copies: 0
+
+name: /programs/fib.pages
+type: file
+length: 8388608
+pages: 9
+depth: 2
+flags: frozen sparse cow
+copies: 1
+/proofs/p1> hexdump -s 4096 -n 16 cycle0
+00001000  44 44 0f 00 00 00 00 00  45 44 0f 00 00 00 00 00  |DD......ED......|
+00001010
+/proofs/p1> hexdump -s 4096 -n 16 start
+00001000  44 44 0f 00 00 00 00 00  45 44 0f 00 00 00 00 00  |DD......ED......|
+00001010
+/proofs/p1> hexdump -s 0x406000 -n 16 final
+00406000  44 4e 17 00 00 00 00 00  45 4e 17 00 00 00 00 00  |DN......EN......|
+00406010
+/proofs/p1> hexdump -n 16 tracer
+hexdump: tracer: busy
+/proofs/p1> cat tracer
+cat: tracer: busy
+/proofs/p1> tail tracer
+tail: tracer: busy
+/proofs/p1> rm tracer start /programs/fib.pages
+rm: start: busy
+rm: /programs/fib.pages: busy
+/proofs/p1> echo x > final
+sh: final: read-only file
+/proofs/p1> echo x >> map
+sh: map: read-only file
+/proofs/p1> rm tracer
+rm: tracer: no such file or directory
+/proofs/p1> rm final
+/proofs/p1> rm start
+/proofs/p1> stat cycle0
+name: cycle0
+type: file
+length: 8388608
+pages: 3
+depth: 2
+flags: frozen sparse cow
+copies: 0
+/proofs/p1> rmdir /proofs/p1
+rmdir: /proofs/p1: directory not empty
+/proofs/p1> df
+pages: 16384 total, 2299 used, 14085 free
+bytes: 64.0 MB total, 9.0 MB used, 55.0 MB free
+/proofs/p1> 

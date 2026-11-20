@@ -1,7 +1,7 @@
 # v1.40_wip/shell: the console shell (fs_wip/planning/SHELL-SPEC.md; sessions/SHELL/NOTES.md).
 #
 #   make host    the shell on the host, on the emulated file system (../fs/), compiled from there into build/
-#   make test    the division tests, then every tests/NN-name.in, diffed with NN-name.out
+#   make test    the division tests, the matcher against Pike's recursive one, then every tests/NN-name.in, diffed with NN-name.out
 #   make rv32    the link-only RV32 build (stub console and fs.h calls); fails on any undefined symbol, and checks
 #                that the division helpers linked are div.o's
 #   make size    rv32 without and with C (C=1), the sizes; fails over the code budget (.text + .rodata <= 32 KB)
@@ -70,8 +70,13 @@ $(B)/divtest: tests/divtest.c div.c $(HDRS)
 	@mkdir -p $(@D)
 	$(HOSTCC) -std=c99 -O2 -Wall -Wextra tests/divtest.c div.c -o $@
 
-test: $(B)/shell_host $(B)/divtest
+$(B)/retest: tests/retest.c grep.c $(HDRS)
+	@mkdir -p $(@D)
+	$(HOSTCC) -std=c99 -O2 -Wall -Wextra tests/retest.c -o $@
+
+test: $(B)/shell_host $(B)/divtest $(B)/retest
 	$(B)/divtest
+	$(B)/retest
 	sh tests/run.sh $(B)/shell_host $(B)/out
 
 # ---------------------------------------------------------------- the RV32 build

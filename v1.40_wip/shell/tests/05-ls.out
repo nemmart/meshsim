@@ -1,0 +1,73 @@
+/> echo spaces > "/d/my file"
+/> ls
+d/
+e/
+/> ls /d
+Mid/
+_under
+alpha
+beta
+my file
+zeta
+/> ls -l /d
+d---            0 Mid/
+----         5000 _under
+----            2 alpha
+----            0 beta
+----            7 my file
+----            2 zeta
+/> ls -l d/alpha d/zeta
+----            2 d/alpha
+----            2 d/zeta
+/> ls /d/alpha /e /d
+/d/alpha
+
+/e:
+
+/d:
+Mid/
+_under
+alpha
+beta
+my file
+zeta
+/> ls /nosuch /d/alpha/x /e
+ls: /nosuch: no such file or directory
+ls: /d/alpha/x: not a directory
+/e:
+/> rm /d/beta
+/> echo new > /d/aardvark
+/> mkdir /d/Mid/sub
+/> ls /d
+Mid/
+_under
+aardvark
+alpha
+my file
+zeta
+/> ls "/d/my file"
+/d/my file
+/> cat "/d/my file"
+spaces
+/> ls -l /d/my
+ls: /d/my: no such file or directory
+/> cd /d
+/d> ls -l . Mid
+.:
+d---          128 Mid/
+----         5000 _under
+----            4 aardvark
+----            2 alpha
+----            7 my file
+----            2 zeta
+
+Mid:
+d---            0 sub/
+/d> ls -l
+d---          128 Mid/
+----         5000 _under
+----            4 aardvark
+----            2 alpha
+----            7 my file
+----            2 zeta
+/d> 

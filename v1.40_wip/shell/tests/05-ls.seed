@@ -1,0 +1,12 @@
+dir /d
+file /d/zeta
+z
+.
+file /d/alpha
+a
+.
+dir /d/Mid
+file /d/beta
+.
+gen /d/_under 5000 bytes
+dir /e

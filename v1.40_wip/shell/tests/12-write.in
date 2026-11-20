@@ -1,0 +1,23 @@
+mkdir /a /a/b /a/b/c /d /x/y\r
+ls /a /a/b\r
+echo one > /a/n\r
+echo two >> /a/n\r
+echo three >>/a/n\r
+cat /a/n\r
+echo new >/a/n\r
+cat /a/n\r
+pwd > rel\r
+cat /rel\r
+echo x > /nosuch/f\r
+echo x > /d\r
+echo x > /img\r
+echo x >> /img\r
+cat /a/n > /a/n\r
+cat /a/n\r
+rmdir /a/b\r
+rmdir /a/n /nosuch\r
+rmdir /a/b/c /a/b\r
+rm /a /a/n /a/n\r
+rm /img\r
+ls /a\r
+df\r

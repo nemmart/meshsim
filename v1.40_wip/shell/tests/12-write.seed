@@ -1,0 +1,6 @@
+cap 256
+dir /d
+file /d/f
+x
+.
+cow /img 8 0 frozen

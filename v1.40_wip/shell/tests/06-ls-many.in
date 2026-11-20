@@ -1,0 +1,5 @@
+ls /many\r
+ls -l /many > /list\r
+wc /list\r
+head -n 3 /list\r
+tail -n 2 /list\r

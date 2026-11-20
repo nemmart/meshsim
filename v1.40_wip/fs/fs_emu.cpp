@@ -255,7 +255,7 @@ uint32_t put_page(Entries& en, uint32_t& root, uint32_t& depth, uint64_t pg, con
 }
 // Page pg's data page, or NONE for a hole or past the tree.
 uint32_t find_page(Entries& en, uint32_t root, uint32_t depth, uint64_t pg) {
-    if (root == NONE) return NONE;
+    if (root == NONE || root == 0) return NONE;                    // empty; a COW file not yet committed
     if (depth == 0) return pg == 0 ? root : NONE;
     if (pg >> (10 * depth)) return NONE;
     uint32_t page = root;
@@ -268,7 +268,7 @@ uint32_t find_page(Entries& en, uint32_t root, uint32_t depth, uint64_t pg) {
 }
 // The walk (4.4): the root and every page an owned entry reaches, index pages read whole, data pages never read.
 void walk(uint32_t root, uint32_t depth, const std::function<void(uint32_t)>& fn) {
-    if (root == NONE) return;
+    if (root == NONE || root == 0) return;                         // empty; a COW file not yet committed
     fn(root);
     std::function<void(uint32_t, uint32_t)> rec = [&](uint32_t page, uint32_t level) {
         uint8_t b[PAGE_BYTES];
@@ -285,24 +285,24 @@ void walk(uint32_t root, uint32_t depth, const std::function<void(uint32_t)>& fn
 
 // ------------------------------------------------------------------ directory entries (4.3) and the superblock (4.4)
 // An entry, as bytes: 0-95 name; 96 length u64; 104 root u32; 108 type u32; 112 count u32; 116 source u32; 120 flags u32
-// ([0] frozen, [1] COW, [3:2] depth); 124 reserved.
+// ([0] frozen, [1] COW, [3:2] depth); 124 pending u32: a COW file's root to be, its root 0 until cow_commit.
 constexpr uint32_t T_FREE = 0, T_DIR = 1, T_FILE = 2;
 constexpr uint32_t E_FROZEN = 1, E_COW = 2;
 struct Ent {
-    char name[96]; uint64_t length; uint32_t root, type, count, source, flags;
+    char name[96]; uint64_t length; uint32_t root, type, count, source, flags, pending;
     uint32_t depth() const { return (flags >> 2) & 3; }
 };
 Ent ent_decode(const uint8_t* b) {
     Ent e; std::memcpy(e.name, b, 96);
     e.length = get64(b + 96); e.root = get32(b + 104); e.type = get32(b + 108);
-    e.count = get32(b + 112); e.source = get32(b + 116); e.flags = get32(b + 120);
+    e.count = get32(b + 112); e.source = get32(b + 116); e.flags = get32(b + 120); e.pending = get32(b + 124);
     return e;
 }
 void ent_encode(const Ent& e, uint8_t* b) {
     std::memset(b, 0, LINE_BYTES);
     std::memcpy(b, e.name, 96);
     put64(b + 96, e.length); put32(b + 104, e.root); put32(b + 108, e.type);
-    put32(b + 112, e.count); put32(b + 116, e.source); put32(b + 120, e.flags);
+    put32(b + 112, e.count); put32(b + 116, e.source); put32(b + 120, e.flags); put32(b + 124, e.pending);
 }
 Ent ent_read(uint32_t a) { uint8_t b[LINE_BYTES]; line_read(a, b); return ent_decode(b); }
 void ent_write(uint32_t a, const Ent& e) { uint8_t b[LINE_BYTES]; ent_encode(e, b); line_write(a, b); }
@@ -492,7 +492,8 @@ void power_on(uint32_t pages, bool hard) {
         if (std::memcmp(lp(0), MAGIC, 8) != 0) fatal("mount: no superblock");
         uint32_t files = 0;
         std::function<void(uint32_t)> visit = [&](uint32_t a) {
-            const Ent e = ent_read(a);
+            Ent e = ent_read(a);
+            if (e.pending) { e.pending = 0; ent_write(a, e); }    // a root never committed: its page is free again
             walk(e.root, e.depth(), [&](uint32_t u) {
                 if (bit(g_taken, pgno(u))) fatal("mount: page %u reached twice", pgno(u));
                 setbit(g_taken, pgno(u), true);
@@ -521,6 +522,10 @@ void check() {
     seen[0] = 1;
     std::function<void(uint32_t)> visit = [&](uint32_t a) {
         const Ent e = ent_read(a);
+        if (e.pending) {
+            if (seen[pgno(e.pending)]) fatal("check: a pending root has another owner");
+            seen[pgno(e.pending)] = 1;
+        }
         walk(e.root, e.depth(), [&](uint32_t u) {
             const uint32_t p = pgno(u);
             if (seen[p]) fatal("check: page %u has two owners (or is page 0)", p);
@@ -795,6 +800,7 @@ int fs_remove(const char* path) {
     if (r) { logf("fs_remove(\"%s\") = %d", path, r); return r; }
     const uint64_t f0 = g_stats.pages_freed;
     free_tree(e);
+    if (e.pending) free_page(pgno(e.pending), false);              // never committed: never named, never cached
     if (e.source != NONE) { Ent s = ent_read(e.source); s.count--; ent_write(e.source, s); }
     dir_drop(parent, a);
     logf("fs_remove(\"%s\") = 0, %llu pages freed%s", path, (unsigned long long)(g_stats.pages_freed - f0),
@@ -857,10 +863,11 @@ int cow_make(const char* call, const char* path, u64 pages, u32 r, uint32_t sour
     if (rc == 0 && (r >= MAX_RES || !g_res[r].used || g_res[r].pages.empty())) rc = FS_ENOSPC;
     if (rc) return rc;
     Ent e = ent_new(last.c_str(), T_FILE);
-    e.root = g_res[r].pages.back(); g_res[r].pages.pop_back();     // the root: not yet made (5.3)
+    e.pending = g_res[r].pages.back(); g_res[r].pages.pop_back();  // the root to be: made by the next run (5.3)
+    e.root = 0;                                                     // not committed: nothing to walk
     e.length = pages * PAGE_BYTES; e.flags = E_COW; set_depth(e, cow_depth(pages)); e.source = source;
-    if (dir_add(parent, e) == NONE) { g_res[r].pages.push_back(e.root); return FS_ENOSPC; }
-    *root = e.root; *depth = e.depth();
+    if (dir_add(parent, e) == NONE) { g_res[r].pages.push_back(e.pending); return FS_ENOSPC; }
+    *root = e.pending; *depth = e.depth();
     (void)call;
     return 0;
 }
@@ -888,6 +895,19 @@ int cow_copy(const char* src, const char* dst, u32 r, u32* root, u32* depth) {
     else logf("cow_copy(\"%s\", \"%s\", r %u) = 0: root 0x%x, depth %u; source root 0x%x", src, dst, r, *root, *depth, s.root);
     return rc;
 }
+int cow_commit(const char* path) {
+    LIVE(); master_only("cow_commit");
+    uint32_t a;
+    int rc = resolve(path, &a);
+    if (rc == 0 && a == NONE) rc = FS_ENOENT;
+    if (rc == 0) {
+        Ent e = ent_read(a);
+        if (!(e.flags & E_COW) || e.root != 0 || !e.pending) rc = FS_EINVAL;
+        else { e.root = e.pending; e.pending = 0; ent_write(a, e); }
+    }
+    logf("cow_commit(\"%s\") = %d", path, rc);
+    return rc;
+}
 int cow_freeze(const char* path) {
     LIVE(); master_only("cow_freeze");
     uint32_t a;
@@ -896,6 +916,7 @@ int cow_freeze(const char* path) {
     if (rc == 0) {
         Ent e = ent_read(a);
         if (!(e.flags & E_COW)) rc = FS_EINVAL;
+        else if (e.root == 0) rc = FS_EBUSY;                           // not committed
         else { e.flags |= E_FROZEN; ent_write(a, e); }
     }
     logf("cow_freeze(\"%s\") = %d", path, rc);
@@ -909,6 +930,7 @@ int cow_root(const char* path, u32* root, u32* depth) {
     if (rc == 0) {
         const Ent e = ent_read(a);
         if (!(e.flags & E_COW)) rc = FS_EINVAL;                    // a streamed file is never walked through the cache
+        else if (e.root == 0) rc = FS_EBUSY;                           // not committed
         else { *root = e.root; *depth = e.depth(); }
     }
     if (rc) logf("cow_root(\"%s\") = %d", path, rc);

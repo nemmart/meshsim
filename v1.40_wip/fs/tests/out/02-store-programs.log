@@ -4,10 +4,12 @@
 [master] cow_create("/programs/fib.pages", 2048, r 0) = 0: root 0x200, depth 2
 [master] fs_acquire_pages(0, 9) = 9
 # Updater run (the program image, empty): root 1, depth 2, tracer_copy 0, IMAGE_ROOT 0x200, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 3591 words, PAGE_COUNT 9
+[master] cow_commit("/programs/fib.pages") = 0
 [master] cow_freeze("/programs/fib.pages") = 0
 [master] cow_create("/programs/fib.map", 4, r 0) = 0: root 0xc0, depth 1
 [master] fs_acquire_pages(0, 4) = 4
 # Updater run (the base table, empty): root 1, depth 1, tracer_copy 0, IMAGE_ROOT 0xc0, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 2052 words, PAGE_COUNT 4
+[master] cow_commit("/programs/fib.map") = 0
 [master] cow_freeze("/programs/fib.map") = 0
 [master] fs_unreserve(0) = 0, 0 pages back
 # --- storing /programs/sha
@@ -16,18 +18,24 @@
 [master] cow_create("/programs/sha.pages", 512, r 0) = 0: root 0x380, depth 1
 [master] fs_acquire_pages(0, 7) = 7
 # Updater run (the program image, empty): root 1, depth 1, tracer_copy 0, IMAGE_ROOT 0x380, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 3591 words, PAGE_COUNT 7
+[master] cow_commit("/programs/sha.pages") = 0
 [master] cow_freeze("/programs/sha.pages") = 0
 [master] cow_create("/programs/sha.map", 2, r 0) = 0: root 0x280, depth 1
 [master] fs_acquire_pages(0, 2) = 2
 # Updater run (the base table, empty): root 1, depth 1, tracer_copy 0, IMAGE_ROOT 0x280, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 1026 words, PAGE_COUNT 2
+[master] cow_commit("/programs/sha.map") = 0
 [master] cow_freeze("/programs/sha.map") = 0
 [master] fs_unreserve(0) = 0, 0 pages back
 [master] fs_open("/programs/fib.pages", 0x2) = -6
 [master] fs_reserve_pages(4) = 0, r 0 (0 discarded)
 [master] cow_create("/programs/tmp", 10, r 0) = 0: root 0x400, depth 1
+# not yet committed: its entry's root is 0
+[master] cow_freeze("/programs/tmp") = -7
+[master] cow_root("/programs/tmp") = -7
 [master] cow_copy("/programs/tmp", "/programs/tmp2", r 0) = -10
-# Updater run (an empty file): root 1, depth 1, tracer_copy 0, IMAGE_ROOT 0x400, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 0 words, PAGE_COUNT 0
+[master] fs_open("/programs/tmp", 0x1) = -7
+[master] fs_stat("/programs/tmp") = 0: length 40960, 0 pages, depth 1, 0 copies
 [master] fs_remove("/programs/tmp") = 0, 1 pages freed, may be cached
 [master] fs_unreserve(0) = 0, 3 pages back
 [master] fs_stat("/programs/fib.pages") = 0: length 8388608, 10 pages, depth 2, 0 copies
-# stats: 32 pages taken, 4 freed, 0 discards (0 while tracing); LPDDR 2 page writes, 18 line writes, 10 page reads, 113 line reads
+# stats: 32 pages taken, 4 freed, 0 discards (0 while tracing); LPDDR 2 page writes, 22 line writes, 15 page reads, 201 line reads

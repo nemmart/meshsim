@@ -6,10 +6,12 @@
 [master] fs_acquire_pages(0, 128) = 128
 [master] fs_acquire_pages(0, 72) = 72
 # Updater run (the program image, empty): root 1, depth 1, tracer_copy 0, IMAGE_ROOT 0x19a0, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 102600 words, PAGE_COUNT 200
+[master] cow_commit("/programs/small.pages") = 0
 [master] cow_freeze("/programs/small.pages") = 0
 [master] cow_create("/programs/small.map", 2, r 0) = 0: root 0x80, depth 1
 [master] fs_acquire_pages(0, 2) = 2
 # Updater run (the base table, empty): root 1, depth 1, tracer_copy 0, IMAGE_ROOT 0x80, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 1026 words, PAGE_COUNT 2
+[master] cow_commit("/programs/small.map") = 0
 [master] cow_freeze("/programs/small.map") = 0
 [master] fs_unreserve(0) = 0, 0 pages back
 [master] fs_mkdir("/proofs") = 0
@@ -24,16 +26,19 @@
 [master] cow_copy("/programs/small.map", "/proofs/a/map", r 0) = 0: root 0x5980, depth 1; source root 0x80
 [master] fs_acquire_pages(0, 1) = 1
 # Updater run (frame 5: the proof's table): root 2, depth 1, tracer_copy 0, IMAGE_ROOT 0x5980, TRACER_ROOT 0x0, SOURCE_ROOT 0x80, 513 words, PAGE_COUNT 1
+[master] cow_commit("/proofs/a/map") = 0
 [master] cow_freeze("/proofs/a/map") = 0
 [master] cow_root("/programs/small.pages") = 0: root 0x19a0, depth 1
 [master] cow_copy("/programs/small.pages", "/proofs/a/cycle0", r 0) = 0: root 0x5940, depth 1; source root 0x19a0
 [master] fs_acquire_pages(0, 2) = 2
 # Updater run (frame 6: the data image): root 2, depth 1, tracer_copy 0, IMAGE_ROOT 0x5940, TRACER_ROOT 0x0, SOURCE_ROOT 0x19a0, 1026 words, PAGE_COUNT 2
+[master] cow_commit("/proofs/a/cycle0") = 0
 [master] cow_freeze("/proofs/a/cycle0") = 0
 [master] cow_root("/proofs/a/cycle0") = 0: root 0x5940, depth 1
 [master] cow_copy("/proofs/a/cycle0", "/proofs/a/start", r 0) = 0: root 0x58e0, depth 1; source root 0x5940
 [master] fs_acquire_pages(0, 100) = 100
 # Updater run (frame 9: the segments before s): root 2, depth 1, tracer_copy 0, IMAGE_ROOT 0x58e0, TRACER_ROOT 0x0, SOURCE_ROOT 0x5940, 51300 words, PAGE_COUNT 100
+[master] cow_commit("/proofs/a/start") = 0
 [master] cow_freeze("/proofs/a/start") = 0
 [master] cow_root("/proofs/a/start") = 0: root 0x58e0, depth 1
 [master] cow_copy("/proofs/a/start", "/proofs/a/final", r 0) = 0: root 0x4c40, depth 1; source root 0x58e0
@@ -41,6 +46,8 @@
 [master] fs_acquire_pages(0, 128) = 128
 [master] fs_acquire_pages(0, 72) = 72
 # Updater run (frame 9: segment s, with the Tracer's copy): root 2, depth 1, tracer_copy 1, IMAGE_ROOT 0x4c40, TRACER_ROOT 0x4c20, SOURCE_ROOT 0x58e0, 51300 words, PAGE_COUNT 200
+[master] cow_commit("/proofs/a/final") = 0
+[master] cow_commit("/proofs/a/tracer") = 0
 [master] fs_acquire_pages(0, 128) = 128
 [master] fs_acquire_pages(0, 72) = 72
 # Updater run (frame 9: the segments after s): root 0, depth 1, tracer_copy 0, IMAGE_ROOT 0x4c40, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 102600 words, PAGE_COUNT 200
@@ -116,16 +123,19 @@
 [master] cow_copy("/programs/small.map", "/proofs/b/map", r 0) = 0: root 0x5980, depth 1; source root 0x80
 [master] fs_acquire_pages(0, 1) = 1
 # Updater run (frame 5: the proof's table): root 2, depth 1, tracer_copy 0, IMAGE_ROOT 0x5980, TRACER_ROOT 0x0, SOURCE_ROOT 0x80, 513 words, PAGE_COUNT 1
+[master] cow_commit("/proofs/b/map") = 0
 [master] cow_freeze("/proofs/b/map") = 0
 [master] cow_root("/programs/small.pages") = 0: root 0x19a0, depth 1
 [master] cow_copy("/programs/small.pages", "/proofs/b/cycle0", r 0) = 0: root 0x5940, depth 1; source root 0x19a0
 [master] fs_acquire_pages(0, 2) = 2
 # Updater run (frame 6: the data image): root 2, depth 1, tracer_copy 0, IMAGE_ROOT 0x5940, TRACER_ROOT 0x0, SOURCE_ROOT 0x19a0, 1026 words, PAGE_COUNT 2
+[master] cow_commit("/proofs/b/cycle0") = 0
 [master] cow_freeze("/proofs/b/cycle0") = 0
 [master] cow_root("/proofs/b/cycle0") = 0: root 0x5940, depth 1
 [master] cow_copy("/proofs/b/cycle0", "/proofs/b/start", r 0) = 0: root 0x58e0, depth 1; source root 0x5940
 [master] fs_acquire_pages(0, 100) = 100
 # Updater run (frame 9: the segments before s): root 2, depth 1, tracer_copy 0, IMAGE_ROOT 0x58e0, TRACER_ROOT 0x0, SOURCE_ROOT 0x5940, 51300 words, PAGE_COUNT 100
+[master] cow_commit("/proofs/b/start") = 0
 [master] cow_freeze("/proofs/b/start") = 0
 [master] cow_root("/proofs/b/start") = 0: root 0x58e0, depth 1
 [master] cow_copy("/proofs/b/start", "/proofs/b/final", r 0) = 0: root 0x4c40, depth 1; source root 0x58e0
@@ -133,6 +143,8 @@
 [master] fs_acquire_pages(0, 128) = 128
 [master] fs_acquire_pages(0, 72) = 72
 # Updater run (frame 9: segment s, with the Tracer's copy): root 2, depth 1, tracer_copy 1, IMAGE_ROOT 0x4c40, TRACER_ROOT 0x4c20, SOURCE_ROOT 0x58e0, 51300 words, PAGE_COUNT 200
+[master] cow_commit("/proofs/b/final") = 0
+[master] cow_commit("/proofs/b/tracer") = 0
 [master] fs_acquire_pages(0, 128) = 128
 [master] fs_acquire_pages(0, 72) = 72
 # Updater run (frame 9: the segments after s): root 0, depth 1, tracer_copy 0, IMAGE_ROOT 0x4c40, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 102600 words, PAGE_COUNT 200
@@ -190,4 +202,4 @@
 [master] fs_remove("/proofs/b/logs/tile1.read") = 0, 11 pages freed
 [master] fs_remove("/proofs/b/logs/tile1.write") = 0, 1 pages freed
 [master] fs_remove("/proofs/b/logs") = 0, 1 pages freed
-# stats: 1297 pages taken, 682 freed, 508 discards (0 while tracing); LPDDR 80 page writes, 170 line writes, 26 page reads, 1286 line reads
+# stats: 1297 pages taken, 682 freed, 508 discards (0 while tracing); LPDDR 80 page writes, 182 line writes, 26 page reads, 1407 line reads

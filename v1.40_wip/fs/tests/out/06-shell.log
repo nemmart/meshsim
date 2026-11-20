@@ -71,4 +71,4 @@ tile 0: window 0 replayed
 # shell> df
 [shell] fs_df() = 0: 16384 total, 16179 free
 #   pages: 16384 total, 205 used, 16179 free
-# stats: 2 pages taken, 2 freed, 0 discards (0 while tracing); LPDDR 3 page writes, 13 line writes, 51 page reads, 413 line reads
+# stats: 2 pages taken, 2 freed, 0 discards (0 while tracing); LPDDR 3 page writes, 13 line writes, 51 page reads, 416 line reads

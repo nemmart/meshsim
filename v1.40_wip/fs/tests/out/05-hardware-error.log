@@ -8,21 +8,26 @@
 [master] cow_root("/programs/sha.map") = 0: root 0x280, depth 1
 [master] cow_copy("/programs/sha.map", "/proofs/p3/map", r 0) = 0: root 0xbbc0, depth 1; source root 0x280
 # Updater run (frame 5: the proof's table): root 2, depth 1, tracer_copy 0, IMAGE_ROOT 0xbbc0, TRACER_ROOT 0x0, SOURCE_ROOT 0x280, 0 words, PAGE_COUNT 0
+[master] cow_commit("/proofs/p3/map") = 0
 [master] cow_freeze("/proofs/p3/map") = 0
 [master] cow_root("/programs/sha.pages") = 0: root 0x380, depth 1
 [master] cow_copy("/programs/sha.pages", "/proofs/p3/cycle0", r 0) = 0: root 0xbba0, depth 1; source root 0x380
 [master] fs_acquire_pages(0, 1) = 1
 # Updater run (frame 6: the data image): root 2, depth 1, tracer_copy 0, IMAGE_ROOT 0xbba0, TRACER_ROOT 0x0, SOURCE_ROOT 0x380, 513 words, PAGE_COUNT 1
+[master] cow_commit("/proofs/p3/cycle0") = 0
 [master] cow_freeze("/proofs/p3/cycle0") = 0
 [master] cow_root("/proofs/p3/cycle0") = 0: root 0xbba0, depth 1
 [master] cow_copy("/proofs/p3/cycle0", "/proofs/p3/start", r 0) = 0: root 0xbb60, depth 1; source root 0xbba0
 # Updater run (frame 9: the segments before s): root 2, depth 1, tracer_copy 0, IMAGE_ROOT 0xbb60, TRACER_ROOT 0x0, SOURCE_ROOT 0xbba0, 0 words, PAGE_COUNT 0
+[master] cow_commit("/proofs/p3/start") = 0
 [master] cow_freeze("/proofs/p3/start") = 0
 [master] cow_root("/proofs/p3/start") = 0: root 0xbb60, depth 1
 [master] cow_copy("/proofs/p3/start", "/proofs/p3/final", r 0) = 0: root 0xbb40, depth 1; source root 0xbb60
 [master] cow_copy("/proofs/p3/start", "/proofs/p3/tracer", r 0) = 0: root 0xbb20, depth 1; source root 0xbb60
 [master] fs_acquire_pages(0, 4) = 4
 # Updater run (frame 9: segment s, with the Tracer's copy): root 2, depth 1, tracer_copy 1, IMAGE_ROOT 0xbb40, TRACER_ROOT 0xbb20, SOURCE_ROOT 0xbb60, 1026 words, PAGE_COUNT 4
+[master] cow_commit("/proofs/p3/final") = 0
+[master] cow_commit("/proofs/p3/tracer") = 0
 [master] fs_acquire_pages(0, 3) = 3
 # Updater run (frame 9: the segments after s): root 0, depth 1, tracer_copy 0, IMAGE_ROOT 0xbb40, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 1539 words, PAGE_COUNT 3
 [master] cow_root("/proofs/p3/tracer") = 0: root 0xbb20, depth 1
@@ -99,4 +104,10 @@
 [shell] fs_read(0, 4096) = 3000
 [shell] fs_read(0, 4096) = 0
 [shell] fs_close(0) = 0
-# stats: 75 pages taken, 0 freed, 0 discards (0 while tracing); LPDDR 64 page writes, 72 line writes, 192 page reads, 1263 line reads
+# --- a soft reset between cow_create and cow_commit
+[master] fs_reserve_pages(3) = 0, r 0 (0 discarded)
+[master] cow_create("/proofs/p3/half", 100, r 0) = 0: root 0x7c0, depth 1
+[master] mount: 54 entries, 16179 pages free
+[master] fs_stat("/proofs/p3/half") = 0: length 409600, 0 pages, depth 1, 0 copies
+[master] fs_remove("/proofs/p3/half") = 0, 0 pages freed, may be cached
+# stats: 78 pages taken, 0 freed, 0 discards (0 while tracing); LPDDR 64 page writes, 82 line writes, 327 page reads, 1924 line reads

@@ -6,27 +6,32 @@
 [master] fs_stat("/programs/fib.pages") = 0: length 8388608, 10 pages, depth 2, 0 copies
 [master] fs_stat("/programs/fib.map") = 0: length 16384, 5 pages, depth 1, 0 copies
 # the host's counts: map 1, cycle-0 4, start 3, Tracer's copy 5, final 10; reserved 28 with the roots
-[master] fs_reserve_pages(28) = 0, r 0 (1 discarded)
+[master] fs_reserve_pages(28) = 0, r 0 (0 discarded)
 [master] cow_root("/programs/fib.map") = 0: root 0xc0, depth 1
 [master] cow_copy("/programs/fib.map", "/proofs/p1/map", r 0) = 0: root 0x740, depth 1; source root 0xc0
 [master] fs_acquire_pages(0, 1) = 1
 # Updater run (frame 5: the proof's table): root 2, depth 1, tracer_copy 0, IMAGE_ROOT 0x740, TRACER_ROOT 0x0, SOURCE_ROOT 0xc0, 513 words, PAGE_COUNT 1
+[master] cow_commit("/proofs/p1/map") = 0
 [master] cow_freeze("/proofs/p1/map") = 0
 [master] cow_root("/programs/fib.pages") = 0: root 0x200, depth 2
 [master] cow_copy("/programs/fib.pages", "/proofs/p1/cycle0", r 0) = 0: root 0x700, depth 2; source root 0x200
 [master] fs_acquire_pages(0, 4) = 4
 # Updater run (frame 6: the data image): root 2, depth 2, tracer_copy 0, IMAGE_ROOT 0x700, TRACER_ROOT 0x0, SOURCE_ROOT 0x200, 1026 words, PAGE_COUNT 4
+[master] cow_commit("/proofs/p1/cycle0") = 0
 [master] cow_freeze("/proofs/p1/cycle0") = 0
 [master] cow_root("/proofs/p1/cycle0") = 0: root 0x700, depth 2
 [master] cow_copy("/proofs/p1/cycle0", "/proofs/p1/start", r 0) = 0: root 0x660, depth 2; source root 0x700
 [master] fs_acquire_pages(0, 3) = 3
 # Updater run (frame 9: the segments before s): root 2, depth 2, tracer_copy 0, IMAGE_ROOT 0x660, TRACER_ROOT 0x0, SOURCE_ROOT 0x700, 1026 words, PAGE_COUNT 3
+[master] cow_commit("/proofs/p1/start") = 0
 [master] cow_freeze("/proofs/p1/start") = 0
 [master] cow_root("/proofs/p1/start") = 0: root 0x660, depth 2
 [master] cow_copy("/proofs/p1/start", "/proofs/p1/final", r 0) = 0: root 0x5e0, depth 2; source root 0x660
 [master] cow_copy("/proofs/p1/start", "/proofs/p1/tracer", r 0) = 0: root 0x5c0, depth 2; source root 0x660
 [master] fs_acquire_pages(0, 10) = 10
 # Updater run (frame 9: segment s, with the Tracer's copy): root 2, depth 2, tracer_copy 1, IMAGE_ROOT 0x5e0, TRACER_ROOT 0x5c0, SOURCE_ROOT 0x660, 1539 words, PAGE_COUNT 10
+[master] cow_commit("/proofs/p1/final") = 0
+[master] cow_commit("/proofs/p1/tracer") = 0
 [master] fs_acquire_pages(0, 5) = 5
 # Updater run (frame 9: the segments after s): root 0, depth 2, tracer_copy 0, IMAGE_ROOT 0x5e0, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 3078 words, PAGE_COUNT 5
 [master] cow_root("/proofs/p1/tracer") = 0: root 0x5c0, depth 2
@@ -209,4 +214,4 @@
 [master] fs_remove("/proofs/p1/logs") = 0, 1 pages freed
 [master] fs_stat("/proofs/p1/final") = 0: length 8388608, 11 pages, depth 2, 0 copies
 # kept until the host removes it: /proofs/p1 (the map, cycle0, start, final)
-# stats: 1387 pages taken, 1363 freed, 1 discards (0 while tracing); LPDDR 1360 page writes, 162 line writes, 37 page reads, 1171 line reads
+# stats: 1387 pages taken, 1363 freed, 0 discards (0 while tracing); LPDDR 1360 page writes, 167 line writes, 37 page reads, 1226 line reads

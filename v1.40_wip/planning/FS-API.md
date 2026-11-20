@@ -103,27 +103,32 @@ stem**: `<stem>.pages`, its memory image, and `<stem>.map`, its jump table. Ther
 
 ```
 fs_reserve_pages(pages + 2)                  -> r            // the run's pages and the two roots
-cow_create("<stem>.pages", length_pages, r)  -> root, depth  // its root page taken; the root not yet made
+cow_create("<stem>.pages", length_pages, r)  -> root, depth  // its root page taken; the entry's root 0 until committed
   Updater run: root 1 (empty), IMAGE_ROOT root, depth; its pages by fs_acquire_pages(r, ...) as credits come
-cow_freeze("<stem>.pages")                                   // after the run's done
-the map the same way: cow_create, a run, cow_freeze          // a base table (29.8)
+cow_commit("<stem>.pages")                                   // at the run's done: the entry names its root
+cow_freeze("<stem>.pages")
+the map the same way: cow_create, a run, cow_commit, cow_freeze   // a base table (29.8)
 fs_unreserve(r)
 ```
 
 ### 3.3 Running a proof (a request from the host)
 
 What v1.37's frame loop does (30.3 to 30.5), with names. Every COW file is made by `cow_create` or `cow_copy` and
-built by the Updater's next run; it is frozen once that run is done, all but the Tracer's copy.
+built by the Updater's next run; it is committed at that run's done, and then frozen, all but the Tracer's copy.
 
 ```
 fs_mkdir(wd)                                  // FS_EEXIST: the proof is refused (DESIGN-NOTES, section 6)
 fs_reserve_pages(the proof's pages)  -> r     // FS_ENOSPC: refused, before anything is written
 the proof's table:   cow_copy("<base>", wd/map, r) and a run with root 2, or cow_create(wd/map, pages, r) and root 1
-                     cow_freeze(wd/map)
-the cycle-0 image:   cow_copy("<stem>.pages", wd/cycle0, r); frame 6's run, root 2;  cow_freeze(wd/cycle0)
-the start image:     cow_copy(wd/cycle0, wd/start, r); the run of segments before s, root 2;  cow_freeze(wd/start)
+                     cow_commit(wd/map); cow_freeze(wd/map)
+the cycle-0 image:   cow_copy("<stem>.pages", wd/cycle0, r); frame 6's run, root 2
+                     cow_commit(wd/cycle0); cow_freeze(wd/cycle0)
+the start image:     cow_copy(wd/cycle0, wd/start, r); the run of segments before s, root 2
+                     cow_commit(wd/start); cow_freeze(wd/start)
 the final image and  cow_copy(wd/start, wd/final, r); cow_copy(wd/start, wd/tracer, r)
-  the Tracer's copy: the run of segment s, root 2 with tracer_copy (both roots made); the run after s, root 0
+  the Tracer's copy: the run of segment s, root 2 with tracer_copy, which makes both roots
+                     cow_commit(wd/final); cow_commit(wd/tracer)
+                     the run after s, root 0
 the hand-over:       cow_root(wd/tracer), cow_root(wd/map)  -> the roots and depths in record s's word 66 (30.5)
 the segment:         the tracer tile writes the run logs; the compute tiles write their logs (3.4)
                      cow_freeze(wd/final), once the third run is done
@@ -218,12 +223,14 @@ byte first:
 | 112–115 | count † | u32: for a file, the copies made from it; for a directory, its live entries (DESIGN-NOTES section 4, decided) |
 | 116–119 | source † | u32: a copy's source's entry, as the unit address of that entry; 0xFFFF_FFFF none |
 | 120–123 | flags † | [0] frozen; [1] COW, made by `cow_create` or `cow_copy`; [3:2] depth; the rest 0 |
-| 124–127 | reserved | 0 |
+| 124–127 | pending | u32: a COW file's root to be, from `cow_create` or `cow_copy` to `cow_commit`; 0 otherwise (owner, 2026-11-20) |
 
 - **A file's depth** follows from its length for a streamed file, and is fixed when a COW file is made (29.4); it is
   kept in the flags † so that neither has to be worked out.
 - **An entry can be removed only when its count is 0** (DESIGN-NOTES section 4, decided).
 - **The root directory has no parent:** its entry is in the superblock (4.4).
+- **A root of 0 is a COW file not yet committed** (owner, 2026-11-20): page 0 is the superblock's, so no file's root
+  is ever 0. A walk of such a file reads nothing; 0xFFFF_FFFF is an empty streamed file.
 
 ### 4.4 The superblock, and the walk
 
@@ -325,15 +332,18 @@ its copy, but adds no pages** (owner, 2026-11-19); the hardware refuses it a wri
 
 | Call | Does |
 | --- | --- |
-| `int cow_create(const char *path, u64 length_pages, u32 r, u32 *root, u32 *depth)` | a new COW file, its depth fixed by its length; its root page taken from reservation r, **not yet made**: the next Updater run on it, with `root` 1, makes it † |
-| `int cow_copy(const char *src, const char *dst, u32 r, u32 *root, u32 *depth)` | a new COW file with src's length and depth, src's count raised; src must be a frozen COW file. Its root page taken from r, **not yet made**: the next run, with `root` 2 and `SOURCE_ROOT` src's root, makes it † |
-| `int cow_freeze(const char *path)` | sets the frozen flag; only once the run building the file is done |
-| `int cow_root(const char *path, u32 *root, u32 *depth)` | a COW file's root and depth, for the Updater and the Tracer; `FS_EINVAL` for any other file |
+| `int cow_create(const char *path, u64 length_pages, u32 r, u32 *root, u32 *depth)` | a new COW file, its depth fixed by its length; its root page taken from reservation r and returned in `*root`, **not yet made**: the next Updater run on it, with `root` 1, makes it. The entry's root is 0 and the page is its pending root |
+| `int cow_copy(const char *src, const char *dst, u32 r, u32 *root, u32 *depth)` | a new COW file with src's length and depth, src's count raised; src must be a frozen COW file (`FS_EINVAL`). Its root page as `cow_create`'s: the next run, with `root` 2 and `SOURCE_ROOT` src's root, makes it |
+| `int cow_commit(const char *path)` | the entry's root becomes its pending root: called once the run that makes the root is done. `FS_EINVAL` for a file not pending (owner, 2026-11-20) |
+| `int cow_freeze(const char *path)` | sets the frozen flag; `FS_EBUSY` before `cow_commit` |
+| `int cow_root(const char *path, u32 *root, u32 *depth)` | a COW file's root and depth, for the Updater and the Tracer; `FS_EINVAL` for any other file, `FS_EBUSY` before `cow_commit` |
 
 **`cow_create` and `cow_copy` leave the root to the Updater** † (the owner's ruling on the Updater, 2.3; item 191 would
-close with it). Until that run is done the file must not be opened, copied, frozen or handed to the Tracer:
-a rule the master tile keeps. The other way, a run of no words with `root` 2 made by `cow_copy` itself, would return a
-finished file but is untested.
+close with it), **and the file is committed when the run is done** (owner, 2026-11-20). Until then its entry's root is
+0, so nothing walks a root the Updater has not yet written: `fs_open` and `cow_root` are `FS_EBUSY`, `cow_freeze` is
+`FS_EBUSY`, `cow_copy` from it is `FS_EINVAL` (not frozen), `fs_stat` counts no pages, and `fs_remove` frees the
+pending page alone, which was never named and never cached. A mount forgets a pending root, so its page is free
+again. The master tile commits a file only after the run that makes its root is done; that rule is its own.
 
 ### 5.4 The file system as a whole (master tile only)
 
@@ -380,8 +390,8 @@ There is no kernel and no permission check (owner, 2026-11-19): who may call wha
 
 ## 8. Open points †
 
-1. `cow_create` and `cow_copy` leave the root to the Updater's next run (5.3), or `cow_copy` makes it with a run of
-   no words.
+1. `cow_create` and `cow_copy` leave the root to the Updater's next run (5.3), committed at its done; or `cow_copy`
+   makes it with a run of no words.
 2. Whether roots come from the reservation (3.3), and whether the run logs' pages do.
 3. A reservation held as a list or as a map (4.1); `fs_unreserve`.
 4. The "may be cached" map, and the discard at `fs_reserve_pages` (4.2).

@@ -37,7 +37,9 @@ lines in it, the LRU code, the free page queue's credits (the pages are fed befo
 4. **An unbuilt root is invisible to the file system.** Between `cow_create` or `cow_copy` and the run that makes the
    root, the root page holds whatever it held; a walk of it (`fs_remove`, `fs_stat`, a mount) would read garbage.
    Today it is the master tile's rule alone. A "built" flag set by `cow_freeze` would not do: the Tracer's copy is
-   never frozen.
+   never frozen. **Closed** (owner, 2026-11-20): the entry's root is 0 until `cow_commit`, the page held in the
+   entry's bytes 124–127 meanwhile (FS-API.md 4.3, 5.3); workflows 2 and 5 exercise it, a soft reset in between
+   included.
 5. **The resets work as designed.** After `fs_shutdown` and a soft reset every byte written is there (workflow 5).
    With no shutdown, the bytes up to the last `fs_flush` are, and the pages of the rest are free again after the mount,
    which rebuilds the maps by the walk; so is a reservation that was open.

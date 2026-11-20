@@ -107,10 +107,12 @@ static void store_program(const Program& p) {
     EXPECT(depth == d);
     Run c; c.root = 1; c.depth = depth; c.image_root = root; c.page_count = n_img;
     run(c, words_for(p.pages, 1), r, "the program image, empty");
+    EXPECT(cow_commit(img.c_str()) == 0);
     EXPECT(cow_freeze(img.c_str()) == 0);
     EXPECT(cow_create(map.c_str(), p.map_pages, r, &root, &depth) == 0);
     c = Run{}; c.root = 1; c.depth = depth; c.image_root = root; c.page_count = n_map;
     run(c, words_for(map_all, 2), r, "the base table, empty");
+    EXPECT(cow_commit(map.c_str()) == 0);
     EXPECT(cow_freeze(map.c_str()) == 0);
     EXPECT(fs_unreserve(r) == 0);
 }
@@ -165,18 +167,21 @@ static void run_proof(const Proof& p) {
     EXPECT(cow_copy(base.c_str(), map.c_str(), r, &root, &depth) == 0);
     Run c; c.root = 2; c.depth = depth; c.image_root = root; c.source_root = src; c.page_count = n_map;
     run(c, words_for(p.map_delta, 5), r, "frame 5: the proof's table");
+    EXPECT(cow_commit(map.c_str()) == 0);
     EXPECT(cow_freeze(map.c_str()) == 0);
     // the cycle-0 image: a copy of the program image, frame 6 over it
     EXPECT(cow_root(img.c_str(), &src, &sd) == 0);
     EXPECT(cow_copy(img.c_str(), c0.c_str(), r, &root, &depth) == 0);
     c = Run{}; c.root = 2; c.depth = depth; c.image_root = root; c.source_root = src; c.page_count = n_c0;
     run(c, words_for(p.data_pages, 6), r, "frame 6: the data image");
+    EXPECT(cow_commit(c0.c_str()) == 0);
     EXPECT(cow_freeze(c0.c_str()) == 0);
     // the start image: frame 9, the segments before s
     EXPECT(cow_root(c0.c_str(), &src, &sd) == 0);
     EXPECT(cow_copy(c0.c_str(), start.c_str(), r, &root, &depth) == 0);
     c = Run{}; c.root = 2; c.depth = depth; c.image_root = root; c.source_root = src; c.page_count = n_start;
     run(c, concat(p.segments, 0, p.s, 90), r, "frame 9: the segments before s");
+    EXPECT(cow_commit(start.c_str()) == 0);
     EXPECT(cow_freeze(start.c_str()) == 0);
     // the final image and the Tracer's copy: segment s with tracer_copy, then the rest
     EXPECT(cow_root(start.c_str(), &src, &sd) == 0);
@@ -186,6 +191,8 @@ static void run_proof(const Proof& p) {
     c = Run{}; c.root = 2; c.depth = depth; c.tracer_copy = true; c.image_root = froot; c.tracer_root = troot;
     c.source_root = src; c.page_count = 2 * n_tracer;
     run(c, concat(p.segments, p.s, p.s + 1, 90), r, "frame 9: segment s, with the Tracer's copy");
+    EXPECT(cow_commit(fin.c_str()) == 0);                                   // both roots made by that run
+    EXPECT(cow_commit(tr.c_str()) == 0);
     c = Run{}; c.root = 0; c.depth = depth; c.image_root = froot; c.page_count = n_final - n_tracer;
     run(c, concat(p.segments, p.s + 1, p.N, 90), r, "frame 9: the segments after s");
     // the hand-over (30.5)
@@ -325,9 +332,14 @@ int main() {
     u32 r, root, depth;
     EXPECT(fs_reserve_pages(4, &r) == 0);
     EXPECT(cow_create("/programs/tmp", 10, r, &root, &depth) == 0);
+    note("not yet committed: its entry's root is 0");
+    EXPECT(cow_freeze("/programs/tmp") == FS_EBUSY);
+    EXPECT(cow_root("/programs/tmp", &root, &depth) == FS_EBUSY);
     EXPECT(cow_copy("/programs/tmp", "/programs/tmp2", r, &root, &depth) == FS_EINVAL);   // the source not frozen
-    { Run c; c.root = 1; c.depth = depth; c.image_root = root; run(c, {}, r, "an empty file"); }
-    EXPECT(fs_remove("/programs/tmp") == 0);
+    EXPECT(fs_open("/programs/tmp", FS_READ) == FS_EBUSY);
+    { struct fs_stat s2; EXPECT(fs_stat("/programs/tmp", &s2) == 0 && s2.pages == 0); }
+    check();
+    EXPECT(fs_remove("/programs/tmp") == 0);                                // its root to be freed with it
     EXPECT(fs_unreserve(r) == 0);
     struct fs_stat st;
     EXPECT(fs_stat("/programs/fib.pages", &st) == 0 && st.depth == 2 && (st.flags & FS_F_FROZEN));
@@ -383,6 +395,16 @@ int main() {
     const std::string crash = sh_cat("/proofs/p3/logs/crash.log");
     EXPECT(crash == std::string(3000, 'a'));                  // what was flushed, and nothing else
     check();                                                  // the pages of the lost part are free again
+    note("--- a soft reset between cow_create and cow_commit");
+    set_caller(Caller::MASTER);
+    EXPECT(fs_reserve_pages(3, &r) == 0);
+    EXPECT(cow_create("/proofs/p3/half", 100, r, &root, &depth) == 0);
+    power_on(LPDDR, false);
+    set_caller(Caller::MASTER);
+    EXPECT(fs_stat("/proofs/p3/half", &st) == 0 && st.pages == 0);
+    check();                                                  // the root to be and the reservation are free again
+    EXPECT(fs_remove("/proofs/p3/half") == 0);
+    check();
     report();
 
     begin("06-shell");

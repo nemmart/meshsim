@@ -70,6 +70,7 @@ int  fs_df(u64 *total_pages, u64 *free_pages);
 /* ---- COW files (5.3): the master tile alone */
 int  cow_create(const char *path, u64 length_pages, u32 r, u32 *root, u32 *depth);
 int  cow_copy(const char *src, const char *dst, u32 r, u32 *root, u32 *depth);
+int  cow_commit(const char *path);                    /* the root, once the run that makes it is done */
 int  cow_freeze(const char *path);
 int  cow_root(const char *path, u32 *root, u32 *depth);
 

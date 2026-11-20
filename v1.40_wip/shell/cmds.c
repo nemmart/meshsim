@@ -70,6 +70,7 @@ static void cmd_help(int argc, char **argv) {
     if (argc != 1) { usage("help"); return; }
     for (const struct cmd *c = g_cmds; c->name; c++) pf("%s\n", c->usage);
     pf("grep: a line over 1024 bytes is matched, printed and counted as lines of 1024\n");
+    pf("file: * in a file's last name matches any characters\n");
 }
 
 static void cmd_pwd(int argc, char **argv) {
@@ -80,7 +81,8 @@ static void cmd_pwd(int argc, char **argv) {
 
 static void cmd_cd(int argc, char **argv) {
     if (argc > 2) { usage("cd"); return; }
-    const char *arg = argc == 2 ? argv[1] : "/";
+    const char *arg = argc == 2 ? one_operand("cd", argc, argv, 1) : "/";
+    if (!arg) return;
     if (arg_path("cd", arg, g_path2)) return;
     struct fs_stat st;
     const int e = fs_stat(g_path2, &st);
@@ -138,21 +140,27 @@ static void cmd_ls(int argc, char **argv) {
     char *v[1];
     int i = opts(argc, argv, "l", &f, v);
     if (i < 0) return;
-    const int lng = f & 1, many = argc - i > 1;
-    static char *dot[] = {"."};
-    char **list = argv + i;
-    int n = argc - i;
-    if (!n) { list = dot; n = 1; }
-    int shown = 0;
-    for (int k = 0; k < n && !g_stop; k++) {
-        if (arg_path("ls", list[k], g_path2)) continue;
+    const int lng = f & 1, many = argc - i > 1 || (g_globmask >> i);
+    static char *dot[] = {"ls", "."};
+    struct ops o;
+    if (i == argc) ops_start(&o, "ls", 2, dot, 1);
+    else ops_start(&o, "ls", argc, argv, i);
+    int shown = 0, after_dir = 0;                        /* a blank line before a listing, and after one */
+    const char *a;
+    while ((a = ops_next(&o)) != 0) {
+        if (arg_path("ls", a, g_path2)) continue;
         struct fs_stat st;
         const int e = fs_stat(g_path2, &st);
-        if (e < 0) { err_path("ls", list[k], e); continue; }
-        if (st.type != FS_T_DIR) { ls_line(list[k], st.type, st.flags, st.length, lng); shown = 1; continue; }
-        if (many) { pf(shown ? "\n%s:\n" : "%s:\n", list[k]); shown = 1; }
-        ls_dir(list[k], g_path2, lng);
-        shown = 1;
+        if (e < 0) { err_path("ls", a, e); continue; }
+        if (st.type != FS_T_DIR) {
+            if (after_dir) pf("\n");
+            ls_line(a, st.type, st.flags, st.length, lng);
+            shown = 1; after_dir = 0;
+            continue;
+        }
+        if (many) pf(shown ? "\n%s:\n" : "%s:\n", a);
+        ls_dir(a, g_path2, lng);
+        shown = 1; after_dir = 1;
     }
 }
 
@@ -166,15 +174,18 @@ static void cat_console(void) {
 
 static void cmd_cat(int argc, char **argv) {
     if (argc < 2) { cat_console(); return; }
-    for (int i = 1; i < argc && !g_stop; i++) {
-        const int fd = open_read("cat", argv[i]);
+    struct ops o;
+    ops_start(&o, "cat", argc, argv, 1);
+    const char *a;
+    while ((a = ops_next(&o)) != 0) {
+        const int fd = open_read("cat", a);
         if (fd < 0) continue;
         long n;
         while ((n = fs_read(fd, g_page, SH_PAGE)) > 0) {
             out_n(g_page, (u32)n);
             if (interrupted()) { stopped(); break; }
         }
-        if (n < 0) err_path("cat", argv[i], (int)n);
+        if (n < 0) err_path("cat", a, (int)n);
         fs_close(fd);
     }
 }
@@ -182,10 +193,21 @@ static void cmd_cat(int argc, char **argv) {
 /* Pages of 23 rows: a line over 80 columns is several. The prompt shows the share of the bytes shown so far. */
 static void cmd_more(int argc, char **argv) {
     if (argc != 2) { usage("more"); return; }
-    if (sink_redirected()) { cmd_cat(argc, argv); return; }
+    const char *arg = one_operand("more", argc, argv, 1);
+    if (!arg) return;
     struct fs_stat st;
-    if (stat_file("more", argv[1], &st)) return;
-    const int fd = open_read("more", argv[1]);
+    if (stat_file("more", arg, &st)) return;
+    const int fd = open_read("more", arg);
+    if (fd >= 0 && sink_redirected()) {                  /* redirected: as cat */
+        long n;
+        while ((n = fs_read(fd, g_page, SH_PAGE)) > 0) {
+            out_n(g_page, (u32)n);
+            if (interrupted()) { stopped(); break; }
+        }
+        if (n < 0) err_path("more", arg, (int)n);
+        fs_close(fd);
+        return;
+    }
     if (fd < 0) return;
     u32 rows = 0, col = 0, limit = 23;
     u64 shown = 0;
@@ -211,7 +233,7 @@ static void cmd_more(int argc, char **argv) {
             if (c == '\n') { rows++; col = 0; } else col++;
         }
     }
-    if (n < 0) err_path("more", argv[1], (int)n);
+    if (n < 0) err_path("more", arg, (int)n);
     fs_close(fd);
 }
 
@@ -237,10 +259,14 @@ static void cmd_head(int argc, char **argv) {
     const int first = lines_opt("head", argc, argv, &lines);
     if (first < 0) return;
     int shown = 0;
-    for (int i = first; i < argc && !g_stop; i++) {
-        const int fd = open_read("head", argv[i]);
+    const int many = argc - first > 1 || (g_globmask >> first);
+    struct ops o;
+    ops_start(&o, "head", argc, argv, first);
+    const char *a;
+    while ((a = ops_next(&o)) != 0) {
+        const int fd = open_read("head", a);
         if (fd < 0) continue;
-        header(argc - first > 1, &shown, argv[i]);
+        header(many, &shown, a);
         u64 seen = 0;
         long n = 0;
         while (seen < lines && (n = fs_read(fd, g_page, SH_PAGE)) > 0) {
@@ -249,7 +275,7 @@ static void cmd_head(int argc, char **argv) {
             out_n(g_page, (u32)k);
             if (interrupted()) { stopped(); break; }
         }
-        if (n < 0) err_path("head", argv[i], (int)n);
+        if (n < 0) err_path("head", a, (int)n);
         fs_close(fd);
     }
 }
@@ -261,12 +287,16 @@ static void cmd_tail(int argc, char **argv) {
     const int first = lines_opt("tail", argc, argv, &lines);
     if (first < 0) return;
     int shown = 0;
-    for (int i = first; i < argc && !g_stop; i++) {
+    const int many = argc - first > 1 || (g_globmask >> first);
+    struct ops o;
+    ops_start(&o, "tail", argc, argv, first);
+    const char *a;
+    while ((a = ops_next(&o)) != 0) {
         struct fs_stat st;
-        if (stat_file("tail", argv[i], &st)) continue;
+        if (stat_file("tail", a, &st)) continue;
         const int fd = fs_open(g_path1, FS_READ);
-        if (fd < 0) { err_path("tail", argv[i], fd); continue; }
-        header(argc - first > 1, &shown, argv[i]);
+        if (fd < 0) { err_path("tail", a, fd); continue; }
+        header(many, &shown, a);
         const u64 len = st.length;
         u64 start = len, seen = 0;
         g_loaded = ~0ull;
@@ -275,12 +305,12 @@ static void cmd_tail(int argc, char **argv) {
             start = 0;
             for (u64 at = len; at-- > 0;) {
                 if ((at + 1) % SH_PAGE == 0 && interrupted()) { stopped(); bad = 1; break; }   /* a page done */
-                if (load("tail", argv[i], fd, at / SH_PAGE)) { bad = 1; break; }
+                if (load("tail", a, fd, at / SH_PAGE)) { bad = 1; break; }
                 if (g_page[at % SH_PAGE] == '\n' && at != len - 1 && ++seen == lines) { start = at + 1; break; }
             }
         }
         for (u64 at = start; !bad && at < len;) {
-            if (load("tail", argv[i], fd, at / SH_PAGE)) break;
+            if (load("tail", a, fd, at / SH_PAGE)) break;
             const u32 off = (u32)(at % SH_PAGE);
             u32 n = SH_PAGE - off;
             if (n > len - at) n = (u32)(len - at);
@@ -296,8 +326,12 @@ static void cmd_tail(int argc, char **argv) {
 static void cmd_wc(int argc, char **argv) {
     if (argc < 2) { usage("wc"); return; }
     u64 tl = 0, tw = 0, tb = 0;
-    for (int i = 1; i < argc && !g_stop; i++) {
-        const int fd = open_read("wc", argv[i]);
+    u32 files = 0;
+    struct ops o;
+    ops_start(&o, "wc", argc, argv, 1);
+    const char *a;
+    while ((a = ops_next(&o)) != 0) {
+        const int fd = open_read("wc", a);
         if (fd < 0) continue;
         u64 l = 0, w = 0, b = 0;
         int in_word = 0;
@@ -313,13 +347,14 @@ static void cmd_wc(int argc, char **argv) {
             b += (u64)n;
             if (interrupted()) { stopped(); break; }
         }
-        if (n < 0) err_path("wc", argv[i], (int)n);
+        if (n < 0) err_path("wc", a, (int)n);
         fs_close(fd);
         if (g_stop) break;
-        pf("%8llu %8llu %8llu %s\n", l, w, b, argv[i]);
+        pf("%8llu %8llu %8llu %s\n", l, w, b, a);
         tl += l; tw += w; tb += b;
     }
-    if (argc > 2 && !g_stop) pf("%8llu %8llu %8llu total\n", tl, tw, tb);
+    files = o.count;
+    if (files > 1 && !g_stop) pf("%8llu %8llu %8llu total\n", tl, tw, tb);
 }
 
 /* ------------------------------------------------------------------ hexdump */
@@ -332,7 +367,8 @@ static void cmd_hexdump(int argc, char **argv) {
     u64 off = 0, count = ~0ull;
     if ((f & 1) && num_opt("hexdump", v[0], &off, 1)) return;
     if ((f & 2) && num_opt("hexdump", v[1], &count, 1)) return;
-    const char *arg = argv[i];
+    const char *arg = one_operand("hexdump", argc, argv, i);
+    if (!arg) return;
     struct fs_stat st;
     if (stat_file("hexdump", arg, &st)) return;
     const int fd = fs_open(g_path1, FS_READ);
@@ -368,14 +404,17 @@ static void cmd_hexdump(int argc, char **argv) {
 static void cmd_stat(int argc, char **argv) {
     if (argc < 2) { usage("stat"); return; }
     int shown = 0;
-    for (int i = 1; i < argc; i++) {
-        if (arg_path("stat", argv[i], g_path1)) continue;
+    struct ops o;
+    ops_start(&o, "stat", argc, argv, 1);
+    const char *a;
+    while ((a = ops_next(&o)) != 0) {
+        if (arg_path("stat", a, g_path1)) continue;
         struct fs_stat st;
         const int e = fs_stat(g_path1, &st);
-        if (e < 0) { err_path("stat", argv[i], e); continue; }
+        if (e < 0) { err_path("stat", a, e); continue; }
         if (shown) pf("\n");
         shown = 1;
-        pf("name: %s\n", argv[i]);
+        pf("name: %s\n", a);
         if (st.type == FS_T_DIR) pf("type: dir\n");
         else if (st.type == FS_T_FILE) pf("type: file\n");
         else pf("type: %u\n", st.type);
@@ -408,6 +447,7 @@ static void cmd_df(int argc, char **argv) {
 static void cmd_mkdir(int argc, char **argv) {
     if (argc < 2) { usage("mkdir"); return; }
     for (int i = 1; i < argc; i++) {
+        if (has_star(argv[i])) { epf("mkdir: %s: * in a new name\n", argv[i]); continue; }
         if (arg_path("mkdir", argv[i], g_path1)) continue;
         const int e = fs_mkdir(g_path1);
         if (e < 0) err_path("mkdir", argv[i], e);
@@ -416,15 +456,18 @@ static void cmd_mkdir(int argc, char **argv) {
 
 static void remove_as(const char *cmd, int dir, int argc, char **argv) {
     if (argc < 2) { usage(cmd); return; }
-    for (int i = 1; i < argc; i++) {
-        if (arg_path(cmd, argv[i], g_path1)) continue;
+    struct ops o;
+    ops_start(&o, cmd, argc, argv, 1);
+    const char *a;
+    while ((a = ops_next(&o)) != 0) {
+        if (arg_path(cmd, a, g_path1)) continue;
         struct fs_stat st;
         int e = fs_stat(g_path1, &st);
-        if (e < 0) { err_path(cmd, argv[i], e); continue; }
-        if (dir && st.type != FS_T_DIR) { err_path(cmd, argv[i], FS_ENOTDIR); continue; }
-        if (!dir && st.type == FS_T_DIR) { err_path(cmd, argv[i], FS_EISDIR); continue; }
+        if (e < 0) { err_path(cmd, a, e); continue; }
+        if (dir && st.type != FS_T_DIR) { err_path(cmd, a, FS_ENOTDIR); continue; }
+        if (!dir && st.type == FS_T_DIR) { err_path(cmd, a, FS_EISDIR); continue; }
         e = fs_remove(g_path1);
-        if (e < 0) err_path(cmd, argv[i], e);
+        if (e < 0) err_path(cmd, a, e);
     }
 }
 static void cmd_rmdir(int argc, char **argv) { remove_as("rmdir", 1, argc, argv); }

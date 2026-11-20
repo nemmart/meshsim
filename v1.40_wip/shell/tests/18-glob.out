@@ -1,0 +1,188 @@
+/> cd /pro*
+cd: /pro*: more than one match
+/> cd /proo*
+/proofs> pwd
+/proofs
+/proofs> cd p*
+/proofs/p1> pwd
+/proofs/p1
+/proofs/p1> ls *
+cycle0
+final
+
+logs:
+tile0.code
+tile0.log
+tile0.read
+tile0.write
+tile1.code
+tile1.log
+tile1.read
+tile1.write
+tile2.code
+tile2.log
+tile2.read
+tile2.write
+tile3.code
+tile3.log
+tile3.read
+tile3.write
+
+map
+start
+tracer
+/proofs/p1> ls -l logs/*.log
+----           64 logs/tile0.log
+----           64 logs/tile1.log
+----           98 logs/tile2.log
+----           64 logs/tile3.log
+/proofs/p1> cat logs/tile*.log
+tile 0: segment 1 starts
+tile 0: window 0 replayed
+tile 0: done
+tile 1: segment 1 starts
+tile 1: window 1 replayed
+tile 1: done
+tile 2: segment 1 starts
+tile 2: window 2 replayed
+tile 2: check failed at row 12345
+tile 2: done
+tile 3: segment 1 starts
+tile 3: window 3 replayed
+tile 3: done
+/proofs/p1> grep -c check logs/*.log
+logs/tile0.log:0
+logs/tile1.log:0
+logs/tile2.log:1
+logs/tile3.log:0
+/proofs/p1> grep -n "tile.*fail" logs/*.log
+logs/tile2.log:3:tile 2: check failed at row 12345
+/proofs/p1> wc logs/tile1.*
+     118      704    30000 logs/tile1.code
+       3       13       64 logs/tile1.log
+     153      916    39000 logs/tile1.read
+      12       71     3000 logs/tile1.write
+     286     1704    72064 total
+/proofs/p1> head -n 1 logs/*.log
+==> logs/tile0.log <==
+tile 0: segment 1 starts
+
+==> logs/tile1.log <==
+tile 1: segment 1 starts
+
+==> logs/tile2.log <==
+tile 2: segment 1 starts
+
+==> logs/tile3.log <==
+tile 3: segment 1 starts
+/proofs/p1> tail -n 1 logs/*3.log
+==> logs/tile3.log <==
+tile 3: done
+/proofs/p1> stat f*
+name: final
+type: file
+length: 8388608
+pages: 5
+depth: 2
+flags: frozen sparse cow
+copies: 0
+/proofs/p1> hexdump -n 16 c*
+00000000  44 42 0f 00 00 00 00 00  45 42 0f 00 00 00 00 00  |DB......EB......|
+00000010
+/proofs/p1> hexdump -n 16 *
+hexdump: *: more than one match
+/proofs/p1> more logs/tile0.l*
+tile 0: segment 1 starts
+tile 0: window 0 replayed
+tile 0: done
+/proofs/p1> more logs/*
+more: logs/*: more than one match
+/proofs/p1> cat logs/*.foo /nothing/*
+cat: logs/*.foo: no match
+cat: /nothing/*: no such file or directory
+/proofs/p1> cat "logs/*.log"
+cat: logs/*.log: no such file or directory
+/proofs/p1> cat lo*/tile0.log
+cat: lo*/tile0.log: * in a directory name
+/proofs/p1> mkdir /x*
+mkdir: /x*: * in a new name
+/proofs/p1> echo hi > /f*
+sh: /f*: * in a new name
+/proofs/p1> cat > "/q*"
+sh: /q*: * in a new name
+/proofs/p1> echo * "*" a*b
+* * a*b
+/proofs/p1> ls /many/*
+/many/f00
+/many/f01
+/many/f02
+/many/f03
+/many/f05
+/many/f07
+/many/f09
+/many/f11
+/many/f12
+/many/f14
+/many/f16
+/many/f18
+/many/f20
+/many/f22
+/many/f24
+/many/f25
+/many/f28
+/many/f31
+/many/f33
+/many/f36
+/many/f38
+/many/f39
+/proofs/p1> ls /many/*1*
+/many/f01
+/many/f11
+/many/f12
+/many/f14
+/many/f16
+/many/f18
+/many/f31
+/proofs/p1> ls /many/f3* /many/f0*
+/many/f31
+/many/f33
+/many/f36
+/many/f38
+/many/f39
+/many/f00
+/many/f01
+/many/f02
+/many/f03
+/many/f05
+/many/f07
+/many/f09
+/proofs/p1> cat /many/*9 /many/f1?
+9
+39
+cat: /many/f1?: no such file or directory
+/proofs/p1> cat /many/*
+0
+^C
+/proofs/p1> rm logs/*.read
+/proofs/p1> ls logs
+tile0.code
+tile0.log
+tile0.write
+tile1.code
+tile1.log
+tile1.write
+tile2.code
+tile2.log
+tile2.write
+tile3.code
+tile3.log
+tile3.write
+/proofs/p1> rmdir /e* /many
+rmdir: /many: directory not empty
+/proofs/p1> ls /
+many/
+programs/
+proofs/
+/proofs/p1> rm /many/*
+/proofs/p1> ls /many
+/proofs/p1> 

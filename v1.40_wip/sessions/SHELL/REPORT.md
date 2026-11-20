@@ -8,20 +8,20 @@
   the file system through the API (`.seed`, extended); no recovery mode, for now; `ls` sorts in byte order (names
   that should sort by number are written zero-padded); `ls -l` and `stat` show COW; the code in `v1.40_wip/shell/`.
 - **The shell,** SHELL-SPEC sections 2 to 11 against `v1.40_wip/fs/fs.h`, in freestanding C99: the line editor,
-  quoting and redirection, paths, all seventeen commands (and `cat` from the console, owner 2026-11-20), the matcher, the formatter, our own division. It makes only
+  quoting and redirection, paths, all seventeen commands (and `cat` from the console and `*` in file names, owner 2026-11-20), the matcher, the formatter, our own division. It makes only
   FS-API 5.2's calls; on the host it runs as `Caller::SHELL`, so any other call would stop the emulation.
 - **The host build on the emulation:** `../fs/` compiled into `build/`, unchanged. Each test's file system is made
   through the API by `host/seed.cpp`: streamed files as a compute tile writes them, COW files, copies and stored
   programs as the master tile makes them with the Updater's stand-in, a proof's working directory as a failed proof
   leaves it, files left open, a soft reset.
-- **The tests:** 17 scripted sessions (`make test`), passing with GCC and clang, covering section 12's list (but the
+- **The tests:** 18 scripted sessions (`make test`), passing with GCC and clang, covering section 12's list (but the
   recovery prompt), and a proof's working directory after a mount (448 logs, sorted, written with every tile's log
   open), the rules for files open elsewhere, frozen and COW files and the Tracer's copy, Ctrl-C, and running out of
   space against FS-API 5.2's rule. The division helpers
   against the host's division (2.46 million checks), and the matcher against Pike's recursive one (a million cases).
   After every session the harness checks that the shell closed every file, and the emulation's invariants.
 - **The RV32 build and the sizes:** links with both compilers, with and without C, with no undefined symbol; the
-  division helpers linked are `div.o`'s. Code 11.4 to 17.8 KB of the 32 KB budget (11.4 KB with GCC and C, which the owner allows); data 13.8 KB; the deepest stack
+  division helpers linked are `div.o`'s. Code 12.8 to 19.8 KB of SHELL-SPEC's 32 KB (12.8 KB with GCC and C, which the owner allows); the shell goes into a boot ROM of about 16 KB, sizing later (owner); data 16.5 KB; the deepest stack
   chain about 0.7 KB (`NOTES.md` 3b).
 - **Eleven findings for the API** (`NOTES.md` section 3), for the owner's review; 8 and 9 closed by the owner.
 

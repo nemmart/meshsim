@@ -71,6 +71,18 @@ Sections 3 (build constraints, `div.c`, the budget), 4 (console), 6 (line editor
    SHELL-SPEC sections 6, 9 and 12 updated at the owner's request (`fs_wip/` is otherwise a source, not edited).
    Test 17.
 
+8. **`*` in file names** (owner, 2026-11-20; `glob.c`): an unquoted `*` in a file argument's last name matches any
+   run of bytes. The matches are given one at a time to the command, sorted in byte order, each as the directory
+   part as typed and the name; nothing is expanded at the parse, so a pattern has no limit on its matches (a batch
+   of 16 names a pass over the directory). `ls`, `cat`, `head`, `tail`, `grep` (its files, not its pattern), `wc`,
+   `stat`, `rm`, `rmdir` take patterns; `cd`, `more`, `hexdump` too, matching exactly one. `echo` does not expand. †:
+   a quoted `"*"` is literal, but a token with any unquoted `*` is a pattern throughout; a `*` in a directory part is
+   an error (`* in a directory name`), and so is any `*` in a name to be made, `mkdir` or a redirection (`* in a new
+   name`); a pattern with no match is `no match`, one with several where one is wanted `more than one match`; a
+   pattern makes `head`, `tail`, `grep` and `ls` show their names as for several files, even for one match; `wc`
+   prints its total for two arguments given or more. `ls` puts a blank line after a directory's listing too. Test 18.
+   SHELL-SPEC is not yet updated for it (where the v1.40 shell spec lives is open).
+
 ### 1.5 Tests beyond section 12
 
 - A proof's working directory (`proof` seed): `ls` and `ls -l` of it and of `logs/` (about 450 entries, sorted);
@@ -180,8 +192,22 @@ The findings are collected here for the owner's review at the end, not settled o
 
 ## 3b. The sizes (`make size`, 2026-11-20, with `cat` from the console)
 
-**The shell may use compressed instructions** (owner, 2026-11-20): RV32IC + Zmmul, 11.4 KB (GCC) or 12.8 KB (clang)
-of code. The Makefile still builds without C unless `C=1` †.
+**The shell may use compressed instructions** (owner, 2026-11-20). The Makefile still builds without C unless
+`C=1` †. **The shell goes into a boot ROM; about 16 KB is the target, not a hard limit** (owner, 2026-11-20), for
+the whole image (the UART driver and the `fs.h` client too, the startup code copying `.data`); sizing comes later
+(owner). `make size` still checks the 32 KB of SHELL-SPEC section 3.
+
+With `*` (2026-11-20):
+
+| build | `.text` | `.rodata` | code | `.data` | `.bss` |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| GCC 13.2, RV32I + Zmmul | 16,436 | 1,940 | 18,376 | 12 | 16,464 |
+| GCC 13.2, RV32IC + Zmmul (`C=1`) | 10,896 | 1,940 | 12,836 | 12 | 16,464 |
+| clang 18, RV32I + Zmmul | 18,072 | 1,716 | 19,788 | 12 | 16,468 |
+| clang 18, RV32IC + Zmmul (`C=1`) | 12,558 | 1,716 | 14,274 | 12 | 16,468 |
+
+`*` costs 1.4 KB of code (GCC, C) and 2.6 KB of `.bss` (the batch, 1.5 KB; the argument given, 1 KB). Before it,
+with `cat` from the console:
 
 Code is `.text` + `.rodata`, budget 32,768 bytes. The data: `.bss` 13.5 KB (the line, the cwd, two path scratches,
 the page buffer, the redirect buffer, grep's line, the matcher's 256 bytes), `.data` 4 to 8 bytes.

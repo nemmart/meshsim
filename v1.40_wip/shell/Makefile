@@ -33,7 +33,7 @@ endif
 ARCH   = $(if $(filter 1,$(C)),rv32ic_zmmul,rv32i_zmmul)
 B      = build/$(CC)
 RB     = $(B)/$(ARCH)
-SRC    = shell.c cmds.c fmt.c str.c div.c grep.c
+SRC    = shell.c cmds.c fmt.c str.c div.c grep.c glob.c
 HDRS   = shell.h console.h ../fs/fs.h
 BUDGET = 32768
 

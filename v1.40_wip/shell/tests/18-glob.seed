@@ -1,0 +1,73 @@
+dir /programs
+program /programs/fib 2048 0,1,2,3,1030
+dir /proofs
+proof /proofs/p1 /programs/fib 4
+dir /many
+dir /e1
+dir /e2
+file /many/f07
+7
+.
+file /many/f03
+3
+.
+file /many/f39
+39
+.
+file /many/f12
+12
+.
+file /many/f00
+0
+.
+file /many/f25
+25
+.
+file /many/f18
+18
+.
+file /many/f31
+31
+.
+file /many/f05
+5
+.
+file /many/f22
+22
+.
+file /many/f14
+14
+.
+file /many/f09
+9
+.
+file /many/f36
+36
+.
+file /many/f01
+1
+.
+file /many/f28
+28
+.
+file /many/f20
+20
+.
+file /many/f11
+11
+.
+file /many/f33
+33
+.
+file /many/f02
+2
+.
+file /many/f16
+16
+.
+file /many/f38
+38
+.
+file /many/f24
+24
+.

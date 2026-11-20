@@ -1,0 +1,36 @@
+cd /pro*\r
+cd /proo*\r
+pwd\r
+cd p*\r
+pwd\r
+ls *\r
+ls -l logs/*.log\r
+cat logs/tile*.log\r
+grep -c check logs/*.log\r
+grep -n "tile.*fail" logs/*.log\r
+wc logs/tile1.*\r
+head -n 1 logs/*.log\r
+tail -n 1 logs/*3.log\r
+stat f*\r
+hexdump -n 16 c*\r
+hexdump -n 16 *\r
+more logs/tile0.l*\r
+more logs/*\r
+cat logs/*.foo /nothing/*\r
+cat "logs/*.log"\r
+cat lo*/tile0.log\r
+mkdir /x*\r
+echo hi > /f*\r
+cat > "/q*"\r
+echo * "*" a*b\r
+ls /many/*\r
+ls /many/*1*\r
+ls /many/f3* /many/f0*\r
+cat /many/*9 /many/f1?\r
+cat /many/*\r\x03
+rm logs/*.read\r
+ls logs\r
+rmdir /e* /many\r
+ls /\r
+rm /many/*\r
+ls /many\r

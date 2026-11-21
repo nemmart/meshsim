@@ -545,4 +545,4 @@ tile 0: window 0 replayed
 # shell> df
 [shell] fs_df() = 0: 16384 total, 16179 free
 #   pages: 16384 total, 205 used, 16179 free
-# stats: 258 pages taken, 2 freed, 0 discards (0 while tracing); LPDDR 1 page writes, 15 half writes, 48 page reads, 20 half reads; the cache 1119 hits, 20 misses; 454 reads by the fd's hint
+# stats: 512 pages taken, 2 freed, 0 discards (0 while tracing); LPDDR 1 page writes, 15 half writes, 48 page reads, 20 half reads; the cache 1076 hits, 20 misses; 454 reads by the fd's hint; look-ups 121 hash compares, 78 entries from the SRAM; 1 page requests

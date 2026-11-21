@@ -1,41 +1,51 @@
 # --- storing /programs/fib
 [master] fs_mkdir("/programs") = 0
 [master] fs_reserve_pages(15) = 0 (the batch: 256 pages, 0 discarded preparing it)
-[master] cow_create("/programs/fib.pages", 2048) = 0: root 0x4020, depth 2
+[master] cow_create("/programs/fib.pages", 2048) = 0: root 0x6000, depth 2
+[master] fs_open("/programs/fib.pages", 0x10) = 0
 [master] fs_acquire_pages(9) = 9 (0 discarded refilling)
-# Updater run (the program image, empty): root 1, depth 2, tracer_copy 0, IMAGE_ROOT 0x4020, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 3591 words, PAGE_COUNT 9
+# Updater run (the program image, empty): root 1, depth 2, tracer_copy 0, IMAGE_ROOT 0x6000, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 3591 words, PAGE_COUNT 9
 [master] cow_commit("/programs/fib.pages") = 0
 [master] cow_freeze("/programs/fib.pages") = 0
-[master] cow_create("/programs/fib.map", 4) = 0: root 0x4180, depth 1
+[master] fs_close(0) = 0
+[master] cow_create("/programs/fib.map", 4) = 0: root 0x6140, depth 1
+[master] fs_open("/programs/fib.map", 0x10) = 0
 [master] fs_acquire_pages(4) = 4 (0 discarded refilling)
-# Updater run (the base table, empty): root 1, depth 1, tracer_copy 0, IMAGE_ROOT 0x4180, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 2052 words, PAGE_COUNT 4
+# Updater run (the base table, empty): root 1, depth 1, tracer_copy 0, IMAGE_ROOT 0x6140, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 2052 words, PAGE_COUNT 4
 [master] cow_commit("/programs/fib.map") = 0
 [master] cow_freeze("/programs/fib.map") = 0
+[master] fs_close(0) = 0
 [master] fs_unreserve() = 0, 0 pages not drawn
 # --- storing /programs/sha
 [master] fs_mkdir("/programs") = -2
 [master] fs_reserve_pages(11) = 0 (the batch: 256 pages, 0 discarded preparing it)
-[master] cow_create("/programs/sha.pages", 512) = 0: root 0x4220, depth 1
+[master] cow_create("/programs/sha.pages", 512) = 0: root 0x61e0, depth 1
+[master] fs_open("/programs/sha.pages", 0x10) = 0
 [master] fs_acquire_pages(7) = 7 (0 discarded refilling)
-# Updater run (the program image, empty): root 1, depth 1, tracer_copy 0, IMAGE_ROOT 0x4220, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 3591 words, PAGE_COUNT 7
+# Updater run (the program image, empty): root 1, depth 1, tracer_copy 0, IMAGE_ROOT 0x61e0, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 3591 words, PAGE_COUNT 7
 [master] cow_commit("/programs/sha.pages") = 0
 [master] cow_freeze("/programs/sha.pages") = 0
-[master] cow_create("/programs/sha.map", 2) = 0: root 0x4320, depth 1
+[master] fs_close(0) = 0
+[master] cow_create("/programs/sha.map", 2) = 0: root 0x62e0, depth 1
+[master] fs_open("/programs/sha.map", 0x10) = 0
 [master] fs_acquire_pages(2) = 2 (0 discarded refilling)
-# Updater run (the base table, empty): root 1, depth 1, tracer_copy 0, IMAGE_ROOT 0x4320, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 1026 words, PAGE_COUNT 2
+# Updater run (the base table, empty): root 1, depth 1, tracer_copy 0, IMAGE_ROOT 0x62e0, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 1026 words, PAGE_COUNT 2
 [master] cow_commit("/programs/sha.map") = 0
 [master] cow_freeze("/programs/sha.map") = 0
+[master] fs_close(0) = 0
 [master] fs_unreserve() = 0, 0 pages not drawn
 [master] fs_open("/programs/fib.pages", 0x2) = -6
 [master] fs_reserve_pages(4) = 0 (the batch: 256 pages, 0 discarded preparing it)
-[master] cow_create("/programs/tmp", 10) = 0: root 0x4380, depth 1
+[master] cow_create("/programs/tmp", 10) = 0: root 0x6340, depth 1
 # not yet committed: its entry's root is 0
 [master] cow_freeze("/programs/tmp") = -7
-[master] cow_root("/programs/tmp") = -7
+[master] fs_open("/programs/tmp", 0x10) = 0
+[master] cow_root(0) = -7
+[master] fs_close(0) = 0
 [master] cow_copy("/programs/tmp", "/programs/tmp2") = -10
 [master] fs_open("/programs/tmp", 0x1) = -7
 [master] fs_stat("/programs/tmp") = 0: length 40960, 0 pages, depth 1, 0 copies
 [master] fs_remove("/programs/tmp") = 0, 1 pages freed, may be cached
 [master] fs_unreserve() = 0, 3 pages not drawn
 [master] fs_stat("/programs/fib.pages") = 0: length 8388608, 10 pages, depth 2, 0 copies
-# stats: 540 pages taken, 1 freed, 0 discards (0 while tracing); LPDDR 2 page writes, 22 half writes, 15 page reads, 2 half reads; the cache 401 hits, 2 misses; 0 reads by the fd's hint
+# stats: 794 pages taken, 1 freed, 0 discards (0 while tracing); LPDDR 2 page writes, 22 half writes, 15 page reads, 2 half reads; the cache 412 hits, 2 misses; 0 reads by the fd's hint; look-ups 98 hash compares, 78 entries from the SRAM; 1 page requests

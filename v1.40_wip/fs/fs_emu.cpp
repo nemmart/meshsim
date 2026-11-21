@@ -9,6 +9,7 @@
 #include "fs_emu.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdarg>
 #include <cstdlib>
 #include <cstring>
@@ -49,7 +50,11 @@ struct Buf { uint32_t half = NONE; bool used = false; uint8_t data[HALF_BYTES]; 
 std::vector<Buf> g_buf;
 std::unordered_map<uint32_t, int> g_hash;   // a half's unit address -> its buffer
 int g_hand = 0;
-void cache_reset() { g_buf.assign(CACHE_BUFFERS, Buf{}); g_hash.clear(); g_hand = 0; }
+// For each cached half of a directory, its 16 names' 16-bit hashes, in the core's data memory (FS-DATA-PATH 6): a
+// look-up compares hashes and reads an entry from the SRAM only on a match. 0: a free slot. Dropped with the half, or
+// when the half changes.
+std::unordered_map<uint32_t, std::array<uint16_t, 16>> g_names;
+void cache_reset() { g_buf.assign(CACHE_BUFFERS, Buf{}); g_hash.clear(); g_hand = 0; g_names.clear(); }
 int half_index(uint32_t half) {
     auto it = g_hash.find(half);
     if (it != g_hash.end()) { g_stats.cache_hits++; g_buf[size_t(it->second)].used = true; return it->second; }
@@ -59,7 +64,7 @@ int half_index(uint32_t half) {
         Buf& b = g_buf[size_t(i)];
         g_hand = (g_hand + 1) % CACHE_BUFFERS;
         if (b.used) { b.used = false; continue; }
-        if (b.half != NONE) g_hash.erase(b.half);                    // clean: written through
+        if (b.half != NONE) { g_hash.erase(b.half); g_names.erase(b.half); }   // clean: written through
         b.half = half; b.used = true;
         lp_half_read(half, b.data);
         g_hash[half] = i;
@@ -71,6 +76,7 @@ void cache_drop_page(uint32_t page_unit) {
     for (uint32_t h = page_unit; h < page_unit + PAGE_UNITS; h += HALF_UNITS) {
         auto it = g_hash.find(h);
         if (it != g_hash.end()) { g_buf[size_t(it->second)].half = NONE; g_hash.erase(it); }
+        g_names.erase(h);
     }
 }
 void cache_update(uint32_t half, const uint8_t* src) {              // a half written past the cache: its copy too
@@ -90,6 +96,7 @@ void line_read(uint32_t unit, uint8_t* dst) {
 }
 void line_write(uint32_t unit, const uint8_t* src) {
     const uint32_t half = unit & ~(HALF_UNITS - 1);
+    g_names.erase(half);                                             // rebuilt at its next look-up
     Buf& b = half_get(half);
     std::memcpy(b.data + (unit & (HALF_UNITS - 1)) * LINE_BYTES, src, LINE_BYTES);
     lp_half_write(half, b.data);
@@ -113,16 +120,16 @@ uint8_t g_fdtab[MAX_FDS * FD_BYTES];
 // word 0: [19:0] root's page number (0: none); [21:20] depth; [31:22] the buffer: a writer's, or the cache buffer
 //         holding a reader's current half, a hint checked against the buffer's tag (1023: none) (FS-API 4.6)
 // word 1: length (bytes; pages for a COW file)
-// word 2: [24:0] the entry's address in units; [27:25] mode; [28] COW; [29] in use; [31:30] 0
+// word 2: [24:0] the entry's address in units; [27:25] mode; [28] COW; [29] in use; [30] held (FS_ROOT); [31] 0
 // word 3: a reader's position, its low 11 bits the offset into its half's buffer; a writer's: 0
 struct Fd {
-    uint32_t root_pg, depth, mode, cow, inuse, slot, length, entry, pos;
+    uint32_t root_pg, depth, mode, cow, inuse, slot, length, entry, pos, hold = 0;
 };
 Fd fd_get(int fd) {
     const uint8_t* e = g_fdtab + fd * FD_BYTES;
     const uint32_t w0 = get32(e), w2 = get32(e + 8);
     return Fd{w0 & 0xFFFFFu, (w0 >> 20) & 3u, (w2 >> 25) & 7u, (w2 >> 28) & 1u, (w2 >> 29) & 1u, w0 >> 22,
-              get32(e + 4), w2 & 0x1FFFFFFu, get32(e + 12)};
+              get32(e + 4), w2 & 0x1FFFFFFu, get32(e + 12), (w2 >> 30) & 1u};
 }
 void fd_put(int fd, const Fd& f) {
     uint8_t* e = g_fdtab + fd * FD_BYTES;
@@ -130,7 +137,7 @@ void fd_put(int fd, const Fd& f) {
     if (f.entry > 0x1FFFFFFu || f.slot > 1023) fatal("an fd field out of range");
     put32(e, f.root_pg | f.depth << 20 | f.slot << 22);
     put32(e + 4, f.length);
-    put32(e + 8, f.entry | f.mode << 25 | f.cow << 28 | f.inuse << 29);
+    put32(e + 8, f.entry | f.mode << 25 | f.cow << 28 | f.inuse << 29 | f.hold << 30);
     put32(e + 12, (f.mode & (FS_APPEND | FS_WRITE)) ? 0u : f.pos);
 }
 uint32_t root_unit(uint32_t root_pg) { return root_pg ? root_pg * PAGE_UNITS : NONE; }
@@ -195,6 +202,9 @@ void logf(const char* fmt, ...) {
     std::fprintf(stderr, "fs_emu: UB, by %s: %s\n", who(), b);
     if (g_log) { std::fprintf(g_log, "UB, by %s: %s\n", who(), b); std::fflush(g_log); }
     std::exit(2);
+}
+void master_only_or_tracer(const char* call) {
+    if (g_caller != Caller::MASTER && g_caller != Caller::TRACER) fatal("%s is the master tile's and the tracer tile's alone (FS-API 5.3)", call);
 }
 void master_only(const char* call) {
     if (g_caller != Caller::MASTER) fatal("%s is the master tile's alone (FS-API 5.1, 5.3, 5.4, 6)", call);
@@ -276,18 +286,25 @@ uint32_t upd_one() {
 }
 // The file system's own page (a directory's, a streamed file's): a free page not in the "may be cached" map if there
 // is one, so that nothing is discarded while the Tracer runs; else any free page, discarded. NONE if none.
+// The memory tile's stash (FS-DATA-PATH 7): 256 page addresses in its data memory. When it is empty, one request to
+// the tracer tile brings its pool's prepared batch whole; the tracer tile prepares the next in the background.
+std::vector<uint32_t> g_stash;
 uint32_t alloc_own() {
-    Pool& F = g_pool[OWN];
-    if (F.batch.empty()) refill(OWN);
-    if (F.batch.empty()) {                                           // the Updater's batch beyond what it holds
-        Pool& U = g_pool[UPD];
-        if (U.batch.size() <= U.held) return NONE;
-        F.batch.push_back(U.batch.back());
-        U.batch.pop_back();
+    if (g_stash.empty()) {
+        Pool& F = g_pool[OWN];
+        g_stats.page_requests++;
+        if (F.batch.empty()) refill(OWN);
+        g_stash.swap(F.batch);                                      // the batch, copied whole
+        refill(OWN);                                                // the next, in the background
+        if (g_stash.empty()) {                                      // the Updater's batch beyond what it holds
+            Pool& U = g_pool[UPD];
+            if (U.batch.size() <= U.held) return NONE;
+            g_stash.push_back(U.batch.back());
+            U.batch.pop_back();
+        }
     }
-    const uint32_t a = F.batch.back();
-    F.batch.pop_back();
-    refill(OWN);                                                     // in the background, on the tracer tile
+    const uint32_t a = g_stash.back();
+    g_stash.pop_back();
     return a;
 }
 
@@ -445,7 +462,18 @@ void ent_encode(const Ent& e, uint8_t* b) {
     put32(b + 112, e.count); put32(b + 116, e.source); put32(b + 120, e.flags); put32(b + 124, e.pending);
 }
 Ent ent_read(uint32_t a) { uint8_t b[LINE_BYTES]; line_read(a, b); return ent_decode(b); }
-void ent_write(uint32_t a, const Ent& e) { uint8_t b[LINE_BYTES]; ent_encode(e, b); line_write(a, b); }
+uint16_t name_hash(const char* n);
+// An entry written: its half's hash vector, if it has one, keeps its 16 hashes with this one changed (FS-DATA-PATH 6).
+void ent_write(uint32_t a, const Ent& e) {
+    uint8_t b[LINE_BYTES]; ent_encode(e, b);
+    const uint32_t half = a & ~(HALF_UNITS - 1);
+    auto it = g_names.find(half);
+    const bool had = it != g_names.end();
+    std::array<uint16_t, 16> v{};
+    if (had) v = it->second;
+    line_write(a, b);                                               // drops the vector
+    if (had) { v[a & (HALF_UNITS - 1)] = e.type == T_FREE ? 0 : name_hash(e.name); g_names[half] = v; }
+}
 Ent ent_new(const char* name, uint32_t type) {
     Ent e; std::memset(&e, 0, sizeof e);
     std::strncpy(e.name, name, 95);
@@ -486,11 +514,32 @@ int split(const char* path, std::vector<std::string>& parts, bool* absolute) {
     return parts.size() > 10 ? FS_ENAMETOOLONG : 0;
 }
 // The entry named name in directory d: its address, or NONE.
+uint16_t name_hash(const char* n) {                                // FNV-1a, folded to 16 bits; never 0
+    uint32_t h = 2166136261u;
+    for (; *n; n++) h = (h ^ uint8_t(*n)) * 16777619u;
+    const uint16_t v = uint16_t(h ^ (h >> 16));
+    return v ? v : 1;
+}
 uint32_t dir_find(const Ent& d, const std::string& name) {
+    const uint16_t want = name_hash(name.c_str());
     for (uint32_t i = 0;; i++) {
         const uint32_t a = dir_slot(d, i);
         if (a == NONE) return NONE;
-        const Ent e = ent_read(a);
+        const uint32_t half = a & ~(HALF_UNITS - 1);
+        auto it = g_names.find(half);
+        if (it == g_names.end()) {                                  // the half's hashes, built once: 16 SRAM reads
+            std::array<uint16_t, 16> v{};
+            for (uint32_t k = 0; k < 16; k++) {
+                const Ent e = ent_read(half + k);
+                g_stats.dir_entry_reads++;
+                v[k] = e.type == T_FREE ? 0 : name_hash(e.name);
+            }
+            it = g_names.emplace(half, v).first;
+        }
+        g_stats.name_hash_compares++;
+        if (it->second[a & (HALF_UNITS - 1)] != want) continue;
+        const Ent e = ent_read(a);                                  // a match: the name itself, from the SRAM
+        g_stats.dir_entry_reads++;
         if (e.type != T_FREE && name == e.name) return a;
     }
 }
@@ -561,7 +610,7 @@ void dir_drop(uint32_t parent, uint32_t a) {
 int fd_find_entry(uint32_t entry, bool writers_only) {
     for (int fd = 0; fd < MAX_FDS; fd++) {
         const Fd f = fd_get(fd);
-        if (f.inuse && f.entry == entry && (!writers_only || (f.mode & (FS_APPEND | FS_WRITE)))) return fd;
+        if (f.inuse && f.entry == entry && (!writers_only || (f.mode & (FS_APPEND | FS_WRITE)) || f.hold)) return fd;
     }
     return -1;
 }
@@ -633,6 +682,7 @@ void power_on(uint32_t pages, bool hard) {
     std::memset(g_fdtab, 0, sizeof g_fdtab);
     for (Slot& s : g_slots) { s.used = false; forget_lines(s); }
     for (Pool& P : g_pool) { P.batch.clear(); P.reserved = false; P.held = 0; }
+    g_stash.clear();
     g_batch_size = std::min<uint32_t>(256, g_pages / 16);           // 256 on the chip
     cache_reset();
     g_shutdown = false; g_cursor = 1;
@@ -677,7 +727,7 @@ void power_on(uint32_t pages, bool hard) {
 void check() {
     for (int fd = 0; fd < MAX_FDS; fd++) {
         const Fd f = fd_get(fd);
-        if (f.inuse && (f.mode & (FS_APPEND | FS_WRITE))) fatal("check() with fd %d open for writing", fd);
+        if (f.inuse && ((f.mode & (FS_APPEND | FS_WRITE)) || f.hold)) fatal("check() with fd %d open for writing or held", fd);
     }
     std::vector<uint8_t> seen(g_pages, 0);
     seen[0] = 1;
@@ -719,6 +769,7 @@ void check() {
     parents(ROOT_ENTRY, ROOT_ENTRY);
     for (int t = 0; t < MAX_TILES; t++)
         if (ent_read(g_cwd[t]).type != T_DIR) fatal("check: tile %d's working directory is not a directory", t);
+    for (uint32_t u : g_stash) { if (seen[pgno(u)]) fatal("check: a stashed page in a file"); seen[pgno(u)] = 1; }
     for (const Pool& P : g_pool)
         for (uint32_t u : P.batch) { if (seen[pgno(u)]) fatal("check: a batch's page in a file"); seen[pgno(u)] = 1; }
     for (uint32_t p = 0; p < g_pages; p++) {
@@ -801,10 +852,13 @@ int fs_unreserve(void) {
 // ---- streamed files (5.2)
 int fs_open(const char* path, u32 flags) {
     LIVE();
-    const bool writes = flags & (FS_APPEND | FS_WRITE);
-    if (!flags || (flags & ~15u) || ((flags & FS_READ) && writes) || ((flags & FS_TRUNC) && !(flags & FS_APPEND))) {
+    const bool writes = flags & (FS_APPEND | FS_WRITE), hold = flags & FS_ROOT;
+    if (!flags || (flags & ~31u) || ((flags & FS_READ) && writes) || ((flags & FS_TRUNC) && !(flags & FS_APPEND)) ||
+        (hold && flags != FS_ROOT)) {
         logf("fs_open(\"%s\", 0x%x) = FS_EINVAL", path, flags); return FS_EINVAL;
     }
+    if (hold && g_caller != Caller::MASTER && g_caller != Caller::TRACER)
+        fatal("fs_open with FS_ROOT is the master tile's and the tracer tile's alone (FS-API 5.3)");
     uint32_t a, parent; std::string last;
     int r = resolve(path, &a, &parent, &last);
     if (r == 0 && a == NONE && !writes) r = FS_ENOENT;
@@ -816,6 +870,10 @@ int fs_open(const char* path, u32 flags) {
     if (r == 0) {
         e = ent_read(a);
         if (e.type == T_DIR) r = FS_EISDIR;
+        else if (hold) {                                            // one owner: nothing else open (FS-API 5.3)
+            if (!(e.flags & E_COW)) r = FS_EINVAL;
+            else if (fd_find_entry(a, false) >= 0) r = FS_EBUSY;
+        }
         else if (writes && (e.flags & (E_COW | E_FROZEN))) r = FS_EROFS;
         else if (!writes && (e.flags & E_COW) && !(e.flags & E_FROZEN)) r = FS_EBUSY;   // the Tracer's copy (2.4)
         else if (fd_find_entry(a, true) >= 0 || (writes && fd_find_entry(a, false) >= 0)) r = FS_EBUSY;
@@ -837,7 +895,7 @@ int fs_open(const char* path, u32 flags) {
         ent_write(a, e);
     }
     Fd f{};
-    f.root_pg = e.root == NONE ? 0 : pgno(e.root); f.depth = e.depth(); f.mode = flags & 7u;
+    f.root_pg = e.root == NONE ? 0 : pgno(e.root); f.depth = e.depth(); f.mode = flags & 7u; f.hold = hold ? 1u : 0u;
     f.cow = (e.flags & E_COW) ? 1 : 0; f.inuse = 1; f.slot = writes ? u32(slot) : 1023u;
     f.length = f.cow ? u32(e.length / PAGE_BYTES) : u32(e.length);
     f.entry = a; f.pos = 0;
@@ -979,6 +1037,55 @@ int fs_mkdir(const char* path) {
     logf("fs_mkdir(\"%s\") = %d", path, r);
     return r;
 }
+int fs_remove_directory(const char* path) {
+    LIVE();
+    uint32_t a, parent;
+    int r = resolve(path, &a, &parent);
+    if (r == 0 && a == NONE) r = FS_ENOENT;
+    Ent d{};
+    if (r == 0 && (d = ent_read(a)).type != T_DIR) r = FS_ENOTDIR;
+    if (r == 0 && a == ROOT_ENTRY) r = FS_EBUSY;
+    for (int t = 0; r == 0 && t < MAX_TILES; t++) if (g_cwd[t] == a) r = FS_EBUSY;   // a working directory
+    std::vector<uint32_t> files;
+    for (uint32_t i = 0; r == 0; i++) {
+        const uint32_t s2 = dir_slot(d, i);
+        if (s2 == NONE) break;
+        const Ent c = ent_read(s2);
+        if (c.type == T_FREE) continue;
+        if (c.type == T_DIR) r = FS_ENOTEMPTY;                      // no subdirectory
+        else if (fd_find_entry(s2, false) >= 0) r = FS_EBUSY;      // nothing open, FS_ROOT included
+        else files.push_back(s2);
+    }
+    std::unordered_map<uint32_t, uint32_t> left, inside;          // copies not yet removed; copies inside
+    if (r == 0) {
+        for (uint32_t f : files) left[f] = ent_read(f).count;
+        for (uint32_t f : files) { const uint32_t src = ent_read(f).source; if (src != NONE && left.count(src)) inside[src]++; }
+        for (uint32_t f : files) if (left[f] != inside[f]) r = FS_EBUSY;   // a copy outside the directory
+    }
+    if (r) { logf("fs_remove_directory(\"%s\") = %d", path, r); return r; }
+    const uint64_t f0 = g_stats.pages_freed, w0 = g_stats.lpddr_half_writes;
+    std::vector<bool> gone(files.size(), false);
+    for (size_t done = 0; done < files.size();) {                   // leaves first; no entry inside is written
+        size_t before = done;
+        for (size_t k = 0; k < files.size(); k++) {
+            if (gone[k] || left[files[k]]) continue;
+            const Ent e = ent_read(files[k]);
+            free_tree(e);
+            if (e.pending) free_page(pgno(e.pending), false);
+            if (e.source != NONE) {
+                if (left.count(e.source)) left[e.source]--;
+                else { Ent s3 = ent_read(e.source); s3.count--; ent_write(e.source, s3); }   // a source outside
+            }
+            gone[k] = true; done++;
+        }
+        if (done == before) fatal("fs_remove_directory: copies in a cycle");
+    }
+    free_tree(d);
+    dir_drop(parent, a);
+    logf("fs_remove_directory(\"%s\") = 0: %zu files, %llu pages freed, %llu half writes", path, files.size(),
+         (unsigned long long)(g_stats.pages_freed - f0), (unsigned long long)(g_stats.lpddr_half_writes - w0));
+    return 0;
+}
 int fs_remove(const char* path) {
     LIVE();
     uint32_t a, parent;
@@ -1044,7 +1151,7 @@ int fs_stat(const char* path, struct fs_stat* st) {
 }
 int fs_df(u64* total, u64* free) {
     LIVE();
-    *total = g_pages; *free = free_count() + g_pool[UPD].batch.size() + g_pool[OWN].batch.size();   // a batch's pages are free
+    *total = g_pages; *free = free_count() + g_pool[UPD].batch.size() + g_pool[OWN].batch.size() + g_stash.size();   // prepared: free
     logf("fs_df() = 0: %llu total, %llu free", (unsigned long long)*total, (unsigned long long)*free);
     return 0;
 }
@@ -1118,19 +1225,18 @@ int cow_freeze(const char* path) {
     logf("cow_freeze(\"%s\") = %d", path, rc);
     return rc;
 }
-int cow_root(const char* path, u32* root, u32* depth) {
-    LIVE(); master_only("cow_root");
-    uint32_t a;
-    int rc = resolve(path, &a);
-    if (rc == 0 && a == NONE) rc = FS_ENOENT;
+int cow_root(int fd, u32* root, u32* depth) {
+    LIVE(); master_only_or_tracer("cow_root");
+    int rc = 0;
+    if (!fd_ok(fd) || !fd_get(fd).hold) rc = FS_EBADF;              // only a file held: FS_ROOT
+    Ent e{};
     if (rc == 0) {
-        const Ent e = ent_read(a);
-        if (!(e.flags & E_COW)) rc = FS_EINVAL;                    // a streamed file is never walked through the cache
-        else if (e.root == 0) rc = FS_EBUSY;                           // not committed
+        e = ent_read(fd_get(fd).entry);
+        if (e.root == 0) rc = FS_EBUSY;                             // not committed
         else { *root = e.root; *depth = e.depth(); }
     }
-    if (rc) logf("cow_root(\"%s\") = %d", path, rc);
-    else logf("cow_root(\"%s\") = 0: root 0x%x, depth %u", path, *root, *depth);
+    if (rc) logf("cow_root(%d) = %d", fd, rc);
+    else logf("cow_root(%d) = 0: \"%s\", root 0x%x, depth %u", fd, e.name, *root, *depth);
     return rc;
 }
 

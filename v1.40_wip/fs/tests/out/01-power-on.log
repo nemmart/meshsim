@@ -3,4 +3,4 @@
 [master] fs_list("/", 0) = 0
 [master] mount: 1 entries, 16383 pages free
 [master] fs_df() = 0: 16384 total, 16383 free
-# stats: 0 pages taken, 0 freed, 0 discards (0 while tracing); LPDDR 1 page writes, 0 half writes, 0 page reads, 2 half reads; the cache 70 hits, 2 misses; 0 reads by the fd's hint
+# stats: 0 pages taken, 0 freed, 0 discards (0 while tracing); LPDDR 1 page writes, 0 half writes, 0 page reads, 2 half reads; the cache 70 hits, 2 misses; 0 reads by the fd's hint; look-ups 0 hash compares, 0 entries from the SRAM; 0 page requests

@@ -96,6 +96,15 @@ void run(const Run& c, const std::vector<uint64_t>& words) {
     if (g_updater.run(c, words) != 0 || g_updater.queued() != 0) fail("an Updater run's pages");
 }
 
+// A COW file's root and depth: held with FS_ROOT just long enough to read them (FS-API 5.3), as the master tile does.
+int root_of(const std::string& path, u32* root, u32* depth) {
+    const int fd = fs_open(path.c_str(), FS_ROOT);
+    if (fd < 0) return fd;
+    const int r = cow_root(fd, root, depth);
+    fs_close(fd);
+    return r;
+}
+
 // a COW file made empty (root 1) or a copy (root 2), with pages written, committed, frozen if asked
 void make_cow(const std::string& path, const std::string& src, uint64_t length, const std::vector<uint64_t>& pages,
               bool frozen, uint64_t seed) {
@@ -103,7 +112,7 @@ void make_cow(const std::string& path, const std::string& src, uint64_t length, 
     u32 root, depth, sroot = 0, sdepth;
     uint32_t d;
     if (src.empty()) d = depth_for(length);
-    else { ok(cow_root(src.c_str(), &sroot, &sdepth), "cow_root"); d = sdepth; }
+    else { ok(root_of(src, &sroot, &sdepth), "cow_root"); d = sdepth; }
     const uint64_t n = pages_for(d, pages);
     ok(fs_reserve_pages(u32(n + 1)), "fs_reserve_pages");
     if (src.empty()) ok(cow_create(path.c_str(), length, &root, &depth), "cow_create");
@@ -153,22 +162,22 @@ void proof(const std::string& wd, const std::string& stem, uint32_t tiles) {
     ok(fs_reserve_pages(u32(total)), "fs_reserve_pages");
     const std::string map = wd + "/map", c0 = wd + "/cycle0", start = wd + "/start", fin = wd + "/final",
                       tr = wd + "/tracer";
-    ok(cow_root(base.c_str(), &src, &sd), "cow_root");
+    ok(root_of(base, &src, &sd), "cow_root");
     ok(cow_copy(base.c_str(), map.c_str(), &root, &depth), "cow_copy");
     Run c; c.root = 2; c.depth = depth; c.image_root = root; c.source_root = src; c.page_count = n_map;
     run(c, words_for(delta, 5));
     ok(cow_commit(map.c_str()), "cow_commit"); ok(cow_freeze(map.c_str()), "cow_freeze");
-    ok(cow_root(img.c_str(), &src, &sd), "cow_root");
+    ok(root_of(img, &src, &sd), "cow_root");
     ok(cow_copy(img.c_str(), c0.c_str(), &root, &depth), "cow_copy");
     c = Run{}; c.root = 2; c.depth = depth; c.image_root = root; c.source_root = src; c.page_count = n_c0;
     run(c, words_for(data, 6));
     ok(cow_commit(c0.c_str()), "cow_commit"); ok(cow_freeze(c0.c_str()), "cow_freeze");
-    ok(cow_root(c0.c_str(), &src, &sd), "cow_root");
+    ok(root_of(c0, &src, &sd), "cow_root");
     ok(cow_copy(c0.c_str(), start.c_str(), &root, &depth), "cow_copy");
     c = Run{}; c.root = 2; c.depth = depth; c.image_root = root; c.source_root = src; c.page_count = n_start;
     run(c, words_for(before, 90));
     ok(cow_commit(start.c_str()), "cow_commit"); ok(cow_freeze(start.c_str()), "cow_freeze");
-    ok(cow_root(start.c_str(), &src, &sd), "cow_root");
+    ok(root_of(start, &src, &sd), "cow_root");
     u32 froot, troot;
     ok(cow_copy(start.c_str(), fin.c_str(), &froot, &depth), "cow_copy");
     ok(cow_copy(start.c_str(), tr.c_str(), &troot, &depth), "cow_copy");
@@ -181,7 +190,7 @@ void proof(const std::string& wd, const std::string& stem, uint32_t tiles) {
     c = Run{}; c.root = 0; c.depth = depth; c.image_root = froot; c.page_count = n_final - n_tracer;
     run(c, words_for(rest, 92));
     u32 croot, cdepth;
-    ok(cow_root(tr.c_str(), &croot, &cdepth), "cow_root");
+    ok(root_of(tr, &croot, &cdepth), "cow_root");
     set_tracing(true);
     for (uint64_t pg : mine) if (!tracer_write(croot, cdepth, pg, 7, 0xC0FFEE)) fail("tracer_write");
     // the logs: each tile's own, open through the segment; the run logs, three at a time, by the tracer tile

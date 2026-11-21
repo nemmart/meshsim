@@ -129,9 +129,12 @@ the final image and  cow_copy(wd/start, wd/final); cow_copy(wd/start, wd/tracer)
   the Tracer's copy: the run of segment s, root 2 with tracer_copy, which makes both roots
                      cow_commit(wd/final); cow_commit(wd/tracer)
                      the run after s, root 0
-the hand-over:       cow_root(wd/tracer), cow_root(wd/map)  -> the roots and depths in record s's word 66 (30.5)
+                     (each image held by the master tile with fs_open(FS_ROOT) from its copy to its run's done,
+                      and closed then; a source's root read by holding it a moment: cow_root(fd))
+the hand-over:       record s names wd; the tracer tile holds wd/tracer and wd/map itself, fs_open(FS_ROOT),
+                     and reads their roots with cow_root(fd) (owner, 2026-11-20)
 the segment:         the tracer tile writes the run logs; the compute tiles write their logs (3.4)
-                     cow_freeze(wd/final), once the third run is done
+                     the tracer tile closes its two; cow_freeze(wd/final), once the third run is done; closed
 the reply (29.14);   then 3.5 or 3.6
 fs_unreserve()
 ```
@@ -333,7 +336,7 @@ memory tile takes the file system's pool's pages from it the same way.
 
 | Call | Who | Does |
 | --- | --- | --- |
-| `int fs_open(const char *path, int flags)` | all | an fd; `FS_READ`, `FS_APPEND` (creates the file if missing), `FS_WRITE` (page writes); `FS_TRUNC` † with `FS_APPEND` empties it first |
+| `int fs_open(const char *path, u32 flags)` | all | an fd; `FS_READ`, `FS_APPEND` (creates the file if missing), `FS_WRITE` (page writes); `FS_TRUNC` † with `FS_APPEND` empties it first; `FS_ROOT` alone, the master and tracer tiles', holds a COW file for hardware (5.3) |
 | `long fs_read(int fd, void *buf, long n)` | all | up to n bytes at the position; 0 at the end |
 | `long fs_write(int fd, const void *buf, long n)` | all | appends n bytes; they are in the file system's buffer when it returns, not yet in LPDDR. **`FS_ENOSPC`:** no page for the bytes; the file keeps every byte in the pages it has stored, its length cut back to them, and the bytes of the page that found no room are lost (owner, 2026-11-20) |
 | `int fs_flush(int fd)` † | all | returns when every byte written so far, and the index lines naming them, are in LPDDR |
@@ -343,6 +346,7 @@ memory tile takes the file system's pool's pages from it the same way.
 | `int fs_fprintf(int fd, const char *fmt, ...)` | all | formats into the file, as `fs_write` |
 | `int fs_chdir(const char *path)` | all | the caller's tile's working directory (4.7); `FS_ENOTDIR` for a file (owner, 2026-11-20) |
 | `int fs_mkdir(const char *path)` | all | an empty directory, its parent in its entry |
+| `int fs_remove_directory(const char *path)` | all | **a directory and every file in it, in one call** (owner, 2026-11-20): refused, with nothing removed, if it has a subdirectory (`FS_ENOTEMPTY`), any file in it is open, `FS_ROOT` included (`FS_EBUSY`), it is a tile's working directory (`FS_EBUSY`), or a file in it has a copy outside it (`FS_EBUSY`). Copies inside are freed leaves first; a copy of a file outside lowers that file's count. No entry inside is written: one write of the parent's entry. A proof's working directory goes in two calls, its `logs`, then itself |
 | `int fs_remove(const char *path)` | all | a file with no copies and not open, or an empty directory that is no tile's working directory (`FS_EBUSY`); a COW file by the walk (4.4) |
 | `int fs_list(const char *path, u32 *pos, struct fs_dirent *e)` † | all | the entry at the cursor `*pos`, which starts at 0 and is advanced past it; 1 an entry, 0 the end. **In slot order,** not creation order: a new entry may take a removed one's slot. The shell sorts what it prints (owner, 2026-11-20) |
 | `int fs_stat(const char *path, struct fs_stat *st)` † | all | a file's type, flags, length, pages, depth and copies |
@@ -352,6 +356,10 @@ memory tile takes the file system's pool's pages from it the same way.
 never both. `FS_READ` does not combine with `FS_APPEND` or `FS_WRITE` (`FS_EINVAL`); opening a file to write while it
 is open at all, or to read while it is open to write, is `FS_EBUSY`. (A writer's newest pages are named only by the
 index lines in its buffer, 4.6, until it flushes.)
+
+**Served in parallel, up to four at a time: reads and writes only** (owner, 2026-11-20): `fs_read`, `fs_write`,
+`fs_fprintf`, `fs_read_page`, `fs_write_page`, `fs_flush`. **Every other call is served one at a time**, in the
+order it arrives. The memory tile keeps four request contexts in its data memory (`FS-DATA-PATH.md` 8).
 
 ### 5.3 COW files (master tile only)
 
@@ -365,7 +373,16 @@ its copy, but adds no pages** (owner, 2026-11-19); the hardware refuses it a wri
 | `int cow_copy(const char *src, const char *dst, u32 *root, u32 *depth)` | a new COW file with src's length and depth, src's count raised; src must be a frozen COW file (`FS_EINVAL`). Its root page as `cow_create`'s: the next run, with `root` 2 and `SOURCE_ROOT` src's root, makes it |
 | `int cow_commit(const char *path)` | the entry's root becomes its pending root: called once the run that makes the root is done. `FS_EINVAL` for a file not pending (owner, 2026-11-20) |
 | `int cow_freeze(const char *path)` | sets the frozen flag; `FS_EBUSY` before `cow_commit` |
-| `int cow_root(const char *path, u32 *root, u32 *depth)` | a COW file's root and depth, for the Updater and the Tracer; `FS_EINVAL` for any other file, `FS_EBUSY` before `cow_commit` |
+| `int cow_root(int fd, u32 *root, u32 *depth)` | the root and depth of the COW file held by fd, which was opened `FS_ROOT`; `FS_EBADF` for any other fd, `FS_EBUSY` before `cow_commit`. The master tile's and the tracer tile's (owner, 2026-11-20) |
+
+**`FS_ROOT`: a COW file held for hardware** (owner, 2026-11-20). The Updater and the Tracer use a file by its root,
+not through an fd, so the file system cannot see them; the tile that drives them holds the file open instead:
+`fs_open(path, FS_ROOT)`, alone, on a COW file, frozen or not, committed or not. **One owner:** it is refused
+(`FS_EBUSY`) while the file is open at all, and while it is held nothing else opens the file. The fd is not read or
+written through; it names the file's root for `cow_root`, and `cow_commit` and `cow_freeze` are allowed while it is
+held. **The master tile holds an image from its copy to its run's done, then closes it; the tracer tile then holds
+the Tracer's copy and the map for the trace.** A file held is not removed (`FS_EBUSY`). A source needs no holding:
+its copies' count keeps it. The master tile's and the tracer tile's alone.
 
 **`cow_create` and `cow_copy` leave the root to the Updater** † (the owner's ruling on the Updater, 2.3; item 191 would
 close with it), **and the file is committed when the run is done** (owner, 2026-11-20). Until then its entry's root is
@@ -398,7 +415,7 @@ and `..` may appear anywhere. No empty name (`//`) and no trailing `/` but the r
 | Caller | Its calls |
 | --- | --- |
 | the master tile | all: the pages (5.1) and the COW files (5.3) are its alone, and `fs_shutdown` |
-| the tracer tile | the streamed files (5.2): the run logs |
+| the tracer tile | the streamed files (5.2): the run logs; `fs_open(FS_ROOT)` and `cow_root` for the trace (5.3) |
 | a compute tile | the streamed files (5.2): its own logs; at least four open |
 | the shell, on the master tile | the streamed files (5.2), to read, list, remove and write; never 5.1 or 5.3 (owner, 2026-11-19) |
 | the file system itself | the pages (5.1), for its directories and streamed files |

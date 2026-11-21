@@ -563,4 +563,4 @@
 [tile 0] fs_close(0) = -8
 [tile 0] fs_stat("/logs/more") = 0: length 0, 0 pages, depth 0, 0 copies
 [shell] fs_remove("/big") = 0, 120 pages freed
-# stats: 255 pages taken, 120 freed, 0 discards (0 while tracing); LPDDR 9 page writes, 770 half writes, 8 page reads, 251 half reads; the cache 23288 hits, 251 misses; 0 reads by the fd's hint
+# stats: 255 pages taken, 120 freed, 0 discards (0 while tracing); LPDDR 9 page writes, 770 half writes, 8 page reads, 251 half reads; the cache 14930 hits, 251 misses; 0 reads by the fd's hint; look-ups 8653 hash compares, 295 entries from the SRAM; 18 page requests

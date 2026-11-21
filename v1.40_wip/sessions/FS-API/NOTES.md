@@ -80,6 +80,12 @@ In the order they were settled.
 | 35 | An fd names its buffer | in word 0's [31:22]; a reader's position's low 11 bits are its offset in the buffer (owner, 2026-11-20); the mode and flags move to word 2's top bits |
 | 36 | The core's memory | 32 KB of program memory and 32 KB of data memory; the SRAM is slow for the core, so the fd table, CLOCK's tables and the 66 working directories are in data memory (owner, 2026-11-20) |
 | 37 | Long paths | a 1 KiB landing slot for each of 66 tiles, and one call that carries a path in flight a tile; no grant for a path (owner, 2026-11-20) |
+| 38 | Requests in parallel | up to four, reads and writes only; every other call one at a time (owner, 2026-11-20) |
+| 39 | printf on the tile | not buffered there: a crash would lose it; printf logs are for debugging (owner, 2026-11-20) |
+| 40 | Look-ups | 16-bit hashes of each cached directory half's names in data memory (owner, 2026-11-20) |
+| 41 | The memory tile's pages | a stash of 256, refilled from the tracer tile when empty (owner, 2026-11-20) |
+| 42 | Removing many files | `fs_remove_directory`: a directory and its files, no subdirectory, nothing open (owner, 2026-11-20); one `logs` directory, not one a tile |
+| 43 | COW files in use | `fs_open(FS_ROOT)`, one owner: the master tile for a run, then the tracer tile for the trace; `cow_root(fd)` (owner, 2026-11-20) |
 
 **Still open,** with what depends on each: FS-API.md section 8, and these the emulation added:
 

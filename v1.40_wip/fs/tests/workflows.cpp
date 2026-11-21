@@ -39,12 +39,13 @@ static void begin(const char* name) {
 }
 static void report() {
     const Stats& s = stats();
-    note("stats: %llu pages taken, %llu freed, %llu discards (%llu while tracing); LPDDR %llu page writes, %llu half writes, %llu page reads, %llu half reads; the cache %llu hits, %llu misses; %llu reads by the fd's hint",
+    note("stats: %llu pages taken, %llu freed, %llu discards (%llu while tracing); LPDDR %llu page writes, %llu half writes, %llu page reads, %llu half reads; the cache %llu hits, %llu misses; %llu reads by the fd's hint; look-ups %llu hash compares, %llu entries from the SRAM; %llu page requests",
          (unsigned long long)s.pages_taken, (unsigned long long)s.pages_freed, (unsigned long long)s.discards,
          (unsigned long long)s.discards_while_tracing, (unsigned long long)s.lpddr_page_writes,
          (unsigned long long)s.lpddr_half_writes, (unsigned long long)s.lpddr_page_reads,
          (unsigned long long)s.lpddr_half_reads, (unsigned long long)s.cache_hits,
-         (unsigned long long)s.cache_misses, (unsigned long long)s.hint_hits);
+         (unsigned long long)s.cache_misses, (unsigned long long)s.hint_hits,
+         (unsigned long long)s.name_hash_compares, (unsigned long long)s.dir_entry_reads, (unsigned long long)s.page_requests);
 }
 static u64 free_pages() { u64 t, f; set_caller(Caller::MASTER); fs_df(&t, &f); return f; }
 
@@ -85,6 +86,17 @@ static std::vector<uint64_t> concat(const std::vector<std::vector<uint64_t>>& v,
     return w;
 }
 
+// A COW file's root and depth for a run: held with FS_ROOT for as long as it takes to read them (FS-API 5.3).
+static u32 root_of(const std::string& path, u32* depth) {
+    const int fd = fs_open(path.c_str(), FS_ROOT);
+    EXPECT(fd >= 0);
+    u32 root = 0;
+    EXPECT(cow_root(fd, &root, depth) == 0);
+    EXPECT(fs_close(fd) == 0);
+    return root;
+}
+static int hold(const std::string& path) { const int fd = fs_open(path.c_str(), FS_ROOT); EXPECT(fd >= 0); return fd; }
+
 struct Program {
     std::string dir, stem;              // stem: the full path without an extension
     uint64_t length_pages;              // the image's length
@@ -107,15 +119,19 @@ static void store_program(const Program& p) {
     const std::string img = p.stem + ".pages", map = p.stem + ".map";
     EXPECT(cow_create(img.c_str(), p.length_pages, &root, &depth) == 0);
     EXPECT(depth == d);
+    int h = hold(img);                                                  // the Updater's, for its run
     Run c; c.root = 1; c.depth = depth; c.image_root = root; c.page_count = n_img;
     run(c, words_for(p.pages, 1), "the program image, empty");
     EXPECT(cow_commit(img.c_str()) == 0);
     EXPECT(cow_freeze(img.c_str()) == 0);
+    EXPECT(fs_close(h) == 0);
     EXPECT(cow_create(map.c_str(), p.map_pages, &root, &depth) == 0);
+    h = hold(map);
     c = Run{}; c.root = 1; c.depth = depth; c.image_root = root; c.page_count = n_map;
     run(c, words_for(map_all, 2), "the base table, empty");
     EXPECT(cow_commit(map.c_str()) == 0);
     EXPECT(cow_freeze(map.c_str()) == 0);
+    EXPECT(fs_close(h) == 0);
     EXPECT(fs_unreserve() == 0);
 }
 
@@ -164,44 +180,62 @@ static void run_proof(const Proof& p) {
     if (fs_reserve_pages(u32(total)) != 0) { EXPECT(false); return; }
     const std::string map = p.wd + "/map", c0 = p.wd + "/cycle0", start = p.wd + "/start", fin = p.wd + "/final",
                       tr = p.wd + "/tracer";
+    // each image held with FS_ROOT by the master tile from its copy to its run's done (FS-API 5.3)
     // the proof's table: a copy of the base, frame 5's pages over it
-    EXPECT(cow_root(base.c_str(), &src, &sd) == 0);
+    src = root_of(base, &sd);
     EXPECT(cow_copy(base.c_str(), map.c_str(), &root, &depth) == 0);
+    int h = hold(map);
     Run c; c.root = 2; c.depth = depth; c.image_root = root; c.source_root = src; c.page_count = n_map;
     run(c, words_for(p.map_delta, 5), "frame 5: the proof's table");
     EXPECT(cow_commit(map.c_str()) == 0);
     EXPECT(cow_freeze(map.c_str()) == 0);
+    EXPECT(fs_close(h) == 0);
     // the cycle-0 image: a copy of the program image, frame 6 over it
-    EXPECT(cow_root(img.c_str(), &src, &sd) == 0);
+    src = root_of(img, &sd);
     EXPECT(cow_copy(img.c_str(), c0.c_str(), &root, &depth) == 0);
+    h = hold(c0);
     c = Run{}; c.root = 2; c.depth = depth; c.image_root = root; c.source_root = src; c.page_count = n_c0;
     run(c, words_for(p.data_pages, 6), "frame 6: the data image");
     EXPECT(cow_commit(c0.c_str()) == 0);
     EXPECT(cow_freeze(c0.c_str()) == 0);
+    EXPECT(fs_close(h) == 0);
     // the start image: frame 9, the segments before s
-    EXPECT(cow_root(c0.c_str(), &src, &sd) == 0);
+    src = root_of(c0, &sd);
     EXPECT(cow_copy(c0.c_str(), start.c_str(), &root, &depth) == 0);
+    h = hold(start);
     c = Run{}; c.root = 2; c.depth = depth; c.image_root = root; c.source_root = src; c.page_count = n_start;
     run(c, concat(p.segments, 0, p.s, 90), "frame 9: the segments before s");
     EXPECT(cow_commit(start.c_str()) == 0);
     EXPECT(cow_freeze(start.c_str()) == 0);
+    EXPECT(fs_close(h) == 0);
     // the final image and the Tracer's copy: segment s with tracer_copy, then the rest
-    EXPECT(cow_root(start.c_str(), &src, &sd) == 0);
+    src = root_of(start, &sd);
     u32 froot, troot;
     EXPECT(cow_copy(start.c_str(), fin.c_str(), &froot, &depth) == 0);
     EXPECT(cow_copy(start.c_str(), tr.c_str(), &troot, &depth) == 0);
+    const int hf = hold(fin), ht = hold(tr);
     c = Run{}; c.root = 2; c.depth = depth; c.tracer_copy = true; c.image_root = froot; c.tracer_root = troot;
     c.source_root = src; c.page_count = 2 * n_tracer;
     run(c, concat(p.segments, p.s, p.s + 1, 90), "frame 9: segment s, with the Tracer's copy");
     EXPECT(cow_commit(fin.c_str()) == 0);                                   // both roots made by that run
     EXPECT(cow_commit(tr.c_str()) == 0);
+    EXPECT(fs_close(ht) == 0);                                              // the Tracer's copy: the tracer tile's now
     c = Run{}; c.root = 0; c.depth = depth; c.image_root = froot; c.page_count = n_final - n_tracer;
     run(c, concat(p.segments, p.s + 1, p.N, 90), "frame 9: the segments after s");
-    // the hand-over (30.5)
+    // the hand-over (30.5): the tracer tile holds its two files itself and reads their roots
+    note("hand-over: the working directory %s, to record s", p.wd.c_str());
+    set_caller(Caller::TRACER);
+    const int tfd = fs_open(tr.c_str(), FS_ROOT), mfd = fs_open(map.c_str(), FS_ROOT);
+    EXPECT(tfd >= 0 && mfd >= 0);
     u32 mroot, mdepth, croot, cdepth;
-    EXPECT(cow_root(tr.c_str(), &croot, &cdepth) == 0);
-    EXPECT(cow_root(map.c_str(), &mroot, &mdepth) == 0);
-    note("hand-over: memory_root 0x%x depth %u, map_root 0x%x depth %u, to record s's word 66", croot, cdepth, mroot, mdepth);
+    EXPECT(cow_root(tfd, &croot, &cdepth) == 0);
+    EXPECT(cow_root(mfd, &mroot, &mdepth) == 0);
+    set_caller(Caller::MASTER);
+    EXPECT(fs_open(map.c_str(), FS_ROOT) == FS_EBUSY);                      // one owner
+    set_caller(Caller::SHELL);
+    EXPECT(fs_open(map.c_str(), FS_READ) == FS_EBUSY);                      // ... and no reader meanwhile
+    EXPECT(fs_remove(tr.c_str()) == FS_EBUSY);                             // nor removed under the Tracer
+    set_caller(Caller::MASTER);
 
     // the segment: the Tracer reads its files, writes its copy's own pages; the run logs; the tiles' logs
     set_tracing(true);
@@ -268,8 +302,11 @@ static void run_proof(const Proof& p) {
         EXPECT(fs_stat("../map", &ms) == 0 && (ms.flags & FS_F_COW));    // ".." from the working directory
         EXPECT(fs_stat("./../logs/.", &ms) == 0 && ms.type == FS_T_DIR);
     }
+    set_caller(Caller::TRACER);                                             // the trace is done
+    EXPECT(fs_close(tfd) == 0 && fs_close(mfd) == 0);
     set_caller(Caller::MASTER);
     EXPECT(cow_freeze(fin.c_str()) == 0);                                   // the third run is done
+    EXPECT(fs_close(hf) == 0);
     EXPECT(fs_unreserve() == 0);
     auto leave = [&] {                                                     // the tiles back to the root
         for (uint32_t t = 0; t < p.tiles; t++) { set_caller(Caller::TILE, int(t)); EXPECT(fs_chdir("/") == 0); }
@@ -279,13 +316,9 @@ static void run_proof(const Proof& p) {
     if (p.ending == Ending::SOFTWARE_FAILURE) { leave(); note("the reply: the proof failed; %s is kept", p.wd.c_str()); return; }
     note("the reply: the proof succeeded; the Tracer's copy and the logs removed (3.5)");
     EXPECT(fs_remove(tr.c_str()) == 0);
-    struct fs_dirent e; u32 pos = 0;
-    std::vector<std::string> names;
-    while (fs_list(logs.c_str(), &pos, &e) == 1) names.push_back(e.name);
-    for (auto& n : names) EXPECT(fs_remove((logs + "/" + n).c_str()) == 0);
-    EXPECT(fs_remove(logs.c_str()) == FS_EBUSY);                          // still the tiles' working directory
+    EXPECT(fs_remove_directory(logs.c_str()) == FS_EBUSY);               // still the tiles' working directory
     leave();
-    EXPECT(fs_remove(logs.c_str()) == 0);
+    EXPECT(fs_remove_directory(logs.c_str()) == 0);                      // every log at once (FS-API 5.2)
 }
 
 // ------------------------------------------------------------------ the shell's commands, as call sequences
@@ -349,7 +382,7 @@ int main() {
     EXPECT(cow_create("/programs/tmp", 10, &root, &depth) == 0);
     note("not yet committed: its entry's root is 0");
     EXPECT(cow_freeze("/programs/tmp") == FS_EBUSY);
-    EXPECT(cow_root("/programs/tmp", &root, &depth) == FS_EBUSY);
+    { const int t = fs_open("/programs/tmp", FS_ROOT); EXPECT(t >= 0); EXPECT(cow_root(t, &root, &depth) == FS_EBUSY); fs_close(t); }
     EXPECT(cow_copy("/programs/tmp", "/programs/tmp2", &root, &depth) == FS_EINVAL);   // the source not frozen
     EXPECT(fs_open("/programs/tmp", FS_READ) == FS_EBUSY);
     { struct fs_stat s2; EXPECT(fs_stat("/programs/tmp", &s2) == 0 && s2.pages == 0); }
@@ -472,20 +505,22 @@ int main() {
     begin("07-remove-working-directories");
     set_caller(Caller::MASTER);
     EXPECT(fs_remove("/proofs/p1/start") == FS_EBUSY);         // final is a copy of it: leaves first
+    EXPECT(fs_remove_directory("/programs") == FS_EBUSY);   // its files have copies in the working directories
+    EXPECT(fs_remove_directory("/proofs") == FS_ENOTEMPTY);  // subdirectories
+    set_caller(Caller::TILE, 5);
+    const int open_log = fs_open("/proofs/p2/logs/tile1.log", FS_READ);
+    set_caller(Caller::MASTER);
+    EXPECT(fs_remove_directory("/proofs/p2/logs") == FS_EBUSY);   // a file open
+    set_caller(Caller::TILE, 5); fs_close(open_log); set_caller(Caller::MASTER);
     for (const char* wd : {"/proofs/p1", "/proofs/p2", "/proofs/p3"}) {
-        note("--- removing %s, a copy before its source", wd);
+        note("--- removing %s: its logs, then the rest at once", wd);
         const std::string w = wd;
-        // what is left: the logs (p2, p3), the Tracer's copy (p2, p3), the final, start, cycle-0 images, the table
-        std::vector<std::string> logs;
-        struct fs_dirent e; u32 pos = 0;
-        while (fs_list((w + "/logs").c_str(), &pos, &e) == 1) logs.push_back(w + "/logs/" + e.name);
-        for (auto& f : logs) EXPECT(fs_remove(f.c_str()) == 0);
-        if (!logs.empty() || pos) EXPECT(fs_remove((w + "/logs").c_str()) == 0);
-        for (const char* f : {"/tracer", "/final", "/start", "/cycle0", "/map"}) {
-            const int rc = fs_remove((w + f).c_str());
-            EXPECT(rc == 0 || rc == FS_ENOENT);
+        struct fs_stat ls;
+        if (fs_stat((w + "/logs").c_str(), &ls) == 0) {
+            EXPECT(fs_remove_directory(wd) == FS_ENOTEMPTY);      // logs first
+            EXPECT(fs_remove_directory((w + "/logs").c_str()) == 0);
         }
-        EXPECT(fs_remove(wd) == 0);
+        EXPECT(fs_remove_directory(wd) == 0);                     // the images: copies inside, leaves first
     }
     EXPECT(fs_remove("/proofs") == 0);
     EXPECT(fs_stat("/programs/fib.pages", &st) == 0 && st.copies == 0);

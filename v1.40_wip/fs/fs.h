@@ -36,6 +36,7 @@ typedef uint64_t u64;
 #define FS_APPEND  2u   /* fs_write appends; creates the file if missing */
 #define FS_WRITE   4u   /* fs_write_page, random page writes; creates the file if missing */
 #define FS_TRUNC   8u   /* with FS_APPEND: empty the file first */
+#define FS_ROOT   16u   /* alone: a COW file held for the Updater or the Tracer; one owner; the master and tracer tiles' */
 
 /* ---- types and flags, as fs_list and fs_stat give them */
 #define FS_T_DIR     1u
@@ -65,16 +66,17 @@ int  fs_fprintf(int fd, const char *fmt, ...);
 int  fs_chdir(const char *path);                      /* the caller's tile's working directory */
 int  fs_mkdir(const char *path);
 int  fs_remove(const char *path);
+int  fs_remove_directory(const char *path);           /* a directory and its files: no subdirectory, nothing open */
 int  fs_list(const char *path, u32 *pos, struct fs_dirent *e);
 int  fs_stat(const char *path, struct fs_stat *st);
 int  fs_df(u64 *total_pages, u64 *free_pages);
 
-/* ---- COW files (5.3): the master tile alone */
+/* ---- COW files (5.3): the master tile alone; cow_root also the tracer tile's */
 int  cow_create(const char *path, u64 length_pages, u32 *root, u32 *depth);
 int  cow_copy(const char *src, const char *dst, u32 *root, u32 *depth);
 int  cow_commit(const char *path);                    /* the root, once the run that makes it is done */
 int  cow_freeze(const char *path);
-int  cow_root(const char *path, u32 *root, u32 *depth);
+int  cow_root(int fd, u32 *root, u32 *depth);          /* fd opened FS_ROOT */
 
 /* ---- the file system as a whole (5.4): the master tile alone */
 int  fs_shutdown(void);

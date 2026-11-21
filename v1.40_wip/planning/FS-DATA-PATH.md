@@ -100,6 +100,11 @@ page behind an offset; a writer's index entries), halves of data for `fs_read`, 
 never holds:** a COW file that is not frozen (the Updater changes its index lines through the shared cache, behind the
 memory tile's back); `fs_read_page`'s data; the walk's pages.
 
+**The names, for look-ups** (owner, 2026-11-20): for each cached half of a directory, its 16 names' 16-bit hashes,
+32 bytes in the core's data memory, made when the half is first searched and kept current as its entries are written.
+A look-up compares hashes and reads an entry from the SRAM only on a match: the 450 entries of a proof's `logs` are
+29 halves of hashes. They go with their half. (The emulation: a proof's look-ups read 180 entries from the SRAM.)
+
 **It stays right by construction:** the memory tile is the only reader and writer of directories and streamed files;
 a frozen COW file never changes; a buffer of a page the file system frees is dropped at once.
 
@@ -138,6 +143,10 @@ a frozen COW file never changes; a buffer of a page the file system frees is dro
   Updater's batch, and holds them; the file system's pool may not take what is held. No list of pages, no extents.
 - **The discards are the tracer tile's,** on a look-up port of the cache (FOR-THE-HARDWARE.md 3), in the background
   (owner, 2026-11-19).
+- **The memory tile's stash** (owner, 2026-11-20): 256 page addresses in its data memory, 1 KiB, from which it takes
+  its directories' and streamed files' pages without a request. When it is empty, one request brings the file
+  system's pool's prepared batch whole, and the tracer tile prepares the next in the background: a 5 MB run log is
+  five requests. The stash and the batch, 512 pages, are free to `fs_df`.
 - **Freeing:** the memory tile's walk (FS-API 4.4) sends the pages it frees to the tracer tile in batches, each with
   whether it was in a COW file.
 - **A mount:** the memory tile walks every file and sends the pages it finds to the tracer tile, which rebuilds its
@@ -155,9 +164,11 @@ and the RW unit move, since the core reaches the SRAM slowly (owner, 2026-11-20)
 | the fd table (FS-API 4.6): 512 × 16 B (owner, 2026-11-20) | 8 KiB |
 | CLOCK: the hash table (512 × 2 B) and a record of 6 B for each of 384 buffers (owner) | 3.3 KiB |
 | the working directories (FS-API 4.7): 66 × 4 B (owner) | 0.3 KiB |
-| a name cache †: (directory, name) to an entry's address, 256 × 8 B, so that most path look-ups read no SRAM | 2 KiB |
+| the names' hashes: 32 B for each cached directory half, about 50 of them (owner, 2026-11-20) | 1.6 KiB |
+| the stash: 256 page addresses (owner, 2026-11-20) | 1 KiB |
+| four request contexts, the reads and writes served in parallel (owner, 2026-11-20): 4 × 64 B | 0.3 KiB |
 | stack | 4 KiB |
-| state: the grants, the requests in hand, the RW unit's jobs, the file system's batch of pages from the tracer tile | 2 KiB |
+| state: the grants, the requests waiting, the RW unit's jobs | 1 KiB |
 | **total** | **about 20 KiB**, 12 KiB spare |
 
 **Its 32 KB of program memory:** the file system's code (owner, 2026-11-20).
@@ -200,5 +211,4 @@ and the RW unit move, since the core reaches the SRAM slowly (owner, 2026-11-20)
 4. How a `fs_read_page` request names the caller's buffer and counter, and how the RW unit's output is addressed to
    it (17.7's output queue 0 and its DMA).
 5. Whether writers share the cache's pool, or keep buffers apart (6).
-6. Whether the name cache earns its 2 KiB (8).
 7. The tracer tile's SRAM: whether its 258 KiB fits beside the Tracer's own use.

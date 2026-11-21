@@ -5,97 +5,122 @@
 [master] fs_stat("/programs/fib.map") = 0: length 16384, 5 pages, depth 1, 1 copies
 # the host's counts: map 0, cycle-0 2, start 5, Tracer's copy 3, final 5; reserved 20 with the roots
 [master] fs_reserve_pages(20) = 0 (the batch: 256 pages, 0 discarded preparing it)
-[master] cow_root("/programs/fib.map") = 0: root 0x4180, depth 1
-[master] cow_copy("/programs/fib.map", "/proofs/p2/map") = 0: root 0x4760, depth 1; source root 0x4180
-# Updater run (frame 5: the proof's table): root 2, depth 1, tracer_copy 0, IMAGE_ROOT 0x4760, TRACER_ROOT 0x0, SOURCE_ROOT 0x4180, 0 words, PAGE_COUNT 0
+[master] fs_open("/programs/fib.map", 0x10) = 0
+[master] cow_root(0) = 0: "fib.map", root 0x6140, depth 1
+[master] fs_close(0) = 0
+[master] cow_copy("/programs/fib.map", "/proofs/p2/map") = 0: root 0x66e0, depth 1; source root 0x6140
+[master] fs_open("/proofs/p2/map", 0x10) = 0
+# Updater run (frame 5: the proof's table): root 2, depth 1, tracer_copy 0, IMAGE_ROOT 0x66e0, TRACER_ROOT 0x0, SOURCE_ROOT 0x6140, 0 words, PAGE_COUNT 0
 [master] cow_commit("/proofs/p2/map") = 0
 [master] cow_freeze("/proofs/p2/map") = 0
-[master] cow_root("/programs/fib.pages") = 0: root 0x4020, depth 2
-[master] cow_copy("/programs/fib.pages", "/proofs/p2/cycle0") = 0: root 0x4740, depth 2; source root 0x4020
+[master] fs_close(0) = 0
+[master] fs_open("/programs/fib.pages", 0x10) = 0
+[master] cow_root(0) = 0: "fib.pages", root 0x6000, depth 2
+[master] fs_close(0) = 0
+[master] cow_copy("/programs/fib.pages", "/proofs/p2/cycle0") = 0: root 0x66c0, depth 2; source root 0x6000
+[master] fs_open("/proofs/p2/cycle0", 0x10) = 0
 [master] fs_acquire_pages(2) = 2 (4 discarded refilling)
-# Updater run (frame 6: the data image): root 2, depth 2, tracer_copy 0, IMAGE_ROOT 0x4740, TRACER_ROOT 0x0, SOURCE_ROOT 0x4020, 513 words, PAGE_COUNT 2
+# Updater run (frame 6: the data image): root 2, depth 2, tracer_copy 0, IMAGE_ROOT 0x66c0, TRACER_ROOT 0x0, SOURCE_ROOT 0x6000, 513 words, PAGE_COUNT 2
 [master] cow_commit("/proofs/p2/cycle0") = 0
 [master] cow_freeze("/proofs/p2/cycle0") = 0
-[master] cow_root("/proofs/p2/cycle0") = 0: root 0x4740, depth 2
-[master] cow_copy("/proofs/p2/cycle0", "/proofs/p2/start") = 0: root 0x44e0, depth 2; source root 0x4740
+[master] fs_close(0) = 0
+[master] fs_open("/proofs/p2/cycle0", 0x10) = 0
+[master] cow_root(0) = 0: "cycle0", root 0x66c0, depth 2
+[master] fs_close(0) = 0
+[master] cow_copy("/proofs/p2/cycle0", "/proofs/p2/start") = 0: root 0x6460, depth 2; source root 0x66c0
+[master] fs_open("/proofs/p2/start", 0x10) = 0
 [master] fs_acquire_pages(5) = 5 (2 discarded refilling)
-# Updater run (frame 9: the segments before s): root 2, depth 2, tracer_copy 0, IMAGE_ROOT 0x44e0, TRACER_ROOT 0x0, SOURCE_ROOT 0x4740, 1539 words, PAGE_COUNT 5
+# Updater run (frame 9: the segments before s): root 2, depth 2, tracer_copy 0, IMAGE_ROOT 0x6460, TRACER_ROOT 0x0, SOURCE_ROOT 0x66c0, 1539 words, PAGE_COUNT 5
 [master] cow_commit("/proofs/p2/start") = 0
 [master] cow_freeze("/proofs/p2/start") = 0
-[master] cow_root("/proofs/p2/start") = 0: root 0x44e0, depth 2
-[master] cow_copy("/proofs/p2/start", "/proofs/p2/final") = 0: root 0x47e0, depth 2; source root 0x44e0
-[master] cow_copy("/proofs/p2/start", "/proofs/p2/tracer") = 0: root 0x47c0, depth 2; source root 0x44e0
+[master] fs_close(0) = 0
+[master] fs_open("/proofs/p2/start", 0x10) = 0
+[master] cow_root(0) = 0: "start", root 0x6460, depth 2
+[master] fs_close(0) = 0
+[master] cow_copy("/proofs/p2/start", "/proofs/p2/final") = 0: root 0x6760, depth 2; source root 0x6460
+[master] cow_copy("/proofs/p2/start", "/proofs/p2/tracer") = 0: root 0x6740, depth 2; source root 0x6460
+[master] fs_open("/proofs/p2/final", 0x10) = 0
+[master] fs_open("/proofs/p2/tracer", 0x10) = 1
 [master] fs_acquire_pages(6) = 6 (0 discarded refilling)
-# Updater run (frame 9: segment s, with the Tracer's copy): root 2, depth 2, tracer_copy 1, IMAGE_ROOT 0x47e0, TRACER_ROOT 0x47c0, SOURCE_ROOT 0x44e0, 1026 words, PAGE_COUNT 6
+# Updater run (frame 9: segment s, with the Tracer's copy): root 2, depth 2, tracer_copy 1, IMAGE_ROOT 0x6760, TRACER_ROOT 0x6740, SOURCE_ROOT 0x6460, 1026 words, PAGE_COUNT 6
 [master] cow_commit("/proofs/p2/final") = 0
 [master] cow_commit("/proofs/p2/tracer") = 0
+[master] fs_close(1) = 0
 [master] fs_acquire_pages(2) = 2 (0 discarded refilling)
-# Updater run (frame 9: the segments after s): root 0, depth 2, tracer_copy 0, IMAGE_ROOT 0x47e0, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 513 words, PAGE_COUNT 2
-[master] cow_root("/proofs/p2/tracer") = 0: root 0x47c0, depth 2
-[master] cow_root("/proofs/p2/map") = 0: root 0x4760, depth 1
-# hand-over: memory_root 0x47c0 depth 2, map_root 0x4760 depth 1, to record s's word 66
+# Updater run (frame 9: the segments after s): root 0, depth 2, tracer_copy 0, IMAGE_ROOT 0x6760, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 513 words, PAGE_COUNT 2
+# hand-over: the working directory /proofs/p2, to record s
+[tracer] fs_open("/proofs/p2/tracer", 0x10) = 1
+[tracer] fs_open("/proofs/p2/map", 0x10) = 2
+[tracer] cow_root(1) = 0: "tracer", root 0x6740, depth 2
+[tracer] cow_root(2) = 0: "map", root 0x66e0, depth 1
+[master] fs_open("/proofs/p2/map", 0x10) = -7
+[shell] fs_open("/proofs/p2/map", 0x1) = -7
+[shell] fs_remove("/proofs/p2/tracer") = -7
 [tile 0] fs_chdir("/proofs/p2/logs") = 0
-[tile 0] fs_open("tile0.log", 0x2) = 0
-[tile 0] fs_write(0, 25) = 25
+[tile 0] fs_open("tile0.log", 0x2) = 3
+[tile 0] fs_write(3, 25) = 25
 [tile 1] fs_chdir("/proofs/p2/logs") = 0
-[tile 1] fs_open("tile1.log", 0x2) = 1
-[tile 1] fs_write(1, 25) = 25
-[tile 1] fs_flush(1) = 0
+[tile 1] fs_open("tile1.log", 0x2) = 4
+[tile 1] fs_write(4, 25) = 25
+[tile 1] fs_flush(4) = 0
 [tile 2] fs_chdir("/proofs/p2/logs") = 0
-[tile 2] fs_open("tile2.log", 0x2) = 2
-[tile 2] fs_write(2, 25) = 25
+[tile 2] fs_open("tile2.log", 0x2) = 5
+[tile 2] fs_write(5, 25) = 25
 [tile 3] fs_chdir("/proofs/p2/logs") = 0
-[tile 3] fs_open("tile3.log", 0x2) = 3
-[tile 3] fs_write(3, 25) = 25
+[tile 3] fs_open("tile3.log", 0x2) = 6
+[tile 3] fs_write(6, 25) = 25
 [tracer] fs_chdir("/proofs/p2/logs") = 0
-[tracer] fs_open("tile0.code", 0x2) = 4
-[tracer] fs_write(4, 3000) = 3000
-[tracer] fs_close(4) = 0
-[tracer] fs_open("tile0.read", 0x2) = 4
-[tracer] fs_write(4, 12000) = 12000
-[tracer] fs_close(4) = 0
-[tracer] fs_open("tile0.write", 0x2) = 4
-[tracer] fs_write(4, 21000) = 21000
-[tracer] fs_close(4) = 0
-[tile 0] fs_write(0, 26) = 26
-[tracer] fs_open("tile1.code", 0x2) = 4
-[tracer] fs_write(4, 30000) = 30000
-[tracer] fs_close(4) = 0
-[tracer] fs_open("tile1.read", 0x2) = 4
-[tracer] fs_write(4, 39000) = 39000
-[tracer] fs_close(4) = 0
-[tracer] fs_open("tile1.write", 0x2) = 4
-[tracer] fs_write(4, 3000) = 3000
-[tracer] fs_close(4) = 0
-[tile 1] fs_write(1, 26) = 26
-[tracer] fs_open("tile2.code", 0x2) = 4
-[tracer] fs_write(4, 12000) = 12000
-[tracer] fs_close(4) = 0
-[tracer] fs_open("tile2.read", 0x2) = 4
-[tracer] fs_write(4, 21000) = 21000
-[tracer] fs_close(4) = 0
-[tracer] fs_open("tile2.write", 0x2) = 4
-[tracer] fs_write(4, 30000) = 30000
-[tracer] fs_close(4) = 0
-[tile 2] fs_write(2, 26) = 26
-[tile 2] fs_write(2, 34) = 34
-[tile 0] fs_write(0, 13) = 13
-[tile 0] fs_close(0) = 0
+[tracer] fs_open("tile0.code", 0x2) = 7
+[tracer] fs_write(7, 3000) = 3000
+[tracer] fs_close(7) = 0
+[tracer] fs_open("tile0.read", 0x2) = 7
+[tracer] fs_write(7, 12000) = 12000
+[tracer] fs_close(7) = 0
+[tracer] fs_open("tile0.write", 0x2) = 7
+[tracer] fs_write(7, 21000) = 21000
+[tracer] fs_close(7) = 0
+[tile 0] fs_write(3, 26) = 26
+[tracer] fs_open("tile1.code", 0x2) = 7
+[tracer] fs_write(7, 30000) = 30000
+[tracer] fs_close(7) = 0
+[tracer] fs_open("tile1.read", 0x2) = 7
+[tracer] fs_write(7, 39000) = 39000
+[tracer] fs_close(7) = 0
+[tracer] fs_open("tile1.write", 0x2) = 7
+[tracer] fs_write(7, 3000) = 3000
+[tracer] fs_close(7) = 0
+[tile 1] fs_write(4, 26) = 26
+[tracer] fs_open("tile2.code", 0x2) = 7
+[tracer] fs_write(7, 12000) = 12000
+[tracer] fs_close(7) = 0
+[tracer] fs_open("tile2.read", 0x2) = 7
+[tracer] fs_write(7, 21000) = 21000
+[tracer] fs_close(7) = 0
+[tracer] fs_open("tile2.write", 0x2) = 7
+[tracer] fs_write(7, 30000) = 30000
+[tracer] fs_close(7) = 0
+[tile 2] fs_write(5, 26) = 26
+[tile 2] fs_write(5, 34) = 34
+[tile 0] fs_write(3, 13) = 13
+[tile 0] fs_close(3) = 0
 [tile 0] fs_stat("../map") = 0: length 16384, 1 pages, depth 1, 0 copies
 [tile 0] fs_stat("./../logs/.") = 0: length 1664, 1 pages, depth 0, 0 copies
-[tile 1] fs_write(1, 13) = 13
-[tile 1] fs_close(1) = 0
+[tile 1] fs_write(4, 13) = 13
+[tile 1] fs_close(4) = 0
 [tile 1] fs_stat("../map") = 0: length 16384, 1 pages, depth 1, 0 copies
 [tile 1] fs_stat("./../logs/.") = 0: length 1664, 1 pages, depth 0, 0 copies
-[tile 2] fs_write(2, 13) = 13
-[tile 2] fs_close(2) = 0
+[tile 2] fs_write(5, 13) = 13
+[tile 2] fs_close(5) = 0
 [tile 2] fs_stat("../map") = 0: length 16384, 1 pages, depth 1, 0 copies
 [tile 2] fs_stat("./../logs/.") = 0: length 1664, 1 pages, depth 0, 0 copies
-[tile 3] fs_write(3, 13) = 13
-[tile 3] fs_close(3) = 0
+[tile 3] fs_write(6, 13) = 13
+[tile 3] fs_close(6) = 0
 [tile 3] fs_stat("../map") = 0: length 16384, 1 pages, depth 1, 0 copies
 [tile 3] fs_stat("./../logs/.") = 0: length 1664, 1 pages, depth 0, 0 copies
+[tracer] fs_close(1) = 0
+[tracer] fs_close(2) = 0
 [master] cow_freeze("/proofs/p2/final") = 0
+[master] fs_close(0) = 0
 [master] fs_unreserve() = 0, 0 pages not drawn
 [tile 0] fs_chdir("/") = 0
 [tile 1] fs_chdir("/") = 0
@@ -141,4 +166,4 @@ tile 2: window 2 replayed
 tile 2: check failed at row 12345
 tile 2: done
 
-# stats: 79 pages taken, 0 freed, 6 discards (0 while tracing); LPDDR 9 page writes, 168 half writes, 41 page reads, 10 half reads; the cache 1112 hits, 10 misses; 0 reads by the fd's hint
+# stats: 20 pages taken, 0 freed, 6 discards (0 while tracing); LPDDR 9 page writes, 168 half writes, 41 page reads, 10 half reads; the cache 982 hits, 10 misses; 0 reads by the fd's hint; look-ups 436 hash compares, 198 entries from the SRAM; 0 page requests

@@ -454,24 +454,32 @@ static void cmd_mkdir(int argc, char **argv) {
     }
 }
 
-static void remove_as(const char *cmd, int dir, int argc, char **argv) {
-    if (argc < 2) { usage(cmd); return; }
+/* dir: 0 files only (rm), 1 directories only (rmdir), 2 either, a directory with its files (rm -r) */
+static void remove_as(const char *cmd, int dir, int argc, char **argv, int first) {
+    if (argc <= first) { usage(cmd); return; }
     struct ops o;
-    ops_start(&o, cmd, argc, argv, 1);
+    ops_start(&o, cmd, argc, argv, first);
     const char *a;
     while ((a = ops_next(&o)) != 0) {
         if (arg_path(cmd, a, g_path1)) continue;
         struct fs_stat st;
         int e = fs_stat(g_path1, &st);
         if (e < 0) { err_path(cmd, a, e); continue; }
-        if (dir && st.type != FS_T_DIR) { err_path(cmd, a, FS_ENOTDIR); continue; }
-        if (!dir && st.type == FS_T_DIR) { err_path(cmd, a, FS_EISDIR); continue; }
-        e = fs_remove(g_path1);
+        if (dir == 1 && st.type != FS_T_DIR) { err_path(cmd, a, FS_ENOTDIR); continue; }
+        if (dir == 0 && st.type == FS_T_DIR) { err_path(cmd, a, FS_EISDIR); continue; }
+        /* rm -r: a directory and its files in one call, none removed if any is open or it has a subdirectory */
+        e = dir == 2 && st.type == FS_T_DIR ? fs_remove_directory(g_path1) : fs_remove(g_path1);
         if (e < 0) err_path(cmd, a, e);
     }
 }
-static void cmd_rmdir(int argc, char **argv) { remove_as("rmdir", 1, argc, argv); }
-static void cmd_rm(int argc, char **argv) { remove_as("rm", 0, argc, argv); }
+static void cmd_rmdir(int argc, char **argv) { remove_as("rmdir", 1, argc, argv, 1); }
+static void cmd_rm(int argc, char **argv) {
+    u32 f;
+    char *v[1];
+    const int i = opts(argc, argv, "r", &f, v);
+    if (i < 0) return;
+    remove_as("rm", (f & 1) ? 2 : 0, argc, argv, i);
+}
 
 /* ------------------------------------------------------------------ the table, in section 9's order */
 const struct cmd g_cmds[] = {
@@ -491,7 +499,7 @@ const struct cmd g_cmds[] = {
     {"echo", "echo [arg...]", cmd_echo},
     {"mkdir", "mkdir dir...", cmd_mkdir},
     {"rmdir", "rmdir dir...", cmd_rmdir},
-    {"rm", "rm file...", cmd_rm},
+    {"rm", "rm [-r] path...", cmd_rm},
     {0, 0, 0},
 };
 

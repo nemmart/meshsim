@@ -199,7 +199,7 @@ has several. Bad options or missing arguments print `usage: <usage line>`. An un
 | `echo` | `echo [arg...]` | the arguments joined by single spaces, then a newline (with `>>`, a note into `/syslog`) |
 | `mkdir` | `mkdir dir...` | `fs_mkdir` each |
 | `rmdir` | `rmdir dir...` | each must be a directory (`not a directory` otherwise); `fs_remove` (so `directory not empty` from the FS) |
-| `rm` | `rm file...` | each must not be a directory (`is a directory` otherwise); `fs_remove` |
+| `rm` | `rm [-r] path...` | each must not be a directory (`is a directory` otherwise); `fs_remove`. **`-r`** (owner, 2026-11-20): a directory is removed with every file in it, in one call, `fs_remove_directory` (FS-API 5.2): none is removed if it has a subdirectory (`directory not empty`) or a file in it is open (`busy`); a file as without `-r` |
 
 Files are read with a single fd per file through `fs_read` into the 4 KB page buffer (except `tail` and `hexdump -s`).
 Reading or listing a directory where a file is expected gives `is a directory`, and the reverse `not a directory`.

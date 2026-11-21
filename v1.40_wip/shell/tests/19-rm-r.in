@@ -1,0 +1,13 @@
+rm /p
+rm -r /p
+rm -r /p/sub
+ls /p
+rm -r /p
+ls /
+rm -r /q
+rm -r /q/f
+ls /q
+rm -r /x*
+ls /
+rm -r
+rm -z /q

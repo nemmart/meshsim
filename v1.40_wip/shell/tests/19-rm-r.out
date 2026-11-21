@@ -1,0 +1,26 @@
+/> rm /p
+rm: /p: is a directory
+/> rm -r /p
+rm: /p: directory not empty
+/> rm -r /p/sub
+/> ls /p
+a
+b
+/> rm -r /p
+/> ls /
+q/
+x1/
+x2/
+/> rm -r /q
+rm: /q: busy
+/> rm -r /q/f
+/> ls /q
+held
+/> rm -r /x*
+/> ls /
+q/
+/> rm -r
+usage: rm [-r] path...
+/> rm -z /q
+usage: rm [-r] path...
+/> 

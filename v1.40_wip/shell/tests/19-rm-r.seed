@@ -1,0 +1,26 @@
+# rm -r: a directory and its files in one call (fs_remove_directory, owner 2026-11-20)
+dir /p
+file /p/a
+alpha
+.
+gen /p/b 5000 lines
+dir /p/sub
+file /p/sub/c
+gamma
+.
+dir /q
+file /q/f
+foxtrot
+.
+file /q/held
+held open
+.
+open /q/held r
+dir /x1
+file /x1/one
+1
+.
+dir /x2
+file /x2/two
+2
+.

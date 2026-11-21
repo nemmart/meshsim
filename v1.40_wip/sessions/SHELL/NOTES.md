@@ -242,6 +242,14 @@ None by this session. The bug of finding 9 was fixed on `fs-api` (README finding
   finds no page at `fs_close` and is `no space`, the length unchanged. `rm /a/copy` gives back all 31 pages, the free
   count as before; `echo after >> /a/small` then works. `check()` holds at the end.
 
+## 3e. `rm -r` (owner, 2026-11-20)
+
+`rm -r path...`: a directory is removed with every file in it in one call, `fs_remove_directory` (FS-API 5.2), and
+nothing of it if it has a subdirectory (`directory not empty`) or a file in it is open (`busy`); a file is removed as
+without `-r`; patterns as for `rm`. SHELL-SPEC's `rm` row says so. Test 19; test 04's `help` shows the new usage
+line. Code: +99 bytes (`cmds.c`, clang for rv32imc, `-Os`); `make size` was not run, the GCC RISC-V toolchain not
+being installed in the session that made the change.
+
 ## 4. Pushing
 
 The first request to attach the repository for pushing was refused; with the owner's permission (2026-11-20) it was

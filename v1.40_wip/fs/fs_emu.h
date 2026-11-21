@@ -24,8 +24,9 @@ constexpr uint32_t NONE = 0xFFFFFFFFu, OWNED = 0x80000000u;
 enum class Caller { MASTER, TRACER, TILE, SHELL };
 void set_caller(Caller c, int tile = 0);
 
-// Power: a hard reset formats, a soft reset mounts (3.1). LPDDR (lpddr_pages, a multiple of 128) keeps its contents
-// across a soft reset; the memory tile's scratchpad does not.
+// A reset (3.1): the memory tile's state and the cache empty, every call FS_ESHUTDOWN until the master tile's
+// fs_startup. A hard reset is a power-on: LPDDR (lpddr_pages, a multiple of 128) loses its contents; a soft reset
+// keeps them.
 void power_on(uint32_t lpddr_pages, bool hard);
 
 // The call log: every call, its caller, its arguments and its result, a line each. nullptr: none.
@@ -49,6 +50,7 @@ struct Stats {
     uint64_t cache_hits = 0, cache_misses = 0, hint_hits = 0;   // hint: a reader's fd named its buffer (FS-API 4.6)
     uint64_t name_hash_compares = 0, dir_entry_reads = 0;      // path look-ups: in data memory; from the SRAM
     uint64_t page_requests = 0;                                 // the memory tile's stash refilled from the tracer tile
+    uint64_t startup_map_bytes = 0;                             // fs_startup's "taken" map, sent to the tracer tile
     uint64_t pages_taken = 0, pages_freed = 0;
 };
 const Stats& stats();
@@ -61,5 +63,8 @@ void check();
 
 // What the last mount found in the superblock: whether the file system had been shut down cleanly (FS-API 4.4).
 bool last_mount_clean();
+
+// A directory entry's address in LPDDR, in units (NONE: no such path), for a test that corrupts one.
+uint32_t entry_address(const char* path);
 
 }  // namespace fsemu

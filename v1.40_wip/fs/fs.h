@@ -81,6 +81,10 @@ int  cow_freeze(const char *path);
 int  cow_root(int fd, u32 *root, u32 *depth);          /* fd opened FS_ROOT */
 
 /* ---- the file system as a whole (5.4): the master tile alone */
+#define FS_STARTED_FORMAT 1   /* fs_startup's mode: no superblock, formatted */
+#define FS_STARTED_MOUNT  2   /* shut down cleanly: mounted */
+#define FS_STARTED_FSCK   3   /* not shut down cleanly: checked and repaired */
+int  fs_startup(void);
 int  fs_shutdown(void);
 
 #ifdef __cplusplus

@@ -35,7 +35,7 @@ event it waits for; nothing waits in place. v1.37's master tile firmware is writ
 | `counter_done` on one of the four grant counters | the write whose packets have landed (2.4) |
 | the RW unit's done, for a job | a call waiting for a half or page read or written |
 | the DMA's done | a call sending a half to the RW unit, or words to a caller (`fs_read`) |
-| an answer from the tracer tile | the call waiting for the stash's refill |
+| an answer from the tracer tile | the call waiting for the stash's refill; `fs_startup` waiting for its map to be taken |
 
 ### 2.2 What it serves at once (owner, 2026-11-20)
 
@@ -130,14 +130,17 @@ CLOCK over the 384 buffers: a hit sets the used bit; a miss sweeps, skipping pin
 changes is pinned until it is written at the call's end. A half of a freed page is dropped at once, with its names'
 hashes.
 
-### 2.9 At a reset
+### 2.9 At a reset: `fs_startup` (owner, 2026-11-20; FS-API 3.1)
 
-- **A hard reset formats** (owner, 2026-11-19): the superblock and an empty root directory, page 0; every tile's
-  working directory the root; and the tracer tile told to start its maps empty †.
-- **A soft reset mounts** (owner, 2026-11-19): the superblock's state read (was the last shutdown clean?) and set to
-  "mounted"; the walk of every file from the root, every page it reaches sent to the
-  tracer tile, which rebuilds its maps (every page of a COW file "may be cached"); a pending root forgotten.
-- **Which reset it was** is the hardware's to say (FOR-THE-HARDWARE 7).
+Every call is answered `FS_ESHUTDOWN` until the master tile's `fs_startup`. It reads page 0:
+
+- **no superblock:** a format: the superblock (state "mounted") and an empty root directory;
+- **"shut down cleanly":** a mount; **anything else:** a check. **Both are one routine,** the walk with its repairs:
+  breadth first from the root, each entry checked before its tree is walked, each page owned once, the counts
+  recomputed at the end and rewritten where they differ (a clean mount finds none to rewrite);
+- **the "taken" map** is built in 64 of the cache's buffers, empty at a reset, sent to the tracer tile over the mesh,
+  and the buffers given back to the cache;
+- the superblock's state set to "mounted"; every tile's working directory the root; the answer is the mode.
 
 ## 3. The tracer tile: the page service
 
@@ -174,8 +177,9 @@ Freed pages arrive in batches from the memory tile (its walks) and the master ti
 its "may be cached" bit left as the acquire set it. At a mount, the memory tile's walk sends every page in use, and
 the maps are built from them.
 
-**Open** †: where a batch of page addresses lands on the tracer tile (a slot for each sending tile, 1 KiB), and how the
-tracer tile learns of a format.
+**At `fs_startup`** the memory tile sends the whole "taken" map (128 KiB), and the tracer tile starts its "may be
+cached" map clear (FS-API 3.1). **Open** †: where a batch of freed page addresses lands on the tracer tile (a slot for
+each sending tile, 1 KiB).
 
 ## 4. The master tile
 
@@ -230,5 +234,5 @@ and passes the file system absolute paths. It never makes the page calls or the 
 2. Whether a serialized call runs beside the reads and writes in hand (2.2).
 3. Taking requests out of the receive queue into a waiting list (2.2).
 4. How `fs_read_page`'s output is addressed to the caller (FOR-THE-HARDWARE 8.1).
-5. Where freed pages land on the tracer tile, and how it learns of a format (3.3).
+5. Where freed pages land on the tracer tile (3.3).
 6. The page service's summary bits, word-at-a-time maps and high-water mark (3.2).

@@ -12,6 +12,7 @@
 //   7 removing the working directories (3.9): leaves first, every page back
 //   8 a second proof on freed pages (4.2): the discards made at fs_reserve_pages, none while the Tracer runs
 //   9 many writers at once (4.6: 128 buffers), and a file system full: fs_write's FS_ENOSPC keeps the pages stored
+//  10 fs_startup: a format, a check that repairs corrupted counts and drops a bad entry, a clean mount
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -46,6 +47,12 @@ static void report() {
          (unsigned long long)s.lpddr_half_reads, (unsigned long long)s.cache_hits,
          (unsigned long long)s.cache_misses, (unsigned long long)s.hint_hits,
          (unsigned long long)s.name_hash_compares, (unsigned long long)s.dir_entry_reads, (unsigned long long)s.page_requests);
+}
+// A reset, then the master tile's fs_startup (FS-API 5.4): the mode it ran in.
+static int start(uint32_t pages, bool hard) {
+    power_on(pages, hard);
+    set_caller(Caller::MASTER);
+    return fs_startup();
 }
 static u64 free_pages() { u64 t, f; set_caller(Caller::MASTER); fs_df(&t, &f); return f; }
 
@@ -361,11 +368,11 @@ int main() {
     constexpr uint32_t LPDDR = 16384;                         // 64 MiB here; 2^20 pages on the chip
 
     begin("01-power-on");
-    power_on(LPDDR, true);
+    EXPECT(start(LPDDR, true) == FS_STARTED_FORMAT);             // a power-on: no superblock
     const u64 empty = free_pages();
     EXPECT(empty == LPDDR - 1);
     { struct fs_dirent e; u32 pos = 0; set_caller(Caller::MASTER); EXPECT(fs_list("/", &pos, &e) == 0); }
-    power_on(LPDDR, false);
+    EXPECT(start(LPDDR, false) == FS_STARTED_FSCK);              // a reset with no shutdown: checked
     EXPECT(free_pages() == empty);
     check(); report();
 
@@ -421,8 +428,7 @@ int main() {
     begin("05-hardware-error");
     Proof p5{"/proofs/p3", &sha, 4, 0, {{0, 300}, {1}, {2}, {3}}, {4}, {}, 4, 0, Ending::HARDWARE_ERROR};
     run_proof(p5);
-    power_on(LPDDR, false);                                     // the soft reset: the mount
-    EXPECT(last_mount_clean());                                 // fs_shutdown marked the superblock
+    EXPECT(start(LPDDR, false) == FS_STARTED_MOUNT);           // fs_shutdown marked the superblock clean
     set_caller(Caller::SHELL);
     const std::string t2 = sh_cat("/proofs/p3/logs/tile2.log");
     EXPECT(t2.find("about to fail") != std::string::npos);    // fs_shutdown wrote it
@@ -439,8 +445,7 @@ int main() {
     EXPECT(fs_write(fd, b.data(), 3000) == 3000);
     EXPECT(fs_flush(fd) == 0);
     EXPECT(fs_write(fd, b.data() + 3000, 9000) == 9000);     // past two page boundaries, never flushed
-    power_on(LPDDR, false);
-    EXPECT(!last_mount_clean());                              // no shutdown: the superblock says so
+    EXPECT(start(LPDDR, false) == FS_STARTED_FSCK);            // no shutdown: the superblock says so
     set_caller(Caller::SHELL);
     const std::string crash = sh_cat("/proofs/p3/logs/crash.log");
     EXPECT(crash == std::string(3000, 'a'));                  // what was flushed, and nothing else
@@ -449,7 +454,7 @@ int main() {
     set_caller(Caller::MASTER);
     EXPECT(fs_reserve_pages(3) == 0);
     EXPECT(cow_create("/proofs/p3/half", 100, &root, &depth) == 0);
-    power_on(LPDDR, false);
+    EXPECT(start(LPDDR, false) == FS_STARTED_FSCK);
     set_caller(Caller::MASTER);
     EXPECT(fs_stat("/proofs/p3/half", &st) == 0 && st.pages == 0);
     check();                                                  // the root to be and the reservation are free again
@@ -530,7 +535,7 @@ int main() {
     check(); report();
 
     begin("08-second-proof-on-freed-pages");
-    power_on(1024, true);                                      // a small LPDDR, so that freed pages are taken again
+    EXPECT(start(1024, true) == FS_STARTED_FORMAT);            // a small LPDDR, so that freed pages are taken again
     Program small{"/programs", "/programs/small", 1024, {}, 2};
     for (uint64_t pg = 0; pg < 200; pg++) small.pages.push_back(pg);
     store_program(small);
@@ -554,7 +559,7 @@ int main() {
     check(); report();
 
     begin("09-many-writers-and-full");
-    power_on(256, true);                                       // 1 MiB: easy to fill
+    EXPECT(start(256, true) == FS_STARTED_FORMAT);             // 1 MiB: easy to fill
     set_caller(Caller::MASTER);
     EXPECT(fs_mkdir("/logs") == 0);
     std::vector<int> fds;
@@ -609,6 +614,51 @@ int main() {
     }
     set_caller(Caller::SHELL);
     EXPECT(fs_remove("/big") == 0);
+    check(); report();
+
+    begin("10-startup-and-fsck");
+    EXPECT(start(1024, true) == FS_STARTED_FORMAT);
+    set_caller(Caller::MASTER);
+    EXPECT(fs_open("/x", FS_READ) == FS_ENOENT);
+    EXPECT(fs_startup() == FS_EBUSY);                          // started already
+    store_program(small);
+    set_caller(Caller::TILE, 1);
+    EXPECT(fs_mkdir("/r") == 0);
+    for (const char* f : {"/r/a", "/r/b", "/r/c"}) { const int x = fs_open(f, FS_APPEND); fs_write(x, "hello\n", 6); fs_close(x); }
+    set_caller(Caller::MASTER);
+    {   // a copy of the program image, so that the image counts one copy
+        const u32 src = root_of("/programs/small.pages", &depth);
+        EXPECT(fs_reserve_pages(4) == 0);
+        EXPECT(cow_copy("/programs/small.pages", "/r/img", &root, &depth) == 0);
+        const int h = hold("/r/img");
+        Run c; c.root = 2; c.depth = depth; c.image_root = root; c.source_root = src; c.page_count = 0;
+        run(c, {}, "a copy, unchanged");
+        EXPECT(cow_commit("/r/img") == 0); EXPECT(cow_freeze("/r/img") == 0); fs_close(h);
+        EXPECT(fs_unreserve() == 0);
+    }
+    check();
+    note("--- a stop with no shutdown, and LPDDR corrupted: a directory's count, a file's copies, an entry's type");
+    const u64 before = free_pages();
+    const uint32_t er = entry_address("/r"), eb = entry_address("/r/b"), ei = entry_address("/programs/small.pages");
+    EXPECT(er != NONE && eb != NONE && ei != NONE);
+    auto poke32 = [](uint32_t unit, uint32_t off, uint32_t v) { std::memcpy(page(unit) + off, &v, 4); };
+    poke32(er, 112, 9);                                        // /r counts 9 entries (it has 4)
+    poke32(ei, 112, 0);                                        // the image counts no copy (it has one)
+    poke32(eb, 108, 7);                                        // /r/b: a type that does not exist
+    EXPECT(start(1024, false) == FS_STARTED_FSCK);
+    check();                                                   // every count right again, every page owned once
+    set_caller(Caller::SHELL);
+    EXPECT(fs_stat("/r/b", &st) == FS_ENOENT);                 // dropped
+    EXPECT(fs_stat("/r/a", &st) == 0 && st.length == 6);
+    EXPECT(fs_stat("/programs/small.pages", &st) == 0 && st.copies == 1);
+    EXPECT(free_pages() == before + 1);                        // /r/b's page free again
+    note("--- a clean shutdown: a mount, nothing to repair");
+    set_caller(Caller::MASTER);
+    EXPECT(fs_shutdown() == 0);
+    EXPECT(start(1024, false) == FS_STARTED_MOUNT);
+    check();
+    note("--- a power-on: LPDDR lost, a format");
+    EXPECT(start(1024, true) == FS_STARTED_FORMAT);
     check(); report();
 
     if (g_out) std::fclose(g_out);

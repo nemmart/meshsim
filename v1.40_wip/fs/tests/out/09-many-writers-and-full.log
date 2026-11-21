@@ -1,4 +1,4 @@
-[master] format: 256 pages
+[master] fs_startup() = FORMAT: 256 pages
 [master] fs_mkdir("/logs") = 0
 [tile 0] fs_open("/logs/w0", 0x2) = 0
 [tile 0] fs_write(0, 9) = 9

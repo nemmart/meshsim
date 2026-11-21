@@ -1,0 +1,56 @@
+[master] fs_startup() = FORMAT: 1024 pages
+[master] fs_open("/x", 0x1) = -1
+[master] fs_startup() = FS_EBUSY
+# --- storing /programs/small
+[master] fs_mkdir("/programs") = 0
+[master] fs_reserve_pages(204) = 0 (the batch: 64 pages, 0 discarded preparing it)
+[master] cow_create("/programs/small.pages", 1024) = 0: root 0x1800, depth 1
+[master] fs_open("/programs/small.pages", 0x10) = 0
+[master] fs_acquire_cow_pages(128) = 128 (0 discarded refilling)
+[master] fs_acquire_cow_pages(72) = 72 (0 discarded refilling)
+# Updater run (the program image, empty): root 1, depth 1, tracer_copy 0, IMAGE_ROOT 0x1800, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 102600 words, PAGE_COUNT 200
+[master] cow_commit("/programs/small.pages") = 0
+[master] cow_freeze("/programs/small.pages") = 0
+[master] fs_close(0) = 0
+[master] cow_create("/programs/small.map", 2) = 0: root 0x3120, depth 1
+[master] fs_open("/programs/small.map", 0x10) = 0
+[master] fs_acquire_cow_pages(2) = 2 (0 discarded refilling)
+# Updater run (the base table, empty): root 1, depth 1, tracer_copy 0, IMAGE_ROOT 0x3120, TRACER_ROOT 0x0, SOURCE_ROOT 0x0, 1026 words, PAGE_COUNT 2
+[master] cow_commit("/programs/small.map") = 0
+[master] cow_freeze("/programs/small.map") = 0
+[master] fs_close(0) = 0
+[master] fs_unreserve() = 0, 0 pages not drawn
+[tile 1] fs_mkdir("/r") = 0
+[tile 1] fs_open("/r/a", 0x2) = 0
+[tile 1] fs_write(0, 6) = 6
+[tile 1] fs_close(0) = 0
+[tile 1] fs_open("/r/b", 0x2) = 0
+[tile 1] fs_write(0, 6) = 6
+[tile 1] fs_close(0) = 0
+[tile 1] fs_open("/r/c", 0x2) = 0
+[tile 1] fs_write(0, 6) = 6
+[tile 1] fs_close(0) = 0
+[master] fs_open("/programs/small.pages", 0x10) = 0
+[master] cow_root(0) = 0: "small.pages", root 0x1800, depth 1
+[master] fs_close(0) = 0
+[master] fs_reserve_pages(4) = 0 (the batch: 64 pages, 0 discarded preparing it)
+[master] cow_copy("/programs/small.pages", "/r/img") = 0: root 0x3180, depth 1; source root 0x1800
+[master] fs_open("/r/img", 0x10) = 0
+# Updater run (a copy, unchanged): root 2, depth 1, tracer_copy 0, IMAGE_ROOT 0x3180, TRACER_ROOT 0x0, SOURCE_ROOT 0x1800, 0 words, PAGE_COUNT 0
+[master] cow_commit("/r/img") = 0
+[master] cow_freeze("/r/img") = 0
+[master] fs_close(0) = 0
+[master] fs_unreserve() = 0, 3 pages not drawn
+# --- a stop with no shutdown, and LPDDR corrupted: a directory's count, a file's copies, an entry's type
+[master] fs_df() = 0: 1024 total, 812 free
+[master] fs_startup() = FSCK: 8 entries, 1 dropped, 2 counts repaired, 813 pages free
+[shell] fs_stat("/r/b") = -1
+[shell] fs_stat("/r/a") = 0: length 6, 1 pages, depth 0, 0 copies
+[shell] fs_stat("/programs/small.pages") = 0: length 4194304, 201 pages, depth 1, 1 copies
+[master] fs_df() = 0: 1024 total, 813 free
+# --- a clean shutdown: a mount, nothing to repair
+[master] fs_shutdown() = 0, 0 files closed; the superblock: shut down cleanly
+[master] fs_startup() = MOUNT: 7 entries, 0 dropped, 0 counts repaired, 813 pages free
+# --- a power-on: LPDDR lost, a format
+[master] fs_startup() = FORMAT: 1024 pages
+# stats: 396 pages taken, 0 freed, 0 discards (0 while tracing); LPDDR 5 page writes, 35 half writes, 16 page reads, 13 half reads; the cache 709 hits, 13 misses; 0 reads by the fd's hint; look-ups 74 hash compares, 134 entries from the SRAM; 1 page requests

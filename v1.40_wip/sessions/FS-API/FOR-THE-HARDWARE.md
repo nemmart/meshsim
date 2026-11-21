@@ -112,8 +112,8 @@ are free and clean without a bit read.
 
 ## 7. The rest
 
-- **The reset's cause,** hard or soft, readable by the memory tile: a hard reset formats, a soft reset mounts (owner,
-  2026-11-19). The superblock cannot tell them apart.
+- **No reset-cause bit is needed** (owner, 2026-11-20): `fs_startup` reads the superblock, and formats, mounts or
+  checks as it says (FS-API 3.1).
 - **The master tile's error handler makes a request and waits for its answer** (`fs_shutdown`, FS-API 3.7), with its
   interrupts off: the request unit and the counters must still work after an error has raised the NMI.
 - **The free page queue gives no page back** (17.10.4): with the host's counts exact (29.7) none is left; with a wrong

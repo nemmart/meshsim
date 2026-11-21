@@ -105,7 +105,7 @@
 [master] fs_df = FS_ESHUTDOWN
 [tile 3] fs_write = FS_ESHUTDOWN
 # the master tile parks; the outside world makes a soft reset
-[master] mount: 52 entries, 16180 pages free; the last shutdown clean
+[master] fs_startup() = MOUNT: 51 entries, 0 dropped, 0 counts repaired, 16180 pages free
 [shell] fs_open("/proofs/p3/logs/tile2.log", 0x1) = 0
 [shell] fs_read(0, 4096) = 73
 [shell] fs_read(0, 4096) = 0
@@ -126,7 +126,7 @@
 [tile 9] fs_write(0, 3000) = 3000
 [tile 9] fs_flush(0) = 0
 [tile 9] fs_write(0, 9000) = 9000
-[master] mount: 53 entries, 16179 pages free; the last shutdown not clean
+[master] fs_startup() = FSCK: 52 entries, 0 dropped, 0 counts repaired, 16179 pages free
 [shell] fs_open("/proofs/p3/logs/crash.log", 0x1) = 0
 [shell] fs_read(0, 4096) = 3000
 [shell] fs_read(0, 4096) = 0
@@ -134,7 +134,7 @@
 # --- a soft reset between cow_create and cow_commit
 [master] fs_reserve_pages(3) = 0 (the batch: 256 pages, 0 discarded preparing it)
 [master] cow_create("/proofs/p3/half", 100) = 0: root 0x20a0, depth 1
-[master] mount: 54 entries, 16179 pages free; the last shutdown not clean
+[master] fs_startup() = FSCK: 53 entries, 0 dropped, 0 counts repaired, 16179 pages free
 [master] fs_stat("/proofs/p3/half") = 0: length 409600, 0 pages, depth 1, 0 copies
 [master] fs_remove("/proofs/p3/half") = 0, 0 pages freed, may be cached
-# stats: 781 pages taken, 0 freed, 0 discards (0 while tracing); LPDDR 10 page writes, 179 half writes, 317 page reads, 56 half reads; the cache 2637 hits, 56 misses; 0 reads by the fd's hint; look-ups 481 hash compares, 340 entries from the SRAM; 1 page requests
+# stats: 781 pages taken, 0 freed, 0 discards (0 while tracing); LPDDR 10 page writes, 179 half writes, 317 page reads, 56 half reads; the cache 2643 hits, 56 misses; 0 reads by the fd's hint; look-ups 481 hash compares, 340 entries from the SRAM; 1 page requests

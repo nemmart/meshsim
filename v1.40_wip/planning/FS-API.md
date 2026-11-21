@@ -84,15 +84,27 @@ nothing else is served. **In v1.40 it is background work** (owner, 2026-11-19): 
 The work the file system does, as the calls it makes (section 5). Paths here are examples; the working directory
 `wd` is the one the proof's frame names (29.7).
 
-### 3.1 Power-on and the resets
+### 3.1 Power-on and the resets: `fs_startup` (owner, 2026-11-20)
 
-- **A hard reset formats** (owner, 2026-11-19): the memory tile writes the superblock and an empty root directory, and
-  starts its page maps with every page free but page 0. Nothing else is zeroed.
-- **A soft reset mounts** (owner, 2026-11-19): the memory tile reads the superblock, and rebuilds its page maps by
-  walking the trees from the root (section 4.4) before the first call that frees or takes a page.
-- **The memory tile must know which reset it was:** the superblock cannot tell it, since LPDDR may keep it across a
-  hard reset with the power held (`v1.4_wip/planning/DESIGN-NOTES-2026-11-14.md`, section 2). A bit from the hardware
-  (section 7).
+After every reset the file system is shut down: every call is `FS_ESHUTDOWN` until **the master tile calls
+`fs_startup()`**, which looks at the superblock and returns the mode it ran in:
+
+- **no superblock → it formats** (`FS_STARTED_FORMAT`): the superblock and an empty root directory, in page 0;
+- **a superblock marked shut down cleanly → it mounts** (`FS_STARTED_MOUNT`);
+- **a superblock not shut down cleanly → it checks** (`FS_STARTED_FSCK`).
+
+**The mount and the check are one walk** (4.4): every entry from the root, each file's pages reached by its owned
+entries, the "taken" map built from them. The check also repairs what a stop can leave: a page linked nowhere is free
+again (the walk never reaches it); a pending root is forgotten; every directory's count of live entries and every file's
+count of copies is recomputed and rewritten where it differs; an entry that makes no sense (an unknown type, a root
+outside LPDDR, a depth over 3, an unterminated name) or whose tree reaches a page another file owns is dropped, its
+pages free again, and so is a copy whose source is gone. Then **the "taken" map goes to the tracer tile** (128 KiB for
+2²⁰ pages, built in the memory tile's cache buffers, which are empty at a reset), and its "may be cached" map starts
+clear: a reset empties the cache (23.6.10). The superblock is marked mounted. Every tile's working directory is the
+root.
+
+**No bit from the hardware is needed:** the superblock decides (owner, 2026-11-20). A power-on loses LPDDR's contents,
+so it finds none.
 
 ### 3.2 Storing a program (a request from the host)
 
@@ -401,7 +413,9 @@ again. The master tile commits a file only after the run that makes its root is 
 | --- | --- |
 | `int fs_shutdown(void)` | **the calls in hand finish first; then** every open file's buffers, index halves and entry go to LPDDR and every fd is closed; **then** the superblock is marked shut down cleanly; **then** the file system is shut down: every call waiting, and every call after, is `FS_ESHUTDOWN`, until the next reset. Answers when it is done (owner, 2026-11-20) |
 
-Formatting and mounting are the memory tile's own, at its reset (3.1), and no one's call.
+Before `fs_shutdown`'s row: **`int fs_startup(void)`**, the master tile's, once after every reset (3.1): a format, a mount
+or a check, as the superblock says; it returns `FS_STARTED_FORMAT` (1), `FS_STARTED_MOUNT` (2) or `FS_STARTED_FSCK`
+(3), or `FS_EBUSY` if the file system is started already (owner, 2026-11-20).
 
 ### 5.5 The errors
 
@@ -438,7 +452,6 @@ There is no kernel and no permission check (owner, 2026-11-19): who may call wha
   its lines serves any request of the Tracer's that **hits** in the cache. A Tracer request that misses may wait until
   the discard is done, and so may every look-up port's. The reply still follows the 32nd line. A change to the cache
   (23.6.3, 23.6.5).
-- **The reset's cause,** hard or soft, readable by the memory tile (3.1).
 - **The free page queue cannot give pages back:** pages pushed and not used by a run stay in it until the reset
   (17.10.4). With the host's counts exact (29.7) none are left; if a count is ever wrong, they are lost to the file
   system until the next hard reset.

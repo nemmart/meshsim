@@ -713,69 +713,133 @@ void cache_touch(uint32_t unit) { g_incache[pgno(unit)] = 1; }
 void set_tracing(bool on) { g_tracing = on; }
 const Stats& stats() { return g_stats; }
 bool last_mount_clean() { return g_last_clean; }
+uint32_t entry_address(const char* path) { uint32_t a; const Caller c = g_caller; g_caller = Caller::MASTER; const int r = resolve(path, &a); g_caller = c; return r == 0 ? a : NONE; }
 void reset_stats() { g_stats = Stats{}; }
 
+// A reset (3.1): the memory tile's state and the cache (23.6.10) empty; the file system not started. A hard reset is
+// a power-on here: LPDDR's contents are lost, so its superblock is gone (page 0 cleared). LPDDR keeps them across a
+// soft reset.
 void power_on(uint32_t pages, bool hard) {
     if (hard) {
         if (pages % 128 || pages < 256 || pages > (1u << 20)) fatal("LPDDR of %u pages", pages);
         g_pages = pages;
-        g_lpddr.resize(size_t(pages) * PAGE_BYTES);           // its old contents stay: nothing is zeroed
+        g_lpddr.resize(size_t(pages) * PAGE_BYTES);
+        std::memset(g_lpddr.data(), 0, PAGE_BYTES);
     }
-    // the reset: the scratchpad's state and the cache (23.6.10) empty
     g_incache.assign(g_pages, 0);
-    g_taken.assign(g_pages / 32, 0); g_mbc.assign(g_pages / 32, 0);
+    g_taken.assign(g_pages / 32, 0); g_mbc.assign(g_pages / 32, 0);   // nothing in the cache: nothing may be cached
     std::memset(g_fdtab, 0, sizeof g_fdtab);
     for (Slot& s : g_slots) { s.used = false; forget_lines(s); }
     for (Pool& P : g_pool) { P.batch.clear(); P.reserved = false; P.held = 0; }
     g_stash.clear();
     g_batch_size = std::min<uint32_t>(256, g_pages / 16);           // 256 on the chip
     cache_reset();
-    g_shutdown = false; g_cursor = 1;
+    g_cursor = 1;
     for (uint32_t& c : g_cwd) c = ROOT_ENTRY;                       // every tile starts in the root
     setbit(g_taken, 0, true);
     count_free();
-    const Caller c = g_caller; g_caller = Caller::MASTER;
-    if (hard) {                                                     // the format (3.1)
-        uint8_t b[PAGE_BYTES] = {};
-        std::memcpy(b, MAGIC, 8); put32(b + 8, 1); put32(b + 12, pages); put32(b + 16, SB_MOUNTED);
-        Ent root = ent_new("/", T_DIR);
-        root.source = ROOT_ENTRY;                                   // the root is its own parent
-        ent_encode(root, b + LINE_BYTES);
-        page_write(0, b);
-        logf("format: %u pages", pages);
-    } else {                                                        // the mount: the maps rebuilt by the walk
-        if (std::memcmp(lp(0), MAGIC, 8) != 0) fatal("mount: no superblock");
-        {                                                           // the state: read, then marked in use again
-            Buf& sb = half_get(0);
-            g_last_clean = get32(sb.data + 16) == SB_CLEAN;
-            put32(sb.data + 16, SB_MOUNTED);
-            lp_half_write(0, sb.data);
-        }
-        uint32_t files = 0;
-        std::function<void(uint32_t)> visit = [&](uint32_t a) {
-            Ent e = ent_read(a);
-            if (e.pending) { e.pending = 0; ent_write(a, e); }    // a root never committed: its page is free again
-            walk(e.root, e.depth(), [&](uint32_t u) {
-                if (bit(g_taken, pgno(u))) fatal("mount: page %u reached twice", pgno(u));
-                setbit(g_taken, pgno(u), true);
-                if (e.flags & E_COW) setbit(g_mbc, pgno(u), true);
-            });
-            files++;
-            if (e.type == T_DIR)
-                for (uint32_t i = 0;; i++) {
-                    const uint32_t s = dir_slot(e, i);
-                    if (s == NONE) break;
-                    if (ent_read(s).type != T_FREE) visit(s);
-                }
-        };
-        visit(ROOT_ENTRY);
-        count_free();
-        write_touched();                                            // the pending roots forgotten, written
-        logf("mount: %u entries, %u pages free; the last shutdown %s", files, free_count(), g_last_clean ? "clean" : "not clean");
-    }
-    g_caller = c;
+    g_shutdown = true;                                              // every call FS_ESHUTDOWN until fs_startup
 }
 
+namespace {
+// fs_startup's walk (FS-API 5.4), one routine for the mount and the check: every entry from the root, each checked;
+// each file's pages found by the walk of its owned entries (4.4); the "taken" map built from them. Repairs: an entry
+// that makes no sense, or whose tree reaches a page another owns, is dropped (its pages free again); a copy whose source
+// is gone is dropped; a pending root is forgotten; every count is recomputed and rewritten where it differs.
+struct StartupReport { uint32_t entries = 0, dropped = 0, repaired = 0; };
+bool entry_sane(const Ent& e, bool is_root) {
+    if (e.type != T_DIR && e.type != T_FILE) return false;
+    if (std::memchr(e.name, 0, 96) == nullptr) return false;
+    if (e.depth() > 3 || (e.flags & ~0xFu)) return false;
+    if (is_root && e.type != T_DIR) return false;
+    const uint64_t units = uint64_t(g_pages) * PAGE_UNITS;
+    auto page_ok = [&](uint32_t r) { return r != NONE && r % PAGE_UNITS == 0 && r != 0 && r < units; };
+    if (e.root != NONE && e.root != 0 && !page_ok(e.root)) return false;
+    if (e.root == 0 && !(e.flags & E_COW)) return false;            // a root of 0 is a COW file not committed
+    if (e.type == T_DIR && (e.flags & E_COW)) return false;
+    return true;
+}
+void startup_walk(StartupReport& R) {
+    std::vector<int32_t> owner(g_pages, -1);                        // the entry that owns each page, by index
+    owner[0] = -2;
+    struct Live { uint32_t addr, parent; Ent e; bool live; };
+    std::vector<Live> L;
+    std::vector<size_t> queue;
+    const uint64_t units = uint64_t(g_pages) * PAGE_UNITS;
+    auto drop = [&](uint32_t a) { Ent z; std::memset(&z, 0, sizeof z); ent_write(a, z); R.dropped++; };
+    auto take_pages = [&](size_t k) {                               // the walk of entry k; false on a page owned or bad
+        std::vector<uint32_t> pages;
+        bool ok = true;
+        const Ent& e = L[k].e;
+        if (e.root != NONE && e.root != 0) {
+            std::function<void(uint32_t, uint32_t)> rec = [&](uint32_t page, uint32_t level) {
+                uint8_t b[PAGE_BYTES];
+                page_read(page, b);
+                for (uint32_t i = 0; i < 1024 && ok; i++) {
+                    const uint32_t x = get32(b + 4 * i);
+                    if (x == NONE || !(x & OWNED)) continue;
+                    const uint32_t a = x & ~OWNED;
+                    if (a % PAGE_UNITS || a == 0 || a >= units) { ok = false; return; }
+                    pages.push_back(a);
+                    if (level + 1 < e.depth()) rec(a, level + 1);
+                }
+            };
+            pages.push_back(e.root);
+            if (e.depth() > 0) rec(e.root, 0);
+        }
+        for (uint32_t a : pages) if (!ok || owner[pgno(a)] != -1) { ok = false; break; }
+        if (!ok) return false;
+        for (uint32_t a : pages) owner[pgno(a)] = int32_t(k);
+        return true;
+    };
+    L.push_back({ROOT_ENTRY, ROOT_ENTRY, ent_read(ROOT_ENTRY), true});
+    if (!entry_sane(L[0].e, true) || !take_pages(0)) fatal("fs_startup: the root directory's entry is bad");
+    queue.push_back(0);
+    while (!queue.empty()) {                                        // breadth first: a directory before its entries
+        const size_t d = queue.back(); queue.pop_back();
+        const Ent dir = L[d].e;
+        for (uint32_t i = 0;; i++) {
+            const uint32_t sa = dir_slot(dir, i);
+            if (sa == NONE) break;
+            Ent e = ent_read(sa);
+            if (e.type == T_FREE) continue;
+            R.entries++;
+            if (!entry_sane(e, false)) { drop(sa); continue; }
+            if (e.pending) { e.pending = 0; ent_write(sa, e); }    // a root never committed: forgotten
+            L.push_back({sa, L[d].addr, e, true});
+            const size_t k = L.size() - 1;
+            if (!take_pages(k)) { L[k].live = false; drop(sa); continue; }
+            if (e.type == T_DIR) queue.push_back(k);
+        }
+    }
+    for (bool again = true; again;) {                               // a copy whose source is gone goes too
+        again = false;
+        std::unordered_map<uint32_t, size_t> at;
+        for (size_t k = 0; k < L.size(); k++) if (L[k].live) at[L[k].addr] = k;
+        for (size_t k = 1; k < L.size(); k++) {
+            if (!L[k].live || L[k].e.type != T_FILE || L[k].e.source == NONE) continue;
+            auto it = at.find(L[k].e.source);
+            if (it == at.end() || !(L[it->second].e.flags & E_COW) || !(L[k].e.flags & E_COW)) {
+                L[k].live = false; drop(L[k].addr); again = true;
+                for (uint32_t p = 0; p < g_pages; p++) if (owner[p] == int32_t(k)) owner[p] = -1;
+            }
+        }
+    }
+    std::unordered_map<uint32_t, uint32_t> count;                   // the counts, recomputed
+    for (size_t k = 1; k < L.size(); k++) {
+        if (!L[k].live) continue;
+        count[L[k].parent]++;
+        if (L[k].e.type == T_FILE && L[k].e.source != NONE) count[L[k].e.source]++;
+    }
+    for (size_t k = 0; k < L.size(); k++) {
+        if (!L[k].live) continue;
+        Ent e = ent_read(L[k].addr);
+        const uint32_t want = count.count(L[k].addr) ? count[L[k].addr] : 0;
+        if (e.count != want) { e.count = want; ent_write(L[k].addr, e); R.repaired++; }
+    }
+    for (uint32_t p = 0; p < g_pages; p++) setbit(g_taken, p, owner[p] != -1);
+}
+}  // namespace
 void check() {
     for (int fd = 0; fd < MAX_FDS; fd++) {
         const Fd f = fd_get(fd);
@@ -1294,6 +1358,42 @@ int cow_root(int fd, u32* root, u32* depth) {
 }
 
 // ---- the file system as a whole (5.4)
+// The master tile's, once after every reset (owner, 2026-11-20): the superblock decides. None: a format. Shut down
+// cleanly: a mount. Not shut down cleanly: a check (fsck). Then the "taken" map goes to the tracer tile (128 KiB for
+// 2^20 pages; built in the cache's buffers, empty at a reset); the superblock is marked mounted. Returns the mode.
+int fs_startup(void) {
+    master_only("fs_startup");
+    if (!g_shutdown) { logf("fs_startup() = FS_EBUSY"); return FS_EBUSY; }   // started already
+    CallEnd call_end_;
+    int mode;
+    StartupReport R;
+    if (std::memcmp(lp(0), MAGIC, 8) != 0) {                        // no superblock: a format
+        mode = FS_STARTED_FORMAT;
+        uint8_t b[PAGE_BYTES] = {};
+        std::memcpy(b, MAGIC, 8); put32(b + 8, 1); put32(b + 12, g_pages); put32(b + 16, SB_MOUNTED);
+        Ent root = ent_new("/", T_DIR);
+        root.source = ROOT_ENTRY;                                   // the root is its own parent
+        ent_encode(root, b + LINE_BYTES);
+        page_write(0, b);
+        setbit(g_taken, 0, true);
+    } else {
+        Buf& sb = half_get(0);
+        g_last_clean = get32(sb.data + 16) == SB_CLEAN;
+        mode = g_last_clean ? FS_STARTED_MOUNT : FS_STARTED_FSCK;
+        startup_walk(R);
+        Buf& sb2 = half_get(0);                                     // marked in use again
+        put32(sb2.data + 16, SB_MOUNTED);
+        lp_half_write(0, sb2.data);
+    }
+    count_free();
+    g_stats.startup_map_bytes += g_pages / 8;                       // the "taken" map, to the tracer tile
+    g_shutdown = false;
+    if (mode == FS_STARTED_FORMAT) logf("fs_startup() = FORMAT: %u pages", g_pages);
+    else logf("fs_startup() = %s: %u entries, %u dropped, %u counts repaired, %u pages free", mode == FS_STARTED_MOUNT ? "MOUNT" : "FSCK",
+              R.entries, R.dropped, R.repaired, free_count());
+    return mode;
+}
+
 // The calls in hand finish first (here there are none: the emulation serves one call at a time); then every writer's
 // halves, index lines and entry go to LPDDR and every fd is closed; then the superblock says the shutdown was clean;
 // then every later call is FS_ESHUTDOWN (owner, 2026-11-20).

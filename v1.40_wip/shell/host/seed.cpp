@@ -1,7 +1,7 @@
 // seed.cpp: a test's file system, made through the API itself (NOTES 1.2, owner 2026-11-20). Each line of a .seed
 // file is a few calls, made as the caller who makes such a thing on the chip:
 //
-//   cap <pages>                              power_on(pages, hard): a format. Without it, 16,384 pages
+//   cap <pages>                              power_on(pages, hard), fs_startup: a format. Without it, 16,384 pages
 //   dir <path>                               fs_mkdir, as the master tile
 //   file <path> [nonl]                       a streamed file, as a compute tile: the lines up to a line ".", each
 //                                            with its \n (nonl: none after the last). An existing file is appended to
@@ -15,7 +15,7 @@
 //                                            (never frozen), logs/ with each tile's three run logs and its own log,
 //                                            held open through the segment; every tile writes all its logs
 //   open <path> r|w                          the file left open by a compute tile, to read or to write
-//   reset                                    power_on(pages, soft): a mount
+//   reset                                    power_on(pages, soft), fs_startup: a check (a mount after a shutdown)
 //
 // <pages> is a list like 0,1,1030, or - for none. Blank lines and lines from # are ignored.
 //
@@ -55,7 +55,7 @@ void ok(int rc, const char* call) {
     if (rc < 0) fail(std::string(call) + " = " + std::to_string(rc));
 }
 void power() {
-    if (!g_powered) { power_on(g_cap, true); g_powered = true; }
+    if (!g_powered) { power_on(g_cap, true); set_caller(Caller::MASTER); ok(fs_startup(), "fs_startup"); g_powered = true; }
 }
 
 std::vector<uint64_t> page_list(const std::string& s) {
@@ -313,6 +313,8 @@ void seed_run(const char* file) {
             if (w[2] == "w") g_seed_writer = true;
         } else if (k == "reset") {
             power_on(g_cap, false);
+            set_caller(Caller::MASTER);
+            ok(fs_startup(), "fs_startup");             // a check, or a mount if shut down cleanly
             g_seed_open.clear();
             g_seed_writer = false;
         } else {

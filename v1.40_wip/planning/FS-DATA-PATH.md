@@ -121,9 +121,15 @@ a frozen COW file never changes; a buffer of a page the file system frees is dro
 - **A hit** sets the used bit: a hash, a probe or two, a store. **A miss** sweeps the hand round the buffers, clearing
   used bits, to the first not used, not pinned; a dirty one (a writer's half) is written out first, a clean one simply
   taken.
-- **Writes go through** †, but for a writer's half: an entry changed in a cached directory or index half is written
-  out as that half at once, so nothing waits for a flush but the writers' halves, which `fs_flush`, `fs_close` and
-  `fs_shutdown` write.
+- **A half loaded for `fs_read` comes in cold,** its "used" bit clear (owner, 2026-11-20): a scan, the shell's `cat`
+  or `grep` of a long log, takes its own halves back first and leaves the directories' and index pages'. No read-ahead
+  (owner, 2026-11-20): the run logs' readers read ahead through their own queues, by `fs_read_page`, past the cache.
+- **Clean before dirty** (owner, 2026-11-20): the hand passes over a dirty buffer (an idle writer's half) until a sweep
+  finds no clean one, so that a quiet `printf` log costs no 2 KiB write.
+- **A call's changes, written once at its end** (owner, 2026-11-20): a half a call changes is pinned, and written once
+  before the call's answer, however often the call changed it. So what a call promises is in LPDDR when it answers, as
+  before. (In the emulation the gain is small: most half writes are the writers' data, and `fs_remove_directory` writes
+  no entry inside.)
 
 ## 7. The page service, on the tracer tile (owner, 2026-11-20)
 

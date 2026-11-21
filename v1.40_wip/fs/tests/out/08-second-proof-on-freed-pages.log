@@ -127,7 +127,7 @@
 [tile 0] fs_chdir("/") = 0
 [tile 1] fs_chdir("/") = 0
 [tracer] fs_chdir("/") = 0
-[master] fs_remove_directory("/proofs/a/logs") = 0: 8 files, 36 pages freed, 2 half writes
+[master] fs_remove_directory("/proofs/a/logs") = 0: 8 files, 36 pages freed, 0 half writes
 [master] fs_remove("/proofs/a/final") = 0, 301 pages freed, may be cached
 [master] fs_remove("/proofs/a/start") = 0, 101 pages freed, may be cached
 [master] fs_remove("/proofs/a/cycle0") = 0, 3 pages freed, may be cached
@@ -243,5 +243,5 @@
 [tile 0] fs_chdir("/") = 0
 [tile 1] fs_chdir("/") = 0
 [tracer] fs_chdir("/") = 0
-[master] fs_remove_directory("/proofs/b/logs") = 0: 8 files, 36 pages freed, 2 half writes
-# stats: 1476 pages taken, 682 freed, 508 discards (0 while tracing); LPDDR 16 page writes, 268 half writes, 30 page reads, 16 half reads; the cache 1491 hits, 16 misses; 0 reads by the fd's hint; look-ups 599 hash compares, 378 entries from the SRAM; 2 page requests
+[master] fs_remove_directory("/proofs/b/logs") = 0: 8 files, 36 pages freed, 0 half writes
+# stats: 1476 pages taken, 682 freed, 508 discards (0 while tracing); LPDDR 16 page writes, 258 half writes, 30 page reads, 16 half reads; the cache 1491 hits, 16 misses; 0 reads by the fd's hint; look-ups 599 hash compares, 378 entries from the SRAM; 2 page requests

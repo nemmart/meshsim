@@ -166,4 +166,4 @@ tile 2: window 2 replayed
 tile 2: check failed at row 12345
 tile 2: done
 
-# stats: 20 pages taken, 0 freed, 6 discards (0 while tracing); LPDDR 9 page writes, 168 half writes, 41 page reads, 10 half reads; the cache 982 hits, 10 misses; 0 reads by the fd's hint; look-ups 436 hash compares, 198 entries from the SRAM; 0 page requests
+# stats: 20 pages taken, 0 freed, 6 discards (0 while tracing); LPDDR 9 page writes, 165 half writes, 41 page reads, 10 half reads; the cache 982 hits, 10 misses; 0 reads by the fd's hint; look-ups 436 hash compares, 198 entries from the SRAM; 0 page requests

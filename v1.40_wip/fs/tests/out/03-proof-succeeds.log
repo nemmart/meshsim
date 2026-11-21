@@ -222,7 +222,7 @@
 [tile 2] fs_chdir("/") = 0
 [tile 3] fs_chdir("/") = 0
 [tracer] fs_chdir("/") = 0
-[master] fs_remove_directory("/proofs/p1/logs") = 0: 16 files, 1357 pages freed, 2 half writes
+[master] fs_remove_directory("/proofs/p1/logs") = 0: 16 files, 1357 pages freed, 0 half writes
 [master] fs_stat("/proofs/p1/final") = 0: length 8388608, 11 pages, depth 2, 0 copies
 # kept until the host removes it: /proofs/p1 (the map, cycle0, start, final)
-# stats: 1309 pages taken, 1363 freed, 0 discards (0 while tracing); LPDDR 15 page writes, 2815 half writes, 41 page reads, 16 half reads; the cache 1004 hits, 16 misses; 0 reads by the fd's hint; look-ups 390 hash compares, 180 entries from the SRAM; 5 page requests
+# stats: 1309 pages taken, 1363 freed, 0 discards (0 while tracing); LPDDR 15 page writes, 2810 half writes, 41 page reads, 16 half reads; the cache 1004 hits, 16 misses; 0 reads by the fd's hint; look-ups 390 hash compares, 180 entries from the SRAM; 5 page requests

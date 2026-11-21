@@ -86,6 +86,7 @@ In the order they were settled.
 | 41 | The memory tile's pages | a stash of 256, refilled from the tracer tile when empty (owner, 2026-11-20) |
 | 42 | Removing many files | `fs_remove_directory`: a directory and its files, no subdirectory, nothing open (owner, 2026-11-20); one `logs` directory, not one a tile |
 | 43 | COW files in use | `fs_open(FS_ROOT)`, one owner: the master tile for a run, then the tracer tile for the trace; `cow_root(fd)` (owner, 2026-11-20) |
+| 44 | The cache's policy | a half loaded for `fs_read` cold; clean buffers before dirty; a call's changed halves written once at its end. No read-ahead, and no whole-page fill on a miss (owner, 2026-11-20) |
 
 **Still open,** with what depends on each: FS-API.md section 8, and these the emulation added:
 

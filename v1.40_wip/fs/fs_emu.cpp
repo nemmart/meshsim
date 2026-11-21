@@ -42,53 +42,84 @@ void lp_page_read(uint32_t unit, uint8_t* dst) { std::memcpy(dst, lp(unit), PAGE
 void lp_half_write(uint32_t unit, const uint8_t* src) { std::memcpy(lp(unit), src, HALF_BYTES); g_stats.lpddr_half_writes++; }
 void lp_half_read(uint32_t unit, uint8_t* dst) { std::memcpy(dst, lp(unit), HALF_BYTES); g_stats.lpddr_half_reads++; }
 
-// The cache (FS-DATA-PATH 6): a pool of 2 KiB buffers in the memory tile's SRAM, by CLOCK, written through. It holds
-// halves of directories, of index pages, of data read by fs_read; never a COW file not frozen (the callers' rule:
-// nothing here reads one). A half of a page freed is dropped at once. The writers' halves are the slots, below.
+// The cache (FS-DATA-PATH 6): a pool of 2 KiB buffers in the memory tile's SRAM, by CLOCK. It holds halves of
+// directories, of index pages, of data read by fs_read; never a COW file not frozen (the callers' rule: nothing here
+// reads one). A half of a page freed is dropped at once. The writers' halves are the slots, below.
+//   - a half loaded for fs_read comes in cold (its "used" bit clear), so that a scan takes its own halves first and
+//     leaves the directories' and index pages' (owner, 2026-11-20);
+//   - a half a call changes is pinned and written once, at the call's end, before its answer (owner, 2026-11-20).
+//   - (a dirty buffer is passed over until a sweep finds no clean one: on the chip, for the writers' halves; here the
+//     writers' halves are not in this pool.)
 constexpr int CACHE_BUFFERS = 300;     // of the pool's 384 (FS-DATA-PATH 8), what is left beside about 80 writers' halves
-struct Buf { uint32_t half = NONE; bool used = false; uint8_t data[HALF_BYTES]; };
+struct Buf { uint32_t half = NONE; bool used = false, pinned = false; uint8_t data[HALF_BYTES]; };
 std::vector<Buf> g_buf;
 std::unordered_map<uint32_t, int> g_hash;   // a half's unit address -> its buffer
+std::vector<uint32_t> g_touched;            // the halves this call has changed, written at its end
 int g_hand = 0;
 // For each cached half of a directory, its 16 names' 16-bit hashes, in the core's data memory (FS-DATA-PATH 6): a
 // look-up compares hashes and reads an entry from the SRAM only on a match. 0: a free slot. Dropped with the half, or
 // when the half changes.
 std::unordered_map<uint32_t, std::array<uint16_t, 16>> g_names;
-void cache_reset() { g_buf.assign(CACHE_BUFFERS, Buf{}); g_hash.clear(); g_hand = 0; g_names.clear(); }
-int half_index(uint32_t half) {
+void cache_reset() { g_buf.assign(CACHE_BUFFERS, Buf{}); g_hash.clear(); g_hand = 0; g_names.clear(); g_touched.clear(); }
+int half_index(uint32_t half, bool cold = false) {
     auto it = g_hash.find(half);
-    if (it != g_hash.end()) { g_stats.cache_hits++; g_buf[size_t(it->second)].used = true; return it->second; }
+    if (it != g_hash.end()) { g_stats.cache_hits++; if (!cold) g_buf[size_t(it->second)].used = true; return it->second; }
     g_stats.cache_misses++;
-    for (;;) {                                                       // the hand: a used buffer gets a second chance
+    for (int swept = 0;; swept++) {                                  // the hand: a used buffer gets a second chance
+        if (swept > 4 * CACHE_BUFFERS) fatal("the cache: every buffer pinned");
         const int i = g_hand;
         Buf& b = g_buf[size_t(i)];
         g_hand = (g_hand + 1) % CACHE_BUFFERS;
+        if (b.pinned) continue;                                      // changed by this call, not yet written
         if (b.used) { b.used = false; continue; }
-        if (b.half != NONE) { g_hash.erase(b.half); g_names.erase(b.half); }   // clean: written through
-        b.half = half; b.used = true;
+        if (b.half != NONE) { g_hash.erase(b.half); g_names.erase(b.half); }   // clean
+        b.half = half; b.used = !cold;
         lp_half_read(half, b.data);
         g_hash[half] = i;
         return i;
     }
 }
 Buf& half_get(uint32_t half) { return g_buf[size_t(half_index(half))]; }
+void untouch(uint32_t half) {
+    for (size_t k = 0; k < g_touched.size(); k++) if (g_touched[k] == half) { g_touched.erase(g_touched.begin() + long(k)); return; }
+}
 void cache_drop_page(uint32_t page_unit) {
     for (uint32_t h = page_unit; h < page_unit + PAGE_UNITS; h += HALF_UNITS) {
         auto it = g_hash.find(h);
-        if (it != g_hash.end()) { g_buf[size_t(it->second)].half = NONE; g_hash.erase(it); }
+        if (it != g_hash.end()) { Buf& b = g_buf[size_t(it->second)]; b.half = NONE; b.pinned = false; g_hash.erase(it); }
         g_names.erase(h);
+        untouch(h);                                                  // a freed page's change need not be written
+    }
+}
+// The halves this call changed, each written once (owner, 2026-11-20). At every call's end, before its answer.
+void write_touched() {
+    for (uint32_t h : g_touched) {
+        auto it = g_hash.find(h);
+        if (it == g_hash.end()) fatal("a changed half left the cache before its write");
+        Buf& b = g_buf[size_t(it->second)];
+        lp_half_write(h, b.data);
+        b.pinned = false;
+    }
+    g_touched.clear();
+}
+void write_touched_of(uint32_t page_unit) {                          // before a direct read of that page
+    for (uint32_t h = page_unit; h < page_unit + PAGE_UNITS; h += HALF_UNITS) {
+        for (uint32_t t : g_touched) if (t == h) {
+            Buf& b = g_buf[size_t(g_hash[h])];
+            lp_half_write(h, b.data); b.pinned = false; untouch(h); break;
+        }
     }
 }
 void cache_update(uint32_t half, const uint8_t* src) {              // a half written past the cache: its copy too
     auto it = g_hash.find(half);
-    if (it != g_hash.end()) std::memcpy(g_buf[size_t(it->second)].data, src, HALF_BYTES);
+    if (it != g_hash.end()) { Buf& b = g_buf[size_t(it->second)]; std::memcpy(b.data, src, HALF_BYTES); b.pinned = false; untouch(half); }
 }
 void half_write(uint32_t half, const uint8_t* src) { lp_half_write(half, src); cache_update(half, src); }
 void page_write(uint32_t unit, const uint8_t* src) {
     lp_page_write(unit, src);
     cache_update(unit, src); cache_update(unit + HALF_UNITS, src + HALF_BYTES);
 }
-void page_read(uint32_t unit, uint8_t* dst) { lp_page_read(unit, dst); }   // written through: LPDDR is current
+void page_read(uint32_t unit, uint8_t* dst) { write_touched_of(unit); lp_page_read(unit, dst); }
 // A 128-byte line, as the file system's code sees it: in its cached half; a change written as the half.
 void line_read(uint32_t unit, uint8_t* dst) {
     const Buf& b = half_get(unit & ~(HALF_UNITS - 1));
@@ -99,7 +130,7 @@ void line_write(uint32_t unit, const uint8_t* src) {
     g_names.erase(half);                                             // rebuilt at its next look-up
     Buf& b = half_get(half);
     std::memcpy(b.data + (unit & (HALF_UNITS - 1)) * LINE_BYTES, src, LINE_BYTES);
-    lp_half_write(half, b.data);
+    if (!b.pinned) { b.pinned = true; g_touched.push_back(half); }   // written once, at the call's end
 }
 
 uint32_t get32(const uint8_t* p) { uint32_t v; std::memcpy(&v, p, 4); return v; }
@@ -650,7 +681,9 @@ void free_tree(const Ent& e) {
     walk(e.root, e.depth(), [&](uint32_t a) { pages.push_back(a); });
     for (uint32_t a : pages) free_page(pgno(a), e.flags & E_COW);
 }
-#define LIVE() do { if (g_shutdown) { logf("%s = FS_ESHUTDOWN", __func__); return FS_ESHUTDOWN; } } while (0)
+// Every call: its changed halves written at its end (CallEnd), and nothing after fs_shutdown.
+struct CallEnd { ~CallEnd() { write_touched(); } };
+#define LIVE() CallEnd call_end_; do { if (g_shutdown) { logf("%s = FS_ESHUTDOWN", __func__); return FS_ESHUTDOWN; } } while (0)
 
 }  // namespace
 
@@ -719,6 +752,7 @@ void power_on(uint32_t pages, bool hard) {
         };
         visit(ROOT_ENTRY);
         count_free();
+        write_touched();                                            // the pending roots forgotten, written
         logf("mount: %u entries, %u pages free", files, free_count());
     }
     g_caller = c;
@@ -920,7 +954,7 @@ long fs_read(int fd, void* buf, long n) {
         else {
             const uint32_t want = d + h * HALF_UNITS;
             if (f.slot < uint32_t(CACHE_BUFFERS) && g_buf[f.slot].half == want) { g_stats.hint_hits++; g_buf[f.slot].used = true; }
-            else f.slot = uint32_t(half_index(want));                   // the hint missed: found, and kept
+            else f.slot = uint32_t(half_index(want, true));             // the hint missed: found cold, and kept
             std::memcpy(pg + h * HALF_BYTES, g_buf[f.slot].data, HALF_BYTES);
         }
         uint64_t c = (h + 1) * HALF_BYTES - off;

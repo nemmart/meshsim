@@ -6,18 +6,18 @@
 [tile 5] fs_close(0) = 0
 # --- removing /proofs/p1: its logs, then the rest at once
 [master] fs_stat("/proofs/p1/logs") = -1
-[master] fs_remove_directory("/proofs/p1") = 0: 4 files, 23 pages freed, 4 half writes
+[master] fs_remove_directory("/proofs/p1") = 0: 4 files, 23 pages freed, 0 half writes
 # --- removing /proofs/p2: its logs, then the rest at once
 [master] fs_stat("/proofs/p2/logs") = 0: length 1664, 1 pages, depth 0, 0 copies
 [master] fs_remove_directory("/proofs/p2") = -5
-[master] fs_remove_directory("/proofs/p2/logs") = 0: 13 files, 58 pages freed, 2 half writes
-[master] fs_remove_directory("/proofs/p2") = 0: 5 files, 21 pages freed, 4 half writes
+[master] fs_remove_directory("/proofs/p2/logs") = 0: 13 files, 58 pages freed, 0 half writes
+[master] fs_remove_directory("/proofs/p2") = 0: 5 files, 21 pages freed, 0 half writes
 # --- removing /proofs/p3: its logs, then the rest at once
 [master] fs_stat("/proofs/p3/logs") = 0: length 1792, 1 pages, depth 0, 0 copies
 [master] fs_remove_directory("/proofs/p3") = -5
-[master] fs_remove_directory("/proofs/p3/logs") = 0: 14 files, 59 pages freed, 2 half writes
-[master] fs_remove_directory("/proofs/p3") = 0: 5 files, 14 pages freed, 4 half writes
+[master] fs_remove_directory("/proofs/p3/logs") = 0: 14 files, 59 pages freed, 0 half writes
+[master] fs_remove_directory("/proofs/p3") = 0: 5 files, 14 pages freed, 0 half writes
 [master] fs_remove("/proofs") = 0, 1 pages freed
 [master] fs_stat("/programs/fib.pages") = 0: length 8388608, 10 pages, depth 2, 0 copies
 [master] fs_stat("/programs/fib.map") = 0: length 16384, 5 pages, depth 1, 0 copies
-# stats: 0 pages taken, 176 freed, 0 discards (0 while tracing); LPDDR 0 page writes, 18 half writes, 49 page reads, 0 half reads; the cache 494 hits, 0 misses; 0 reads by the fd's hint; look-ups 81 hash compares, 89 entries from the SRAM; 0 page requests
+# stats: 0 pages taken, 176 freed, 0 discards (0 while tracing); LPDDR 0 page writes, 15 half writes, 49 page reads, 0 half reads; the cache 494 hits, 0 misses; 0 reads by the fd's hint; look-ups 81 hash compares, 89 entries from the SRAM; 0 page requests

@@ -652,6 +652,20 @@ int main() {
     EXPECT(fs_stat("/r/a", &st) == 0 && st.length == 6);
     EXPECT(fs_stat("/programs/small.pages", &st) == 0 && st.copies == 1);
     EXPECT(free_pages() == before + 1);                        // /r/b's page free again
+    note("--- again, with lengths corrupted: a streamed file's past its tree, a directory's not whole entries, a copy's depth");
+    {
+        const uint32_t ea = entry_address("/r/a"), eimg = entry_address("/r/img"), er2 = entry_address("/r");
+        uint64_t big = 10u << 20; std::memcpy(page(ea) + 96, &big, 8);       // 10 MB in a file of depth 0
+        uint64_t dl; std::memcpy(&dl, page(er2) + 96, 8); dl += 5; std::memcpy(page(er2) + 96, &dl, 8);
+        uint32_t fl; std::memcpy(&fl, page(eimg) + 120, 4); fl = (fl & ~0xCu) | (3u << 2); std::memcpy(page(eimg) + 120, &fl, 4);
+    }
+    EXPECT(start(1024, false) == FS_STARTED_FSCK);
+    check();
+    set_caller(Caller::SHELL);
+    EXPECT(fs_stat("/r/a", &st) == 0 && st.length == 4096);   // cut back to what its one page holds
+    EXPECT(fs_stat("/r", &st) == 0 && st.length % 128 == 0);
+    EXPECT(fs_stat("/r/img", &st) == FS_ENOENT);               // its depth not its length's: dropped
+    EXPECT(fs_stat("/programs/small.pages", &st) == 0 && st.copies == 0);
     note("--- a clean shutdown: a mount, nothing to repair");
     set_caller(Caller::MASTER);
     EXPECT(fs_shutdown() == 0);

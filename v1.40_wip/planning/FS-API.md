@@ -98,7 +98,10 @@ entries, the "taken" map built from them. The check also repairs what a stop can
 again (the walk never reaches it); a pending root is forgotten; every directory's count of live entries and every file's
 count of copies is recomputed and rewritten where it differs; an entry that makes no sense (an unknown type, a root
 outside LPDDR, a depth over 3, an unterminated name) or whose tree reaches a page another file owns is dropped, its
-pages free again, and so is a copy whose source is gone. Then **the "taken" map goes to the tracer tile** (128 KiB for
+pages free again, and so is a copy whose source is gone. **Lengths** (owner, 2026-11-20): a streamed file's or a
+directory's length past what its tree holds is cut back to it, and a directory's to whole entries before any hole in
+its tree; a COW file whose depth is not its length's, or a copy not of its source's length and depth, is dropped. A
+length too short is left as it is: what was past it cannot be known. Then **the "taken" map goes to the tracer tile** (128 KiB for
 2²⁰ pages, built in the memory tile's cache buffers, which are empty at a reset), and its "may be cached" map starts
 clear: a reset empties the cache (23.6.10). The superblock is marked mounted. Every tile's working directory is the
 root.

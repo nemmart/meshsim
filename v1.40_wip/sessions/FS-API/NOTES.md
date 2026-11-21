@@ -90,6 +90,7 @@ In the order they were settled.
 | 45 | Which pages need a discard | the acquire says: `fs_acquire_cow_pages` marks its pages "may be cached", `fs_acquire_pages` does not; a pool for each tile that asks, either call from either tile; reserving and freeing untyped (owner, 2026-11-20) |
 | 46 | A shutdown | the calls in hand finish, then everything is flushed to LPDDR, then the superblock is marked shut down cleanly, then the file system refuses every call (`FS_ESHUTDOWN`); a mount reads whether the last shutdown was clean (owner, 2026-11-20) |
 | 47 | Starting up | `fs_startup()`, the master tile's, after every reset: no superblock, a format; shut down cleanly, a mount; else a check (fsck); then the "taken" map to the tracer tile; it returns the mode. No reset-cause bit (owner, 2026-11-20) |
+| 48 | fsck and lengths | a streamed file's or directory's length past its tree cut back; a COW file whose depth is not its length's, or a copy not shaped as its source, dropped; a short length left (the session's judgment, asked by the owner, 2026-11-20) |
 
 **Still open,** with what depends on each: FS-API.md section 8, and these the emulation added:
 

@@ -48,9 +48,15 @@
 [shell] fs_stat("/r/a") = 0: length 6, 1 pages, depth 0, 0 copies
 [shell] fs_stat("/programs/small.pages") = 0: length 4194304, 201 pages, depth 1, 1 copies
 [master] fs_df() = 0: 1024 total, 813 free
+# --- again, with lengths corrupted: a streamed file's past its tree, a directory's not whole entries, a copy's depth
+[master] fs_startup() = FSCK: 7 entries, 1 dropped, 4 counts repaired, 814 pages free
+[shell] fs_stat("/r/a") = 0: length 4096, 1 pages, depth 0, 0 copies
+[shell] fs_stat("/r") = 0: length 512, 1 pages, depth 0, 0 copies
+[shell] fs_stat("/r/img") = -1
+[shell] fs_stat("/programs/small.pages") = 0: length 4194304, 201 pages, depth 1, 0 copies
 # --- a clean shutdown: a mount, nothing to repair
 [master] fs_shutdown() = 0, 0 files closed; the superblock: shut down cleanly
-[master] fs_startup() = MOUNT: 7 entries, 0 dropped, 0 counts repaired, 813 pages free
+[master] fs_startup() = MOUNT: 6 entries, 0 dropped, 0 counts repaired, 814 pages free
 # --- a power-on: LPDDR lost, a format
 [master] fs_startup() = FORMAT: 1024 pages
-# stats: 396 pages taken, 0 freed, 0 discards (0 while tracing); LPDDR 5 page writes, 35 half writes, 16 page reads, 13 half reads; the cache 709 hits, 13 misses; 0 reads by the fd's hint; look-ups 74 hash compares, 134 entries from the SRAM; 1 page requests
+# stats: 396 pages taken, 0 freed, 0 discards (0 while tracing); LPDDR 5 page writes, 39 half writes, 19 page reads, 17 half reads; the cache 916 hits, 17 misses; 0 reads by the fd's hint; look-ups 98 hash compares, 193 entries from the SRAM; 1 page requests

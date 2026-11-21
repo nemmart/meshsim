@@ -805,6 +805,22 @@ void startup_walk(StartupReport& R) {
             if (e.type == T_FREE) continue;
             R.entries++;
             if (!entry_sane(e, false)) { drop(sa); continue; }
+            if (e.flags & E_COW) {                                  // a COW file: its depth must be its length's
+                const uint64_t pg = e.length / PAGE_BYTES;
+                const uint32_t want = pg <= 1024 ? 1 : pg <= (1u << 20) ? 2 : 3;
+                if (e.length % PAGE_BYTES || pg == 0 || want != e.depth()) { drop(sa); continue; }
+            } else {                                                // a length past what the tree holds: cut back
+                uint64_t cap = e.root == NONE ? 0 : uint64_t(PAGE_BYTES) << (10 * e.depth());
+                if (cap > 0xFFFFFFFFull) cap = 0xFFFFFFFFull;
+                uint64_t want = std::min<uint64_t>(e.length, cap);
+                if (e.type == T_DIR) {                              // whole entries, and none past a hole
+                    want -= want % LINE_BYTES;
+                    Entries en;
+                    for (uint64_t idx = 0; idx * LINE_BYTES < want; idx += 32)
+                        if (find_page(en, e.root, e.depth(), idx / 32) == NONE) { want = idx * LINE_BYTES; break; }
+                }
+                if (want != e.length) { e.length = want; ent_write(sa, e); R.repaired++; }
+            }
             if (e.pending) { e.pending = 0; ent_write(sa, e); }    // a root never committed: forgotten
             L.push_back({sa, L[d].addr, e, true});
             const size_t k = L.size() - 1;
@@ -819,7 +835,8 @@ void startup_walk(StartupReport& R) {
         for (size_t k = 1; k < L.size(); k++) {
             if (!L[k].live || L[k].e.type != T_FILE || L[k].e.source == NONE) continue;
             auto it = at.find(L[k].e.source);
-            if (it == at.end() || !(L[it->second].e.flags & E_COW) || !(L[k].e.flags & E_COW)) {
+            if (it == at.end() || !(L[it->second].e.flags & E_COW) || !(L[k].e.flags & E_COW) ||
+                L[it->second].e.length != L[k].e.length || L[it->second].e.depth() != L[k].e.depth()) {   // a copy is its source's shape
                 L[k].live = false; drop(L[k].addr); again = true;
                 for (uint32_t p = 0; p < g_pages; p++) if (owner[p] == int32_t(k)) owner[p] = -1;
             }

@@ -413,7 +413,7 @@ again. The master tile commits a file only after the run that makes its root is 
 | --- | --- |
 | `int fs_shutdown(void)` | **the calls in hand finish first; then** every open file's buffers, index halves and entry go to LPDDR and every fd is closed; **then** the superblock is marked shut down cleanly; **then** the file system is shut down: every call waiting, and every call after, is `FS_ESHUTDOWN`, until the next reset. Answers when it is done (owner, 2026-11-20) |
 
-Before `fs_shutdown`'s row: **`int fs_startup(void)`**, the master tile's, once after every reset (3.1): a format, a mount
+**`int fs_startup(void)`**, the master tile's, once after every reset (3.1): a format, a mount
 or a check, as the superblock says; it returns `FS_STARTED_FORMAT` (1), `FS_STARTED_MOUNT` (2) or `FS_STARTED_FSCK`
 (3), or `FS_EBUSY` if the file system is started already (owner, 2026-11-20).
 

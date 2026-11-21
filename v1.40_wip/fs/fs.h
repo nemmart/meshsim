@@ -47,11 +47,11 @@ typedef uint64_t u64;
 struct fs_dirent { char name[96]; u32 type; u32 flags; u64 length; };
 struct fs_stat   { u32 type; u32 flags; u64 length; u64 pages; u32 copies; u32 depth; };
 
-/* ---- pages (5.1): the master tile and the file system itself */
-int  fs_reserve_pages(u32 n, u32 *r);
-int  fs_acquire_pages(u32 r, u32 *pages, u32 k);        /* k <= 128; returns how many it gave */
+/* ---- pages (5.1): the master tile, for the Updater; served by the tracer tile's page service */
+int  fs_reserve_pages(u32 n);                         /* the Updater's pool: held for one request */
+int  fs_acquire_pages(u32 *pages, u32 k);             /* k <= 256; returns how many it gave */
 int  fs_release_pages(const u32 *pages, u32 k);
-int  fs_unreserve(u32 r);
+int  fs_unreserve(void);
 
 /* ---- streamed files (5.2): every caller */
 int  fs_open(const char *path, u32 flags);
@@ -70,8 +70,8 @@ int  fs_stat(const char *path, struct fs_stat *st);
 int  fs_df(u64 *total_pages, u64 *free_pages);
 
 /* ---- COW files (5.3): the master tile alone */
-int  cow_create(const char *path, u64 length_pages, u32 r, u32 *root, u32 *depth);
-int  cow_copy(const char *src, const char *dst, u32 r, u32 *root, u32 *depth);
+int  cow_create(const char *path, u64 length_pages, u32 *root, u32 *depth);
+int  cow_copy(const char *src, const char *dst, u32 *root, u32 *depth);
 int  cow_commit(const char *path);                    /* the root, once the run that makes it is done */
 int  cow_freeze(const char *path);
 int  cow_root(const char *path, u32 *root, u32 *depth);

@@ -12,7 +12,7 @@ has built: each item is a request to step 4.*
 | the memory tile | the caller | the answer; a read's data (`fs_read`, `fs_read_page`, `fs_list`) | up to a page a call |
 | **the tracer tile** | **the memory tile** | **the run logs, by `fs_write`** (owner, 2026-11-19) | **24 to 48 MB in about 10 ms: 2.4 to 4.8 bytes a cycle at 1 GHz, a 128-bit word every 3 to 7 cycles, for the whole trace; 15 % to 30 % of a link's 16 bytes a cycle** |
 | the compute tiles | the memory tile | their own logs, `fs_fprintf` | small; at least four files open a tile (owner) |
-| the memory tile | itself, by `fs_acquire_pages` | page addresses, to the master tile | up to 128 a call, as the free page queue's credits come |
+| the tracer tile (the page service) | the master tile; the memory tile | page addresses, by `fs_acquire_pages`; freed pages back from the memory tile in batches | up to 256 a call, from a prepared batch (`FS-DATA-PATH.md` 7) |
 | the master tile | the memory tile | `fs_shutdown`, from its error handler (3.7) | one request, one answer |
 
 - **A full queue on the way must hold the sender back, never be an error:** a run log's bytes cannot be dropped, and
@@ -36,15 +36,16 @@ has built: each item is a request to step 4.*
   never waits on LPDDR †. A done event for each job: the index entry naming a page goes out only after it (23.6.8).
 - **Page writes** (4 KiB) and **page reads**: a streamed file's data pages; the walk's index pages (4.4); `fs_read`.
   `fs_read_page` goes straight from the RW unit to the caller; every other call's data passes through the memory tile's scratchpad (owner, 2026-11-20; FS-DATA-PATH.md 5).
-- **Line writes and reads** (128 bytes, 8 beats): directory entries, the superblock, a writer's index lines (4.6).
+- **Only 2 KiB and 4 KiB** (owner, 2026-11-20): no line transfers. Directory entries, index entries and the
+  superblock are changed in the memory tile's cached 2 KiB halves and written as halves (`FS-DATA-PATH.md` 6).
 - **At the tracer tile's rate** above, sustained, while the cache serves the Tracer.
 - The file system never reads a page whose newest lines may be in the cache alone: the Tracer's copy is never read
   directly (FS-API 2.4).
 
 ## 3. The cache
 
-1. **A look-up port for the memory tile,** one of ports 0, 2 and 3 (23.6.2), which have no client in v1.37: its
-   discards go through it (FS-API 4.2).
+1. **A look-up port for the tracer tile,** one of ports 0, 2 and 3 (23.6.2), which have no client in v1.37: the page
+   service's discards go through it (owner, 2026-11-20; `FS-DATA-PATH.md` 7). The memory tile does not use the cache.
 2. **The discard as background work** (owner, 2026-11-19): the walker serves a discard a line at a time and, between
    its lines, serves any request of the Tracer's that **hits**. A Tracer request that **misses** may wait until the
    discard is done; so may every look-up port's request. The reply still follows the 32nd line. Today a discard holds

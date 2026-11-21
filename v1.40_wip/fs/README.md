@@ -56,3 +56,8 @@ lines in it, the LRU code, the free page queue's credits (the pages are fed befo
 10. **32 writers were too few** (the shell session): 64 tiles each with a log open need 67. A writer's buffer index
    now lives in its fd entry's position word, and the pool is 128 (FS-API.md 4.6, owner, 2026-11-20); workflow 9 opens
    128 at once.
+11. **The cache and the 2 KiB transfers** (owner, 2026-11-20): every LPDDR transfer is now a 2 KiB half or a 4 KiB
+   page, a directory or index change made in a cached half and written through as the half. The cache (400 buffers
+   here, CLOCK) hits about 99 % of the time: a whole proof (workflow 3) makes 1,625 hits and 16 misses. The page
+   service's two pools keep prepared batches (256 pages; a sixteenth of LPDDR here when that is less), and workflow 8
+   still makes all its 508 discards outside tracing.

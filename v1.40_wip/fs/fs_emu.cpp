@@ -8,10 +8,12 @@
 // Every access to LPDDR is a whole page or a whole 128-byte line, as the RW unit would make it, and is counted.
 #include "fs_emu.h"
 
+#include <algorithm>
 #include <cstdarg>
 #include <cstdlib>
 #include <cstring>
 #include <functional>
+#include <unordered_map>
 #include <vector>
 
 namespace fsemu {
@@ -32,10 +34,65 @@ uint8_t* lp(uint32_t unit) {
     return &g_lpddr[size_t(unit) * LINE_BYTES];
 }
 uint32_t pgno(uint32_t unit) { return unit / PAGE_UNITS; }
-void page_write(uint32_t unit, const uint8_t* src) { std::memcpy(lp(unit), src, PAGE_BYTES); g_stats.lpddr_page_writes++; }
-void page_read(uint32_t unit, uint8_t* dst) { std::memcpy(dst, lp(unit), PAGE_BYTES); g_stats.lpddr_page_reads++; }
-void line_write(uint32_t unit, const uint8_t* src) { std::memcpy(lp(unit), src, LINE_BYTES); g_stats.lpddr_line_writes++; }
-void line_read(uint32_t unit, uint8_t* dst) { std::memcpy(dst, lp(unit), LINE_BYTES); g_stats.lpddr_line_reads++; }
+// The RW unit moves only 2 KiB and 4 KiB (FS-DATA-PATH 2): these four are the only ways to LPDDR.
+constexpr uint32_t HALF_BYTES = 2048, HALF_UNITS = 16;
+void lp_page_write(uint32_t unit, const uint8_t* src) { std::memcpy(lp(unit), src, PAGE_BYTES); g_stats.lpddr_page_writes++; }
+void lp_page_read(uint32_t unit, uint8_t* dst) { std::memcpy(dst, lp(unit), PAGE_BYTES); g_stats.lpddr_page_reads++; }
+void lp_half_write(uint32_t unit, const uint8_t* src) { std::memcpy(lp(unit), src, HALF_BYTES); g_stats.lpddr_half_writes++; }
+void lp_half_read(uint32_t unit, uint8_t* dst) { std::memcpy(dst, lp(unit), HALF_BYTES); g_stats.lpddr_half_reads++; }
+
+// The cache (FS-DATA-PATH 6): a pool of 2 KiB buffers in the memory tile's SRAM, by CLOCK, written through. It holds
+// halves of directories, of index pages, of data read by fs_read; never a COW file not frozen (the callers' rule:
+// nothing here reads one). A half of a page freed is dropped at once. The writers' halves are the slots, below.
+constexpr int CACHE_BUFFERS = 400;     // of the 480 (FS-DATA-PATH 8), what is left beside about 67 writers' halves
+struct Buf { uint32_t half = NONE; bool used = false; uint8_t data[HALF_BYTES]; };
+std::vector<Buf> g_buf;
+std::unordered_map<uint32_t, int> g_hash;   // a half's unit address -> its buffer
+int g_hand = 0;
+void cache_reset() { g_buf.assign(CACHE_BUFFERS, Buf{}); g_hash.clear(); g_hand = 0; }
+Buf& half_get(uint32_t half) {
+    auto it = g_hash.find(half);
+    if (it != g_hash.end()) { g_stats.cache_hits++; Buf& b = g_buf[size_t(it->second)]; b.used = true; return b; }
+    g_stats.cache_misses++;
+    for (;;) {                                                       // the hand: a used buffer gets a second chance
+        const int i = g_hand;
+        Buf& b = g_buf[size_t(i)];
+        g_hand = (g_hand + 1) % CACHE_BUFFERS;
+        if (b.used) { b.used = false; continue; }
+        if (b.half != NONE) g_hash.erase(b.half);                    // clean: written through
+        b.half = half; b.used = true;
+        lp_half_read(half, b.data);
+        g_hash[half] = i;
+        return b;
+    }
+}
+void cache_drop_page(uint32_t page_unit) {
+    for (uint32_t h = page_unit; h < page_unit + PAGE_UNITS; h += HALF_UNITS) {
+        auto it = g_hash.find(h);
+        if (it != g_hash.end()) { g_buf[size_t(it->second)].half = NONE; g_hash.erase(it); }
+    }
+}
+void cache_update(uint32_t half, const uint8_t* src) {              // a half written past the cache: its copy too
+    auto it = g_hash.find(half);
+    if (it != g_hash.end()) std::memcpy(g_buf[size_t(it->second)].data, src, HALF_BYTES);
+}
+void half_write(uint32_t half, const uint8_t* src) { lp_half_write(half, src); cache_update(half, src); }
+void page_write(uint32_t unit, const uint8_t* src) {
+    lp_page_write(unit, src);
+    cache_update(unit, src); cache_update(unit + HALF_UNITS, src + HALF_BYTES);
+}
+void page_read(uint32_t unit, uint8_t* dst) { lp_page_read(unit, dst); }   // written through: LPDDR is current
+// A 128-byte line, as the file system's code sees it: in its cached half; a change written as the half.
+void line_read(uint32_t unit, uint8_t* dst) {
+    const Buf& b = half_get(unit & ~(HALF_UNITS - 1));
+    std::memcpy(dst, b.data + (unit & (HALF_UNITS - 1)) * LINE_BYTES, LINE_BYTES);
+}
+void line_write(uint32_t unit, const uint8_t* src) {
+    const uint32_t half = unit & ~(HALF_UNITS - 1);
+    Buf& b = half_get(half);
+    std::memcpy(b.data + (unit & (HALF_UNITS - 1)) * LINE_BYTES, src, LINE_BYTES);
+    lp_half_write(half, b.data);
+}
 
 uint32_t get32(const uint8_t* p) { uint32_t v; std::memcpy(&v, p, 4); return v; }
 uint64_t get64(const uint8_t* p) { uint64_t v; std::memcpy(&v, p, 8); return v; }
@@ -50,7 +107,7 @@ bool bit(const std::vector<uint32_t>& m, uint32_t p) { return (m[p >> 5] >> (p &
 void setbit(std::vector<uint32_t>& m, uint32_t p, bool v) { if (v) m[p >> 5] |= 1u << (p & 31); else m[p >> 5] &= ~(1u << (p & 31)); }
 
 // ------------------------------------------------------------------ the scratchpad: the fd table (4.6)
-constexpr int MAX_FDS = 512, FD_BYTES = 16, MAX_SLOTS = 128, MAX_RES = 8;
+constexpr int MAX_FDS = 512, FD_BYTES = 16, MAX_SLOTS = 128;
 uint8_t g_fdtab[MAX_FDS * FD_BYTES];
 // word 0: [19:0] root's page number (0: none); [21:20] depth; [24:22] mode; [25] COW; [26] in use; [31:27] 0
 // word 1: length (bytes; pages for a COW file); word 2: the entry's address in units;
@@ -79,14 +136,18 @@ struct Slot {
     bool used = false;
     uint32_t data_pg = NONE;           // the file's page number held, NONE none
     bool data_dirty = false;
+    uint8_t dirty_halves = 0;          // which 2 KiB halves of it hold bytes not yet in LPDDR
     uint8_t data[PAGE_BYTES];
     IndexLine lines[3];
 };
 Slot g_slots[MAX_SLOTS];
 
-// The reservations (4.1; a list each, † as against a third map).
-struct Reservation { bool used = false; std::vector<uint32_t> pages; };
-Reservation g_res[MAX_RES];
+// The page service's two pools (FS-API 4.1, 4.2; FS-DATA-PATH 7), on the tracer tile: the Updater's, which the master
+// tile reserves, and the file system's. Each keeps a prepared batch, taken and discarded already.
+enum { UPD = 0, OWN = 1 };
+struct Pool { std::vector<uint32_t> batch; bool reserved = false; uint64_t held = 0; };
+Pool g_pool[2];
+uint32_t g_batch_size = 256;           // 256 on the chip; less for a small LPDDR here (power_on)
 
 bool g_shutdown = false;
 Caller g_caller = Caller::MASTER;
@@ -135,6 +196,7 @@ void master_only(const char* call) {
 }
 
 // ------------------------------------------------------------------ handing out and freeing pages (4.2)
+uint32_t g_free = 0, g_free_mbc = 0;   // free pages, and of them those that may be cached
 void discard(uint32_t p) {
     g_stats.discards++;
     if (g_tracing) g_stats.discards_while_tracing++;
@@ -144,7 +206,8 @@ void discard(uint32_t p) {
 // A page leaves the free map: discarded first if it may be cached; then it must be new (23.6.8).
 void take(uint32_t p) {
     if (bit(g_taken, p)) fatal("page %u taken twice", p);
-    if (bit(g_mbc, p)) discard(p);
+    g_free--;
+    if (bit(g_mbc, p)) { g_free_mbc--; discard(p); }
     if (g_incache[p]) fatal("page %u handed out with lines in the cache and no discard (23.6.8)", p);
     setbit(g_taken, p, true);
     g_stats.pages_taken++;
@@ -153,25 +216,74 @@ void free_page(uint32_t p, bool cow) {
     if (!bit(g_taken, p) || p == 0) fatal("page %u freed but not taken", p);
     setbit(g_taken, p, false);
     if (cow) setbit(g_mbc, p, true);
+    g_free++;
+    if (bit(g_mbc, p)) g_free_mbc++;
+    cache_drop_page(p * PAGE_UNITS);                                // its halves in the memory tile's cache
     g_stats.pages_freed++;
 }
-uint32_t free_count() {
-    uint32_t n = 0;
-    for (uint32_t p = 0; p < g_pages; p++) n += !bit(g_taken, p);
-    return n;
+uint32_t free_count() { return g_free; }
+void count_free() {
+    g_free = g_free_mbc = 0;
+    for (uint32_t p = 0; p < g_pages; p++)
+        if (!bit(g_taken, p)) { g_free++; g_free_mbc += bit(g_mbc, p); }
+}
+// A free page for a pool's batch: the Updater's prefers one that needs a discard (its refills come mostly before
+// tracing), the file system's one that does not (its come during tracing, the run logs). NONE if none.
+uint32_t pick(bool prefer_mbc) {
+    for (int pass = 0; pass < 2; pass++) {
+        if (pass == 0 && prefer_mbc && g_free_mbc == 0) continue;
+        if (pass == 0 && !prefer_mbc && g_free == g_free_mbc) continue;
+        for (uint32_t k = 0; k < g_pages; k++) {
+            const uint32_t p = (g_cursor + k) % g_pages;
+            if (p == 0 || bit(g_taken, p)) continue;
+            if (pass == 0 && bit(g_mbc, p) != prefer_mbc) continue;
+            g_cursor = p + 1;
+            return p;
+        }
+    }
+    return NONE;
+}
+// The background refill of a pool's batch. The file system's may not take the pages the Updater's reservation holds
+// beyond its batch.
+void refill(int i) {
+    Pool& P = g_pool[i];
+    while (P.batch.size() < g_batch_size) {
+        if (i == OWN) {
+            const uint64_t owed = g_pool[UPD].held > g_pool[UPD].batch.size() ? g_pool[UPD].held - g_pool[UPD].batch.size() : 0;
+            if (g_free <= owed) return;
+        }
+        const uint32_t p = pick(i == UPD);
+        if (p == NONE) return;
+        take(p);
+        P.batch.push_back(p * PAGE_UNITS);
+    }
+}
+// One page of the Updater's reservation; NONE if it holds none.
+uint32_t upd_one() {
+    Pool& U = g_pool[UPD];
+    if (!U.reserved || U.held == 0) return NONE;
+    if (U.batch.empty()) refill(UPD);
+    if (U.batch.empty()) fatal("the Updater's reservation holds pages that are not there");
+    const uint32_t a = U.batch.back();
+    U.batch.pop_back();
+    U.held--;
+    return a;
 }
 // The file system's own page (a directory's, a streamed file's): a free page not in the "may be cached" map if there
 // is one, so that nothing is discarded while the Tracer runs; else any free page, discarded. NONE if none.
 uint32_t alloc_own() {
-    uint32_t fallback = NONE;
-    for (uint32_t k = 0; k < g_pages; k++) {
-        const uint32_t p = (g_cursor + k) % g_pages;
-        if (p == 0 || bit(g_taken, p)) continue;
-        if (bit(g_mbc, p)) { if (fallback == NONE) fallback = p; continue; }
-        take(p); g_cursor = p + 1; return p * PAGE_UNITS;
+    Pool& F = g_pool[OWN];
+    if (F.batch.empty()) refill(OWN);
+    if (F.batch.empty()) {                                           // the Updater's batch beyond what it holds
+        Pool& U = g_pool[UPD];
+        if (U.batch.size() <= U.held) return NONE;
+        F.batch.push_back(U.batch.back());
+        U.batch.pop_back();
     }
-    if (fallback == NONE) return NONE;
-    take(fallback); return fallback * PAGE_UNITS;
+    const uint32_t a = F.batch.back();
+    F.batch.pop_back();
+    refill(OWN);                                                     // in the background, on the tracer tile
+    return a;
 }
 
 // ------------------------------------------------------------------ trees (23.5)
@@ -228,7 +340,15 @@ uint32_t new_index_page(uint32_t first0) {
 // Page pg of a streamed file or directory, to be written with data (a page, or zeros): the tree grown to reach it, the
 // index pages on its path made, the data page made if it is a hole, the data written, and only then the entry that
 // names it (the data is in LPDDR before an entry names it). The root and depth may change. NONE: no room.
-uint32_t put_page(Entries& en, uint32_t& root, uint32_t& depth, uint64_t pg, const uint8_t* data) {
+// With data, only the halves in `halves` (bit 0 the first, bit 1 the second) are written: a writer's halves go out as
+// they fill (FS-DATA-PATH 4); a half not yet written is past the file's length.
+void put_data(uint32_t d, const uint8_t* data, uint8_t halves) {
+    static const uint8_t zeros[PAGE_BYTES] = {};
+    if (!data) { page_write(d, zeros); return; }
+    if (halves == 3) { page_write(d, data); return; }
+    for (uint32_t h = 0; h < 2; h++) if (halves >> h & 1) half_write(d + h * HALF_UNITS, data + h * HALF_BYTES);
+}
+uint32_t put_page(Entries& en, uint32_t& root, uint32_t& depth, uint64_t pg, const uint8_t* data, uint8_t halves = 3) {
     const uint32_t need = depth_for(pg);
     if (root == NONE) depth = need;
     else while (depth < need) {                                     // grow: a new root above, the old its entry 0
@@ -237,10 +357,9 @@ uint32_t put_page(Entries& en, uint32_t& root, uint32_t& depth, uint64_t pg, con
         root = r; depth++;
         if (en.slot) { flush_lines(*en.slot); forget_lines(*en.slot); }   // the levels move down a place
     }
-    static const uint8_t zeros[PAGE_BYTES] = {};
     if (depth == 0) {
         if (root == NONE) { root = alloc_own(); if (root == NONE) return NONE; }
-        page_write(root, data ? data : zeros);
+        put_data(root, data, halves);
         return root;
     }
     if (root == NONE) { root = new_index_page(NONE); if (root == NONE) return NONE; }
@@ -259,11 +378,11 @@ uint32_t put_page(Entries& en, uint32_t& root, uint32_t& depth, uint64_t pg, con
             if (e == NONE) {
                 const uint32_t d = alloc_own();
                 if (d == NONE) return NONE;
-                page_write(d, data ? data : zeros);
+                put_data(d, data, halves);
                 en.set(L, page, i, d | OWNED);
                 return d;
             }
-            page_write(e & ~OWNED, data ? data : zeros);
+            put_data(e & ~OWNED, data, halves);
             return e & ~OWNED;
         }
     }
@@ -450,9 +569,9 @@ int write_out(Fd& f, Slot& s) {
     if (!s.data_dirty) return 0;
     Entries en{&s};
     uint32_t root = root_unit(f.root_pg), depth = f.depth;
-    const uint32_t d = put_page(en, root, depth, s.data_pg, s.data);
+    const uint32_t d = put_page(en, root, depth, s.data_pg, s.data, s.dirty_halves ? s.dirty_halves : 3);
     f.root_pg = root == NONE ? 0 : pgno(root); f.depth = depth;
-    s.data_dirty = false;
+    s.data_dirty = false; s.dirty_halves = 0;
     if (d != NONE) return 0;
     if (f.length > s.data_pg * PAGE_BYTES) f.length = s.data_pg * PAGE_BYTES;
     s.data_pg = NONE;
@@ -508,10 +627,13 @@ void power_on(uint32_t pages, bool hard) {
     g_taken.assign(g_pages / 32, 0); g_mbc.assign(g_pages / 32, 0);
     std::memset(g_fdtab, 0, sizeof g_fdtab);
     for (Slot& s : g_slots) { s.used = false; forget_lines(s); }
-    for (Reservation& r : g_res) { r.used = false; r.pages.clear(); }
+    for (Pool& P : g_pool) { P.batch.clear(); P.reserved = false; P.held = 0; }
+    g_batch_size = std::min<uint32_t>(256, g_pages / 16);           // 256 on the chip
+    cache_reset();
     g_shutdown = false; g_cursor = 1;
     for (uint32_t& c : g_cwd) c = ROOT_ENTRY;                       // every tile starts in the root
     setbit(g_taken, 0, true);
+    count_free();
     const Caller c = g_caller; g_caller = Caller::MASTER;
     if (hard) {                                                     // the format (3.1)
         uint8_t b[PAGE_BYTES] = {};
@@ -541,6 +663,7 @@ void power_on(uint32_t pages, bool hard) {
                 }
         };
         visit(ROOT_ENTRY);
+        count_free();
         logf("mount: %u entries, %u pages free", files, free_count());
     }
     g_caller = c;
@@ -591,8 +714,8 @@ void check() {
     parents(ROOT_ENTRY, ROOT_ENTRY);
     for (int t = 0; t < MAX_TILES; t++)
         if (ent_read(g_cwd[t]).type != T_DIR) fatal("check: tile %d's working directory is not a directory", t);
-    for (const Reservation& r : g_res)
-        for (uint32_t u : r.pages) { if (seen[pgno(u)]) fatal("check: reserved page in a file"); seen[pgno(u)] = 1; }
+    for (const Pool& P : g_pool)
+        for (uint32_t u : P.batch) { if (seen[pgno(u)]) fatal("check: a batch's page in a file"); seen[pgno(u)] = 1; }
     for (uint32_t p = 0; p < g_pages; p++) {
         if (bool(seen[p]) != bit(g_taken, p)) fatal("check: page %u is %s in the map, %s by the walk", p,
                                                     bit(g_taken, p) ? "taken" : "free", seen[p] ? "used" : "unused");
@@ -627,35 +750,31 @@ using namespace fsemu;
 extern "C" {
 
 // ---- pages (5.1)
-int fs_reserve_pages(u32 n, u32* r) {
+int fs_reserve_pages(u32 n) {
     LIVE(); master_only("fs_reserve_pages");
-    int slot = -1;
-    for (int i = 0; i < MAX_RES; i++) if (!g_res[i].used) { slot = i; break; }
-    if (slot < 0) fatal("more than %d reservations", MAX_RES);
-    if (free_count() < n) { logf("fs_reserve_pages(%u) = FS_ENOSPC", n); return FS_ENOSPC; }
+    Pool& U = g_pool[UPD];
+    if (U.reserved) { logf("fs_reserve_pages(%u) = FS_EBUSY", n); return FS_EBUSY; }     // one at a time
+    if (uint64_t(n) > uint64_t(g_free) + U.batch.size()) { logf("fs_reserve_pages(%u) = FS_ENOSPC", n); return FS_ENOSPC; }
     const uint64_t d0 = g_stats.discards;
-    Reservation& res = g_res[slot];
-    res.used = true; res.pages.clear();
-    // the pages chosen now, and discarded now if they need it (4.2): the pages that may be cached first, while the
-    // Tracer is idle, so that the clean pages are left for the file system's own pages taken while it runs (the logs)
-    for (int pass = 0; pass < 2 && res.pages.size() < n; pass++)
-        for (uint32_t k = 0; k < g_pages && res.pages.size() < n; k++) {
-            const uint32_t p = (g_cursor + k) % g_pages;
-            if (p == 0 || bit(g_taken, p) || (pass == 0 && !bit(g_mbc, p))) continue;
-            take(p);
-            res.pages.push_back(p * PAGE_UNITS);
-        }
-    *r = u32(slot);
-    logf("fs_reserve_pages(%u) = 0, r %u (%llu discarded)", n, *r, (unsigned long long)(g_stats.discards - d0));
+    U.reserved = true; U.held = n;                                  // a count: no page chosen for it (FS-API 4.1)
+    refill(UPD);
+    logf("fs_reserve_pages(%u) = 0 (the batch: %zu pages, %llu discarded preparing it)", n, U.batch.size(),
+         (unsigned long long)(g_stats.discards - d0));
     return 0;
 }
-int fs_acquire_pages(u32 r, u32* pages, u32 k) {
+int fs_acquire_pages(u32* pages, u32 k) {
     LIVE(); master_only("fs_acquire_pages");
-    if (r >= MAX_RES || !g_res[r].used || k > 128) { logf("fs_acquire_pages(%u, %u) = FS_EINVAL", r, k); return FS_EINVAL; }
-    std::vector<uint32_t>& v = g_res[r].pages;
-    const u32 n = k < v.size() ? k : u32(v.size());
-    for (u32 i = 0; i < n; i++) { pages[i] = v.back(); v.pop_back(); }
-    logf("fs_acquire_pages(%u, %u) = %u%s", r, k, n, n ? "" : "");
+    Pool& U = g_pool[UPD];
+    if (!U.reserved || k > 256) { logf("fs_acquire_pages(%u) = FS_EINVAL", k); return FS_EINVAL; }
+    const uint64_t d0 = g_stats.discards;
+    u32 n = 0;
+    while (n < k) {                                                 // a copy out of the prepared batch
+        const uint32_t a = upd_one();
+        if (a == NONE) break;
+        pages[n++] = a;
+    }
+    refill(UPD);                                                    // in the background, on the tracer tile
+    logf("fs_acquire_pages(%u) = %u (%llu discarded refilling)", k, n, (unsigned long long)(g_stats.discards - d0));
     return int(n);
 }
 int fs_release_pages(const u32* pages, u32 k) {
@@ -664,13 +783,13 @@ int fs_release_pages(const u32* pages, u32 k) {
     logf("fs_release_pages(%u) = 0", k);
     return 0;
 }
-int fs_unreserve(u32 r) {
+int fs_unreserve(void) {
     LIVE(); master_only("fs_unreserve");
-    if (r >= MAX_RES || !g_res[r].used) { logf("fs_unreserve(%u) = FS_EINVAL", r); return FS_EINVAL; }
-    const size_t n = g_res[r].pages.size();
-    for (uint32_t u : g_res[r].pages) free_page(pgno(u), false);    // discarded already, never used
-    g_res[r].pages.clear(); g_res[r].used = false;
-    logf("fs_unreserve(%u) = 0, %zu pages back", r, n);
+    Pool& U = g_pool[UPD];
+    if (!U.reserved) { logf("fs_unreserve() = FS_EINVAL"); return FS_EINVAL; }
+    const uint64_t left = U.held;
+    U.reserved = false; U.held = 0;                                 // the batch stays prepared
+    logf("fs_unreserve() = 0, %llu pages not drawn", (unsigned long long)left);
     return 0;
 }
 
@@ -733,8 +852,9 @@ long fs_read(int fd, void* buf, long n) {
     while (got < n && f.pos < len) {
         const uint64_t p = f.pos / PAGE_BYTES, off = f.pos % PAGE_BYTES;
         const uint32_t d = find_page(en, root_unit(f.root_pg), f.depth, p);
-        if (d == NONE) std::memset(pg, 0, sizeof pg); else page_read(d, pg);
-        uint64_t c = PAGE_BYTES - off;
+        const uint32_t h = uint32_t(off / HALF_BYTES);                  // through the cache, a half at a time
+        if (d == NONE) std::memset(pg, 0, sizeof pg); else std::memcpy(pg + h * HALF_BYTES, half_get(d + h * HALF_UNITS).data, HALF_BYTES);
+        uint64_t c = (h + 1) * HALF_BYTES - off;
         if (c > uint64_t(n - got)) c = uint64_t(n - got);
         if (c > len - f.pos) c = len - f.pos;
         std::memcpy(static_cast<uint8_t*>(buf) + got, pg + off, c);
@@ -762,10 +882,12 @@ long fs_write(int fd, const void* buf, long n) {
         }
         uint32_t c = PAGE_BYTES - off;
         if (c > uint64_t(n - done)) c = u32(n - done);
+        if (off < HALF_BYTES && c > HALF_BYTES - off) c = HALF_BYTES - off;   // up to the half's end: 2 KiB at most
         std::memcpy(s.data + off, static_cast<const uint8_t*>(buf) + done, c);
         s.data_dirty = true;
+        s.dirty_halves |= uint8_t(1u << (off / HALF_BYTES));
         f.length += c; done += c;
-        if (f.length % PAGE_BYTES == 0)                             // full: out now
+        if (f.length % HALF_BYTES == 0)                             // a full half: out now (FS-DATA-PATH 4)
             if (int r = write_out(f, s)) { fd_put(fd, f); logf("fs_write(%d, %ld) = %d", fd, n, r); return r; }
     }
     fd_put(fd, f);
@@ -911,7 +1033,7 @@ int fs_stat(const char* path, struct fs_stat* st) {
 }
 int fs_df(u64* total, u64* free) {
     LIVE();
-    *total = g_pages; *free = free_count();
+    *total = g_pages; *free = free_count() + g_pool[UPD].batch.size() + g_pool[OWN].batch.size();   // a batch's pages are free
     logf("fs_df() = 0: %llu total, %llu free", (unsigned long long)*total, (unsigned long long)*free);
     return 0;
 }
@@ -919,30 +1041,30 @@ int fs_df(u64* total, u64* free) {
 // ---- COW files (5.3)
 namespace {
 uint32_t cow_depth(u64 pages) { return pages <= 1024 ? 1 : pages <= (1u << 20) ? 2 : 3; }   // >= 1, as v1.37's depth_of
-int cow_make(const char* call, const char* path, u64 pages, u32 r, uint32_t source, u32* root, u32* depth) {
+int cow_make(const char* call, const char* path, u64 pages, uint32_t source, u32* root, u32* depth) {
     uint32_t a, parent; std::string last;
     int rc = resolve(path, &a, &parent, &last);
     if (rc == 0 && a != NONE) rc = FS_EEXIST;
-    if (rc == 0 && (r >= MAX_RES || !g_res[r].used || g_res[r].pages.empty())) rc = FS_ENOSPC;
+    if (rc == 0 && (!g_pool[UPD].reserved || g_pool[UPD].held == 0)) rc = FS_ENOSPC;   // the root: the master tile's reservation
     if (rc) return rc;
     Ent e = ent_new(last.c_str(), T_FILE);
-    e.pending = g_res[r].pages.back(); g_res[r].pages.pop_back();  // the root to be: made by the next run (5.3)
+    e.pending = upd_one();                                         // the root to be: made by the next run (5.3)
     e.root = 0;                                                     // not committed: nothing to walk
     e.length = pages * PAGE_BYTES; e.flags = E_COW; set_depth(e, cow_depth(pages)); e.source = source;
-    if (dir_add(parent, e) == NONE) { g_res[r].pages.push_back(e.pending); return FS_ENOSPC; }
+    if (dir_add(parent, e) == NONE) { g_pool[UPD].batch.push_back(e.pending); g_pool[UPD].held++; return FS_ENOSPC; }
     *root = e.pending; *depth = e.depth();
     (void)call;
     return 0;
 }
 }  // namespace
-int cow_create(const char* path, u64 length_pages, u32 r, u32* root, u32* depth) {
+int cow_create(const char* path, u64 length_pages, u32* root, u32* depth) {
     LIVE(); master_only("cow_create");
-    int rc = (length_pages == 0 || length_pages > (1ull << 23)) ? FS_EINVAL : cow_make("cow_create", path, length_pages, r, NONE, root, depth);
-    if (rc) logf("cow_create(\"%s\", %llu, r %u) = %d", path, (unsigned long long)length_pages, r, rc);
-    else logf("cow_create(\"%s\", %llu, r %u) = 0: root 0x%x, depth %u", path, (unsigned long long)length_pages, r, *root, *depth);
+    int rc = (length_pages == 0 || length_pages > (1ull << 23)) ? FS_EINVAL : cow_make("cow_create", path, length_pages, NONE, root, depth);
+    if (rc) logf("cow_create(\"%s\", %llu) = %d", path, (unsigned long long)length_pages, rc);
+    else logf("cow_create(\"%s\", %llu) = 0: root 0x%x, depth %u", path, (unsigned long long)length_pages, *root, *depth);
     return rc;
 }
-int cow_copy(const char* src, const char* dst, u32 r, u32* root, u32* depth) {
+int cow_copy(const char* src, const char* dst, u32* root, u32* depth) {
     LIVE(); master_only("cow_copy");
     uint32_t sa;
     int rc = resolve(src, &sa);
@@ -952,10 +1074,10 @@ int cow_copy(const char* src, const char* dst, u32 r, u32* root, u32* depth) {
         s = ent_read(sa);
         if (s.type != T_FILE || !(s.flags & E_COW) || !(s.flags & E_FROZEN)) rc = FS_EINVAL;   // a frozen COW file
     }
-    if (rc == 0) rc = cow_make("cow_copy", dst, s.length / PAGE_BYTES, r, sa, root, depth);
+    if (rc == 0) rc = cow_make("cow_copy", dst, s.length / PAGE_BYTES, sa, root, depth);
     if (rc == 0) { s = ent_read(sa); s.count++; ent_write(sa, s); }
-    if (rc) logf("cow_copy(\"%s\", \"%s\", r %u) = %d", src, dst, r, rc);
-    else logf("cow_copy(\"%s\", \"%s\", r %u) = 0: root 0x%x, depth %u; source root 0x%x", src, dst, r, *root, *depth, s.root);
+    if (rc) logf("cow_copy(\"%s\", \"%s\") = %d", src, dst, rc);
+    else logf("cow_copy(\"%s\", \"%s\") = 0: root 0x%x, depth %u; source root 0x%x", src, dst, *root, *depth, s.root);
     return rc;
 }
 int cow_commit(const char* path) {

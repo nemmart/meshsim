@@ -39,11 +39,12 @@ static void begin(const char* name) {
 }
 static void report() {
     const Stats& s = stats();
-    note("stats: %llu pages taken, %llu freed, %llu discards (%llu while tracing); LPDDR %llu page writes, %llu line writes, %llu page reads, %llu line reads",
+    note("stats: %llu pages taken, %llu freed, %llu discards (%llu while tracing); LPDDR %llu page writes, %llu half writes, %llu page reads, %llu half reads; the cache %llu hits, %llu misses",
          (unsigned long long)s.pages_taken, (unsigned long long)s.pages_freed, (unsigned long long)s.discards,
          (unsigned long long)s.discards_while_tracing, (unsigned long long)s.lpddr_page_writes,
-         (unsigned long long)s.lpddr_line_writes, (unsigned long long)s.lpddr_page_reads,
-         (unsigned long long)s.lpddr_line_reads);
+         (unsigned long long)s.lpddr_half_writes, (unsigned long long)s.lpddr_page_reads,
+         (unsigned long long)s.lpddr_half_reads, (unsigned long long)s.cache_hits,
+         (unsigned long long)s.cache_misses);
 }
 static u64 free_pages() { u64 t, f; set_caller(Caller::MASTER); fs_df(&t, &f); return f; }
 
@@ -51,19 +52,19 @@ static u64 free_pages() { u64 t, f; set_caller(Caller::MASTER); fs_df(&t, &f); r
 static Updater g_updater;
 
 // The pages of a run into the free page queue, at most 128 a call, as the credits would allow (17.10.4).
-static void feed(u32 r, uint64_t n) {
+static void feed(uint64_t n) {
     while (n) {
         const u32 k = u32(std::min<uint64_t>(128, n));
         u32 b[128];
-        const int got = fs_acquire_pages(r, b, k);
+        const int got = fs_acquire_pages(b, k);
         EXPECT(got == int(k));
         if (got <= 0) return;
         for (int i = 0; i < got; i++) g_updater.push(b[i]);
         n -= u32(got);
     }
 }
-static void run(const Run& c, const std::vector<uint64_t>& words, u32 r, const char* what) {
-    feed(r, c.page_count);
+static void run(const Run& c, const std::vector<uint64_t>& words, const char* what) {
+    feed(c.page_count);
     note("Updater run (%s): root %d, depth %u, tracer_copy %d, IMAGE_ROOT 0x%x, TRACER_ROOT 0x%x, SOURCE_ROOT 0x%x, %zu words, PAGE_COUNT %llu",
          what, c.root, c.depth, int(c.tracer_copy), c.image_root, c.tracer_root, c.source_root, words.size(),
          (unsigned long long)c.page_count);
@@ -101,21 +102,21 @@ static void store_program(const Program& p) {
     std::vector<uint64_t> map_all;
     for (uint64_t i = 0; i < p.map_pages; i++) map_all.push_back(i);
     const uint64_t n_img = pages_for(d, p.pages), n_map = pages_for(md, map_all);
-    u32 r, root, depth;
-    EXPECT(fs_reserve_pages(u32(n_img + n_map + 2), &r) == 0);
+    u32 root, depth;
+    EXPECT(fs_reserve_pages(u32(n_img + n_map + 2)) == 0);
     const std::string img = p.stem + ".pages", map = p.stem + ".map";
-    EXPECT(cow_create(img.c_str(), p.length_pages, r, &root, &depth) == 0);
+    EXPECT(cow_create(img.c_str(), p.length_pages, &root, &depth) == 0);
     EXPECT(depth == d);
     Run c; c.root = 1; c.depth = depth; c.image_root = root; c.page_count = n_img;
-    run(c, words_for(p.pages, 1), r, "the program image, empty");
+    run(c, words_for(p.pages, 1), "the program image, empty");
     EXPECT(cow_commit(img.c_str()) == 0);
     EXPECT(cow_freeze(img.c_str()) == 0);
-    EXPECT(cow_create(map.c_str(), p.map_pages, r, &root, &depth) == 0);
+    EXPECT(cow_create(map.c_str(), p.map_pages, &root, &depth) == 0);
     c = Run{}; c.root = 1; c.depth = depth; c.image_root = root; c.page_count = n_map;
-    run(c, words_for(map_all, 2), r, "the base table, empty");
+    run(c, words_for(map_all, 2), "the base table, empty");
     EXPECT(cow_commit(map.c_str()) == 0);
     EXPECT(cow_freeze(map.c_str()) == 0);
-    EXPECT(fs_unreserve(r) == 0);
+    EXPECT(fs_unreserve() == 0);
 }
 
 enum class Ending { SUCCESS, SOFTWARE_FAILURE, HARDWARE_ERROR };
@@ -159,43 +160,43 @@ static void run_proof(const Proof& p) {
     note("the host's counts: map %llu, cycle-0 %llu, start %llu, Tracer's copy %llu, final %llu; reserved %llu with the roots",
          (unsigned long long)n_map, (unsigned long long)n_c0, (unsigned long long)n_start, (unsigned long long)n_tracer,
          (unsigned long long)n_final, (unsigned long long)total);
-    u32 r, root, depth, src, sd;
-    if (fs_reserve_pages(u32(total), &r) != 0) { EXPECT(false); return; }
+    u32 root, depth, src, sd;
+    if (fs_reserve_pages(u32(total)) != 0) { EXPECT(false); return; }
     const std::string map = p.wd + "/map", c0 = p.wd + "/cycle0", start = p.wd + "/start", fin = p.wd + "/final",
                       tr = p.wd + "/tracer";
     // the proof's table: a copy of the base, frame 5's pages over it
     EXPECT(cow_root(base.c_str(), &src, &sd) == 0);
-    EXPECT(cow_copy(base.c_str(), map.c_str(), r, &root, &depth) == 0);
+    EXPECT(cow_copy(base.c_str(), map.c_str(), &root, &depth) == 0);
     Run c; c.root = 2; c.depth = depth; c.image_root = root; c.source_root = src; c.page_count = n_map;
-    run(c, words_for(p.map_delta, 5), r, "frame 5: the proof's table");
+    run(c, words_for(p.map_delta, 5), "frame 5: the proof's table");
     EXPECT(cow_commit(map.c_str()) == 0);
     EXPECT(cow_freeze(map.c_str()) == 0);
     // the cycle-0 image: a copy of the program image, frame 6 over it
     EXPECT(cow_root(img.c_str(), &src, &sd) == 0);
-    EXPECT(cow_copy(img.c_str(), c0.c_str(), r, &root, &depth) == 0);
+    EXPECT(cow_copy(img.c_str(), c0.c_str(), &root, &depth) == 0);
     c = Run{}; c.root = 2; c.depth = depth; c.image_root = root; c.source_root = src; c.page_count = n_c0;
-    run(c, words_for(p.data_pages, 6), r, "frame 6: the data image");
+    run(c, words_for(p.data_pages, 6), "frame 6: the data image");
     EXPECT(cow_commit(c0.c_str()) == 0);
     EXPECT(cow_freeze(c0.c_str()) == 0);
     // the start image: frame 9, the segments before s
     EXPECT(cow_root(c0.c_str(), &src, &sd) == 0);
-    EXPECT(cow_copy(c0.c_str(), start.c_str(), r, &root, &depth) == 0);
+    EXPECT(cow_copy(c0.c_str(), start.c_str(), &root, &depth) == 0);
     c = Run{}; c.root = 2; c.depth = depth; c.image_root = root; c.source_root = src; c.page_count = n_start;
-    run(c, concat(p.segments, 0, p.s, 90), r, "frame 9: the segments before s");
+    run(c, concat(p.segments, 0, p.s, 90), "frame 9: the segments before s");
     EXPECT(cow_commit(start.c_str()) == 0);
     EXPECT(cow_freeze(start.c_str()) == 0);
     // the final image and the Tracer's copy: segment s with tracer_copy, then the rest
     EXPECT(cow_root(start.c_str(), &src, &sd) == 0);
     u32 froot, troot;
-    EXPECT(cow_copy(start.c_str(), fin.c_str(), r, &froot, &depth) == 0);
-    EXPECT(cow_copy(start.c_str(), tr.c_str(), r, &troot, &depth) == 0);
+    EXPECT(cow_copy(start.c_str(), fin.c_str(), &froot, &depth) == 0);
+    EXPECT(cow_copy(start.c_str(), tr.c_str(), &troot, &depth) == 0);
     c = Run{}; c.root = 2; c.depth = depth; c.tracer_copy = true; c.image_root = froot; c.tracer_root = troot;
     c.source_root = src; c.page_count = 2 * n_tracer;
-    run(c, concat(p.segments, p.s, p.s + 1, 90), r, "frame 9: segment s, with the Tracer's copy");
+    run(c, concat(p.segments, p.s, p.s + 1, 90), "frame 9: segment s, with the Tracer's copy");
     EXPECT(cow_commit(fin.c_str()) == 0);                                   // both roots made by that run
     EXPECT(cow_commit(tr.c_str()) == 0);
     c = Run{}; c.root = 0; c.depth = depth; c.image_root = froot; c.page_count = n_final - n_tracer;
-    run(c, concat(p.segments, p.s + 1, p.N, 90), r, "frame 9: the segments after s");
+    run(c, concat(p.segments, p.s + 1, p.N, 90), "frame 9: the segments after s");
     // the hand-over (30.5)
     u32 mroot, mdepth, croot, cdepth;
     EXPECT(cow_root(tr.c_str(), &croot, &cdepth) == 0);
@@ -269,7 +270,7 @@ static void run_proof(const Proof& p) {
     }
     set_caller(Caller::MASTER);
     EXPECT(cow_freeze(fin.c_str()) == 0);                                   // the third run is done
-    EXPECT(fs_unreserve(r) == 0);
+    EXPECT(fs_unreserve() == 0);
     auto leave = [&] {                                                     // the tiles back to the root
         for (uint32_t t = 0; t < p.tiles; t++) { set_caller(Caller::TILE, int(t)); EXPECT(fs_chdir("/") == 0); }
         set_caller(Caller::TRACER); EXPECT(fs_chdir("/") == 0);
@@ -343,18 +344,18 @@ int main() {
     store_program(sha);
     set_caller(Caller::MASTER);
     EXPECT(fs_open("/programs/fib.pages", FS_APPEND) == FS_EROFS);          // a COW file is never written so
-    u32 r, root, depth;
-    EXPECT(fs_reserve_pages(4, &r) == 0);
-    EXPECT(cow_create("/programs/tmp", 10, r, &root, &depth) == 0);
+    u32 root, depth;
+    EXPECT(fs_reserve_pages(4) == 0);
+    EXPECT(cow_create("/programs/tmp", 10, &root, &depth) == 0);
     note("not yet committed: its entry's root is 0");
     EXPECT(cow_freeze("/programs/tmp") == FS_EBUSY);
     EXPECT(cow_root("/programs/tmp", &root, &depth) == FS_EBUSY);
-    EXPECT(cow_copy("/programs/tmp", "/programs/tmp2", r, &root, &depth) == FS_EINVAL);   // the source not frozen
+    EXPECT(cow_copy("/programs/tmp", "/programs/tmp2", &root, &depth) == FS_EINVAL);   // the source not frozen
     EXPECT(fs_open("/programs/tmp", FS_READ) == FS_EBUSY);
     { struct fs_stat s2; EXPECT(fs_stat("/programs/tmp", &s2) == 0 && s2.pages == 0); }
     check();
     EXPECT(fs_remove("/programs/tmp") == 0);                                // its root to be freed with it
-    EXPECT(fs_unreserve(r) == 0);
+    EXPECT(fs_unreserve() == 0);
     struct fs_stat st;
     EXPECT(fs_stat("/programs/fib.pages", &st) == 0 && st.depth == 2 && (st.flags & FS_F_FROZEN));
     check(); report();
@@ -411,8 +412,8 @@ int main() {
     check();                                                  // the pages of the lost part are free again
     note("--- a soft reset between cow_create and cow_commit");
     set_caller(Caller::MASTER);
-    EXPECT(fs_reserve_pages(3, &r) == 0);
-    EXPECT(cow_create("/proofs/p3/half", 100, r, &root, &depth) == 0);
+    EXPECT(fs_reserve_pages(3) == 0);
+    EXPECT(cow_create("/proofs/p3/half", 100, &root, &depth) == 0);
     power_on(LPDDR, false);
     set_caller(Caller::MASTER);
     EXPECT(fs_stat("/proofs/p3/half", &st) == 0 && st.pages == 0);

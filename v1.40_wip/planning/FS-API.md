@@ -27,9 +27,9 @@ name a frame carries (30; `fw/cc/master.c`). v1.37 is a stage in the design, not
 
 | Tile | What it does for the file system |
 | --- | --- |
-| **the memory tile** | **runs the file system** (owner, 2026-11-19). Its peripheral is the RW unit, its way to LPDDR. Its scratchpad, 4 MiB (15), holds the file system's state: the page maps, the open files, their buffers |
-| **the master tile** | serves the host's requests: takes the frames from Ingress, calls the file system, drives the Updater (its peripheral 2, 17.10), hands the tracer tile its segment. It feeds the Updater's free page queue from the pages the file system gives it |
-| **the tracer tile** | traces the segment through the Tracer (17.9), which reads and writes files through the cache; writes each compute tile's three run logs into the file system (section 3.4) |
+| **the memory tile** | **runs the file system** (owner, 2026-11-19). Its peripheral is the RW unit, its way to LPDDR. **Its 1 MiB of SRAM and 32 KB of local memory** (owner, 2026-11-20) hold the fd table, the working directories and the pool of 2 KiB buffers that are its cache and its writers' buffers (`FS-DATA-PATH.md` 6, 8) |
+| **the master tile** | serves the host's requests: takes the frames from Ingress, calls the file system, drives the Updater (its peripheral 2, 17.10), hands the tracer tile its segment. It feeds the Updater's free page queue from the pages the tracer tile's page service gives it |
+| **the tracer tile** | traces the segment through the Tracer (17.9), which reads and writes files through the cache; writes each compute tile's three run logs into the file system (section 3.4). **It runs the page service** (owner, 2026-11-20): the page maps, the two pools, the discards (4.1, 4.2; `FS-DATA-PATH.md` 7) |
 | **the compute tiles** | each writes logs of its own into the file system (section 3.4) |
 
 **Every caller is remote:** a call is a request to the memory tile (11.5) and its answer. Up to three requests from
@@ -71,7 +71,7 @@ AXI port. **Index lines are never dirty:** an update writes through. The Tracer'
 | the data is in LPDDR before an entry names it | the Updater (17.10.5); the file system, for its own files |
 | one writer for a file at a time | the file system's calls (section 5); the master tile, which starts the runs |
 | an owned index page changes only by `update`, unless it is new | the Updater; for a streamed file, section 4.5's rule |
-| **a page is used only after its discard's reply** | the file system, at `fs_acquire_pages` (section 4.2) |
+| **a page is used only after its discard's reply** | the tracer tile's page service: every page it hands out is new (section 4.2) |
 | a data page the Tracer reads is not written directly while it does | the master tile: no run on the Tracer's files while it traces |
 | a page the Tracer has written is not read directly | the file system: it never reads a COW file's data page directly (section 4.4) |
 
@@ -102,13 +102,13 @@ stem**: `<stem>.pages`, its memory image, and `<stem>.map`, its jump table. Ther
 "I'm guessing it's some kind of COW and built by the updater, but it doesn't have to work that way").
 
 ```
-fs_reserve_pages(pages + 2)                  -> r            // the run's pages and the two roots
-cow_create("<stem>.pages", length_pages, r)  -> root, depth  // its root page taken; the entry's root 0 until committed
-  Updater run: root 1 (empty), IMAGE_ROOT root, depth; its pages by fs_acquire_pages(r, ...) as credits come
+fs_reserve_pages(pages + 2)                                 // the run's pages and the two roots, in the Updater's pool
+cow_create("<stem>.pages", length_pages)  -> root, depth    // its root page taken; the entry's root 0 until committed
+  Updater run: root 1 (empty), IMAGE_ROOT root, depth; its pages by fs_acquire_pages(...) as credits come
 cow_commit("<stem>.pages")                                   // at the run's done: the entry names its root
 cow_freeze("<stem>.pages")
 the map the same way: cow_create, a run, cow_commit, cow_freeze   // a base table (29.8)
-fs_unreserve(r)
+fs_unreserve()
 ```
 
 ### 3.3 Running a proof (a request from the host)
@@ -118,14 +118,14 @@ built by the Updater's next run; it is committed at that run's done, and then fr
 
 ```
 fs_mkdir(wd)                                  // FS_EEXIST: the proof is refused (DESIGN-NOTES, section 6)
-fs_reserve_pages(the proof's pages)  -> r     // FS_ENOSPC: refused, before anything is written
-the proof's table:   cow_copy("<base>", wd/map, r) and a run with root 2, or cow_create(wd/map, pages, r) and root 1
+fs_reserve_pages(the proof's pages)           // FS_ENOSPC: refused, before anything is written
+the proof's table:   cow_copy("<base>", wd/map) and a run with root 2, or cow_create(wd/map, pages) and root 1
                      cow_commit(wd/map); cow_freeze(wd/map)
-the cycle-0 image:   cow_copy("<stem>.pages", wd/cycle0, r); frame 6's run, root 2
+the cycle-0 image:   cow_copy("<stem>.pages", wd/cycle0); frame 6's run, root 2
                      cow_commit(wd/cycle0); cow_freeze(wd/cycle0)
-the start image:     cow_copy(wd/cycle0, wd/start, r); the run of segments before s, root 2
+the start image:     cow_copy(wd/cycle0, wd/start); the run of segments before s, root 2
                      cow_commit(wd/start); cow_freeze(wd/start)
-the final image and  cow_copy(wd/start, wd/final, r); cow_copy(wd/start, wd/tracer, r)
+the final image and  cow_copy(wd/start, wd/final); cow_copy(wd/start, wd/tracer)
   the Tracer's copy: the run of segment s, root 2 with tracer_copy, which makes both roots
                      cow_commit(wd/final); cow_commit(wd/tracer)
                      the run after s, root 0
@@ -133,10 +133,10 @@ the hand-over:       cow_root(wd/tracer), cow_root(wd/map)  -> the roots and dep
 the segment:         the tracer tile writes the run logs; the compute tiles write their logs (3.4)
                      cow_freeze(wd/final), once the third run is done
 the reply (29.14);   then 3.5 or 3.6
-fs_unreserve(r)
+fs_unreserve()
 ```
 
-- **The pages a run takes** come from `fs_acquire_pages(r, buf, k)`, k ≤ 128, as the free page queue's credits come
+- **The pages a run takes** come from `fs_acquire_pages(buf, k)`, k ≤ 128, as the free page queue's credits come
   back. The master tile pushes them into the queue, as `feed_pages` does today: that stays the master tile's own code
   (owner, 2026-11-19).
 - **A root is taken from the reservation too** †: v1.37 takes roots from its map and leaves them out of `PAGE_COUNT`
@@ -190,25 +190,30 @@ count of copies (4.3). Whether a call removes a tree in one go is open †.
 
 ## 4. The data structures
 
-### 4.1 The page maps, in the memory tile's scratchpad
+### 4.1 The page maps, on the tracer tile (owner, 2026-11-20)
 
 | Map | Size | A bit is 1 when |
 | --- | --- | --- |
-| **taken** | 2²⁰ bits, 128 KiB | the page is in use: in a file, in a reservation, or page 0 |
+| **taken** | 2²⁰ bits, 128 KiB | the page is in use: in a file, in a pool's prepared batch, or page 0 |
 | **may be cached** † | 2²⁰ bits, 128 KiB | the page was last in a COW file, so lines of it may be in the cache |
 
 - Page *p* is bit *p* of each, as v1.37's map has it (`master_layout.h`): 128 pages to a 128-bit word.
 - **Neither is kept in LPDDR** (DESIGN-NOTES section 2): a hard reset starts them fresh, and a mount rebuilds both by
   the walk of section 4.4, setting "may be cached" for every page of a COW file.
-- **A reservation** is pages marked taken and set aside for one request. How it is held, a list of page addresses or a
-  third map, is open †.
+- **Two pools** (owner, 2026-11-20): **the Updater's**, drawn on by the master tile for every run and every COW file's
+  root, and **the file system's**, from which the memory tile takes its directories' and streamed files' pages.
+- **A reservation is a count** (owner, 2026-11-20): the master tile reserves the Updater's pool once per request,
+  `fs_reserve_pages(n)`, which fails with no room; the file system's pool may not take what is held. One reservation at
+  a time (`FS_EBUSY`). The file system's pool reserves nothing: its pages are taken as needed, `FS_ENOSPC` when none.
 
 ### 4.2 Freeing and handing out pages
 
 - **Freeing marks a page free and does nothing else** (owner, 2026-11-20): nothing is discarded then.
-- **A page is discarded when it is handed out again, and only if it may be cached** †: `fs_reserve_pages` chooses a
-  request's pages when the request arrives and discards those whose "may be cached" bit is set, then clears it, before
-  any frame data comes. So no discard is made while the Tracer runs, and `fs_acquire_pages` hands out only clean pages.
+- **A page is discarded when it is handed out again, and only if it may be cached**: the tracer tile keeps **a prepared
+  batch of 256 pages for each pool** (owner, 2026-11-20), taken and discarded before anyone asks, so an acquire of 256
+  or fewer is a copy out of the batch; it refills the batch in the background. **Every page it hands out is new**
+  (23.6.8). The Updater's pool takes the pages that need a discard first, the file system's the others †, so that the
+  discards fall mostly outside tracing (`FS-DATA-PATH.md` 7).
 - **The file system's own pages** (directories, streamed files) are never in the cache (4.5), so their bit is never set.
 
 ### 4.3 The directory entry
@@ -278,15 +283,16 @@ its entry's index.
 | 12–15 | **a reader's position**, for `fs_read`; **a writer's buffer index** (owner, 2026-11-20): a writer has no position, since an append writes at the length and `fs_write_page` names its page |
 
 - **A streamed file is at most 4 GiB,** its length's 32 bits.
-- **The writers' buffers are a pool of 128** (owner, 2026-11-20): the 64 compute tiles' logs, the tracer tile's three
-  and room to spare. An `fs_open` to write when all 128 are in use is `FS_EBUSY`. At two pages a writer
-  (`FS-DATA-PATH.md` 4), 1 MiB of the memory tile's scratchpad.
+- **128 writers at once** (owner, 2026-11-20): the 64 compute tiles' logs, the tracer tile's three and room to spare.
+  An `fs_open` to write when 128 are open for writing is `FS_EBUSY`. A writer's buffer index names its current half
+  in the memory tile's pool (`FS-DATA-PATH.md` 6).
 
-**A writer's buffer** †: **the data page it is filling (4 KiB) and the current line of each index level above it
-(128 bytes each)**. An
-appended file fills its entries in order, so only that line changes; it is written to LPDDR when its 32 entries are
-full, every 128 KiB of data, and at `fs_flush`, `fs_close` and `fs_shutdown`. So an open file being written costs
-about 4.2 KiB, and its index writes about 0.1 % of its data.
+**A writer's buffers**: **the 2 KiB half it is filling** (owner, 2026-11-20: "we build up the partial writes to 2kb"),
+written to LPDDR when full and at `fs_flush`, `fs_close` and `fs_shutdown`; and **the cached half of each index page
+above it** (`FS-DATA-PATH.md` 6). An appended file fills its entries in order, so only one half of each index page
+changes at a time; it is written as a 2 KiB half when its 512 entries are full, every 2 MiB of data, and at a flush.
+**The RW unit moves only 2 KiB and 4 KiB** (owner, 2026-11-20): every smaller change is made in a buffer and written
+as its half.
 
 ### 4.7 The working directories, in the memory tile
 
@@ -312,10 +318,13 @@ not the shell, not a compute tile.
 
 | Call | Who | Does |
 | --- | --- | --- |
-| `int fs_reserve_pages(u32 n, u32 *r)` | master | sets aside n pages for one request, or fails with `FS_ENOSPC` having taken none; discards those that need it (4.2). `*r` names the reservation |
-| `int fs_acquire_pages(u32 r, u32 *pages, u32 k)` | master | k ≤ 128 pages of reservation r into `pages`, as addresses in units; each new (23.6.8). Returns k, or fewer if the reservation has fewer left |
+| `int fs_reserve_pages(u32 n)` | master | holds n pages for the Updater's pool for one request, or fails with `FS_ENOSPC`; `FS_EBUSY` while a reservation is held (owner, 2026-11-20) |
+| `int fs_acquire_pages(u32 *pages, u32 k)` | master | k ≤ 256 pages of the reservation into `pages`, as addresses in units; each new (23.6.8). Returns k, or fewer if the reservation has fewer left |
 | `int fs_release_pages(const u32 *pages, u32 k)` | master | k pages back to the free map |
-| `int fs_unreserve(u32 r)` † | master | what is left of reservation r back to the free map |
+| `int fs_unreserve(void)` † | master | ends the reservation; what is left of it is free again |
+
+**Served by the tracer tile** (owner, 2026-11-20): the master tile's page calls go to it, not to the memory tile; the
+memory tile takes the file system's pool's pages from it the same way.
 
 ### 5.2 Streamed files (the calls of 2026-11-10, owner; `fs_wip/README.md`)
 
@@ -349,8 +358,8 @@ its copy, but adds no pages** (owner, 2026-11-19); the hardware refuses it a wri
 
 | Call | Does |
 | --- | --- |
-| `int cow_create(const char *path, u64 length_pages, u32 r, u32 *root, u32 *depth)` | a new COW file, its depth fixed by its length; its root page taken from reservation r and returned in `*root`, **not yet made**: the next Updater run on it, with `root` 1, makes it. The entry's root is 0 and the page is its pending root |
-| `int cow_copy(const char *src, const char *dst, u32 r, u32 *root, u32 *depth)` | a new COW file with src's length and depth, src's count raised; src must be a frozen COW file (`FS_EINVAL`). Its root page as `cow_create`'s: the next run, with `root` 2 and `SOURCE_ROOT` src's root, makes it |
+| `int cow_create(const char *path, u64 length_pages, u32 *root, u32 *depth)` | a new COW file, its depth fixed by its length; its root page taken from the master tile's reservation and returned in `*root`, **not yet made**: the next Updater run on it, with `root` 1, makes it. The entry's root is 0 and the page is its pending root |
+| `int cow_copy(const char *src, const char *dst, u32 *root, u32 *depth)` | a new COW file with src's length and depth, src's count raised; src must be a frozen COW file (`FS_EINVAL`). Its root page as `cow_create`'s: the next run, with `root` 2 and `SOURCE_ROOT` src's root, makes it |
 | `int cow_commit(const char *path)` | the entry's root becomes its pending root: called once the run that makes the root is done. `FS_EINVAL` for a file not pending (owner, 2026-11-20) |
 | `int cow_freeze(const char *path)` | sets the frozen flag; `FS_EBUSY` before `cow_commit` |
 | `int cow_root(const char *path, u32 *root, u32 *depth)` | a COW file's root and depth, for the Updater and the Tracer; `FS_EINVAL` for any other file, `FS_EBUSY` before `cow_commit` |
@@ -398,7 +407,9 @@ There is no kernel and no permission check (owner, 2026-11-19): who may call wha
 - **The RW unit:** the tracer tile's run logs into LPDDR at 2.4 to 4.8 bytes a cycle for about 10 ms (3.4); the
   walk's index reads (4.4); the file system's own page and line writes (4.5, 4.6).
 - **The mesh:** the same from the tracer tile to the memory tile, 15 % to 30 % of a link's 16 bytes a cycle.
-- **A look-up port for the memory tile,** one of ports 0, 2 and 3, for its discards (4.2).
+- **A look-up port for the tracer tile,** one of ports 0, 2 and 3, for the page service's discards (4.2; owner,
+  2026-11-20). The memory tile does not use the cache.
+- **The RW unit moves only 2 KiB and 4 KiB** (owner, 2026-11-20).
 - **The discard as background work** (owner, 2026-11-19): the walker serves a discard a line at a time, and between
   its lines serves any request of the Tracer's that **hits** in the cache. A Tracer request that misses may wait until
   the discard is done, and so may every look-up port's. The reply still follows the 32nd line. A change to the cache
@@ -413,8 +424,8 @@ There is no kernel and no permission check (owner, 2026-11-19): who may call wha
 1. `cow_create` and `cow_copy` leave the root to the Updater's next run (5.3), committed at its done; or `cow_copy`
    makes it with a run of no words.
 2. Whether roots come from the reservation (3.3), and whether the run logs' pages do.
-3. A reservation held as a list or as a map (4.1); `fs_unreserve`.
-4. The "may be cached" map, and the discard at `fs_reserve_pages` (4.2).
+3. `fs_unreserve`. (A reservation is a count, ruled 2026-11-20.)
+4. The "may be cached" map; which pages each pool's batch prefers (4.2).
 5. The directory entry's fields in bytes 112–127, and the type values (4.3).
 6. The superblock's lines (4.4).
 7. `fs_flush`. (The writers' buffer pool: 128, ruled 2026-11-20.)

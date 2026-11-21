@@ -1,16 +1,16 @@
-# The data path: how a tile's bytes reach a file, and come back
+# The data path: how a tile's bytes reach a file and come back, and where it all lives
 
 *The FS-API session, 2026-11-20. (owner) marks a ruling, with its date; a dagger (†) a proposal not ruled on. For
-step 4 (the RW unit and the mesh) and step 5 (the device's file system). The API (`FS-API.md`) is unchanged by it:
-this is how the memory tile and a caller's library carry out `fs_write`, `fs_fprintf`, `fs_write_page`, `fs_read` and
-`fs_read_page`.*
+step 4 (the RW unit and the mesh) and step 5 (the device's file system). This is how the memory tile, the tracer tile
+and a caller's library carry out the calls of `FS-API.md`, and how their memories are spent.*
 
 ## 1. Why
 
 The memory tile serves every tile's file work: 64 compute tiles writing their `printf` logs, and the tracer tile
 writing 24 to 48 MB of run logs in about 10 ms (FS-API 3.4). It must not copy bytes, and it cannot shift them: the
 scratchpad has no byte addressing and no byte moves, only 128-bit words. A `printf` of 37 bytes appended at byte 21 of
-a word would otherwise cost the memory tile a read of that word, a merge and a shift of everything after it.
+a word would otherwise cost the memory tile a read of that word, a merge and a shift of everything after it. And it
+must not read LPDDR over and over for the same directory and index lines.
 
 **The rule behind it** (owner, 2026-11-20): work moves from the memory tile to the callers wherever it can. A little
 more work on a compute tile costs little, since it is spread over 64 of them; the memory tile serves them all.
@@ -20,10 +20,12 @@ more work on a compute tile costs little, since it is spread over 64 of them; th
 | Piece | Its part |
 | --- | --- |
 | **the caller's library** (a compute tile's, the tracer tile's, the shell's) | formats and sends the bytes; keeps the file's last partial word (3) |
-| **the memory tile's core** | the file system: grants writes, counts them done, sends full pages out, keeps the index |
-| **its scratchpad** | the **page buffers**: two for each file open for writing † |
-| **its DMA** | sends a full page from the scratchpad to the RW unit |
-| **the RW unit** | the memory tile's peripheral (owner, 2026-11-20): its registers and events in its window, as in v1.37's 17.7; **its data input on the router's +8 link** (owner, 2026-11-20), so that a page sent to it does not come back in through the memory tile's own input |
+| **the memory tile's core** | the file system: paths, directories, the index, grants, the cache (6) |
+| **its SRAM** (1 MiB, owner, 2026-11-20) | the fd table, the working directories, **the pool of 2 KiB buffers** shared by the cache and the writers (6), the landing slots for paths (8) |
+| **its local memory** (32 KB, owner, 2026-11-20) | its code, stack and small state (8) |
+| **its DMA** | sends a full 2 KiB half from the SRAM to the RW unit |
+| **the RW unit** | the memory tile's peripheral (owner, 2026-11-20): its registers and events in its window, as in v1.37's 17.7; **its data input on the router's +8 link** (owner), so that a half sent to it does not come back in through the memory tile's own input. **It moves only 2 KiB and 4 KiB** (owner, 2026-11-20) |
+| **the tracer tile** | **the page service** (7): the page maps, the two pools, their prepared batches, the discards (owner, 2026-11-20) |
 
 ## 3. A write, step by step (owner, 2026-11-20)
 
@@ -33,78 +35,161 @@ file and keeps it from then on †.
 
 1. **The request:** "write *n* bytes to fd".
 2. **The answer:** where to write them, how many it may write, and on which counter:
-   - the address: the page buffer's base + (*length* mod 4,096, rounded down to 16);
-   - *g*, the bytes granted: at most *n*, and no more than the page has left (4,096 − *length* mod 4,096);
+   - the address: the writer's current half's buffer + (*length* mod 2,048, rounded down to 16);
+   - *g*, the bytes granted: at most *n*, and no more than the half has left (2,048 − *length* mod 2,048);
    - a counter of the memory tile's, armed for ⌈((*length* mod 16) + *g*) / 16⌉ packets.
 3. **The data:** the caller sends its tail followed by the *g* bytes, as whole 128-bit words, `WRITE` packets from the
    address up, each counted on that counter. The first word sends the tail's bytes again over themselves; the last
    word's bytes past the new length are whatever the caller had, and the next write covers them.
 4. **Done:** the counter reaches 0 (its `counter_done` event); the core adds *g* to the length. The caller's tail is
    now the last (*length* mod 16) bytes it sent.
-5. **A full page** goes out (section 4), and the next grant lands in the other buffer.
+5. **A full half** goes out (4), and the writer's next grant lands in a fresh buffer from the pool.
 6. **What is left,** *n* − *g*, the caller asks for again. **One grant at a time for an fd,** so a file's bytes arrive
    in order.
 
-So no byte is copied, merged or shifted on the memory tile: every word arrives whole, at its place in the page.
+So no byte is copied, merged or shifted on the memory tile: every word arrives whole, at its place in the half.
 
 **Grants in flight: four,** on four of the memory tile's seven counters (12.2), the other three left for its own work
-(owner, 2026-11-20: "if we can get four in flight, I'd be happy"). A request that finds all four in use waits, first
-come first served †. A grant is at most a page, about 850 cycles at the tracer tile's rate and far less for a
-`printf`, so the wait is short. The requests themselves cannot overflow anything: a tile has at most three
+(owner, 2026-11-20). A request that finds all four in use waits, first come first served †. A grant is at most a
+half, about 430 cycles at the tracer tile's rate and far less for a `printf`. A tile has at most three requests
 outstanding to the memory tile (11.3).
 
-## 4. A full page out, while the next fills (owner, 2026-11-20)
+## 4. A full half out, while the next fills (owner, 2026-11-20)
 
-**The RW unit moves whole pages** of 2 or 4 KiB (owner, 2026-11-20: "we want the RW unit to be processing 2KB or 4KB
-pages"). When a page buffer fills:
+**The writer builds its bytes up to 2 KiB** (owner, 2026-11-20), and the half goes to LPDDR when it fills:
 
-1. the core takes the file's next data page in LPDDR (FS-API 4.2) and sets the RW unit's job: a write of the page's
-   beats, the LPDDR address, where in the RW unit's write buffer it lands (17.7's `RW_CONFIG`, `RW_LPDDR_ADDR`,
-   `RW_BUFFER_ADDR`);
-2. **the DMA sends the page from the scratchpad over +8 into the RW unit's write buffer;**
-3. the RW unit writes it to LPDDR, and its done event comes back to the core;
-4. **only then** the entry naming the page goes into the writer's index line (FS-API 4.6): the data is in LPDDR
-   before an entry names it (23.6.8);
-5. the buffer is free again.
+1. for a half that starts a page, the core takes the file's next data page from its pool's batch (7);
+2. it sets the RW unit's job: a write of 2 KiB, the LPDDR address, where in the RW unit's write buffer it lands (17.7's
+   `RW_CONFIG`, `RW_LPDDR_ADDR`, `RW_BUFFER_ADDR`);
+3. **the DMA sends the half from the SRAM over +8 into the RW unit's write buffer;** the RW unit writes it, and its
+   done event comes back to the core;
+4. **only then**, for a page's first half, the entry naming the page goes into the cached half of the writer's index
+   page (6): the data is in LPDDR before an entry names it (23.6.8). The page's second half, written later, is past
+   the length until then;
+5. the buffer goes back to the pool.
 
-**Meanwhile the writer's grants land in its other buffer:** data flows into the scratchpad through the director while
-the DMA drains the full page out over +8 (owner, 2026-11-20). That is why each writer has two buffers †, and why the
-RW unit's write buffer should hold two pages, so that the DMA never waits on LPDDR †.
+**Meanwhile the writer's grants land in another buffer:** data flows into the SRAM through the director while the DMA
+drains the full half over +8 (owner, 2026-11-20). The RW unit's write buffer should hold two halves, so that the DMA
+never waits on LPDDR †.
 
-**`fs_flush` and `fs_close`** send the part-filled buffer out the same way, a whole page (the bytes past the length do
-not matter), then the writer's index lines and its directory entry (FS-API 4.6).
+**`fs_flush` and `fs_close`** write the writer's part-filled half (the bytes past the length do not matter), the half
+of its index page that changed, and the half holding its directory entry (FS-API 4.6). Each is a 2 KiB job.
 
 ## 5. Which calls go through the memory tile (owner, 2026-11-20)
 
-**Only a whole page read skips the memory tile's scratchpad.**
+**Only a whole page read skips the memory tile's SRAM.**
 
 | Call | Its data's path |
 | --- | --- |
-| `fs_read_page` | **straight:** the core finds the page in the index and sets the RW unit's read job; the RW unit's output goes to the caller's buffer, counted on the caller's counter. The memory tile's scratchpad holds none of it |
-| `fs_write_page` | through the scratchpad: the page into a buffer, by a grant of a whole page (3), then out over +8 (4) |
-| `fs_write`, `fs_fprintf` | through the scratchpad: sections 3 and 4 |
-| `fs_read` | through the scratchpad: the page read into it, then the 128-bit words that cover the bytes asked for sent to the caller. The caller's library takes its bytes out of them: the one copy is the caller's, not the memory tile's |
+| `fs_read_page` | **straight:** the core finds the page in the index and sets the RW unit's 4 KiB read job; the RW unit's output goes to the caller's buffer, counted on the caller's counter |
+| `fs_write_page` | through the SRAM: two grants of a half each, then out over +8 |
+| `fs_write`, `fs_fprintf` | through the SRAM: sections 3 and 4 |
+| `fs_read` | through the cache (6): the halves read into it, then the 128-bit words that cover the bytes asked for sent to the caller. The caller's library takes its bytes out of them: the one copy is the caller's |
 
 - **The tiles cannot write the RW unit directly:** only the memory tile's DMA reaches its data input, by +8 (owner,
-  2026-11-20: "I don't think it could go straight").
-- **The index reads** a walk or a look-up makes (FS-API 4.4) are the memory tile's own: lines or pages read into its
-  scratchpad †.
+  2026-11-20).
+- **The walk** (FS-API 4.4) reads index pages whole, 4 KiB jobs, outside the cache.
 
-## 6. What it costs
+## 6. The cache: a pool of 2 KiB buffers, by CLOCK (owner, 2026-11-20)
 
-- **Scratchpad:** two buffers of 4 KiB a writer. About 67 writers at once (the 64 compute tiles' logs and the tracer
-  tile's three run logs) take about 540 KiB of the memory tile's 4 MiB; 256 (four a tile) would take 2 MiB.
-- **The fd table** names a writer's buffer in its position word, which a writer does not use: a pool of 128 writers
-  (owner, 2026-11-20; FS-API.md 4.6).
-- **The mesh:** each grant is a request, an answer and the data; the run logs are FOR-THE-HARDWARE.md's 2.4 to 4.8
-  bytes a cycle into the memory tile, and the same out over +8 to the RW unit.
+The memory tile keeps **one pool of 2 KiB buffers** in its SRAM. **The cache and the writers share it** †: a writer's
+current half is a buffer of the pool, pinned while a grant lands in it.
 
-## 7. Open
+**What it holds:** halves of directories (path look-ups, `fs_list`, entry updates), halves of index pages (finding a
+page behind an offset; a writer's index entries), halves of data for `fs_read`, the superblock's half. **What it
+never holds:** a COW file that is not frozen (the Updater changes its index lines through the shared cache, behind the
+memory tile's back); `fs_read_page`'s data; the walk's pages.
+
+**It stays right by construction:** the memory tile is the only reader and writer of directories and streamed files;
+a frozen COW file never changes; a buffer of a page the file system frees is dropped at once.
+
+**CLOCK** (owner, 2026-11-20):
+
+- **A hash table** from a half's LPDDR address to its buffer: 1,024 buckets of 16 bits, chained through a 16-bit
+  "next" in each buffer's record.
+- **A record for each buffer:** the half's address (4 bytes), the chain's next (2), a "used" bit, a pin count, a
+  "dirty" bit (1 byte), and a byte spare: 8 bytes.
+- **A hit** sets the used bit: a hash, a probe or two, a store. **A miss** sweeps the hand round the buffers, clearing
+  used bits, to the first not used, not pinned; a dirty one (a writer's half) is written out first, a clean one simply
+  taken.
+- **Writes go through** †, but for a writer's half: an entry changed in a cached directory or index half is written
+  out as that half at once, so nothing waits for a flush but the writers' halves, which `fs_flush`, `fs_close` and
+  `fs_shutdown` write.
+
+## 7. The page service, on the tracer tile (owner, 2026-11-20)
+
+**The tracer tile keeps the page maps and hands out every page.** Its promise: **every page it hands out is new**
+(23.6.8): taken in its map, and discarded from the cache first if it was last in a COW file.
+
+- **Two pools** (owner, 2026-11-20): **the Updater's**, which the master tile reserves for each request and draws on for
+  every run and every COW file's root; and **the file system's**, from which the memory tile takes the pages of
+  directories and streamed files.
+- **A prepared batch of 256 pages for each** (owner, 2026-11-20): taken in the map and discarded if they needed it,
+  before anyone asks. An acquire of 256 or fewer is a copy of addresses out of the batch and an answer; the tracer tile
+  then refills the batch in the background.
+- **The Updater's pool prefers pages that need a discard,** the file system's prefers those that do not †: the
+  Updater's refills come mostly before tracing, the file system's during it (the run logs), so the discards fall where
+  the Tracer is idle (README finding 1).
+- **A reservation is a count** (owner, 2026-11-20): `fs_reserve_pages(n)` checks that n pages are free, counting the
+  Updater's batch, and holds them; the file system's pool may not take what is held. No list of pages, no extents.
+- **The discards are the tracer tile's,** on a look-up port of the cache (FOR-THE-HARDWARE.md 3), in the background
+  (owner, 2026-11-19).
+- **Freeing:** the memory tile's walk (FS-API 4.4) sends the pages it frees to the tracer tile in batches, each with
+  whether it was in a COW file.
+- **A mount:** the memory tile walks every file and sends the pages it finds to the tracer tile, which rebuilds its
+  maps; the batches start empty.
+
+## 8. Where it all lives, and that it fits (owner, 2026-11-20)
+
+**The memory tile: 1 MiB of SRAM** (owner, 2026-11-20):
+
+| What | Size |
+| --- | --- |
+| the fd table (FS-API 4.6): 512 × 16 B | 8 KiB |
+| the working directories (FS-API 4.7): 128 × 4 B | 0.5 KiB |
+| the landing slots for paths †: a slot of 128 B for each of 128 tiles | 16 KiB |
+| CLOCK: the hash table (1,024 × 2 B) and a record of 8 B for each buffer | 5.8 KiB |
+| the grants: four of 16 B | 0.1 KiB |
+| **the pool: 480 buffers of 2 KiB** | **960 KiB** |
+| **total** | **990 KiB**, 34 KiB spare |
+
+**Its 32 KB of local memory** † (estimates until the firmware is written):
+
+| What | Size |
+| --- | --- |
+| code | about 20 KB |
+| stack | 4 KB |
+| state: the file system's batch of pages from the tracer tile (256 × 4 B), the requests in hand, the grants' counters, the RW unit's jobs | 2 KB |
+| spare | about 6 KB |
+
+**The tracer tile's share** (its other uses are the Tracer's and are not counted here):
+
+| What | Size |
+| --- | --- |
+| the "taken" map: 2²⁰ pages | 128 KiB |
+| the "may be cached" map | 128 KiB |
+| the two prepared batches: 2 × 256 × 4 B | 2 KiB |
+| the pools' counts, the reservation | a few bytes |
+| **total** | **about 258 KiB** of its SRAM |
+
+**What the numbers rest on:**
+
+- **Paths:** a request has 12 bytes of its own (words 1–3, 11.5): a name of 12 bytes or fewer, which the working
+  directories make the common case (`tile3.log`), travels in the request. A longer path, up to 128 bytes, lands in its
+  tile's slot by `WRITE` packets before the request; one longer still, up to 1,023 bytes, takes a grant of a pool buffer
+  first †.
+- **The writers in the pool:** about 67 writers at once (the 64 compute tiles' logs, the tracer tile's three) hold a
+  part-filled half each, some 134 KiB, which leaves about 400 buffers for the cache. An idle writer's half may be
+  evicted, written out first, and read back at its next write.
+- **The maps** are for 4 GiB of LPDDR; less LPDDR, smaller maps.
+
+## 9. Open
 
 1. How the caller learns the length at `fs_open` (in the answer, as a field †).
-2. Two buffers a writer, or fewer shared among them. (The pool: 128 writers, named by the fd entry's position word, ruled
-   2026-11-20.)
-3. The order in which waiting grants are served (first come, first served †).
-4. A page of 2 KiB or 4 KiB for the RW unit's jobs, and the size of its write buffer.
-5. How a `fs_read_page` request names the caller's buffer and counter, and how the RW unit's output is addressed to
+2. The order in which waiting grants are served (first come, first served †).
+3. The size of the RW unit's write buffer (two halves †).
+4. How a `fs_read_page` request names the caller's buffer and counter, and how the RW unit's output is addressed to
    it (17.7's output queue 0 and its DMA).
+5. The landing slots' size, and the grant for a long path (8).
+6. Whether writers share the cache's pool, or keep buffers apart (6).
+7. The tracer tile's SRAM: whether its 258 KiB fits beside the Tracer's own use.

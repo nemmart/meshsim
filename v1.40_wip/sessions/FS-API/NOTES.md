@@ -70,6 +70,12 @@ In the order they were settled.
 | 25 | Where the write path is written | not in FS-API.md, which it does not change: `FS-DATA-PATH.md` and FOR-THE-HARDWARE.md (owner, 2026-11-20) |
 | 26 | The read path | `fs_read_page` straight from the RW unit to the caller; `fs_write_page`, and `fs_read` and `fs_write` of less than a page, through the memory tile's scratchpad (owner, 2026-11-20) |
 | 27 | Working directories | one per tile, set by the tile with `fs_chdir`, the root at a reset; kept by the memory tile beside the fd table; `.` and `..` in any path, a directory's parent in its entry's source field (owner, 2026-11-20) |
+| 28 | A cache in the memory tile | 2 KiB buffers in its SRAM, so that LPDDR is not read all over the place; replaced by CLOCK (owner, 2026-11-20). `FS-DATA-PATH.md` 6 |
+| 29 | The RW unit's transfers | only 2 KiB and 4 KiB; a writer builds its bytes up to 2 KiB (owner, 2026-11-20) |
+| 30 | The memory tile's memory | 1 MiB of SRAM and 32 KB of local memory (owner, 2026-11-20); the budget in `FS-DATA-PATH.md` 8 |
+| 31 | The page maps | on the tracer tile, which also discards a page from the cache before handing it out (owner, 2026-11-20) |
+| 32 | Who reserves pages | two pools only, the Updater's and the file system's; no reservation id (owner, 2026-11-20) |
+| 33 | Handing out pages fast | a prepared batch of 256 pages per pool, an acquire of 256 or fewer a copy, then a refill (owner, 2026-11-20) |
 
 **Still open,** with what depends on each: FS-API.md section 8, and these the emulation added:
 

@@ -115,4 +115,4 @@
 [master] mount: 54 entries, 16179 pages free
 [master] fs_stat("/proofs/p3/half") = 0: length 409600, 0 pages, depth 1, 0 copies
 [master] fs_remove("/proofs/p3/half") = 0, 0 pages freed, may be cached
-# stats: 588 pages taken, 0 freed, 0 discards (0 while tracing); LPDDR 10 page writes, 181 half writes, 317 page reads, 56 half reads; the cache 2906 hits, 56 misses
+# stats: 588 pages taken, 0 freed, 0 discards (0 while tracing); LPDDR 10 page writes, 181 half writes, 317 page reads, 56 half reads; the cache 2658 hits, 56 misses; 0 reads by the fd's hint

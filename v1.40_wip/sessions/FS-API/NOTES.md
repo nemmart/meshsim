@@ -76,6 +76,10 @@ In the order they were settled.
 | 31 | The page maps | on the tracer tile, which also discards a page from the cache before handing it out (owner, 2026-11-20) |
 | 32 | Who reserves pages | two pools only, the Updater's and the file system's; no reservation id (owner, 2026-11-20) |
 | 33 | Handing out pages fast | a prepared batch of 256 pages per pool, an acquire of 256 or fewer a copy, then a refill (owner, 2026-11-20) |
+| 34 | The buffers | 384 of 2 KiB, 768 KiB of the SRAM (owner, 2026-11-20) |
+| 35 | An fd names its buffer | in word 0's [31:22]; a reader's position's low 11 bits are its offset in the buffer (owner, 2026-11-20); the mode and flags move to word 2's top bits |
+| 36 | The core's memory | 32 KB of program memory and 32 KB of data memory; the SRAM is slow for the core, so the fd table, CLOCK's tables and the 66 working directories are in data memory (owner, 2026-11-20) |
+| 37 | Long paths | a 1 KiB landing slot for each of 66 tiles, and one call that carries a path in flight a tile; no grant for a path (owner, 2026-11-20) |
 
 **Still open,** with what depends on each: FS-API.md section 8, and these the emulation added:
 

@@ -224,4 +224,4 @@
 [tile 1] fs_chdir("/") = 0
 [tracer] fs_chdir("/") = 0
 [master] fs_remove("/proofs/b/logs") = 0, 1 pages freed
-# stats: 1425 pages taken, 682 freed, 508 discards (0 while tracing); LPDDR 16 page writes, 300 half writes, 30 page reads, 16 half reads; the cache 2017 hits, 16 misses
+# stats: 1425 pages taken, 682 freed, 508 discards (0 while tracing); LPDDR 16 page writes, 300 half writes, 30 page reads, 16 half reads; the cache 1893 hits, 16 misses; 0 reads by the fd's hint

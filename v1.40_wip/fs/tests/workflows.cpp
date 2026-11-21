@@ -39,12 +39,12 @@ static void begin(const char* name) {
 }
 static void report() {
     const Stats& s = stats();
-    note("stats: %llu pages taken, %llu freed, %llu discards (%llu while tracing); LPDDR %llu page writes, %llu half writes, %llu page reads, %llu half reads; the cache %llu hits, %llu misses",
+    note("stats: %llu pages taken, %llu freed, %llu discards (%llu while tracing); LPDDR %llu page writes, %llu half writes, %llu page reads, %llu half reads; the cache %llu hits, %llu misses; %llu reads by the fd's hint",
          (unsigned long long)s.pages_taken, (unsigned long long)s.pages_freed, (unsigned long long)s.discards,
          (unsigned long long)s.discards_while_tracing, (unsigned long long)s.lpddr_page_writes,
          (unsigned long long)s.lpddr_half_writes, (unsigned long long)s.lpddr_page_reads,
          (unsigned long long)s.lpddr_half_reads, (unsigned long long)s.cache_hits,
-         (unsigned long long)s.cache_misses);
+         (unsigned long long)s.cache_misses, (unsigned long long)s.hint_hits);
 }
 static u64 free_pages() { u64 t, f; set_caller(Caller::MASTER); fs_df(&t, &f); return f; }
 
@@ -433,6 +433,17 @@ int main() {
     fd = fs_open("/proofs/p3/cycle0", FS_READ);
     EXPECT(fd >= 0);
     { char x[16]; EXPECT(fs_read(fd, x, 16) == 16); fs_close(fd); }
+    sh("grep -c . /proofs/p3/logs/tile1.code   (read in 64-byte calls)");
+    {
+        const uint64_t h0 = stats().hint_hits;
+        const int g = fs_open("/proofs/p3/logs/tile1.code", FS_READ);
+        char small[64]; long n2, total = 0;
+        while ((n2 = fs_read(g, small, sizeof small)) > 0) total += n2;
+        fs_close(g);
+        EXPECT(total > 0);
+        EXPECT(stats().hint_hits - h0 >= uint64_t(total / 64) - uint64_t(total / 2048) - 2);   // all but a half's first read
+        note("  %ld bytes in 64-byte reads: %llu by the fd's hint", total, (unsigned long long)(stats().hint_hits - h0));
+    }
     sh("cat /proofs/p3/tracer");
     EXPECT(fs_open("/proofs/p3/tracer", FS_READ) == FS_EBUSY);   // the Tracer's copy: never read directly
     sh("echo hello > /notes");

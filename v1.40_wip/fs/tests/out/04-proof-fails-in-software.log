@@ -141,4 +141,4 @@ tile 2: window 2 replayed
 tile 2: check failed at row 12345
 tile 2: done
 
-# stats: 79 pages taken, 0 freed, 6 discards (0 while tracing); LPDDR 9 page writes, 168 half writes, 41 page reads, 10 half reads; the cache 1174 hits, 10 misses
+# stats: 79 pages taken, 0 freed, 6 discards (0 while tracing); LPDDR 9 page writes, 168 half writes, 41 page reads, 10 half reads; the cache 1112 hits, 10 misses; 0 reads by the fd's hint

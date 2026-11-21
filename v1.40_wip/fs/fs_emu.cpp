@@ -44,15 +44,15 @@ void lp_half_read(uint32_t unit, uint8_t* dst) { std::memcpy(dst, lp(unit), HALF
 // The cache (FS-DATA-PATH 6): a pool of 2 KiB buffers in the memory tile's SRAM, by CLOCK, written through. It holds
 // halves of directories, of index pages, of data read by fs_read; never a COW file not frozen (the callers' rule:
 // nothing here reads one). A half of a page freed is dropped at once. The writers' halves are the slots, below.
-constexpr int CACHE_BUFFERS = 400;     // of the 480 (FS-DATA-PATH 8), what is left beside about 67 writers' halves
+constexpr int CACHE_BUFFERS = 300;     // of the pool's 384 (FS-DATA-PATH 8), what is left beside about 80 writers' halves
 struct Buf { uint32_t half = NONE; bool used = false; uint8_t data[HALF_BYTES]; };
 std::vector<Buf> g_buf;
 std::unordered_map<uint32_t, int> g_hash;   // a half's unit address -> its buffer
 int g_hand = 0;
 void cache_reset() { g_buf.assign(CACHE_BUFFERS, Buf{}); g_hash.clear(); g_hand = 0; }
-Buf& half_get(uint32_t half) {
+int half_index(uint32_t half) {
     auto it = g_hash.find(half);
-    if (it != g_hash.end()) { g_stats.cache_hits++; Buf& b = g_buf[size_t(it->second)]; b.used = true; return b; }
+    if (it != g_hash.end()) { g_stats.cache_hits++; g_buf[size_t(it->second)].used = true; return it->second; }
     g_stats.cache_misses++;
     for (;;) {                                                       // the hand: a used buffer gets a second chance
         const int i = g_hand;
@@ -63,9 +63,10 @@ Buf& half_get(uint32_t half) {
         b.half = half; b.used = true;
         lp_half_read(half, b.data);
         g_hash[half] = i;
-        return b;
+        return i;
     }
 }
+Buf& half_get(uint32_t half) { return g_buf[size_t(half_index(half))]; }
 void cache_drop_page(uint32_t page_unit) {
     for (uint32_t h = page_unit; h < page_unit + PAGE_UNITS; h += HALF_UNITS) {
         auto it = g_hash.find(h);
@@ -109,24 +110,28 @@ void setbit(std::vector<uint32_t>& m, uint32_t p, bool v) { if (v) m[p >> 5] |= 
 // ------------------------------------------------------------------ the scratchpad: the fd table (4.6)
 constexpr int MAX_FDS = 512, FD_BYTES = 16, MAX_SLOTS = 128;
 uint8_t g_fdtab[MAX_FDS * FD_BYTES];
-// word 0: [19:0] root's page number (0: none); [21:20] depth; [24:22] mode; [25] COW; [26] in use; [31:27] 0
-// word 1: length (bytes; pages for a COW file); word 2: the entry's address in units;
-// word 3: a reader's position; a writer's buffer index (a writer has no position: it writes at the length or a page)
+// word 0: [19:0] root's page number (0: none); [21:20] depth; [31:22] the buffer: a writer's, or the cache buffer
+//         holding a reader's current half, a hint checked against the buffer's tag (1023: none) (FS-API 4.6)
+// word 1: length (bytes; pages for a COW file)
+// word 2: [24:0] the entry's address in units; [27:25] mode; [28] COW; [29] in use; [31:30] 0
+// word 3: a reader's position, its low 11 bits the offset into its half's buffer; a writer's: 0
 struct Fd {
     uint32_t root_pg, depth, mode, cow, inuse, slot, length, entry, pos;
 };
 Fd fd_get(int fd) {
     const uint8_t* e = g_fdtab + fd * FD_BYTES;
-    const uint32_t w0 = get32(e), mode = (w0 >> 22) & 7u, w3 = get32(e + 12);
-    const bool writer = mode & (FS_APPEND | FS_WRITE);
-    return Fd{w0 & 0xFFFFFu, (w0 >> 20) & 3u, mode, (w0 >> 25) & 1u, (w0 >> 26) & 1u, writer ? w3 : 0u,
-              get32(e + 4), get32(e + 8), writer ? 0u : w3};
+    const uint32_t w0 = get32(e), w2 = get32(e + 8);
+    return Fd{w0 & 0xFFFFFu, (w0 >> 20) & 3u, (w2 >> 25) & 7u, (w2 >> 28) & 1u, (w2 >> 29) & 1u, w0 >> 22,
+              get32(e + 4), w2 & 0x1FFFFFFu, get32(e + 12)};
 }
 void fd_put(int fd, const Fd& f) {
     uint8_t* e = g_fdtab + fd * FD_BYTES;
     if (f.root_pg > 0xFFFFFu) fatal("a root past 2^20 pages");
-    put32(e, f.root_pg | f.depth << 20 | f.mode << 22 | f.cow << 25 | f.inuse << 26);
-    put32(e + 4, f.length); put32(e + 8, f.entry); put32(e + 12, (f.mode & (FS_APPEND | FS_WRITE)) ? f.slot : f.pos);
+    if (f.entry > 0x1FFFFFFu || f.slot > 1023) fatal("an fd field out of range");
+    put32(e, f.root_pg | f.depth << 20 | f.slot << 22);
+    put32(e + 4, f.length);
+    put32(e + 8, f.entry | f.mode << 25 | f.cow << 28 | f.inuse << 29);
+    put32(e + 12, (f.mode & (FS_APPEND | FS_WRITE)) ? 0u : f.pos);
 }
 uint32_t root_unit(uint32_t root_pg) { return root_pg ? root_pg * PAGE_UNITS : NONE; }
 
@@ -155,13 +160,13 @@ int g_tile = 0;
 
 // The working directories (FS-API 4.7): a directory entry's address for each tile, beside the fd table. Indexed by
 // the caller's tile: the compute tiles 0-63, the master tile 64 (its firmware and its shell share it), the tracer
-// tile 66. 4 bytes a tile; every one the root's at a reset.
-constexpr int MAX_TILES = 128;
+// tile 65. 4 bytes a tile; every one the root's at a reset.
+constexpr int MAX_TILES = 66;
 uint32_t g_cwd[MAX_TILES];
 int caller_index() {
     switch (g_caller) {
         case Caller::MASTER: case Caller::SHELL: return 64;
-        case Caller::TRACER: return 66;
+        case Caller::TRACER: return 65;
         case Caller::TILE: return g_tile;
     }
     return 64;
@@ -833,7 +838,7 @@ int fs_open(const char* path, u32 flags) {
     }
     Fd f{};
     f.root_pg = e.root == NONE ? 0 : pgno(e.root); f.depth = e.depth(); f.mode = flags & 7u;
-    f.cow = (e.flags & E_COW) ? 1 : 0; f.inuse = 1; f.slot = u32(slot);
+    f.cow = (e.flags & E_COW) ? 1 : 0; f.inuse = 1; f.slot = writes ? u32(slot) : 1023u;
     f.length = f.cow ? u32(e.length / PAGE_BYTES) : u32(e.length);
     f.entry = a; f.pos = 0;
     fd_put(fd, f);
@@ -853,7 +858,13 @@ long fs_read(int fd, void* buf, long n) {
         const uint64_t p = f.pos / PAGE_BYTES, off = f.pos % PAGE_BYTES;
         const uint32_t d = find_page(en, root_unit(f.root_pg), f.depth, p);
         const uint32_t h = uint32_t(off / HALF_BYTES);                  // through the cache, a half at a time
-        if (d == NONE) std::memset(pg, 0, sizeof pg); else std::memcpy(pg + h * HALF_BYTES, half_get(d + h * HALF_UNITS).data, HALF_BYTES);
+        if (d == NONE) std::memset(pg, 0, sizeof pg);
+        else {
+            const uint32_t want = d + h * HALF_UNITS;
+            if (f.slot < uint32_t(CACHE_BUFFERS) && g_buf[f.slot].half == want) { g_stats.hint_hits++; g_buf[f.slot].used = true; }
+            else f.slot = uint32_t(half_index(want));                   // the hint missed: found, and kept
+            std::memcpy(pg + h * HALF_BYTES, g_buf[f.slot].data, HALF_BYTES);
+        }
         uint64_t c = (h + 1) * HALF_BYTES - off;
         if (c > uint64_t(n - got)) c = uint64_t(n - got);
         if (c > len - f.pos) c = len - f.pos;

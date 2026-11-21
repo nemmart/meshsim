@@ -27,7 +27,7 @@ name a frame carries (30; `fw/cc/master.c`). v1.37 is a stage in the design, not
 
 | Tile | What it does for the file system |
 | --- | --- |
-| **the memory tile** | **runs the file system** (owner, 2026-11-19). Its peripheral is the RW unit, its way to LPDDR. **Its 1 MiB of SRAM and 32 KB of local memory** (owner, 2026-11-20) hold the fd table, the working directories and the pool of 2 KiB buffers that are its cache and its writers' buffers (`FS-DATA-PATH.md` 6, 8) |
+| **the memory tile** | **runs the file system** (owner, 2026-11-19). Its peripheral is the RW unit, its way to LPDDR. **Its 32 KB of data memory** holds the fd table and the working directories, **its 1 MiB of SRAM** the pool of 2 KiB buffers that are its cache and its writers' buffers; its code is in 32 KB of program memory (owner, 2026-11-20; `FS-DATA-PATH.md` 6, 8) |
 | **the master tile** | serves the host's requests: takes the frames from Ingress, calls the file system, drives the Updater (its peripheral 2, 17.10), hands the tracer tile its segment. It feeds the Updater's free page queue from the pages the tracer tile's page service gives it |
 | **the tracer tile** | traces the segment through the Tracer (17.9), which reads and writes files through the cache; writes each compute tile's three run logs into the file system (section 3.4). **It runs the page service** (owner, 2026-11-20): the page maps, the two pools, the discards (4.1, 4.2; `FS-DATA-PATH.md` 7) |
 | **the compute tiles** | each writes logs of its own into the file system (section 3.4) |
@@ -277,15 +277,17 @@ its entry's index.
 
 | Bytes | Field |
 | --- | --- |
-| 0–3 | [19:0] the root's page number; [21:20] the depth; [24:22] the mode (`FS_READ`, `FS_APPEND`, `FS_WRITE`); [25] COW; [26] in use; [31:27] 0 |
+| 0–3 | [19:0] the root's page number; [21:20] the depth; **[31:22] the buffer** (owner, 2026-11-20): a writer's current half, or for a reader the buffer last holding its current half, a hint checked against that buffer's tag; 1023 none |
 | 4–7 | the length: **in bytes for a streamed file, in pages for a COW file** (owner, 2026-11-20), so that a COW file's 32 GiB (29.4) fits |
-| 8–11 | the directory entry's address, in 128-byte units: its page × 32 + its slot |
-| 12–15 | **a reader's position**, for `fs_read`; **a writer's buffer index** (owner, 2026-11-20): a writer has no position, since an append writes at the length and `fs_write_page` names its page |
+| 8–11 | [24:0] the directory entry's address, in 128-byte units (its page × 32 + its slot; 25 bits for 4 GiB); [27:25] the mode (`FS_READ`, `FS_APPEND`, `FS_WRITE`); [28] COW; [29] in use; [31:30] 0 |
+| 12–15 | **a reader's position**, for `fs_read`: **its low 11 bits are the offset into its buffer** (owner, 2026-11-20), the bits above say which half of the file. A writer's: 0, since an append writes at the length and `fs_write_page` names its page |
 
 - **A streamed file is at most 4 GiB,** its length's 32 bits.
 - **128 writers at once** (owner, 2026-11-20): the 64 compute tiles' logs, the tracer tile's three and room to spare.
-  An `fs_open` to write when 128 are open for writing is `FS_EBUSY`. A writer's buffer index names its current half
-  in the memory tile's pool (`FS-DATA-PATH.md` 6).
+  An `fs_open` to write when 128 are open for writing is `FS_EBUSY`. A writer's buffer names its current half in the
+  memory tile's pool (`FS-DATA-PATH.md` 6).
+- **The fd table is in the memory tile's data memory** (owner, 2026-11-20), not its SRAM: the core reads and writes it
+  on every call.
 
 **A writer's buffers**: **the 2 KiB half it is filling** (owner, 2026-11-20: "we build up the partial writes to 2kb"),
 written to LPDDR when full and at `fs_flush`, `fs_close` and `fs_shutdown`; and **the cached half of each index page
@@ -297,7 +299,8 @@ as its half.
 ### 4.7 The working directories, in the memory tile
 
 **Each tile has a single working directory** (owner, 2026-11-20), kept beside the fd table: a directory entry's unit
-address for each tile, 4 bytes, indexed by the caller's tile. **A tile sets its own,** with `fs_chdir`; **every tile's
+address for each tile, 4 bytes, **66 of them** (the compute tiles 0–63, the master tile 64, the tracer tile 65), in
+the memory tile's data memory (owner, 2026-11-20). **A tile sets its own,** with `fs_chdir`; **every tile's
 is the root at a reset** (owner, 2026-11-20). A path not starting with `/` is resolved from it, so a tile's requests
 carry short paths (`tile3.log`) to the memory tile.
 

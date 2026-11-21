@@ -46,7 +46,7 @@ struct Stats {
     uint64_t discards = 0, discards_while_tracing = 0;
     // LPDDR: only 2 KiB (half) and 4 KiB (page) transfers (FS-DATA-PATH 2); the memory tile's cache (6)
     uint64_t lpddr_page_writes = 0, lpddr_half_writes = 0, lpddr_page_reads = 0, lpddr_half_reads = 0;
-    uint64_t cache_hits = 0, cache_misses = 0;
+    uint64_t cache_hits = 0, cache_misses = 0, hint_hits = 0;   // hint: a reader's fd named its buffer (FS-API 4.6)
     uint64_t pages_taken = 0, pages_freed = 0;
 };
 const Stats& stats();

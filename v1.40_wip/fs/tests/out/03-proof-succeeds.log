@@ -233,4 +233,4 @@
 [master] fs_remove("/proofs/p1/logs") = 0, 1 pages freed
 [master] fs_stat("/proofs/p1/final") = 0: length 8388608, 11 pages, depth 2, 0 copies
 # kept until the host removes it: /proofs/p1 (the map, cycle0, start, final)
-# stats: 1388 pages taken, 1363 freed, 0 discards (0 while tracing); LPDDR 15 page writes, 2847 half writes, 41 page reads, 16 half reads; the cache 1625 hits, 16 misses
+# stats: 1388 pages taken, 1363 freed, 0 discards (0 while tracing); LPDDR 15 page writes, 2847 half writes, 41 page reads, 16 half reads; the cache 1563 hits, 16 misses; 0 reads by the fd's hint

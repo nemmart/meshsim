@@ -21,8 +21,8 @@ more work on a compute tile costs little, since it is spread over 64 of them; th
 | --- | --- |
 | **the caller's library** (a compute tile's, the tracer tile's, the shell's) | formats and sends the bytes; keeps the file's last partial word (3) |
 | **the memory tile's core** | the file system: paths, directories, the index, grants, the cache (6) |
-| **its SRAM** (1 MiB, owner, 2026-11-20) | the fd table, the working directories, **the pool of 2 KiB buffers** shared by the cache and the writers (6), the landing slots for paths (8) |
-| **its local memory** (32 KB, owner, 2026-11-20) | its code, stack and small state (8) |
+| **its SRAM** (1 MiB, owner, 2026-11-20) | **the pool of 2 KiB buffers** shared by the cache and the writers (6), the landing slots for paths (8): what the DMA, the director and the RW unit move. **The core reaches it slowly** (owner, 2026-11-20) |
+| **its local memory** (owner, 2026-11-20) | **32 KB of program memory** and **32 KB of data memory**: its code, and what it touches on every call: the fd table, CLOCK's tables, the working directories (8) |
 | **its DMA** | sends a full 2 KiB half from the SRAM to the RW unit |
 | **the RW unit** | the memory tile's peripheral (owner, 2026-11-20): its registers and events in its window, as in v1.37's 17.7; **its data input on the router's +8 link** (owner), so that a half sent to it does not come back in through the memory tile's own input. **It moves only 2 KiB and 4 KiB** (owner, 2026-11-20) |
 | **the tracer tile** | **the page service** (7): the page maps, the two pools, their prepared batches, the discards (owner, 2026-11-20) |
@@ -105,10 +105,14 @@ a frozen COW file never changes; a buffer of a page the file system frees is dro
 
 **CLOCK** (owner, 2026-11-20):
 
-- **A hash table** from a half's LPDDR address to its buffer: 1,024 buckets of 16 bits, chained through a 16-bit
-  "next" in each buffer's record.
-- **A record for each buffer:** the half's address (4 bytes), the chain's next (2), a "used" bit, a pin count, a
-  "dirty" bit (1 byte), and a byte spare: 8 bytes.
+- **A hash table** from a half's LPDDR address to its buffer: 512 buckets of 16 bits, chained through a 16-bit "next"
+  in each buffer's record. In the core's data memory (8).
+- **A record for each buffer:** the half's LPDDR address in halves (3 bytes), the chain's next (2 bytes), and a byte of
+  a "used" bit, a pin count and a "dirty" bit: 6 bytes, in the core's data memory.
+- **384 buffers** (owner, 2026-11-20): 768 KiB, the most beside the rest of the SRAM's use. About 80 are writers' at the
+  worst moment (about 67 part-filled halves, a few more draining to the RW unit), which leaves about 300 as cache.
+- **An fd names its buffer** (FS-API 4.6), a writer's own or a reader's last, so a call on it finds its buffer without
+  the hash table; a reader's is a hint, checked against the buffer's tag.
 - **A hit** sets the used bit: a hash, a probe or two, a store. **A miss** sweeps the hand round the buffers, clearing
   used bits, to the first not used, not pinned; a dirty one (a writer's half) is written out first, a clean one simply
   taken.
@@ -141,26 +145,30 @@ a frozen COW file never changes; a buffer of a page the file system frees is dro
 
 ## 8. Where it all lives, and that it fits (owner, 2026-11-20)
 
-**The memory tile: 1 MiB of SRAM** (owner, 2026-11-20):
+**The rule:** what the core touches on every call lives in its data memory; the SRAM holds what the DMA, the director
+and the RW unit move, since the core reaches the SRAM slowly (owner, 2026-11-20).
+
+**The memory tile's 32 KB of data memory:**
 
 | What | Size |
 | --- | --- |
-| the fd table (FS-API 4.6): 512 × 16 B | 8 KiB |
-| the working directories (FS-API 4.7): 128 × 4 B | 0.5 KiB |
-| the landing slots for paths †: a slot of 128 B for each of 128 tiles | 16 KiB |
-| CLOCK: the hash table (1,024 × 2 B) and a record of 8 B for each buffer | 5.8 KiB |
-| the grants: four of 16 B | 0.1 KiB |
-| **the pool: 480 buffers of 2 KiB** | **960 KiB** |
-| **total** | **990 KiB**, 34 KiB spare |
+| the fd table (FS-API 4.6): 512 × 16 B (owner, 2026-11-20) | 8 KiB |
+| CLOCK: the hash table (512 × 2 B) and a record of 6 B for each of 384 buffers (owner) | 3.3 KiB |
+| the working directories (FS-API 4.7): 66 × 4 B (owner) | 0.3 KiB |
+| a name cache †: (directory, name) to an entry's address, 256 × 8 B, so that most path look-ups read no SRAM | 2 KiB |
+| stack | 4 KiB |
+| state: the grants, the requests in hand, the RW unit's jobs, the file system's batch of pages from the tracer tile | 2 KiB |
+| **total** | **about 20 KiB**, 12 KiB spare |
 
-**Its 32 KB of local memory** † (estimates until the firmware is written):
+**Its 32 KB of program memory:** the file system's code (owner, 2026-11-20).
+
+**Its 1 MiB of SRAM:**
 
 | What | Size |
 | --- | --- |
-| code | about 20 KB |
-| stack | 4 KB |
-| state: the file system's batch of pages from the tracer tile (256 × 4 B), the requests in hand, the grants' counters, the RW unit's jobs | 2 KB |
-| spare | about 6 KB |
+| **the pool: 384 buffers of 2 KiB** (owner, 2026-11-20) | **768 KiB** |
+| the landing slots for paths: 1 KiB for each of 66 tiles (owner, 2026-11-20) | 66 KiB |
+| **total** | **834 KiB**, 190 KiB spare |
 
 **The tracer tile's share** (its other uses are the Tracer's and are not counted here):
 
@@ -175,12 +183,13 @@ a frozen COW file never changes; a buffer of a page the file system frees is dro
 **What the numbers rest on:**
 
 - **Paths:** a request has 12 bytes of its own (words 1–3, 11.5): a name of 12 bytes or fewer, which the working
-  directories make the common case (`tile3.log`), travels in the request. A longer path, up to 128 bytes, lands in its
-  tile's slot by `WRITE` packets before the request; one longer still, up to 1,023 bytes, takes a grant of a pool buffer
-  first †.
+  directories make the common case (`tile3.log`), travels in the request. A longer one, up to 1,023 bytes, lands in
+  its tile's 1 KiB slot by `WRITE` packets before the request (owner, 2026-11-20). **A tile has one call that carries
+  a path in flight at a time** (owner, 2026-11-20): its slot is then never overwritten. A path goes with `fs_open`,
+  `fs_mkdir`, `fs_remove`, `fs_stat`, `fs_list` and `fs_chdir` only, so a proof uses the slots about a hundred times.
 - **The writers in the pool:** about 67 writers at once (the 64 compute tiles' logs, the tracer tile's three) hold a
-  part-filled half each, some 134 KiB, which leaves about 400 buffers for the cache. An idle writer's half may be
-  evicted, written out first, and read back at its next write.
+  part-filled half each, and a few more halves drain to the RW unit: about 80 buffers, which leaves about 300 for the
+  cache. An idle writer's half may be evicted, written out first, and read back at its next write.
 - **The maps** are for 4 GiB of LPDDR; less LPDDR, smaller maps.
 
 ## 9. Open
@@ -190,6 +199,6 @@ a frozen COW file never changes; a buffer of a page the file system frees is dro
 3. The size of the RW unit's write buffer (two halves †).
 4. How a `fs_read_page` request names the caller's buffer and counter, and how the RW unit's output is addressed to
    it (17.7's output queue 0 and its DMA).
-5. The landing slots' size, and the grant for a long path (8).
-6. Whether writers share the cache's pool, or keep buffers apart (6).
+5. Whether writers share the cache's pool, or keep buffers apart (6).
+6. Whether the name cache earns its 2 KiB (8).
 7. The tracer tile's SRAM: whether its 258 KiB fits beside the Tracer's own use.

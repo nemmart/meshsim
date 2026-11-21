@@ -82,4 +82,4 @@
 [master] fs_remove("/proofs") = 0, 1 pages freed
 [master] fs_stat("/programs/fib.pages") = 0: length 8388608, 10 pages, depth 2, 0 copies
 [master] fs_stat("/programs/fib.map") = 0: length 16384, 5 pages, depth 1, 0 copies
-# stats: 0 pages taken, 176 freed, 0 discards (0 while tracing); LPDDR 0 page writes, 108 line writes, 49 page reads, 1131 line reads
+# stats: 0 pages taken, 176 freed, 0 discards (0 while tracing); LPDDR 0 page writes, 108 line writes, 49 page reads, 1355 line reads

@@ -33,42 +33,47 @@
 [master] cow_root("/proofs/p3/tracer") = 0: root 0xbb20, depth 1
 [master] cow_root("/proofs/p3/map") = 0: root 0xbbc0, depth 1
 # hand-over: memory_root 0xbb20 depth 1, map_root 0xbbc0 depth 1, to record s's word 66
-[tile 0] fs_open("/proofs/p3/logs/tile0.log", 0x2) = 0
+[tile 0] fs_chdir("/proofs/p3/logs") = 0
+[tile 0] fs_open("tile0.log", 0x2) = 0
 [tile 0] fs_write(0, 25) = 25
-[tile 1] fs_open("/proofs/p3/logs/tile1.log", 0x2) = 1
+[tile 1] fs_chdir("/proofs/p3/logs") = 0
+[tile 1] fs_open("tile1.log", 0x2) = 1
 [tile 1] fs_write(1, 25) = 25
 [tile 1] fs_flush(1) = 0
-[tile 2] fs_open("/proofs/p3/logs/tile2.log", 0x2) = 2
+[tile 2] fs_chdir("/proofs/p3/logs") = 0
+[tile 2] fs_open("tile2.log", 0x2) = 2
 [tile 2] fs_write(2, 25) = 25
-[tile 3] fs_open("/proofs/p3/logs/tile3.log", 0x2) = 3
+[tile 3] fs_chdir("/proofs/p3/logs") = 0
+[tile 3] fs_open("tile3.log", 0x2) = 3
 [tile 3] fs_write(3, 25) = 25
-[tracer] fs_open("/proofs/p3/logs/tile0.code", 0x2) = 4
+[tracer] fs_chdir("/proofs/p3/logs") = 0
+[tracer] fs_open("tile0.code", 0x2) = 4
 [tracer] fs_write(4, 3000) = 3000
 [tracer] fs_close(4) = 0
-[tracer] fs_open("/proofs/p3/logs/tile0.read", 0x2) = 4
+[tracer] fs_open("tile0.read", 0x2) = 4
 [tracer] fs_write(4, 12000) = 12000
 [tracer] fs_close(4) = 0
-[tracer] fs_open("/proofs/p3/logs/tile0.write", 0x2) = 4
+[tracer] fs_open("tile0.write", 0x2) = 4
 [tracer] fs_write(4, 21000) = 21000
 [tracer] fs_close(4) = 0
 [tile 0] fs_write(0, 26) = 26
-[tracer] fs_open("/proofs/p3/logs/tile1.code", 0x2) = 4
+[tracer] fs_open("tile1.code", 0x2) = 4
 [tracer] fs_write(4, 30000) = 30000
 [tracer] fs_close(4) = 0
-[tracer] fs_open("/proofs/p3/logs/tile1.read", 0x2) = 4
+[tracer] fs_open("tile1.read", 0x2) = 4
 [tracer] fs_write(4, 39000) = 39000
 [tracer] fs_close(4) = 0
-[tracer] fs_open("/proofs/p3/logs/tile1.write", 0x2) = 4
+[tracer] fs_open("tile1.write", 0x2) = 4
 [tracer] fs_write(4, 3000) = 3000
 [tracer] fs_close(4) = 0
 [tile 1] fs_write(1, 26) = 26
-[tracer] fs_open("/proofs/p3/logs/tile2.code", 0x2) = 4
+[tracer] fs_open("tile2.code", 0x2) = 4
 [tracer] fs_write(4, 12000) = 12000
 [tracer] fs_close(4) = 0
-[tracer] fs_open("/proofs/p3/logs/tile2.read", 0x2) = 4
+[tracer] fs_open("tile2.read", 0x2) = 4
 [tracer] fs_write(4, 21000) = 21000
 [tracer] fs_close(4) = 0
-[tracer] fs_open("/proofs/p3/logs/tile2.write", 0x2) = 4
+[tracer] fs_open("tile2.write", 0x2) = 4
 [tracer] fs_write(4, 30000) = 30000
 [tracer] fs_close(4) = 0
 [tile 2] fs_write(2, 26) = 26
@@ -110,4 +115,4 @@
 [master] mount: 54 entries, 16179 pages free
 [master] fs_stat("/proofs/p3/half") = 0: length 409600, 0 pages, depth 1, 0 copies
 [master] fs_remove("/proofs/p3/half") = 0, 0 pages freed, may be cached
-# stats: 78 pages taken, 0 freed, 0 discards (0 while tracing); LPDDR 64 page writes, 82 line writes, 327 page reads, 1924 line reads
+# stats: 78 pages taken, 0 freed, 0 discards (0 while tracing); LPDDR 64 page writes, 82 line writes, 327 page reads, 2855 line reads

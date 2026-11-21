@@ -38,4 +38,4 @@
 [master] fs_remove("/programs/tmp") = 0, 1 pages freed, may be cached
 [master] fs_unreserve(0) = 0, 3 pages back
 [master] fs_stat("/programs/fib.pages") = 0: length 8388608, 10 pages, depth 2, 0 copies
-# stats: 32 pages taken, 4 freed, 0 discards (0 while tracing); LPDDR 2 page writes, 22 line writes, 15 page reads, 201 line reads
+# stats: 32 pages taken, 4 freed, 0 discards (0 while tracing); LPDDR 2 page writes, 22 line writes, 15 page reads, 505 line reads

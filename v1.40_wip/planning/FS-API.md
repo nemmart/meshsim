@@ -150,6 +150,8 @@ fs_unreserve(r)
   **read log** and the **write log**. Today they are copied to the compute tiles as they are made; in some
   computations a tile's SRAM cannot hold them, so they go into the file system. **The tracer tile writes them with
   `fs_open`, `fs_write` and `fs_close`:** they are streamed files. It has three open at a time.
+- **The tracer tile and each compute tile first `fs_chdir` into the proof's `logs` directory** and name their logs
+  relative to it (4.7); they `fs_chdir("/")` at the proof's end, so that the directory can be removed.
 - **Their volume** (owner, 2026-11-19): 24 to 48 MB over all 192 files, made in about 10 ms. At 1 GHz that is 2.4 to
   4.8 bytes a cycle, a 128-bit word every 3 to 7 cycles, from the tracer tile to the memory tile, for the whole
   trace: 125 to 250 KB a file on average.
@@ -221,7 +223,7 @@ byte first:
 | 104–107 | root | u32, the file's root in units; 0xFFFF_FFFF none (an empty file) |
 | 108–111 | type | u32: 0 a free entry, 1 a directory, 2 a file † (item 119's type values) |
 | 112–115 | count † | u32: for a file, the copies made from it; for a directory, its live entries (DESIGN-NOTES section 4, decided) |
-| 116–119 | source † | u32: a copy's source's entry, as the unit address of that entry; 0xFFFF_FFFF none |
+| 116–119 | source † | u32, an entry's unit address: **for a copy, its source's; for a directory, its parent's** (owner, 2026-11-20), the root's its own; 0xFFFF_FFFF none |
 | 120–123 | flags † | [0] frozen; [1] COW, made by `cow_create` or `cow_copy`; [3:2] depth; the rest 0 |
 | 124–127 | pending | u32: a COW file's root to be, from `cow_create` or `cow_copy` to `cow_commit`; 0 otherwise (owner, 2026-11-20) |
 
@@ -286,6 +288,19 @@ appended file fills its entries in order, so only that line changes; it is writt
 full, every 128 KiB of data, and at `fs_flush`, `fs_close` and `fs_shutdown`. So an open file being written costs
 about 4.2 KiB, and its index writes about 0.1 % of its data.
 
+### 4.7 The working directories, in the memory tile
+
+**Each tile has a single working directory** (owner, 2026-11-20), kept beside the fd table: a directory entry's unit
+address for each tile, 4 bytes, indexed by the caller's tile. **A tile sets its own,** with `fs_chdir`; **every tile's
+is the root at a reset** (owner, 2026-11-20). A path not starting with `/` is resolved from it, so a tile's requests
+carry short paths (`tile3.log`) to the memory tile.
+
+- **The master tile has one,** shared by its firmware and its shell. The shell keeps a working directory of its own,
+  as a string, and passes the file system absolute paths, so that its `cd` never moves the firmware's.
+- **A directory that is any tile's working directory is not removed** (`FS_EBUSY`).
+- **`..` is a directory's parent,** from its entry's source field (4.3): one step, no search. The root's parent is
+  itself. A parent never changes, since nothing renames.
+
 ## 5. The calls
 
 All return a negative error (5.5) or a value of 0 or more. *Who* is the callers that may make the call (section 6).
@@ -314,8 +329,9 @@ not the shell, not a compute tile.
 | `int fs_read_page(int fd, u64 page, void *buf)` | all | 4 KiB at page × 4,096 |
 | `int fs_write_page(int fd, u64 page, const void *buf)` | all | 4 KiB at page × 4,096; never to a COW file (`FS_EROFS`) |
 | `int fs_fprintf(int fd, const char *fmt, ...)` | all | formats into the file, as `fs_write` |
-| `int fs_mkdir(const char *path)` | all | an empty directory |
-| `int fs_remove(const char *path)` | all | a file with no copies and not open, or an empty directory; a COW file by the walk (4.4) |
+| `int fs_chdir(const char *path)` | all | the caller's tile's working directory (4.7); `FS_ENOTDIR` for a file (owner, 2026-11-20) |
+| `int fs_mkdir(const char *path)` | all | an empty directory, its parent in its entry |
+| `int fs_remove(const char *path)` | all | a file with no copies and not open, or an empty directory that is no tile's working directory (`FS_EBUSY`); a COW file by the walk (4.4) |
 | `int fs_list(const char *path, u32 *pos, struct fs_dirent *e)` † | all | the entry at the cursor `*pos`, which starts at 0 and is advanced past it; 1 an entry, 0 the end. **In slot order,** not creation order: a new entry may take a removed one's slot. The shell sorts what it prints (owner, 2026-11-20) |
 | `int fs_stat(const char *path, struct fs_stat *st)` † | all | a file's type, flags, length, pages, depth and copies |
 | `int fs_df(u64 *total, u64 *free)` † | all | the pages of LPDDR, and those free |
@@ -360,7 +376,10 @@ From the shell's spec (`SHELL-SPEC.md` section 5): `FS_ENOENT` −1, `FS_EEXIST`
 `FS_ENOTEMPTY` −5, `FS_EROFS` −6 (frozen, or a COW file), `FS_EBUSY` −7 (has copies, or is open), `FS_ENOSPC` −8,
 `FS_EBADF` −9, `FS_EINVAL` −10, `FS_EIO` −11, `FS_ENAMETOOLONG` −12, `FS_ESHUTDOWN` −13.
 
-**The limits:** a name of at most 95 bytes; a path of at most 1,023 bytes and 10 levels (DECISIONS-v1.3 section 20).
+**Paths** (owner, 2026-11-20): absolute from `/`, or relative to the caller's tile's working directory (4.7); `.`
+and `..` may appear anywhere. No empty name (`//`) and no trailing `/` but the root's (`FS_EINVAL`).
+
+**The limits:** a name of at most 95 bytes; a path of at most 1,023 bytes and 10 names (DECISIONS-v1.3 section 20).
 
 ## 6. The callers
 

@@ -69,6 +69,7 @@ In the order they were settled.
 | 24 | The RW unit | the memory tile's peripheral, its data input on the router's +8 link; whole pages of 2 or 4 KiB; data flows in while full pages drain out (owner, 2026-11-20) |
 | 25 | Where the write path is written | not in FS-API.md, which it does not change: `FS-DATA-PATH.md` and FOR-THE-HARDWARE.md (owner, 2026-11-20) |
 | 26 | The read path | `fs_read_page` straight from the RW unit to the caller; `fs_write_page`, and `fs_read` and `fs_write` of less than a page, through the memory tile's scratchpad (owner, 2026-11-20) |
+| 27 | Working directories | one per tile, set by the tile with `fs_chdir`, the root at a reset; kept by the memory tile beside the fd table; `.` and `..` in any path, a directory's parent in its entry's source field (owner, 2026-11-20) |
 
 **Still open,** with what depends on each: FS-API.md section 8, and these the emulation added:
 

@@ -212,17 +212,20 @@ static void run_proof(const Proof& p) {
     std::vector<int> tile_fd(p.tiles);
     for (uint32_t t = 0; t < p.tiles; t++) {
         set_caller(Caller::TILE, int(t));
-        const std::string f = logs + "/tile" + std::to_string(t) + ".log";
+        EXPECT(fs_chdir(logs.c_str()) == 0);                      // each tile sets its own (FS-API 4.7)
+        const std::string f = "tile" + std::to_string(t) + ".log";   // relative: a short path in the request
         tile_fd[t] = fs_open(f.c_str(), FS_APPEND);
         EXPECT(tile_fd[t] >= 0);
         fs_fprintf(tile_fd[t], "tile %u: segment %u starts\n", t, p.s);
         if (t == 1) fs_flush(tile_fd[t]);
     }
     const uint32_t fail_at = p.tiles / 2;
+    set_caller(Caller::TRACER);
+    EXPECT(fs_chdir(logs.c_str()) == 0);
     for (uint32_t t = 0; t < p.tiles; t++) {
         set_caller(Caller::TRACER);
         for (uint32_t k = 0; k < 3; k++) {
-            const std::string f = logs + "/tile" + std::to_string(t) + "." + KIND[k];
+            const std::string f = "tile" + std::to_string(t) + "." + KIND[k];
             const int fd = fs_open(f.c_str(), FS_APPEND);
             EXPECT(fd >= 0);
             const uint64_t n = log_size(p, t, k);
@@ -260,17 +263,27 @@ static void run_proof(const Proof& p) {
         set_caller(Caller::TILE, int(t));
         fs_fprintf(tile_fd[t], "tile %u: done\n", t);
         EXPECT(fs_close(tile_fd[t]) == 0);
+        struct fs_stat ms;
+        EXPECT(fs_stat("../map", &ms) == 0 && (ms.flags & FS_F_COW));    // ".." from the working directory
+        EXPECT(fs_stat("./../logs/.", &ms) == 0 && ms.type == FS_T_DIR);
     }
     set_caller(Caller::MASTER);
     EXPECT(cow_freeze(fin.c_str()) == 0);                                   // the third run is done
     EXPECT(fs_unreserve(r) == 0);
-    if (p.ending == Ending::SOFTWARE_FAILURE) { note("the reply: the proof failed; %s is kept", p.wd.c_str()); return; }
+    auto leave = [&] {                                                     // the tiles back to the root
+        for (uint32_t t = 0; t < p.tiles; t++) { set_caller(Caller::TILE, int(t)); EXPECT(fs_chdir("/") == 0); }
+        set_caller(Caller::TRACER); EXPECT(fs_chdir("/") == 0);
+        set_caller(Caller::MASTER);
+    };
+    if (p.ending == Ending::SOFTWARE_FAILURE) { leave(); note("the reply: the proof failed; %s is kept", p.wd.c_str()); return; }
     note("the reply: the proof succeeded; the Tracer's copy and the logs removed (3.5)");
     EXPECT(fs_remove(tr.c_str()) == 0);
     struct fs_dirent e; u32 pos = 0;
     std::vector<std::string> names;
     while (fs_list(logs.c_str(), &pos, &e) == 1) names.push_back(e.name);
     for (auto& n : names) EXPECT(fs_remove((logs + "/" + n).c_str()) == 0);
+    EXPECT(fs_remove(logs.c_str()) == FS_EBUSY);                          // still the tiles' working directory
+    leave();
     EXPECT(fs_remove(logs.c_str()) == 0);
 }
 

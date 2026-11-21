@@ -2,7 +2,8 @@
  * and from C++ on a host. Every call returns a negative error (FS_E*) or a value of 0 or more.
  *
  * Pages are named by their address in units of 128 bytes (23.5), so a page's address is a multiple of 32.
- * Paths are absolute and normalized: at most 1,023 bytes, 10 levels, names of at most 95 bytes. */
+ * A path is absolute from '/', else from the caller's tile's working directory (fs_chdir); "." and ".." may appear
+ * anywhere. At most 1,023 bytes and 10 names; a name at most 95 bytes; no empty name, no trailing '/'. */
 #ifndef FS_H
 #define FS_H
 
@@ -61,6 +62,7 @@ int  fs_close(int fd);
 int  fs_read_page(int fd, u64 page, void *buf);
 int  fs_write_page(int fd, u64 page, const void *buf);
 int  fs_fprintf(int fd, const char *fmt, ...);
+int  fs_chdir(const char *path);                      /* the caller's tile's working directory */
 int  fs_mkdir(const char *path);
 int  fs_remove(const char *path);
 int  fs_list(const char *path, u32 *pos, struct fs_dirent *e);

@@ -91,6 +91,20 @@ Reservation g_res[MAX_RES];
 bool g_shutdown = false;
 Caller g_caller = Caller::MASTER;
 int g_tile = 0;
+
+// The working directories (FS-API 4.7): a directory entry's address for each tile, beside the fd table. Indexed by
+// the caller's tile: the compute tiles 0-63, the master tile 64 (its firmware and its shell share it), the tracer
+// tile 66. 4 bytes a tile; every one the root's at a reset.
+constexpr int MAX_TILES = 128;
+uint32_t g_cwd[MAX_TILES];
+int caller_index() {
+    switch (g_caller) {
+        case Caller::MASTER: case Caller::SHELL: return 64;
+        case Caller::TRACER: return 66;
+        case Caller::TILE: return g_tile;
+    }
+    return 64;
+}
 FILE* g_log = nullptr;
 
 const char* who() {
@@ -328,16 +342,19 @@ uint32_t dir_slot(const Ent& d, uint32_t idx) {
 }
 
 // ------------------------------------------------------------------ paths
-int split(const char* path, std::vector<std::string>& parts) {
-    if (!path || path[0] != '/') return FS_EINVAL;
+// A path: absolute from '/', else from the caller's working directory; "." and ".." anywhere (FS-API 5.5). No empty
+// name ("//"), no trailing '/' but the root's.
+int split(const char* path, std::vector<std::string>& parts, bool* absolute) {
+    if (!path || !path[0]) return FS_EINVAL;
+    *absolute = path[0] == '/';
     const size_t n = std::strlen(path);
     if (n > 1023) return FS_ENAMETOOLONG;
-    if (n == 1) return 0;
+    if (n == 1 && *absolute) return 0;
     if (path[n - 1] == '/') return FS_EINVAL;
     std::string cur;
-    for (size_t i = 1; i <= n; i++) {
+    for (size_t i = *absolute ? 1 : 0; i <= n; i++) {
         if (i == n || path[i] == '/') {
-            if (cur.empty() || cur == "." || cur == "..") return FS_EINVAL;   // not normalized
+            if (cur.empty()) return FS_EINVAL;
             if (cur.size() > 95) return FS_ENAMETOOLONG;
             parts.push_back(cur); cur.clear();
         } else cur += path[i];
@@ -354,13 +371,18 @@ uint32_t dir_find(const Ent& d, const std::string& name) {
     }
 }
 // Resolves a path: the entry's address, or NONE with *parent the directory it would go in and *last its name.
+// A directory's parent is in its entry's source field (4.3); the root's is itself.
 int resolve(const char* path, uint32_t* addr, uint32_t* parent = nullptr, std::string* last = nullptr) {
     std::vector<std::string> parts;
-    if (int r = split(path, parts)) return r;
-    uint32_t a = ROOT_ENTRY, par = NONE;
+    bool absolute;
+    if (int r = split(path, parts, &absolute)) return r;
+    uint32_t a = absolute ? ROOT_ENTRY : g_cwd[caller_index()];
+    uint32_t par = ent_read(a).source;                              // the directory a is in
     for (size_t k = 0; k < parts.size(); k++) {
         const Ent d = ent_read(a);
         if (d.type != T_DIR) return FS_ENOTDIR;
+        if (parts[k] == ".") continue;
+        if (parts[k] == "..") { a = d.source; par = ent_read(a).source; continue; }
         par = a;
         a = dir_find(d, parts[k]);
         if (a == NONE) {
@@ -488,12 +510,15 @@ void power_on(uint32_t pages, bool hard) {
     for (Slot& s : g_slots) { s.used = false; forget_lines(s); }
     for (Reservation& r : g_res) { r.used = false; r.pages.clear(); }
     g_shutdown = false; g_cursor = 1;
+    for (uint32_t& c : g_cwd) c = ROOT_ENTRY;                       // every tile starts in the root
     setbit(g_taken, 0, true);
     const Caller c = g_caller; g_caller = Caller::MASTER;
     if (hard) {                                                     // the format (3.1)
         uint8_t b[PAGE_BYTES] = {};
         std::memcpy(b, MAGIC, 8); put32(b + 8, 1); put32(b + 12, pages);
-        ent_encode(ent_new("/", T_DIR), b + LINE_BYTES);
+        Ent root = ent_new("/", T_DIR);
+        root.source = ROOT_ENTRY;                                   // the root is its own parent
+        ent_encode(root, b + LINE_BYTES);
         page_write(0, b);
         logf("format: %u pages", pages);
     } else {                                                        // the mount: the maps rebuilt by the walk
@@ -553,6 +578,19 @@ void check() {
         if (e.type == T_DIR && live != e.count) fatal("check: %s's count %u, %u entries live", e.name, e.count, live);
     };
     visit(ROOT_ENTRY);
+    std::function<void(uint32_t, uint32_t)> parents = [&](uint32_t a, uint32_t par) {
+        const Ent e = ent_read(a);
+        if (e.type != T_DIR) return;
+        if (e.source != par) fatal("check: %s's parent is 0x%x, not 0x%x", e.name, e.source, par);
+        for (uint32_t i = 0;; i++) {
+            const uint32_t s2 = dir_slot(e, i);
+            if (s2 == NONE) break;
+            if (ent_read(s2).type != T_FREE) parents(s2, a);
+        }
+    };
+    parents(ROOT_ENTRY, ROOT_ENTRY);
+    for (int t = 0; t < MAX_TILES; t++)
+        if (ent_read(g_cwd[t]).type != T_DIR) fatal("check: tile %d's working directory is not a directory", t);
     for (const Reservation& r : g_res)
         for (uint32_t u : r.pages) { if (seen[pgno(u)]) fatal("check: reserved page in a file"); seen[pgno(u)] = 1; }
     for (uint32_t p = 0; p < g_pages; p++) {
@@ -785,12 +823,26 @@ int fs_fprintf(int fd, const char* fmt, ...) {
     const long r = fs_write(fd, b, n < int(sizeof b) ? n : int(sizeof b) - 1);
     return r < 0 ? int(r) : int(r);
 }
+int fs_chdir(const char* path) {
+    LIVE();
+    uint32_t a;
+    int r = resolve(path, &a);
+    if (r == 0 && a == NONE) r = FS_ENOENT;
+    if (r == 0 && ent_read(a).type != T_DIR) r = FS_ENOTDIR;
+    if (r == 0) g_cwd[caller_index()] = a;
+    logf("fs_chdir(\"%s\") = %d", path, r);
+    return r;
+}
 int fs_mkdir(const char* path) {
     LIVE();
     uint32_t a, parent; std::string last;
     int r = resolve(path, &a, &parent, &last);
     if (r == 0 && a != NONE) r = FS_EEXIST;
-    if (r == 0 && dir_add(parent, ent_new(last.c_str(), T_DIR)) == NONE) r = FS_ENOSPC;
+    if (r == 0) {
+        Ent e = ent_new(last.c_str(), T_DIR);
+        e.source = parent;                                          // a directory's parent: for ".."
+        if (dir_add(parent, e) == NONE) r = FS_ENOSPC;
+    }
     logf("fs_mkdir(\"%s\") = %d", path, r);
     return r;
 }
@@ -805,12 +857,14 @@ int fs_remove(const char* path) {
         e = ent_read(a);
         if (fd_find_entry(a, false) >= 0) r = FS_EBUSY;
         else if (e.count) r = e.type == T_DIR ? FS_ENOTEMPTY : FS_EBUSY;   // live entries; copies
+        else if (e.type == T_DIR)
+            for (int t = 0; t < MAX_TILES; t++) if (g_cwd[t] == a) r = FS_EBUSY;   // some tile's working directory
     }
     if (r) { logf("fs_remove(\"%s\") = %d", path, r); return r; }
     const uint64_t f0 = g_stats.pages_freed;
     free_tree(e);
     if (e.pending) free_page(pgno(e.pending), false);              // never committed: never named, never cached
-    if (e.source != NONE) { Ent s = ent_read(e.source); s.count--; ent_write(e.source, s); }
+    if (e.type == T_FILE && e.source != NONE) { Ent s = ent_read(e.source); s.count--; ent_write(e.source, s); }
     dir_drop(parent, a);
     logf("fs_remove(\"%s\") = 0, %llu pages freed%s", path, (unsigned long long)(g_stats.pages_freed - f0),
          (e.flags & E_COW) ? ", may be cached" : "");

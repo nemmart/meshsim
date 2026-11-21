@@ -9,6 +9,7 @@
 | --- | --- |
 | `v1.40_wip/planning/FS-API.md` | **the specification:** the system, the flows, the structures (page maps, directory entry, superblock, fd table, working directories), every call, its callers and its errors |
 | `v1.40_wip/planning/FS-DATA-PATH.md` | **how the tiles carry the calls out:** the write grant, the RW unit, the cache, the page service, and the memory budgets |
+| `v1.40_wip/planning/FS-FIRMWARE.md` | **the firmware, tile by tile:** the memory tile's event loop and each call's steps, the tracer tile's page service, the master tile's changes, a caller's library, what is open |
 | `v1.40_wip/fs/fs.h` | the header in C, freestanding C and C++ |
 | `v1.40_wip/fs/fs_emu.*`, `stand_ins.*` | **the file system in software, in C++** (owner: the base for step 3), on the spec's structures byte for byte; stand-ins for the Updater and the Tracer |
 | `v1.40_wip/fs/tests/` | nine workflows and their call logs (`tests/out/`); `make test` passes all nine |
@@ -41,14 +42,16 @@ hashes; the out-of-space rule. NOTES.md rulings 22 to 45.
 
 FS-API.md section 8, FS-DATA-PATH.md section 9, FOR-THE-HARDWARE.md section 8. The ones that shape the most:
 
-1. **How `fs_read_page` names the caller's buffer and counter,** and how the RW unit addresses its output to another
+1. **How the memory tile knows a long path has landed in its slot:** the request (on the request tree) and the
+   `WRITE` packets (on the mesh) are not ordered (FS-FIRMWARE.md 2.6).
+2. **How `fs_read_page` names the caller's buffer and counter,** and how the RW unit addresses its output to another
    tile: the one part of the data path not designed.
-2. **The tracer tile's SRAM:** whether the page service's 258 KiB fits beside the Tracer's own use.
-3. **Whether a proof's reservation covers its run logs' pages,** which the host cannot count (today: no; the memory
+3. **The tracer tile's SRAM:** whether the page service's 258 KiB fits beside the Tracer's own use.
+4. **Whether a proof's reservation covers its run logs' pages,** which the host cannot count (today: no; the memory
    tile's pool takes them as needed).
-4. **The shell's four additions** (`FS_TRUNC`, `fs_stat`, `fs_df`, `fs_list`'s cursor): built and used, not ruled.
-5. **The page service's efficiency:** summary bits, word-at-a-time maps, a high-water mark (proposed, not ruled).
-6. **Where the shell's spec lives** once `fs_wip/` goes (owner, 2026-11-20: it will); `SHELL-SPEC.md` has the shell's
+5. **The shell's four additions** (`FS_TRUNC`, `fs_stat`, `fs_df`, `fs_list`'s cursor): built and used, not ruled.
+6. **The page service's efficiency:** summary bits, word-at-a-time maps, a high-water mark (proposed, not ruled).
+7. **Where the shell's spec lives** once `fs_wip/` goes (owner, 2026-11-20: it will); `SHELL-SPEC.md` has the shell's
    changes since, `cat` from the console and `rm -r`, but not `*` (the shell's NOTES.md).
 
 ## What the next sessions need to know

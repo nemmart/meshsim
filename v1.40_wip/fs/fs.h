@@ -48,9 +48,11 @@ typedef uint64_t u64;
 struct fs_dirent { char name[96]; u32 type; u32 flags; u64 length; };
 struct fs_stat   { u32 type; u32 flags; u64 length; u64 pages; u32 copies; u32 depth; };
 
-/* ---- pages (5.1): the master tile, for the Updater; served by the tracer tile's page service */
-int  fs_reserve_pages(u32 n);                         /* the Updater's pool: held for one request */
-int  fs_acquire_pages(u32 *pages, u32 k);             /* k <= 256; returns how many it gave */
+/* ---- pages (5.1): served by the tracer tile's page service, from the calling tile's pool (the master tile's,
+ *      the memory tile's); only the acquire says what the pages are for */
+int  fs_reserve_pages(u32 n);                         /* held in the caller's pool for one request */
+int  fs_acquire_cow_pages(u32 *pages, u32 k);         /* k <= 256, for the Updater or the Tracer: marked "may be cached" */
+int  fs_acquire_pages(u32 *pages, u32 k);             /* k <= 256, for a directory or a streamed file: not marked */
 int  fs_release_pages(const u32 *pages, u32 k);
 int  fs_unreserve(void);
 

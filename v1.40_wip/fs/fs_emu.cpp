@@ -185,8 +185,10 @@ struct Slot {
 };
 Slot g_slots[MAX_SLOTS];
 
-// The page service's two pools (FS-API 4.1, 4.2; FS-DATA-PATH 7), on the tracer tile: the Updater's, which the master
-// tile reserves, and the file system's. Each keeps a prepared batch, taken and discarded already.
+// The page service's pools (FS-API 4.1, 4.2; FS-DATA-PATH 7), on the tracer tile: one for each tile that asks, the
+// master tile's (UPD: it drives the Updater) and the memory tile's (OWN: the file system's own pages). Each keeps a
+// prepared batch, taken and discarded already, and may hold a reservation. The kind of page is said by the acquire:
+// fs_acquire_cow_pages marks its pages "may be cached", fs_acquire_pages does not (owner, 2026-11-20).
 enum { UPD = 0, OWN = 1 };
 struct Pool { std::vector<uint32_t> batch; bool reserved = false; uint64_t held = 0; };
 Pool g_pool[2];
@@ -258,10 +260,10 @@ void take(uint32_t p) {
     setbit(g_taken, p, true);
     g_stats.pages_taken++;
 }
-void free_page(uint32_t p, bool cow) {
+// Freeing is by address alone (owner, 2026-11-20): whether the page needs a discard was marked when it was handed out.
+void free_page(uint32_t p) {
     if (!bit(g_taken, p) || p == 0) fatal("page %u freed but not taken", p);
     setbit(g_taken, p, false);
-    if (cow) setbit(g_mbc, p, true);
     g_free++;
     if (bit(g_mbc, p)) g_free_mbc++;
     cache_drop_page(p * PAGE_UNITS);                                // its halves in the memory tile's cache
@@ -289,30 +291,36 @@ uint32_t pick(bool prefer_mbc) {
     }
     return NONE;
 }
+// What the other pools' reservations hold beyond their batches: free pages this pool may not take.
+uint64_t owed_to_others(int i) {
+    uint64_t owed = 0;
+    for (int j = 0; j < 2; j++)
+        if (j != i && g_pool[j].held > g_pool[j].batch.size()) owed += g_pool[j].held - g_pool[j].batch.size();
+    return owed;
+}
 // The background refill of a pool's batch. The file system's may not take the pages the Updater's reservation holds
 // beyond its batch.
 void refill(int i) {
     Pool& P = g_pool[i];
     while (P.batch.size() < g_batch_size) {
-        if (i == OWN) {
-            const uint64_t owed = g_pool[UPD].held > g_pool[UPD].batch.size() ? g_pool[UPD].held - g_pool[UPD].batch.size() : 0;
-            if (g_free <= owed) return;
-        }
+        if (g_free <= owed_to_others(i)) return;
         const uint32_t p = pick(i == UPD);
         if (p == NONE) return;
         take(p);
         P.batch.push_back(p * PAGE_UNITS);
     }
 }
-// One page of the Updater's reservation; NONE if it holds none.
-uint32_t upd_one() {
-    Pool& U = g_pool[UPD];
-    if (!U.reserved || U.held == 0) return NONE;
-    if (U.batch.empty()) refill(UPD);
-    if (U.batch.empty()) fatal("the Updater's reservation holds pages that are not there");
-    const uint32_t a = U.batch.back();
-    U.batch.pop_back();
-    U.held--;
+// One page of pool i: from its reservation if it holds one, else from what is free; marked "may be cached" if it goes
+// to the Updater or the Tracer (cow). NONE if none.
+uint32_t pool_one(int i, bool cow) {
+    Pool& P = g_pool[i];
+    if (P.reserved && P.held == 0) return NONE;                     // the reservation drawn whole
+    if (P.batch.empty()) refill(i);
+    if (P.batch.empty()) { if (P.reserved) fatal("a reservation holds pages that are not there"); return NONE; }
+    const uint32_t a = P.batch.back();
+    P.batch.pop_back();
+    if (P.reserved) P.held--;
+    if (cow) setbit(g_mbc, pgno(a), true);                          // handed to hardware: discarded when reused
     return a;
 }
 // The file system's own page (a directory's, a streamed file's): a free page not in the "may be cached" map if there
@@ -679,7 +687,7 @@ int flush(int fd) {
 void free_tree(const Ent& e) {
     std::vector<uint32_t> pages;
     walk(e.root, e.depth(), [&](uint32_t a) { pages.push_back(a); });
-    for (uint32_t a : pages) free_page(pgno(a), e.flags & E_COW);
+    for (uint32_t a : pages) free_page(pgno(a));
 }
 // Every call: its changed halves written at its end (CallEnd), and nothing after fs_shutdown.
 struct CallEnd { ~CallEnd() { write_touched(); } };
@@ -844,7 +852,7 @@ int fs_reserve_pages(u32 n) {
     LIVE(); master_only("fs_reserve_pages");
     Pool& U = g_pool[UPD];
     if (U.reserved) { logf("fs_reserve_pages(%u) = FS_EBUSY", n); return FS_EBUSY; }     // one at a time
-    if (uint64_t(n) > uint64_t(g_free) + U.batch.size()) { logf("fs_reserve_pages(%u) = FS_ENOSPC", n); return FS_ENOSPC; }
+    if (uint64_t(n) + owed_to_others(UPD) > uint64_t(g_free) + U.batch.size()) { logf("fs_reserve_pages(%u) = FS_ENOSPC", n); return FS_ENOSPC; }
     const uint64_t d0 = g_stats.discards;
     U.reserved = true; U.held = n;                                  // a count: no page chosen for it (FS-API 4.1)
     refill(UPD);
@@ -852,24 +860,25 @@ int fs_reserve_pages(u32 n) {
          (unsigned long long)(g_stats.discards - d0));
     return 0;
 }
-int fs_acquire_pages(u32* pages, u32 k) {
-    LIVE(); master_only("fs_acquire_pages");
-    Pool& U = g_pool[UPD];
-    if (!U.reserved || k > 256) { logf("fs_acquire_pages(%u) = FS_EINVAL", k); return FS_EINVAL; }
+// k pages of the caller's pool (the master tile's here; the memory tile takes its own by alloc_own), cow or not.
+int acquire(const char* call, u32* pages, u32 k, bool cow) {
+    if (k > 256) { logf("%s(%u) = FS_EINVAL", call, k); return FS_EINVAL; }
     const uint64_t d0 = g_stats.discards;
     u32 n = 0;
     while (n < k) {                                                 // a copy out of the prepared batch
-        const uint32_t a = upd_one();
+        const uint32_t a = pool_one(UPD, cow);
         if (a == NONE) break;
         pages[n++] = a;
     }
     refill(UPD);                                                    // in the background, on the tracer tile
-    logf("fs_acquire_pages(%u) = %u (%llu discarded refilling)", k, n, (unsigned long long)(g_stats.discards - d0));
+    logf("%s(%u) = %u (%llu discarded refilling)", call, k, n, (unsigned long long)(g_stats.discards - d0));
     return int(n);
 }
+int fs_acquire_cow_pages(u32* pages, u32 k) { LIVE(); master_only("fs_acquire_cow_pages"); return acquire("fs_acquire_cow_pages", pages, k, true); }
+int fs_acquire_pages(u32* pages, u32 k) { LIVE(); master_only("fs_acquire_pages"); return acquire("fs_acquire_pages", pages, k, false); }
 int fs_release_pages(const u32* pages, u32 k) {
     LIVE(); master_only("fs_release_pages");
-    for (u32 i = 0; i < k; i++) free_page(pgno(pages[i]), true);    // they may have been a COW file's
+    for (u32 i = 0; i < k; i++) free_page(pgno(pages[i]));
     logf("fs_release_pages(%u) = 0", k);
     return 0;
 }
@@ -1105,7 +1114,7 @@ int fs_remove_directory(const char* path) {
             if (gone[k] || left[files[k]]) continue;
             const Ent e = ent_read(files[k]);
             free_tree(e);
-            if (e.pending) free_page(pgno(e.pending), false);
+            if (e.pending) free_page(pgno(e.pending));
             if (e.source != NONE) {
                 if (left.count(e.source)) left[e.source]--;
                 else { Ent s3 = ent_read(e.source); s3.count--; ent_write(e.source, s3); }   // a source outside
@@ -1137,7 +1146,7 @@ int fs_remove(const char* path) {
     if (r) { logf("fs_remove(\"%s\") = %d", path, r); return r; }
     const uint64_t f0 = g_stats.pages_freed;
     free_tree(e);
-    if (e.pending) free_page(pgno(e.pending), false);              // never committed: never named, never cached
+    if (e.pending) free_page(pgno(e.pending));                     // never committed
     if (e.type == T_FILE && e.source != NONE) { Ent s = ent_read(e.source); s.count--; ent_write(e.source, s); }
     dir_drop(parent, a);
     logf("fs_remove(\"%s\") = 0, %llu pages freed%s", path, (unsigned long long)(g_stats.pages_freed - f0),
@@ -1197,13 +1206,13 @@ int cow_make(const char* call, const char* path, u64 pages, uint32_t source, u32
     uint32_t a, parent; std::string last;
     int rc = resolve(path, &a, &parent, &last);
     if (rc == 0 && a != NONE) rc = FS_EEXIST;
-    if (rc == 0 && (!g_pool[UPD].reserved || g_pool[UPD].held == 0)) rc = FS_ENOSPC;   // the root: the master tile's reservation
     if (rc) return rc;
     Ent e = ent_new(last.c_str(), T_FILE);
-    e.pending = upd_one();                                         // the root to be: made by the next run (5.3)
+    e.pending = pool_one(UPD, true);                               // the root to be: made by the next run (5.3)
+    if (e.pending == NONE) return FS_ENOSPC;
     e.root = 0;                                                     // not committed: nothing to walk
     e.length = pages * PAGE_BYTES; e.flags = E_COW; set_depth(e, cow_depth(pages)); e.source = source;
-    if (dir_add(parent, e) == NONE) { g_pool[UPD].batch.push_back(e.pending); g_pool[UPD].held++; return FS_ENOSPC; }
+    if (dir_add(parent, e) == NONE) { free_page(pgno(e.pending)); return FS_ENOSPC; }
     *root = e.pending; *depth = e.depth();
     (void)call;
     return 0;

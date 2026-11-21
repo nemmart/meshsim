@@ -136,9 +136,11 @@ a frozen COW file never changes; a buffer of a page the file system frees is dro
 **The tracer tile keeps the page maps and hands out every page.** Its promise: **every page it hands out is new**
 (23.6.8): taken in its map, and discarded from the cache first if it was last in a COW file.
 
-- **Two pools** (owner, 2026-11-20): **the Updater's**, which the master tile reserves for each request and draws on for
-  every run and every COW file's root; and **the file system's**, from which the memory tile takes the pages of
-  directories and streamed files.
+- **A pool for each tile that asks** (owner, 2026-11-20): the master tile's, which it reserves for each request and
+  draws on for every run and every COW file's root; the memory tile's, for directories and streamed files. **The
+  acquire says what a page is for:** `fs_acquire_cow_pages` sets its "may be cached" bit, `fs_acquire_pages` does not
+  (FS-API 5.1). A discard clears the bit; so it is set for every page handed to the Updater or the Tracer since its last
+  discard, and for no other.
 - **A prepared batch of 256 pages for each** (owner, 2026-11-20): taken in the map and discarded if they needed it,
   before anyone asks. An acquire of 256 or fewer is a copy of addresses out of the batch and an answer; the tracer tile
   then refills the batch in the background.
@@ -153,8 +155,8 @@ a frozen COW file never changes; a buffer of a page the file system frees is dro
   its directories' and streamed files' pages without a request. When it is empty, one request brings the file
   system's pool's prepared batch whole, and the tracer tile prepares the next in the background: a 5 MB run log is
   five requests. The stash and the batch, 512 pages, are free to `fs_df`.
-- **Freeing:** the memory tile's walk (FS-API 4.4) sends the pages it frees to the tracer tile in batches, each with
-  whether it was in a COW file.
+- **Freeing:** the memory tile's walk (FS-API 4.4) sends the pages it frees to the tracer tile in batches, by address
+  alone (owner, 2026-11-20): the bit set when a page was handed out says whether it needs a discard.
 - **A mount:** the memory tile walks every file and sends the pages it finds to the tracer tile, which rebuilds its
   maps; the batches start empty.
 

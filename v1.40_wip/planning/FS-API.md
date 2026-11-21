@@ -198,16 +198,19 @@ count of copies (4.3). Whether a call removes a tree in one go is open †.
 | Map | Size | A bit is 1 when |
 | --- | --- | --- |
 | **taken** | 2²⁰ bits, 128 KiB | the page is in use: in a file, in a pool's prepared batch, or page 0 |
-| **may be cached** † | 2²⁰ bits, 128 KiB | the page was last in a COW file, so lines of it may be in the cache |
+| **may be cached** | 2²⁰ bits, 128 KiB | the page was handed out by `fs_acquire_cow_pages` (or as a COW file's root) since its last discard, so lines of it may be in the cache (owner, 2026-11-20) |
 
 - Page *p* is bit *p* of each, as v1.37's map has it (`master_layout.h`): 128 pages to a 128-bit word.
 - **Neither is kept in LPDDR** (DESIGN-NOTES section 2): a hard reset starts them fresh, and a mount rebuilds both by
   the walk of section 4.4, setting "may be cached" for every page of a COW file.
-- **Two pools** (owner, 2026-11-20): **the Updater's**, drawn on by the master tile for every run and every COW file's
-  root, and **the file system's**, from which the memory tile takes its directories' and streamed files' pages.
-- **A reservation is a count** (owner, 2026-11-20): the master tile reserves the Updater's pool once per request,
-  `fs_reserve_pages(n)`, which fails with no room; the file system's pool may not take what is held. One reservation at
-  a time (`FS_EBUSY`). The file system's pool reserves nothing: its pages are taken as needed, `FS_ENOSPC` when none.
+- **A pool for each tile that asks** (owner, 2026-11-20): the master tile's, drawn on for every run and every COW
+  file's root, and the memory tile's, for its directories and streamed files. **The acquire says what the pages are
+  for; nothing else does:** `fs_acquire_cow_pages` marks its pages "may be cached", since they go to the Updater or the
+  Tracer; `fs_acquire_pages` does not. Either tile may make either call. Reserving and freeing say nothing of a page's
+  kind.
+- **A reservation is a count** (owner, 2026-11-20): `fs_reserve_pages(n)` holds n pages in the caller's pool, or fails
+  with no room; no other pool takes what is held. One reservation a pool at a time (`FS_EBUSY`). In practice only the
+  master tile reserves, once per request; the memory tile takes its pages as needed, `FS_ENOSPC` when none.
 
 ### 4.2 Freeing and handing out pages
 
@@ -324,9 +327,10 @@ not the shell, not a compute tile.
 
 | Call | Who | Does |
 | --- | --- | --- |
-| `int fs_reserve_pages(u32 n)` | master | holds n pages for the Updater's pool for one request, or fails with `FS_ENOSPC`; `FS_EBUSY` while a reservation is held (owner, 2026-11-20) |
-| `int fs_acquire_pages(u32 *pages, u32 k)` | master | k ≤ 256 pages of the reservation into `pages`, as addresses in units; each new (23.6.8). Returns k, or fewer if the reservation has fewer left |
-| `int fs_release_pages(const u32 *pages, u32 k)` | master | k pages back to the free map |
+| `int fs_reserve_pages(u32 n)` | master | holds n pages in the caller's pool for one request, or fails with `FS_ENOSPC`; `FS_EBUSY` while it holds one (owner, 2026-11-20) |
+| `int fs_acquire_cow_pages(u32 *pages, u32 k)` | master | k ≤ 256 pages of the caller's pool, from its reservation if it holds one, into `pages` as addresses in units; each new (23.6.8), and **marked "may be cached"**: for the Updater's runs. Returns k, or fewer if the pool has fewer (owner, 2026-11-20) |
+| `int fs_acquire_pages(u32 *pages, u32 k)` | master, the file system | the same, **not marked**: for directories and streamed files, which never pass through the cache. The memory tile's stash is filled this way (owner, 2026-11-20) |
+| `int fs_release_pages(const u32 *pages, u32 k)` | master, the file system | k pages back to the free map, by address alone: whether each needs a discard was marked when it was handed out (owner, 2026-11-20) |
 | `int fs_unreserve(void)` † | master | ends the reservation; what is left of it is free again |
 
 **Served by the tracer tile** (owner, 2026-11-20): the master tile's page calls go to it, not to the memory tile; the

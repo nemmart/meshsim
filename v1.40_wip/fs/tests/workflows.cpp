@@ -57,7 +57,7 @@ static void feed(uint64_t n) {
     while (n) {
         const u32 k = u32(std::min<uint64_t>(128, n));
         u32 b[128];
-        const int got = fs_acquire_pages(b, k);
+        const int got = fs_acquire_cow_pages(b, k);
         EXPECT(got == int(k));
         if (got <= 0) return;
         for (int i = 0; i < got; i++) g_updater.push(b[i]);

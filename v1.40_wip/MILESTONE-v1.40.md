@@ -57,6 +57,8 @@ Owed, and not part of the four features (`HANDOVER.md`, sections 3 and 4):
 
 ## The sessions
 
-| session | step | what | brief | status |
+| session | step | what | where | status |
 |---|---|---|---|---|
-| FS-API | 1 | the specification of the file system's API and its header: the streaming calls of 2026-11-10, and the copy-on-write calls (`cow_pages`, a call that builds a root, and equivalents for everything the master tile's firmware does by hand today) | `sessions/FS-API/PROMPT.md` | brief written 2026-11-19, for the owner to read; not started |
+| FS-API | 1, and the start of 3, 4 and 5 | the file system's API and header; at the owner's direction also its data path, its firmware in outline, a C++ emulation with ten workflows, and the list for the hardware | `sessions/FS-API/` (`REPORT.md` first); `planning/FS-API.md`, `FS-DATA-PATH.md`, `FS-FIRMWARE.md`; `fs/` | finished 2026-11-20, on `main` |
+| SHELL | 2 | the shell in freestanding C, on the emulation; 19 tests | `sessions/SHELL/`; `shell/` | finished 2026-11-20, on `main` |
+| RW | 4 | the design of the RW system with the owner: the RW unit, its paths on the mesh, the two regimes | `sessions/RW/PROMPT.md` | brief written 2026-11-20; not started |

@@ -195,6 +195,9 @@ Pool g_pool[2];
 uint32_t g_batch_size = 256;           // 256 on the chip; less for a small LPDDR here (power_on)
 
 bool g_shutdown = false;
+// The superblock's state (FS-API 4.4), line 0 bytes 16-19: 1 mounted, in use; 2 shut down cleanly (owner, 2026-11-20).
+constexpr uint32_t SB_MOUNTED = 1, SB_CLEAN = 2;
+bool g_last_clean = false;             // what the last mount found
 Caller g_caller = Caller::MASTER;
 int g_tile = 0;
 
@@ -709,6 +712,7 @@ uint32_t lpddr_pages() { return g_pages; }
 void cache_touch(uint32_t unit) { g_incache[pgno(unit)] = 1; }
 void set_tracing(bool on) { g_tracing = on; }
 const Stats& stats() { return g_stats; }
+bool last_mount_clean() { return g_last_clean; }
 void reset_stats() { g_stats = Stats{}; }
 
 void power_on(uint32_t pages, bool hard) {
@@ -733,7 +737,7 @@ void power_on(uint32_t pages, bool hard) {
     const Caller c = g_caller; g_caller = Caller::MASTER;
     if (hard) {                                                     // the format (3.1)
         uint8_t b[PAGE_BYTES] = {};
-        std::memcpy(b, MAGIC, 8); put32(b + 8, 1); put32(b + 12, pages);
+        std::memcpy(b, MAGIC, 8); put32(b + 8, 1); put32(b + 12, pages); put32(b + 16, SB_MOUNTED);
         Ent root = ent_new("/", T_DIR);
         root.source = ROOT_ENTRY;                                   // the root is its own parent
         ent_encode(root, b + LINE_BYTES);
@@ -741,6 +745,12 @@ void power_on(uint32_t pages, bool hard) {
         logf("format: %u pages", pages);
     } else {                                                        // the mount: the maps rebuilt by the walk
         if (std::memcmp(lp(0), MAGIC, 8) != 0) fatal("mount: no superblock");
+        {                                                           // the state: read, then marked in use again
+            Buf& sb = half_get(0);
+            g_last_clean = get32(sb.data + 16) == SB_CLEAN;
+            put32(sb.data + 16, SB_MOUNTED);
+            lp_half_write(0, sb.data);
+        }
         uint32_t files = 0;
         std::function<void(uint32_t)> visit = [&](uint32_t a) {
             Ent e = ent_read(a);
@@ -761,7 +771,7 @@ void power_on(uint32_t pages, bool hard) {
         visit(ROOT_ENTRY);
         count_free();
         write_touched();                                            // the pending roots forgotten, written
-        logf("mount: %u entries, %u pages free", files, free_count());
+        logf("mount: %u entries, %u pages free; the last shutdown %s", files, free_count(), g_last_clean ? "clean" : "not clean");
     }
     g_caller = c;
 }
@@ -1284,6 +1294,9 @@ int cow_root(int fd, u32* root, u32* depth) {
 }
 
 // ---- the file system as a whole (5.4)
+// The calls in hand finish first (here there are none: the emulation serves one call at a time); then every writer's
+// halves, index lines and entry go to LPDDR and every fd is closed; then the superblock says the shutdown was clean;
+// then every later call is FS_ESHUTDOWN (owner, 2026-11-20).
 int fs_shutdown(void) {
     LIVE(); master_only("fs_shutdown");
     int open = 0;
@@ -1295,8 +1308,12 @@ int fs_shutdown(void) {
         std::memset(g_fdtab + fd * FD_BYTES, 0, FD_BYTES);
         open++;
     }
+    write_touched();                                                // everything changed so far, before the mark
+    Buf& sb = half_get(0);
+    put32(sb.data + 16, SB_CLEAN);
+    lp_half_write(0, sb.data);
     g_shutdown = true;
-    logf("fs_shutdown() = 0, %d files closed", open);
+    logf("fs_shutdown() = 0, %d files closed; the superblock: shut down cleanly", open);
     return 0;
 }
 

@@ -422,6 +422,7 @@ int main() {
     Proof p5{"/proofs/p3", &sha, 4, 0, {{0, 300}, {1}, {2}, {3}}, {4}, {}, 4, 0, Ending::HARDWARE_ERROR};
     run_proof(p5);
     power_on(LPDDR, false);                                     // the soft reset: the mount
+    EXPECT(last_mount_clean());                                 // fs_shutdown marked the superblock
     set_caller(Caller::SHELL);
     const std::string t2 = sh_cat("/proofs/p3/logs/tile2.log");
     EXPECT(t2.find("about to fail") != std::string::npos);    // fs_shutdown wrote it
@@ -439,6 +440,7 @@ int main() {
     EXPECT(fs_flush(fd) == 0);
     EXPECT(fs_write(fd, b.data() + 3000, 9000) == 9000);     // past two page boundaries, never flushed
     power_on(LPDDR, false);
+    EXPECT(!last_mount_clean());                              // no shutdown: the superblock says so
     set_caller(Caller::SHELL);
     const std::string crash = sh_cat("/proofs/p3/logs/crash.log");
     EXPECT(crash == std::string(3000, 'a'));                  // what was flushed, and nothing else

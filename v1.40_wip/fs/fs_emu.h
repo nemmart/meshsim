@@ -59,4 +59,7 @@ void reset_stats();
 // cache is in the "may be cached" map or taken. Only with no file open for writing. Stops the emulation on a breach.
 void check();
 
+// What the last mount found in the superblock: whether the file system had been shut down cleanly (FS-API 4.4).
+bool last_mount_clean();
+
 }  // namespace fsemu

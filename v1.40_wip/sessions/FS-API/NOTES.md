@@ -88,6 +88,7 @@ In the order they were settled.
 | 43 | COW files in use | `fs_open(FS_ROOT)`, one owner: the master tile for a run, then the tracer tile for the trace; `cow_root(fd)` (owner, 2026-11-20) |
 | 44 | The cache's policy | a half loaded for `fs_read` cold; clean buffers before dirty; a call's changed halves written once at its end. No read-ahead, and no whole-page fill on a miss (owner, 2026-11-20) |
 | 45 | Which pages need a discard | the acquire says: `fs_acquire_cow_pages` marks its pages "may be cached", `fs_acquire_pages` does not; a pool for each tile that asks, either call from either tile; reserving and freeing untyped (owner, 2026-11-20) |
+| 46 | A shutdown | the calls in hand finish, then everything is flushed to LPDDR, then the superblock is marked shut down cleanly, then the file system refuses every call (`FS_ESHUTDOWN`); a mount reads whether the last shutdown was clean (owner, 2026-11-20) |
 
 **Still open,** with what depends on each: FS-API.md section 8, and these the emulation added:
 

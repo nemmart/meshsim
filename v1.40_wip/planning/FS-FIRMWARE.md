@@ -101,7 +101,7 @@ neither merges nor shifts. One grant at a time for an fd.
 | `cow_create`, `cow_copy` | the master tile's root page, from its own acquire (`fs_acquire_cow_pages` gives it), to the entry as its pending root; the entry; for a copy, the source's count |
 | `cow_commit`, `cow_freeze` | the entry |
 | `fs_open(FS_ROOT)`, `cow_root` | the fd; the entry's root |
-| `fs_shutdown` | every writer's halves, index halves and entries written; every fd closed; every later call refused |
+| `fs_shutdown` | the reads and writes in hand finish (a grant is at most 2 KiB); every writer's halves, index halves and entries written; every fd closed; the superblock's state set to "shut down cleanly", written last; every call waiting, and every later one, answered `FS_ESHUTDOWN` (owner, 2026-11-20) |
 
 **At every call's end,** the halves it changed (directory and index halves, not the writers' own) are written, each
 once, before its answer (owner, 2026-11-20). So what a call promises is in LPDDR when it answers.
@@ -134,7 +134,8 @@ hashes.
 
 - **A hard reset formats** (owner, 2026-11-19): the superblock and an empty root directory, page 0; every tile's
   working directory the root; and the tracer tile told to start its maps empty †.
-- **A soft reset mounts** (owner, 2026-11-19): the walk of every file from the root, every page it reaches sent to the
+- **A soft reset mounts** (owner, 2026-11-19): the superblock's state read (was the last shutdown clean?) and set to
+  "mounted"; the walk of every file from the root, every page it reaches sent to the
   tracer tile, which rebuilds its maps (every page of a COW file "may be cached"); a pending root forgotten.
 - **Which reset it was** is the hardware's to say (FOR-THE-HARDWARE 7).
 
@@ -214,6 +215,8 @@ and passes the file system absolute paths. It never makes the page calls or the 
 - **Per fd, its tail:** the file's last *length* mod 16 bytes, resent at the front of each grant. The caller is the
   file's one writer, so it keeps the length from `fs_open`'s answer †.
 - **One grant at a time on an fd;** a write of more than a half's room is several grants.
+- **`FS_ESHUTDOWN`** † is returned to the caller's code like any error; the file system promises nothing more until
+  the reset that follows.
 - **No buffering of its own** (owner, 2026-11-20): a `printf` goes to the memory tile at once, so that a crash on the
   tile does not lose it. `fs_fprintf` formats on the tile's stack, then writes.
 - **A path:** 12 bytes or fewer in the request; longer, into the tile's slot first, one such call in flight (2.6).

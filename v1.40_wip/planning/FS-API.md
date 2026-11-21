@@ -175,8 +175,8 @@ closed, and replies that the proof failed. `wd` and everything in it are kept â€
 ### 3.7 A hardware error in a compute tile
 
 The master tile learns of it (its NMI, 30.8) and **closes out the file system** (owner, 2026-11-19): it calls
-`fs_shutdown`, which writes every open file's buffered bytes and index lines to LPDDR, fails every call after it, and
-answers. Then the master tile parks, as today. **Errors in the file system's own path,** the memory tile, the RW unit
+`fs_shutdown`: the calls in hand finish, every open file's buffered bytes and index halves go to LPDDR, the
+superblock is marked shut down cleanly, and every call after is refused (owner, 2026-11-20); then it answers. Then the master tile parks, as today. **Errors in the file system's own path,** the memory tile, the RW unit
 or the mesh between, are not covered (owner, 2026-11-19: "we're really thinking about errors in the compute tiles,
 not the FS"); what follows any error is item 181.
 
@@ -251,7 +251,7 @@ byte first:
 
 | Line | Holds |
 | --- | --- |
-| 0 | magic (8 bytes), version (u32), LPDDR's size in pages (u32); the rest 0. Written once, at the format |
+| 0 | magic (8 bytes), version (u32), LPDDR's size in pages (u32), **state** (u32, owner 2026-11-20): 1 mounted, in use; 2 shut down cleanly. The rest 0. Written at the format; the state also at every mount (1) and by `fs_shutdown` (2), so a mount knows whether the last shutdown was clean |
 | 1 | the root directory's entry (4.3), name `/` |
 | 2â€“31 | reserved, 0 |
 
@@ -399,7 +399,7 @@ again. The master tile commits a file only after the run that makes its root is 
 
 | Call | Does |
 | --- | --- |
-| `int fs_shutdown(void)` | writes every open file's buffer and index lines to LPDDR, closes every file, fails every call after it with `FS_ESHUTDOWN`; answers when LPDDR has it all |
+| `int fs_shutdown(void)` | **the calls in hand finish first; then** every open file's buffers, index halves and entry go to LPDDR and every fd is closed; **then** the superblock is marked shut down cleanly; **then** the file system is shut down: every call waiting, and every call after, is `FS_ESHUTDOWN`, until the next reset. Answers when it is done (owner, 2026-11-20) |
 
 Formatting and mounting are the memory tile's own, at its reset (3.1), and no one's call.
 

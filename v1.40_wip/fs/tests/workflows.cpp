@@ -52,7 +52,7 @@ static void report() {
 static int start(uint32_t pages, bool hard) {
     power_on(pages, hard);
     set_caller(Caller::MASTER);
-    return fs_startup();
+    return fs_startup(0);
 }
 static u64 free_pages() { u64 t, f; set_caller(Caller::MASTER); fs_df(&t, &f); return f; }
 
@@ -620,7 +620,7 @@ int main() {
     EXPECT(start(1024, true) == FS_STARTED_FORMAT);
     set_caller(Caller::MASTER);
     EXPECT(fs_open("/x", FS_READ) == FS_ENOENT);
-    EXPECT(fs_startup() == FS_EBUSY);                          // started already
+    EXPECT(fs_startup(0) == FS_EBUSY);                          // started already
     store_program(small);
     set_caller(Caller::TILE, 1);
     EXPECT(fs_mkdir("/r") == 0);
@@ -670,6 +670,14 @@ int main() {
     set_caller(Caller::MASTER);
     EXPECT(fs_shutdown() == 0);
     EXPECT(start(1024, false) == FS_STARTED_MOUNT);
+    check();
+    note("--- a format asked for: whatever the superblock says");
+    EXPECT(fs_shutdown() == 0);
+    power_on(1024, false);
+    set_caller(Caller::MASTER);
+    EXPECT(fs_startup(1) == FS_STARTED_FORMAT);                // a clean superblock, formatted all the same
+    { struct fs_dirent e; u32 pos = 0; EXPECT(fs_list("/", &pos, &e) == 0); }   // an empty root
+    EXPECT(free_pages() == 1023);
     check();
     note("--- a power-on: LPDDR lost, a format");
     EXPECT(start(1024, true) == FS_STARTED_FORMAT);

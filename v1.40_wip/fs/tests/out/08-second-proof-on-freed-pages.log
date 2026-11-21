@@ -1,4 +1,4 @@
-[master] fs_startup() = FORMAT: 1024 pages
+[master] fs_startup(0) = FORMAT: 1024 pages
 # --- storing /programs/small
 [master] fs_mkdir("/programs") = 0
 [master] fs_reserve_pages(204) = 0 (the batch: 64 pages, 0 discarded preparing it)

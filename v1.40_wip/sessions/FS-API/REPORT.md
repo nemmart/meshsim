@@ -15,7 +15,7 @@
 | `v1.40_wip/fs/tests/` | ten workflows and their call logs (`tests/out/`); `make test` passes all ten |
 | `v1.40_wip/fs/README.md` | what the emulation found, eleven findings |
 | `v1.40_wip/shell/` | **the shell** (step 2), by the shell session on this emulation; `rm -r` added here. 19 tests pass |
-| `sessions/FS-API/NOTES.md` | the inventory of `master.c`; **48 questions and how each ended**; the frame loop and the shell's commands against the calls |
+| `sessions/FS-API/NOTES.md` | the inventory of `master.c`; **49 questions and how each ended**; the frame loop and the shell's commands against the calls |
 | `sessions/FS-API/FOR-THE-HARDWARE.md` | **the hardware, for step 4:** the RW unit, the mesh, the cache, the memories, what is open |
 | `sessions/SHELL/` | the shell session's brief, notes and report |
 
@@ -37,8 +37,8 @@ of SRAM and 32 + 32 KB of local memory, the 4 MiB of the first draft being wrong
 with no reservation id; working directories and relative paths; `cow_commit` and the root 0 until it; `FS_ROOT` and
 `cow_root(fd)`; `fs_remove_directory`; reads and writes served four at a time, the rest one at a time; the names'
 hashes; the out-of-space rule; typed acquires (`fs_acquire_cow_pages`); a clean shutdown marked in the superblock;
-`fs_startup`, which formats, mounts or checks (fsck) as the superblock says, so no reset-cause bit is needed; fsck's
-checks of lengths. NOTES.md rulings 22 to 48.
+`fs_startup(format)`, which formats if asked, else formats, mounts or checks (fsck) as the superblock says, so no reset-cause bit is needed; fsck's
+checks of lengths. NOTES.md rulings 22 to 49.
 
 ## What is open
 

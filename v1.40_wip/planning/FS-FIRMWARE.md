@@ -132,7 +132,8 @@ hashes.
 
 ### 2.9 At a reset: `fs_startup` (owner, 2026-11-20; FS-API 3.1)
 
-Every call is answered `FS_ESHUTDOWN` until the master tile's `fs_startup`. It reads page 0:
+Every call is answered `FS_ESHUTDOWN` until the master tile's `fs_startup(format)`. Asked to format (`format`
+nonzero), it formats; else it reads page 0:
 
 - **no superblock:** a format: the superblock (state "mounted") and an empty root directory;
 - **"shut down cleanly":** a mount; **anything else:** a check. **Both are one routine,** the walk with its repairs:

@@ -55,7 +55,7 @@ void ok(int rc, const char* call) {
     if (rc < 0) fail(std::string(call) + " = " + std::to_string(rc));
 }
 void power() {
-    if (!g_powered) { power_on(g_cap, true); set_caller(Caller::MASTER); ok(fs_startup(), "fs_startup"); g_powered = true; }
+    if (!g_powered) { power_on(g_cap, true); set_caller(Caller::MASTER); ok(fs_startup(0), "fs_startup"); g_powered = true; }
 }
 
 std::vector<uint64_t> page_list(const std::string& s) {
@@ -314,7 +314,7 @@ void seed_run(const char* file) {
         } else if (k == "reset") {
             power_on(g_cap, false);
             set_caller(Caller::MASTER);
-            ok(fs_startup(), "fs_startup");             // a check, or a mount if shut down cleanly
+            ok(fs_startup(0), "fs_startup");             // a check, or a mount if shut down cleanly
             g_seed_open.clear();
             g_seed_writer = false;
         } else {

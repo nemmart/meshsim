@@ -87,7 +87,8 @@ The work the file system does, as the calls it makes (section 5). Paths here are
 ### 3.1 Power-on and the resets: `fs_startup` (owner, 2026-11-20)
 
 After every reset the file system is shut down: every call is `FS_ESHUTDOWN` until **the master tile calls
-`fs_startup()`**, which looks at the superblock and returns the mode it ran in:
+`fs_startup(int format)`**, which returns the mode it ran in. **With `format` nonzero it formats, whatever the
+superblock says** (owner, 2026-11-20); with 0 it looks at the superblock:
 
 - **no superblock → it formats** (`FS_STARTED_FORMAT`): the superblock and an empty root directory, in page 0;
 - **a superblock marked shut down cleanly → it mounts** (`FS_STARTED_MOUNT`);
@@ -416,8 +417,8 @@ again. The master tile commits a file only after the run that makes its root is 
 | --- | --- |
 | `int fs_shutdown(void)` | **the calls in hand finish first; then** every open file's buffers, index halves and entry go to LPDDR and every fd is closed; **then** the superblock is marked shut down cleanly; **then** the file system is shut down: every call waiting, and every call after, is `FS_ESHUTDOWN`, until the next reset. Answers when it is done (owner, 2026-11-20) |
 
-**`int fs_startup(void)`**, the master tile's, once after every reset (3.1): a format, a mount
-or a check, as the superblock says; it returns `FS_STARTED_FORMAT` (1), `FS_STARTED_MOUNT` (2) or `FS_STARTED_FSCK`
+**`int fs_startup(int format)`**, the master tile's, once after every reset (3.1): a format if `format` is nonzero,
+else a format, a mount or a check, as the superblock says; it returns `FS_STARTED_FORMAT` (1), `FS_STARTED_MOUNT` (2) or `FS_STARTED_FSCK`
 (3), or `FS_EBUSY` if the file system is started already (owner, 2026-11-20).
 
 ### 5.5 The errors

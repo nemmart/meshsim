@@ -1375,16 +1375,17 @@ int cow_root(int fd, u32* root, u32* depth) {
 }
 
 // ---- the file system as a whole (5.4)
-// The master tile's, once after every reset (owner, 2026-11-20): the superblock decides. None: a format. Shut down
+// The master tile's, once after every reset (owner, 2026-11-20): a format if asked (format nonzero), else the superblock
+// decides. None: a format. Shut down
 // cleanly: a mount. Not shut down cleanly: a check (fsck). Then the "taken" map goes to the tracer tile (128 KiB for
 // 2^20 pages; built in the cache's buffers, empty at a reset); the superblock is marked mounted. Returns the mode.
-int fs_startup(void) {
+int fs_startup(int format) {
     master_only("fs_startup");
-    if (!g_shutdown) { logf("fs_startup() = FS_EBUSY"); return FS_EBUSY; }   // started already
+    if (!g_shutdown) { logf("fs_startup(%d) = FS_EBUSY", format); return FS_EBUSY; }   // started already
     CallEnd call_end_;
     int mode;
     StartupReport R;
-    if (std::memcmp(lp(0), MAGIC, 8) != 0) {                        // no superblock: a format
+    if (format || std::memcmp(lp(0), MAGIC, 8) != 0) {              // asked, or no superblock: a format
         mode = FS_STARTED_FORMAT;
         uint8_t b[PAGE_BYTES] = {};
         std::memcpy(b, MAGIC, 8); put32(b + 8, 1); put32(b + 12, g_pages); put32(b + 16, SB_MOUNTED);
@@ -1405,8 +1406,8 @@ int fs_startup(void) {
     count_free();
     g_stats.startup_map_bytes += g_pages / 8;                       // the "taken" map, to the tracer tile
     g_shutdown = false;
-    if (mode == FS_STARTED_FORMAT) logf("fs_startup() = FORMAT: %u pages", g_pages);
-    else logf("fs_startup() = %s: %u entries, %u dropped, %u counts repaired, %u pages free", mode == FS_STARTED_MOUNT ? "MOUNT" : "FSCK",
+    if (mode == FS_STARTED_FORMAT) logf("fs_startup(%d) = FORMAT: %u pages", format, g_pages);
+    else logf("fs_startup(%d) = %s: %u entries, %u dropped, %u counts repaired, %u pages free", format, mode == FS_STARTED_MOUNT ? "MOUNT" : "FSCK",
               R.entries, R.dropped, R.repaired, free_count());
     return mode;
 }
